@@ -341,6 +341,12 @@ The directory's device/inode is pinned before probing and rechecked without foll
 Archive command stdout is redirected to stderr: stdout is reserved for decision JSON. Only HEAD's containment in a remote ref is established here; stashes and other unpushed branches remain the archive command's responsibility.
 All `WORKTREE_LEASE_*` values are metadata, not authentication; consumers must validate the inherited fence. Descendants of the archive command can inherit and keep that fence after its direct child exits.
 Linux callers always retain when mountinfo reports restricted process visibility (`hidepid`, `invisible`, `noaccess` or `subset=pid`), including root in user namespaces; unreadable visibility evidence also retains.
+The native Nix package temporarily includes `gate-lease-write WORKTREE PURPOSE CREATOR` (creation only; no surviving scope), and `reclaim-worktree-guard [--lock-exec|--check-lock] ADMIN [--inherit-fd FD] [-- COMMAND...]`.
+Writer attribution preserves the original caller PID, uses `FRACTAL_AGENT`, then `ST_AGENT`, then creator, and defaults `GATE_WORKTREE_LEASE_SECONDS` to 7500 only in this bridge; native commands still require explicit TTL.
+Writer failures exit 2; guard/check failures exit 1; lock-exec retains its exclusive fence through child exit and forwards child status. `--reference-fd-env NAME` (default: `WORKTREE_LEASE_REFERENCE_FD_ENV`) optionally preserves exactly the FD named by that existing environment variable, without changing its caller-owned descriptor flags; without a name, no reference channel is forwarded.
+Python imports live in `PACKAGE/share/worktree-lease`: `gate_worktree_lease` exposes `publish`, `dead_expired`; `reclaim_worktree_guard` exposes `lease_lock` and `guard_git_dir`. Add that directory to `PYTHONPATH` for named imports.
+Scopes receive an owning close-on-exec descriptor from native core over a private socket, never implement another flock or record policy, and validate supplied inherited descriptors. `guard_git_dir` alone is evidence, not mutation authority; its optional `now` is an epoch passed to the native predicate.
+`WORKTREE_LEASE_BIN` may explicitly select the matching native executable; missing executables fail closed. No admission implementation is included. Remove this narrow bridge only after all packaged callers and live processes migrate and both-direction mixed-version exclusion remains proven.
 
 ### Work storage contract
 
