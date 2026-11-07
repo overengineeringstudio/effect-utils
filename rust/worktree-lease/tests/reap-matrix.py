@@ -13,7 +13,12 @@ with tempfile.TemporaryDirectory() as tmp:
     decision = reap()['candidate']; assert decision['_tag'] == 'Eligible' or decision['reason'] == 'CwdLiveOrUnknown', decision
     (managed / 'alias').symlink_to(tree); (managed / 'unregistered').mkdir()
     assert reap()['alias']['reason'] == 'NotManagedChild' and reap()['unregistered']['_tag'] == 'Retained'
-    with subprocess.Popen(['sleep', '1'], cwd=tree) as child: assert reap()['candidate']['reason'] == 'CwdLiveOrUnknown'
+    child = subprocess.Popen(['sleep', 'infinity'], cwd=tree)
+    try:
+        assert reap()['candidate']['reason'] == 'CwdLiveOrUnknown'
+    finally:
+        child.kill()
+        child.wait()
     (tree / 'tracked').write_text('modified'); assert reap()['candidate']['reason'] == 'Dirty'
     git('checkout', '--', 'tracked', cwd=tree); (tree / 'untracked').write_text('new'); assert reap()['candidate']['reason'] == 'Dirty'
     (tree / 'untracked').unlink(); git('update-ref', '-d', 'refs/remotes/test/main'); assert reap()['candidate']['reason'] == 'HeadNotOnRemote'
