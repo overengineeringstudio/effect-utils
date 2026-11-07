@@ -482,6 +482,9 @@ const storeDirectory = async ({
   readonly directories: Directories
   readonly create: boolean
 }): Promise<OpenDirectory | undefined> => {
+  // Only this held transaction owns these admitted handles; absence is never cached.
+  const previous = directories.get(contentStore)
+  if (previous !== undefined) return previous
   if ((await statusIfPresent(contentStore)) === undefined) {
     if (create === false) return undefined
     await createDirectory({ path: contentStore, directories: directories })
@@ -500,13 +503,15 @@ const shardDirectory = async ({
   readonly directories: Directories
   readonly create: boolean
 }): Promise<OpenDirectory | undefined> => {
+  const path = join(contentStore, shard)
+  const previous = directories.get(path)
+  if (previous !== undefined) return previous
   const root = await storeDirectory({
     contentStore: contentStore,
     directories: directories,
     create: create,
   })
   if (root === undefined) return undefined
-  const path = join(contentStore, shard)
   if ((await statusIfPresent(path)) === undefined) {
     if (create === false) return undefined
     await makeWritable(root)
