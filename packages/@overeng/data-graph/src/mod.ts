@@ -269,18 +269,62 @@ export const AttemptStatus = Schema.Struct({
 /** Decoded attempt evidence remains independent of the selected successful head. */
 export type AttemptStatus = typeof AttemptStatus.Type
 const attemptPin = (key: NodeKey): string => `data-graph/attempts/${hex(nodeIdDigest(key))}`
+const AttemptVerdict = Schema.Struct({
+  _tag: Schema.Literals(['Accepted', 'Rejected']),
+  action: ContentDescriptor,
+})
+const SelectionEvidence = Schema.TaggedStruct('SelectionEvidence', {
+  latestAttempt: AttemptStatus,
+  verdict: Schema.NullOr(AttemptVerdict),
+})
+// Bare attempt records remain readable for existing durable status pins.
+const StoredSelectionEvidence = Schema.Union([SelectionEvidence, AttemptStatus])
+const readSelectionEvidence = Effect.fn('DataGraph.readSelectionEvidence')(function* (
+  key: NodeKey,
+) {
+  const store = yield* GraphStore
+  const pinned = yield* store.lookup(attemptPin(key))
+  if (Option.isNone(pinned) === true) return Option.none<typeof SelectionEvidence.Type>()
+  const wrapper = yield* readJson(ContentManifest, pinned.value)
+  const status = wrapper.entries.find((entry) => entry.role === 'status')
+  if (wrapper.role !== 'data-graph.selection-status' || status === undefined)
+    return yield* new GraphError({ nodeId: nodeId(key), message: 'Invalid selection status' })
+  for (const entry of wrapper.entries) yield* store.get(entry.descriptor)
+  const decoded = yield* readJson(StoredSelectionEvidence, status.descriptor)
+  return Option.some(
+    decoded._tag === 'SelectionEvidence'
+      ? decoded
+      : {
+          _tag: 'SelectionEvidence' as const,
+          latestAttempt: decoded,
+          verdict:
+            decoded._tag === 'Failed' ? null : { _tag: decoded._tag, action: decoded.action },
+        },
+  )
+})
 const publishStatus = Effect.fn('DataGraph.publishStatus')(function* (
   key: NodeKey,
   status: AttemptStatus,
 ) {
   const store = yield* GraphStore
-  const descriptor = yield* writeJson(AttemptStatus, status)
+  let verdict: typeof AttemptVerdict.Type | null =
+    status._tag === 'Failed' ? null : { _tag: status._tag, action: status.action }
+  if (status._tag === 'Failed') {
+    const prior = yield* readSelectionEvidence(key)
+    if (Option.isSome(prior) === true) verdict = prior.value.verdict
+  }
+  const descriptor = yield* writeJson(SelectionEvidence, {
+    _tag: 'SelectionEvidence',
+    latestAttempt: status,
+    verdict,
+  })
   const wrapper = yield* store.manifest(
     manifest({
       role: 'data-graph.selection-status',
       entries: [
         { role: 'status', descriptor },
         { role: 'action', descriptor: status.action },
+        ...(verdict === null ? [] : [{ role: 'verdict-action', descriptor: verdict.action }]),
         ...(status.attempt === undefined ? [] : [{ role: 'attempt', descriptor: status.attempt }]),
         ...(status.materialization === undefined
           ? []
@@ -665,6 +709,7 @@ export interface SelectionStatus {
   readonly action: ContentDigest
   readonly acceptance: 'Missing' | 'Current' | 'StaleAction'
   readonly latestAttempt: Option.Option<AttemptStatus>
+  readonly latestVerdict: Option.Option<typeof AttemptVerdict.Type>
 }
 
 /** Read-only policy status: never executes a graph or refreshes a confirmation. */
@@ -702,19 +747,23 @@ export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(func
       }
       const action = actionKey({ recipe: node.recipe(scope), inputs: inputs })
       const head = yield* getHead(key)
-      const pinned = yield* store.lookup(attemptPin(key))
+      const evidence = yield* readSelectionEvidence(key)
       let latestAttempt = Option.none<AttemptStatus>()
-      if (Option.isSome(pinned) === true) {
-        const wrapper = yield* readJson(ContentManifest, pinned.value)
-        const status = wrapper.entries.find((entry) => entry.role === 'status')
-        if (wrapper.role !== 'data-graph.selection-status' || status === undefined)
-          return yield* new GraphError({ nodeId: id, message: 'Invalid selection status' })
-        for (const entry of wrapper.entries) yield* store.get(entry.descriptor)
-        const decoded = yield* readJson(AttemptStatus, status.descriptor)
-        const attemptedAction = yield* readJson(ContentManifest, decoded.action)
-        if (attemptedAction.role !== 'data-graph.action')
-          return yield* new GraphError({ nodeId: id, message: 'Invalid attempt action manifest' })
-        for (const entry of attemptedAction.entries) yield* store.get(entry.descriptor)
+      let latestVerdict = Option.none<typeof AttemptVerdict.Type>()
+      if (Option.isSome(evidence) === true) {
+        const decoded = evidence.value.latestAttempt
+        const verdict = evidence.value.verdict
+        latestVerdict = verdict === null ? Option.none() : Option.some(verdict)
+        const actions =
+          verdict === null || verdict.action.digest === decoded.action.digest
+            ? [decoded.action]
+            : [decoded.action, verdict.action]
+        for (const descriptor of actions) {
+          const attemptedAction = yield* readJson(ContentManifest, descriptor)
+          if (attemptedAction.role !== 'data-graph.action')
+            return yield* new GraphError({ nodeId: id, message: 'Invalid attempt action manifest' })
+          for (const entry of attemptedAction.entries) yield* store.get(entry.descriptor)
+        }
         if (decoded.attempt !== undefined) {
           const attempt = yield* readJson(ContentManifest, decoded.attempt)
           const boundAction = attempt.entries.find((entry) => entry.role === 'action')
@@ -734,6 +783,7 @@ export const getSelectionStatus = Effect.fn('DataGraph.getSelectionStatus')(func
         head,
         action,
         latestAttempt,
+        latestVerdict,
         acceptance:
           Option.isNone(head) === true
             ? 'Missing'
@@ -759,6 +809,11 @@ export const checkFreshness = ({
   readonly maxAge: number
 }): boolean =>
   status.acceptance === 'Current' &&
+  !(
+    Option.isSome(status.latestVerdict) &&
+    status.latestVerdict.value._tag === 'Rejected' &&
+    status.latestVerdict.value.action.digest === status.action
+  ) &&
   Option.isSome(status.head) &&
   !isStale({ head: status.head.value, now: now, maxAge: maxAge })
 
