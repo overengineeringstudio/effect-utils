@@ -247,6 +247,11 @@ if [ "\${1:-}" = "deploy" ]; then
     printf 'Deployment completed without URL\\n'
     exit 0
   fi
+  if [ "\${FAKE_VERCEL_MODE:-success}" = "failure-output" ]; then
+    printf '%s\\n' "\${FAKE_VERCEL_STDOUT:-}"
+    printf '%s\\n' "\${FAKE_VERCEL_STDERR:-}" >&2
+    exit 1
+  fi
   if [ "\${FAKE_VERCEL_MODE:-success}" = "unauthorized" ]; then
     echo 'Error: invalid token ${vercelTokenSentinel}' >&2
     printf '%s\\n' "\${CI_TOOLS_BYPASS_SENTINEL:-}" >&2
@@ -678,6 +683,42 @@ exit 1
     }
   })
 
+  it.each([
+    ['Error: forbidden', '', 'ProviderOperationFailed'],
+    ['', 'Error: [not_found] Resource unavailable', 'ProviderOperationFailed'],
+    ['Error: project not found', '', 'ProviderProjectLookupFailed'],
+    ['code: "my-team-slug"', '', 'ProviderOperationFailed'],
+    ['code: "rate_limited"', '', 'ProviderOperationFailed'],
+    ['', 'code: "my-team-slug"', 'ProviderOperationFailed'],
+  ])('preserves class choice for stdout=%s stderr=%s', async (stdout, stderr, errorKind) => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'preview'],
+        env: {
+          FAKE_VERCEL_MODE: 'failure-output',
+          FAKE_VERCEL_STDOUT: stdout,
+          FAKE_VERCEL_STDERR: stderr,
+        },
+      })
+      expect(result.status).not.toBe(0)
+      const record = readRecord(reportFile)
+      expect(record.data).toMatchObject({ errorKind })
+      if (stderr === '') {
+        expect(record.data?.diagnostics).not.toHaveProperty('vercelErrorCode')
+      }
+      expect(JSON.stringify(record)).not.toContain('my-team-slug')
+      expect(result.stdout).not.toContain('my-team-slug')
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
   it('refuses shared-project live E2E aliases outside the reserved prefix', async () => {
     apiMode = 'ok'
     const workspace = makeWorkspace()
@@ -870,9 +911,12 @@ exit 1
         errorKind: 'ProviderOperationFailed',
         retryable: false,
         attempts: 2,
+        diagnostics: { exitCode: '1', failureKind: 'unknown' },
       })
       expect(record.summary).toMatch(/alias/iu)
-      expect(JSON.stringify(record)).toContain('already in use')
+      expect(JSON.stringify(record)).not.toContain('already in use')
+      expect(record.data?.diagnostics).not.toHaveProperty('stderr')
+      expect(record.data?.diagnostics).not.toHaveProperty('stdout')
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }
