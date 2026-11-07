@@ -35,6 +35,8 @@ pub enum Command {
     Guard {
         #[arg(long)]
         git_dir: PathBuf,
+        #[arg(long, env = "WORKTREE_LEASE_AGENT")]
+        agent: Option<String>,
     },
 }
 fn output(tag: &str, value: &impl serde::Serialize) -> Result<()> {
@@ -97,7 +99,13 @@ impl Command {
                 "Inspected",
                 &Record::inspect(&Identity::resolve(&worktree)?)?,
             ),
-            Self::Guard { git_dir } => {
+            Self::Guard { git_dir, agent } => {
+                if agent
+                    .as_deref()
+                    .is_some_and(|actor| !worktree_lease::actor::lock_scope(actor))
+                {
+                    return Err(Refusal::AttributionFailure);
+                }
                 drop(guard::reclaim(Identity::resolve_admin(&git_dir)?)?);
                 output("Eligible", &Option::<Record>::None)
             }

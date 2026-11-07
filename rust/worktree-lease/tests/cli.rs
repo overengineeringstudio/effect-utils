@@ -32,6 +32,16 @@ fn inherited() {
 }
 
 #[test]
+fn service_actors() {
+    let output = std::process::Command::new("python3")
+        .arg("tests/actors.py")
+        .env("LEASE", env!("CARGO_BIN_EXE_worktree-lease"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn compatibility() {
     use std::{

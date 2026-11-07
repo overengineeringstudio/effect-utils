@@ -164,7 +164,7 @@ impl Holder {
         probe: impl FnOnce(u32) -> ProcessState,
         namespace: impl FnOnce() -> Option<PidNamespace>,
     ) -> Result<Self> {
-        if !agent.starts_with("agent/") || agent.len() <= 6 || pid == 0 || pid > i32::MAX as u32 {
+        if !crate::actor::lock_scope(&agent) || pid == 0 || pid > i32::MAX as u32 {
             return Err(Refusal::InvalidInput);
         }
         let ProcessState::Alive(start_time) = probe(pid) else {

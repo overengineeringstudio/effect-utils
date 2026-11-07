@@ -60,10 +60,9 @@ fn expiry(ttl: u64) -> Result<String> {
 }
 impl Record {
     pub fn validate(&self) -> Result<()> {
-        let agent = |value: &str| value.starts_with("agent/") && value.len() > 6;
         if self.schema != 1
-            || !agent(&self.creator_seat)
-            || !agent(&self.holder.agent)
+            || !crate::actor::agent(&self.creator_seat)
+            || !crate::actor::agent(&self.holder.agent)
             || !matches!(self.purpose.as_str(), "gate" | "lander" | "ci-baseline")
             || self.holder.pid == 0
             || self.holder.pid > i32::MAX as u32
