@@ -20,7 +20,7 @@ pub(crate) fn handoff(identity: &Identity, expected: (u64, u64)) -> Result<(), &
     Ok(())
 }
 #[cfg(target_os = "linux")]
-pub(crate) fn proc_visible(mountinfo: &str, euid: u32) -> bool {
+pub(crate) fn proc_visible(mountinfo: &str) -> bool {
     let mut found = false;
     for line in mountinfo.lines() {
         let Some((mount, filesystem)) = line.split_once(" - ") else {
@@ -38,16 +38,15 @@ pub(crate) fn proc_visible(mountinfo: &str, euid: u32) -> bool {
         let (Some(options), Some(superoptions)) = (fields.next(), fs.nth(1)) else {
             return false;
         };
-        if euid != 0
-            && options
-                .split(',')
-                .chain(superoptions.split(','))
-                .any(|option| {
-                    matches!(option, "invisible" | "noaccess" | "subset=pid")
-                        || option
-                            .strip_prefix("hidepid=")
-                            .is_some_and(|value| value != "0")
-                })
+        if options
+            .split(',')
+            .chain(superoptions.split(','))
+            .any(|option| {
+                matches!(option, "invisible" | "noaccess" | "subset=pid")
+                    || option
+                        .strip_prefix("hidepid=")
+                        .is_some_and(|value| value != "0")
+            })
         {
             return false;
         }
@@ -67,14 +66,11 @@ fn hidden_processes_prevent_cwd_absence() {
         "subset=pid",
     ] {
         let info = format!("1 0 0:1 / /proc rw - proc proc rw,{option}\n");
-        assert!(!proc_visible(&info, 1000));
-        assert!(proc_visible(&info, 0));
+        // No uid exception: even root can inherit hidden procfs in a user namespace.
+        assert!(!proc_visible(&info));
         let info = format!("1 0 0:1 / /proc rw,{option} - proc proc rw\n");
-        assert!(!proc_visible(&info, 1000));
+        assert!(!proc_visible(&info));
     }
-    assert!(proc_visible(
-        "1 0 0:1 / /proc rw - proc proc rw,hidepid=0\n",
-        1000
-    ));
-    assert!(!proc_visible("unreadable or malformed", 1000));
+    assert!(proc_visible("1 0 0:1 / /proc rw - proc proc rw,hidepid=0\n"));
+    assert!(!proc_visible("unreadable or malformed"));
 }

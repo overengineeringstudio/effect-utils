@@ -83,8 +83,7 @@ fn no_cwd(worktree: &Path) -> bool {
     let Ok(mountinfo) = fs::read_to_string("/proc/self/mountinfo") else {
         return false;
     };
-    // SAFETY: geteuid has no memory or ownership preconditions.
-    if !safety::proc_visible(&mountinfo, unsafe { libc::geteuid() }) {
+    if !safety::proc_visible(&mountinfo) {
         return false;
     }
     let Ok(entries) = fs::read_dir("/proc") else {

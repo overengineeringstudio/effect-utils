@@ -340,7 +340,7 @@ Ignored content in managed worktrees is disposable by policy: `Eligible` decisio
 The directory's device/inode is pinned before probing and rechecked without following symlinks, along with both keep markers, immediately before handoff. The archive command receives `WORKTREE_LEASE_WORKTREE_DEV`/`WORKTREE_LEASE_WORKTREE_INO` and must recheck them before deleting.
 Archive command stdout is redirected to stderr: stdout is reserved for decision JSON. Only HEAD's containment in a remote ref is established here; stashes and other unpushed branches remain the archive command's responsibility.
 All `WORKTREE_LEASE_*` values are metadata, not authentication; consumers must validate the inherited fence. Descendants of the archive command can inherit and keep that fence after its direct child exits.
-Non-root Linux callers retain when mountinfo reports restricted process visibility (`hidepid`, `invisible`, `noaccess` or `subset=pid`); unreadable visibility evidence also retains.
+Linux callers always retain when mountinfo reports restricted process visibility (`hidepid`, `invisible`, `noaccess` or `subset=pid`), including root in user namespaces; unreadable visibility evidence also retains.
 
 ### Work storage contract
 
