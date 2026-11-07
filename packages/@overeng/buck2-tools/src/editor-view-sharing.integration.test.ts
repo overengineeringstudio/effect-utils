@@ -35,6 +35,9 @@ import {
   repairEditorViewContentStore,
   defaultEditorViewContentStore,
   editorViewStagingCreatorIdentity,
+  editorViewSourceKey,
+  reuseEditorViewSourceFiles,
+  withEditorViewContentStoreLock,
   materializeEditorViewSourceFiles,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
@@ -437,6 +440,140 @@ describe('host-wide editor snapshot content store', () => {
       await expect(
         shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources }),
       ).rejects.toThrow('prepared candidate changed')
+    })
+  })
+  const reuseFiles = (store: string, directory: string, count: number) =>
+    Array.from({ length: count }, (_, index) => {
+      const blob = blobPath(store, `bytes-${index % 8}`)
+      return {
+        path: join(directory, `${index}`),
+        entry: {
+          sourceKey: '',
+          digest: basename(blob).slice(0, 64),
+          mode: 0o444,
+          blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
+        },
+      }
+    })
+  it('bounds async links and preserves manifests, fallbacks and wall attribution', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 8; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      // Inject per-call links: restoring an existing Bun module mock clears its implementation.
+      const outcomes = []
+      for (const linkConcurrency of [1, 8]) {
+        const files = reuseFiles(contentStore, candidate(`next-${linkConcurrency}`), 32)
+        let active = 0,
+          maximum = 0
+        const gates: (() => void)[] = []
+        const used = new Map<string, number>()
+        let phaseWallMs = 0
+        const linkFile: typeof fsPromises.link = async (source, destination) => {
+          maximum = Math.max(maximum, ++active)
+          const gate = Promise.withResolvers<void>()
+          gates.push(gate.resolve)
+          if (gates.length === linkConcurrency)
+            for (const resolve of gates.splice(0).toReversed()) resolve()
+          try {
+            await gate.promise
+            const count = (used.get(String(source)) ?? 0) + 1
+            used.set(String(source), count)
+            if (count > 2) throw Object.assign(new Error('EMLINK'), { code: 'EMLINK' })
+            linkSync(source, destination)
+          } finally {
+            active -= 1
+          }
+        }
+        const timings: Record<string, number> = {}
+        const linked = await editorViewTimingContext.run(timings, reuseEditorViewSourceFiles, {
+          contentStore,
+          files,
+          linkConcurrency,
+          linkFile,
+          afterLinkPhase: (wallMs) => {
+            phaseWallMs += wallMs
+          },
+        })
+        expect(maximum).toBe(linkConcurrency)
+        expect(active).toBe(0)
+        const manifest = [...linked].map((path) => ({
+          path: basename(path),
+          digest: createHash('sha256').update(readFileSync(path)).digest('hex'),
+          mode: lstatSync(path).mode & 0o777,
+        }))
+        const fallback = files
+          .filter(({ path }) => linked.has(path) === false)
+          .map(({ path }) => basename(path))
+        expect(fallback).toHaveLength(16)
+        outcomes.push({ manifest, fallback })
+        const synchronous =
+          timings.casDirectReuseBlobRecheckMs! +
+          timings.casDirectReuseSourceRecheckMs! +
+          timings.casDirectReusePostLinkMs!
+        const classified =
+          synchronous + timings.casDirectReuseLinkMs! + timings.casDirectReuseDirectoryMs!
+        const residual = timings.casHeldMs! - classified
+        expect(residual).toBeGreaterThanOrEqual(0)
+        expect(classified + residual).toBeCloseTo(timings.casHeldMs!, 8)
+        expect(synchronous + timings.casDirectReuseLinkMs!).toBeLessThanOrEqual(phaseWallMs + 1e-8)
+      }
+      expect(outcomes[0]).toEqual(outcomes[1])
+      const probe = payload(candidate('probe'), 'source', 'native-link-probe')
+      await fsPromises.link(probe, `${probe}.link`)
+      expect(lstatSync(`${probe}.link`).ino).toBe(lstatSync(probe).ino)
+    })
+  })
+
+  it('settles every link before releasing the lock and throws the first stable error', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 8; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const files = reuseFiles(contentStore, candidate('next'), 8).toSorted((a, b) =>
+        a.entry.digest.localeCompare(b.entry.digest),
+      )
+      const started = Promise.withResolvers<void>(),
+        contended = Promise.withResolvers<void>()
+      const gates = files.map(() => Promise.withResolvers<void>())
+      let active = 0,
+        completed = 0
+      const linkFile: typeof fsPromises.link = async (source, destination) => {
+        if (++active === 8) started.resolve()
+        const index = Number(basename(String(destination)))
+        try {
+          await gates[index]!.promise
+          if (index < 2) throw new Error(`fatal-${index}`)
+          linkSync(source, destination)
+        } finally {
+          completed += 1
+        }
+      }
+      try {
+        const operation = reuseEditorViewSourceFiles({
+          contentStore,
+          files,
+          linkConcurrency: 8,
+          linkFile,
+        })
+        const outcome = operation.catch((error: unknown) => error)
+        await Promise.race([started.promise, operation])
+        const contender = withEditorViewContentStoreLock({
+          contentStore,
+          afterStoreLockContended: contended.resolve,
+          run: async () => {
+            expect(completed).toBe(8)
+          },
+        })
+        await Promise.race([contended.promise, contender])
+        for (const gate of gates.toReversed()) gate.resolve()
+        const firstFatal = files.find(({ path }) => Number(basename(path)) < 2)!
+        expect(await outcome).toHaveProperty('message', `fatal-${basename(firstFatal.path)}`)
+        await contender
+        expect(completed).toBe(8)
+      } finally {
+        for (const gate of gates) gate.resolve()
+      }
     })
   })
 
