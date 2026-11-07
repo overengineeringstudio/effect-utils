@@ -327,11 +327,14 @@ Linux probes also require `readlink("/proc/self")` to match the caller's PID; mi
 Either `WORKTREE/reclaim-keep` or `ADMIN/reclaim-keep`, including unreadable marker state, retains the worktree. This eligibility guard does not establish clean-tree, reference or live-cwd deletion safety.
 The standalone CLI exposes `create WORKTREE --purpose gate|lander|ci-baseline --creator AGENT [--holder-pid PID] --ttl SECONDS`, `renew WORKTREE --holder-pid PID --agent AGENT --ttl SECONDS`, `inspect WORKTREE --json`, and `guard --git-dir ADMIN`.
 Create defaults holder PID to its parent; adapters can preserve their caller with an explicit PID. Renew acquires a shared scope internally. CLI successes are tagged `Created`, `Renewed`, `Inspected` or `Eligible` objects with a `record` field (possibly `null`). Guard success is only an eligibility observation, not a lock surviving CLI exit.
-`reap --common-dir COMMON -- ARCHIVE_COMMAND...` emits one tagged `Eligible` (with archive exit status) or `Retained` (with reason) JSON line per examined child.
+`reap --common-dir COMMON [--scheduled] -- ARCHIVE_COMMAND...` emits one tagged `Eligible` (with archive exit status) or `Retained` (with reason) JSON line per examined child.
 Only registered, physical direct children of `COMMON/gate-worktrees` with supported expired/dead records qualify; unknown cwd visibility, dirty/untracked state and HEAD absent from remote refs retain.
 The exclusive fence stays held through archive command exit. The command receives `WORKTREE_LEASE_WORKTREE`, `WORKTREE_LEASE_EXPECT_HEAD`, `WORKTREE_LEASE_EXPECT_BRANCH`, and `WORKTREE_LEASE_LOCK_FD`.
 The archive command must recheck the expected HEAD/branch and preserve its independent consent/reference gates; eligibility is not permission to skip them. An empty expected branch denotes detached HEAD.
 Linux scans process cwd links conservatively; other platforms retain. Each pass examines at most 64 children and attempts at most four archives; Git probes have a three-second deadline. Failed archives are reported without aborting other candidates.
+Passes take a common nonblocking singleton fence, rotate a sorted persisted cursor even for retained children, and stamp attempts before invoking archives. Scheduled passes observe a 600-second interval; corrupt cursors or unreadable progress state refuse a pass.
+`Lease::validate_inherited_exclusive(identity, fd)` duplicates a caller-owned FD with close-on-exec, checks the named lock inode, independently probes shared-lock contention, and requires successful nonblocking exclusive flock.
+`validate-inherited WORKTREE --lock-fd N` performs the same validation and emits `Validated`; invalid, closed, wrong-inode, unlocked or shared descriptors refuse. This observation leaves the caller's original fence untouched, but confers no scope after CLI exit.
 
 ### Work storage contract
 

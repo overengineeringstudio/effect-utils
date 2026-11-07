@@ -11,3 +11,22 @@ fn acceptance() {
     assert_eq!(record["job"], "test-job");
     assert!(record["warning"].is_string());
 }
+#[test]
+#[cfg(target_os = "linux")]
+fn reaper() {
+    let output = std::process::Command::new("python3")
+        .arg("tests/reap.py")
+        .env("LEASE", env!("CARGO_BIN_EXE_worktree-lease"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+#[test]
+fn inherited() {
+    let output = std::process::Command::new("python3")
+        .arg("tests/inherited.py")
+        .env("LEASE", env!("CARGO_BIN_EXE_worktree-lease"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
