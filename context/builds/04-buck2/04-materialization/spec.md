@@ -316,10 +316,10 @@ lookups/address misses. Source and blob hashing stay outside CAS flock.
 `filesDirectLinkFallback` is a subset of normal outcomes; direct-linked plus fallback equals attempts.
 Direct reuse (including source-manifest reuse) reports five disjoint held-time
 details, aggregated per transaction:
-Shard admission is sequential; groups of at most eight per-blob chains run inside each unchanged 128-file transaction. Each chain links in digest/path order, so EMLINK capacity selects identical fallbacks at N=1 and N=8.
+Shard admission is sequential; a work-conserving pool of at most eight workers takes per-blob chains in stable order inside each unchanged 128-file transaction. Each chain links in digest/path order, so EMLINK capacity selects identical fallbacks at N=1 and N=8.
 Bun's own WorkPool, not libuv's four-worker default: [link dispatch](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/runtime/node/node_fs.zig#L42) →
 [pool sizing](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/threading/work_pool.zig#L11) → [CPU count or UV_THREADPOOL_SIZE/GOMAXPROCS](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/bun.zig#L3603-L3627).
-The bound is eight, capped by pool size. Every group settles before errors escape or the flock releases.
+The bound is eight, capped by pool size. A failed chain stops only itself; its worker takes the next chain. Every worker settles before errors escape or the flock releases.
 Successful results and the first fatal error follow digest/path order, never completion order.
 Source check and link submission have no intervening await; post-link proof follows that file's completion.
 Link is concurrent-phase wall time minus nonoverlapping synchronous blob/source/post-link segments, including link hooks/errors.

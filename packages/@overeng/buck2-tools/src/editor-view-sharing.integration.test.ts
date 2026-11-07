@@ -442,9 +442,9 @@ describe('host-wide editor snapshot content store', () => {
       ).rejects.toThrow('prepared candidate changed')
     })
   })
-  const reuseFiles = (store: string, directory: string, count: number) =>
+  const reuseFiles = (store: string, directory: string, count: number, blobCount = 8) =>
     Array.from({ length: count }, (_, index) => {
-      const blob = blobPath(store, `bytes-${index % 8}`)
+      const blob = blobPath(store, `bytes-${index % blobCount}`)
       return {
         path: join(directory, `${index}`),
         entry: {
@@ -525,12 +525,64 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
-  it('settles every link before releasing the lock and throws the first stable error', async () => {
+  it('keeps free workers linking singletons while a long blob chain is gated', async () => {
     await withStore(async ({ candidate, contentStore }) => {
-      for (let index = 0; index < 8; index++)
+      for (let index = 0; index < 16; index++)
         payload(candidate('seed'), `${index}`, `bytes-${index}`)
       await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
-      const files = reuseFiles(contentStore, candidate('next'), 8).toSorted((a, b) =>
+      const files = reuseFiles(contentStore, candidate('next'), 16, 16).toSorted((a, b) =>
+        a.entry.digest.localeCompare(b.entry.digest),
+      )
+      const long = files[0]!
+      for (let index = 0; index < 5; index++)
+        files.push({ ...long, path: join(candidate('next'), `long-${index}`) })
+      const gates = Array.from({ length: 6 }, () => Promise.withResolvers<void>())
+      const singletonsDone = Promise.withResolvers<void>()
+      let longStarted = 0,
+        longCompleted = 0,
+        singletonCompleted = 0,
+        active = 0,
+        maximum = 0
+      const linkFile: typeof fsPromises.link = async (source, destination) => {
+        maximum = Math.max(maximum, ++active)
+        const isLong = basename(String(source)).startsWith(long.entry.digest)
+        try {
+          if (isLong === true) await gates[longStarted++]!.promise
+          linkSync(source, destination)
+          if (isLong === true) longCompleted += 1
+          else if (++singletonCompleted === 15) singletonsDone.resolve()
+        } finally {
+          active -= 1
+        }
+      }
+      const operation = reuseEditorViewSourceFiles({
+        contentStore,
+        files,
+        linkConcurrency: 8,
+        linkFile,
+      })
+      try {
+        await Promise.race([singletonsDone.promise, operation])
+        expect(singletonCompleted).toBe(15)
+        expect(longStarted).toBe(1)
+        expect(longCompleted).toBe(0)
+        expect(maximum).toBeLessThanOrEqual(8)
+      } finally {
+        for (const gate of gates) gate.resolve()
+        await operation
+      }
+      expect(longCompleted).toBe(6)
+      expect(active).toBe(0)
+      expect(await operation).toHaveProperty('size', files.length)
+    })
+  })
+
+  it('settles every link before releasing the lock and throws the first stable error', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 16; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const files = reuseFiles(contentStore, candidate('next'), 16, 16).toSorted((a, b) =>
         a.entry.digest.localeCompare(b.entry.digest),
       )
       const started = Promise.withResolvers<void>(),
@@ -562,7 +614,7 @@ describe('host-wide editor snapshot content store', () => {
           contentStore,
           afterStoreLockContended: contended.resolve,
           run: async () => {
-            expect(completed).toBe(8)
+            expect(completed).toBe(16)
           },
         })
         await Promise.race([contended.promise, contender])
@@ -570,7 +622,7 @@ describe('host-wide editor snapshot content store', () => {
         const firstFatal = files.find(({ path }) => Number(basename(path)) < 2)!
         expect(await outcome).toHaveProperty('message', `fatal-${basename(firstFatal.path)}`)
         await contender
-        expect(completed).toBe(8)
+        expect(completed).toBe(16)
       } finally {
         for (const gate of gates) gate.resolve()
       }
