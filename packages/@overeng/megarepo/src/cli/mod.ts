@@ -28,6 +28,7 @@ import {
   statusCommand,
   storeCommand,
 } from './commands/mod.ts'
+import { worktreeCommand } from './commands/worktree.ts'
 
 // Re-export context for use by other modules
 export {
@@ -67,6 +68,7 @@ export const mrCommand = Cli.Command.make('mr').pipe(
     storeCommand,
     generateCommand,
     depsCommand,
+    worktreeCommand,
   ]),
   Cli.Command.withGlobalFlags([cwdGlobalFlag]),
   Cli.Command.provide(CwdFromGlobalFlag),

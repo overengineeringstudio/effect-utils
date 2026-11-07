@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d46de4150a41fb9f620da530ffc349c9f38dca5d78f5ecb59549635213b291ac
+# Semantic fingerprint: sha256:07b1d1d5c7636bfa7a2aa491483edfcf4ef65aed61cf1360fe672e888bb6bf0e
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -52,6 +52,7 @@ export_materialization_inputs([
     "src/cli/commands/store/buck-maintain.ts",
     "src/cli/commands/store/lock.ts",
     "src/cli/commands/store/mod.ts",
+    "src/cli/commands/worktree.ts",
     "src/cli/components/Header.stories.tsx",
     "src/cli/components/Header.tsx",
     "src/cli/components/LogLine.stories.tsx",
@@ -188,6 +189,7 @@ export_materialization_inputs([
     "src/cli/store-rehome.integration.test.ts",
     "src/cli/store.integration.test.ts",
     "src/cli/sync.integration.test.ts",
+    "src/cli/worktree-lease.integration.test.ts",
     "src/core/config.ts",
     "src/core/config.unit.test.ts",
     "src/core/git-memory.integration.test.ts",
@@ -375,6 +377,7 @@ package_view(
         "src/cli/commands/store/buck-maintain.ts": "src/cli/commands/store/buck-maintain.ts",
         "src/cli/commands/store/lock.ts": "src/cli/commands/store/lock.ts",
         "src/cli/commands/store/mod.ts": "src/cli/commands/store/mod.ts",
+        "src/cli/commands/worktree.ts": "src/cli/commands/worktree.ts",
         "src/cli/components/Header.stories.tsx": "src/cli/components/Header.stories.tsx",
         "src/cli/components/Header.tsx": "src/cli/components/Header.tsx",
         "src/cli/components/LogLine.stories.tsx": "src/cli/components/LogLine.stories.tsx",
@@ -511,6 +514,7 @@ package_view(
         "src/cli/store-rehome.integration.test.ts": "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts": "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts": "src/cli/sync.integration.test.ts",
+        "src/cli/worktree-lease.integration.test.ts": "src/cli/worktree-lease.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
         "src/core/config.unit.test.ts": "src/core/config.unit.test.ts",
         "src/core/git-memory.integration.test.ts": "src/core/git-memory.integration.test.ts",
@@ -700,6 +704,7 @@ package_view(
         "src/cli/commands/store/buck-maintain.ts": "src/cli/commands/store/buck-maintain.ts",
         "src/cli/commands/store/lock.ts": "src/cli/commands/store/lock.ts",
         "src/cli/commands/store/mod.ts": "src/cli/commands/store/mod.ts",
+        "src/cli/commands/worktree.ts": "src/cli/commands/worktree.ts",
         "src/cli/components/Header.stories.tsx": "src/cli/components/Header.stories.tsx",
         "src/cli/components/Header.tsx": "src/cli/components/Header.tsx",
         "src/cli/components/LogLine.stories.tsx": "src/cli/components/LogLine.stories.tsx",
@@ -836,6 +841,7 @@ package_view(
         "src/cli/store-rehome.integration.test.ts": "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts": "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts": "src/cli/sync.integration.test.ts",
+        "src/cli/worktree-lease.integration.test.ts": "src/cli/worktree-lease.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
         "src/core/config.unit.test.ts": "src/core/config.unit.test.ts",
         "src/core/git-memory.integration.test.ts": "src/core/git-memory.integration.test.ts",
@@ -1020,6 +1026,7 @@ package_view(
         "src/cli/commands/store/buck-maintain.ts": "src/cli/commands/store/buck-maintain.ts",
         "src/cli/commands/store/lock.ts": "src/cli/commands/store/lock.ts",
         "src/cli/commands/store/mod.ts": "src/cli/commands/store/mod.ts",
+        "src/cli/commands/worktree.ts": "src/cli/commands/worktree.ts",
         "src/cli/components/Header.stories.tsx": "src/cli/components/Header.stories.tsx",
         "src/cli/components/Header.tsx": "src/cli/components/Header.tsx",
         "src/cli/components/LogLine.stories.tsx": "src/cli/components/LogLine.stories.tsx",
@@ -1156,6 +1163,7 @@ package_view(
         "src/cli/store-rehome.integration.test.ts": "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts": "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts": "src/cli/sync.integration.test.ts",
+        "src/cli/worktree-lease.integration.test.ts": "src/cli/worktree-lease.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
         "src/core/config.unit.test.ts": "src/core/config.unit.test.ts",
         "src/core/git-memory.integration.test.ts": "src/core/git-memory.integration.test.ts",
@@ -1456,7 +1464,7 @@ package_bin_artifact(
     name = "megarepo-candidate-module",
     entrypoint = "bin/mr.ts",
     external = [],
-    external_capabilities = ["git", "nix"],
+    external_capabilities = ["git", "nix", "worktree-lease"],
     kind = "cli",
     output = "mr.js",
     package_tree = ":product_package_tree",
