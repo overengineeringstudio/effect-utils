@@ -2,12 +2,13 @@
 pub mod guard;
 pub mod reap;
 pub mod record;
+mod schedule;
 use std::{
     cell::Cell,
     fs::{self, File, OpenOptions},
     io,
     os::{
-        fd::AsRawFd,
+        fd::{AsRawFd, FromRawFd, RawFd},
         unix::{
             ffi::OsStrExt,
             fs::{MetadataExt, OpenOptionsExt},
@@ -147,6 +148,34 @@ pub struct Lease {
     held: Cell<Option<bool>>,
 }
 impl Lease {
+    /// Duplicate and validate a caller-owned inherited exclusive flock without upgrading it.
+    /// The original description must remain open; this scope never unlocks or downgrades it.
+    pub fn validate_inherited_exclusive(identity: Identity, fd: RawFd) -> Result<Self> {
+        // SAFETY: fcntl validates the untrusted descriptor and returns a new owned CLOEXEC fd.
+        let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3) };
+        if duplicate < 0 {
+            return Err(Refusal::UnsafeLock);
+        }
+        // SAFETY: successful F_DUPFD_CLOEXEC transfers a fresh descriptor to File.
+        let file = unsafe { File::from_raw_fd(duplicate) };
+        let lease = Self {
+            path: identity.admin.join("gate-lease.lock"),
+            identity,
+            file,
+            held: Cell::new(None),
+        };
+        lease.validate().map_err(|_| Refusal::UnsafeLock)?;
+        let probe = Self::open(lease.identity.clone()).map_err(|_| Refusal::UnsafeLock)?;
+        // A separate open description must NOT obtain shared authority. This rejects unlocked
+        // and shared descriptors before flock could accidentally upgrade them.
+        if probe.acquire(false, false) != Err(Refusal::Busy) {
+            return Err(Refusal::UnsafeLock);
+        }
+        lease
+            .acquire(true, false)
+            .map_err(|_| Refusal::UnsafeLock)?;
+        Ok(lease)
+    }
     pub fn open(identity: Identity) -> Result<Self> {
         Self::open_named(identity, "gate-lease.lock")
     }

@@ -98,6 +98,13 @@ pub fn candidate(
     common: &Path,
     path: &Path,
 ) -> std::result::Result<(Lease, String, String), &'static str> {
+    candidate_with_cwd(common, path, no_cwd)
+}
+fn candidate_with_cwd(
+    common: &Path,
+    path: &Path,
+    cwd_absent: impl FnOnce(&Path) -> bool,
+) -> std::result::Result<(Lease, String, String), &'static str> {
     if !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
         return Err("NotManagedChild");
     }
@@ -156,7 +163,7 @@ pub fn candidate(
     {
         return Err("HeadNotOnRemote");
     }
-    if !no_cwd(path) {
+    if !cwd_absent(path) {
         return Err("CwdLiveOrUnknown");
     }
     lease.validate().map_err(|_| "Retired")?;
@@ -190,7 +197,12 @@ fn singleton(common: &Path) -> Result<fs::File> {
 }
 /// Runs a caller-selected archive command while holding the exclusive fence through child exit.
 /// Only that child inherits WORKTREE_LEASE_LOCK_FD. Other safety gates remain the command's responsibility.
-pub fn reap(common: &Path, command: &[OsString], mut emit: impl FnMut(Decision)) -> Result<()> {
+pub fn reap(
+    common: &Path,
+    scheduled: bool,
+    command: &[OsString],
+    mut emit: impl FnMut(Decision),
+) -> Result<()> {
     if command.is_empty() {
         return Err(Refusal::InvalidInput);
     }
@@ -206,10 +218,14 @@ pub fn reap(common: &Path, command: &[OsString], mut emit: impl FnMut(Decision))
         .collect::<std::io::Result<Vec<_>>>()
         .map_err(|_| Refusal::UnsafeLock)?;
     paths.sort();
+    if !crate::schedule::prepare(&common, &mut paths, scheduled)? {
+        return Ok(());
+    }
     let mut attempts = 0;
     for path in paths.into_iter().take(64) {
+        crate::schedule::examined(&common, &path)?;
         match candidate(&common, &path) {
-            Ok((lease, head, branch)) if attempts < 4 => {
+            Ok((lease, head, branch)) => {
                 attempts += 1;
                 let fd = lease.file.as_raw_fd();
                 let mut archive = Command::new(&command[0]);
@@ -235,15 +251,48 @@ pub fn reap(common: &Path, command: &[OsString], mut emit: impl FnMut(Decision))
                     archive_status,
                 });
             }
-            Ok(_) => emit(Decision::Retained {
-                worktree: path,
-                reason: "AttemptLimit",
-            }),
             Err(reason) => emit(Decision::Retained {
                 worktree: path,
                 reason,
             }),
         }
+        if attempts == 4 {
+            break;
+        }
     }
     Ok(())
+}
+#[cfg(all(test, target_os = "linux"))]
+#[test]
+fn expired_dead_clean_candidate_holds_exclusive_scope() {
+    let root = tempfile::tempdir().unwrap();
+    let status = Command::new("bash").arg("-c").arg(r#"
+set -eu
+git init -q
+git -c commit.gpgsign=false -c core.hooksPath=/dev/null -c user.name=Test -c user.email=test@example.com commit -qm initial --allow-empty
+git update-ref refs/remotes/test/main HEAD
+git worktree add --detach .git/gate-worktrees/candidate >/dev/null
+"#).current_dir(root.path()).status().unwrap();
+    assert!(status.success());
+    let common = root.path().join(".git");
+    let tree = common.join("gate-worktrees/candidate");
+    let identity = Identity::resolve(&tree).unwrap();
+    let mut record: Record = serde_json::from_str(r#"{"schema":1,"creatorSeat":"agent/test","purpose":"gate","createdAt":"2000-01-01T00:00:00Z","expiresAt":"2001-01-01T00:00:00Z","holder":{"agent":"agent/test","pid":2147483647,"startTime":"1","host":"test"}}"#).unwrap();
+    record.holder.host = guard::hostname().unwrap();
+    record.holder.pid_namespace = guard::pid_namespace();
+    fs::write(
+        identity.admin.join("gate-lease.json"),
+        serde_json::to_vec(&record).unwrap(),
+    )
+    .unwrap();
+    // Shared CI hosts cannot establish global cwd absence. Inject only that oracle;
+    // every Git, record, identity and kernel-lock check still uses the real implementation.
+    let (scope, head, branch) = candidate_with_cwd(&common, &tree, |_| true).unwrap();
+    assert!(!head.is_empty());
+    assert!(branch.is_empty());
+    assert_eq!(
+        Lease::open(identity.clone()).unwrap().acquire(false, false),
+        Err(Refusal::Busy)
+    );
+    drop(scope);
 }
