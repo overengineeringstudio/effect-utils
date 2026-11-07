@@ -295,19 +295,25 @@ fn run(args: &Args) -> Result<i32> {
         if foreground(CHILD.load(Ordering::SeqCst)).is_err() {
             unsafe { libc::kill(-CHILD.load(Ordering::SeqCst), libc::SIGKILL) };
             let _ = child.wait();
+            if !args.inherited {
+                let _ = lease.release();
+            }
             return Err(Refusal::UnsafeLock);
         }
         unsafe { libc::kill(-CHILD.load(Ordering::SeqCst), libc::SIGCONT) };
     }
     unsafe { libc::sigprocmask(libc::SIG_UNBLOCK, &blocked, std::ptr::null_mut()) };
     let status = child.wait().map_err(|_| Refusal::UnsafeLock);
-    if !args.inherited {
-        lease.release()?;
-    }
+    let released = if args.inherited {
+        Ok(())
+    } else {
+        lease.release()
+    };
     if terminal {
         foreground(unsafe { libc::getpgrp() })?;
     }
     CHILD.store(0, Ordering::SeqCst);
+    released?;
     if args.json {
         emit(
             "Granted",
