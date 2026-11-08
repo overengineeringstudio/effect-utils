@@ -431,7 +431,7 @@ describe('row focus', () => {
     expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
   })
 
-  it('never gives the Tab stop to a CSS-hidden item', async () => {
+  it('never gives the Tab stop to a CSS-hidden item, including one hidden later', async () => {
     roomy()
     // Neither test DOM implements checkVisibility; this stands in for the browser's style check.
     Object.defineProperty(HTMLElement.prototype, 'checkVisibility', {
@@ -460,6 +460,13 @@ describe('row focus', () => {
       expect(
         screen.getByRole('button', { name: 'alpha', hidden: true }).getAttribute('tabindex'),
       ).toBe('0')
+      expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+      // A host hiding the Tab stop through its own style moves the stop, without a shell render.
+      const alpha = screen.getByRole('button', { name: 'alpha' })
+      act(() => alpha.setAttribute('style', 'display: none'))
+      await settle()
+      expect(screen.getByRole('button', { name: 'beta' }).getAttribute('tabindex')).toBe('0')
+      expect(alpha.getAttribute('tabindex')).toBe('-1')
       expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
     } finally {
       Reflect.deleteProperty(HTMLElement.prototype, 'checkVisibility')

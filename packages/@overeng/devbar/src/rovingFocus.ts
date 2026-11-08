@@ -6,8 +6,8 @@ const itemSelector = `button, a[href], input, select, textarea, [tabindex], ${co
 const editable = `input, select, textarea, ${contentEditable}, [role="slider"]`
 
 /**
- * Elements that cannot hold focus, or are hidden from assistive tech, in the row. CSS-hidden items
- * are re-checked on every render, focus and key press; style changes alone do not trigger it.
+ * Elements that cannot hold focus, or are hidden from assistive tech, in the row. CSS visibility is
+ * re-checked on renders, focus, key presses and `style`/`class` changes, not on stylesheet changes.
  */
 const unreachable = (element: HTMLElement): boolean =>
   element.closest('[inert], [hidden], [aria-hidden="true"]') !== null ||
@@ -122,7 +122,13 @@ export const useRovingFocus = ({
   React.useLayoutEffect(() => {
     const row = rowRef.current
     if (row === null || observe === false) return
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((records) => {
+      // Style and class changes are frequent: they only matter when they hide the Tab stop itself.
+      const visualOnly = records.every(
+        (record) => record.attributeName === 'style' || record.attributeName === 'class',
+      )
+      const stop = current.current
+      if (visualOnly === true && stop !== undefined && unreachable(stop) === false) return
       // Recover first: it must see which item was focused before re-evaluation replaces it.
       recover()
       sync()
@@ -131,7 +137,16 @@ export const useRovingFocus = ({
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ['inert', 'disabled', 'hidden', 'aria-hidden', 'popover', 'type'],
+      attributeFilter: [
+        'inert',
+        'disabled',
+        'hidden',
+        'aria-hidden',
+        'popover',
+        'type',
+        'style',
+        'class',
+      ],
     })
     return () => observer.disconnect()
   }, [rowRef, sync, recover, observe])
