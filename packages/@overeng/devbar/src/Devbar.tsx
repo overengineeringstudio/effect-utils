@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { anchoredPopoverStyles, UnseenDot, useAnchoredPopover } from './disclosure.tsx'
 import { fitSegments, type SegmentWidth } from './fitSegments.ts'
+import { useRovingFocus } from './rovingFocus.ts'
 import { devbarTokens } from './tokens.stylex.ts'
 
 /** A host-provided tool panel; only the selected panel's `render` is mounted. */
@@ -232,6 +233,11 @@ export const Devbar = ({
   const panelId = panelElementId ?? generatedPanelId
   const toggleRef = React.useRef<HTMLButtonElement>(null)
   const controlsRef = React.useRef<HTMLDivElement>(null)
+  const rowRef = React.useRef<HTMLDivElement>(null)
+  const onRowKeyDown = useRovingFocus({
+    rowRef,
+    observe: strip !== undefined || (segments?.length ?? 0) > 0 || trailing !== undefined,
+  })
   const trailingRef = React.useRef<HTMLDivElement>(null)
   /** Without a toggle, focus returns to whichever host trigger opened the panel. */
   const opener = React.useRef<HTMLElement | undefined>(undefined)
@@ -407,7 +413,13 @@ export const Devbar = ({
           <div {...stylex.props(styles.panelBody)}>{selected.render()}</div>
         </section>
       )}
-      <div role="group" aria-label="Developer bar" {...stylex.props(styles.row)}>
+      <div
+        ref={rowRef}
+        role="toolbar"
+        aria-label="Developer bar"
+        onKeyDown={onRowKeyDown}
+        {...stylex.props(styles.row)}
+      >
         {tabbed === false && (
           <div ref={controlsRef} {...stylex.props(styles.controls)}>
             <button
@@ -621,6 +633,7 @@ const SegmentGroup = ({
         <button
           ref={triggerRef}
           type="button"
+          data-devbar-overflow-trigger
           aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.label ?? segment.id).join(', ')}${hidden.some((segment) => segment.hasAlert === true) === true ? ', including unseen changes' : ''}`}
           aria-expanded={expanded}
           aria-controls={popoverId}

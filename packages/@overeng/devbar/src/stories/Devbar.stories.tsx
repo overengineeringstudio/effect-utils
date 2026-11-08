@@ -173,7 +173,7 @@ export const Narrow600: Story = {
   ),
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement)
-    const row = canvas.getByRole('group', { name: 'Developer bar' })
+    const row = canvas.getByRole('toolbar', { name: 'Developer bar' })
     const [controls, strip, hostSegments] = Array.from(row.children)
     const overflow = await canvas.findByRole('button', { name: /more status items:/ })
     await waitFor(async () => {
@@ -257,12 +257,12 @@ export const OpenByToggle: Story = {
   args: { strip: placeholderStrip, segments },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement)
-    const row = canvas.getByRole('group', { name: 'Developer bar' })
+    const row = canvas.getByRole('toolbar', { name: 'Developer bar' })
     const before = row.getBoundingClientRect()
     await userEvent.click(canvas.getByRole('button', { name: 'Toggle developer tools' }))
     await expect(args.onOpenPanelChange).toHaveBeenCalledWith('requests')
     await expect(canvas.getByRole('region', { name: 'Requests' })).toBeVisible()
-    const after = canvas.getByRole('group', { name: 'Developer bar' }).getBoundingClientRect()
+    const after = canvas.getByRole('toolbar', { name: 'Developer bar' }).getBoundingClientRect()
     await expect(after.height).toBe(32)
     await expect(after.top).toBe(before.top)
     await expect(after.bottom).toBe(before.bottom)
@@ -366,6 +366,17 @@ export const MeterDriven: Story = {
     const canvas = within(canvasElement)
     await expect(canvas.queryByRole('button', { name: 'Toggle developer tools' })).toBeNull()
     const fps = canvas.getByRole('button', { name: 'fps meter' })
+    // The row is one Tab stop; arrows move between meters.
+    await waitFor(() => expect(fps).toHaveAttribute('tabindex', '0'))
+    await expect(canvas.getByRole('button', { name: 'heap meter' })).toHaveAttribute(
+      'tabindex',
+      '-1',
+    )
+    fps.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect(canvas.getByRole('button', { name: 'heap meter' })).toHaveFocus()
+    await userEvent.keyboard('{ArrowLeft}')
+    await expect(fps).toHaveFocus()
     await expect(fps).toHaveAttribute('aria-expanded', 'false')
 
     await userEvent.click(fps)
@@ -426,6 +437,6 @@ export const AllStates: Story = {
     await expect(canvas.getByRole('region', { name: 'Logs' })).toHaveTextContent(
       'No errors recorded',
     )
-    await expect(canvas.getAllByRole('group', { name: 'Developer bar' })).toHaveLength(5)
+    await expect(canvas.getAllByRole('toolbar', { name: 'Developer bar' })).toHaveLength(5)
   },
 }

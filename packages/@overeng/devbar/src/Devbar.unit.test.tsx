@@ -43,7 +43,7 @@ const Host = ({
   )
 }
 
-const bar = () => screen.getByRole('group', { name: 'Developer bar' })
+const bar = () => screen.getByRole('toolbar', { name: 'Developer bar' })
 const toggle = () => screen.getByRole('button', { name: 'Toggle developer tools' })
 const pointerClick = (element: HTMLElement) => fireEvent.click(element, { detail: 1 })
 
@@ -324,6 +324,226 @@ describe('Devbar interaction', () => {
       expect(document.activeElement).toBe(outside)
     },
   )
+})
+
+describe('row focus', () => {
+  const buttons: readonly DevbarSegment[] = ['alpha', 'beta', 'gamma'].map((id) => ({
+    id,
+    render: () => <button type="button">{id}</button>,
+  }))
+  const Row = ({ shown = buttons }: { shown?: readonly DevbarSegment[] }): React.ReactNode => (
+    <Devbar
+      panels={panels}
+      panelControls="none"
+      openPanel={undefined}
+      onOpenPanelChange={() => {}}
+      segments={shown}
+    />
+  )
+  // Give the row room so no segment overflows; the shell measures with real layout otherwise.
+  const roomy = () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ width: 40, height: 20 }),
+    )
+  }
+  // Measurement reveals segments after mount; the row re-evaluates on that DOM change.
+  const settle = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  const tabStops = () =>
+    Array.from(bar().querySelectorAll<HTMLElement>('button')).filter(
+      (button) =>
+        button.closest('[inert], [popover]') === null && button.getAttribute('tabindex') !== '-1',
+    )
+
+  it('is one Tab stop, with arrows, Home and End moving between items', async () => {
+    roomy()
+    render(<Row />)
+    await settle()
+    expect(tabStops().map((button) => button.textContent)).toEqual(['alpha'])
+    const alpha = screen.getByRole('button', { name: 'alpha' })
+    act(() => alpha.focus())
+    fireEvent.keyDown(alpha, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
+    expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
+    fireEvent.keyDown(document.activeElement!, { key: 'End' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'gamma' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(alpha)
+    fireEvent.keyDown(alpha, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'gamma' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+    expect(document.activeElement).toBe(alpha)
+  })
+
+  it('keeps focus on the same item across re-renders with new render functions', async () => {
+    roomy()
+    const { rerender } = render(<Row />)
+    await settle()
+    const beta = screen.getByRole('button', { name: 'beta' })
+    act(() => beta.focus())
+    rerender(
+      <Row
+        shown={buttons.map((segment) => ({
+          ...segment,
+          render: () => <button type="button">{segment.id}</button>,
+        }))}
+      />,
+    )
+    await settle()
+    expect(document.activeElement).toBe(beta)
+    expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
+  })
+
+  it('keeps the Tab stop on the first item until focus enters the row', async () => {
+    roomy()
+    render(<Row />)
+    await settle()
+    // Like segments revealed after measurement: the first item is unreachable, then reachable.
+    const alpha = screen.getByRole('button', { name: 'alpha' })
+    act(() => alpha.parentElement!.setAttribute('inert', ''))
+    await settle()
+    expect(screen.getByRole('button', { name: 'beta' }).getAttribute('tabindex')).toBe('0')
+    act(() => alpha.parentElement!.removeAttribute('inert'))
+    await settle()
+    expect(alpha.getAttribute('tabindex')).toBe('0')
+    expect(tabStops()).toEqual([alpha])
+  })
+
+  it('moves focus to a remaining item, not the body, when the focused item disappears', async () => {
+    roomy()
+    const { rerender } = render(<Row />)
+    await settle()
+    act(() => screen.getByRole('button', { name: 'gamma' }).focus())
+    rerender(<Row shown={buttons.slice(0, 2)} />)
+    await settle()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
+    expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
+  })
+
+  it('never gives the Tab stop to an item that cannot take focus', async () => {
+    roomy()
+    render(
+      <Row
+        shown={[
+          {
+            id: 'hidden',
+            render: () => (
+              <button type="button" hidden>
+                hidden
+              </button>
+            ),
+          },
+          { id: 'secret', render: () => <input type="hidden" value="secret" /> },
+          ...buttons,
+        ]}
+      />,
+    )
+    await settle()
+    expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('tabindex')).toBe('0')
+    expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+  })
+
+  it('never gives the Tab stop to a CSS-hidden item, including one hidden later', async () => {
+    roomy()
+    // Neither test DOM implements checkVisibility; this stands in for the browser's style check.
+    Object.defineProperty(HTMLElement.prototype, 'checkVisibility', {
+      configurable: true,
+      value(this: HTMLElement) {
+        return this.closest('[style*="display: none"]') === null
+      },
+    })
+    try {
+      render(
+        <Row
+          shown={[
+            {
+              id: 'collapsed',
+              render: () => (
+                <span style={{ display: 'none' }}>
+                  <button type="button">collapsed</button>
+                </span>
+              ),
+            },
+            ...buttons,
+          ]}
+        />,
+      )
+      await settle()
+      expect(
+        screen.getByRole('button', { name: 'alpha', hidden: true }).getAttribute('tabindex'),
+      ).toBe('0')
+      expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+      // A host hiding the Tab stop through its own style moves the stop, without a shell render.
+      const alpha = screen.getByRole('button', { name: 'alpha' })
+      act(() => alpha.setAttribute('style', 'display: none'))
+      await settle()
+      expect(screen.getByRole('button', { name: 'beta' }).getAttribute('tabindex')).toBe('0')
+      expect(alpha.getAttribute('tabindex')).toBe('-1')
+      expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'checkVisibility')
+    }
+  })
+
+  it('includes contenteditable hosts as items, keeping their own arrow keys', async () => {
+    roomy()
+    render(
+      <Row
+        shown={[
+          ...buttons,
+          {
+            id: 'note',
+            render: () => (
+              <div contentEditable suppressContentEditableWarning aria-label="note">
+                text
+              </div>
+            ),
+          },
+        ]}
+      />,
+    )
+    await settle()
+    const note = screen.getByLabelText('note')
+    expect(note.getAttribute('tabindex')).toBe('-1')
+    const alpha = screen.getByRole('button', { name: 'alpha' })
+    act(() => alpha.focus())
+    fireEvent.keyDown(alpha, { key: 'End' })
+    expect(document.activeElement).toBe(note)
+    fireEvent.keyDown(note, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(note)
+  })
+
+  it('takes an item whose wrapper becomes aria-hidden out of focus and the Tab sequence', async () => {
+    roomy()
+    render(<Row />)
+    await settle()
+    const gamma = screen.getByRole('button', { name: 'gamma' })
+    act(() => gamma.focus())
+    act(() => gamma.parentElement!.setAttribute('aria-hidden', 'true'))
+    await settle()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
+    expect(gamma.getAttribute('tabindex')).toBe('-1')
+    expect(tabStops()).toEqual([screen.getByRole('button', { name: 'beta' })])
+  })
+
+  it('keeps one Tab stop and recovers focus in a row of only shell controls', async () => {
+    const Shell = ({ shown }: { shown: readonly DevbarPanel[] }): React.ReactNode => (
+      <Devbar panels={shown} openPanel={undefined} onOpenPanelChange={() => {}} />
+    )
+    const { rerender } = render(<Shell shown={panels.slice(0, 1)} />)
+    rerender(<Shell shown={panels} />)
+    expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Logs' }).getAttribute('tabindex')).toBe('-1')
+    act(() => screen.getByRole('button', { name: 'Logs' }).focus())
+    rerender(<Shell shown={panels.slice(0, 1)} />)
+    await settle()
+    expect(document.activeElement).not.toBe(document.body)
+    expect(bar().contains(document.activeElement)).toBe(true)
+    expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+  })
 })
 
 describe('host-driven panels', () => {
