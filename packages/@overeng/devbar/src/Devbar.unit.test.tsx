@@ -407,6 +407,59 @@ describe('row focus', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
     expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
   })
+
+  it('never gives the Tab stop to an item that cannot take focus', async () => {
+    roomy()
+    render(
+      <Row
+        shown={[
+          {
+            id: 'hidden',
+            render: () => (
+              <button type="button" hidden>
+                hidden
+              </button>
+            ),
+          },
+          { id: 'secret', render: () => <input type="hidden" value="secret" /> },
+          ...buttons,
+        ]}
+      />,
+    )
+    await settle()
+    expect(screen.getByRole('button', { name: 'alpha' }).getAttribute('tabindex')).toBe('0')
+    expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+  })
+
+  it('moves focus off an item whose wrapper becomes aria-hidden', async () => {
+    roomy()
+    render(<Row />)
+    await settle()
+    const gamma = screen.getByRole('button', { name: 'gamma' })
+    act(() => gamma.focus())
+    act(() => gamma.parentElement!.setAttribute('aria-hidden', 'true'))
+    await settle()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
+    expect(tabStops().filter((button) => button.closest('[aria-hidden="true"]') === null)).toEqual([
+      screen.getByRole('button', { name: 'beta' }),
+    ])
+  })
+
+  it('keeps one Tab stop and recovers focus in a row of only shell controls', async () => {
+    const Shell = ({ shown }: { shown: readonly DevbarPanel[] }): React.ReactNode => (
+      <Devbar panels={shown} openPanel={undefined} onOpenPanelChange={() => {}} />
+    )
+    const { rerender } = render(<Shell shown={panels.slice(0, 1)} />)
+    rerender(<Shell shown={panels} />)
+    expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Logs' }).getAttribute('tabindex')).toBe('-1')
+    act(() => screen.getByRole('button', { name: 'Logs' }).focus())
+    rerender(<Shell shown={panels.slice(0, 1)} />)
+    await settle()
+    expect(document.activeElement).not.toBe(document.body)
+    expect(bar().contains(document.activeElement)).toBe(true)
+    expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+  })
 })
 
 describe('host-driven panels', () => {

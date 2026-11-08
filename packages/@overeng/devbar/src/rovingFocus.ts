@@ -4,12 +4,15 @@ const itemSelector = 'button, a[href], input, select, textarea, [tabindex]'
 /** Text entry keeps its own arrow keys. */
 const editable = 'input, select, textarea, [contenteditable="true"], [role="slider"]'
 
-/** Reachable row items: not hidden in overflow (`inert`), not inside a popover, not disabled. */
+/** Elements that cannot hold focus, or are hidden from assistive tech, in the row. */
+const unreachable = (element: Element): boolean =>
+  element.closest('[inert], [hidden], [aria-hidden="true"]') !== null ||
+  element.matches(':disabled, input[type="hidden"]') === true
+
+/** Reachable row items: not hidden (including into overflow, `inert`), not inside a popover, not disabled. */
 const rowItems = (row: HTMLElement): HTMLElement[] =>
   Array.from(row.querySelectorAll<HTMLElement>(itemSelector)).filter(
-    (element) =>
-      element.closest('[inert], [popover], [aria-hidden="true"]') === null &&
-      element.matches(':disabled') === false,
+    (element) => unreachable(element) === false && element.closest('[popover]') === null,
   )
 
 /**
@@ -22,10 +25,13 @@ export const useRovingFocus = ({
   observe,
 }: {
   readonly rowRef: React.RefObject<HTMLElement | null>
-  /** Watch host content for hidden or removed items; off for a row with only shell controls. */
+  /** Watch host content for hidden or removed items; shell controls change only through renders. */
   readonly observe: boolean
 }): ((event: React.KeyboardEvent<HTMLElement>) => void) => {
   const current = React.useRef<HTMLElement | undefined>(undefined)
+  // Refs, not effect locals: recovery state must survive `observe` switching on or off.
+  const focusInside = React.useRef(false)
+  const lastIndex = React.useRef(0)
   const sync = React.useCallback((): HTMLElement[] => {
     const row = rowRef.current
     if (row === null) return []
@@ -39,70 +45,83 @@ export const useRovingFocus = ({
     return items
   }, [rowRef])
 
+  /** Moves focus that fell to the body, or onto an item that became unreachable, to a reachable item. */
+  const recover = React.useCallback((): void => {
+    const row = rowRef.current
+    if (row === null || focusInside.current === false) return
+    const body = row.ownerDocument.body
+    const active = row.ownerDocument.activeElement
+    if (active !== null && active !== body) {
+      if (row.contains(active) === false) {
+        focusInside.current = false
+        return
+      }
+      // Focus on a reachable item, or inside an open popover, stays where it is.
+      if (unreachable(active) === false) return
+    }
+    const lost = current.current
+    const items = sync()
+    // A click elsewhere also leaves the body focused; only a vanished item is recovered.
+    if (active === body && lost !== undefined && items.includes(lost) === true) {
+      focusInside.current = false
+      return
+    }
+    const fallback =
+      items.find((item) => item.hasAttribute('data-devbar-overflow-trigger')) ??
+      items[Math.min(lastIndex.current, items.length - 1)]
+    if (fallback === undefined) return
+    current.current = fallback
+    sync()
+    fallback.focus()
+  }, [rowRef, sync])
+
+  // Every commit: shell controls (panel buttons, the toggle) are added or removed only by renders.
+  React.useLayoutEffect(() => {
+    recover()
+    sync()
+  })
+
   React.useLayoutEffect(() => {
     const row = rowRef.current
     if (row === null) return
-    let focusInside = false
-    let lastIndex = 0
-    const recover = (): void => {
-      if (focusInside === false) return
-      const active = row.ownerDocument.activeElement
-      if (active !== null && active !== row.ownerDocument.body) {
-        focusInside = row.contains(active)
-        return
-      }
-      const lost = current.current
-      const items = sync()
-      // A click elsewhere also leaves the body focused; only a vanished item is recovered.
-      if (lost !== undefined && items.includes(lost) === true) {
-        focusInside = false
-        return
-      }
-      const fallback =
-        items.find((item) => item.hasAttribute('data-devbar-overflow-trigger')) ??
-        items[Math.min(lastIndex, items.length - 1)]
-      if (fallback === undefined) return
-      current.current = fallback
-      sync()
-      fallback.focus()
-    }
     const onFocusIn = (event: FocusEvent): void => {
       const items = rowItems(row)
       if (event.target instanceof HTMLElement && items.includes(event.target) === true) {
         current.current = event.target
-        lastIndex = items.indexOf(event.target)
-        focusInside = true
+        lastIndex.current = items.indexOf(event.target)
+        focusInside.current = true
         sync()
       }
     }
     const onFocusOut = (event: FocusEvent): void => {
       if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget) === false)
-        focusInside = false
+        focusInside.current = false
       else queueMicrotask(recover)
     }
-    sync()
     row.addEventListener('focusin', onFocusIn)
     row.addEventListener('focusout', onFocusOut)
-    const observer =
-      observe === true
-        ? new MutationObserver(() => {
-            // Recover first: it must see which item was focused before re-evaluation replaces it.
-            recover()
-            sync()
-          })
-        : undefined
-    observer?.observe(row, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ['inert', 'disabled', 'hidden', 'aria-hidden', 'popover'],
-    })
     return () => {
-      observer?.disconnect()
       row.removeEventListener('focusin', onFocusIn)
       row.removeEventListener('focusout', onFocusOut)
     }
-  }, [rowRef, sync, observe])
+  }, [rowRef, sync, recover])
+
+  React.useLayoutEffect(() => {
+    const row = rowRef.current
+    if (row === null || observe === false) return
+    const observer = new MutationObserver(() => {
+      // Recover first: it must see which item was focused before re-evaluation replaces it.
+      recover()
+      sync()
+    })
+    observer.observe(row, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['inert', 'disabled', 'hidden', 'aria-hidden', 'popover', 'type'],
+    })
+    return () => observer.disconnect()
+  }, [rowRef, sync, recover, observe])
 
   return React.useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {

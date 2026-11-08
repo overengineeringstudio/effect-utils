@@ -124,7 +124,7 @@ Traces: DT.BAR-R13–R14. With `panelControls: 'none'` the row holds no toggle o
 
 ### Row focus
 
-Traces: DT.BAR-R15. The row is a `toolbar` named `Developer bar` with roving tabindex over its reachable items: buttons, links and focusable host content not inside an `inert` (overflowed) wrapper, a popover or an `aria-hidden` subtree. The shell rewrites only `tabindex`, so host elements keep their identity across re-renders. A `MutationObserver` re-evaluates items after host changes; when the focused item leaves the reachable set while focus is in the row, focus moves to the `+N` control if present, otherwise to the item at the same index. Text inputs and sliders keep their own arrow keys.
+Traces: DT.BAR-R15. The row is a `toolbar` named `Developer bar` with roving tabindex over its reachable items: buttons, links and focusable host content that is not disabled, not a hidden input, and not inside an `inert` (overflowed) wrapper, a `hidden` element, a popover or an `aria-hidden` subtree. The shell rewrites only `tabindex`, so host elements keep their identity across re-renders. Items are re-evaluated after every shell render, and a `MutationObserver` re-evaluates them after host content changes; when the focused item leaves the reachable set while focus is in the row, focus moves to the `+N` control if present, otherwise to the item at the same index. Text inputs and sliders keep their own arrow keys, so arrows cannot move past them; hosts place such controls last in the row.
 
 ### Segment fitting and overflow
 
