@@ -825,7 +825,7 @@ describe('Fractal declarations', () => {
     (limit) => {
       const attention = { ...budget.attention, decisions: { ...budget.attention.decisions, limit } }
       expect(() =>
-        Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
+        Schema.decodeSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
       ).toThrow()
     },
   )
@@ -850,10 +850,10 @@ describe('Fractal declarations', () => {
     'person/ada\n',
     'person/é',
     `person/${'a'.repeat(506)}`,
-  ])('rejects invalid attention person subjects %j', (person) => {
+  ] as const)('rejects invalid attention person subjects %j', (person) => {
     const attention = { ...budget.attention, person }
     expect(() =>
-      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
+      Schema.decodeSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
     ).toThrow('invalid attention budget person subject')
   })
 
