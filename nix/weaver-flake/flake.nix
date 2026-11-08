@@ -29,10 +29,12 @@
   #      lib.fakeHash, run `nix build .#weaver`, and copy the `got:` hash from
   #      the fixed-output-derivation mismatch (this FOD fails fast, before the
   #      Rust compile). Or use the evergreen FOD workflow.
-  #   5. Cargo deps use `cargoLock.lockFile` (the committed Cargo.lock), so no
-  #      cargoHash refresh is needed - as long as upstream Cargo.lock has no git
-  #      dependencies (`grep 'source = "git' Cargo.lock`). If it grows git deps,
-  #      switch to `cargoHash`/`outputHashes`.
+  #   5. Re-copy Cargo.lock byte-for-byte from the pinned source into this flake:
+  #        cp "$(nix build .#weaver.src --no-link --print-out-paths)/Cargo.lock" ./Cargo.lock
+  #      Cargo deps use this committed lockfile, so no cargoHash refresh is
+  #      needed as long as upstream Cargo.lock has no git dependencies
+  #      (`grep 'source = "git' Cargo.lock`). If it grows git deps, switch to
+  #      `cargoHash`/`outputHashes`.
   #
   # Mirrors the nix/playwright-flake/ standalone-flake convention.
   description = "OpenTelemetry Weaver, built from source (latest upstream)";
@@ -55,14 +57,6 @@
 
       version = "0.26.1";
       sourceHash = "sha256-RR+DrsE/e4DwXC9KpEVkvRswh8YDWi6jNVs9IRa6Eeg=";
-      # Cargo.lock is evaluator input, not a platform build output. Fetch the
-      # same pinned tree independently of pkgs so cross-system consumers never
-      # need to realize another system's fetchFromGitHub derivation to read it.
-      lockSource = builtins.fetchTree {
-        type = "tarball";
-        url = "https://github.com/open-telemetry/weaver/archive/refs/tags/v${version}.tar.gz";
-        narHash = sourceHash;
-      };
 
       # Pinned upstream OTel semantic-conventions registry — materialized as a Nix
       # fixed-output derivation so the weaver gate resolves `http.*` (and other upstream)
@@ -126,7 +120,9 @@
 
             # Cargo.lock is committed upstream and has no git dependencies, so
             # the lockfile fully determines the vendored deps - no cargoHash FOD.
-            cargoLock.lockFile = "${lockSource.outPath}/Cargo.lock";
+            # Read the vendored lock without network access or realizing another
+            # system's fetchFromGitHub derivation during evaluation.
+            cargoLock.lockFile = ./Cargo.lock;
 
             # The web UI (Vite/pnpm) is embedded into the binary at compile time,
             # so its dependencies are fetched as a fixed-output derivation and
