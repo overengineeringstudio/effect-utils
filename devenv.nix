@@ -1745,6 +1745,13 @@ in
       exec ${pkgs.nix}/bin/nix eval --raw \
         .#checks.${pkgs.stdenv.hostPlatform.system}.buck2-launcher-independence.drvPath
     '';
+    execIfModified = [
+      "devenv.nix"
+      "flake.nix"
+      "flake.lock"
+      "nix/**"
+      "scripts/buck2-*"
+    ];
   };
 
   tasks."lint:check:rust" = {

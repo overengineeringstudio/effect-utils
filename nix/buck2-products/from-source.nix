@@ -4,7 +4,8 @@
 }:
 let
   lib = pkgs.lib;
-  buck2Native = buck2.native;
+  # Accept a launcher with passthru.native, or a plain native Buck2 package.
+  buck2Native = buck2.native or buck2;
   defaultInputs = import ./buck-inputs.nix {
     inherit lib;
     repositoryRoot = ../..;
