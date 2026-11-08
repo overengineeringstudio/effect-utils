@@ -674,10 +674,12 @@ it.effect('preserves public lookup RequestInit settings but isolates JWT transpo
   Effect.gen(function* () {
     const { app, state } = yield* fixture()
     const options: RequestInit[] = []
-    const customizedFetch: typeof fetch = (input, init) => {
-      options.push(init ?? {})
-      return globalThis.fetch(input, init)
-    }
+    const customizedFetch = new Proxy(globalThis.fetch, {
+      apply: (target, receiver, args: Parameters<typeof fetch>) => {
+        options.push(args[1] ?? {})
+        return Reflect.apply(target, receiver, args)
+      },
+    })
     yield* app.identity.pipe(
       Effect.provideService(FetchHttpClient.Fetch, customizedFetch),
       Effect.provideService(FetchHttpClient.RequestInit, {
