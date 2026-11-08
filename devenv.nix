@@ -1739,6 +1739,20 @@ in
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-cargo-archives.sh "$PWD"
     '';
   };
+  tasks."nix:buck2-launcher-independence:check" = {
+    description = "Evaluate launcher-independent product recipes and the native positive control";
+    exec = trace.exec "nix:buck2-launcher-independence:check" ''
+      exec ${pkgs.nix}/bin/nix eval --raw \
+        .#checks.${pkgs.stdenv.hostPlatform.system}.buck2-launcher-independence.drvPath
+    '';
+    execIfModified = [
+      "devenv.nix"
+      "flake.nix"
+      "flake.lock"
+      "nix/**"
+      "scripts/buck2-*"
+    ];
+  };
 
   tasks."lint:check:rust" = {
     description = "Check formatting of the shared Cargo workspace";
@@ -1765,6 +1779,7 @@ in
       "lint:check:getflake"
       "nix:buck2-artifact-import:check"
       "nix:buck2-cargo-archives:check"
+      "nix:buck2-launcher-independence:check"
       "nix:javascript-product-import:check"
     ];
   };

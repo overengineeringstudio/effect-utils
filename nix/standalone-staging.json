@@ -31,6 +31,9 @@
     "nix/buck2-products/consumer-root.nix": {
       "noStandaloneStaging": "build-rules: The TypeScript runner is resolved from the complete rules cell."
     },
+    "nix/buck2-products/launcher-independence.nix": {
+      "noStandaloneStaging": "closure: Synthetic launcher edits preserve the multi-file launcher source closure; the entrypoint is not staged as a standalone source."
+    },
     "nix/buck2-products/root-projection.nix": {
       "noStandaloneStaging": "closure: Generator sources and suffix filters belong to the repository directory projection."
     },

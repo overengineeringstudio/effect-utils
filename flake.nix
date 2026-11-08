@@ -309,6 +309,17 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+          buck2-launcher-independence = import ./nix/buck2-products/launcher-independence.nix {
+            inherit pkgs buck2 pnpmArchives;
+            capabilities = buck2Capabilities;
+            baseline = {
+              cache = buckProductsFromSource;
+              native = nativeProductPackages;
+              compiled = buckCompiledProducts;
+            };
+            repositoryRoot = ./.;
+            producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
+          };
         }
         // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           macos-app-host-stability = macosAppExample.check;

@@ -162,6 +162,16 @@ projects those archives through `nix_store.root`; Buck verifies each projected
 archive before extraction. The derivation emits the artifact plus
 `effect-utils/buck-product-provenance/v1`.
 
+Sandbox recipes accept a Buck2 launcher with `passthru.native` or a plain native
+Buck2 package. The repository uses `buck2.native`, the pinned native binary and
+Prelude, without the developer launcher. Their `.buckconfig.local` explicitly selects
+`buck2.file_watcher = fs_hash_crawler`, `buck2.remote_cache_enabled = false`,
+and `buck2.allow_cache_uploads = false`; offline admission does not probe REAPI.
+`checks.<system>.buck2-launcher-independence` evaluates every inventory recipe:
+two synthetic launcher edits preserve product drvPaths and recipe identities,
+while a native-derivation change changes both. The eval-only
+`nix:buck2-launcher-independence:check` task belongs to `nix:check:quick`.
+
 Npm archive acquisition has one digest authority. Package manifests select
 versions, the pnpm lock records registry URLs and integrity, and the generated
 `buck2/dependencies/pnpm-lock.sha256.json` sidecar records the reviewed SHA-256
