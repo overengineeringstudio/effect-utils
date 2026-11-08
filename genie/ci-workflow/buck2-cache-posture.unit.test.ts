@@ -2,7 +2,11 @@ import { describe, expect, it } from 'bun:test'
 
 import { validateWorkflowCachePolicy } from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
-import { withBuck2CachePostures, withMacosMeasurementDispatch } from './buck2-cache-posture.ts'
+import {
+  buck2CachePostureEnv,
+  withBuck2CachePostures,
+  withMacosMeasurementDispatch,
+} from './buck2-cache-posture.ts'
 
 const mainOnlyJob = {
   if: "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}",
@@ -17,6 +21,14 @@ const prJob = {
 }
 
 describe('declared Buck2 job cache posture', () => {
+  it('declares CI posture for every cache policy, including disabled readers and none', () => {
+    for (const posture of ['writer', 'trusted-writer', 'reader', 'none'] as const)
+      expect(buck2CachePostureEnv(posture).BUCK2_CI_POSTURE).toBe('1')
+    expect(
+      buck2CachePostureEnv({ posture: 'reader', disabledWhen: 'inputs.disabled' }).BUCK2_CI_POSTURE,
+    ).toBe('1')
+  })
+
   it('preserves protected writer guards verbatim for the cache-policy validator', () => {
     const publisher = {
       ...mainOnlyJob,
@@ -145,6 +157,7 @@ describe('declared Buck2 job cache posture', () => {
   it('rejects conflicting explicit cache settings instead of silently overriding them', () => {
     const conflictingWriterEnvs: Array<Record<string, string>> = [
       { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
+      { BUCK2_CI_POSTURE: '0' },
       { BUCK2_NO_REMOTE_CACHE: '1' },
     ]
     for (const env of conflictingWriterEnvs) {

@@ -13,6 +13,7 @@ export type Buck2CachePosture =
 export const buck2CachePostureEnv = (declaration: Buck2CachePosture): Record<string, string> => {
   const posture = typeof declaration === 'string' ? declaration : declaration.posture
   return {
+    BUCK2_CI_POSTURE: '1',
     BUCK2_NO_REMOTE_CACHE:
       typeof declaration === 'string'
         ? posture === 'none'

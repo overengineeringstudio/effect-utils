@@ -39,6 +39,7 @@ jobs:
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
+      BUCK2_CI_POSTURE: '1'
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
     steps:
       - id: linux-nix-sandbox-policy

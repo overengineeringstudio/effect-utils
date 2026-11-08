@@ -275,7 +275,7 @@ fi
             native,
             root,
             args: ['--isolation-dir', 'owned', 'build', '//:app'],
-            env: { CI: '1' },
+            env: { BUCK2_CI_POSTURE: '1' },
             deadlineMs,
             admit: async () => ['build', '//:app'],
           })
@@ -306,7 +306,7 @@ fi
         native,
         root,
         args: ['--isolation-dir', 'owned', 'build', '//:app'],
-        env: { CI: '1' },
+        env: { BUCK2_CI_POSTURE: '1' },
         admit: async () => [],
       })
     } catch (error) {
@@ -340,6 +340,7 @@ exit 42
         cwd: root,
         env: {
           CI: '1',
+          BUCK2_CI_POSTURE: '1',
           HOME: root,
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
@@ -1426,6 +1427,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
           env: {
             ...process.env,
             GITHUB_ACTIONS: githubActions ?? '',
+            BUCK2_CI_POSTURE: '1',
             BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
             BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://127.0.0.1:1',
             BUCK2_PUBLIC_CACHE_READ_ONLY: '',
