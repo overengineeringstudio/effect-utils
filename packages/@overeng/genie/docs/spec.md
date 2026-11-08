@@ -442,6 +442,7 @@ Genie-generated files must preserve these semantics:
 
 - target content is rendered from the canonical `GenieOutput`
 - supported file types are formatted consistently, including `oxfmt` integration where applicable
+- Each `oxfmt` subprocess is limited to 30 seconds. A timeout kills and reaps the formatter and fails generation or checking; other formatter failures retain the original content.
 - generated files may carry source headers when the output format supports them
 - read-only mode is the default safety mechanism for generated targets
 
