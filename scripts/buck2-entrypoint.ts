@@ -203,6 +203,10 @@ const cachedProbe = async ({
   return available
 }
 
+/** Only workflow-owned declarations opt into CI daemon admission and probe pinning. */
+export const ciPostureDeclared = (env: Readonly<Record<string, string | undefined>>): boolean =>
+  env['BUCK2_CI_POSTURE'] === '1'
+
 /**
  * Called under CI's root admission lock. Availability is a job decision, not
  * a per-launch policy input: a later fast probe cannot invalidate live leases.
@@ -222,7 +226,7 @@ const pinCiJobReapiProbe = async ({
   readonly admission: CacheAdmissionInvocation
   readonly probe: (fresh: boolean) => Promise<boolean>
 }): Promise<boolean> => {
-  if (env['CI'] !== '1' && env['CI'] !== 'true') return probe(false)
+  if (ciPostureDeclared(env) === false) return probe(false)
   const instance = env['BUCK2_CI_JOB_INSTANCE']
   if (instance === undefined || instance === '') {
     // Unconfigured workflows retain the pre-pinning probe policy, never a shared
@@ -1130,7 +1134,7 @@ export const admitCacheDaemonCommand = async ({
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
   readonly deadlineMs?: number
 }): Promise<string[]> => {
-  if (env['CI'] !== '1' && env['CI'] !== 'true') return admit()
+  if (ciPostureDeclared(env) === false && env['GITHUB_ACTIONS'] !== 'true') return admit()
   const initialValues = buckConfigValues(
     `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
   )
@@ -1143,6 +1147,10 @@ export const admitCacheDaemonCommand = async ({
   if (invocation === undefined)
     throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
+  // Check here, before any daemon access: cache-less roots and skipped commands
+  // need no admission, but GitHub jobs must never silently inherit local policy.
+  if (ciPostureDeclared(env) === false)
+    throw new Error('Buck2 cache posture: GitHub Actions job without BUCK2_CI_POSTURE declaration')
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
   mkdirSync(state, { recursive: true, mode: 0o700 })
