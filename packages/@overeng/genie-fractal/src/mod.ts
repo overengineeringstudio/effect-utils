@@ -874,10 +874,22 @@ export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgent
   Schema.annotate({ identifier: 'Fractal.ReportTo' }),
 )
 
+// Match Fractal's accountable::person, including the registry's 512-byte subject limit.
+const AttentionPersonSubject = Schema.String.pipe(
+  Schema.refine(
+    (subject): subject is `person/${string}` => {
+      if (subject.startsWith('person/') === false || subject.length > 512) return false
+      const name = subject.slice('person/'.length)
+      return name.length > 0 && name !== '..' && /[^a-zA-Z0-9_.-]/.test(name) === false
+    },
+    { message: 'invalid attention budget person subject' },
+  ),
+)
+
 const MissionBudgetSchema = Schema.Struct({
   attention: Schema.Struct({
     kind: Schema.Literal('person-step'),
-    person: PersonSubject,
+    person: AttentionPersonSubject,
     decisions: Schema.Struct({
       limit: Schema.Int.pipe(Schema.refine((n): n is number => n > 0 && Number.isSafeInteger(n))),
       per: Schema.Literal('rolling-week'),

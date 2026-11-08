@@ -830,6 +830,33 @@ describe('Fractal declarations', () => {
     },
   )
 
+  it.each([
+    'person/Ada_1-ops.primary',
+    'person/.',
+    'person/a..b',
+    `person/${'a'.repeat(505)}`,
+  ] as const)('accepts native attention person subjects %j', (person) => {
+    const wire = missionWire({
+      ...fanInMission(),
+      budget: { attention: { ...budget.attention, person } },
+    })
+    expect(wire.budget?.attention.person).toBe(person)
+  })
+
+  it.each([
+    'person/',
+    'person/..',
+    'person/ada/other',
+    'person/ada\n',
+    'person/é',
+    `person/${'a'.repeat(506)}`,
+  ])('rejects invalid attention person subjects %j', (person) => {
+    const attention = { ...budget.attention, person }
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
+    ).toThrow('invalid attention budget person subject')
+  })
+
   it('rejects attention targets and actions the native contract does not support', () => {
     const valid = budget.attention
     const invalid = [
