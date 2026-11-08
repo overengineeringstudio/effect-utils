@@ -1,19 +1,29 @@
 import * as React from 'react'
 
-const itemSelector = 'button, a[href], input, select, textarea, [tabindex]'
+const contentEditable = '[contenteditable]:not([contenteditable="false"])'
+const itemSelector = `button, a[href], input, select, textarea, [tabindex], ${contentEditable}`
 /** Text entry keeps its own arrow keys. */
-const editable = 'input, select, textarea, [contenteditable="true"], [role="slider"]'
+const editable = `input, select, textarea, ${contentEditable}, [role="slider"]`
 
-/** Elements that cannot hold focus, or are hidden from assistive tech, in the row. */
-const unreachable = (element: Element): boolean =>
+/**
+ * Elements that cannot hold focus, or are hidden from assistive tech, in the row. CSS-hidden items
+ * are re-checked on every render, focus and key press; style changes alone do not trigger it.
+ */
+const unreachable = (element: HTMLElement): boolean =>
   element.closest('[inert], [hidden], [aria-hidden="true"]') !== null ||
-  element.matches(':disabled, input[type="hidden"]') === true
+  element.matches(':disabled, input[type="hidden"]') === true ||
+  (typeof element.checkVisibility === 'function' &&
+    element.checkVisibility({ visibilityProperty: true }) === false)
+
+/** Row candidates outside popovers, whose own focus order the shell leaves alone. */
+const rowCandidates = (row: HTMLElement): HTMLElement[] =>
+  Array.from(row.querySelectorAll<HTMLElement>(itemSelector)).filter(
+    (element) => element.closest('[popover]') === null,
+  )
 
 /** Reachable row items: not hidden (including into overflow, `inert`), not inside a popover, not disabled. */
 const rowItems = (row: HTMLElement): HTMLElement[] =>
-  Array.from(row.querySelectorAll<HTMLElement>(itemSelector)).filter(
-    (element) => unreachable(element) === false && element.closest('[popover]') === null,
-  )
+  rowCandidates(row).filter((element) => unreachable(element) === false)
 
 /**
  * One Tab stop for the whole row (roving tabindex): arrows, Home and End move between items, and
@@ -35,12 +45,15 @@ export const useRovingFocus = ({
   const sync = React.useCallback((): HTMLElement[] => {
     const row = rowRef.current
     if (row === null) return []
-    const items = rowItems(row)
+    const candidates = rowCandidates(row)
+    const items = candidates.filter((element) => unreachable(element) === false)
     if (current.current === undefined || items.includes(current.current) === false)
       current.current = items[0]
-    for (const item of items) {
-      const tabIndex = item === current.current ? '0' : '-1'
-      if (item.getAttribute('tabindex') !== tabIndex) item.setAttribute('tabindex', tabIndex)
+    // Unreachable candidates leave the Tab sequence too: `aria-hidden` alone keeps them focusable.
+    for (const candidate of candidates) {
+      const tabIndex = candidate === current.current ? '0' : '-1'
+      if (candidate.getAttribute('tabindex') !== tabIndex)
+        candidate.setAttribute('tabindex', tabIndex)
     }
     return items
   }, [rowRef])
@@ -57,7 +70,7 @@ export const useRovingFocus = ({
         return
       }
       // Focus on a reachable item, or inside an open popover, stays where it is.
-      if (unreachable(active) === false) return
+      if ((active instanceof HTMLElement && unreachable(active)) === false) return
     }
     const lost = current.current
     const items = sync()

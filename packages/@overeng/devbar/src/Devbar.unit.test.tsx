@@ -431,7 +431,70 @@ describe('row focus', () => {
     expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
   })
 
-  it('moves focus off an item whose wrapper becomes aria-hidden', async () => {
+  it('never gives the Tab stop to a CSS-hidden item', async () => {
+    roomy()
+    // Neither test DOM implements checkVisibility; this stands in for the browser's style check.
+    Object.defineProperty(HTMLElement.prototype, 'checkVisibility', {
+      configurable: true,
+      value(this: HTMLElement) {
+        return this.closest('[style*="display: none"]') === null
+      },
+    })
+    try {
+      render(
+        <Row
+          shown={[
+            {
+              id: 'collapsed',
+              render: () => (
+                <span style={{ display: 'none' }}>
+                  <button type="button">collapsed</button>
+                </span>
+              ),
+            },
+            ...buttons,
+          ]}
+        />,
+      )
+      await settle()
+      expect(
+        screen.getByRole('button', { name: 'alpha', hidden: true }).getAttribute('tabindex'),
+      ).toBe('0')
+      expect(bar().querySelectorAll('[tabindex="0"]')).toHaveLength(1)
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'checkVisibility')
+    }
+  })
+
+  it('includes contenteditable hosts as items, keeping their own arrow keys', async () => {
+    roomy()
+    render(
+      <Row
+        shown={[
+          ...buttons,
+          {
+            id: 'note',
+            render: () => (
+              <div contentEditable suppressContentEditableWarning aria-label="note">
+                text
+              </div>
+            ),
+          },
+        ]}
+      />,
+    )
+    await settle()
+    const note = screen.getByLabelText('note')
+    expect(note.getAttribute('tabindex')).toBe('-1')
+    const alpha = screen.getByRole('button', { name: 'alpha' })
+    act(() => alpha.focus())
+    fireEvent.keyDown(alpha, { key: 'End' })
+    expect(document.activeElement).toBe(note)
+    fireEvent.keyDown(note, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(note)
+  })
+
+  it('takes an item whose wrapper becomes aria-hidden out of focus and the Tab sequence', async () => {
     roomy()
     render(<Row />)
     await settle()
@@ -440,9 +503,8 @@ describe('row focus', () => {
     act(() => gamma.parentElement!.setAttribute('aria-hidden', 'true'))
     await settle()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
-    expect(tabStops().filter((button) => button.closest('[aria-hidden="true"]') === null)).toEqual([
-      screen.getByRole('button', { name: 'beta' }),
-    ])
+    expect(gamma.getAttribute('tabindex')).toBe('-1')
+    expect(tabStops()).toEqual([screen.getByRole('button', { name: 'beta' })])
   })
 
   it('keeps one Tab stop and recovers focus in a row of only shell controls', async () => {
