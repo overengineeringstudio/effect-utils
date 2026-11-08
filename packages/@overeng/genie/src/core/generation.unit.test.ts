@@ -6,15 +6,75 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Option, Result } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   addHeaderComment,
   getHeaderComment,
+  formatWithOxfmt,
   loadGenieFile,
+  OXFMT_TIMEOUT_MS,
+  OxfmtTimeoutError,
   pinStagedModuleIdentity,
 } from './generation.ts'
+
+describe('oxfmt subprocess timeout', () => {
+  it('fails with a typed timeout and reaps a formatter that never reads stdin', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-oxfmt-timeout-'))
+    const pidfile = path.join(tempRoot, 'pid')
+    const originalPath = process.env.PATH
+    const controller = new AbortController()
+    // Real subprocess deadlines need the platform clock, not a simulated timer.
+    const deadline = setTimeout(() => controller.abort(), 4_000)
+    let pid: number | undefined
+    try {
+      await writeFile(
+        path.join(tempRoot, 'oxfmt'),
+        `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(pidfile)}, String(process.pid));\nsetInterval(() => {}, 600_000);\n`,
+        { mode: 0o755 },
+      )
+      process.env.PATH = `${tempRoot}${path.delimiter}${originalPath ?? ''}`
+      expect(OXFMT_TIMEOUT_MS).toBe(30_000)
+      const targetFilePath = path.join(tempRoot, 'output.json')
+      const started = performance.now()
+      const result = await Effect.runPromise(
+        formatWithOxfmt({
+          targetFilePath,
+          // Exceed pipe capacity so the formatter hangs before consuming stdin.
+          content: ' '.repeat(1024 * 1024),
+          configPath: Option.none(),
+          timeoutMs: 1_000,
+        }).pipe(Effect.result, Effect.provide(NodeServices.layer)),
+        { signal: controller.signal },
+      )
+      expect(performance.now() - started).toBeLessThan(4_000)
+      expect(Result.isFailure(result)).toBe(true)
+      if (Result.isFailure(result) === true) {
+        expect(result.failure).toBeInstanceOf(OxfmtTimeoutError)
+        expect(result.failure).toMatchObject({ targetFilePath, timeoutMs: 1_000 })
+      }
+      pid = Number(await readFile(pidfile, 'utf8'))
+      expect(pid).toBeGreaterThan(0)
+      expect(() => process.kill(pid!, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+    } finally {
+      clearTimeout(deadline)
+      controller.abort()
+      if (originalPath === undefined) delete process.env.PATH
+      else process.env.PATH = originalPath
+      // Also clean up when exercising the regression against a missing timeout.
+      pid ??= await readFile(pidfile, 'utf8').then(Number, () => undefined)
+      if (pid !== undefined) {
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch (error) {
+          expect(error).toMatchObject({ code: 'ESRCH' })
+        }
+      }
+      await rm(tempRoot, { recursive: true, force: true })
+    }
+  }, 6_000)
+})
 
 type ConcurrencyBoundary = {
   enter: () => Promise<void>
