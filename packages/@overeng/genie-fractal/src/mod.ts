@@ -354,8 +354,9 @@ const DeclaredAdmissionFields = {
   ),
   declaredBudgets: Schema.optionalKey(DeclaredBudgets),
 }
-const DeclaredAdmission = Schema.Struct(DeclaredAdmissionFields)
-const declaredAdmissionNodes = (value: typeof DeclaredAdmission.Type): Node[] => [
+const declaredAdmissionNodes = (
+  value: Pick<typeof AgentSchemaFields.Type, keyof typeof DeclaredAdmissionFields>,
+): Node[] => [
   ...optionalChild({ name: 'declared-priority', value: value.declaredPriority }),
   ...optionalChild({ name: 'declared-lane', value: value.declaredLane }),
   ...(value.declaredBudgets === undefined
