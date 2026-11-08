@@ -308,19 +308,21 @@ export const AgentReferenceSchema = Schema.declare<AgentReference>(isAgentRefere
   identifier: 'Fractal.AgentReference',
 })
 
+const PersonSubject = Schema.String.pipe(
+  Schema.refine(
+    (subject): subject is `person/${string}` =>
+      subject.startsWith('person/') === true &&
+      subject.length > 'person/'.length &&
+      subject.includes('//') === false &&
+      Schema.is(SubjectId)(subject) === true,
+    { message: 'invalid person subject' },
+  ),
+)
+
 /** A person subject, distinct from the ID view of an imported agent declaration. */
 export const PersonReferenceSchema = Schema.Struct({
   kind: Schema.Literal('person'),
-  subject: Schema.String.pipe(
-    Schema.refine(
-      (subject): subject is `person/${string}` =>
-        subject.startsWith('person/') === true &&
-        subject.length > 'person/'.length &&
-        subject.includes('//') === false &&
-        Schema.is(SubjectId)(subject) === true,
-      { message: 'invalid person subject' },
-    ),
-  ),
+  subject: PersonSubject,
 }).annotate({ identifier: 'Fractal.PersonReference' })
 
 export type PersonReference = typeof PersonReferenceSchema.Type
@@ -872,6 +874,19 @@ export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgent
   Schema.annotate({ identifier: 'Fractal.ReportTo' }),
 )
 
+const MissionBudgetSchema = Schema.Struct({
+  attention: Schema.Struct({
+    kind: Schema.Literal('person-step'),
+    person: PersonSubject,
+    decisions: Schema.Struct({
+      limit: Schema.Int.pipe(Schema.refine((n): n is number => n > 0 && Number.isSafeInteger(n))),
+      per: Schema.Literal('rolling-week'),
+      count: Schema.Literal('requested'),
+      onExceeded: Schema.Literal('report'),
+    }),
+  }),
+})
+
 /** A ready mission with required reporting and unique graph nodes. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
@@ -891,6 +906,7 @@ export const MissionSchema = Schema.Struct({
   stalledAfter: Schema.optionalKey(Duration),
   reportStalls: Schema.optionalKey(Schema.Boolean),
   reportCompleted: Schema.optionalKey(Schema.Boolean),
+  budget: Schema.optionalKey(MissionBudgetSchema),
   goal: Goal,
   gates: Schema.optionalKey(
     Gates.pipe(
@@ -2358,6 +2374,17 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
             }),
           ]),
       ...m.goal.map((goal) => child({ name: 'goal', value: goal })),
+      ...(m.budget === undefined
+        ? []
+        : [
+            node({
+              name: 'attention-budget',
+              props: {
+                person: m.budget.attention.person,
+                decisions: m.budget.attention.decisions.limit,
+              },
+            }),
+          ]),
       ...(m.gates ?? []).map(lowerGate),
       ...(m.constraints ?? []).map((constraint) =>
         child({ name: 'constraint', value: constraint }),

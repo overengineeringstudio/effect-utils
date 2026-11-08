@@ -802,6 +802,48 @@ const fanInMission = () => ({
 })
 
 describe('Fractal declarations', () => {
+  const budget = {
+    attention: {
+      kind: 'person-step',
+      person: 'person/operator',
+      decisions: { limit: 6, per: 'rolling-week', count: 'requested', onExceeded: 'report' },
+    },
+  } as const
+
+  it('round-trips the report-only attention budget and emits its native child', () => {
+    const input = { ...fanInMission(), budget }
+    const wire = missionWire(input)
+    expect(wire.budget).toEqual(budget)
+    expect(emit([mission({ ...wire, reportTo: input.reportTo })])).toContain(
+      'attention-budget decisions=6 person="person/operator"',
+    )
+    expect(emit([mission(fanInMission())])).not.toContain('attention-budget')
+  })
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid attention decision limits %j',
+    (limit) => {
+      const attention = { ...budget.attention, decisions: { ...budget.attention.decisions, limit } }
+      expect(() =>
+        Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
+      ).toThrow()
+    },
+  )
+
+  it('rejects attention targets and actions the native contract does not support', () => {
+    const valid = budget.attention
+    const invalid = [
+      { ...valid, person: 'agent/ops/watcher' },
+      { ...valid, decisions: { ...valid.decisions, onExceeded: 'defer' } },
+      { ...valid, decisions: { ...valid.decisions, count: 'answered' } },
+    ]
+    for (const attention of invalid) {
+      expect(() =>
+        Schema.decodeUnknownSync(MissionSchema)({ ...fanInMission(), budget: { attention } }),
+      ).toThrow()
+    }
+  })
+
   it('requires a typed agent declaration rather than a string or omitted report', () => {
     expectTypeOf<string>().not.toMatchTypeOf<(typeof MissionSchema.Encoded)['reportTo']>()
     expectTypeOf<Omit<typeof MissionSchema.Encoded, 'reportTo'>>().not.toMatchTypeOf<
