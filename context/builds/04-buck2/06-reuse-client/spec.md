@@ -74,8 +74,9 @@ pins remote caching and uploads off. Absent root `remote_cache_enabled` and
 reader's explicit upload prohibition still wins. Absent action-upload default
 remains native `false`, and absent HTTP headers remain empty.
 
-Composed workflows explicitly declare `BUCK2_CI_POSTURE=1` for every cache
-posture, including `none`. Only this marker enables CI daemon admission and
+Composed workflows explicitly declare `BUCK2_CI_POSTURE=1` through the standard
+CI environment and the posture helper for every cache posture, including `none`.
+Only this marker enables CI daemon admission and
 job probe pinning; ambient `CI=1` or `CI=true` retains local behavior. Admission
 fails closed before daemon access when `GITHUB_ACTIONS=true` lacks the marker
 and remote cache is configured, except for commands that skip admission.

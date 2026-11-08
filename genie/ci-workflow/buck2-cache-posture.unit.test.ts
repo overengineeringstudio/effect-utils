@@ -7,6 +7,7 @@ import {
   withBuck2CachePostures,
   withMacosMeasurementDispatch,
 } from './buck2-cache-posture.ts'
+import { standardCIEnv } from './shared.ts'
 
 const mainOnlyJob = {
   if: "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}",
@@ -27,6 +28,21 @@ describe('declared Buck2 job cache posture', () => {
     expect(
       buck2CachePostureEnv({ posture: 'reader', disabledWhen: 'inputs.disabled' }).BUCK2_CI_POSTURE,
     ).toBe('1')
+  })
+
+  it('declares the same marker in standard CI environments without projection conflicts', () => {
+    for (const trustTier of ['public', 'private'] as const) {
+      const env = standardCIEnv({ trustTier })
+      expect(env.BUCK2_CI_POSTURE).toBe('1')
+      const jobs = withBuck2CachePostures({
+        jobs: { reader: { ...prJob, env: { ...env, ...buck2CachePostureEnv('reader') } } },
+        postures: { reader: 'reader' },
+      })
+      expect(jobs.reader!.env!.BUCK2_CI_POSTURE).toBe('1')
+      expect(
+        Object.keys(jobs.reader!.env!).filter((key) => key === 'BUCK2_CI_POSTURE'),
+      ).toHaveLength(1)
+    }
   })
 
   it('preserves protected writer guards verbatim for the cache-policy validator', () => {
