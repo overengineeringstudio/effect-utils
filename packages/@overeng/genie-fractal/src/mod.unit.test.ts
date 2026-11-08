@@ -66,6 +66,151 @@ const humanReviewGate = {
   reviewer: operator,
 } satisfies typeof HumanGateSchema.Encoded
 
+describe('declared admission', () => {
+  const base = {
+    id: 'example/admission',
+    state: 'ready',
+    reportTo: owner,
+    goal: 'Check admission.',
+    steps: [],
+  } as const
+  const admission = {
+    declaredPriority: 'background',
+    declaredLane: 'check',
+    declaredBudgets: { cpuSeconds: 300, tokenBudget: 100000, memoryMax: '8G', diskMax: '20G' },
+  } as const
+  const metadata = `  declared-priority "background"
+  declared-lane "check"
+  declared-budgets {
+    cpu-seconds 300
+    token-budget 100000
+    memory-max "8G"
+    disk-max "20G"
+  }
+`
+
+  it('renders agent and mission admission in native order', () => {
+    expect(emit([agent({ id: base.id, identity: 'worker', ...admission })])).toBe(
+      `version 2
+agent "example/admission" {
+  identity "worker"
+${metadata}}
+`,
+    )
+    expect(emit([mission({ ...base, ...admission })])).toBe(
+      `version 2
+mission "example/admission" report-to="agent/example/owner" state="ready" {
+${metadata}  goal "Check admission."
+}
+`,
+    )
+    expect(missionWire({ ...base, ...admission })).toMatchObject(admission)
+  })
+
+  it('keeps output unchanged when admission is absent', () => {
+    expect(emit([agent({ id: base.id }), mission(base)])).toBe(
+      `version 2
+agent "example/admission" {
+}
+mission "example/admission" report-to="agent/example/owner" state="ready" {
+  goal "Check admission."
+}
+`,
+    )
+  })
+
+  it.each([
+    [{}, ''],
+    [{ cpuSeconds: 1, diskMax: '20g' }, '    cpu-seconds 1\n    disk-max "20g"\n'],
+    [{ tokenBudget: Number.MAX_SAFE_INTEGER }, '    token-budget 9007199254740991\n'],
+  ])('renders empty and partial budgets %j', (declaredBudgets, children) => {
+    expect(emit([agent({ id: base.id, declaredBudgets })])).toBe(
+      `version 2
+agent "example/admission" {
+  declared-budgets {
+${children}  }
+}
+`,
+    )
+    expect(emit([mission({ ...base, declaredBudgets })])).toBe(
+      `version 2
+mission "example/admission" report-to="agent/example/owner" state="ready" {
+  declared-budgets {
+${children}  }
+  goal "Check admission."
+}
+`,
+    )
+  })
+
+  it.each([
+    { declaredPriority: 'urgent' },
+    { declaredLane: 'free-lane' },
+    ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity].flatMap((value) => [
+      { declaredBudgets: { cpuSeconds: value } },
+      { declaredBudgets: { tokenBudget: value } },
+    ]),
+    ...['8GB', '0', '0G', '00K', '1.5G', '-1G', ''].flatMap((value) => [
+      { declaredBudgets: { memoryMax: value } },
+      { declaredBudgets: { diskMax: value } },
+    ]),
+  ])('rejects invalid admission %j on agents and missions', (invalid) => {
+    expect(() => Schema.decodeUnknownSync(AgentSchema)({ id: base.id, ...invalid })).toThrow()
+    expect(() => Schema.decodeUnknownSync(MissionSchema)({ ...base, ...invalid })).toThrow()
+  })
+
+  it('accepts both literal alternatives and positive sizes with leading zeros', () => {
+    const value = {
+      declaredPriority: 'normal',
+      declaredLane: 'build',
+      declaredBudgets: { memoryMax: '001k', diskMax: '1' },
+    } as const
+    expect(Schema.decodeSync(AgentSchema)({ id: base.id, ...value })).toMatchObject(value)
+    expect(Schema.decodeSync(MissionSchema)({ ...base, ...value })).toMatchObject(value)
+  })
+
+  it('preserves admission when a mission node is nested', () => {
+    const parent = mission(base)
+    expect(
+      emit([
+        node({
+          ...parent,
+          children: [...(parent.children ?? []), mission({ ...base, id: 'child', ...admission })],
+        }),
+      ]),
+    ).toBe(
+      `version 2
+mission "example/admission" report-to="agent/example/owner" state="ready" {
+  goal "Check admission."
+  mission "child" report-to="agent/example/owner" state="ready" {
+    declared-priority "background"
+    declared-lane "check"
+    declared-budgets {
+      cpu-seconds 300
+      token-budget 100000
+      memory-max "8G"
+      disk-max "20G"
+    }
+    goal "Check admission."
+  }
+}
+`,
+    )
+  })
+
+  it.each(['declaredPriority', 'declaredLane', 'declaredBudgets'] as const)(
+    'rejects %s on steps',
+    (field) => {
+      expect(() =>
+        Schema.decodeSync(StepSchema, { onExcessProperty: 'error' })({
+          id: 'check',
+          [field]: admission[field],
+        }),
+      ).toThrow()
+    },
+  )
+})
+
 describe('mission lanes', () => {
   const base = {
     id: 'example/lanes',

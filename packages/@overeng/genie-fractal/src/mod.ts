@@ -329,12 +329,61 @@ export type PersonReference = typeof PersonReferenceSchema.Type
 export const person = (subject: `person/${string}`): PersonReference =>
   Object.freeze(decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } }))
 
+const DeclaredBudgetInteger = Schema.Int.pipe(
+  Schema.refine((value): value is number => value > 0 && Number.isSafeInteger(value)),
+)
+const DeclaredBudgetSize = Schema.String.pipe(
+  Schema.refine(
+    (value): value is string => /^[0-9]+[KMGTkmgt]?$/u.test(value) && /[1-9]/u.test(value),
+    { message: 'declared budget size must be a positive integer with an optional K/M/G/T suffix' },
+  ),
+)
+const DeclaredBudgets = Schema.Struct({
+  cpuSeconds: Schema.optionalKey(DeclaredBudgetInteger),
+  tokenBudget: Schema.optionalKey(DeclaredBudgetInteger),
+  memoryMax: Schema.optionalKey(DeclaredBudgetSize),
+  diskMax: Schema.optionalKey(DeclaredBudgetSize),
+})
+/** Declared admission metadata belongs to agents and missions, never steps. */
+const DeclaredAdmissionFields = {
+  declaredPriority: Schema.optionalKey(
+    Schema.Union([Schema.Literal('background'), Schema.Literal('normal')]),
+  ),
+  declaredLane: Schema.optionalKey(
+    Schema.Union([Schema.Literal('check'), Schema.Literal('build')]),
+  ),
+  declaredBudgets: Schema.optionalKey(DeclaredBudgets),
+}
+const DeclaredAdmission = Schema.Struct(DeclaredAdmissionFields)
+const declaredAdmissionNodes = (value: typeof DeclaredAdmission.Type): Node[] => [
+  ...optionalChild({ name: 'declared-priority', value: value.declaredPriority }),
+  ...optionalChild({ name: 'declared-lane', value: value.declaredLane }),
+  ...(value.declaredBudgets === undefined
+    ? []
+    : [
+        block({
+          name: 'declared-budgets',
+          children: [
+            ...(value.declaredBudgets.cpuSeconds === undefined
+              ? []
+              : [child({ name: 'cpu-seconds', value: value.declaredBudgets.cpuSeconds })]),
+            ...(value.declaredBudgets.tokenBudget === undefined
+              ? []
+              : [child({ name: 'token-budget', value: value.declaredBudgets.tokenBudget })]),
+            ...optionalChild({ name: 'memory-max', value: value.declaredBudgets.memoryMax }),
+            ...optionalChild({ name: 'disk-max', value: value.declaredBudgets.diskMax }),
+          ],
+        }),
+      ]),
+]
+
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
   identity: Schema.optionalKey(Text),
   name: Schema.optionalKey(Text),
   description: Schema.optionalKey(Text),
   principal: Schema.optionalKey(PersonReferenceSchema),
+  ...DeclaredAdmissionFields,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
   create: Schema.optionalKey(Schema.Boolean),
@@ -875,6 +924,7 @@ export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgent
 /** A ready mission with required reporting and unique graph nodes. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
+  ...DeclaredAdmissionFields,
   inputs: Schema.optionalKey(
     Schema.Array(MissionInputSchema).pipe(
       Schema.refine(
@@ -2346,6 +2396,7 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
       ...(m.reportCompleted === undefined ? {} : { 'report-completed': m.reportCompleted }),
     },
     children: [
+      ...declaredAdmissionNodes(m),
       ...(m.inputs ?? []).map((value) =>
         node({ name: 'input', args: [value.name], props: { kind: value.kind } }),
       ),
@@ -2411,6 +2462,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     ...optionalChild({ name: 'name', value: a.name }),
     ...optionalChild({ name: 'description', value: a.description }),
     ...optionalChild({ name: 'principal', value: a.principal?.subject }),
+    ...declaredAdmissionNodes(a),
     ...optionalChild({ name: 'host', value: a.host }),
   ]
   if (a.workspace !== undefined) {
