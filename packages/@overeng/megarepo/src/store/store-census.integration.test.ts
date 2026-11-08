@@ -6,7 +6,6 @@ import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
-import * as Git from '../core/git.ts'
 import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
 import { makeStoreLayer, Store } from './store.ts'
 
@@ -15,8 +14,7 @@ const makeFixture = Effect.gen(function* () {
   const tmp = yield* makeCanonicalTempDirectoryScoped()
   const basePath = EffectPath.unsafe.absoluteDir(`${tmp}/store/`)
   const repoPath = `${basePath}github.com/example/repo`
-  yield* fs.makeDirectory(repoPath, { recursive: true })
-  yield* Git.runCommand({ cwd: repoPath, args: ['init', '--bare', '.bare'] })
+  yield* fs.makeDirectory(`${repoPath}/.bare`, { recursive: true })
   return { fs, basePath, repoPath }
 })
 
