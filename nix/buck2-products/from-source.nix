@@ -4,6 +4,7 @@
 }:
 let
   lib = pkgs.lib;
+  buck2Native = buck2.native;
   defaultInputs = import ./buck-inputs.nix {
     inherit lib;
     repositoryRoot = ../..;
@@ -263,7 +264,7 @@ let
     src = source;
 
     nativeBuildInputs = [
-      buck2
+      buck2Native
       pkgs.cacert
       pkgs.jq
     ]
@@ -302,6 +303,8 @@ let
       cat >> .buckconfig.local <<'BUCKLOCAL'
       [buck2]
         file_watcher = ${watcherPolicies.immutable-input}
+        remote_cache_enabled = false
+        allow_cache_uploads = false
       ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
         [typescript]
           darwin_emit_isolation = nix-build-sandbox
@@ -322,7 +325,7 @@ let
         # buck2-rules. Only the producer's bundled external prelude needs
         # extraction and patching before a sandboxed Rust build.
         if [ ! -d .buck2/rules/prelude ]; then
-          ${buck2}/bin/buck2 ${buckGlobalArgs} expand-external-cell prelude
+          ${buck2Native}/bin/buck2 ${buckGlobalArgs} expand-external-cell prelude
           substituteInPlace prelude/utils/cmd_script.bzl prelude/rust/cargo_buildscript.bzl \
             --replace-fail '#!/usr/bin/env bash' '#!${pkgs.bash}/bin/bash'
           ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -347,7 +350,7 @@ let
       buck_build() {
         local status
         set +e
-        { ${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" "$@" 2>&1 1>&3 3>&- | tee -a "$TMPDIR/buck-build-stderr.log" >&2; } 3>&1
+        { ${buck2Native}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" "$@" 2>&1 1>&3 3>&- | tee -a "$TMPDIR/buck-build-stderr.log" >&2; } 3>&1
         status="''${PIPESTATUS[0]}"
         set -e
         if [ "$status" != 0 ] && grep -qE 'bwrap: .*(pivot_root|RTM_NEWADDR).*Operation not permitted' "$TMPDIR/buck-build-stderr.log"; then

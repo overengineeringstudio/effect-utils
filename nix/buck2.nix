@@ -8,7 +8,19 @@
 # SUPERSET of that list. nixpkgs added `starlark_fmt` as a third binary, so the
 # asset list below carries it too; when bumping the pin, check upstream's
 # `pkgs/by-name/bu/buck2/package.nix` `binaries` list for new entries.
-{ pkgs }:
+{
+  pkgs,
+  launcherSource ? pkgs.lib.fileset.toSource {
+    root = ../scripts;
+    fileset = pkgs.lib.fileset.unions [
+      ../scripts/buck2-entrypoint.ts
+      ../scripts/buck2-cache-posture.ts
+      ../scripts/buck2-file-watcher.ts
+      ../scripts/buck2-stdio.c
+      ../scripts/buck2-entrypoint.sh
+    ];
+  },
+}:
 let
   release = rec {
     version = "2026-09-01";
@@ -46,37 +58,42 @@ let
   platform =
     release.platforms.${system}
       or (throw "Buck2 release ${release.version} does not support ${system}");
-  launcherSource = pkgs.lib.fileset.toSource {
-    root = ../scripts;
-    fileset = pkgs.lib.fileset.unions [
-      ../scripts/buck2-entrypoint.ts
-      ../scripts/buck2-cache-posture.ts
-      ../scripts/buck2-file-watcher.ts
-      ../scripts/buck2-stdio.c
-      ../scripts/buck2-entrypoint.sh
+  # Product recipes depend only on the pinned native tool, never launcher inputs.
+  native = pkgs.buck2.overrideAttrs (oldAttrs: {
+    version = "unstable-${release.version}";
+    srcs = [
+      (pkgs.fetchurl {
+        url = "${release.releaseBaseUrl}/buck2-${platform.suffix}.zst";
+        hash = platform.buck2Hash;
+      })
+      (pkgs.fetchurl {
+        url = "${release.releaseBaseUrl}/rust-project-${platform.suffix}.zst";
+        hash = platform.rustProjectHash;
+      })
+      (pkgs.fetchurl {
+        url = "${release.releaseBaseUrl}/starlark_fmt-${platform.suffix}.zst";
+        hash = platform.starlarkFmtHash;
+      })
     ];
-  };
+    passthru = oldAttrs.passthru // {
+      inherit (platform) executionPlatform;
+      prelude = pkgs.fetchurl {
+        inherit (release.prelude) url hash;
+      };
+    };
+  });
 in
-pkgs.buck2.overrideAttrs (oldAttrs: {
-  version = "unstable-${release.version}";
-  srcs = [
-    (pkgs.fetchurl {
-      url = "${release.releaseBaseUrl}/buck2-${platform.suffix}.zst";
-      hash = platform.buck2Hash;
-    })
-    (pkgs.fetchurl {
-      url = "${release.releaseBaseUrl}/rust-project-${platform.suffix}.zst";
-      hash = platform.rustProjectHash;
-    })
-    (pkgs.fetchurl {
-      url = "${release.releaseBaseUrl}/starlark_fmt-${platform.suffix}.zst";
-      hash = platform.starlarkFmtHash;
-    })
-  ];
-  nativeBuildInputs = (oldAttrs.nativeBuildInputs or [ ]) ++ [ pkgs.stdenv.cc ];
-  # Stripping a compiled Bun executable removes its embedded JavaScript payload.
-  dontStrip = true;
-  postInstall = (oldAttrs.postInstall or "") + ''
+pkgs.runCommand native.name
+  {
+    nativeBuildInputs = [ pkgs.stdenv.cc ];
+    passthru = native.passthru // {
+      inherit native;
+    };
+    inherit (native) meta pname version;
+  }
+  ''
+    cp -R ${native}/. "$out/"
+    chmod u+w "$out" "$out/bin"
     mkdir -p "$out/libexec"
     mv "$out/bin/buck2" "$out/libexec/buck2"
     cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
@@ -104,11 +121,4 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
       --replace-fail '@launcher@' "$out/libexec/buck2-entrypoint" \
       --replace-fail '@sha256@' '${pkgs.coreutils}/bin/sha256sum'
     chmod +x "$out/bin/buck2"
-  '';
-  passthru = oldAttrs.passthru // {
-    inherit (platform) executionPlatform;
-    prelude = pkgs.fetchurl {
-      inherit (release.prelude) url hash;
-    };
-  };
-})
+  ''
