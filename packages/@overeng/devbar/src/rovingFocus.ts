@@ -42,12 +42,18 @@ export const useRovingFocus = ({
   // Refs, not effect locals: recovery state must survive `observe` switching on or off.
   const focusInside = React.useRef(false)
   const lastIndex = React.useRef(0)
+  /** Until focus first enters the row, the Tab stop follows the first item, e.g. once measured segments appear. */
+  const visited = React.useRef(false)
   const sync = React.useCallback((): HTMLElement[] => {
     const row = rowRef.current
     if (row === null) return []
     const candidates = rowCandidates(row)
     const items = candidates.filter((element) => unreachable(element) === false)
-    if (current.current === undefined || items.includes(current.current) === false)
+    if (
+      visited.current === false ||
+      current.current === undefined ||
+      items.includes(current.current) === false
+    )
       current.current = items[0]
     // Unreachable candidates leave the Tab sequence too: `aria-hidden` alone keeps them focusable.
     for (const candidate of candidates) {
@@ -103,6 +109,7 @@ export const useRovingFocus = ({
         current.current = event.target
         lastIndex.current = items.indexOf(event.target)
         focusInside.current = true
+        visited.current = true
         sync()
       }
     }

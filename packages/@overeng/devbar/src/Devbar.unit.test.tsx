@@ -397,6 +397,21 @@ describe('row focus', () => {
     expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
   })
 
+  it('keeps the Tab stop on the first item until focus enters the row', async () => {
+    roomy()
+    render(<Row />)
+    await settle()
+    // Like segments revealed after measurement: the first item is unreachable, then reachable.
+    const alpha = screen.getByRole('button', { name: 'alpha' })
+    act(() => alpha.parentElement!.setAttribute('inert', ''))
+    await settle()
+    expect(screen.getByRole('button', { name: 'beta' }).getAttribute('tabindex')).toBe('0')
+    act(() => alpha.parentElement!.removeAttribute('inert'))
+    await settle()
+    expect(alpha.getAttribute('tabindex')).toBe('0')
+    expect(tabStops()).toEqual([alpha])
+  })
+
   it('moves focus to a remaining item, not the body, when the focused item disappears', async () => {
     roomy()
     const { rerender } = render(<Row />)

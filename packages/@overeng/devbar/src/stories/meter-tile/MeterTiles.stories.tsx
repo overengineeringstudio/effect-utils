@@ -323,9 +323,9 @@ export const Desktop: Story = {
     const tile = await canvas.findByRole('button', { name: 'p95' })
     await expect(tile).toHaveAttribute('title', 'HTTP latency p50/p95')
     await expect(canvas.queryByRole('tooltip')).toBeNull()
-    // Focus shows the card and describes the tile with it.
+    // Keyboard focus shows the card and describes the tile with it; the bar's arrows move between tiles.
     await userEvent.click(canvas.getByRole('button', { name: 'msg' }))
-    await userEvent.tab()
+    await userEvent.keyboard('{ArrowRight}')
     await expect(tile).toHaveFocus()
     const card = await canvas.findByRole('tooltip')
     await expect(tile).toHaveAttribute('aria-describedby', card.id)
