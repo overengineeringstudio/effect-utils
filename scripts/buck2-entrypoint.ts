@@ -1121,12 +1121,14 @@ export const admitCacheDaemonCommand = async ({
   args,
   env,
   admit,
+  deadlineMs = 30000,
 }: {
   readonly native: string
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
+  readonly deadlineMs?: number
 }): Promise<string[]> => {
   if (env['CI'] !== '1' && env['CI'] !== 'true') return admit()
   const initialValues = buckConfigValues(
@@ -1152,15 +1154,27 @@ export const admitCacheDaemonCommand = async ({
     },
   )
   const descriptor = openSync(join(state, 'root.lock'), 'a', 0o600)
-  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
+  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: deadlineMs }
   const call = (command: readonly string[]) => {
+    const started = performance.now()
     const result = spawnSync(native, ['--isolation-dir', isolation, ...command], {
       ...options,
       env: { ...env, BUCK_WRAPPER_UUID: randomUUID() },
     })
-    // Native stderr can contain RE diagnostics/headers. Never include it in an admission error.
-    if (result.error !== undefined || result.status !== 0)
-      throw new Error('Buck2 cache posture: native daemon admission command failed')
+    // Only fixed metadata may cross this boundary: native output and error messages
+    // can contain RE headers/secrets. Never attach the spawn error as a cause.
+    if (result.error !== undefined || result.status !== 0) {
+      const code = result.error?.code
+      const spawnError =
+        code === undefined ? 'none' : /^[A-Z0-9_]+$/u.test(code) === true ? code : 'other'
+      const subcommand =
+        command[0] === 'status' || command[0] === 'kill' || command[0] === 'audit'
+          ? command[0]
+          : 'other'
+      throw new Error(
+        `Buck2 cache posture: native daemon admission command failed (subcommand=${subcommand} exit=${result.status ?? 'none'} signal=${result.signal ?? 'none'} timed_out=${code === 'ETIMEDOUT'} spawn_error=${spawnError} elapsed_ms=${Math.round(performance.now() - started)} deadline_ms=${deadlineMs})`,
+      )
+    }
     return result.stdout.trim()
   }
   const status = (): unknown => {
