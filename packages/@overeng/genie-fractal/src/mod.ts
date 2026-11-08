@@ -927,7 +927,8 @@ export const MissionSchema = Schema.Struct({
       ),
     ),
   ),
-  steps: Schema.Array(Schema.Union([StepSchema, LoopSchema])),
+  // Try loops first: plain steps accept an id alone and would strip loop fields.
+  steps: Schema.Array(Schema.Union([LoopSchema, StepSchema])),
   completion: Schema.optionalKey(CompletionSchema),
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
   schedule: Schema.optionalKey(ScheduleSchema),

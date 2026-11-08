@@ -551,6 +551,36 @@ schedule "once" {
   })
 })
 
+describe('mission step decoding', () => {
+  it('preserves loop fields and plain steps with default decoding', () => {
+    const input = {
+      id: 'decode-loop',
+      state: 'ready',
+      reportTo: owner,
+      goal: ['Preserve loop steps.'],
+      steps: [
+        {
+          id: 'poll',
+          maxRounds: 3,
+          until: [gate.exists({ name: 'result', subject: 'resource/result' })],
+          round: {
+            completion: { when: 'all-steps-exhausted' },
+            steps: [{ id: 'retry', agentless: true }],
+          },
+          onExhausted: { outcome: 'fail' },
+        },
+        { id: 'finish' },
+      ],
+    } as const
+    const decoded = Schema.decodeSync(MissionSchema)(input)
+
+    expect(decoded.steps[0]).toEqual(input.steps[0])
+    expect(decoded.steps[1]).toEqual({ id: 'finish' })
+    expect(emit([mission(decoded)])).toBe(emit([mission(input)]))
+    expect(emit([mission(decoded)])).toContain('loop "poll"')
+  })
+})
+
 describe('compact native time rendering', () => {
   it('lowers every duration surface without changing canonical mission values', () => {
     const input = {
