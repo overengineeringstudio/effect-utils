@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 
 import type { ReaderReapiUnavailableShadow } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
+  ciPostureDeclared,
   gateCgroupRelation,
   gateDaemonStopDecision,
   gateScopeIdentity,
@@ -16,6 +17,14 @@ import {
 const root = '/project/root'
 const isolation = 'owned'
 const idle = { project_root: root, isolation_dir: isolation, active_commands: [] }
+
+it('selects CI posture only through the explicit workflow declaration', () => {
+  expect(ciPostureDeclared({})).toBe(false)
+  expect(ciPostureDeclared({ CI: '1' })).toBe(false)
+  expect(ciPostureDeclared({ CI: 'true', GITHUB_ACTIONS: 'true' })).toBe(false)
+  expect(ciPostureDeclared({ BUCK2_CI_POSTURE: 'true' })).toBe(false)
+  expect(ciPostureDeclared({ BUCK2_CI_POSTURE: '1' })).toBe(true)
+})
 
 it('permits native kill only for an idle daemon in the selected project and isolation', () => {
   expect(gateDaemonStopDecision({ status: idle, root, isolation })).toBe('stop')

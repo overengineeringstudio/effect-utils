@@ -127,6 +127,7 @@ else if(args.includes('build')) {
               BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
               BUCK2_CACHE_WRITE_BASIC_AUTH: '',
               CI: '1',
+              BUCK2_CI_POSTURE: '1',
               GITHUB_RUN_ID: 'reader-shadow-fixture',
               GITHUB_JOB: 'reader-shadow-fixture',
               BUCK2_CI_JOB_INSTANCE: 'reader-shadow-fixture',
@@ -321,6 +322,7 @@ if(process.env.STALLED_TERMINATION==='exit') process.exit(0);
                 HOME: root,
                 XDG_CACHE_HOME: join(root, 'cache'),
                 CI: '',
+                BUCK2_CI_POSTURE: '',
                 GITHUB_ACTIONS: '',
                 CI_BUCK2_CACHE_EVIDENCE_PATH: '',
                 BUCK2_PUBLIC_CACHE_READ_ONLY: '1',
@@ -512,6 +514,7 @@ if(process.env.STALLED_TERMINATION==='exit') process.exit(0);
         const env = {
           ...process.env,
           CI: '1',
+          BUCK2_CI_POSTURE: '1',
           GITHUB_RUN_ID: 'posture-fixture-run',
           GITHUB_RUN_ATTEMPT: '1',
           GITHUB_JOB: 'posture-fixture',
@@ -610,13 +613,13 @@ writeFileSync(join(root,'.buckconfig'),'[buck2]\\nremote_cache_enabled = true\\n
 for(let index=0;index<2;index++) await directBuckArguments({
  cwd:root,args:['build','//:fixture'],deadlineMs:100,
  cacheDirectory:join(root,'probe-cache'),
- env:{CI:'1',GITHUB_ACTIONS:'true',CI_BUCK2_CACHE_EVIDENCE_PATH:evidence},
+ env:{CI:'1',BUCK2_CI_POSTURE:'1',GITHUB_ACTIONS:'true',CI_BUCK2_CACHE_EVIDENCE_PATH:evidence},
 });
 const native=join(root,'native');
 writeFileSync(native,'#!${process.execPath}\\nimport {existsSync,readFileSync,writeFileSync,rmSync} from "node:fs";\\nconst args=process.argv.slice(2),state="daemon.json";\\nif(args.includes("status")) {if(existsSync(state)) console.log(readFileSync(state,"utf8"));}\\nelse if(args.includes("kill")) rmSync(state,{force:true});\\nelse if(args.includes("audit")) writeFileSync(state,JSON.stringify({project_root:process.cwd(),isolation_dir:"v2",active_commands:[],process_info:{pid:12345},start_time:"fixture"}));\\n',{mode:0o700});
 const launcher=Bun.spawn([process.execPath,${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))},native,'build','//:fixture'],{
  cwd:root,
- env:{...process.env,CI:'1',GITHUB_ACTIONS:'true',BUCK2_PUBLIC_CACHE_READ_ONLY:'1',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PRIVATE_CACHE_WRITE_AUTH:'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',CI_BUCK2_CACHE_EVIDENCE_PATH:evidence,CI_BUCK2_CACHE_EVIDENCE_START:'',XDG_CACHE_HOME:join(root,'probe-cache')},
+ env:{...process.env,CI:'1',BUCK2_CI_POSTURE:'1',GITHUB_ACTIONS:'true',BUCK2_PUBLIC_CACHE_READ_ONLY:'1',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PRIVATE_CACHE_WRITE_AUTH:'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',CI_BUCK2_CACHE_EVIDENCE_PATH:evidence,CI_BUCK2_CACHE_EVIDENCE_START:'',XDG_CACHE_HOME:join(root,'probe-cache')},
  stdout:'pipe',stderr:'pipe',
 });
 const launcherStderr=await new Response(launcher.stderr).text();
@@ -724,7 +727,12 @@ else process.exit(9);
 `,
       )
       chmodSync(native, 0o700)
-      const env = { ...process.env, CI: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: secret }
+      const env = {
+        ...process.env,
+        CI: undefined,
+        BUCK2_CI_POSTURE: '1',
+        BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
+      }
       const admit = async () => ['build', '//:fixture']
       const reconcile = () =>
         admitCacheDaemonCommand({ native, root, args: ['build', '//:fixture'], env, admit })
@@ -732,7 +740,27 @@ else process.exit(9);
         native,
         root,
         args: ['build', '//:fixture'],
-        env: { ...env, CI: '' },
+        env: { ...env, CI: '1', BUCK2_CI_POSTURE: undefined, GITHUB_ACTIONS: undefined },
+        admit,
+      })
+      expect(existsSync(calls)).toBe(false)
+      await expect(
+        admitCacheDaemonCommand({
+          native,
+          root,
+          args: ['build', '//:fixture'],
+          env: { ...env, BUCK2_CI_POSTURE: undefined, GITHUB_ACTIONS: 'true' },
+          admit,
+        }),
+      ).rejects.toThrow(
+        'Buck2 cache posture: GitHub Actions job without BUCK2_CI_POSTURE declaration',
+      )
+      expect(existsSync(calls)).toBe(false)
+      await admitCacheDaemonCommand({
+        native,
+        root,
+        args: ['--version'],
+        env: { ...env, BUCK2_CI_POSTURE: undefined, GITHUB_ACTIONS: 'true' },
         admit,
       })
       expect(existsSync(calls)).toBe(false)
@@ -825,7 +853,7 @@ console.log('attempting');
 try {
 await admitCacheDaemonCommand({
 native:${JSON.stringify(native)},root,args:['--isolation-dir',isolation,'build','//:fixture'],
-env:{...process.env,CI:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:${JSON.stringify(secret)}},
+env:{...process.env,BUCK2_CI_POSTURE:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:${JSON.stringify(secret)}},
 admit:async (check)=>{
 check?.({'buck2.remote_cache_enabled':'true',...values});
 writeFileSync(root+'/.buckconfig.local',config);
