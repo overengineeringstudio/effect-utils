@@ -118,7 +118,11 @@ rejects drift. These JSON copies deliberately stay writable, like ordinary Git
 checkout files: the byte comparison owns freshness without modifying permissions.
 Genie's JSON emission passes through a formatter, so it does not own these
 byte-preserving copies. Other cross-package compile-time inputs still require
-their declared source providers.
+their declared source providers. The `work-storage` Reindeer fixup enables
+build-script execution for git dependencies so the embedded resources have an
+`OUT_DIR`. The first-party Cargo projector derives its own build-script rule from
+the manifest and does not read third-party fixups; enabling this fixup does not
+add a second execution there.
 
 The plain consumer derivation declares exactly:
 
