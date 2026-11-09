@@ -428,8 +428,8 @@ const declaredAdmissionNodes = ({
               : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
             ...optionalChild({ name: 'memory-max', value: budget.resources?.memoryMax }),
             ...optionalChild({ name: 'disk-max', value: budget.resources?.diskMax }),
-            ...(budget.attention ?? []).map(({ person, asks }) =>
-              node({ name: 'attention', args: [person], props: { asks } }),
+            ...(budget.attention ?? []).map(({ person: id, asks }) =>
+              node({ name: 'attention', args: [id], props: { asks } }),
             ),
           ],
         }),

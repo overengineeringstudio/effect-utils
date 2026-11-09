@@ -1108,7 +1108,7 @@ describe('Fractal declarations', () => {
     'rejects invalid attention asks %j',
     (asks) => {
       expect(() =>
-        Schema.decodeUnknownSync(MissionSchema)({
+        Schema.decodeSync(MissionSchema)({
           ...fanInMission(),
           budget: { attention: [{ person: 'person/operator', asks }] },
         }),
@@ -1120,7 +1120,7 @@ describe('Fractal declarations', () => {
     'rejects invalid attention person %j',
     (person) => {
       expect(() =>
-        Schema.decodeUnknownSync(MissionSchema)({
+        Schema.decodeSync(MissionSchema)({
           ...fanInMission(),
           budget: { attention: [{ person, asks: 1 }] },
         }),
@@ -1130,7 +1130,7 @@ describe('Fractal declarations', () => {
 
   it('rejects duplicate attention people and agent attention', () => {
     expect(() =>
-      Schema.decodeUnknownSync(MissionSchema)({
+      Schema.decodeSync(MissionSchema)({
         ...fanInMission(),
         budget: { attention: [attention[0], attention[0]] },
       }),
