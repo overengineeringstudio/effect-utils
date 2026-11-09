@@ -266,6 +266,14 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     expect(() => Schema.decodeUnknownSync(schema, { onExcessProperty: 'ignore' })(input)).toThrow()
   })
 
+  it('refuses invalid loops instead of stripping them to plain steps', () => {
+    const input: unknown = { ...base, steps: [{ ...boundedLoop, round: { steps: [] } }] }
+    expect(() => Schema.decodeUnknownSync(MissionSchema)(input)).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema, { onExcessProperty: 'ignore' })(input),
+    ).toThrow()
+  })
+
   it('has no legacy authoring aliases', () => {
     // @ts-expect-error Scheduling is authored through budget.
     expect(() => agent({ id: base.id, declaredPriority: 'normal' })).toThrow()

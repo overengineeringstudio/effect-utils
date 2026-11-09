@@ -796,6 +796,11 @@ export const StepSchema = Schema.Struct({
   documents: Schema.optionalKey(Schema.Array(PinnedDocumentReferenceSchema)),
   timeout: Schema.optionalKey(Duration),
   budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Steps have no budget' })),
+  // Invalid loop declarations must not fall back to a plain step in the graph union.
+  maxRounds: Schema.optionalKey(Schema.Never),
+  round: Schema.optionalKey(Schema.Never),
+  until: Schema.optionalKey(Schema.Never),
+  onExhausted: Schema.optionalKey(Schema.Never),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(Schema.Union([AgentReferenceSchema, PersonReferenceSchema])),
   dependsOn: Schema.optionalKey(Dependencies),
