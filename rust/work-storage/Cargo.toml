@@ -6,14 +6,12 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
-# Keep external inputs with the package for downstream Buck projections.
+# Generated copies stay inside the manifest directory for standalone builds.
 [[package.metadata.buck2.buildScriptInputs]]
-path = "../../packages/@overeng/work-storage/protocol.schema.json"
-label = "//packages/@overeng/work-storage:protocol-schema"
+path = "resources/protocol.schema.json"
 
 [[package.metadata.buck2.buildScriptInputs]]
-path = "../../packages/@overeng/work-storage/fixtures/conformance.json"
-label = "//packages/@overeng/work-storage:conformance-fixtures"
+path = "resources/conformance.json"
 
 [dependencies]
 serde.workspace = true

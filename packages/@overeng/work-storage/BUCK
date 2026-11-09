@@ -173,14 +173,3 @@ vitest_collect(
     package_tree = ":test_package_tree",
     visibility = ["PUBLIC"],
 )
-
-native.export_file(
-    name = "protocol-schema",
-    src = "protocol.schema.json",
-    visibility = ["PUBLIC"],
-)
-native.export_file(
-    name = "conformance-fixtures",
-    src = "fixtures/conformance.json",
-    visibility = ["PUBLIC"],
-)

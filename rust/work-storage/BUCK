@@ -5,7 +5,7 @@ load("//buck2/rust:defs.bzl", "rust_test_receipt")
 # Projection source: rust/work-storage/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:6798c9585968a77c2ba19cf9972fe0907cc2c62cfd528bde477d2af4797c25f1
+# Semantic fingerprint: sha256:6ec5b8a7d467f49d00ab826e0a0779ae8791f174c2e34bbf3436069401c91eb2
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/BUCK.genie.ts, rust/work-storage/Cargo.toml, rust/work-storage/src/**/*.rs, rust/work-storage/tests/**/*.rs, rust/worktree-lease/Cargo.toml
 # Regenerate: devenv tasks run genie:run
 
@@ -20,6 +20,8 @@ static_source_set(
         "BUCK.genie.ts",
         "Cargo.toml",
         "build.rs",
+        "resources/conformance.json",
+        "resources/protocol.schema.json",
         "src/lib.rs",
         "tests/conformance.rs",
     ] + glob(["rust-toolchain.toml"]),
@@ -35,6 +37,18 @@ native.export_file(
 native.export_file(
     name = "cargo-source/build.rs",
     src = "build.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/resources/conformance.json",
+    src = "resources/conformance.json",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/resources/protocol.schema.json",
+    src = "resources/protocol.schema.json",
     visibility = ["PUBLIC"],
 )
 
@@ -79,10 +93,10 @@ cargo_build_script(
     build_script = ":work-storage-build-script-build",
     package_path = "rust/work-storage",
     srcs = {
-        "packages/@overeng/work-storage/fixtures/conformance.json": "//packages/@overeng/work-storage:conformance-fixtures",
-        "packages/@overeng/work-storage/protocol.schema.json": "//packages/@overeng/work-storage:protocol-schema",
         "rust/work-storage/Cargo.toml": "Cargo.toml",
         "rust/work-storage/build.rs": "build.rs",
+        "rust/work-storage/resources/conformance.json": "resources/conformance.json",
+        "rust/work-storage/resources/protocol.schema.json": "resources/protocol.schema.json",
         "rust/work-storage/src/lib.rs": "src/lib.rs",
         "rust/work-storage/tests/conformance.rs": "tests/conformance.rs",
     },
