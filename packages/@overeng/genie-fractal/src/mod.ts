@@ -338,41 +338,63 @@ const DeclaredBudgetSize = Schema.String.pipe(
     { message: 'declared budget size must be a positive integer with an optional K/M/G/T suffix' },
   ),
 )
-const DeclaredBudgets = Schema.Struct({
-  cpuSeconds: Schema.optionalKey(DeclaredBudgetInteger),
-  tokenBudget: Schema.optionalKey(DeclaredBudgetInteger),
+/** Declared resource metadata, not enforced limits. */
+const AgentResources = Schema.Struct({
   memoryMax: Schema.optionalKey(DeclaredBudgetSize),
   diskMax: Schema.optionalKey(DeclaredBudgetSize),
-})
-/** Declared admission metadata belongs to agents and missions, never steps. */
-const DeclaredAdmissionFields = {
-  declaredPriority: Schema.optionalKey(
+}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+const MissionResources = Schema.Struct({
+  ...AgentResources.fields,
+  /** CPU seconds per mission run, cumulative across attempts; declared, not enforced. */
+  cpuSeconds: Schema.optionalKey(DeclaredBudgetInteger),
+  /** Cost-weighted tokens per mission run, cumulative across attempts, pricing pinned at admission; declared, not enforced. */
+  tokenBudget: Schema.optionalKey(DeclaredBudgetInteger),
+}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+const BudgetScheduling = Schema.Struct({
+  priority: Schema.optionalKey(
     Schema.Union([Schema.Literal('background'), Schema.Literal('normal')]),
   ),
-  declaredLane: Schema.optionalKey(
-    Schema.Union([Schema.Literal('check'), Schema.Literal('build')]),
-  ),
-  declaredBudgets: Schema.optionalKey(DeclaredBudgets),
+  lane: Schema.optionalKey(Schema.Union([Schema.Literal('check'), Schema.Literal('build')])),
+}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+/** Declared admission metadata belongs to agents and missions, never steps. */
+const AgentBudget = Schema.Struct({
+  scheduling: Schema.optionalKey(BudgetScheduling),
+  resources: Schema.optionalKey(AgentResources),
+}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+const MissionBudget = Schema.Struct({
+  scheduling: Schema.optionalKey(BudgetScheduling),
+  resources: Schema.optionalKey(MissionResources),
+}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+/** Retired spellings must refuse even when an external decoder ignores excess keys. */
+const RetiredAdmission = Schema.Never.annotate({
+  identifier: 'Use budget.scheduling or budget.resources',
+})
+const RetiredAdmissionFields = {
+  declaredPriority: Schema.optionalKey(RetiredAdmission),
+  declaredLane: Schema.optionalKey(RetiredAdmission),
+  declaredBudgets: Schema.optionalKey(RetiredAdmission),
 }
-const declaredAdmissionNodes = (
-  value: Pick<typeof AgentSchemaFields.Type, keyof typeof DeclaredAdmissionFields>,
-): Node[] => [
-  ...optionalChild({ name: 'declared-priority', value: value.declaredPriority }),
-  ...optionalChild({ name: 'declared-lane', value: value.declaredLane }),
-  ...(value.declaredBudgets === undefined
+const declaredAdmissionNodes = ({
+  budget,
+}: {
+  readonly budget?: typeof MissionBudget.Type
+}): Node[] => [
+  ...optionalChild({ name: 'declared-priority', value: budget?.scheduling?.priority }),
+  ...optionalChild({ name: 'declared-lane', value: budget?.scheduling?.lane }),
+  ...(budget?.resources === undefined
     ? []
     : [
         block({
           name: 'declared-budgets',
           children: [
-            ...(value.declaredBudgets.cpuSeconds === undefined
+            ...(budget.resources.cpuSeconds === undefined
               ? []
-              : [child({ name: 'cpu-seconds', value: value.declaredBudgets.cpuSeconds })]),
-            ...(value.declaredBudgets.tokenBudget === undefined
+              : [child({ name: 'cpu-seconds', value: budget.resources.cpuSeconds })]),
+            ...(budget.resources.tokenBudget === undefined
               ? []
-              : [child({ name: 'token-budget', value: value.declaredBudgets.tokenBudget })]),
-            ...optionalChild({ name: 'memory-max', value: value.declaredBudgets.memoryMax }),
-            ...optionalChild({ name: 'disk-max', value: value.declaredBudgets.diskMax }),
+              : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
+            ...optionalChild({ name: 'memory-max', value: budget.resources.memoryMax }),
+            ...optionalChild({ name: 'disk-max', value: budget.resources.diskMax }),
           ],
         }),
       ]),
@@ -384,7 +406,8 @@ const AgentSchemaFields = Schema.Struct({
   name: Schema.optionalKey(Text),
   description: Schema.optionalKey(Text),
   principal: Schema.optionalKey(PersonReferenceSchema),
-  ...DeclaredAdmissionFields,
+  budget: Schema.optionalKey(AgentBudget),
+  ...RetiredAdmissionFields,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
   create: Schema.optionalKey(Schema.Boolean),
@@ -925,7 +948,8 @@ export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgent
 /** A ready mission with required reporting and unique graph nodes. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
-  ...DeclaredAdmissionFields,
+  budget: Schema.optionalKey(MissionBudget),
+  ...RetiredAdmissionFields,
   inputs: Schema.optionalKey(
     Schema.Array(MissionInputSchema).pipe(
       Schema.refine(
