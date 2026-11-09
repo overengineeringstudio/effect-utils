@@ -795,6 +795,7 @@ export const StepSchema = Schema.Struct({
   ...OwnedDeclarationFields,
   documents: Schema.optionalKey(Schema.Array(PinnedDocumentReferenceSchema)),
   timeout: Schema.optionalKey(Duration),
+  budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Steps have no budget' })),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(Schema.Union([AgentReferenceSchema, PersonReferenceSchema])),
   dependsOn: Schema.optionalKey(Dependencies),

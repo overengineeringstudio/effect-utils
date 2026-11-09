@@ -232,6 +232,12 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     [MissionSchema, { ...base, budget: { timeout: '30m' } }],
     [MissionSchema, { ...base, budget: { resources: { extra: true } } }],
     [MissionSchema, { ...base, budget: { scheduling: { extra: true } } }],
+    [StepSchema, { id: 'check', budget: { resources: { cpuSeconds: 1 } } }],
+    [StepSchema, { id: 'check', budget: { attention: {} } }],
+    [
+      MissionSchema,
+      { ...base, steps: [{ id: 'check', budget: { resources: { cpuSeconds: 1 } } }] },
+    ],
   ] as const)('refuses unknown budget keys with raw decoders (%#)', (schema, input) => {
     expect(() => Schema.decodeUnknownSync(schema)(input)).toThrow()
     expect(() => Schema.decodeUnknownSync(schema, { onExcessProperty: 'ignore' })(input)).toThrow()
