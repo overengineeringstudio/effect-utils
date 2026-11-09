@@ -51,6 +51,8 @@ describe('generated worktree roots contract', () => {
         expect(consumer).toContain(`"$out/${entry.path}/"`)
         const target = new RegExp(entry.targetPattern!)
         expect(target.test(`/nix/store/${hash}-fixture-buck2-root/${entry.path}`)).toBe(true)
+        expect(target.test(`/nix/store/${hash}-fix\nture-buck2-root/${entry.path}`)).toBe(false)
+        expect(target.test(`/nix/store/${hash}-fix ture-buck2-root/${entry.path}`)).toBe(false)
         expect(target.test(`/nix/store/${'e'.repeat(32)}-fixture-buck2-root/${entry.path}`)).toBe(
           false,
         )
