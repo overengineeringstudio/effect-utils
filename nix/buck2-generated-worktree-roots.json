@@ -6,7 +6,7 @@
       "id": "buck2-rules-projection",
       "path": ".buck2/rules",
       "kind": "symlink-into-nix-store",
-      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-[^/]+-buck2-root/\\.buck2/rules$",
+      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-[A-Za-z0-9+._?=-]+-buck2-root/\\.buck2/rules$",
       "gcRoot": false,
       "follow": "never",
       "regeneratedBy": "consumer shell or materializer link to mkConsumerBuckRoot output"
@@ -15,7 +15,7 @@
       "id": "buck2-capabilities-consumer-projection",
       "path": ".buck2/capabilities",
       "kind": "symlink-into-nix-store",
-      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-[^/]+-buck2-root/\\.buck2/capabilities$",
+      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-[A-Za-z0-9+._?=-]+-buck2-root/\\.buck2/capabilities$",
       "gcRoot": false,
       "follow": "never",
       "regeneratedBy": "consumer shell or materializer link to mkConsumerBuckRoot output"
