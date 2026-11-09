@@ -134,13 +134,12 @@ let
       fi
 
       echo "" >&2
-      echo "Instead of running '${cli}' directly, use the devenv task(s):" >&2
-      echo "" >&2
+      echo "'${cli}' is guarded." >&2
+      echo "For touched files:" >&2
+      echo "  DEVENV_TASK_PASSTHROUGH=1 ${cli} FILES" >&2
+      echo "For the whole repo:" >&2
       ${taskLines}
       echo "Run 'devenv tasks list' to see all available tasks." >&2
-      echo "" >&2
-      echo "Bypass (not recommended):" >&2
-      echo "  DEVENV_TASK_PASSTHROUGH=1 ${cli} $*" >&2
       echo "" >&2
       exit 1
     '';
