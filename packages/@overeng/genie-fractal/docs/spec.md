@@ -33,6 +33,21 @@ Agent declarations accept an optional `principal: person('person/NAME')`. A prin
 
 Generic values and lowering live in this package. Graph/kit libraries own domain policy and choose values; loaders own discovery/resolution; publishers own publication; native Fractal owns admission and running behavior. Layer-style requirement/output composition is vocabulary for boundaries, not a second runtime scheduler.
 
+Agents and missions author declared admission metadata through `budget.scheduling`
+(`priority: 'background' | 'normal'`, `lane: 'check' | 'build'`) and
+`budget.resources`. Agent resources accept only `memoryMax` and `diskMax`;
+missions additionally accept `cpuSeconds` and `tokenBudget`. Resource integers
+are positive safe integers. Sizes are positive integer strings with an optional
+K/M/G/T suffix (case-insensitive). CPU seconds and cost-weighted tokens are per
+mission run, cumulative across attempts, with token pricing pinned at run
+admission. All budget fields are declared metadata, not enforced limits.
+Lowering retains `declared-priority`, `declared-lane` and `declared-budgets`;
+omission emits nothing, while empty resources emit an empty block. Authoring
+rejects unknown keys. Retired `declaredPriority`, `declaredLane` and
+`declaredBudgets` keys are refused even by excess-property-ignoring decoders.
+Steps have no budget. Mission and step `timeout` remain top-level fields,
+never budget members.
+
 Pure values use schema-derived or Effect structural equivalence. Equivalent values hash equally. Scoped handles retain exact provenance; structural equality cannot grant ownership. Effect hashes are not immutable-document cryptographic digests.
 
 Operations are grouped by semantic namespace. Meaningful transformations may have data-first/data-last signatures; constructors do not gain redundant dual forms. Plain immutable values need not implement a builder or Pipeable protocol.
