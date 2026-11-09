@@ -216,12 +216,8 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
   })
 
   it.each(['cpuSeconds', 'tokenBudget'] as const)('rejects agent resource %s', (field) => {
-    expect(() =>
-      Schema.decodeUnknownSync(AgentSchema)({
-        id: base.id,
-        budget: { resources: { [field]: 1 } },
-      }),
-    ).toThrow()
+    const input: unknown = { id: base.id, budget: { resources: { [field]: 1 } } }
+    expect(() => Schema.decodeUnknownSync(AgentSchema)(input)).toThrow()
   })
 
   it('rejects step budgets', () => {
@@ -261,11 +257,13 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
   )('refuses retired %s=%j even when excess keys are ignored', (field, value) => {
     const oldAgent = { id: base.id, [field]: value }
     const oldMission = { ...base, [field]: value }
+    const rawAgent: unknown = oldAgent
+    const rawMission: unknown = oldMission
     expect(() =>
-      Schema.decodeUnknownSync(AgentSchema, { onExcessProperty: 'ignore' })(oldAgent),
+      Schema.decodeUnknownSync(AgentSchema, { onExcessProperty: 'ignore' })(rawAgent),
     ).toThrow()
     expect(() =>
-      Schema.decodeUnknownSync(MissionSchema, { onExcessProperty: 'ignore' })(oldMission),
+      Schema.decodeUnknownSync(MissionSchema, { onExcessProperty: 'ignore' })(rawMission),
     ).toThrow()
     expect(() => agent(oldAgent)).toThrow()
     expect(() => mission(oldMission)).toThrow()
