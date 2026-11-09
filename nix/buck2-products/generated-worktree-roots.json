@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "producer": "effect-utils/buck2",
+  "roots": [
+    {
+      "id": "buck2-rules-projection",
+      "path": ".buck2/rules",
+      "kind": "symlink-into-nix-store",
+      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-[^/]+-buck2-root/\\.buck2/rules$",
+      "gcRoot": false,
+      "follow": "never",
+      "regeneratedBy": "consumer shell or materializer link to mkConsumerBuckRoot output"
+    },
+    {
+      "id": "buck2-capabilities-consumer-projection",
+      "path": ".buck2/capabilities",
+      "kind": "symlink-into-nix-store",
+      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-[^/]+-buck2-root/\\.buck2/capabilities$",
+      "gcRoot": false,
+      "follow": "never",
+      "regeneratedBy": "consumer shell or materializer link to mkConsumerBuckRoot output"
+    },
+    {
+      "id": "buck2-capabilities-cell",
+      "path": ".buck2/capabilities",
+      "kind": "directory",
+      "gcRoot": false,
+      "follow": "never",
+      "regeneratedBy": "scripts/buck2-capability-publish.ts"
+    },
+    {
+      "id": "buck2-capabilities-legacy-projection",
+      "path": ".buck2/capabilities",
+      "kind": "symlink-into-nix-store",
+      "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-buck2-capabilities$",
+      "gcRoot": false,
+      "follow": "never",
+      "regeneratedBy": "scripts/buck2-capability-publish.ts"
+    },
+    {
+      "id": "buck2-capability-generation-roots",
+      "path": ".buck2/capability-roots",
+      "kind": "directory",
+      "gcRoot": false,
+      "follow": "never",
+      "regeneratedBy": "scripts/buck2-capability-publish.ts",
+      "children": {
+        "namePattern": "^[0-9a-f]{64}$",
+        "kind": "symlink-into-nix-store",
+        "targetPattern": "^/nix/store/[0-9a-df-np-sv-z]{32}-buck2-capabilities$",
+        "gcRoot": "indirect"
+      }
+    }
+  ]
+}

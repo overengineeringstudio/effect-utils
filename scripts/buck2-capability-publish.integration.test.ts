@@ -15,12 +15,73 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
+import generatedRoots from '../nix/buck2-products/generated-worktree-roots.json'
 import { projectResolvedCapabilities } from '../packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts'
 import { publishCapabilities } from './buck2-capability-publish.ts'
 
 const nixStore = process.env.NIX_STORE_BIN ?? 'nix-store'
 const temporaryRoots: string[] = []
 
+describe('generated worktree roots contract', () => {
+  it('matches consumer output paths and publisher generation roots without following links', () => {
+    const consumer = readFileSync(
+      new URL('../nix/buck2-products/consumer-root.nix', import.meta.url),
+      'utf8',
+    )
+    const publisher = readFileSync(
+      new URL('./buck2-capability-publish.ts', import.meta.url),
+      'utf8',
+    )
+    expect(generatedRoots.schemaVersion).toBe(1)
+    expect(generatedRoots.producer).toBe('effect-utils/buck2')
+    expect(generatedRoots.roots.map(({ id }) => id)).toEqual([
+      'buck2-rules-projection',
+      'buck2-capabilities-consumer-projection',
+      'buck2-capabilities-cell',
+      'buck2-capabilities-legacy-projection',
+      'buck2-capability-generation-roots',
+    ])
+    const hash = '0'.repeat(32)
+    for (const entry of generatedRoots.roots) {
+      expect(entry.follow).toBe('never')
+      expect(entry.gcRoot).toBe(false)
+      if (entry.regeneratedBy.includes('mkConsumerBuckRoot') === true) {
+        expect(entry.kind).toBe('symlink-into-nix-store')
+        expect(consumer).toContain(`"$out/${entry.path}"`)
+        expect(consumer).toContain(`"$out/${entry.path}/"`)
+        const target = new RegExp(entry.targetPattern!)
+        expect(target.test(`/nix/store/${hash}-fixture-buck2-root/${entry.path}`)).toBe(true)
+        expect(target.test(`/nix/store/${'e'.repeat(32)}-fixture-buck2-root/${entry.path}`)).toBe(
+          false,
+        )
+      } else {
+        expect(entry.regeneratedBy).toBe('scripts/buck2-capability-publish.ts')
+        expect(publisher).toContain(`join(buckDirectory, '${entry.path.slice('.buck2/'.length)}')`)
+      }
+    }
+    const cell = generatedRoots.roots.find(({ id }) => id === 'buck2-capabilities-cell')!
+    expect(cell.path).toBe('.buck2/capabilities')
+    expect(cell.kind).toBe('directory')
+    expect(publisher).toContain('const migrating = existing?.isSymbolicLink() === true')
+    const legacy = generatedRoots.roots.find(
+      ({ id }) => id === 'buck2-capabilities-legacy-projection',
+    )!
+    expect(legacy.path).toBe(cell.path)
+    expect(legacy.kind).toBe('symlink-into-nix-store')
+    const roots = generatedRoots.roots.find(({ id }) => id === 'buck2-capability-generation-roots')!
+    expect(roots.path).toBe('.buck2/capability-roots')
+    expect(roots.kind).toBe('directory')
+    expect(roots.children?.kind).toBe('symlink-into-nix-store')
+    expect(roots.children?.gcRoot).toBe('indirect')
+    expect(publisher).toContain(`const generationPattern = /${roots.children?.namePattern}/u`)
+    expect(publisher).toContain("['--realise', '--add-root', root, '--indirect', profile]")
+    expect(roots.children?.targetPattern).toBe(legacy.targetPattern)
+    const target = new RegExp(legacy.targetPattern!)
+    expect(target.test(`/nix/store/${hash}-buck2-capabilities`)).toBe(true)
+    expect(target.test(`/nix/store/${'e'.repeat(32)}-buck2-capabilities`)).toBe(false)
+    expect(target.test(`/nix/store/${hash}-buck2-capabilities/defs.bzl`)).toBe(false)
+  })
+})
 type PublicationFixture = {
   readonly root: string
   readonly profile: string

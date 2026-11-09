@@ -9,6 +9,11 @@
 
   # Build a materialized standalone Buck root for a consumer checkout.
   mkConsumerBuckRoot = args: import ./buck2-products/consumer-root.nix args;
+  # Producer authority for no-follow classification of generated worktree roots.
+  buck2GeneratedWorktreeRootsFile = ./buck2-products/generated-worktree-roots.json;
+  buck2GeneratedWorktreeRoots = builtins.fromJSON (
+    builtins.readFile ./buck2-products/generated-worktree-roots.json
+  );
   # Consumers extend the same capability projection with named, immutable
   # Nix inputs; producer tool declarations remain owned by buck2-member.json.
   mkBuck2Capabilities =
