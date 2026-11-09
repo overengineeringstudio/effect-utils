@@ -88,6 +88,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -111,17 +112,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -173,8 +179,9 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -219,8 +226,9 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run netlify:stage --show-output --input "stageDir=$NETLIFY_STAGE_DIR"' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run netlify:stage --show-output --input "stageDir=$NETLIFY_STAGE_DIR"'
-      - name: Upload staged Netlify output
-        uses: actions/upload-artifact@v4
+      - # v4.6.2
+        name: Upload staged Netlify output
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: netlify-preview-static
           path: '${{ runner.temp }}/netlify-preview-stage'
@@ -237,9 +245,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-build-storybooks-${{ github.run_attempt }}'
           path: |
@@ -251,6 +260,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code' }}-build-storybooks"
       cancel-in-progress: true

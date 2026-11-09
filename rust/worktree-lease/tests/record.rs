@@ -1,0 +1,125 @@
+use std::{fs, os::unix::fs::PermissionsExt, process::Command, sync::Barrier};
+use worktree_lease::{
+    record::{Holder, Record},
+    Identity, Lease, Refusal,
+};
+
+fn holder() -> Holder {
+    Holder {
+        agent: "agent/test".into(),
+        pid: 1,
+        start_time: "123".into(),
+        host: "test-host".into(),
+        pid_namespace: None,
+    }
+}
+#[test]
+fn publication_and_scoped_renewal() {
+    let root = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(root.path())
+        .status()
+        .unwrap()
+        .success());
+    let identity = Identity::resolve(root.path()).unwrap();
+    assert_eq!(Record::inspect(&identity).unwrap(), None);
+    let oversized = format!("agent/{}", "x".repeat(65_536));
+    for (creator, purpose, ttl) in [
+        ("invalid", "gate", 10),
+        ("agent/test", "invalid", 10),
+        ("agent/test", "gate", 0),
+        ("agent/test", "gate", u64::MAX),
+        (oversized.as_str(), "gate", 10),
+    ] {
+        assert_eq!(
+            Record::create(&identity, creator.into(), purpose.into(), holder(), ttl),
+            Err(Refusal::InvalidInput)
+        );
+    }
+    let exclusive = Lease::open(identity.clone()).unwrap();
+    exclusive.acquire(true, false).unwrap();
+    assert_eq!(
+        Record::create(&identity, "agent/test".into(), "gate".into(), holder(), 10),
+        Err(Refusal::Busy)
+    );
+    drop(exclusive);
+    let barrier = Barrier::new(2);
+    let results = std::thread::scope(|scope| {
+        let create = |creator: &str| {
+            barrier.wait();
+            Record::create(&identity, creator.into(), "gate".into(), holder(), 10)
+        };
+        let first = scope.spawn(move || create("agent/first"));
+        let second = scope.spawn(move || create("agent/second"));
+        [first.join().unwrap(), second.join().unwrap()]
+    });
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    let original = Record::inspect(&identity).unwrap().unwrap();
+    assert!(results
+        .iter()
+        .any(|result| result.as_ref().ok() == Some(&original)));
+    assert_eq!(
+        fs::metadata(identity.admin.join("gate-lease.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    let lease = Lease::open(identity).unwrap();
+    assert_eq!(lease.renew(holder(), 20), Err(Refusal::UnsafeLock));
+    lease.acquire(false, false).unwrap();
+    let mut next_holder = holder();
+    next_holder.agent = "agent/renewed".into();
+    let renewed = lease.renew(next_holder.clone(), 20).unwrap();
+    assert_eq!(renewed.creator_seat, original.creator_seat);
+    assert_eq!(renewed.purpose, original.purpose);
+    assert_eq!(renewed.created_at, original.created_at);
+    assert_eq!(renewed.holder, next_holder);
+    assert!(renewed.expires_at > original.expires_at);
+    assert_eq!(lease.renew(holder(), 0), Err(Refusal::InvalidInput));
+    drop(lease);
+    let identity = Identity::resolve(root.path()).unwrap();
+    assert_eq!(Record::inspect(&identity).unwrap(), Some(renewed));
+    let barrier = Barrier::new(2);
+    let results = std::thread::scope(|threads| {
+        let renew = |ttl| {
+            let scope = Lease::open(identity.clone()).unwrap();
+            scope.acquire(false, false).unwrap();
+            barrier.wait();
+            scope.renew(holder(), ttl).unwrap()
+        };
+        let long = threads.spawn(move || renew(600));
+        let short = threads.spawn(move || renew(1));
+        [long.join().unwrap(), short.join().unwrap()]
+    });
+    let maximum = Record::inspect(&identity).unwrap().unwrap();
+    assert!(results
+        .iter()
+        .all(|record| record.expires_at <= maximum.expires_at));
+    let scope = Lease::open(identity.clone()).unwrap();
+    scope.acquire(false, false).unwrap();
+    assert_eq!(
+        scope.renew(holder(), 1).unwrap().expires_at,
+        maximum.expires_at
+    );
+    let publication = identity.admin.join("gate-lease.publish.lock");
+    fs::remove_file(&publication).unwrap();
+    std::os::unix::fs::symlink(root.path().join("missing"), publication).unwrap();
+    assert_eq!(scope.renew(holder(), 1), Err(Refusal::UnsafeLock));
+    drop(scope);
+    let names: Vec<_> = fs::read_dir(&identity.admin)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert!(!names
+        .iter()
+        .any(|name| name.to_string_lossy().starts_with(".tmp")));
+    let mut unknown = serde_json::to_value(original).unwrap();
+    unknown["unknown"] = serde_json::json!(true);
+    fs::write(identity.admin.join("gate-lease.json"), unknown.to_string()).unwrap();
+    assert_eq!(Record::inspect(&identity), Err(Refusal::UnsafeLock));
+    fs::write(identity.admin.join("gate-lease.json"), b"{broken").unwrap();
+    assert_eq!(Record::inspect(&identity), Err(Refusal::UnsafeLock));
+}

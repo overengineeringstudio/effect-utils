@@ -18,7 +18,6 @@ import {
   prepareCiOtelSpoolStep,
   installNixStep,
   linuxSandboxPrerequisitesStep,
-  linuxX64Runner,
   runDevenvTasksBefore,
   ciWorkflow,
   type CiWorkflowArgs,
@@ -55,7 +54,7 @@ import {
   withNixRealisationTimeouts,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
-import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { withMacosMeasurementDispatch } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { coreCachePostures } from '../../genie/ci-workflow/buck2-cache-proof-policy.ts'
 import {
   withPipelineTelemetry,
@@ -63,8 +62,11 @@ import {
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
+import readerComposition from '../../genie/ci-workflow/reader-composition.json'
+import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 
 const workflowReportFlakeRef =
@@ -87,7 +89,7 @@ const nixRealisationTimingsSeconds = {
     macOS: { p95: 466, max: 747 },
   },
   'Build every published from-source product': { p95: 321, max: 329 },
-  'Build and smoke native and compiled products': {
+  'Smoke native and compiled products': {
     Linux: { p95: 179, max: 280 },
     macOS: { p95: 64, max: 74 },
   },
@@ -200,7 +202,7 @@ const liveNetlifyCiToolsE2EStep = {
     [
       'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
       'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
-      'EDITOR_VIEW_PACKAGES=\'["packages/@overeng/ci-tools"]\' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+      `EDITOR_VIEW_PACKAGES='${JSON.stringify(readerComposition.liveDeploy)}' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "\${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish`,
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -262,7 +264,7 @@ const liveVercelCiToolsE2EStep = {
     [
       'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
       'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
-      'EDITOR_VIEW_PACKAGES=\'["packages/@overeng/ci-tools"]\' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+      `EDITOR_VIEW_PACKAGES='${JSON.stringify(readerComposition.liveDeploy)}' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "\${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish`,
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -343,7 +345,7 @@ const jobTimeoutMinutes = 30
 const longJobTimeoutMinutes = 45
 
 const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
-const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}`
 // Branch secrets are available only through a deliberate collaborator dispatch, never a PR event.
 const notionIntegrationCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
@@ -443,9 +445,18 @@ const playwrightTestRun = (packageName: 'utils' | 'tui-react') =>
     runDevenvTasksBefore(`test:pw:${packageName}`),
   ].join('\n')
 
-/** Build and `--help`-smoke compiled-executable and native products. */
+// Run 41942221850/job 126965644632: cold product build still downloading at
+// 612 s+ (incomplete); no reliable remaining-byte estimate. ceil(1.5 * 612 / 60) = 16 min.
+const compiledProductsBuildStep = {
+  name: 'Build native and compiled products',
+  env: githubTokenEnv(),
+  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --build-only'),
+  'timeout-minutes': 16,
+} as const
+
+/** Reuse realized outputs for smoke checks; the preceding step owns cold builds. */
 const compiledProductsSmokeStep = {
-  name: 'Build and smoke native and compiled products',
+  name: 'Smoke native and compiled products',
   env: githubTokenEnv(),
   run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
 } as const
@@ -465,7 +476,7 @@ const macosNixSubstituterUri = `file://${macosNixSubstituterDir}`
 
 const macosNixSubstituterMountStep = {
   name: 'Mount local Nix substituter cache volume',
-  uses: 'namespacelabs/nscloud-cache-action@v1',
+  ...pinnedAction({ name: 'namespaceCache' }),
   'continue-on-error': true,
   with: { path: macosNixSubstituterDir },
 } as const
@@ -576,6 +587,7 @@ const unitTestJob = ({
             env: githubTokenEnv(),
             run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
           }),
+          buck2TrustedCacheWriterStep(compiledProductsBuildStep),
           buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
           {
             name: 'Build Darwin Nix TypeScript product',
@@ -601,7 +613,7 @@ const unitTestJob = ({
       name: 'Upload retained Vitest collection reports',
       if: '${{ always() }}',
       'continue-on-error': true,
-      uses: 'actions/upload-artifact@v4',
+      ...pinnedAction({ name: 'uploadArtifact' }),
       with: {
         name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
         path: 'tmp/otel-scrape/summaries/*.vitest.json',
@@ -613,7 +625,7 @@ const unitTestJob = ({
       name: 'Upload test resource samples',
       if: '${{ always() }}',
       'continue-on-error': true,
-      uses: 'actions/upload-artifact@v4',
+      ...pinnedAction({ name: 'uploadArtifact' }),
       with: {
         name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
         path: 'tmp/ci-resources/test-resources.json',
@@ -695,7 +707,7 @@ const cheapInertBuckSteps = [
       [
         'set -euo pipefail',
         "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-        `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+        `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|production-helpers\\.bzl|production-helpers\\.bzl\\.genie\\.ts|production-helpers\\.json|production-helpers\\.json\\.genie\\.ts|production-helpers\\.test\\.sh|publish\\.sh|root-projection\\.test\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
         'invalid_sources=()',
         "while IFS= read -r -d '' path; do",
         '  case "/$path/" in',
@@ -741,19 +753,32 @@ const sourceRegressionStep = ({
   name,
   packages,
   tasks,
+  boundedPr = false,
 }: {
   name: string
   packages: readonly string[]
   tasks: readonly string[]
+  boundedPr?: boolean
 }) => ({
   name,
-  env: githubTokenEnv(),
+  env: {
+    ...githubTokenEnv(),
+    ...(boundedPr === true
+      ? {
+          PR_BOUNDED_ENABLED: "${{ github.event_name == 'pull_request' }}",
+          PR_BOUNDED_BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+          PR_BOUNDED_HEAD_SHA: '${{ github.event.pull_request.head.sha }}',
+        }
+      : {}),
+  },
   run: withCiSourceRoot(
     [
       'set -euo pipefail',
       '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
       '  prepared=()',
+      '  bounded_pid=',
       '  restore_views() {',
+      '    if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi',
       '    for package in "${prepared[@]}"; do',
       '      rm -f "$package/node_modules"',
       '      backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"',
@@ -769,7 +794,22 @@ const sourceRegressionStep = ({
       '    prepared+=("$package")',
       '    ln -s "$PWD/$modules" "$package/node_modules"',
       '  done',
-      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')}`,
+      ...(boundedPr === true
+        ? [
+            '  bun test ./genie/ci-scripts/pr-bounded-tests.unit.test.ts',
+            '  if [ "$PR_BOUNDED_ENABLED" = true ]; then',
+            '    bun ./genie/ci-scripts/pr-bounded-tests.ts &',
+            '    bounded_pid=$!',
+            '  fi',
+          ]
+        : []),
+      '  regression_status=0',
+      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')} || regression_status=$?`,
+      '  if [ -n "$bounded_pid" ]; then',
+      '    wait "$bounded_pid" || regression_status=1',
+      '    bounded_pid=',
+      '  fi',
+      '  exit "$regression_status"',
       "'",
     ].join('\n'),
   ),
@@ -850,6 +890,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             name: 'Genie projection and CI workflow regression tests',
             // test:run publishes all views; these suites need only these exact closures.
             packages: ['.', 'packages/@overeng/megarepo'],
+            boundedPr: true,
             tasks: [
               'genie:buck2:test',
               'genie:ci-workflow:test',
@@ -858,6 +899,11 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             ],
           }),
         ),
+        {
+          name: 'Validate stage-zero Cargo lock canonicality offline',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot('nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata'),
+        },
         {
           name: 'CI policy action isolation smoke',
           env: githubTokenEnv(),
@@ -884,6 +930,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           run: withCiSourceRoot(
             [
               'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+              'bash genie/ci-scripts/prefetch-locked-inputs.test.sh',
               'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
               'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
             ].join('\n'),
@@ -896,6 +943,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             [
               'nix shell .#bun --command bun test',
               './genie/ci-scripts/buck2-cache-evidence.unit.test.ts',
+              './genie/ci-scripts/buck2-reapi-classification.unit.test.ts',
               './genie/ci-scripts/buck2-cache-evidence.integration.test.ts',
               './genie/ci-scripts/buck2-action-evidence.integration.test.ts',
               './genie/ci-scripts/buck2-cache-warm99.unit.test.ts',
@@ -944,7 +992,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       {
         name: 'Upload Playwright failure evidence',
         if: 'failure()',
-        uses: 'actions/upload-artifact@v4',
+        ...pinnedAction({ name: 'uploadArtifact' }),
         with: {
           name: 'playwright-test-results-utils-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
           path: 'packages/@overeng/utils/test-results/',
@@ -967,7 +1015,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       {
         name: 'Upload Playwright failure evidence',
         if: 'failure()',
-        uses: 'actions/upload-artifact@v4',
+        ...pinnedAction({ name: 'uploadArtifact' }),
         with: {
           name: 'playwright-test-results-tui-react-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
           path: 'packages/@overeng/tui-react/test-results/',
@@ -1085,7 +1133,7 @@ const downloadCurrentMeasurementArtifactStep = ({
   ({
     name: `Download current measurement artifact: ${artifactName}`,
     ...(producedBy === undefined ? {} : { if: `\${{ needs.${producedBy}.result == 'success' }}` }),
-    uses: 'actions/download-artifact@v4',
+    ...pinnedAction({ name: 'downloadArtifact' }),
     with: {
       name: artifactName,
       path: outputDir,
@@ -1249,10 +1297,12 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+      compiledProductsBuildStep,
       compiledProductsSmokeStep,
     ],
   },
   'consumer-smoke': {
+    needs: ['publish-products'],
     if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -1263,7 +1313,10 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 10,
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    outputs: { 'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}' },
+    outputs: {
+      'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}',
+      'smoked-tree': '${{ steps.consumer-smoke.outputs.smoked-tree }}',
+    },
     steps: [
       checkoutStep(),
       installNixStep({ binaryCaches: [binaryCache] }),
@@ -1274,11 +1327,25 @@ const extraJobs: Record<string, any> = {
       {
         id: 'consumer-smoke',
         name: 'Install an isolated consumer from the candidate checkout',
-        env: githubTokenEnv(),
+        env: {
+          ...githubTokenEnv(),
+          MANIFEST_BASE64_0: '${{ needs.publish-products.outputs.manifest-base64-0 }}',
+          MANIFEST_BASE64_1: '${{ needs.publish-products.outputs.manifest-base64-1 }}',
+          MANIFEST_BASE64_2: '${{ needs.publish-products.outputs.manifest-base64-2 }}',
+          MANIFEST_BASE64_3: '${{ needs.publish-products.outputs.manifest-base64-3 }}',
+        },
         run: [
+          'set -euo pipefail',
+          'if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$MANIFEST_BASE64_0" ]; then',
+          '  source genie/ci-workflow/published-ref-decide.sh',
+          '  decode_manifest > nix/buck2-products/manifest.json',
+          '  git add nix/buck2-products/manifest.json',
+          'fi',
+          'smoked_tree="$(git write-tree)"',
           // Use runner base tools, Nix and the resolved runtime, not the broad root shell.
           'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
           'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
+          'echo "smoked-tree=$smoked_tree" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
       },
     ],
@@ -1293,9 +1360,174 @@ const extraJobs: Record<string, any> = {
       priority: deliveryJobPriority,
     }),
     'timeout-minutes': 5,
-    permissions: { contents: 'read' },
+    permissions: { contents: 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     steps: [checkoutStep(), ...publishedRefSteps],
+  },
+  'published-status': {
+    needs: ['publish-products', 'consumer-smoke', 'promote-published'],
+    if: `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
+    'runs-on': linuxX64Runner,
+    'timeout-minutes': 3,
+    permissions: { statuses: 'write' },
+    defaults: bashShellDefaults,
+    steps: [
+      {
+        name: 'Report published/current status',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+          PUBLISH_RESULT: '${{ needs.publish-products.result }}',
+          SMOKE_RESULT: '${{ needs.consumer-smoke.result }}',
+          PROMOTE_RESULT: '${{ needs.promote-published.result }}',
+        },
+        run: [
+          'set -euo pipefail',
+          'state=error',
+          'if [ "$PUBLISH_RESULT" != success ] || [ "$SMOKE_RESULT" != success ]; then',
+          '  description="Promotion blocked:"',
+          '  if [ "$PUBLISH_RESULT" != success ]; then description+=" publish-products=$PUBLISH_RESULT"; fi',
+          '  if [ "$SMOKE_RESULT" != success ]; then description+=" consumer-smoke=$SMOKE_RESULT"; fi',
+          'elif [ "$PROMOTE_RESULT" = success ]; then',
+          '  state=success',
+          '  description="Published contains this main commit or a later main commit"',
+          'elif [ "$PROMOTE_RESULT" = failure ]; then',
+          '  state=failure',
+          '  description="promote-published failed with green publication and consumer inputs"',
+          'else',
+          '  description="promote-published=$PROMOTE_RESULT with green inputs"',
+          'fi',
+          'gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '  -f state="$state" -f context=published/current \\',
+          '  -f description="${description:0:140}" \\',
+          '  -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+        ].join('\n'),
+      },
+    ],
+  },
+  'publish-manifest-pr': {
+    needs: ['publish-products'],
+    if: `(${trustedSecretCiIf.replace(/^\$\{\{\s*|\s*\}\}$/g, '')}) && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && needs.publish-products.outputs.manifest-writer-tip == 'true'`,
+    'runs-on': linuxX64Runner,
+    'timeout-minutes': 15,
+    permissions: { contents: 'read', 'pull-requests': 'read' },
+    defaults: bashShellDefaults,
+    concurrency: { group: 'buck2-products-manifest-writer', 'cancel-in-progress': false },
+    env: {
+      ...githubTokenEnv(),
+      MANIFEST_BASE64_0: '${{ needs.publish-products.outputs.manifest-base64-0 }}',
+      MANIFEST_BASE64_1: '${{ needs.publish-products.outputs.manifest-base64-1 }}',
+      MANIFEST_BASE64_2: '${{ needs.publish-products.outputs.manifest-base64-2 }}',
+      MANIFEST_BASE64_3: '${{ needs.publish-products.outputs.manifest-base64-3 }}',
+    },
+    steps: [
+      checkoutStep(),
+      installNixStep(),
+      {
+        id: 'manifest-pr-gate',
+        name: 'Decide whether to propose the product manifest',
+        env: githubTokenEnv(),
+        run: withCiSourceRoot(
+          [
+            'set -euo pipefail',
+            'source genie/ci-workflow/manifest-pr-decide.sh',
+            'proposal="${RUNNER_TEMP:?}/buck2-products-manifest.json"',
+            'source genie/ci-workflow/published-ref-decide.sh',
+            'decode_manifest > "$proposal"',
+            'main_manifest="${RUNNER_TEMP:?}/main-products-manifest.json"',
+            'git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"',
+            'git show refs/remotes/origin/main:nix/buck2-products/manifest.json > "$main_manifest"',
+            'pins="$(bootstrap_pins)"',
+            'decision="$(manifest_pr_decide "$main_manifest" "$proposal" "$pins" "$GITHUB_REPOSITORY" "$(date -u +%s)")"',
+            'pr_manifest=',
+            'pr="$(gh pr list --base main --head automation/buck2-products-manifest --state open --json number --jq \'.[0].number // empty\')"',
+            'if [ -n "$pr" ] && [ "$decision" != open ]; then',
+            '  pr_manifest="${RUNNER_TEMP:?}/open-pr-manifest.json"',
+            '  if ! git fetch origin refs/heads/automation/buck2-products-manifest || ! git show FETCH_HEAD:nix/buck2-products/manifest.json > "$pr_manifest"; then',
+            '    : > "$pr_manifest"',
+            '  fi',
+            'fi',
+            'decision="$(manifest_pr_heal_decide "$decision" "$proposal" "$pr_manifest" "$pins")"',
+            'echo "decision=$decision" >> "$GITHUB_OUTPUT"',
+            'echo "::notice::Manifest PR: $decision; skips retain only matching bootstrap proposals"',
+          ].join('\n'),
+        ),
+      },
+      {
+        id: 'publisher-app-config',
+        name: 'Check publisher GitHub App configuration',
+        if: "steps.manifest-pr-gate.outputs.decision == 'open' || steps.manifest-pr-gate.outputs.decision == 'close'",
+        env: {
+          APP_ID: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
+          // Presence only: the key itself stays confined to the token-minting step.
+          APP_PRIVATE_KEY_PRESENT: "${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}",
+        },
+        run: [
+          'if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then',
+          '  echo "enabled=true" >> "$GITHUB_OUTPUT"',
+          'else',
+          '  echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"',
+          '  echo "enabled=false" >> "$GITHUB_OUTPUT"',
+          'fi',
+        ].join('\n'),
+      },
+      {
+        ...githubAppInstallationTokenStep({
+          id: 'publisher-app-token',
+          name: 'Mint publisher GitHub App token',
+          appId: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
+          privateKey: '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
+          owner: 'overengineeringstudio',
+          repositories: ['effect-utils'],
+        }),
+        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+      },
+      {
+        name: 'Propose published product manifest',
+        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+        env: {
+          ...githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
+          GITHUB_TOKEN: '${{ github.token }}',
+        },
+        run: withCiSourceRoot(
+          [
+            'set -euo pipefail',
+            'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
+            'if [ "${{ steps.manifest-pr-gate.outputs.decision }}" = close ]; then',
+            '  source genie/ci-workflow/manifest-pr-decide.sh',
+            '  if [ "$(manifest_pr_writer_decide "$GITHUB_SHA")" != open ]; then exit 0; fi',
+            '  pr="$(gh pr list --base main --head automation/buck2-products-manifest --state open --json number --jq \'.[0].number // empty\')"',
+            `  if [ -n "$pr" ]; then gh pr close "$pr" --comment 'Main already matches the latest run; closing this stale bootstrap proposal.'; fi`,
+            '  exit 0',
+            'fi',
+            'branch=automation/buck2-products-manifest',
+            'git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true',
+            'git switch -C "$branch" refs/remotes/origin/main',
+            'cp "$proposal" nix/buck2-products/manifest.json',
+            'git add nix/buck2-products/manifest.json',
+            `git config user.name 'overeng-nix-publisher[bot]'`,
+            `git config user.email '\${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'`,
+            `git commit -m 'chore(buck2): update product cache manifest'`,
+            'gh auth setup-git',
+            'source genie/ci-workflow/manifest-pr-decide.sh',
+            'decision="$(manifest_pr_writer_decide "$GITHUB_SHA")"',
+            'if [ "$decision" != open ]; then',
+            '  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"',
+            '  exit 0',
+            'fi',
+            'decision="$(manifest_pr_writer_push "$GITHUB_REPOSITORY" "$branch")"',
+            'if [ "$decision" = skip-queued ]; then exit 0; fi',
+            `body='Updates the v2 manifest for bootstrap changes, daily safety, or bootstrap healing. Correctness rests on #2346; published still receives the full manifest on every main push. Skips leave matching bootstrap proposals untouched; stale bootstrap proposals are refreshed or closed if main already matches.'`,
+            'pr="$(gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\')"',
+            'if [ -n "$pr" ]; then',
+            '  gh pr edit "$pr" --body "$body"',
+            'else',
+            '  gh pr create --base main --head "$branch" \\',
+            `    --title 'chore(buck2): update product cache manifest' --body "$body"`,
+            'fi',
+          ].join('\n'),
+        ),
+      },
+    ],
   },
   'publish-products': {
     if: trustedSecretCiIf,
@@ -1310,8 +1542,17 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
     outputs: {
+      'manifest-writer-tip': '${{ steps.manifest-writer-tip.outputs.manifest-writer-tip }}',
       'current-sha':
         '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
+      'manifest-base64-0':
+        '${{ steps.publication-scope.outputs.manifest-base64-0 || steps.product-publication.outputs.manifest-base64-0 }}',
+      'manifest-base64-1':
+        '${{ steps.publication-scope.outputs.manifest-base64-1 || steps.product-publication.outputs.manifest-base64-1 }}',
+      'manifest-base64-2':
+        '${{ steps.publication-scope.outputs.manifest-base64-2 || steps.product-publication.outputs.manifest-base64-2 }}',
+      'manifest-base64-3':
+        '${{ steps.publication-scope.outputs.manifest-base64-3 || steps.product-publication.outputs.manifest-base64-3 }}',
     },
     steps: [
       {
@@ -1359,6 +1600,8 @@ const extraJobs: Record<string, any> = {
           '    -f context=buck2-products/manifest-current -f state=success \\',
           '    -f description="Publisher manifest-only merge is current" \\',
           '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+          '  source genie/ci-workflow/published-ref-decide.sh',
+          '  manifest_outputs nix/buck2-products/manifest.json >> "$GITHUB_OUTPUT"',
           '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
           'fi',
         ].join('\n'),
@@ -1409,6 +1652,11 @@ const extraJobs: Record<string, any> = {
               '  echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"',
               '  exit "$result"',
               'fi',
+              'source genie/ci-workflow/published-ref-decide.sh',
+              'manifest_outputs "$proposal" >> "$GITHUB_OUTPUT"',
+              'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
+              'source genie/ci-workflow/manifest-pr-decide.sh',
+              'pins="$(bootstrap_pins)"',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',
               '  echo "changed=false" >> "$GITHUB_OUTPUT"',
@@ -1416,7 +1664,6 @@ const extraJobs: Record<string, any> = {
               '    -f context=buck2-products/manifest-current -f state=success \\',
               '    -f description="Published product manifest is current" \\',
               '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
-              '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
               'else',
               '  comparison=$?',
               '  if [ "$comparison" -ne 1 ]; then',
@@ -1426,10 +1673,15 @@ const extraJobs: Record<string, any> = {
               '  fi',
               '  echo "changed=true" >> "$GITHUB_OUTPUT"',
               '  stale=$(jq -nr --slurpfile old nix/buck2-products/manifest.json --slurpfile new "$proposal" \'[$old[0].products[], $new[0].products[]] | group_by(.name) | map(select(length != 2 or .[0] != .[1]) | .[0].name) | join(", ")\')',
+              '  state=success',
+              '  description="Stale rows fall back by design: $stale"',
+              '  if [ "$(bootstrap_rows nix/buck2-products/manifest.json "$pins")" != "$(bootstrap_rows "$proposal" "$pins")" ]; then',
+              '    state=failure',
+              '    description="Stale bootstrap products: $stale"',
+              '  fi',
               // GitHub commit-status descriptions are limited to 140 characters.
-              '  description="Stale products: $stale"',
               '  gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
-              '    -f context=buck2-products/manifest-current -f state=failure \\',
+              '    -f context=buck2-products/manifest-current -f state="$state" \\',
               '    -f description="${description:0:140}" \\',
               '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
               '  echo "stale-status=true" >> "$GITHUB_OUTPUT"',
@@ -1439,59 +1691,20 @@ const extraJobs: Record<string, any> = {
         },
       }),
       {
-        id: 'publisher-app-config',
-        name: 'Check publisher GitHub App configuration',
-        if: "steps.product-publication.outputs.changed == 'true'",
-        env: {
-          APP_ID: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
-          // Presence only: the key itself stays confined to the token-minting step.
-          APP_PRIVATE_KEY_PRESENT: "${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}",
-        },
+        id: 'manifest-writer-tip',
+        name: 'Check manifest writer main tip before queueing',
         run: [
-          'if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then',
-          '  echo "enabled=true" >> "$GITHUB_OUTPUT"',
+          'set -euo pipefail',
+          // Avoid queueing a known-superseded writer on a scarce runner. Unknown
+          // tips fail open; the writer retains its final tip guard before mutation.
+          'writer_tip=true',
+          'if main_tip="$(gh api repos/overengineeringstudio/effect-utils/git/ref/heads/main --jq .object.sha)" && [[ "$main_tip" =~ ^[0-9a-f]{40}$ ]]; then',
+          '  if [ "$main_tip" != "$GITHUB_SHA" ]; then writer_tip=false; fi',
           'else',
-          '  echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"',
-          '  echo "enabled=false" >> "$GITHUB_OUTPUT"',
+          '  echo "::notice::Main tip unavailable; leaving the manifest writer enabled"',
           'fi',
+          'echo "manifest-writer-tip=$writer_tip" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
-      },
-      {
-        ...githubAppInstallationTokenStep({
-          id: 'publisher-app-token',
-          name: 'Mint publisher GitHub App token',
-          appId: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
-          privateKey: '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
-          owner: 'overengineeringstudio',
-          repositories: ['effect-utils'],
-        }),
-        if: "steps.publisher-app-config.outputs.enabled == 'true'",
-      },
-      {
-        name: 'Propose published product manifest',
-        if: "steps.publisher-app-config.outputs.enabled == 'true'",
-        env: githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            'proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"',
-            'branch=automation/buck2-products-manifest',
-            'git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true',
-            'git switch -C "$branch"',
-            'cp "$proposal" nix/buck2-products/manifest.json',
-            'git add nix/buck2-products/manifest.json',
-            `git config user.name 'overeng-nix-publisher[bot]'`,
-            `git config user.email '\${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'`,
-            `git commit -m 'chore(buck2): update product cache manifest'`,
-            'gh auth setup-git',
-            'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
-            'if ! gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\' | grep -q .; then',
-            '  gh pr create --base main --head "$branch" \\',
-            `    --title 'chore(buck2): update product cache manifest' \\`,
-            `    --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'`,
-            'fi',
-          ].join('\n'),
-        ),
       },
       {
         name: 'Keep interrupted publication pending',
@@ -1954,7 +2167,7 @@ const extraJobs: Record<string, any> = {
   },
   'test-live-alchemy-github': {
     name: 'alchemy-github/live',
-    if: `\${{ (${sameRepoPullRequestGuard()}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}`,
+    if: `\${{ (${sameRepoPullRequestGuard()}) && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}`,
     environment: 'alchemy-github-live',
     'runs-on': linuxX64Runner,
     'timeout-minutes': 30,
@@ -2146,7 +2359,9 @@ const pipelineTracesJob = {
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
   steps: [
-    { uses: 'actions/checkout@v6' },
+    {
+      ...pinnedAction({ name: 'checkout' }),
+    },
     // Read-only substituter: the protected publisher pushes `ci-tools-compiled`, so the report
     // substitutes it instead of building ~1300 derivations after every PR run.
     installNixStep({ binaryCaches: [binaryCache] }),
@@ -2192,6 +2407,7 @@ const allCiJobs: Record<string, any> = {
           'devenv-modules:test',
           'buck2:capabilities:identity-proof',
           'buck2:capabilities:recovery-test',
+          'test:buck2:library-closure',
         ],
       }),
     }),
@@ -2267,9 +2483,11 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
 
 // Consumer bootstrap must not inherit source-editor setup, and promotion needs no Nix.
 const {
+  'publish-manifest-pr': publishManifestPrJob,
   'consumer-smoke': consumerSmokeJob,
   'promote-published': promotePublishedJob,
   'test-live-alchemy-github': alchemyGithubLiveJob,
+  'published-status': publishedStatusJob,
   ...instrumentedProductCiJobs
 } = productCiJobs
 
@@ -2285,6 +2503,11 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        'measure-macos': {
+          description: 'Measure only macOS tests, read-only and excluded from cache proofs.',
+          type: 'boolean',
+          default: false,
+        },
         run_notion_integration_on_branch: {
           description: 'Opt into credentialed Notion integration tests on this branch.',
           required: false,
@@ -2309,7 +2532,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read', 'id-token': 'write' },
-  jobs: withBuck2CachePostures({
+  jobs: withMacosMeasurementDispatch({
     jobs: {
       ...withNixRealisationTimeouts(
         {
@@ -2326,7 +2549,7 @@ export default ciWorkflow({
                 with: { 'persist-credentials': false },
               },
               {
-                uses: 'actions/setup-node@v4',
+                ...pinnedAction({ name: 'setupNode' }),
                 if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
                 with: { 'node-version': '24' },
               },
@@ -2341,7 +2564,11 @@ export default ciWorkflow({
             ],
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
+          'publish-manifest-pr': publishManifestPrJob!,
           'promote-published': promotePublishedJob!,
+          'published-status': publishedStatusJob!,
+          // API/OTel adapters and Nix's nested ci-tools build execute no checkout-native Buck.
+          // Shared proof policy declares their `none` postures and disabled membership.
           'pipeline-attempt-close': pipelineCloseJob({
             jobs: productCiJobs,
             runsOn: 'ubuntu-latest',
@@ -2350,7 +2577,7 @@ export default ciWorkflow({
         },
         nixRealisationTimingsSeconds,
       ),
-      // Consumer bootstrap policy is managed independently from source-editor setup.
+      // Isolated pnpm consumer: no checkout-native Buck or root-shell cache evidence.
       'consumer-smoke': consumerSmokeJob!,
       // Keep this credentialed resource lane free of legacy artifact-action debt.
       'test-live-alchemy-github': alchemyGithubLiveJob!,

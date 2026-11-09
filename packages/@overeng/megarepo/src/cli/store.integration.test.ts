@@ -11,7 +11,19 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Clock, Effect, Exit, Logger, Option, Schema } from 'effect'
+import {
+  Cause,
+  Clock,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Logger,
+  Option,
+  Schedule,
+  Schema,
+  Tracer,
+} from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -33,7 +45,8 @@ import {
   GcDeletionReceipt,
 } from '../store/store-gc-receipts.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
-import { StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
+import { makeStoreLockLayer, StoreLock } from '../store/store-lock.ts'
+import { captureDeletionIdentity, StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
@@ -50,6 +63,7 @@ import {
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
 import { mrCommand } from './mod.ts'
+import { StoreGcCandidateCounts, StoreGcCandidateOutcome } from './renderers/StoreOutput/schema.ts'
 
 const StoreGcJsonOutput = Schema.Struct({
   results: Schema.Array(
@@ -61,6 +75,7 @@ const StoreGcJsonOutput = Schema.Struct({
       status: Schema.String,
       message: Schema.optional(Schema.String),
       reason: Schema.optional(Schema.String),
+      candidateSha256: Schema.optional(Schema.String),
       buckDaemonsUnreachable: Schema.optional(
         Schema.Array(Schema.Struct({ pid: Schema.Int, reason: Schema.String })),
       ),
@@ -68,6 +83,8 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
   censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
   planSha256: Schema.optional(Schema.String),
+  candidateOutcomes: Schema.optional(Schema.Array(StoreGcCandidateOutcome)),
+  candidateCounts: Schema.optional(StoreGcCandidateCounts),
 })
 
 const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
@@ -166,9 +183,8 @@ describe('mr store JSON subprocess output', () => {
         expect(result.error).toBeUndefined()
         expect(result.status, result.stderr).toBe(0)
         expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
-        expect(result.stderr).toContain(
-          `store enumeration: skipping non-directory entry ${looseEntry}`,
-        )
+        expect(result.stderr).toContain('store enumeration: skipped entries (non-directory=1,')
+        expect(result.stderr).not.toContain('store enumeration: skipping non-directory entry')
         expect(result.stdout).not.toContain('store enumeration:')
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
@@ -226,6 +242,91 @@ describe('mr store status bare repository health', () => {
 })
 
 describe('mr store gc', () => {
+  for (const scenario of ['same', 'dirty', 'other', 'unknown', 'duplicate', 'during'] as const) {
+    it.effect.skipIf(process.platform !== 'linux')(
+      `applies candidates-file safely: ${scenario}`,
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const commits = ['a'.repeat(40), 'b'.repeat(40)]
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'batch', branches: ['main'], commits },
+          ])
+          const paths = commits.map((ref) => worktreePaths[`github.com/acme/batch#${ref}`]!)
+          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const run = (...args: string[]) =>
+            runMrCommand({
+              cwd,
+              env: { MEGAREPO_STORE: storePath },
+              command: ['store', 'gc', '--output', 'json', ...args],
+            })
+          const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
+          const candidates = paths.map((path) => {
+            const row = plan.results.find((result) => result.path === path)
+            expect(row?.candidateSha256).toMatch(/^[0-9a-f]{64}$/)
+            return { path, candidateSha256: row!.candidateSha256! }
+          })
+          if (scenario === 'dirty' || scenario === 'other') {
+            const path =
+              scenario === 'dirty' ? paths[0]! : worktreePaths['github.com/acme/batch#main']!
+            yield* fs.writeFileString(`${path}untracked.txt`, 'changed\n')
+          }
+          const file = `${cwd}candidates.json`
+          const invalid = scenario === 'unknown' || scenario === 'duplicate'
+          const entries = scenario === 'duplicate' ? [candidates[0]!, candidates[0]!] : candidates
+          const contents =
+            scenario === 'unknown' ? entries.map((entry) => ({ ...entry, unknown: true })) : entries
+          yield* fs.writeFileString(file, encodeJson(contents))
+          const applied = yield* Effect.gen(function* () {
+            if (scenario !== 'during') return yield* run('--candidates-file', file)
+            const acquired = yield* Deferred.make<void>()
+            const release = yield* Deferred.make<void>()
+            const holder = yield* Effect.gen(function* () {
+              const lock = yield* StoreLock
+              yield* lock.withWorktreeLock(paths[1]!)(
+                Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Deferred.await(release))),
+              )
+            }).pipe(Effect.provide(makeStoreLockLayer(storePath)), Effect.forkScoped)
+            yield* Deferred.await(acquired)
+            const batch = yield* run('--candidates-file', file).pipe(Effect.forkScoped)
+            // First deletion proves the upfront census finished; the second owner stays locked.
+            yield* fs.exists(paths[0]!).pipe(
+              Effect.repeat({
+                while: (exists) => exists,
+                schedule: Schedule.spaced('10 millis'),
+              }),
+              Effect.timeout('10 seconds'),
+            )
+            yield* fs.writeFileString(`${paths[1]}untracked.txt`, 'changed during batch\n')
+            yield* Deferred.succeed(release, undefined)
+            yield* Fiber.join(holder)
+            return yield* Fiber.join(batch)
+          }).pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
+          expect(applied.exitCode, applied.stdout + applied.failure).toBe(invalid === true ? 1 : 0)
+          if (invalid === true) {
+            for (const path of paths) expect(yield* fs.exists(path)).toBe(true)
+            return
+          }
+          const batch = decodeStoreGcJsonOutput(applied.stdout)
+          const skippedCount = scenario === 'dirty' || scenario === 'during' ? 1 : 0
+          expect(batch.candidateCounts).toEqual({
+            applied: 2 - skippedCount,
+            skipped: skippedCount,
+            failed: 0,
+          })
+          expect(batch.candidateOutcomes).toHaveLength(2)
+          for (const [index, path] of paths.entries()) {
+            const skipped =
+              (scenario === 'dirty' && index === 0) || (scenario === 'during' && index === 1)
+            const outcome = batch.candidateOutcomes?.find((entry) => entry.path === path)
+            if (skipped === true) expect(outcome?._tag).toMatch(/^skipped-(changed|ineligible)$/)
+            else expect(outcome).toEqual({ _tag: 'applied', path })
+            expect(yield* fs.exists(path)).toBe(skipped)
+          }
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+
   it.effect(
     'completes gc and reports foreign files at every enumeration level without deleting them',
     Effect.fnUntraced(
@@ -276,8 +377,12 @@ describe('mr store gc', () => {
             .listWorktrees(parseSourceString('test-owner/foreign-refs')!)
             .pipe(Effect.provide(loggerLayer)),
         ).toEqual([])
+        for (const count of [1, 2, 3]) {
+          expect(warnings).toContain(
+            `store enumeration: skipped entries (non-directory=${count}, foreign-namespace=0, depth-limited=0)`,
+          )
+        }
         for (const path of foreignPaths) {
-          expect(warnings.some((warning) => warning.includes(path))).toBe(true)
           expect((yield* fs.stat(path)).size).toBe(0n)
         }
       },
@@ -954,15 +1059,88 @@ describe('mr store gc', () => {
 })
 
 describe('mr store lease', () => {
+  it.effect.skipIf(process.platform !== 'linux')(
+    'refuses a candidate whose directory identity changes during lease acquisition',
+    (context) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const ref = 'c'.repeat(40)
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'github.com',
+            owner: 'acme',
+            repo: 'lease-recheck',
+            branches: ['main'],
+            commits: [ref],
+          },
+        ])
+        const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
+        const identity = yield* captureDeletionIdentity({ rootPath: storePath, path: candidate })
+        if (identity.at(-1)?._tag === 'OverlayDirectory') {
+          return context.skip(
+            'Overlay directory identity binds only mountId + path; inode replacement cannot be proven',
+          )
+        }
+        const original = yield* fs.stat(candidate)
+        const backup = `${candidate.replace(/\/$/u, '')}-original`
+        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const run = (...args: string[]) =>
+          runMrCommand({
+            cwd,
+            env: { MEGAREPO_STORE: storePath },
+            command: ['store', 'gc', '--output', 'json', ...args],
+          })
+        const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
+        expect(plan.results.find((row) => row.path === candidate)?.candidateSha256).toMatch(
+          /^[0-9a-f]{64}$/,
+        )
+        const leasePath = deletionLeasePath({
+          storeBasePath: storePath,
+          ownerPath: yield* canonicalizeOwnerPath(candidate),
+        })
+        let changed = false
+        const applied = yield* run(
+          '--expected-plan',
+          plan.planSha256!,
+          '--candidate-path',
+          candidate,
+        ).pipe(
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fs,
+            link: (from, to) =>
+              Effect.gen(function* () {
+                // The second plan and owner lock precede this real lease acquisition.
+                if (to === leasePath && changed === false) {
+                  changed = true
+                  yield* fs.rename(candidate, backup)
+                  yield* fs.copy(backup, candidate)
+                }
+                return yield* fs.link(from, to)
+              }),
+          }),
+        )
+        expect(changed).toBe(true)
+        expect(applied.exitCode, applied.stdout + applied.failure).toBe(1)
+        expect(applied.failure).toContain('GC candidate refused: skipped-changed')
+        expect(yield* fs.exists(candidate)).toBe(true)
+        expect((yield* fs.stat(candidate)).ino).not.toEqual(original.ino)
+        expect((yield* fs.stat(backup)).ino).toEqual(original.ino)
+        expect(yield* Git.getCurrentCommit(candidate)).toBe(yield* Git.getCurrentCommit(backup))
+        expect(yield* Git.runCommand({ cwd: candidate, args: ['status', '--porcelain'] })).toBe('')
+        expect(yield* fs.exists(leasePath)).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect(
     'holds the owner lease for the wrapped command and releases it on both outcomes',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
-        const { storePath, worktreePaths } = yield* createStoreFixture([
+        const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
           { host: 'github.com', owner: 'test-owner', repo: 'leased-repo', branches: ['main'] },
         ])
         const owner = worktreePaths['github.com/test-owner/leased-repo#main']!
+        const base = yield* Git.getCurrentCommit(owner)
         const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
         const leasePath = deletionLeasePath({
           storeBasePath: storePath,
@@ -973,11 +1151,71 @@ describe('mr store lease', () => {
         // is covered from before its first write until after it exits.
         const observed = yield* runMrCommand({
           cwd,
-          command: ['store', 'lease', '--owner-path', owner, '--', 'test', '-f', leasePath],
+          command: [
+            'store',
+            'lease',
+            '--owner-path',
+            owner,
+            '--',
+            'sh',
+            '-c',
+            'test -f "$1" && shift && exec "$@"',
+            'lease-test',
+            leasePath,
+            'bun',
+            fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+            'store',
+            'worktree',
+            'new',
+            'test-owner/leased-repo',
+            '--no-fetch',
+            '--ref',
+            'nested',
+            '--base',
+            base,
+            '--porcelain',
+          ],
           env: { MEGAREPO_STORE: storePath },
         })
         expect(observed.exitCode).toBe(0)
         expect(yield* fs.exists(leasePath)).toBe(false)
+        expect(
+          yield* Git.getCurrentBranch(
+            EffectPath.unsafe.absoluteDir(
+              `${storePath}github.com/test-owner/leased-repo/refs/heads/nested/`,
+            ),
+          ),
+        ).toEqual(Option.some('nested'))
+        const external = `${cwd}prospective`
+        const args = ['store', 'lease', '--owner-path', external]
+        const child = [
+          '--',
+          'git',
+          '--git-dir',
+          bareRepoPaths['github.com/test-owner/leased-repo']!,
+          'worktree',
+          'add',
+          '-b',
+          'external',
+          external,
+          'main',
+        ]
+        const missingSource = yield* runMrCommand({
+          cwd,
+          command: [...args, ...child],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        expect(missingSource.exitCode).toBe(1)
+        expect(yield* fs.exists(external)).toBe(false)
+        const explicitSource = yield* runMrCommand({
+          cwd,
+          command: [...args, '--repo-path', owner, ...child],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        expect(explicitSource.exitCode, explicitSource.failure).toBe(0)
+        expect(yield* Git.getCurrentBranch(EffectPath.unsafe.absoluteDir(`${external}/`))).toEqual(
+          Option.some('external'),
+        )
 
         // Wrapping is transparent: the child's own code becomes the command's
         // code (`process.exitCode`, honored by the CLI teardown), never a
@@ -1362,6 +1600,157 @@ describe('store discovery is bounded to the layout', () => {
   // bare, with a full working tree). The `_`-prefix skip is the PRIMARY
   // membership boundary that keeps them out — they are co-tenants, never members.
 
+  for (const walk of ['repos', 'worktrees'] as const) {
+    it.effect(
+      `${walk} aggregates many loose entries without per-entry spans or warnings`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+          ])
+          const directory =
+            walk === 'repos' ? storePath : `${storePath}github.com/acme/widget/refs/heads/`
+          yield* fs.makeDirectory(directory, { recursive: true })
+          for (let i = 0; i < 100; i++) {
+            yield* fs.writeFileString(`${directory}loose-${i}`, 'foreign entry')
+          }
+          const warnings: Array<string> = []
+          const logger = Logger.layer(
+            [
+              Logger.make(({ logLevel, message }) => {
+                if (logLevel === 'Warn') warnings.push(String(message))
+              }),
+            ],
+            { mergeWithExisting: false },
+          )
+          const spans: Array<Tracer.NativeSpan> = []
+          const tracer = Tracer.make({
+            span: (options) => {
+              const span = new Tracer.NativeSpan(options)
+              spans.push(span)
+              return span
+            },
+          })
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+          const source = parseSourceString('acme/widget')!
+          const enumerate =
+            walk === 'repos'
+              ? Effect.asVoid(store.listRepos)
+              : Effect.asVoid(store.listWorktrees(source))
+          for (let run = 0; run < 2; run++) {
+            yield* enumerate.pipe(Effect.provide(logger), Effect.withTracer(tracer))
+          }
+          expect(warnings).toEqual(
+            Array(2).fill(
+              'store enumeration: skipped entries (non-directory=100, foreign-namespace=0, depth-limited=0)',
+            ),
+          )
+          expect(spans.map((span) => span.name)).toEqual(
+            Array(2).fill(`megarepo/store/list-${walk}`),
+          )
+          for (const span of spans) {
+            expect(span.attributes.get('megarepo.store.enumeration.non_directory.count')).toBe(100)
+            const samples = yield* Schema.decodeUnknownEffect(
+              Schema.fromJsonString(Schema.Array(Schema.String)),
+            )(span.attributes.get('megarepo.store.enumeration.non_directory.samples'))
+            expect(samples).toHaveLength(10)
+          }
+          expect(yield* fs.readFileString(`${directory}loose-99`)).toBe('foreign entry')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  it.effect(
+    'admits fixed-depth member layouts without descending into co-tenant payloads during GC',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'real', branches: [] },
+          { host: 'intranet', owner: 'team', repo: 'real', branches: [] },
+        ])
+        const payloads = ['pnpm-store-shared-v1', 'store', 'cache.example']
+        const deep = 'v11/links/@libsql/core/0.17.4/hash/node_modules/deep/payload'
+        for (const root of payloads) {
+          yield* fs.makeDirectory(`${storePath}${root}/${deep}/.bare`, { recursive: true })
+          yield* fs.writeFileString(`${storePath}${root}/${deep}/keep`, 'co-tenant')
+        }
+        yield* fs.writeFileString(`${storePath}loose.log`, 'log')
+        yield* fs.writeFileString(`${storePath}loose.sh`, 'script')
+        const visited: Array<string> = []
+        const trackedFs = {
+          ...fs,
+          readDirectory: (path: string) => {
+            visited.push(path)
+            return fs.readDirectory(path)
+          },
+        }
+        const warnings: Array<string> = []
+        const logger = Logger.layer(
+          [
+            Logger.make(({ logLevel, message }) => {
+              if (logLevel === 'Warn') warnings.push(String(message))
+            }),
+          ],
+          { mergeWithExisting: false },
+        )
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
+          Effect.provideService(FileSystem.FileSystem, trackedFs),
+        )
+        expect(
+          (yield* store.listRepos.pipe(Effect.provide(logger))).map((repo) => repo.relativePath),
+        ).toEqual(['github.com/acme/real/', 'intranet/team/real/'])
+        expect(warnings).toEqual([
+          'store enumeration: skipped entries (non-directory=2, foreign-namespace=3, depth-limited=0)',
+        ])
+        if (process.platform === 'linux') {
+          const outside = yield* fs.makeTempDirectoryScoped()
+          const policy = `${outside}/budgets.json`
+          yield* fs.writeFileString(
+            policy,
+            encodeJson({
+              schemaVersion: 'megarepo.build-output-budgets.v2',
+              host: hostname(),
+              storeRoots: [storePath],
+              quotaBytes: 1024 * 1024,
+              idleRetentionMs: 0,
+              classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
+            }),
+          )
+          const budgetGc = yield* runMrCommand({
+            cwd: storePath,
+            command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+          expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
+        }
+        const gc = yield* runMrCommand({
+          cwd: storePath,
+          command: ['store', 'gc', '--all', '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+        expect(gc.exitCode, gc.failure).toBe(0)
+        for (const root of payloads) {
+          expect(
+            visited
+              .filter((path) => path.startsWith(`${storePath}${root}/`))
+              .every(
+                (path) => path.replace(/\/$/, '').slice(storePath.length).split('/').length <= 2,
+              ),
+          ).toBe(true)
+          expect(yield* fs.readFileString(`${storePath}${root}/${deep}/keep`)).toBe('co-tenant')
+        }
+        expect(yield* fs.readFileString(`${storePath}loose.log`)).toBe('log')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
   it.effect(
     'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
     Effect.fnUntraced(
@@ -1376,8 +1765,7 @@ describe('store discovery is bounded to the layout', () => {
             { recursive: true },
           )
 
-        // Legit member at depth 2 (a bare repo placed directly under a pseudo-host
-        // dir, like the real store's `other/contrib-bare`) — must be INCLUDED.
+        // A marker outside host/owner/repo is not namespace admission evidence.
         yield* mkdirp('other/contrib/.bare')
         // Host namespaces may carry their own metadata; a lone `.state` must not
         // make the host look like a nested store and hide all repos below it.
@@ -1411,11 +1799,108 @@ describe('store discovery is bounded to the layout', () => {
         const repos = (yield* store.listRepos).map((r) => r.relativePath)
 
         expect(repos).toContain('github.com/acme/real/')
-        expect(repos).toContain('other/contrib/')
+        expect(repos).not.toContain('other/contrib/')
         expect(repos.some((p) => p.startsWith('_iso/'))).toBe(false)
         expect(repos.some((p) => p.startsWith('evergreen/'))).toBe(false)
         expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
-        expect(repos).toHaveLength(2)
+        expect(repos).toHaveLength(1)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'skips tool caches, diagnoses unknown foreign trees once, and narrows member repair',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
+        ])
+        const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
+        for (const root of ['pnpm-store-shared-v1/v11/links', 'unknown-cache']) {
+          yield* fs.makeDirectory(`${storePath}${root}/${deep}/node_modules`, { recursive: true })
+        }
+        yield* fs.writeFileString(`${storePath}foreign-file`, 'ignored')
+        // SSH/HTTP hosts need not contain dots; URL namespaces may have subgroups.
+        yield* fs.makeDirectory(`${storePath}intranet/group/subgroup/repo/.bare`, {
+          recursive: true,
+        })
+        yield* fs.makeDirectory(`${storePath}intranet/group/direct/.bare`, { recursive: true })
+        const visited: Array<string> = []
+        const trackedFs = {
+          ...fs,
+          readDirectory: (path: string) => {
+            visited.push(path)
+            return fs.readDirectory(path)
+          },
+        }
+        const warnings: Array<string> = []
+        const loggerLayer = Logger.layer(
+          [
+            Logger.make(({ logLevel, message }) => {
+              if (logLevel === 'Warn') warnings.push(String(message))
+            }),
+          ],
+          { mergeWithExisting: false },
+        )
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
+          Effect.provideService(FileSystem.FileSystem, trackedFs),
+        )
+        const repos = yield* store.listRepos.pipe(Effect.provide(loggerLayer))
+        expect(repos.map((repo) => repo.relativePath)).toEqual([
+          'github.com/acme/real/',
+          'intranet/group/direct/',
+          'intranet/group/subgroup/repo/',
+        ])
+        const expectedWarnings = [
+          'store enumeration: skipped entries (non-directory=1, foreign-namespace=2, depth-limited=0)',
+        ]
+        expect(warnings).toEqual(expectedWarnings)
+        expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
+        expect(visited.some((path) => path.includes('/refs/'))).toBe(false)
+        // Remove the synthetic marker: CLI health checks require actual Git repos.
+        yield* fs.remove(`${storePath}intranet`, { recursive: true })
+        const commit = yield* getWorktreeCommit(worktreePaths['github.com/acme/real#main']!)
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { real: 'acme/real' },
+          lockEntries: {
+            real: { url: 'https://github.com/acme/real', ref: 'main', commit },
+          },
+        })
+        for (const command of [
+          ['store', 'status'],
+          ['store', 'fix', '--dry-run'],
+          ['store', 'fix', 'real', '--dry-run'],
+          ['store', 'fix', 'real'],
+        ]) {
+          visited.length = 0
+          warnings.length = 0
+          const result = yield* runMrCommand({
+            cwd: workspacePath,
+            command,
+            env: { MEGAREPO_STORE: storePath },
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, trackedFs),
+            Effect.provide(loggerLayer),
+          )
+          expect(result.exitCode, result.failure).toBe(0)
+          expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
+          if (command.includes('real') === true) {
+            expect(visited.some((path) => path.includes('unknown-cache'))).toBe(false)
+            expect(warnings).toEqual([])
+          } else {
+            expect(warnings.toSorted()).toEqual(expectedWarnings)
+          }
+        }
+        // Partial discovery in a real namespace must still fail closed.
+        yield* fs.makeDirectory(`${storePath}github.com/unknown/${deep}`, { recursive: true })
+        const exit = yield* Effect.exit(store.listRepos)
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit) === true) {
+          expect(Cause.pretty(exit.cause)).toContain('census exceeded the supported depth')
+        }
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1636,6 +2121,120 @@ describe('mr store ls', () => {
 })
 
 describe('mr store worktree new', () => {
+  for (const localBase of [false, true]) {
+    for (const baseArg of ['base', 'origin/base', 'topic/base']) {
+      it.effect(
+        `creates NEW from ${baseArg} with BASE ${localBase === true ? 'also local' : 'remote only'}`,
+        Effect.fnUntraced(
+          function* () {
+            const fixture = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'test-repo',
+                withRemote: true,
+              },
+            ])
+            const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
+            const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+            const baseBranch = baseArg.replace(/^origin\//u, '')
+            const main = yield* Git.runCommand({ cwd: upstream, args: ['rev-parse', 'main'] })
+            const tree = yield* Git.runCommand({
+              cwd: upstream,
+              args: ['rev-parse', 'main^{tree}'],
+            })
+            const baseCommit = yield* Git.runCommand({
+              cwd: upstream,
+              args: [
+                '-c',
+                'user.name=Test User',
+                '-c',
+                'user.email=test@example.com',
+                'commit-tree',
+                tree,
+                '-p',
+                main,
+                '-m',
+                'Distinct base commit',
+              ],
+            })
+            yield* Git.runCommand({
+              cwd: upstream,
+              args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
+            })
+            yield* Git.fetchBare({ repoPath: bare })
+            if (localBase === true) {
+              yield* Git.runCommand({
+                cwd: bare,
+                args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
+              })
+            }
+            const result = spawnSync(
+              'bun',
+              [
+                fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+                'store',
+                'worktree',
+                'new',
+                'test-owner/test-repo',
+                '--ref',
+                'NEW',
+                '--base',
+                baseArg,
+                '--porcelain',
+              ],
+              {
+                cwd: fixture.storePath,
+                encoding: 'utf8',
+                timeout: 30_000,
+                env: { ...process.env, MEGAREPO_STORE: fixture.storePath, NO_COLOR: '1' },
+              },
+            )
+            expect(result.error).toBeUndefined()
+            expect(result.status, result.stderr).toBe(0)
+            const path = `${fixture.storePath}github.com/test-owner/test-repo/refs/heads/NEW`
+            expect(result.stdout.trim()).toBe(path)
+            expect(yield* Git.runCommand({ cwd: path, args: ['symbolic-ref', 'HEAD'] })).toBe(
+              'refs/heads/NEW',
+            )
+            expect(yield* Git.runCommand({ cwd: path, args: ['rev-parse', 'HEAD'] })).toBe(
+              baseCommit,
+            )
+            expect(
+              yield* Git.runCommand({
+                cwd: upstream,
+                args: ['rev-parse', `refs/heads/${baseBranch}`],
+              }),
+            ).toBe(baseCommit)
+            if (localBase === true) {
+              expect(
+                yield* Git.runCommand({
+                  cwd: bare,
+                  args: ['rev-parse', `refs/heads/${baseBranch}`],
+                }),
+              ).toBe(baseCommit)
+            } else {
+              expect(
+                yield* Git.runCommand({
+                  cwd: bare,
+                  args: ['show-ref', '--verify', `refs/heads/${baseBranch}`],
+                }).pipe(Effect.exit),
+              ).toSatisfy(Exit.isFailure)
+            }
+            const registrations = yield* Git.listWorktrees(bare)
+            expect(
+              registrations
+                .filter((entry) => entry.path.replace(/\/$/u, '') === path)
+                .map((entry) => Option.getOrUndefined(entry.branch)),
+            ).toEqual(['NEW'])
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+  }
+
   for (const remoteState of ['conflicting-tag', 'unavailable'] as const) {
     it.effect(
       `creates an isolated mutable branch without fetching when remote is ${remoteState}`,

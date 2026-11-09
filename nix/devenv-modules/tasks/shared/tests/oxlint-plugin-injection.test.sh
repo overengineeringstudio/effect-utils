@@ -25,7 +25,7 @@ fail() {
 
 assert_contains() {
   local needle="$1" haystack="$2" label="$3"
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" != *"$needle"* ]]; then
     fail "$label" "expected output to contain: $needle" "actual output:" "$haystack"
   fi
   echo "  ok: $label"
@@ -33,7 +33,7 @@ assert_contains() {
 
 assert_not_contains() {
   local needle="$1" haystack="$2" label="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" == *"$needle"* ]]; then
     fail "$label" "expected output NOT to contain: $needle" "actual output:" "$haystack"
   fi
   echo "  ok: $label"

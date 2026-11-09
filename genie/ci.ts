@@ -37,6 +37,8 @@ export const EXTRA_CI_JOB_NAMES = [
   'nix-closure-sizes',
   'source-shape',
   'test-integration-restate',
+  // Queue-only inert Buck contracts are merge-blocking; PRs publish a skipped check.
+  'pr-a-inert-buck',
   // Queue and fallback-main build of every published `.#buck-product-*-from-source` attr,
   // so queued changes cannot break the trusted `publish-products` lane. Merge-blocking.
   'build-products',
@@ -52,8 +54,10 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
   'publish-products',
+  'publish-manifest-pr',
   'consumer-smoke',
   'promote-published',
+  'published-status',
   'main-source-shape',
 ] as const
 

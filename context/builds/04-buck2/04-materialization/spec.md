@@ -271,6 +271,92 @@ is reported only after workers settle and locks are released. Each successful
 view retains its stderr timing record. Snapshot/retention formats, lock ownership,
 explicit recovery, and whole-workspace authority checks are unchanged.
 
+CAS sharing commits at most 128 prepared files per transaction. Full batches
+remain shard-local; undersized final shard tails are combined into bounded
+mixed-shard transactions. Every transaction retains byte/inode checks, repair,
+and readonly restoration under the same flock. Per-view `[editor-view-payload]`
+diagnostics report `casTransactions` acquisitions and `casRepairMs` repair time
+inside the existing `casHeldMs` interval.
+Root/shard admission reuses handles already proved in that same held transaction
+before repeating existence I/O. Only successful admission is cached; absent
+directories are checked again and create-on-demand behavior is unchanged.
+The handle map is discarded after every transaction. First-open canonical-path,
+owner/mode and descriptor identity checks, plus final named-inode/0555 checks
+and readonly restoration, remain mandatory.
+Held-time details separate existing-blob lookup/verified-inode checks, new blob
+installation, candidate linking, and directory opening/readonly restoration;
+ordinary existing-blob byte verification remains in preflight outside the lock.
+`filesLinked` counts actual candidate replacements; `filesAlreadyShared` counts
+same-inode substitutions avoided among processed files (including new blob
+sources); `blobsCreated` counts successful new CAS installs. Source-manifest
+reuse skips sharing entirely. Unclassified control/candidate checks remain in
+the nonnegative `casUnclassifiedMs` residual: held time minus these details and repair.
+`filesReused` counts source-manifest skips; `filesProcessed` counts all other
+files successfully shared or retained by the cross-device fallback.
+
+Finite materialization hashes source files before private copying and looks up
+CAS addresses by digest plus normalized executable mode. A stable source stat
+through the end of the copy lets sharing consume that digest without hashing the
+candidate again; a source race discards the hint. The independent full candidate
+fingerprint comparison against the admitted roots remains mandatory.
+Whole-view preflight runs four files at a time; reuse/copy follows digest/path order in ≤128-file transactions. Hash failures use target-path order.
+Before hash-first linking, full source identity (including ctime) must match preflight; races copy and discard stale digests. Source lstat and identity comparison are charged to `casDirectReuseSourceRecheckMs`.
+Compact proofs replace bigint stats: a Bun 1.4.2 40k-entry heap probe measured 474 bytes/entry (18.96 MB), excluding preallocated paths and bounded hash buffers; not an RSS cap.
+Validated readonly CAS hits link directly into absent candidate paths: exact
+inode recheck, link and post-link proof share the GC exclusion. Blobs missing or
+replaced before the recheck and EXDEV/EMLINK/EPERM use the private-copy path.
+Later substitution also retains that readonly private copy on these link errors,
+counting a copy fallback. A post-link inode mismatch fails publication closed;
+it is an integrity signal, never a recoverable lookup miss.
+`hashFirstMs` sums source hashing time; `hashFirstMissMs` sums hashing time for
+attempts that fall back. `filesHashFirstAttempts`/`filesHashFirstMiss` count initial
+lookups/address misses. Source and blob hashing stay outside CAS flock.
+`filesDirectLinked` is disjoint from `filesReused` and normal sharing outcomes;
+`filesProcessed = filesDirectLinked + normal outcomes`; total is processed plus reused.
+`filesDirectLinkFallback` is a subset of normal outcomes; direct-linked plus fallback equals attempts.
+Direct reuse (including source-manifest reuse) reports five disjoint held-time
+details, aggregated per transaction:
+Shard admission is sequential; a work-conserving pool of at most eight workers takes per-blob chains in stable order inside each unchanged 128-file transaction. Each chain links in digest/path order, so EMLINK capacity selects identical fallbacks at N=1 and N=8.
+Bun's own WorkPool, not libuv's four-worker default: [link dispatch](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/runtime/node/node_fs.zig#L42) →
+[pool sizing](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/threading/work_pool.zig#L11) → [CPU count or UV_THREADPOOL_SIZE/GOMAXPROCS](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/bun.zig#L3603-L3627).
+The bound is eight, capped by pool size. A failed chain stops only itself; its worker takes the next chain. Every worker settles before errors escape or the flock releases.
+Successful results and the first fatal error follow digest/path order, never completion order.
+Source check and link submission have no intervening await; post-link proof follows that file's completion.
+The blob recheck stays in the concurrent per-file task: moving it into sequential admission removes its overlap with in-flight links (Linux A/B: held +10.6%, recheck per file unchanged).
+Link is concurrent-phase wall time minus nonoverlapping synchronous blob/source/post-link segments, including link hooks/errors.
+At N=1 this equals summed per-file link-phase times; at N>1 it measures link wait (wall), not summed latency. Classified details plus nonnegative residual equal held wall time.
+
+| Counter                         | Timed work                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `casDirectReuseDirectoryMs`     | Root/shard admission, including existence checks                                                  |
+| `casDirectReuseBlobRecheckMs`   | Blob lstat, verification key and inode/mode/owner checks                                          |
+| `casDirectReuseSourceRecheckMs` | Source lstat and full identity comparison before hash-first linking                               |
+| `casDirectReuseLinkMs`          | Candidate hardlink attempt and recoverable errors; includes `beforeLink`, excludes source recheck |
+| `casDirectReusePostLinkMs`      | Post-link proof, verified-inode bookkeeping and reuse admission                                   |
+
+These counters include their phase's test hook, record early exits/failures, and
+remain zero when no direct-reuse transaction runs. They exclude source/blob
+hashing, private-copy fallback, dirty-marker repair and directory restoration.
+`casViewLinkMs` continues to measure normal sharing substitution, not direct reuse.
+`casUnclassifiedMs` remains `max(0, casHeldMs - sum(classified held-time details))`,
+including these five counters exactly once. Summed per-file `hashFirstMs` is
+concurrent hash work, not a wall-clock phase or a component of `casHeldMs`.
+`casDirectReuseAdmissionHits`/`casDirectReuseAdmissionCold` count files using admitted / cold-admitted shard handles (first cold also admits root); absence is never cached. Counts are excluded from held-time sums.
+
+CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
+after successful publication. Repeated bootstrap in Unit tests reuses that
+receipt before publication admission only when scope, graph, authority,
+immutable snapshot identities, HEAD and changed input contents still match.
+Inputs include the transitive workspace closure from the publisher's lockfile
+importer/root Buck alias resolver; an unproven closure cannot issue a receipt.
+Publication outputs are excluded independently of ignore rules, and a nonce in
+GitHub-cleaned `RUNNER_TEMP` prevents reuse across jobs. Missing or changed
+evidence falls back to ordinary bootstrap with its 300-second execution cap.
+Scoped chain installers publish normally under their existing 300-second caps
+and scheduling edges, allowing early tests to overlap later publications.
+They neither issue nor consume publication receipts or wait for a global union.
+Developer prerequisites are unchanged.
+
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
@@ -308,6 +394,18 @@ The pre-delete seam is an identity/epoch check, not a reader exclusion: a reader
 arriving after observation need not change either value. Non-blocking exclusive
 reader leases in #1990 must be probed at this seam to close that advisory race;
 a held lease skips the candidate without waiting.
+
+`editor-view.ts budget recount` (task `buck2:editor:budget:recount`) refreshes
+host usage independently of publication admission and its execution deadline.
+It performs no admission or eviction. Census walks run outside the host budget
+lock; reservation reclamation, obsolete footprint collection, and the shared
+measured-usage commit run under that lock. Live or uncertain reservations remain.
+Released roots whose directories still exist stay registered but contribute only
+their remaining bytes; vanished roots without reservations are deregistered.
+The command prints one JSON line containing `usedBytes`, `budgetBytes`, `roots`
+(remaining registrations), `epochBefore`, `epochAfter`, and `durationMs`.
+Each recount advances the ledger epoch; concurrent finish estimates remain
+in the journal rather than being folded into measured usage.
 
 Legacy entries are evaluated independently: a referenced displaced install does
 not preserve unrelated legacy entries. A still-referenced legacy entry is
@@ -438,6 +536,10 @@ first-party package imported outside that declaration, so a new edge cannot
 silently rely on a stale whole-workspace publication. Bootstrap therefore stays
 bounded by source-generator dependencies instead of every workspace package. It
 exists only to make `genie:check` runnable and reports no governed evidence.
+Generator discovery excludes every `.editor-view` artifact directory, including
+copied dependency sources and transient publication/lease controls. It can run
+alongside publication without taking the publication lock because those artifacts
+are outside its source-tree input set; missing actual source directories still fail.
 After freshness and workspace reconciliation, `buck2:editor:publish` and
 `buck2:editor:check` derive the complete root-plus-package set from the canonical
 source registry, regenerate whole-workspace ownership authority, build every

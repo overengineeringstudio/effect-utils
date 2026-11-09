@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   publish-compiled-products:
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +36,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
@@ -52,17 +53,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -77,14 +83,17 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
-        with:
-          name: overeng-effect-utils
-          skipPush: true
       - name: Publish Buck rules, retained shell, native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          XDG_CONFIG_HOME: '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}'
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --push'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && mkdir -p "$XDG_CONFIG_HOME"
+          bash genie/ci-scripts/compiled-products.sh --push
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Remove isolated compile Cachix configuration
+        if: always()
+        run: |
+          config="${RUNNER_TEMP:?}/compile-cachix-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          if [ -d "$config" ]; then rm -r -- "$config"; fi

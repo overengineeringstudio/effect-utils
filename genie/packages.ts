@@ -136,6 +136,12 @@ export const nixOnlyPackages = [
     /** Install bash, zsh and fish hooks for the COMPLETE=<shell> protocol. */
     shellCompletions: true,
   },
+  {
+    name: 'worktree-lease',
+    kind: 'rust-crate',
+    flakeRef: 'worktree-lease',
+    cratePath: 'rust/worktree-lease',
+  },
 ] as const
 
 /** Short name of a nix-only (non-pnpm) package. */

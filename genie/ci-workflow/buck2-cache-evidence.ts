@@ -1,3 +1,4 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { coreProofDisabledJobIds } from './buck2-cache-proof-policy.ts'
 import { ciJobAdmission, withCiAdmissionCleanup } from './shared.ts'
@@ -78,7 +79,7 @@ export const withBuck2CacheEvidence = (
         {
           name: 'Upload Buck2 cache evidence',
           if: '${{ always() }}',
-          uses: 'actions/upload-artifact@v4',
+          ...pinnedAction({ name: 'uploadArtifact' }),
           with: {
             name:
               `buck2-cache-evidence-${jobId}` +
@@ -96,6 +97,23 @@ export const withBuck2CacheEvidence = (
             'retention-days': 90,
           },
         },
+        {
+          name: 'Collect REAPI unavailable classifications',
+          id: 'reapi_unavailable',
+          if: '${{ always() }}',
+          shell: 'bash',
+          run: [
+            'cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0',
+            '[ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0',
+            'nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\\n" "REAPI classification collection unavailable; retaining the native job result"',
+          ].join('\n'),
+        },
+        ...(['admission', 'in_build'] as const).map((phase) => ({
+          name: `reapi-unavailable/${phase}/\${{ steps.reapi_unavailable.outputs.${phase} }}`,
+          if: `\${{ always() && steps.reapi_unavailable.outputs.${phase} != '' }}`,
+          shell: 'bash' as const,
+          run: ':',
+        })),
       )
       return [
         jobId,

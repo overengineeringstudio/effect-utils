@@ -119,7 +119,9 @@ if (match === null) {
   process.exit(1)
 }
 
-const embedded = match[1].replaceAll('${dollar}', '$').trimEnd()
+const threshold = supportFilesSource.match(/export const preparationDiagnosticSeconds = (\d+)/)[1]
+const embedded = match[1].replaceAll('${dollar}', '$')
+  .replaceAll('${preparationDiagnosticSeconds}', threshold).trimEnd()
 const normalizedStandalone = standalone.replace(
   /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
   '#!/usr/bin/env bash\n',
@@ -545,6 +547,11 @@ assert_contains "removed-forever" "$permanent_stdout" "the permanent case names 
 assert_not_contains "without a detected transient Nix failure" "$permanent_stdout" "the permanent case does not fall through to the generic no-signature message"
 assert_contains "Nix flake input subpath still missing after one cache repair" "$permanent_summary" "the step summary carries the specific permanent-path note"
 assert_not_contains "No transient Nix failure signature detected" "$permanent_summary" "the step summary does not carry the generic note"
+
+echo "Test 16: FIFO-controlled preparation watchdog (generated launcher)"
+python_bin="${PYTHON_BIN:-python3}"
+"$python_bin" -c 'import sys; print("Preparation watchdog Python:", sys.executable, sys.version.split()[0], flush=True)'
+"$python_bin" "$ROOT/genie/ci-scripts/preparation-watchdog.test.py"
 
 echo ""
 echo "All nix GC race retry helper tests passed"

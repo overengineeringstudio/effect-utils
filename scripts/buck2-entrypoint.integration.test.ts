@@ -24,6 +24,7 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import * as daemonPostureTests from './buck2-entrypoint.posture.integration.test.ts'
 import {
   type AdmissionProbeEndpoint,
+  admitCacheDaemonCommand,
   createPrivateEvidenceSink,
   directBuckArguments,
   nativeBuildIdArguments,
@@ -234,6 +235,136 @@ afterEach(async () => {
   }
   launchProcesses.clear()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe('native daemon admission diagnostics', () => {
+  const prefix = 'Buck2 cache posture: native daemon admission command failed'
+  const secret = 'authorization: Basic fixture-secret-must-not-escape'
+  for (const subcommand of ['status', 'kill', 'audit'] as const) {
+    for (const failure of ['exit', 'signal', 'timeout'] as const) {
+      it(`reports ${subcommand} ${failure} without native output`, async () => {
+        const root = fixture()
+        const native = join(root, 'native-buck')
+        const calls = join(root, 'native-calls')
+        const deadlineMs = failure === 'timeout' ? 100 : 30000
+        const daemon = JSON.stringify({
+          project_root: realpathSync(root),
+          isolation_dir: 'owned',
+          active_commands: [],
+          process_info: { pid: 12345 },
+          start_time: 'fixture',
+        })
+        writeFileSync(
+          native,
+          `#!${Bun.which('sh')}
+printf '%s\\n' "$*" >> '${calls}'
+if [ "$3" = '${subcommand}' ]; then
+  printf '%s\\n' '${secret}' >&2
+  printf '%s\\n' 'native-stdout-must-not-escape'
+  ${failure === 'exit' ? 'exit 42' : failure === 'signal' ? 'kill -TERM $$' : `exec '${Bun.which('sleep')}' 30`}
+fi
+if [ "$3" = 'status' ]; then
+  ${subcommand === 'kill' ? `printf '%s\\n' '${daemon}'` : ':'}
+fi
+`,
+          { mode: 0o700 },
+        )
+        let caught: unknown
+        try {
+          await admitCacheDaemonCommand({
+            native,
+            root,
+            args: ['--isolation-dir', 'owned', 'build', '//:app'],
+            env: { BUCK2_CI_POSTURE: '1' },
+            deadlineMs,
+            admit: async () => ['build', '//:app'],
+          })
+        } catch (error) {
+          caught = error
+        }
+        expect(caught).toBeInstanceOf(Error)
+        if (!(caught instanceof Error)) throw new Error('expected admission failure')
+        const elapsed = / elapsed_ms=(\d+) /u.exec(caught.message)?.[1]
+        expect(elapsed).toBeDefined()
+        expect(caught.message).toBe(
+          `${prefix} (subcommand=${subcommand} exit=${failure === 'exit' ? '42' : 'none'} signal=${failure === 'exit' ? 'none' : 'SIGTERM'} timed_out=${failure === 'timeout'} spawn_error=${failure === 'timeout' ? 'ETIMEDOUT' : 'none'} elapsed_ms=${elapsed} deadline_ms=${deadlineMs})`,
+        )
+        expect(caught.message).not.toContain(secret)
+        expect(caught.message).not.toContain('native-stdout-must-not-escape')
+        expect(caught.cause).toBeUndefined()
+        expect(readFileSync(calls, 'utf8')).toContain(`--isolation-dir owned ${subcommand}`)
+      })
+    }
+  }
+
+  it('reports an allowlisted spawn errno without its message or path', async () => {
+    const root = fixture()
+    const native = join(root, 'secret-looking-missing-native')
+    let caught: unknown
+    try {
+      await admitCacheDaemonCommand({
+        native,
+        root,
+        args: ['--isolation-dir', 'owned', 'build', '//:app'],
+        env: { BUCK2_CI_POSTURE: '1' },
+        admit: async () => [],
+      })
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(Error)
+    if (!(caught instanceof Error)) throw new Error('expected admission failure')
+    expect(caught.message).toMatch(
+      /^Buck2 cache posture: native daemon admission command failed \(subcommand=status exit=none signal=none timed_out=false spawn_error=ENOENT elapsed_ms=\d+ deadline_ms=30000\)$/u,
+    )
+    expect(caught.message).not.toContain(native)
+    expect(caught.cause).toBeUndefined()
+  })
+
+  it('surfaces only the safe failure message on launcher stderr', async () => {
+    const root = fixture()
+    const native = join(root, 'native-buck')
+    writeFileSync(
+      native,
+      `#!${Bun.which('sh')}
+printf '%s\\n' '${secret}' >&2
+printf '%s\\n' 'native-stdout-must-not-escape'
+exit 42
+`,
+      { mode: 0o700 },
+    )
+    const evidence = join(root, 'evidence.json')
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+      {
+        cwd: root,
+        env: {
+          CI: '1',
+          BUCK2_CI_POSTURE: '1',
+          HOME: root,
+          CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect(code).toBe(1)
+    expect(stdout).toBe('')
+    expect(stderr).toMatch(
+      /^Buck2 cache posture: native daemon admission command failed \(subcommand=status exit=42 signal=none timed_out=false spawn_error=none elapsed_ms=\d+ deadline_ms=30000\)\n$/u,
+    )
+    expect(stderr).not.toContain(secret)
+    expect(stderr).not.toContain('native-stdout-must-not-escape')
+    expect(existsSync(evidence)).toBe(false)
+    expect(existsSync(`${evidence}.admission.jsonl`)).toBe(false)
+  })
 })
 
 describe('native build ID registry', () => {
@@ -1235,7 +1366,7 @@ console.log(JSON.stringify(outcomes));`,
   })
 
   for (const githubActions of ['true', 'false', undefined]) {
-    it(`annotates writer refusal only in GitHub Actions (${githubActions ?? 'unset'})`, async () => {
+    it(`keeps imported writer refusal plain and annotates only the CI launcher (${githubActions ?? 'unset'})`, async () => {
       const root = fixture()
       const childPath = join(root, 'writer-refusal.ts')
       writeFileSync(
@@ -1279,19 +1410,46 @@ for (let attempt = 0; attempt < 2; attempt++) {
       const annotations = stderr
         .split('\n')
         .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::'))
-      expect(annotations).toEqual(
-        githubActions === 'true'
-          ? Array(2).fill(
-              `::error title=Buck2 cache writer refused::REAPI unreachable (${failures.at(-1)}); refusing to publish without remote cache`,
-            )
-          : [],
-      )
+      expect(annotations).toEqual([])
       expect(
         stderr.match(
           /Buck cache writer: REAPI unreachable; refusing to publish without remote cache/gu,
         ),
       ).toHaveLength(2)
       expect(stderr).not.toContain('fixture-secret')
+      const native = join(root, 'native')
+      // Admission checks native status before the writer probe refuses the launch.
+      writeFileSync(native, `#!${process.execPath}\nprocess.exit(0)\n`, { mode: 0o700 })
+      const launcher = Bun.spawn(
+        [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            GITHUB_ACTIONS: githubActions ?? '',
+            BUCK2_CI_POSTURE: '1',
+            BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+            BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://127.0.0.1:1',
+            BUCK2_PUBLIC_CACHE_READ_ONLY: '',
+            BUCK2_NO_REMOTE_CACHE: '',
+            BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
+            BUCK2_CACHE_WRITE_OPTIONAL: '',
+            CI_BUCK2_CACHE_EVIDENCE_PATH: '',
+            XDG_CACHE_HOME: join(root, 'launcher-cache'),
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const launcherStderr = await new Response(launcher.stderr).text()
+      expect(await launcher.exited).toBe(1)
+      expect(launcherStderr).toContain('Buck cache writer: REAPI unreachable; refusing to publish')
+      expect(
+        launcherStderr
+          .split('\n')
+          .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::')),
+      ).toHaveLength(githubActions === 'true' ? 1 : 0)
+      expect(launcherStderr).not.toContain('fixture-secret')
     })
   }
 

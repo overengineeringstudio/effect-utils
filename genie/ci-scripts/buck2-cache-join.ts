@@ -19,6 +19,7 @@ export const jobPlatforms: Readonly<Record<string, Platform>> = {
   'tested-tree': 'linux',
   'default-ref-policy': 'linux',
   quality: 'linux',
+  'pr-buck2-tools': 'linux',
   test: 'linux',
   'test-macos': 'darwin',
   'test-playwright-utils': 'linux',
@@ -128,6 +129,7 @@ export const aggregate = ({
   const writers = observations.flatMap(({ artifact }) =>
     artifact !== undefined &&
     artifact.header.metadata.repo === repo &&
+    artifact.header.metadata.lane === 'main-writer' &&
     completeArtifact({ artifact, writer: true }) === true
       ? [artifact]
       : [],
@@ -201,7 +203,10 @@ export const aggregate = ({
           actionExclusionReason(action.category) === null &&
           (action.executionKind === 1 || action.executionKind === 8) &&
           artifact.header.invocations.some(
-            (invocation) => invocation.buildId === action.buildId && invocation.freshRoot === true,
+            (invocation) =>
+              invocation.buildId === action.buildId &&
+              invocation.freshRoot === true &&
+              invocation.cacheReadPolicy !== 'disabled-by-design',
           )
         ) {
           const key = identity(action)
@@ -242,7 +247,12 @@ const metrics = (report: JoinReport): WindowMetric[] => [
     ] as const
   ).map((key) => ({
     name: `buck2.cache.lane.${key}`,
-    description: `Window ${key.replaceAll('_', ' ')} by cache lane and platform.`,
+    description:
+      key === 'eligible_actions'
+        ? 'Window exact action identities observed by complete trusted main writers before reader invocation start, by cache lane and platform.'
+        : key === 'excluded_actions'
+          ? 'Window policy-excluded actions, deliberate cache-read-disabled controls and nonfresh repetitions by cache lane and platform.'
+          : `Window ${key.replaceAll('_', ' ')} by cache lane and platform.`,
     points: report.counts.map((row) => ({
       labels: { repo: report.repo, lane: row.lane, platform: row.platform },
       value: row[key],

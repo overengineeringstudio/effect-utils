@@ -12,10 +12,13 @@ import {
   type ActionInvocation,
   type ActionRecord,
   type CacheLane,
+  type CacheReadPolicy,
   type CacheUploadError,
   type OutputTinyDigests,
 } from './buck2-action-evidence.ts'
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
+
+export const targetLabelGrammar = /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/
 
 /** Local cache hits are reuse, never avoidable local-execution candidates. */
 export const classifyCacheAction = ({
@@ -27,6 +30,7 @@ export const classifyCacheAction = ({
 }): 'local-action-cache-hit' | 'fresh-local-execution' | 'other' => {
   if (action.executionKind === 10) return 'local-action-cache-hit'
   if (actionExclusionReason(action.category) !== null) return 'other'
+  if (invocation?.cacheReadPolicy === 'disabled-by-design') return 'other'
   if (
     action.commandAction === true &&
     (action.executionKind === 1 || action.executionKind === 8) &&
@@ -232,7 +236,7 @@ const decodeAction = (value: unknown): ActionRecord => {
     ),
     target: nullableText({
       value: field({ value: value, key: 'target' }),
-      grammar: /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
+      grammar: targetLabelGrammar,
     }),
     configuration: nullableText({
       value: field({ value: value, key: 'configuration' }),
@@ -289,6 +293,23 @@ const decodeAction = (value: unknown): ActionRecord => {
     return invalid()
   return action
 }
+export const decodeCacheReadPolicy = (value: unknown): CacheReadPolicy => {
+  if (value === 'enabled' || value === 'disabled-by-design' || value === 'unknown') return value
+  return invalid()
+}
+
+/** Retained native evidence is authoritative and cannot be regenerated.
+ * Remove this reader arm only when no admitted retained artifact lacks cacheReadPolicy.
+ * The reserved capability-identity-dependency context declares
+ * --no-remote-cache and buck2.remote_cache_enabled=false in
+ * scripts/buck2-capability-identity-proof.sh; other contexts stay unknown.
+ * This is the producer's context protocol, not inference from native outcomes.
+ */
+const retainedCacheReadPolicy = (invocation: unknown): CacheReadPolicy =>
+  field({ value: invocation, key: 'context' }) === 'capability-identity-dependency'
+    ? 'disabled-by-design'
+    : 'unknown'
+
 export const decodeActionArtifact = (raw: string): ActionArtifact => {
   // A final newline is part of the wire boundary: a cut-off last JSON row is never trusted.
   if (raw.endsWith('\n') === false) return invalid()
@@ -370,6 +391,10 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
             grammar: /^[a-zA-Z0-9_.-]+$/,
           }) ?? invalid(),
         context: nullableText({ value: field({ value: item, key: 'context' }) }),
+        cacheReadPolicy:
+          field({ value: item, key: 'cacheReadPolicy' }) === undefined
+            ? retainedCacheReadPolicy(item)
+            : decodeCacheReadPolicy(field({ value: item, key: 'cacheReadPolicy' })),
         startedAt: timestamp(field({ value: item, key: 'startedAt' })),
         completedAt: timestamp(field({ value: item, key: 'completedAt' })),
         freshRoot: boolean(field({ value: item, key: 'freshRoot' })),

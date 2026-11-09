@@ -53,6 +53,8 @@ The schedule covers empirical cold-bootstrap/cold-GC authority and deterministic
 
 The Linux `quality` job emits `pr/quality` and shares one checkout, Nix/devenv setup, and diagnostics lifecycle across TypeScript, format/lint/generated freshness, frozen-lockfile validation, bundle smoke, native dependency policy, shell-entry checks, and the CI-runtime/downstream-flake regressions. Each invariant retains a named failing step; the lane stops after a failure, while failure summaries and diagnostic artifacts still run. The job declares reader-only Buck cache posture.
 
+On pull requests only, quality also runs the existing bounded Buck targets of diff-selected packages alongside Genie regression work and joins both outcomes. Selection compares the event's PR head SHA with its merge-base against the event's PR base SHA, not the synthetic merge checkout, and uses `buck2-test-authority.json`; shared/non-package changes or unavailable mappings skip with a notice rather than expanding to all packages. This gives early feedback for body-time missing executables or authorities under the bounded runner's declared-only environment. It does not cover unchanged packages, cross-package effects, native complements or macOS-only behavior; merge-group unit lanes retain full bounded coverage.
+
 The downstream-flake regression copies source inputs, not transient `.editor-view` payloads produced by preceding quality steps. Its disposable checkout therefore excludes the immutable editor backing store along with other build and dependency state.
 
 The inert-admission lane rejects tracked editor backing stores and product payloads under `nix/buck2-products`. Nix recipe admission derives from the same `rootNixSourceGlobs` that declares `//:nix_sources`; adding a Nix source does not require an independent filename exception. Non-Nix product metadata, generators, and contract scripts retain an exact allowlist.
@@ -112,6 +114,16 @@ error 416` as transient: after an HTTP/2 drop, Nix can resume an already complet
 body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
 this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
 retry signature.
+
+`Resolve devenv` overlaps pinned executable resolution with two locked-source
+prefetch workers. They traverse the checkout's `devenv.lock` shell graph,
+including follows edges, but exclude the root executable branch, local inputs,
+and unsupported fetch kinds. GitHub inputs require their locked revision and
+`narHash`; full locked identities are deduplicated before native Nix prefetch.
+All workers and fetch children are joined on completion or termination.
+Prefetch failures retain job-local diagnostics and leave normal shell resolution
+authoritative. This warms only source fetches, not the project evaluation cache,
+and publishes nothing to shared binary caches.
 
 The unit-test step retains non-gating host resource evidence sampled every five
 seconds in `test-resources-*` JSON artifacts. Linux reads `/proc`; Darwin uses

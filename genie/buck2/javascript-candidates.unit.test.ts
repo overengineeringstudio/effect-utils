@@ -1,10 +1,12 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import releaseTargetsProjection from '../../nix/buck2-products/targets.json.genie.ts'
+import type { GenieContext } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { withJavaScriptCandidates } from './javascript-candidates.ts'
 import {
   javaScriptProductPublications,
@@ -214,9 +216,9 @@ describe('JavaScript candidate projection wrapper', () => {
         products,
       }).stringify(genieContext)
       for (const product of products) {
-        const module = output.split(
-          `package_bin_artifact(\n    name = "${product.targetName}-module",\n`,
-        )[1]?.split('\n)\n')[0]
+        const module = output
+          .split(`package_bin_artifact(\n    name = "${product.targetName}-module",\n`)[1]
+          ?.split('\n)\n')[0]
         expect(module).toContain(
           `package_tree = "${product.packageTree ?? ':product_package_tree'}"`,
         )
@@ -234,9 +236,9 @@ describe('JavaScript candidate projection wrapper', () => {
 
   it('keeps baseline portable layout names without normalizing action identities and rejects collisions', () => {
     const rules = readFileSync('buck2/package_tools.bzl', 'utf8')
-    const names = rules.split('def _closure_root_name(artifact):')[1]?.split(
-      'def _package_bundle_impl(ctx):',
-    )[0]
+    const names = rules
+      .split('def _closure_root_name(artifact):')[1]
+      ?.split('def _package_bundle_impl(ctx):')[0]
     expect(names).toContain('if name == "product_package_tree":\n        name = "package_tree"')
     expect(names).toContain('elif name.startswith("product_view_")')
     expect(rules).toContain('if closure_name in closure_names:')
@@ -277,4 +279,40 @@ describe('JavaScript candidate projection wrapper', () => {
     expect(output).toContain('    name = "genie-candidate-module",')
     expect(output).toContain('    tree_shaking = False,')
   })
+})
+
+// Run in the ordinary PR candidate suite, without Nix, credentials or builds.
+it('the publisher accepts every generated cache target, including scoped recipes', () => {
+  const root = fileURLToPath(new URL('../../', import.meta.url))
+  const inventory = JSON.parse(
+    readFileSync(`${root}/nix/buck2-products/cache-targets.json`, 'utf8'),
+  )
+  const plan = JSON.parse(
+    execFileSync('bash', ['nix/buck2-products/publish.sh', '--dry-run'], {
+      cwd: root,
+      env: { ...process.env, BUCK2_CACHE_PRODUCTS_REPO: root },
+      encoding: 'utf8',
+    }),
+  )
+  expect(plan.schema).toBe('effect-utils/buck-cache-publication-plan/v1')
+  expect(plan.products).toEqual(inventory.products)
+  expect(
+    plan.products.filter((product: { sourcePaths?: string[] }) => product.sourcePaths),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'oxc-config' }),
+      expect.objectContaining({ name: 'oxc-config-stylex-upstream-plugin' }),
+      ...['ci-tools', 'gh-ci-utils', 'notion-cli', 'notion-db-runtime', 'tui-stories'].map((name) =>
+        expect.objectContaining({
+          name,
+          sourcePaths: expect.arrayContaining([
+            'package.json',
+            'pnpm-workspace.yaml',
+            'patches',
+            'packages/@overeng/utils-dev',
+          ]),
+        }),
+      ),
+    ]),
+  )
 })

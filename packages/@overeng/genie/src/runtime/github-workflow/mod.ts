@@ -216,6 +216,7 @@ type Service = {
 }
 
 type StepBase = {
+  $comment?: string
   id?: string
   name?: string
   if?: string

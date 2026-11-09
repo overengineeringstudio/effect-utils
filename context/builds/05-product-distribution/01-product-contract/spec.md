@@ -86,12 +86,103 @@ or differently typed exports fail admission. Each consumer proves its declared
 host harness. The payload uses USTAR name/prefix fields without truncation;
 paths that cannot fit their 100/155-byte UTF-8 limits fail before artifact output.
 
+### Rust Compilation-Input Libraries
+
+`buck-rust-library-product/v1` is a sibling exact schema, not an executable runtime (BUILD.DIST.PRODUCT-R01–R04):
+
+```text
+{
+  schema: "buck-rust-library-product/v1", kind: "library", name,
+  payload: { file: "artifact.tar", format: "tar", sizeBytes,
+             digest: { algorithm: "sha256", sri } },
+  platform: { os, architecture, abi },
+  library: {
+    language: "rust", crateName, primary: "lib/lib<crateName>.rlib",
+    dependencyDirectory: "lib", targetTriple, hostTriple, panicStrategy,
+    rustc: { compilerStorePath, verboseVersion, sysroot, darwinWrapperEvidence },
+    artifacts: [{ path, role, sha256 }]
+  },
+  semanticProvenance: { target, recipe, toolchain }
+}
+```
+
+All objects reject missing or unknown fields. `name` matches
+`[A-Za-z0-9._+-]+`; provenance values are nonempty strings. `sizeBytes` is a
+positive integer; `sri` is canonical padded RFC 4648 SHA-256 SRI. `crateName`
+matches `[A-Za-z_][A-Za-z0-9_]*` and records the resolved Rust library target
+name, not the product/package name. `panicStrategy` is `unwind` or `abort`.
+The target platform is `x86_64` or `aarch64`, with `(os, abi)` equal to
+`(linux, glibc)`, `(linux, musl)`, or `(darwin, darwin)`. The corresponding
+target triple suffix is `unknown-linux-gnu`, `unknown-linux-musl`, or
+`apple-darwin`. `hostTriple` independently uses one of those architectures
+and suffixes; host proc macros are not target libraries.
+
+Inventory paths are normalized safe relative paths directly under `lib/`,
+without empty, dot, parent, backslash, or control-character components. Paths
+are unique and strictly sorted by UTF-8 bytes. Each entry has exactly `path`,
+`role`, and lowercase 64-hex `sha256`. Roles pair with extensions: `rlib`
+with `.rlib`, `rmeta` with `.rmeta`, and `proc-macro` with `.so` on Linux
+hosts or `.dylib` on Darwin hosts. The primary occurs exactly once with role
+`rlib`; no second hashed primary alias is installed. Inventory names retain
+producer disambiguators. The archive contains exactly the declared artifact
+files (and their directory), preserving their bytes; native `.a`/`.o`,
+build-script trees, and copied compiler sysroots are outside this schema.
+
+`build_product(artifact = ...)` dispatches the tagged product provider. Library packaging consumes the adapter's normalized directory and compiler metadata, hashes every file, and reuses executable packaging's deterministic USTAR encoding without executable runtime inspection.
+
+`compilerStorePath` is the sole authoritative compiler build identity: the
+underlying rustc output store path, compared byte-for-byte with the consumer's
+declared compiler output, never the Darwin wrapper. Both it and `sysroot`
+are canonical absolute `/nix/store/<32-character Nix hash>-<output name>`
+paths without subpaths. `sysroot` is captured from `rustc --print sysroot`,
+resolved to its canonical path with the command's trailing newline removed.
+`verboseVersion` captures the entire UTF-8 `rustc -vV` output: normalize CRLF
+to LF, remove trailing LF bytes, then append exactly one LF; retain all
+lines, including exactly one rustc banner, release, commit-hash, commit-date,
+host, and LLVM version. Its host equals `hostTriple`. Consumers independently
+capture and normalize the declared underlying compiler's evidence and compare
+both `verboseVersion` and canonical `sysroot` exactly. These are consistency
+evidence, not alternate identities or undefined content/closure hashes.
+`darwinWrapperEvidence` is required: empty when absent, otherwise an absolute
+store `bin/rustc` path on Darwin. It is provenance only and never compared
+for compiler equality. Mismatches fail; no release-only or alternate-compiler
+fallback is permitted.
+The `package-library` command rejects malformed compiler evidence before emitting
+the archive descriptor; it shares deterministic USTAR encoding with executable packaging.
+
+Payload inspection independently verifies inventory, host macro architecture,
+target library/compiler and effective panic compatibility; schema acceptance alone
+does not prove usability. The compatibility probe bypasses producer compiler-flag
+injection while retaining the declared Darwin wrapper's SDK, native-library
+linking, and signing setup. If target-cpu, ABI-changing target features, or custom
+target specifications are admitted, their effective values must be bound into
+a versioned descriptor before acceptance. The library schema has no `entrypoints`
+or `runtime` fields; executable v1 bytes/readers remain unchanged and decode to the executable arm.
+
+An external consumer uses the checked compiler package and ordinary system
+linker, not Cargo or a producer-specific extern manifest:
+
+```sh
+rustc --edition=2024 consumer.rs \
+  --extern example_library=${library}/lib/libexample_library.rlib \
+  -L dependency=${library}/lib -o consumer
+./consumer
+```
+
+The primary crate name comes from the Cargo library target; transitive generic
+code, reexports and host derive macros resolve from the one installed dependency
+directory. Consumers must not mix closures or substitute a different compiler.
+The unchanged recipe requires an unwind-compatible producer; an abort product
+requires an explicitly compatible consumer invocation.
+
 ## Namespace and Compatibility
 
-`buck-build-product/v1` is the existing repository-owned schema identifier,
-not a registered URI scheme. The schema string is exact and case-sensitive;
-unknown versions fail closed. `runtime.kind` selects a runtime contract, not a
-transport or trust tier. Adding an unsupported kind never permits fallback.
+`buck-build-product/v1` and `buck-rust-library-product/v1` are repository-owned
+schema identifiers, not registered URI schemes. Strings are exact and
+case-sensitive; unknown versions fail closed. `schema` selects wire format;
+library `kind` selects payload usability and must be `library`. A mismatched
+schema/kind pair is invalid. Executable `runtime.kind` selects its runtime
+contract, not a transport or trust tier. Unsupported kinds never permit fallback.
 The sample above is interoperable only with an importer admitting its runtime;
 unknown fields, absolute entrypoints, and `../` entrypoints are invalid.
 

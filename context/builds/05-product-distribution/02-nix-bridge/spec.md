@@ -47,6 +47,111 @@ products use the stricter substitution contract below.
 
 Every failed step terminates import. No step invokes Buck or a package manager.
 
+### Rust library realization
+
+`rust-library` is the inventory recipe kind; descriptor `kind: library` selects
+`buck-rust-library-product/v1`, not an executable runtime inspector. Source and
+published imports share exact descriptor validation, archive safety and digest
+checks. The entire closure installs flat under `lib/`; its exact inventory and
+each artifact SHA-256 must match before installation and after full fixup.
+Library realization explicitly sets `dontStrip = true` and never auto-patches
+ELF files. The portable payload store-reference rejection remains enabled.
+
+Import compares the producer's underlying compiler store path, full `rustc -vV`
+evidence, sysroot, target triple and panic strategy against the consumer's
+declared toolchain. A mismatch prints both identities and fails without a
+compiler fallback. Passthrough metadata exposes the checked compiler, target,
+panic strategy and descriptor path. The product's `libraryChecks` passthrough
+uses the exact external recipe below against the installed content-address-core
+library and a realized transitive generic/reexport/derive fixture. Its `.mismatch`
+requires a mismatched import to fail with the compiler diagnostic and both
+identities. Executables retain `--help`.
+
+### External Rust library consumers
+
+```text
+consumer Cargo + generated BUCK + offline archives + shared pkgs
+  -> mkBuckProductFromSource { importNative = true; product.kind = "rust-library"; }
+  -> checked installed library
+  -> plain rustc consumer
+```
+
+External flakes follow effect-utils' nixpkgs input and share their imported
+`pkgs` between producer capabilities, source builder, importer and consumer.
+`lib.mkConsumerBuckRoot` supplies the rules/capability root;
+`lib.mkBuckProductFromSource { inherit pkgs; }` accepts a caller-owned product
+record and staged `repositorySource`, including the consumer's Cargo workspace,
+projected BUCK files and effect-utils path dependency sources. The consumer's
+Cargo projector selects `buildProducts: [{ kind: 'library', name: 'example-library' }]`;
+`lib.mkBuck2CargoArchives` receives the consumer's generated third-party BUCK
+files (and pinned `gitSources` where declared). No Cargo build fallback exists.
+
+Foreign path crates are instantiated by the consumer's Cargo projection against
+its own third-party graph. Their source packages need only `cargo-source/<file>`
+exports, not the producer's compile, static-check or product rules. A library's
+`BUCK.foreign.bzl.genie.ts` selects `foreignSourceExportsOnly: true` in the same
+Cargo package projector; Genie emits `BUCK.foreign.bzl` with exactly the ordinary
+projection's source exports and only the standard `@prelude` native load.
+The ordinary producer `BUCK` remains unchanged.
+
+Stage each foreign crate's sources and copy its generated `BUCK.foreign.bzl` to
+`BUCK` at that crate's repository-relative path in the consumer source tree.
+Do not retain the producer `BUCK` there: its root-local rule loads need not
+exist in `mkConsumerBuckRoot`. Declare the complete foreign path closure in
+`foreign-packages.json`; each admitted library in that closure needs its own
+generated export projection. `rust/work-storage` supplies this projection and
+has no further path-crate dependencies. Cross-package build-script resources
+declared in `[package.metadata.buck2].buildScriptInputs` keep their original
+labels when the consumer instantiates a foreign crate. Their resource package
+provides `BUCK.foreign.bzl.genie.ts` using the same Cargo projector with
+`foreignBuildScriptExportsOnly: true`. It derives public `native.export_file`
+targets from workspace Cargo metadata, rejecting conflicting labels or sources
+outside the resource package; it loads only standard `@prelude` rules.
+Stage the resource files and copy this companion to that package's `BUCK`, too.
+For `rust/work-storage`, stage `packages/@overeng/work-storage`'s
+`protocol.schema.json`, `fixtures/conformance.json` and resource companion.
+Its ordinary TypeScript `BUCK` is neither required nor staged. Other cross-package
+compile-time inputs still require their declared source providers.
+
+The plain consumer derivation declares exactly:
+
+```nix
+nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc ];
+buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+  pkgs.apple-sdk pkgs.libiconv
+];
+```
+
+It uses the product contract's flat `--extern`/`-L dependency` invocation,
+without an unwrapped compiler, explicit linker flag or extra dependency externs.
+`compiled-products.sh --build-only` builds this acceptance on Linux and Darwin.
+After source realization it imports the known archive and descriptor through
+`lib.mkBuck2ArtifactImport`, checks descriptor/inventory/compiler parity, runs
+the same consumer, and rejects a descriptor changed without updating its digest.
+This two-stage local publication-interface test requires no import-from-derivation.
+The subsequent smoke phase does not repeat this realized roundtrip.
+Native/library publication uses source products plus Cachix substitution;
+`publish.sh`'s manifest/descriptor publication supports JavaScript/package rows,
+not native/library rows or a hosted library descriptor registry.
+
+### Library and tool composition
+
+`lib.mkBuck2ProductComposition { inherit pkgs; } { name = "library-with-tools";
+products = [ library tool ]; }` combines independently validated imports without
+Cargo or a rebuild. Descriptor paths and the library's compiler, target and panic
+strategy remain available in passthrough metadata. Composition revalidates every
+descriptor at build time, requires a common platform, and requires all libraries
+to share compiler, sysroot, verbose compiler identity, host/target and panic
+strategy. Native Rust executables must have exactly the library's recorded
+`semanticProvenance.toolchain`; other executable adapters require platform parity.
+Before copying, sorted destination inventories reject duplicate paths and
+file/directory conflicts, naming both owners. Full trees retain their flat `lib/`
+and `bin/` layout, modes, symlinks and artifact bytes; stripping is disabled,
+library descriptor hashes and every copied file's hash are checked.
+`content-address-core.compositionChecks` compiles and runs the unchanged external
+rustc recipe against the combined output and runs its `bin/otelite --help`.
+The compiled-products CI build runs this check on Linux and Darwin.
+
 ## Cache-backed Product Bridge
 
 The generated product inventory is the source of truth for product name,
@@ -56,6 +161,16 @@ against fixed-output archives derived from the reviewed digest/size sidecar and
 projects those archives through `nix_store.root`; Buck verifies each projected
 archive before extraction. The derivation emits the artifact plus
 `effect-utils/buck-product-provenance/v1`.
+
+Sandbox recipes accept a Buck2 launcher with `passthru.native` or a plain native
+Buck2 package. The repository uses `buck2.native`, the pinned native binary and
+Prelude, without the developer launcher. Their `.buckconfig.local` explicitly selects
+`buck2.file_watcher = fs_hash_crawler`, `buck2.remote_cache_enabled = false`,
+and `buck2.allow_cache_uploads = false`; offline admission does not probe REAPI.
+`checks.<system>.buck2-launcher-independence` evaluates every inventory recipe:
+two synthetic launcher edits preserve product drvPaths and recipe identities,
+while a native-derivation change changes both. The eval-only
+`nix:buck2-launcher-independence:check` task belongs to `nix:check:quick`.
 
 Npm archive acquisition has one digest authority. Package manifests select
 versions, the pnpm lock records registry URLs and integrity, and the generated
@@ -80,6 +195,55 @@ publication-scope condition as publication, but no Cachix write token. The
 publishing Cachix action and its push hook are enabled only after preparation.
 Cold substitution and input builds use the job timeout; the unchanged 32-minute
 publication step budget covers the product builds and pushes.
+
+The Native and Compiled Products workflow owns compile warming in its
+`publish-compiled-products` job, on ephemeral Namespace Linux x86_64 and Darwin
+arm64 runners. Publication requires a `push` or `workflow_dispatch` on
+`refs/heads/main` in the canonical repository; PRs and merge groups cannot push.
+Neither consumer smoke nor promotion depends on this workflow. Anonymous
+substitution is configured through the Nix installer, with no Cachix action or
+automatic uploader. Only the explicit push step receives the existing
+cache-scoped token in its environment; no publisher App token or additional
+scope is needed. Cachix configuration is isolated under runner temporary
+storage and removed by an `always()` cleanup step; `cachix authtoken` is never
+invoked. The workflow serializes main publications without cancellation and
+retains its 120-minute job bound and strict Linux Nix sandboxing.
+`genie/ci-scripts/publish-compile-products.sh` enumerates all cache, compiled and
+native inventory rows, skipping package attributes not exported for the runner's
+current Nix system before realization. It explicitly realizes each unstamped `.compileProduct`
+(via `.buck2Product.compileProduct` for native/compiled imports), then pushes
+that exact output to `overeng-effect-utils` on every run, independently of
+immutable artifact pins. Nix substitutes an existing compile output or builds
+it when absent, even if the revision-stamped artifact was already substituted.
+Each explicit push includes that output's runtime closure by Cachix default;
+these are this repository's public build inputs, not unrelated store paths.
+Fleet-runner workflow tests forbid authenticated Cachix actions, automatic
+post-build hooks, store watchers and upload daemons.
+Realization and push failures emit product-specific warning annotations and
+continue. An unexpected warming-script failure also warns after successful
+final-product publication; existing final-product push failures remain fatal.
+No compile manifest rows, Actions artifacts or Actions cache are involved.
+
+There are 52 inventory rows (45 cache, one compiled, six native); each supported
+row adds one explicit realization and push. On cache hits, the additional
+main-only work is Nix evaluation/substitution and Cachix closure checks, not
+recompilation. Cold warming can cost roughly the complete from-source budget
+across all products (about 17 minutes per runner, an estimate rather than a
+benchmark). Both platforms warm independently on ephemeral runners, not shared
+fleet capacity.
+Compile outputs are intentionally unpinned, replaceable substitutes.
+[Cachix GC](https://docs.cachix.org/garbage-collection) evicts unpinned paths by
+last access (or creation) when storage reaches its limit; the public cache API
+does not expose this cache's quota or GC settings. Long-term availability is
+not guaranteed. If retention becomes necessary, a proposed policy is one rolling
+pin per product/platform, retaining the last three revisions or seven days via
+[bounded pin retention](https://docs.cachix.org/pins), not immutable digest pins.
+That retention policy is not implemented.
+
+Native and compiled product CI separately builds or substitutes the complete
+product outputs before smoke checks. This preparation does not force producer
+inputs when outputs are substitutable, smoke executables, or publish; it records
+duration, built derivations, substituted paths, and exit status, including on failure.
 
 Cache-native rows contain exact `name`, `version`, `sha256`, `size`,
 `storePath`, `artifactUrl`, and `provenance` fields. The Nix loader validates
@@ -131,33 +295,110 @@ without rewriting or bundling them into every dependent package.
 ### Consumer pin eligibility
 
 ```text
-trusted main push -> publish-products -> same-SHA manifest-current output --+
-                  -> consumer-smoke  -> successful consumer SHA output ---+
-                                                                         |
-                                           promote-published <------------+
-                                             -> fast-forward published
-stale manifest -> publisher manifest PR -> main push
+trusted main push X -> publish-products -> proposal manifest + SHA X
+                                            |
+                                            v
+                         consumer-smoke(X + proposal) -> smoked tree
+                                            |
+                                    promote-published -> P -> fast-forward published
+stale main manifest -> publisher manifest PR -> main push
 ```
 
 Consumers requiring an always-eligible product manifest track `ref published`
 rather than `ref main`. `main` may be temporarily non-current after a
 product-input merge while its publisher manifest proposal is pending.
-`refs/heads/published` only fast-forwards to main commits whose
-`buck2-products/manifest-current` status and consumer smoke both succeeded for
-that exact SHA. The `promote-published` job declares
-`needs: [publish-products, consumer-smoke]`; it performs no Nix evaluation or
-build. Before advancing the ref, it checks the publisher's manifest-current
-output identifies its own candidate SHA and the successful consumer job's SHA
-output identifies that same SHA. A status from another commit cannot satisfy
-either gate.
+
+Cached eligibility requires the row's `recipeIdentity` to equal SHA-256 of the
+current **unstamped compile derivation's drvPath**, plus evidence pinned by store
+path and SHA-256. This binds source, build recipe and toolchain, not just the
+source fileset. Missing evidence/identity or a mismatch selects from-source,
+without reading producer outputs. JavaScript consumers retain their public
+product shape and use the source import validator. Existing inventory, version,
+provenance and artifact-binding checks remain; `assertDeclaredProducts` and
+`assertFullyPublished` check inventory coverage, not cache eligibility.
+
+Unscoped recipes separate compilation from revision stamping. Compilation emits
+payload, descriptor and source provenance without `producerCommit`; a small
+stamp derivation adds the revision-bound provenance. It copies regular files
+with `cp --reflink=auto` because publisher/Cachix artifacts cannot be symlinks.
+Scoped recipes retain their existing derivation. Manifest-only changes and
+different commits with identical trees do not change compile identity.
+
+`cache.nix` declares the sole exception, with its reason: `genie` must check the
+generated inventory defining its own recipe using an earlier published generator.
+Tests assert that the bootstrap pin set is exactly `genie`.
+
+The publisher builds tiny `effect-utils/buck-product-source-evidence/v1` JSON
+binding `recipeIdentity`, `target`, and the built payload's `productDigest`,
+separately pinned by SHA-256 without a revision stamp. Rows carry
+`sourceEvidenceStorePath` and `sourceEvidenceSha256`. The cached artifact's build
+fetches evidence by hash from its store-derived URL and verifies every binding
+before copying payload bytes. Relabeled stale evidence fails loudly. No IFD is
+used. Byte-identical payload pins and identical recipe/payload evidence pins
+remain reusable with their original producer provenance.
+
+Until per-product scoping lands, main mostly rebuilds from source, or substitutes
+from Cachix after the publish run for that SHA; development shells incur the same
+cost. The compile/stamp split requires a one-time rebuild of all products. Each
+recipe/payload identity adds a tiny evidence pin and evidence fetch.
+
+`refs/heads/published` points to a publisher commit P with parents
+`[previous published tip T, main candidate X]` and trailer `Published-From: X`.
+Its tree is X's tree with only `nix/buck2-products/manifest.json` replaced by
+the exact proposal generated while publishing X's products. An unchanged
+manifest still produces this two-parent commit. The `promote-published` job
+declares `needs: [publish-products, consumer-smoke]`. Both prerequisite jobs
+must succeed and emit X as their `current-sha`.
+The proposal travels as base64 in four job outputs of at most 100,000 characters
+each, staying below GitHub's total output and Linux's per-environment-string
+limits. Both producer paths reject more than 400,000 characters; promotion
+validates the charset before decoding. No Actions artifacts or caches are used.
+`manifest-current` describes main's checked-in manifest; its success does not gate
+promotion. Non-bootstrap drift succeeds with a “stale rows fall back by design”
+note; bootstrap drift still fails.
+
+For main's flake users, the manifest PR opens for bootstrap drift or a differing
+proposal after 24 hours since main's latest manifest commit. Bootstrap names come
+only from `cache.nix`'s `bootstrapPins`; canonical rows ignore formatting/order.
+The shared pin evaluator uses `git+file` with `shallow=1`, so publisher, writer,
+and healing decisions support depth-one checkouts without requiring `revCount`.
+History reads use the read-only job token; unavailable history warns and skips
+the safety net. Skips retain only PRs with this run's bootstrap rows. Different
+or unreadable PR rows trigger healing (unreadable rows warn); if main already
+matches the proposal, close the stale PR with an explanation.
+Exact recipe/evidence matching and from-source fallback keep non-bootstrap rows
+correct; `published` still receives the full manifest on every main push.
+The independent `publish-manifest-pr` job receives the proposal through the same
+chunked outputs and shares `buck2-products-manifest-writer` concurrency across
+push and dispatch. It never gates consumers or promotion. A pending writer may
+be replaced safely: the newer writer or main-tip guard owns the proposal.
+Immediately before pushing, the writer checks main's remote tip against the run's
+source SHA. Superseded runs and unavailable tip lookups skip without touching the
+PR, preventing bootstrap downgrades.
+Cancellation is disabled: GitHub keeps the running writer and replaces only
+older pending writers with the newest, never dropping the newest.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the
-ref. If the ref is absent, the eligible promotion job creates it at its own
-SHA using the App token; no separate human bootstrap push is required.
+ref. If the ref is absent, P uses X's first parent as its first parent and
+X as its second parent, preserving the same two-parent format.
 Promotion requests only `contents: write` for that token. Consumer failure
 blocks promotion, never product publication or manifest-current reporting:
 `publish-products` does not depend on `consumer-smoke`.
+
+After all three publication jobs finish, `published-status` reports the commit
+status `published/current` on the main-push SHA X; it emits no pending status.
+It reports `success` when promotion advances to a commit with `Published-From: X`
+or exits successfully because published already contains X or a later main SHA
+(an out-of-order no-op). With green `publish-products` and `consumer-smoke`
+inputs, a failed promotion reports `failure` (including lease, guard, and API
+errors). Failed, skipped, or cancelled inputs report `error`, with each
+non-successful input named in the description (limited to 140 characters).
+A skipped or cancelled promotion with green inputs also reports `error`.
+The reporter runs only for upstream main pushes, even when a dependency fails,
+using the workflow's own token with only `statuses: write`, not the publisher
+App. It uses the admitted general-purpose self-hosted Linux x64 runner class;
+it needs no checkout, Nix bootstrap, Actions artifacts, or cache.
 
 The publisher GitHub App is the sole creation/update actor. The writers
 ruleset restricts creation and updates, with only that App allowed to bypass.
@@ -166,12 +407,26 @@ without any bypass actors, including the App. History protection does not
 restrict initial ref creation; the App bypasses only the writers ruleset.
 See [GitHub's ruleset semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-Before each of at most three push attempts, the job refetches the tip.
-An absent tip permits creation; an ancestor tip permits a fast-forward push.
-A candidate already at or behind the published tip is a successful no-op.
-A rejected push retries this comparison, so an intervening ancestor can still
-be advanced. Divergence fails loudly, as does exhausting the push attempts
-without observing the candidate or a descendant at the published tip.
+Before each of at most three push attempts, the job refetches T. If T is on
+the fetched main lineage, it is a legacy tip and its main candidate M is T,
+regardless of trailers. Otherwise T must have exactly two parents, a
+`Published-From` trailer matching its second parent M, and M on main.
+Unrecognized tips fail closed. X must be a strict descendant of M. An equal,
+older, or divergent candidate is a successful no-op. Thus an older run
+finishing after a newer run cannot move published backward.
+
+The publisher App creates P through GitHub's git data API for GitHub signing.
+Before pushing, `git diff --name-only X P` must be empty or exactly the manifest
+path. The ref push uses an exact T lease (compare-and-swap), and P has T as its
+first parent, so accepted updates are fast-forwards. A rejected lease refetches
+and re-decides; exhaustion fails unless the candidate is already superseded.
+`consumer-smoke` now waits for `publish-products` rather than running in parallel.
+On trusted main pushes with a proposal it overlays the exact manifest bytes
+onto X, stages the manifest, records `git write-tree`, and runs the existing
+consumer harness. Without a proposal it retains the checkout's tree.
+After smoke succeeds it emits that tree SHA. Before every push, including lease
+retries, P's tree must equal the successful `smoked-tree` output or promotion
+fails closed. The smoke runner, setup, token permissions, and harness are unchanged.
 This ref guarantees manifest eligibility and consumer smoke admission, not
 success of unrelated CI checks.
 

@@ -193,7 +193,7 @@ child0="$(cat "$scrape_child0")"
 [ "$child0" = "oxfmt" ] \
   || fail "case A: wrapped command span child should be 'oxfmt' (basename), got '$child0'"
 scrape_argv="$(paste -sd' ' "$scrape_log")"
-printf '%s' "$scrape_argv" | grep -qF -- '--adapter none' \
+[[ "$scrape_argv" == *"--adapter none"* ]] \
   || fail "case A: otel-scrape argv should contain '--adapter none', got: $scrape_argv"
 grep -qFx -- '--check' "$oxfmt_args_a" \
   || fail "case A: oxfmt should still receive --check"

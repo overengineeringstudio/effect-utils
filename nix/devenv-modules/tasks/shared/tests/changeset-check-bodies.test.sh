@@ -23,7 +23,7 @@ assert_contains() {
   local needle="$2"
   local label="$3"
 
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" != *"$needle"* ]]; then
     echo "FAIL: $label"
     echo "  expected to contain: $needle"
     echo "  actual output:"
@@ -142,7 +142,7 @@ rc=$?
 set -e
 assert_exit_code 1 "$rc" "mixed directory with one violation should fail"
 assert_contains "$output" "bad.md" "violation should mention only the offending file"
-if printf '%s' "$output" | grep -q 'good\.md'; then
+if [[ "$output" == *"good.md"* ]]; then
   echo "FAIL: well-formed changeset should not be reported"
   printf '%s\n' "$output"
   exit 1

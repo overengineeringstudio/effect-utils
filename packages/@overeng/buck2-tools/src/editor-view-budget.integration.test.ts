@@ -26,6 +26,7 @@ import {
   EditorViewCapacityError,
   editorViewHostBudgetStateDirectory,
   makeEditorViewBudgetCensusSession,
+  recountEditorViewBudget as recountEditorViewBudgetUnscoped,
   reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   reclaimEditorViewOrphans as reclaimEditorViewOrphansUnscoped,
 } from './editor-view-budget.ts'
@@ -70,6 +71,10 @@ const reserveEditorViewBudget = scopeEditorViewTestProcesses({
   processIds: fixtureProcessIds,
   operation: reserveEditorViewBudgetUnscoped,
 })
+const recountEditorViewBudget = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: recountEditorViewBudgetUnscoped,
+})
 const reclaimEditorViewOrphans = scopeEditorViewTestProcesses({
   processIds: fixtureProcessIds,
   operation: reclaimEditorViewOrphansUnscoped,
@@ -104,6 +109,12 @@ const payloadBytes = 1_048_576
 const hostGraceMs = 300_000
 const hostRecencyMs = 86_400_000
 const setupBudgetBytes = 40_000_000_000
+// Darwin reader/census scenarios reached 6 s under CI load; allow 30 s without killing their reader children.
+const readerCensusTimeoutMs = 30_000
+const test = (name: string, fn: () => Promise<void>) => it(name, fn, readerCensusTimeoutMs)
+test.each =
+  (snapshots: readonly string[]) => (name: string, fn: (snapshot: string) => Promise<void>) =>
+    it.each(snapshots)(name, fn, readerCensusTimeoutMs)
 
 const savedBudgetTraceContext = {
   TRACEPARENT: process.env.TRACEPARENT,
@@ -741,6 +752,81 @@ const expectCurrent = (fixture: Fixture, record: EditorViewRecord): void => {
   expect(pathExists(join(fixture.editorRoot, record.snapshot))).toBe(true)
 }
 
+describe('host budget census-only recount', () => {
+  it.each([false, true])('refreshes released usage (directory retired: %s)', async (retired) => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('released-recount', 201)
+      await host.publish(fixture)
+      const before = await recountEditorViewBudget()
+      await releaseEditorViewRoot(fixture.options)
+      expect(pathExists(fixture.editorRoot)).toBe(true)
+      if (retired === true) removeOwnedTree(fixture.editorRoot)
+      const epoch = readBudgetLedger(host).epoch
+      const after = await recountEditorViewBudget()
+      expect(after.usedBytes).toBeLessThan(before.usedBytes)
+      expect(after.epochBefore).toBe(epoch)
+      expect(after.epochAfter).toBeGreaterThan(epoch)
+      expect(after.roots).toBe(retired === true ? 0 : 1)
+      expect(readBudgetLedger(host).usedBytes).toBe(after.usedBytes)
+      expect(readBudgetLedger(host).generations).toEqual({})
+      expect(readdirSync(join(host.budgetState, 'footprints'))).toEqual([])
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('preserves live reservations and their absent root registrations', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('live-recount', 202, 64)
+      await host.publish(fixture)
+      const { token } = await reserveEditorViewBudget({
+        contentStore: host.contentStore,
+        root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [],
+        reservationBytes: 1,
+        budgetBytes: setupBudgetBytes,
+        tryLockRoot: () => undefined,
+      })
+      const before = readBudgetLedger(host)
+      removeOwnedTree(fixture.editorRoot)
+      const after = await recountEditorViewBudget()
+      expect(after.roots).toBe(1)
+      expect(after.epochAfter).toBeGreaterThan(before.epoch)
+      expect(readBudgetLedger(host).reservations).toEqual(before.reservations)
+      await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
+      expect((await recountEditorViewBudget()).roots).toBe(0)
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('prints one JSON result from the census-only CLI against an isolated ledger', async () => {
+    const host = makeHost()
+    try {
+      const result = spawnSync(
+        bun,
+        [new URL('./editor-view.ts', import.meta.url).pathname, 'budget', 'recount'],
+        { encoding: 'utf8', env: { ...process.env, EDITOR_VIEW_HOST_BUDGET_BYTES: '12345678' } },
+      )
+      expect(result.status).toBe(0)
+      expect(result.stdout.trim().split('\n')).toHaveLength(1)
+      expect(JSON.parse(result.stdout)).toEqual({
+        usedBytes: expect.any(Number),
+        budgetBytes: 12345678,
+        roots: 0,
+        epochBefore: 0,
+        epochAfter: 1,
+        durationMs: expect.any(Number),
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+})
+
 describe('host-budget fixture fingerprint admission', () => {
   it('uses the fixture domain for both cold and warm native fingerprints', async () => {
     const host = makeHost()
@@ -962,7 +1048,7 @@ describe('host budget rejects capacity while preserving managed, live, recent an
     graceRecord = await host.publish(grace)
   })
 
-  it('rejects protected overflow before reserving or materializing incoming bytes', async () => {
+  test('rejects protected overflow before reserving or materializing incoming bytes', async () => {
     overflow = await recordTelemetry(host.root, () => overBudgetPublication(host, incoming, 1))
   })
 
@@ -1103,7 +1189,7 @@ describe('concurrent bounded host-budget publication and managed pin admission',
     host.age(live, liveRecord)
   })
 
-  it('admits a pin and two independent-store publishers to their real reservation barriers', async () => {
+  test('admits a pin and two independent-store publishers to their real reservation barriers', async () => {
     const baseline = readBudgetLedger(host)
     expect(baseline.reservations).toEqual([])
     expect(baseline.contentStores.toSorted()).toEqual(
@@ -1204,7 +1290,7 @@ describe('concurrent bounded host-budget publication and managed pin admission',
     reservationsAsserted = true
   })
 
-  it('finishes both real publishers and removes their global reservations', async () => {
+  test('finishes both real publishers and removes their global reservations', async () => {
     if (admission === undefined || reservationsAsserted === false)
       throw new Error('held reservation assertions did not complete')
     admission.release()
@@ -1239,7 +1325,7 @@ describe('concurrent bounded host-budget publication and managed pin admission',
 })
 
 describe('detected unmanaged readers disable eviction for every generation in their root', () => {
-  it('preserves idle rollback and current bytes and permits a later warm publication', async () => {
+  test('preserves idle rollback and current bytes and permits a later warm publication', async () => {
     const host = makeHost()
     try {
       const victim = host.fixture('warm-race-victim', 101)
@@ -1668,7 +1754,7 @@ describe('host-budget reader observations keep a fixed candidate set', () => {
     readerReady = true
   })
 
-  it('never retires a generation whose recency boundary expires during the real process scan', async () => {
+  test('never retires a generation whose recency boundary expires during the real process scan', async () => {
     if (
       oldRecord === undefined ||
       heldRecord === undefined ||
@@ -1729,7 +1815,7 @@ describe('detected unmanaged-root capacity rejection never enters destructive te
     await reader.ready
   })
 
-  it('preserves the victim and leaves no admission or settlement after capacity rejection', async () => {
+  test('preserves the victim and leaves no admission or settlement after capacity rejection', async () => {
     if (victimRecord === undefined) throw new Error('teardown victim publication did not complete')
     let evictionEntered = false
     let materialized = false
@@ -2162,7 +2248,7 @@ describe('budget admission defers complete reader proof until eviction needs it'
     }
   })
 
-  it('re-proves readers after acquiring the fence and blocks a newly opened unmanaged reader', async () => {
+  test('re-proves readers after acquiring the fence and blocks a newly opened unmanaged reader', async () => {
     const host = makeHost()
     try {
       const victim = host.fixture('fresh-proof-victim', 191)
@@ -2293,7 +2379,7 @@ describe('budget admission defers complete reader proof until eviction needs it'
     }
   })
 
-  it('keeps an unobserved reader-held orphan exposed by pointer removal during locking', async () => {
+  test('keeps an unobserved reader-held orphan exposed by pointer removal during locking', async () => {
     const host = makeHost({ drainAfterEach: true })
     try {
       const fixture = host.fixture('pointer-removal-reader', 174, 64)
@@ -2365,7 +2451,7 @@ describe('budget admission defers complete reader proof until eviction needs it'
     }
   })
 
-  it('keeps a reader when its generation becomes eligible during root locking', async () => {
+  test('keeps a reader when its generation becomes eligible during root locking', async () => {
     const host = makeHost({ drainAfterEach: true })
     try {
       const victim = host.fixture('newly-eligible-reader', 181)
@@ -2405,7 +2491,7 @@ describe('budget admission defers complete reader proof until eviction needs it'
     }
   })
 
-  it('accounts real readers when every retirement epoch fence mismatches', async () => {
+  test('accounts real readers when every retirement epoch fence mismatches', async () => {
     const host = makeHost()
     try {
       const victim = host.fixture('epoch-reader', 179)
@@ -2529,7 +2615,7 @@ describe('budget admission defers complete reader proof until eviction needs it'
     },
   )
 
-  it('shares one near-full census between workers but refreshes a generation mutation before capacity rejection', async () => {
+  test('shares one near-full census between workers but refreshes a generation mutation before capacity rejection', async () => {
     const host = makeHost()
     try {
       const victim = host.fixture('session-victim', 185)
@@ -2684,7 +2770,7 @@ describe('orphan retirement under the publication exclusion', () => {
     },
   )
 
-  it.each(['.store/.candidate-reader-held', '.gc-reader-held'])(
+  test.each(['.store/.candidate-reader-held', '.gc-reader-held'])(
     'keeps startup orphan %s held by a real reader and refuses an invalid lock proof',
     async (snapshot) => {
       const host = makeHost()
@@ -2733,7 +2819,7 @@ describe('orphan retirement under the publication exclusion', () => {
     },
   )
 
-  it('keeps a batch candidate opened by a real reader after its census', async () => {
+  test('keeps a batch candidate opened by a real reader after its census', async () => {
     const host = makeHost()
     try {
       const fixture = host.fixture('batch-reader-held', 166, 64)
@@ -3179,7 +3265,7 @@ describe('batched budget candidate retirement', () => {
     }
   }
 
-  it('a candidate held mid-batch is skipped', async () => {
+  test('a candidate held mid-batch is skipped', async () => {
     const host = makeHost()
     try {
       const earlier = host.fixture('lease-batch-a', 201)

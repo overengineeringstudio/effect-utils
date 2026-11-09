@@ -6,6 +6,7 @@ import {
   type GenieContext,
   type GitHubWorkflowArgs,
 } from '../mod.ts'
+import { pinnedAction } from './action-pins.ts'
 import { runActionlint } from './actionlint.ts'
 import { isFleetCacheRunner } from './cache-policy.ts'
 
@@ -68,6 +69,26 @@ const hasActionlint = (() => {
 })()
 
 describe('githubWorkflow', () => {
+  it('renders release comments on SHA-pinned action steps', () => {
+    const workflow = githubWorkflow({
+      on: 'push',
+      jobs: {
+        check: {
+          'runs-on': 'ubuntu-latest',
+          steps: [
+            {
+              ...pinnedAction({ name: 'checkout' }),
+            },
+          ],
+        },
+      },
+    })
+    const yaml = workflow.stringify(mockGenieContext)
+    expect(yaml).toContain('# v6.1.0')
+    expect(yaml).toContain('uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803')
+    expect(yaml).not.toContain('$comment')
+  })
+
   it('accepts valid string runner labels', async () => {
     expect(await getValidationIssues(['ubuntu-latest', 'nix'])).toEqual([])
   })

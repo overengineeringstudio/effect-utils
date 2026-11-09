@@ -31,6 +31,7 @@ import {
   lane,
   list,
   text,
+  targetLabelGrammar,
 } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
@@ -43,6 +44,7 @@ import {
   zeroActionExclusionCounts,
   type ActionExclusionCounts,
   type ActionArtifact,
+  type ActionInvocation,
   type ActionRecord,
   type CacheLane,
 } from './buck2-action-evidence.ts'
@@ -61,6 +63,23 @@ export type WarmManifest = {
   enabledLanes: CacheLane[]
   observations: Observation[]
 }
+type ReaderPosture = 'remote-reads-enabled' | 'admission-fallback' | 'unknown'
+type WarmArtifact = ActionArtifact & { readerPostures?: Map<string, ReaderPosture> }
+export type EligibleMiss = {
+  target: string
+  category: string
+  actionKeySha256: string
+  readerJob: string
+  readerPosture: ReaderPosture
+}
+const maxEligibleMisses = 50
+// Only declared labels/tokens may be exposed; configuration, digest and build IDs stay opaque.
+const diagnosticToken = (value: string): string =>
+  /^[a-zA-Z0-9_.:-]{1,160}$/.test(value) === true ? value : 'unavailable'
+const diagnosticTarget = (value: string): string =>
+  targetLabelGrammar.test(value) === true && value.length <= 512 && value.trim() === value
+    ? value
+    : 'unavailable'
 export type LaneObservation = {
   id: string
   sequence: number
@@ -75,6 +94,8 @@ export type LaneObservation = {
   noncacheable: number
   uploadFailure: number
   evidenceGap: number
+  eligibleMisses: EligibleMiss[]
+  eligibleMissesOverflow: number
   nixSubstitution: { substituted: number; built: number }
   meetsThreshold: boolean
 }
@@ -88,6 +109,40 @@ export type WarmReport = {
     observations: LaneObservation[]
   }[]
 }
+
+/** Expose bounded labels and typed posture only; native exact keys remain hashed. */
+export const renderWarm99Diagnostics = (report: unknown): string =>
+  list(field({ value: report, key: 'lanes' }))
+    .flatMap((entry) => {
+      const name = lane(field({ value: entry, key: 'lane' }))
+      let consecutive = 0
+      return list(field({ value: entry, key: 'observations' })).flatMap((observation) => {
+        const value = (key: string): unknown => field({ value: observation, key })
+        const eligible = integer(value('eligible'))
+        const hits = integer(value('remoteHits'))
+        consecutive = boolean(value('meetsThreshold')) === true ? consecutive + 1 : 0
+        const prefix = `buck2-cache-join: lane=${name} observation=${integer(value('sequence'))}`
+        const misses = value('eligibleMisses')
+        const lines = [
+          `${prefix} eligible=${eligible} hits=${hits} rate=${eligible === 0 ? 'unavailable' : hits / eligible} complete=${boolean(value('complete'))} gaps=${integer(value('evidenceGap'))} consecutive=${consecutive}`,
+        ]
+        for (const miss of misses === undefined ? [] : list(misses).slice(0, maxEligibleMisses)) {
+          const get = (key: string): unknown => field({ value: miss, key })
+          const hash = text(get('actionKeySha256'))
+          const posture = get('readerPosture')
+          lines.push(
+            `${prefix} miss target=${diagnosticTarget(text(get('target')))} category=${diagnosticToken(text(get('category')))} actionKeySha256=${/^[a-f0-9]{64}$/.test(hash) === true ? hash : 'unavailable'} readerJob=${diagnosticToken(text(get('readerJob')))} readerPosture=${posture === 'remote-reads-enabled' || posture === 'admission-fallback' ? posture : 'unknown'}`,
+          )
+        }
+        if (
+          value('eligibleMissesOverflow') !== undefined &&
+          integer(value('eligibleMissesOverflow')) > 0
+        )
+          lines.push(`${prefix} missesOverflow=${integer(value('eligibleMissesOverflow'))}`)
+        return lines
+      })
+    })
+    .join('\n')
 const reference = (item: unknown): ArtifactReference => ({
   lane: lane(field({ value: item, key: 'lane' })),
   summary: text(field({ value: item, key: 'summary' })),
@@ -143,8 +198,8 @@ export const decodeEvidence = ({
   compressed: Uint8Array
   summary: unknown
   expectedLane?: CacheLane
-}): ActionArtifact => {
-  decodeCacheAdmissionEvidence(summary)
+}): WarmArtifact => {
+  const admission = decodeCacheAdmissionEvidence(summary)
   const metadata = field({ value: summary, key: 'actionsArtifact' })
   if (
     field({ value: summary, key: 'schemaVersion' }) !== 1 ||
@@ -235,7 +290,25 @@ export const decodeEvidence = ({
         return invalid()
     }
   }
-  return artifact
+  if (admission.admissionInvocations.length === 0) return artifact
+  return {
+    ...artifact,
+    readerPostures: new Map(
+      artifact.header.invocations.map((invocation) => {
+        const row = admission.admissionInvocations.find(
+          (entry) => entry.invocationId === invocation.buildId,
+        )
+        return [
+          invocation.buildId,
+          row !== undefined && row.admissionFallbacks.reapi > 0
+            ? 'admission-fallback'
+            : invocation.cacheReadPolicy === 'enabled'
+              ? 'remote-reads-enabled'
+              : 'unknown',
+        ]
+      }),
+    ),
+  }
 }
 export const identity = (action: ActionRecord): string | undefined =>
   action.category !== null &&
@@ -244,6 +317,30 @@ export const identity = (action: ActionRecord): string | undefined =>
   action.digest !== null
     ? JSON.stringify([action.category, action.target, action.configuration, action.digest])
     : undefined
+
+/** Presence is established by a successful upload or a verified native remote hit.
+ * Callers must first validate the complete trusted main-writer artifact.
+ */
+export const trustedPresenceObservedAt = ({
+  action,
+  invocation,
+}: {
+  action: ActionRecord
+  invocation: ActionInvocation | undefined
+}): number | undefined => {
+  if (
+    invocation === undefined ||
+    invocation.cacheReadPolicy === 'disabled-by-design' ||
+    actionExclusionReason(action.category) !== null ||
+    action.commandAction !== true ||
+    identity(action) === undefined
+  )
+    return undefined
+  const uploadedAt = action.uploadOutcome === 'uploaded' ? action.uploadCompletedAt : null
+  const remoteHitAt = action.executionKind === 3 ? action.completedAt : null
+  const observedAt = Math.min(uploadedAt ?? Infinity, remoteHitAt ?? Infinity)
+  return observedAt === Infinity ? undefined : observedAt
+}
 const baseIdentity = (action: ActionRecord): string =>
   JSON.stringify([action.category, action.target, action.configuration])
 const rootScope = (rootId: string | undefined): string => JSON.stringify(rootId ?? null)
@@ -341,8 +438,7 @@ export const completeArtifact = ({
     h.metadata.finishedAt !== null &&
     h.metadata.finishedAt >= h.metadata.startedAt &&
     lanePostureValid === true &&
-    (writer !== true ||
-      (posture === 'writer' && (cacheLane === 'main-writer' || cacheLane === 'merge_group'))) &&
+    (writer !== true || (posture === 'writer' && cacheLane === 'main-writer')) &&
     h.invocations.length > 0 &&
     h.invocations.every(
       (inv) =>
@@ -368,7 +464,7 @@ export const completeArtifact = ({
 export type LoadedObservation = {
   observation: Observation
   writers: (ActionArtifact | undefined)[]
-  readers: (ActionArtifact | undefined)[]
+  readers: (WarmArtifact | undefined)[]
 }
 export const evaluateWarm99 = ({
   manifest,
@@ -405,6 +501,8 @@ export const evaluateWarm99 = ({
         noncacheable: 0,
         uploadFailure: 0,
         evidenceGap: 0,
+        eligibleMisses: [],
+        eligibleMissesOverflow: 0,
         nixSubstitution: observation.nixSubstitution,
         meetsThreshold: false,
       }
@@ -413,9 +511,11 @@ export const evaluateWarm99 = ({
         readers.length !== observation.readers.length
       )
         return invalid()
-      const uploads = new Map<string, number>()
-      const uploadedBases = new Map<string, number>()
+      const trustedObservations = new Map<string, number>()
+      const observedBases = new Map<string, number>()
       for (const [index, artifact] of writers.entries()) {
+        // PR and merge-queue writers are never trusted anchors, not missing evidence.
+        if (observation.writers[index]?.lane !== 'main-writer') continue
         result.uploadFailure +=
           artifact?.actions.filter(
             (action) =>
@@ -432,25 +532,26 @@ export const evaluateWarm99 = ({
         }
         for (const action of artifact.actions) {
           const key = identity(action)
-          if (
-            actionExclusionReason(action.category) !== null ||
-            action.commandAction !== true ||
-            key === undefined ||
-            action.uploadOutcome !== 'uploaded' ||
-            action.uploadCompletedAt === null
+          const observedAt = trustedPresenceObservedAt({
+            action,
+            invocation: artifact.header.invocations.find(
+              (invocation) => invocation.buildId === action.buildId,
+            ),
+          })
+          if (key === undefined || observedAt === undefined) continue
+          trustedObservations.set(
+            key,
+            Math.min(trustedObservations.get(key) ?? Infinity, observedAt),
           )
-            continue
-          uploads.set(key, Math.min(uploads.get(key) ?? Infinity, action.uploadCompletedAt))
           const base = baseIdentity(action)
-          uploadedBases.set(
-            base,
-            Math.min(uploadedBases.get(base) ?? Infinity, action.uploadCompletedAt),
-          )
+          observedBases.set(base, Math.min(observedBases.get(base) ?? Infinity, observedAt))
         }
       }
       const writerRepos = new Set(
         writers.flatMap((artifact) =>
-          artifact?.header.metadata.repo === null || artifact === undefined
+          artifact === undefined ||
+          artifact.header.metadata.lane !== 'main-writer' ||
+          completeArtifact({ artifact, writer: true }) !== true
             ? []
             : [artifact.header.metadata.repo],
         ),
@@ -534,6 +635,12 @@ export const evaluateWarm99 = ({
             result.evidenceGap++
             continue
           }
+          // Deliberate cache-off controls do not attempt a reader lookup and cannot
+          // consume the first cache-enabled occurrence in a shared root.
+          if (invocation.cacheReadPolicy === 'disabled-by-design') {
+            result.excluded++
+            continue
+          }
           if (action.executionKind === 10) {
             // completeArtifact already proved an earlier native configured-key occurrence.
             result.excluded++
@@ -556,12 +663,25 @@ export const evaluateWarm99 = ({
             continue
           }
           seenIdentities.add(occurrence)
-          const eligible = (uploads.get(key) ?? Infinity) < invocation.startedAt
+          const eligible = (trustedObservations.get(key) ?? Infinity) < invocation.startedAt
           const noncacheable =
             action.executionKind === 0 || action.executionKind === 4 || action.executionKind === 6
           if (eligible === true) {
             outcomes.set(occurrence, action.executionKind === 3)
-          } else if ((uploadedBases.get(baseIdentity(action)) ?? Infinity) < invocation.startedAt) {
+            if (action.executionKind !== 3) {
+              if (result.eligibleMisses.length < maxEligibleMisses) {
+                result.eligibleMisses.push({
+                  target: diagnosticTarget(action.target ?? ''),
+                  category: diagnosticToken(action.category ?? ''),
+                  actionKeySha256: createHash('sha256').update(key).digest('hex'),
+                  readerJob: diagnosticToken(artifact.header.metadata.job ?? ''),
+                  readerPosture:
+                    artifact.readerPostures?.get(invocation.buildId) ??
+                    (invocation.cacheReadPolicy === 'enabled' ? 'remote-reads-enabled' : 'unknown'),
+                })
+              } else result.eligibleMissesOverflow++
+            }
+          } else if ((observedBases.get(baseIdentity(action)) ?? Infinity) < invocation.startedAt) {
             changedIdentities.add(occurrence)
           } else if (noncacheable === true) {
             noncacheableIdentities.add(occurrence)

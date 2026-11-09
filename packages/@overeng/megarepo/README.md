@@ -53,6 +53,14 @@ For CI:
 mr apply --git-protocol=https
 ```
 
+For authenticated HTTP(S) clones, configure a Git credential helper (for example,
+`gh auth setup-git`) or use SSH. Megarepo rejects HTTP(S) userinfo in member
+configuration, lock files, and `mr add` inputs, including username-only tokens and
+percent-encoded credentials. Errors show only `https://***@host/...` and explain
+how to migrate to a credential helper or SSH. Remove embedded credentials from
+existing configuration or lock files before running commands; accepted source identities are
+never rewritten. SSH URLs (including scp-style `git@host:path`) are unchanged.
+
 ### Standalone Nix lock synchronization
 
 Check or update standalone flake locks from an already resolved root input, or
@@ -108,6 +116,15 @@ a namespace does not repair permissions on pre-existing store directories.
 Store enumeration skips non-directory entries in host, owner, repository, and ref namespaces.
 It emits a warning with the entry's path and type instead of aborting `mr store gc`; these
 foreign entries are never removed. Existing symlink handling is unchanged.
+
+Dry-run JSON includes `candidateSha256` over each would-act row and its captured deletion identity; `planSha256` is unchanged.
+Single-candidate plain removals also re-collect and classify their owner under the owner lock and activation lease,
+then compare fresh evidence against approval before deleting with the original planned identity.
+
+`mr store gc --candidates-file candidates.json --output json` applies a strict `{ path, candidateSha256 }` array (no unknown fields or duplicate paths).
+One census orders plain removals; the shared locked/leased verification above authorizes each deletion. Archives, reaps, merged worklogs, and missing deletion identity yield `unsupported-kind`.
+Changed/missing/ineligible candidates skip independently; failures continue but exit nonzero. JSON and human output expose tagged `candidateOutcomes` and `candidateCounts`.
+This mode excludes `--expected-plan`, `--candidate-path`, `--dry-run`, `--all`, `--force`, `--generated-artifacts`, and `--budgets`.
 
 ## Generated artifact cleanup
 
@@ -180,6 +197,8 @@ incomplete internal discovery prevents eviction.
 These additional roots never enter whole-worktree GC or archive discovery.
 These roots remain observation-only unless the admitted activity manifest explicitly declares
 `processWorktreeCoverage: "registered-worktrees"`; store-wide process roots alone are insufficient.
+`processWorktreeCoverage: "layout-worktrees"` covers only the conventional
+`refs/heads|tags|commits/...` worktrees discovered by whole-worktree GC, not these additional roots.
 Admission verifies the admin directory's canonical `.git` backlink and matching registration HEAD.
 
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
@@ -226,7 +245,28 @@ activity on the admitted epoch, replans completely, requires the same digest, an
 idle predicate on the one candidate before deleting it.
 Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspacePath`;
 `symbolic` refs retain the full Git ref name. The `repo-build-output` schema instead carries
-`containerPath` and `outputRoot`, without ref fields; no repository-output selector is enabled.
+`containerPath` and `outputRoot`, without ref fields. A class may select these independently with
+`repoRoots: "*-target"` instead of (or alongside) worktree `paths`. Only immediate directories
+are admitted, never symlinks, mount crossings or registered-worktree overlaps.
+Repository outputs require `processRepoOutputCoverage: "repo-build-outputs"` and either
+`processWorktreeCoverage: "registered-worktrees"` or `"layout-worktrees"` in admitted activity.
+The latter requires a complete registration census with every worktree inside the conventional layout.
+Raw worktree admin entries must also reconcile with that census; missing or unreadable backlinks keep outputs.
+They also require the standard `CACHEDIR.TAG` signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
+container veto all its outputs. Process claims protect overlapping roots in either direction:
+an output root, a directory below it, or its containing repository all keep the output.
+Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
+are never eligible, including when the output root itself is a bare repository.
+Apply acquires exclusive canonical container admission first, then sorted worktree leases,
+and re-enumerates registrations under those leases. Admission stays held through removal;
+every lease is released on exit. Git boundaries and registry identity are checked again.
+Repository admission supports kernel shared/exclusive flock controls, separate from Git writer
+locks. Controls persist: never unlink them, which would split ownership.
+Activation (`mr store lease`) and every mr creation path acquire a shared canonical repository
+fence before the exclusive worktree lease. Shared holders coexist and nest; exclusive
+reclamation refuses while they hold admission. A prospective owner requires `--repo-path`
+pointing to an existing verified repository/worktree. External tools must use this protocol
+before publishing coverage; tools bypassing it remain a registration race.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.

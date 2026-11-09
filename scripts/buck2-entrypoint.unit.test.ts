@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 
 import type { ReaderReapiUnavailableShadow } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
+  ciPostureDeclared,
   gateCgroupRelation,
   gateDaemonStopDecision,
   gateScopeIdentity,
@@ -16,6 +17,14 @@ import {
 const root = '/project/root'
 const isolation = 'owned'
 const idle = { project_root: root, isolation_dir: isolation, active_commands: [] }
+
+it('selects CI posture only through the explicit workflow declaration', () => {
+  expect(ciPostureDeclared({})).toBe(false)
+  expect(ciPostureDeclared({ CI: '1' })).toBe(false)
+  expect(ciPostureDeclared({ CI: 'true', GITHUB_ACTIONS: 'true' })).toBe(false)
+  expect(ciPostureDeclared({ BUCK2_CI_POSTURE: 'true' })).toBe(false)
+  expect(ciPostureDeclared({ BUCK2_CI_POSTURE: '1' })).toBe(true)
+})
 
 it('permits native kill only for an idle daemon in the selected project and isolation', () => {
   expect(gateDaemonStopDecision({ status: idle, root, isolation })).toBe('stop')
@@ -129,6 +138,25 @@ const incidentOutput = readFileSync(
 
 it('classifies the verbatim Buck RE-unavailable incident including repeated action summary', () => {
   expect(isOnlyReapiUnavailable(incidentOutput)).toBe(true)
+})
+
+// Public CI run 41541867869, job 125607804869; GitHub's outer prefix removed.
+const editorIncidentOutput = readFileSync(
+  new URL('./fixtures/buck2-editor-re-unavailable.txt', import.meta.url),
+  'utf8',
+)
+
+it('classifies the captured editor publisher incident with multi-action progress and build footer', () => {
+  expect(isOnlyReapiUnavailable(editorIncidentOutput)).toBe(true)
+  for (const output of [
+    editorIncidentOutput.replace('Waiting on ', 'Unexpected failure on '),
+    `${editorIncidentOutput}\nFailed to build 'root//:other (root//:platform)'`,
+    `${editorIncidentOutput}\nError: compiler crashed`,
+    `${editorIncidentOutput}\nAction failed: root//:compile (root//:platform) (compile app)\nerror[E0308]: mismatched types\n`,
+    editorIncidentOutput.replace('Stderr: <empty>', 'Stderr: compiler crashed'),
+    editorIncidentOutput.replace('BUILD ERRORS (2)', 'BUILD ERRORS (3)'),
+  ])
+    expect(isOnlyReapiUnavailable(output)).toBe(false)
 })
 
 it('rejects real-incident mutations rather than masking another action failure', async () => {

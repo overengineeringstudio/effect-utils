@@ -1,4 +1,5 @@
 /* oxlint-disable overeng/exports-first -- Focused tests import narrow seams beside the private helpers they exercise. */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawn } from 'node:child_process'
 import { createHash, type Hash } from 'node:crypto'
 import { type Stats } from 'node:fs'
@@ -272,6 +273,14 @@ const fingerprintAdmission = new AbortController()
 /** Stop queued and future root subprocess admission before termination drains lanes. */
 export const closeFingerprintAdmission = (): void => fingerprintAdmission.abort()
 
+/** Per-payload diagnostics; child durations are summed work, not additive wall time. */
+export const editorViewTimingContext = new AsyncLocalStorage<Record<string, number>>()
+/** Accumulate elapsed diagnostics only inside an explicitly scoped payload. */
+export const recordViewTiming = ({ phase, started }: { phase: string; started: number }): void => {
+  const timings = editorViewTimingContext.getStore()
+  if (timings !== undefined) timings[phase] = (timings[phase] ?? 0) + performance.now() - started
+}
+
 /** Bound subprocess admission; memoize only immutable Nix inputs with identical semantics. */
 export const runFingerprintTool = ({
   tool,
@@ -295,6 +304,7 @@ export const runFingerprintTool = ({
     const cached = immutableFingerprints.get(cacheKey)
     if (cached?.spawnChild === spawnChild) return cached.result
   }
+  const queuedAt = performance.now()
   const lane = nextFingerprintQueue++ % fingerprintWorkers
   const result = (fingerprintQueues[lane] ?? Promise.resolve()).then(
     () =>
@@ -303,6 +313,8 @@ export const runFingerprintTool = ({
           reject(new Error('fingerprint admission closed by termination'))
           return
         }
+        recordViewTiming({ phase: 'fingerprintQueueWorkMs', started: queuedAt })
+        const spawnedAt = performance.now()
         const child = spawnChild({ tool: requireFingerprintTool(tool), args })
         const stdout: Buffer[] = []
         const stderr: Buffer[] = []
@@ -310,6 +322,7 @@ export const runFingerprintTool = ({
         child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
         child.on('error', reject)
         child.on('close', (code, signal) => {
+          recordViewTiming({ phase: 'fingerprintChildWorkMs', started: spawnedAt })
           if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
           else
             reject(

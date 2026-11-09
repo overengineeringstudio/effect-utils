@@ -48,6 +48,7 @@ let
           descriptorContent
           expectedDescriptorSha256
           expectedModuleSha256
+          sourceImport
           ;
         expectedProductName = name;
       }
@@ -95,7 +96,7 @@ let
   # `oxfmt` is on PATH because genie calls the executable formatter interface.
   # `actionlint`, the export type-proof compiler and the matching TypeScript API
   # server are absolute binaries, so generated-file checks never depend on PATH.
-  genie = mk "genie" {
+  genie = pkgs.lib.makeOverridable (options: mk "genie" options) {
     binaryName = "genie";
     environment = genieProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
@@ -138,18 +139,39 @@ let
     ];
     smokeTestArgs = [ "--version" ];
   };
+  megarepoProviders = (import ./javascript-capability-providers.nix { lib = pkgs.lib; }) {
+    required =
+      if products.megarepo.sourceImport != null then
+        [
+          "git"
+          "nix"
+          "worktree-lease"
+        ]
+      else
+        (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
+    providers = {
+      git = {
+        capability = "git";
+        pathPackages = [ pkgs.git ];
+      };
+      nix = {
+        capability = "nix";
+        pathPackages = [ pkgs.nix ];
+      };
+      worktree-lease = {
+        capability = "worktree-lease";
+        environment.WORKTREE_LEASE_BIN = "${nativeProducts.worktree-lease}/bin/worktree-lease";
+      };
+    };
+  };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    environment.CLI_BUILD_STAMP = buildStamp;
-    expectedExternalCapabilities = [
-      "git"
-      "nix"
-    ];
+    environment = megarepoProviders.environment // {
+      CLI_BUILD_STAMP = buildStamp;
+    };
+    expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
-    pathPackages = [
-      pkgs.git
-      pkgs.nix
-    ];
+    pathPackages = megarepoProviders.pathPackages;
     smokeTestArgs = [ "--help" ];
   };
   tui-stories = mk "tui-stories" {
@@ -230,18 +252,21 @@ let
     expectedProductKind = "module";
     generateCompletions = false;
   };
+  oxcConfigModulePath = (builtins.fromJSON products.oxc-config.descriptorContent).modulePath;
+  oxcConfigStylexUpstreamModulePath =
+    (builtins.fromJSON products.oxc-config-stylex-upstream-plugin.descriptorContent).modulePath;
   oxc-config =
     pkgs.runCommand "oxc-config-buck2-candidate"
       {
         passthru = {
-          pluginPath = "${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath}";
-          stylexUpstreamPluginPath = "${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath}";
+          pluginPath = "${oxcConfigModule}/libexec/${oxcConfigModulePath}";
+          stylexUpstreamPluginPath = "${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModulePath}";
         };
       }
       ''
         mkdir -p "$out/lib"
-        ln -s ${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath} "$out/lib/oxc-config.js"
-        ln -s ${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath} "$out/lib/stylex-upstream-plugin.js"
+        ln -s ${oxcConfigModule}/libexec/${oxcConfigModulePath} "$out/lib/oxc-config.js"
+        ln -s ${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModulePath} "$out/lib/stylex-upstream-plugin.js"
         ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'Promise.all(process.argv.slice(1).map((path) => import(path)))' \
           "$out/lib/oxc-config.js" "$out/lib/stylex-upstream-plugin.js"
       '';

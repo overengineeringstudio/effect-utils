@@ -45,6 +45,7 @@ export const Case = Schema.Struct({
         output: Schema.Int,
         total: Schema.optionalKey(Schema.Int),
         cached: Schema.optionalKey(Schema.Int),
+        reasoning: Schema.optionalKey(Schema.Int),
       }),
     ),
     toolCalls: Schema.optionalKey(

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { createHash } from 'node:crypto'
 
 import { classifyCacheAction, decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
@@ -12,11 +13,53 @@ import {
   loadedFixture,
   manifestFixture,
 } from './buck2-cache-warm99.fixtures.ts'
-import { decodeEvidence, decodeManifest, evaluateWarm99 } from './buck2-cache-warm99.ts'
+import {
+  decodeEvidence,
+  decodeManifest,
+  evaluateWarm99,
+  renderWarm99Diagnostics,
+} from './buck2-cache-warm99.ts'
 
 const rawArtifact = (artifact = artifactFixture()): string =>
   `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
 describe('strict action boundary', () => {
+  it('decodes explicit policy and retained context without inferring native outcomes', () => {
+    for (const context of [
+      'capability-identity-dependency',
+      'capability-identity-baseline',
+      'native-log',
+      null,
+    ]) {
+      const artifact = artifactFixture()
+      artifact.header.invocations[0]!.context = context
+      const raw = rawArtifact(artifact)
+      expect(decodeActionArtifact(raw).header.invocations[0]!.cacheReadPolicy).toBe('enabled')
+      const retained = raw.replaceAll('"cacheReadPolicy":"enabled",', '')
+      expect(decodeActionArtifact(retained).header.invocations[0]!.cacheReadPolicy).toBe(
+        context === 'capability-identity-dependency' ? 'disabled-by-design' : 'unknown',
+      )
+    }
+    expect(() => decodeActionArtifact(rawArtifact().replace('"enabled"', '"invalid"'))).toThrow()
+  })
+  it('classifies disabled local executions without hiding native local hits', () => {
+    const invocation = artifactFixture().header.invocations[0]!
+    for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+      for (const executionKind of [1, 8, 10]) {
+        expect(
+          classifyCacheAction({
+            action: actionFixture({ buildId: invocation.buildId, executionKind }),
+            invocation: { ...invocation, cacheReadPolicy },
+          }),
+        ).toBe(
+          executionKind === 10
+            ? 'local-action-cache-hit'
+            : cacheReadPolicy === 'disabled-by-design'
+              ? 'other'
+              : 'fresh-local-execution',
+        )
+      }
+    }
+  })
   it('classifies kind-10 reuse as hits and only fresh kind-1/8 digest executions as candidates', () => {
     const invocation = artifactFixture().header.invocations[0]!
     for (const executionKind of [1, 8, 10]) {
@@ -228,6 +271,269 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
+  it('reports all eight eligible misses from one admission-fallback reader in a 39/47 cohort', () => {
+    const manifest = manifestFixture(['main-reader'], 1)
+    const actions = Array.from({ length: 47 }, (_, index) =>
+      actionFixture({
+        target: index === 0 ? 'root//pkg:foo/bar' : `root//packages/tool:target-${index}`,
+        executionKind: index < 8 ? 1 : 3,
+      }),
+    )
+    const writer = artifactFixture(
+      true,
+      actions.map((action) => ({
+        ...action,
+        startedAt: 10,
+        completedAt: 100,
+        endTime: 100,
+        uploadCompletedAt: 100,
+        uploadOutcome: 'uploaded',
+      })),
+    )
+    const reader = artifactFixture(false, actions)
+    reader.header.metadata.job = 'test-live-deploy-ci-tools'
+    const buildId = '123ba1cf-678d-4f1e-b0a3-f7ccd2b6ee31'
+    reader.header.invocations[0]!.buildId = buildId
+    reader.header.invocations[0]!.cacheReadPolicy = 'unknown'
+    for (const action of reader.actions) action.buildId = buildId
+    const encoded = encodedFixture(reader)
+    const decoded = decodeEvidence({
+      compressed: encoded.compressed,
+      summary: {
+        ...encoded.summary,
+        admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+        admissionInvocations: [
+          {
+            invocationId: reader.header.invocations[0]!.buildId,
+            admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+            admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+          },
+        ],
+      },
+    })
+    const report = evaluateWarm99({
+      manifest,
+      loaded: [{ observation: manifest.observations[0]!, writers: [writer], readers: [decoded] }],
+    })
+    const cohort = report.lanes[0]!.observations[0]!
+    expect(cohort).toMatchObject({
+      eligible: 47,
+      remoteHits: 39,
+      meetsThreshold: false,
+      eligibleMissesOverflow: 0,
+    })
+    const expected = actions.slice(0, 8).map((action) => ({
+      target: action.target,
+      category: 'compile',
+      actionKeySha256: createHash('sha256')
+        .update(
+          JSON.stringify([action.category, action.target, action.configuration, action.digest]),
+        )
+        .digest('hex'),
+      readerJob: 'test-live-deploy-ci-tools',
+      readerPosture: 'admission-fallback',
+    }))
+    expect(JSON.parse(JSON.stringify(cohort)).eligibleMisses).toEqual(expected)
+    const lines = renderWarm99Diagnostics(report).split('\n')
+    expect(lines).toHaveLength(9)
+    for (const [index, miss] of expected.entries()) {
+      expect(lines[index + 1]).toBe(
+        `buck2-cache-join: lane=main-reader observation=0 miss target=${miss.target} category=compile actionKeySha256=${miss.actionKeySha256} readerJob=test-live-deploy-ci-tools readerPosture=admission-fallback`,
+      )
+    }
+    expect(lines.join('\n')).not.toContain('linux#1')
+    expect(lines.join('\n')).not.toContain('abcd:12')
+    expect(lines.join('\n')).not.toContain(reader.header.invocations[0]!.buildId)
+  })
+  it('bounds missed identities and counts overflow without changing eligibility', () => {
+    const manifest = manifestFixture(['main-reader'], 1)
+    const loaded = loadedFixture(manifest)
+    const item = loaded[0]!
+    const reader = item.readers[0]!
+    const writer = item.writers[0]!
+    reader.actions = Array.from({ length: 53 }, (_, index) => ({
+      ...reader.actions[0]!,
+      target: `root//:target-${index}`,
+      executionKind: 1,
+    }))
+    writer.actions = reader.actions.map((action) => ({
+      ...writer.actions[0]!,
+      target: action.target,
+    }))
+    const report = evaluateWarm99({ manifest, loaded })
+    const cohort = report.lanes[0]!.observations[0]!
+    expect(cohort.eligible).toBe(53)
+    expect(cohort.eligibleMisses).toHaveLength(50)
+    expect(cohort.eligibleMissesOverflow).toBe(3)
+    expect(cohort.eligibleMisses[0]!.readerPosture).toBe('remote-reads-enabled')
+    expect(renderWarm99Diagnostics(report).split('\n').at(-1)).toBe(
+      'buck2-cache-join: lane=main-reader observation=0 missesOverflow=3',
+    )
+    cohort.eligibleMisses[0]!.target = '/private/path\ninjected'
+    cohort.eligibleMisses[0]!.readerJob = '/private/job\ninjected'
+    expect(renderWarm99Diagnostics(report)).not.toContain('injected')
+    for (const target of ['root//pkg:foo bar', 'root//pkg:foo\n', `root//pkg:${'x'.repeat(512)}`]) {
+      cohort.eligibleMisses[0]!.target = target
+      expect(renderWarm99Diagnostics(report).split('\n')[1]).toContain('miss target=unavailable ')
+    }
+    reader.header.invocations[0]!.cacheReadPolicy = 'unknown'
+    expect(
+      evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]!.eligibleMisses[0]!
+        .readerPosture,
+    ).toBe('unknown')
+  })
+  it('prints every lane and observation without reader IDs or native identities', () => {
+    const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
+    const report = evaluateWarm99({ manifest, loaded: loadedFixture(manifest) })
+    for (const entry of report.lanes)
+      for (const observation of entry.observations) observation.id = '/private/path\ninjected'
+    const lines = renderWarm99Diagnostics(report).split('\n')
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toBe(
+      'buck2-cache-join: lane=main-reader observation=0 eligible=1 hits=1 rate=1 complete=true gaps=0 consecutive=1',
+    )
+    expect(lines[1]).toContain('consecutive=2')
+    expect(lines.join('\n')).not.toContain('injected')
+    report.lanes[0]!.observations[0]!.eligible = 0
+    report.lanes[0]!.observations[0]!.remoteHits = 0
+    report.lanes[0]!.observations[0]!.meetsThreshold = false
+    expect(renderWarm99Diagnostics(report)).toContain('eligible=0 hits=0 rate=unavailable')
+  })
+  it('uses each writer action timestamp rather than a cohort cutoff', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const writer = item.writers[0]!
+      writer.actions = [199, 200, 201].map((endTime) =>
+        actionFixture({
+          buildId: writer.header.invocations[0]!.buildId,
+          target: `test//:${endTime}`,
+          digest: `${endTime}:1`,
+          startedAt: 10,
+          completedAt: endTime,
+          endTime,
+        }),
+      )
+      item.readers = [
+        artifactFixture(
+          false,
+          writer.actions.map(({ target, digest }) => actionFixture({ target, digest })),
+        ),
+      ]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 1,
+      cold: 2,
+    })
+  })
+  it.each(['upload', 'remote-hit'] as const)(
+    'requires earlier exact trusted %s anchors',
+    (source) => {
+      for (const observedAt of [199, 200, 201])
+        for (const lane of ['main-writer', 'merge_group', 'pr'] as const)
+          for (const anchor of [
+            'trusted',
+            'disabled',
+            'none',
+            'different-configuration',
+            'incomplete',
+          ]) {
+            if (anchor !== 'trusted' && (lane !== 'main-writer' || observedAt !== 199)) continue
+            const manifest = manifestFixture()
+            const loaded = loadedFixture(manifest)
+            for (const item of loaded) {
+              const writer = item.writers[0]!
+              item.observation.writers[0]!.lane = lane
+              writer.header.metadata.lane = lane
+              writer.header.metadata.posture = lane === 'pr' ? 'read-only' : 'writer'
+              if (anchor === 'disabled')
+                writer.header.invocations[0]!.cacheReadPolicy = 'disabled-by-design'
+              if (anchor === 'incomplete') writer.header.complete = false
+              writer.actions = [
+                actionFixture({
+                  buildId: writer.header.invocations[0]!.buildId,
+                  executionKind: source === 'upload' ? 1 : 3,
+                  uploadOutcome: source === 'upload' ? 'uploaded' : 'not-uploaded',
+                  cacheUploadResult: source === 'upload' ? 1 : 0,
+                  startedAt: 10,
+                  completedAt: observedAt,
+                  endTime: observedAt,
+                  uploadCompletedAt: source === 'upload' ? observedAt : null,
+                }),
+              ]
+              if (anchor === 'different-configuration')
+                writer.actions[0]!.configuration = 'linux#other'
+              if (anchor === 'none') {
+                item.writers = []
+                item.observation.writers = []
+              }
+            }
+            const eligible =
+              anchor === 'trusted' && lane === 'main-writer' && observedAt < 200 ? 1 : 0
+            const report = evaluateWarm99({ manifest, loaded })
+            expect(report.accepted).toBe(eligible === 1)
+            expect(report.lanes[0]!.observations[0]).toMatchObject({
+              ...(anchor === 'incomplete' ? {} : { complete: true }),
+              evidenceGap: anchor === 'incomplete' ? 1 : 0,
+              eligible,
+              remoteHits: eligible,
+              cold: 1 - eligible,
+            })
+          }
+    },
+  )
+
+  it('does not consume enabled lookup freshness with an earlier cache-off control', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const reader = item.readers[0]!
+      const first = reader.header.invocations[0]!
+      first.cacheReadPolicy = 'disabled-by-design'
+      const next = {
+        ...first,
+        buildId: `${first.buildId}-enabled`,
+        startedAt: 250,
+        cacheReadPolicy: 'enabled' as const,
+        freshRoot: false,
+      }
+      reader.header.invocations.push(next)
+      reader.actions = [
+        actionFixture({ buildId: first.buildId, executionKind: 1 }),
+        actionFixture({ buildId: next.buildId, startedAt: 250, completedAt: 260, endTime: 260 }),
+      ]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 1,
+      excluded: 1,
+      cold: 0,
+    })
+  })
+  it('excludes disabled readers and disabled uploads, preserving upload-only main/queue anchors', () => {
+    for (const role of ['reader', 'writer'] as const) {
+      for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+        const manifest = manifestFixture()
+        const loaded = loadedFixture(manifest)
+        for (const item of loaded) {
+          const artifact = role === 'reader' ? item.readers[0]! : item.writers[0]!
+          artifact.header.invocations[0]!.cacheReadPolicy = cacheReadPolicy
+        }
+        const disabled = cacheReadPolicy === 'disabled-by-design'
+        expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+          complete: true,
+          eligible: disabled === true ? 0 : 1,
+          remoteHits: disabled === true ? 0 : 1,
+          excluded: disabled === true && role === 'reader' ? 1 : 0,
+          cold: disabled === true && role === 'writer' ? 1 : 0,
+          evidenceGap: 0,
+        })
+      }
+    }
+  })
   it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
     for (const executionKind of [1, 3, 8]) {
       const manifest = manifestFixture()
@@ -985,7 +1291,7 @@ describe('cache lane posture', () => {
     expect(report.accepted).toBe(true)
     expect(report.lanes.map((lane) => lane.consecutive)).toEqual([2, 2])
   })
-  it('accepts queue writer sources but rejects PR writer posture or read-only writer sources', () => {
+  it('rejects queue or PR anchors, PR writer posture and read-only writer sources', () => {
     for (const mode of ['queue', 'pr-reader', 'pr-writer', 'readonly-source']) {
       const manifest = manifestFixture(['pr'])
       const loaded = loadedFixture(manifest)
@@ -1010,7 +1316,7 @@ describe('cache lane posture', () => {
           writer.header.metadata.posture = 'read-only'
         }
       }
-      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(mode === 'queue')
+      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(false)
     }
   })
 })

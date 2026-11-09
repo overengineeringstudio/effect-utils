@@ -220,6 +220,10 @@ effect_tsgo_toolchain(
     visibility = ["PUBLIC"],
 )
 
+# attrs.source is eager even for the unselected analysis fixture below. Reuse
+# this package's already-loaded rule input, not the unrelated products fixtures.
+export_file(name = "provider_identity_fixture.bzl", visibility = ["PUBLIC"])
+
 # Analysis-only fixture: the rule and platform live in the hub cell and must
 # consume the exact same ProductPlatformInfo identity.
 configured_rust_toolchain(

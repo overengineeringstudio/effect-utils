@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, Hash, webcrypto } from 'node:crypto'
 import {
   type BigIntStats,
   accessSync,
@@ -18,6 +18,7 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
@@ -34,8 +35,13 @@ import {
   repairEditorViewContentStore,
   defaultEditorViewContentStore,
   editorViewStagingCreatorIdentity,
+  editorViewSourceKey,
+  reuseEditorViewSourceFiles,
+  withEditorViewContentStoreLock,
+  materializeEditorViewSourceFiles,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
+import { editorViewTimingContext } from './typescript-runner.ts'
 
 /** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
 const requireTool = (name: string): string => {
@@ -48,6 +54,13 @@ const requireTool = (name: string): string => {
 const bun = requireTool('BUN_BIN')
 const ps = requireTool('PS_BIN')
 const sharingModule = new URL('./editor-view-sharing.ts', import.meta.url)
+const directReuseTimingPhases = [
+  'casDirectReuseDirectoryMs',
+  'casDirectReuseBlobRecheckMs',
+  'casDirectReuseSourceRecheckMs',
+  'casDirectReuseLinkMs',
+  'casDirectReusePostLinkMs',
+] as const
 
 const crossDeviceDirectories = ['/dev/shm', '/tmp', '/var/tmp'].filter((directory) => {
   try {
@@ -366,6 +379,446 @@ const replaceBlob = (
 }
 
 describe('host-wide editor snapshot content store', () => {
+  it.each([
+    { hit: false, size: 32 },
+    { hit: true, size: 32 },
+    { hit: false, size: 65_537 },
+    { hit: true, size: 65_537 },
+  ])('hashes payload once across hash-first copy and sharing (%j)', async ({ hit, size }) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const bytes = 'x'.repeat(size)
+      if (hit === true) {
+        payload(candidate('seed'), 'file', bytes)
+        await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      }
+      const source = payload(candidate('source'), 'file', bytes)
+      const destination = join(candidate('next'), 'file')
+      const hash = vi.spyOn(webcrypto.subtle, 'digest')
+      const streamingHash = vi.spyOn(Hash.prototype, 'digest')
+      const timings: Record<string, number> = {}
+      const reusedFiles = new Set<string>()
+      try {
+        const preparedSources = await editorViewTimingContext.run(
+          timings,
+          materializeEditorViewSourceFiles,
+          { contentStore, files: [{ source, path: destination }], reusedFiles },
+        )
+        await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+          candidate: candidate('next'),
+          contentStore,
+          preparedSources,
+          reusedFiles,
+        })
+        expect(hash).toHaveBeenCalledTimes(size <= 65_536 ? 1 : 0)
+        expect(streamingHash).toHaveBeenCalledTimes(size > 65_536 ? 1 : 0)
+        expect(readFileSync(destination, 'utf8')).toBe(bytes)
+        expect(inode(destination)).not.toBe(inode(source))
+        expect(timings.filesHashFirstAttempts).toBe(1)
+        expect(timings.filesHashFirstMiss ?? 0).toBe(hit === true ? 0 : 1)
+        expect(timings.hashFirstMs).toBeGreaterThanOrEqual(0)
+        expect(reusedFiles.size).toBe(hit === true ? 1 : 0)
+        if (hit === true)
+          for (const phase of directReuseTimingPhases)
+            expect(timings[phase]).toBeGreaterThanOrEqual(0)
+        expectReadonlyStore(contentStore)
+      } finally {
+        hash.mockRestore()
+        streamingHash.mockRestore()
+      }
+    })
+  })
+
+  it('rejects a changed candidate instead of reusing its prepared digest', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const source = payload(candidate('source'), 'file', 'original')
+      const destination = join(candidate('next'), 'file')
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path: destination }],
+      })
+      writeFileSync(destination, 'changed')
+      await expect(
+        shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources }),
+      ).rejects.toThrow('prepared candidate changed')
+    })
+  })
+  const reuseFiles = (store: string, directory: string, count: number, blobCount = 8) =>
+    Array.from({ length: count }, (_, index) => {
+      const blob = blobPath(store, `bytes-${index % blobCount}`)
+      return {
+        path: join(directory, `${index}`),
+        entry: {
+          sourceKey: '',
+          digest: basename(blob).slice(0, 64),
+          mode: 0o444,
+          blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
+        },
+      }
+    })
+  it('bounds async links and preserves manifests, fallbacks and wall attribution', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 8; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      // Inject per-call links: restoring an existing Bun module mock clears its implementation.
+      const outcomes = []
+      for (const linkConcurrency of [1, 8]) {
+        const files = reuseFiles(contentStore, candidate(`next-${linkConcurrency}`), 32)
+        let active = 0,
+          maximum = 0
+        const gates: (() => void)[] = []
+        const used = new Map<string, number>()
+        let phaseWallMs = 0
+        const linkFile: typeof fsPromises.link = async (source, destination) => {
+          maximum = Math.max(maximum, ++active)
+          const gate = Promise.withResolvers<void>()
+          gates.push(gate.resolve)
+          if (gates.length === linkConcurrency)
+            for (const resolve of gates.splice(0).toReversed()) resolve()
+          try {
+            await gate.promise
+            const count = (used.get(String(source)) ?? 0) + 1
+            used.set(String(source), count)
+            if (count > 2) throw Object.assign(new Error('EMLINK'), { code: 'EMLINK' })
+            linkSync(source, destination)
+          } finally {
+            active -= 1
+          }
+        }
+        const timings: Record<string, number> = {}
+        const linked = await editorViewTimingContext.run(timings, reuseEditorViewSourceFiles, {
+          contentStore,
+          files,
+          linkConcurrency,
+          linkFile,
+          afterLinkPhase: (wallMs) => {
+            phaseWallMs += wallMs
+          },
+        })
+        expect(maximum).toBe(linkConcurrency)
+        expect(active).toBe(0)
+        const manifest = [...linked].map((path) => ({
+          path: basename(path),
+          digest: createHash('sha256').update(readFileSync(path)).digest('hex'),
+          mode: lstatSync(path).mode & 0o777,
+        }))
+        const fallback = files
+          .filter(({ path }) => linked.has(path) === false)
+          .map(({ path }) => basename(path))
+        expect(fallback).toHaveLength(16)
+        outcomes.push({ manifest, fallback })
+        const synchronous =
+          timings.casDirectReuseBlobRecheckMs! +
+          timings.casDirectReuseSourceRecheckMs! +
+          timings.casDirectReusePostLinkMs!
+        const classified =
+          synchronous + timings.casDirectReuseLinkMs! + timings.casDirectReuseDirectoryMs!
+        const residual = timings.casHeldMs! - classified
+        expect(residual).toBeGreaterThanOrEqual(0)
+        expect(classified + residual).toBeCloseTo(timings.casHeldMs!, 8)
+        expect(synchronous + timings.casDirectReuseLinkMs!).toBeLessThanOrEqual(phaseWallMs + 1e-8)
+      }
+      expect(outcomes[0]).toEqual(outcomes[1])
+      const probe = payload(candidate('probe'), 'source', 'native-link-probe')
+      await fsPromises.link(probe, `${probe}.link`)
+      expect(lstatSync(`${probe}.link`).ino).toBe(lstatSync(probe).ino)
+    })
+  })
+
+  it('keeps free workers linking singletons while a long blob chain is gated', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 16; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const files = reuseFiles(contentStore, candidate('next'), 16, 16).toSorted((a, b) =>
+        a.entry.digest.localeCompare(b.entry.digest),
+      )
+      const long = files[0]!
+      for (let index = 0; index < 5; index++)
+        files.push({ ...long, path: join(candidate('next'), `long-${index}`) })
+      const gates = Array.from({ length: 6 }, () => Promise.withResolvers<void>())
+      const singletonsDone = Promise.withResolvers<void>()
+      let longStarted = 0,
+        longCompleted = 0,
+        singletonCompleted = 0,
+        active = 0,
+        maximum = 0
+      const linkFile: typeof fsPromises.link = async (source, destination) => {
+        maximum = Math.max(maximum, ++active)
+        const isLong = basename(String(source)).startsWith(long.entry.digest)
+        try {
+          if (isLong === true) await gates[longStarted++]!.promise
+          linkSync(source, destination)
+          if (isLong === true) longCompleted += 1
+          else if (++singletonCompleted === 15) singletonsDone.resolve()
+        } finally {
+          active -= 1
+        }
+      }
+      const operation = reuseEditorViewSourceFiles({
+        contentStore,
+        files,
+        linkConcurrency: 8,
+        linkFile,
+      })
+      try {
+        await Promise.race([singletonsDone.promise, operation])
+        expect(singletonCompleted).toBe(15)
+        expect(longStarted).toBe(1)
+        expect(longCompleted).toBe(0)
+        expect(maximum).toBeLessThanOrEqual(8)
+      } finally {
+        for (const gate of gates) gate.resolve()
+        await operation
+      }
+      expect(longCompleted).toBe(6)
+      expect(active).toBe(0)
+      expect(await operation).toHaveProperty('size', files.length)
+    })
+  })
+
+  it('settles every link before releasing the lock and throws the first stable error', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 16; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const files = reuseFiles(contentStore, candidate('next'), 16, 16).toSorted((a, b) =>
+        a.entry.digest.localeCompare(b.entry.digest),
+      )
+      const started = Promise.withResolvers<void>(),
+        contended = Promise.withResolvers<void>()
+      const gates = files.map(() => Promise.withResolvers<void>())
+      let active = 0,
+        completed = 0
+      const linkFile: typeof fsPromises.link = async (source, destination) => {
+        if (++active === 8) started.resolve()
+        const index = Number(basename(String(destination)))
+        try {
+          await gates[index]!.promise
+          if (index < 2) throw new Error(`fatal-${index}`)
+          linkSync(source, destination)
+        } finally {
+          completed += 1
+        }
+      }
+      try {
+        const operation = reuseEditorViewSourceFiles({
+          contentStore,
+          files,
+          linkConcurrency: 8,
+          linkFile,
+        })
+        const outcome = operation.catch((error: unknown) => error)
+        await Promise.race([started.promise, operation])
+        const contender = withEditorViewContentStoreLock({
+          contentStore,
+          afterStoreLockContended: contended.resolve,
+          run: async () => {
+            expect(completed).toBe(16)
+          },
+        })
+        await Promise.race([contended.promise, contender])
+        for (const gate of gates.toReversed()) gate.resolve()
+        const firstFatal = files.find(({ path }) => Number(basename(path)) < 2)!
+        expect(await outcome).toHaveProperty('message', `fatal-${basename(firstFatal.path)}`)
+        await contender
+        expect(completed).toBe(16)
+      } finally {
+        for (const gate of gates) gate.resolve()
+      }
+    })
+  })
+
+  it.each([false, true])('discards a changed source digest (hit=%s)', async (hit) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      if (hit === true) {
+        payload(candidate('seed'), 'file', 'original')
+        await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      }
+      const source = payload(candidate('source'), 'file', 'original')
+      utimesSync(source, 1234567890, 1234567890)
+      if (hit === true) {
+        linkSync(source, `${source}.alias`)
+        chmodSync(source, 0o444)
+      }
+      const destination = join(candidate('next'), 'file')
+      const reusedFiles = new Set<string>()
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path: destination }],
+        reusedFiles,
+        afterSourceHash: () => {
+          if (hit === false) writeFileSync(source, 'modified')
+        },
+        beforeDirectLink: (_blob, phase) => {
+          if (phase !== 'link') return
+          const before = lstatSync(source, { bigint: true })
+          expect(before.nlink).toBe(2n)
+          chmodSync(source, 0o644)
+          writeFileSync(source, 'modified')
+          utimesSync(source, 1234567890, 1234567890)
+          chmodSync(source, 0o444)
+          expect(lstatSync(source, { bigint: true }).ctimeNs).not.toBe(before.ctimeNs)
+        },
+      })
+      expect(reusedFiles.size).toBe(0)
+      expect(preparedSources.has(destination)).toBe(false)
+      await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
+      expect(readFileSync(destination, 'utf8')).toBe('modified')
+      expectReadonlyStore(contentStore)
+    })
+  })
+
+  it.each([false, true])('orders reuse and fallback by digest/path (hit=%s)', async (hit) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const contents = Array.from({ length: 8 }, (_, index) => `ordered shard ${index}`)
+      if (hit === true) {
+        for (const [index, bytes] of contents.entries())
+          payload(candidate('seed'), `${index}`, bytes)
+        await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      }
+      const files = Array.from({ length: 8 * 129 }, (_, index) => ({
+        source: payload(candidate('source'), `${index}`, contents[index % contents.length]!),
+        path: join(candidate('next'), String(8 * 129 - index).padStart(4, '0')),
+        bytes: contents[index % contents.length]!,
+      }))
+      const timings: Record<string, number> = {}
+      const sizes: number[] = []
+      const shards: Set<string>[] = []
+      let hashed = 0
+      const prepared = await editorViewTimingContext.run(
+        timings,
+        materializeEditorViewSourceFiles,
+        {
+          contentStore,
+          files,
+          afterSourceHash: () => {
+            hashed += 1
+          },
+          beforeDirectLink: (blob, phase) => {
+            if (phase !== 'link') return
+            expect(hashed).toBe(files.length)
+            const transaction = timings.casTransactions! - 1
+            sizes[transaction] = (sizes[transaction] ?? 0) + 1
+            ;(shards[transaction] ??= new Set()).add(dirname(blob))
+          },
+        },
+      )
+      const expected = files
+        .toSorted((a, b) => {
+          const left = blobPath(contentStore, a.bytes),
+            right = blobPath(contentStore, b.bytes)
+          return left === right ? a.path.localeCompare(b.path) : left.localeCompare(right)
+        })
+        .map((file) => file.path)
+      expect([...prepared.keys()]).toEqual(expected)
+      for (const file of files) expect(readFileSync(file.path, 'utf8')).toBe(file.bytes)
+      if (hit === true) {
+        expect(sizes).toEqual([...Array(8).fill(128), 8])
+        // Each sorted shard run has 129 files: 128 positions cannot cross two boundaries.
+        for (const batch of shards) expect(batch.size).toBeLessThanOrEqual(2)
+        const cold = shards.reduce((sum, batch) => sum + batch.size, 0)
+        expect(timings.casDirectReuseAdmissionCold).toBe(cold)
+        expect(timings.casDirectReuseAdmissionHits).toBe(files.length - cold)
+      }
+    })
+  })
+
+  it('reports preflight errors in target-path order, not completion or input order', async () => {
+    await withStore(async ({ root, contentStore }) => {
+      await expect(
+        materializeEditorViewSourceFiles({
+          contentStore,
+          files: ['missing-b', 'missing-a'].map((name) => ({
+            source: join(root, name),
+            path: join(root, name),
+          })),
+        }),
+      ).rejects.toThrow(join(root, 'missing-a'))
+    })
+  })
+
+  it.each([false, true])('keys hash-first blobs by executable mode (%s)', async (executable) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      payload(candidate('seed'), 'file', 'bytes', executable === true ? 0o555 : 0o444)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const source = payload(
+        candidate('source'),
+        'file',
+        'bytes',
+        executable === true ? 0o644 : 0o755,
+      )
+      const path = join(candidate('next'), 'file')
+      const reusedFiles = new Set<string>()
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path }],
+        reusedFiles,
+      })
+      expect(reusedFiles.size).toBe(0)
+      await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
+      expect(mode(path)).toBe(executable === true ? 0o444 : 0o555)
+      expect(inode(path)).not.toBe(inode(blobPath(contentStore, 'bytes', executable)))
+    })
+  })
+
+  it.each([
+    'recheck-delete',
+    'recheck-replace',
+    'link-delete',
+    'link-replace',
+    'EXDEV',
+    'EMLINK',
+    'EPERM',
+  ])('handles a hash-first link fault safely (%s)', async (fault) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      payload(candidate('seed'), 'file', 'bytes')
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const source = payload(candidate('source'), 'file', 'bytes')
+      const path = join(candidate('next'), 'file')
+      const reusedFiles = new Set<string>()
+      const timings: Record<string, number> = {}
+      const materialization = editorViewTimingContext.run(
+        timings,
+        materializeEditorViewSourceFiles,
+        {
+          contentStore,
+          files: [{ source, path }],
+          reusedFiles,
+          beforeDirectLink: (blob, phase) => {
+            if (fault.startsWith(`${phase}-`) === true) {
+              chmodSync(dirname(blob), 0o755)
+              try {
+                unlinkSync(blob)
+                if (fault.endsWith('replace') === true)
+                  payload(dirname(blob), basename(blob), 'wrong', 0o444)
+              } finally {
+                chmodSync(dirname(blob), 0o555)
+              }
+            } else if (phase === 'link' && fault === fault.toUpperCase()) {
+              throw Object.assign(new Error(fault), { code: fault })
+            }
+          },
+        },
+      )
+      if (fault === 'link-replace') {
+        await expect(materialization).rejects.toThrow('reused blob changed while linking')
+        for (const phase of directReuseTimingPhases)
+          expect(timings[phase]).toBeGreaterThanOrEqual(0)
+        expectReadonlyStore(contentStore)
+        return
+      }
+      await materialization
+      for (const phase of directReuseTimingPhases) expect(timings[phase]).toBeGreaterThanOrEqual(0)
+      expect(reusedFiles.size).toBe(0)
+      expect(readFileSync(path, 'utf8')).toBe('bytes')
+      expect(lstatSync(path).nlink).toBe(1)
+      expect(timings.filesDirectLinkFallback).toBe(1)
+      expect(timings.hashFirstMissMs).toBe(timings.hashFirstMs)
+      expectReadonlyStore(contentStore)
+    })
+  })
+
   it('keeps staging creator identity invariant across caller timezones and locales', async () => {
     await withStore(async ({ root }) => {
       const script = join(root, 'probe-staging-identity.ts')
@@ -412,6 +865,208 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it.each([
+    { kind: 'same', bytes: ['same payload', 'same payload', 'same payload'] },
+    { kind: 'mixed', bytes: ['first shard', 'second shard', 'first shard', 'second shard'] },
+  ])('admits each directory once in a $kind-shard transaction', async ({ kind, bytes }) => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const seed = candidate('seed')
+      const directory = candidate('next')
+      const files = bytes.map((bytes, index) => {
+        payload(seed, `${index}.js`, bytes)
+        return { path: payload(directory, `${index}.js`, bytes), bytes }
+      })
+      await shareSnapshotFiles({ candidate: seed, contentStore })
+      const shards = new Set(bytes.map((bytes) => dirname(blobPath(contentStore, bytes))))
+      expect(shards.size).toBe(kind === 'same' ? 1 : 2)
+      const lstat = vi.spyOn(fsPromises, 'lstat')
+      const open = vi.spyOn(fsPromises, 'open')
+      let transactions = 0
+      try {
+        await shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+            // Exclude preflight and repair; observe real filesystem admission/restoration.
+            lstat.mockClear()
+            open.mockClear()
+          },
+        })
+        expect(transactions).toBe(1)
+        for (const directory of [contentStore, ...shards]) {
+          // One existence probe, one first-open lstat, one final named-inode proof.
+          expect(lstat.mock.calls.filter(([path]) => path === directory)).toHaveLength(3)
+          expect(open.mock.calls.filter(([path]) => path === directory)).toHaveLength(1)
+        }
+      } finally {
+        lstat.mockRestore()
+        open.mockRestore()
+      }
+      for (const { path, bytes } of files) {
+        expect(readFileSync(path, 'utf8')).toBe(bytes)
+        expect(inode(path)).toBe(inode(blobPath(contentStore, bytes)))
+      }
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('readmits a shard in the next transaction and rejects its replaced pathname', async () => {
+    await withStore(async ({ root, contentStore, candidate }) => {
+      const bytes = 'shared across transactions'
+      payload(candidate('seed'), 'file', bytes)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const directory = candidate('next')
+      const files = Array.from({ length: 129 }, (_, index) =>
+        payload(directory, `${index}.js`, bytes),
+      )
+      const shard = dirname(blobPath(contentStore, bytes))
+      const retired = join(root, 'retired-shard')
+      let transactions = 0
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+            if (transactions !== 2) return
+            // After preflight, before this transaction admits any directory. The
+            // first transaction's handles must not authorize the replaced name.
+            chmodSync(contentStore, 0o755)
+            try {
+              chmodSync(shard, 0o755)
+              renameSync(shard, retired)
+              chmodSync(retired, 0o555)
+              symlinkSync(retired, shard)
+            } finally {
+              chmodSync(contentStore, 0o555)
+            }
+          },
+        }),
+      ).rejects.toThrow(`directory must be canonical and real, without symbolic links: ${shard}`)
+      expect(transactions).toBe(2)
+      expect(files.filter((path) => lstatSync(path).nlink > 1)).toHaveLength(128)
+      expect(mode(contentStore)).toBe(0o555)
+      expect(mode(retired)).toBe(0o555)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('coalesces mixed-shard tails into transactions of at most 128 proven files', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('mixed-tails')
+      const files = Array.from({ length: 257 }, (_, index) => {
+        const bytes = `distinct payload ${index}`
+        return { path: payload(directory, `${index}.js`, bytes), bytes }
+      })
+      const shards = new Set(
+        files.map(({ bytes }) => createHash('sha256').update(bytes).digest('hex').slice(0, 2)),
+      )
+      expect(shards.size).toBeGreaterThan(100)
+      const sizes: number[] = []
+      const timings: Record<string, number> = {}
+      await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: directory,
+        contentStore,
+        afterStoreLock: () => {
+          sizes.push(0)
+        },
+        afterBlobInstall: () => {
+          sizes[sizes.length - 1]! += 1
+        },
+      })
+      expect(sizes).toEqual([128, 128, 1])
+      expect(timings.casTransactions).toBe(3)
+      expect(timings.casRepairMs).toBeGreaterThanOrEqual(0)
+      for (const { path, bytes } of files) {
+        expect(readFileSync(path, 'utf8')).toBe(bytes)
+        expect(inode(path)).toBe(inode(blobPath(contentStore, bytes)))
+        expect(mode(path)).toBe(0o444)
+      }
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('restores both shards after a mixed-tail fault and repairs the dirty acquisition', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('mixed-tail-fault')
+      const first = payload(directory, 'first.js', 'first shard')
+      const second = payload(directory, 'second.js', 'second shard')
+      const shards = new Set<string>()
+      let transactions = 0
+      const failure = new Error('second mixed-tail shard installed')
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          candidateFiles: [first, second],
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+          },
+          afterBlobInstall: ({ blob }) => {
+            shards.add(dirname(blob))
+            if (shards.size === 2) {
+              for (const shard of shards) expect(mode(shard)).toBe(0o755)
+              throw failure
+            }
+          },
+        }),
+      ).rejects.toBe(failure)
+      expect(transactions).toBe(1)
+      expect(shards.size).toBe(2)
+      for (const shard of shards) expect(mode(shard)).toBe(0o555)
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+      expect(readFileSync(`${contentStore}.flock`, 'utf8')).toBe('1')
+      let repaired = false
+      await shareSnapshotFiles({
+        candidate: directory,
+        contentStore,
+        afterStoreLock: () => {
+          expectReadonlyStore(contentStore)
+          repaired = true
+        },
+      })
+      expect(repaired).toBe(true)
+      expect(readFileSync(`${contentStore}.flock`, 'utf8')).toBe('0')
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+  it('keeps full shard batches and rejects a changed candidate in a mixed tail', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('full-and-tail')
+      for (let index = 0; index < 128; index++) payload(directory, `${index}.js`, 'full shard')
+      const changed = payload(directory, 'changed.js', 'tail one')
+      payload(directory, 'other.js', 'tail two')
+      let transactions = 0
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          candidateFiles: [
+            ...Array.from({ length: 128 }, (_, index) => join(directory, `${index}.js`)),
+            changed,
+            join(directory, 'other.js'),
+          ],
+          afterStoreLock: () => {
+            transactions += 1
+            if (transactions === 2) {
+              chmodSync(changed, 0o644)
+              writeFileSync(changed, 'changed after hashing')
+            }
+          },
+        }),
+      ).rejects.toThrow('candidate payload changed before store installation')
+      expect(transactions).toBe(2)
+      expect(inode(join(directory, '0.js'))).toBe(inode(blobPath(contentStore, 'full shard')))
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
   it('shares one readonly CAS inode across worktrees, state roots, views, and names', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const first = candidate('worktrees', 'one', 'state-a', 'views', 'alpha', 'candidate')
@@ -421,7 +1076,27 @@ describe('host-wide editor snapshot content store', () => {
       const renamed = payload(first, 'nested/renamed.js', 'same payload', 0o600)
       const siblingFile = payload(sibling, 'another.js', 'same payload')
       const otherFile = payload(otherWorktree, 'payload.js', 'same payload', 0o444)
-      const firstResult = await shareSnapshotFiles({ candidate: first, contentStore })
+      const timings: Record<string, number> = {}
+      const firstResult = await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: first,
+        contentStore,
+      })
+      expect(timings.filesAlreadyShared).toBe(1)
+      expect(timings.filesLinked).toBe(1)
+      expect(timings.blobsCreated).toBe(1)
+      for (const phase of [
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+      ])
+        expect(timings[phase]).toBeGreaterThanOrEqual(0)
+      await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: first,
+        contentStore,
+      })
+      expect(timings.filesAlreadyShared).toBe(3)
+      expect(timings.filesLinked).toBe(1)
       expect(firstResult).toEqual({
         linkedFiles: 2,
         copiedFiles: 0,

@@ -1,7 +1,7 @@
 # Native products for the evaluating host platform. Rust products use the
 # pinned Cargo archive projection; the TypeScript API server uses pnpm archives.
 # Every product is independently realized and validated by importNative.
-{
+args@{
   pkgs,
   mkBuckProductFromSource,
   capabilities,
@@ -39,7 +39,10 @@ let
           "version"
         ]
       )
-    && product.kind == "native"
+    && builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]
     && builtins.isString product.name
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
     && product.outputName == "artifact.tar"
@@ -100,7 +103,60 @@ builtins.listToAttrs (
               null;
         };
       in
-      if product.shellCompletions or false then
+      if product.name == "worktree-lease" then
+        pkgs.runCommand "worktree-lease-with-compat"
+          {
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            inherit (nativeProduct) passthru;
+          }
+          ''
+            mkdir -p "$out/bin" "$out/share/worktree-lease"
+            ln -s ${nativeProduct}/bin/worktree-lease "$out/bin/worktree-lease"
+            cp ${repositoryRoot + "/rust/worktree-lease/compat"}/*.py "$out/share/worktree-lease/"
+            ln -s reclaim_worktree_guard.py "$out/share/worktree-lease/reclaim-worktree-guard.py"
+            ln -s gate_worktree_lease.py "$out/share/worktree-lease/gate-worktree-lease.py"
+            for entry in gate-lease-write:writer_main reclaim-worktree-guard:guard_main; do
+              name="''${entry%:*}"; function="''${entry#*:}"
+              makeWrapper ${pkgs.python3}/bin/python3 "$out/bin/$name" \
+                --add-flags "-c 'import sys; sys.path.insert(0, \"$out/share/worktree-lease\"); from gate_worktree_lease import $function; sys.exit($function())'" \
+                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git ]}
+            done
+          ''
+      else if product.kind == "rust-library" then
+        nativeProduct.overrideAttrs (old: {
+          passthru = (old.passthru or { }) // {
+            compositionChecks = import ./composition-check.nix {
+              inherit pkgs;
+              library = nativeProduct;
+              tool = (import ./native.nix args).otelite;
+            };
+            libraryChecks = import ./library-check.nix {
+              inherit pkgs;
+              product = nativeProduct;
+              fixture = mkBuckProductFromSource {
+                inherit
+                  pnpmArchives
+                  repositoryRoot
+                  rootProjection
+                  cargoArchives
+                  ;
+                capabilities = capabilities.selectProduct product;
+                sourcePaths = product.sourcePaths ++ [ "buck2/tests/library_closure" ];
+                product = {
+                  name = "example-library";
+                  version = "0.0.0";
+                  kind = "rust-library";
+                  target = "effect_utils//buck2/tests/library_closure:product";
+                  outputName = "artifact.tar";
+                  cargoWorkspaceRoot = "buck2/tests/library_closure";
+                };
+                importNative = true;
+                admitTestFixtureInputs = true;
+              };
+            };
+          };
+        })
+      else if product.shellCompletions or false then
         nativeProduct.overrideAttrs (old: {
           nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.installShellFiles ];
           # The validated import is sealed read-only. Add only shell hooks after

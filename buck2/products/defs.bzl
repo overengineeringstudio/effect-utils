@@ -4,7 +4,7 @@ load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/package_tools.bzl", "JavaScriptModuleInfo", "PackageCommandRuntimeInfo", "package_command_runtime_inputs")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
-load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_executable_info")
+load("//buck2/provenance:defs.bzl", "ProductArtifactInfo", "ProductArtifactKind", "product_artifact_info", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
@@ -179,6 +179,7 @@ def _package_tree_product_executable_impl(ctx):
             other_outputs = [product_executable.provenance.artifact] + ([support_tree] if support_tree != None else []),
         ),
         product_executable,
+        product_artifact_info("executable", product_executable, target_platform, product_executable.provenance),
     ]
 
 _package_tree_product_executable = cache_guarded_rule(
@@ -295,6 +296,7 @@ def _bun_compiled_product_executable_impl(ctx):
             other_outputs = [product_executable.provenance.artifact],
         ),
         product_executable,
+        product_artifact_info("executable", product_executable, target_platform, product_executable.provenance),
     ]
 
 _bun_compiled_product_executable = cache_guarded_rule(
@@ -347,16 +349,46 @@ def bun_compiled_product_executable(
         **kwargs
     )
 
+def _package_library(ctx, product):
+    platform = ctx.attrs.target_platform[ProductPlatformInfo]
+    actual = product.target_platform
+    if (actual.os, actual.architecture, actual.abi, actual.runtime_contract) != (platform.os, platform.architecture, platform.abi, platform.runtime_contract):
+        fail("build_product library platform does not match requested target platform")
+    if ctx.attrs.entrypoint:
+        fail("build_product library must not declare an executable entrypoint")
+    payload = ctx.actions.declare_output("artifact.tar")
+    descriptor = ctx.actions.declare_output("descriptor.json")
+    args = cmd_args(
+        ctx.attrs._descriptor_tool[RunInfo], "package-library",
+        "--directory", product.payload.directory,
+        "--metadata", product.payload.compiler_metadata,
+        "--artifact", payload.as_output(), "--descriptor", descriptor.as_output(),
+        "--name", ctx.attrs.product_name, "--target", str(ctx.label.raw_target()),
+        "--platform-os", platform.os, "--platform-architecture", platform.architecture,
+        "--platform-abi", platform.abi, "--provenance", product.provenance.artifact,
+    )
+    ctx.actions.run(args, category = "build_product_package", local_only = True)
+    return [
+        DefaultInfo(default_output = payload, other_outputs = [descriptor, product.provenance.artifact], sub_targets = {
+            "descriptor": [DefaultInfo(default_output = descriptor)],
+            "provenance": [DefaultInfo(default_output = product.provenance.artifact)],
+        }),
+        BuildProductInfo(descriptor = descriptor, payload = payload),
+    ]
+
 def _build_product_impl(ctx):
     if not ctx.attrs.product_name:
         fail("build_product product_name must not be empty")
+    product = ctx.attrs.artifact[ProductArtifactInfo]
+    if product.kind == ProductArtifactKind("library"):
+        return _package_library(ctx, product)
     entrypoint = ctx.attrs.entrypoint
     if not entrypoint or entrypoint.startswith("/"):
         fail("build_product entrypoint must be a normalized relative path")
     for component in entrypoint.split("/"):
         if component == "" or component == "." or component == "..":
             fail("build_product entrypoint must be a normalized relative path")
-    product_executable = ctx.attrs.executable[ProductExecutableInfo]
+    product_executable = product.payload
     target_platform = ctx.attrs.target_platform[ProductPlatformInfo]
     actual_platform = (
         product_executable.target_platform_os,
@@ -423,9 +455,9 @@ def _build_product_impl(ctx):
 _build_product = cache_guarded_rule(
     impl = _build_product_impl,
     attrs = {
-        "executable": attrs.dep(providers = [ProductExecutableInfo]),
+        "artifact": attrs.dep(providers = [ProductArtifactInfo]),
         "product_name": attrs.string(),
-        "entrypoint": attrs.string(),
+        "entrypoint": attrs.string(default = ""),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "_descriptor_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:product_tool",
@@ -436,15 +468,15 @@ _build_product = cache_guarded_rule(
 
 def build_product(
         name,
-        executable,
+        artifact,
         target_platform,
         product_name,
-        entrypoint,
+        entrypoint = "",
         **kwargs):
     """Packages a payload built under the product's exact target platform."""
     _build_product(
         name = name,
-        executable = executable,
+        artifact = artifact,
         target_platform = target_platform,
         product_name = product_name,
         entrypoint = entrypoint,

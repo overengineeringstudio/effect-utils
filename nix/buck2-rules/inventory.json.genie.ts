@@ -28,6 +28,8 @@ const files = [
   'buck2/rust/interop-service-package.ts',
   'buck2/rust/interop-service.ts',
   'buck2/rust/interop.bzl',
+  'buck2/rust/library-closure.mjs',
+  'buck2/rust/library.bzl',
   'buck2/rust/wasm-guest-package.ts',
   'buck2/rust/toolchains.bzl',
   'buck2/static_checks.bzl',

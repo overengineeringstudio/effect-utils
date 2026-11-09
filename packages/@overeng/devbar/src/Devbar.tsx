@@ -4,6 +4,7 @@ import * as React from 'react'
 
 import { anchoredPopoverStyles, UnseenDot, useAnchoredPopover } from './disclosure.tsx'
 import { fitSegments, type SegmentWidth } from './fitSegments.ts'
+import { useRovingFocus } from './rovingFocus.ts'
 import { devbarTokens } from './tokens.stylex.ts'
 
 /** A host-provided tool panel; only the selected panel's `render` is mounted. */
@@ -32,11 +33,26 @@ export interface DevbarSegment {
 /** Controlled composition of the developer shell; the host owns every slot and the selection. */
 export interface DevbarProps {
   readonly panels: readonly DevbarPanel[]
+  /**
+   * `buttons` (default) renders the toggle and panel buttons in the row. `none` omits them: hosts
+   * open panels from their own triggers (for example meters), and an open panel selects between
+   * panels through tabs in its header.
+   */
+  readonly panelControls?: 'buttons' | 'none' | undefined
+  /** Stable DOM id of the open panel, so host triggers can reference it from `aria-controls`. */
+  readonly panelElementId?: string | undefined
   /** Host-owned renderer slot (for example a meter strip); absent means no strip work. */
   readonly strip?: React.ReactNode | undefined
   /** Minimum strip slot width in CSS pixels before the whole row scrolls; defaults to 160. */
   readonly stripMinWidth?: number | undefined
+  /**
+   * `fill` (default) grows the strip slot into free space, even when empty. `content` keeps it at
+   * `stripMinWidth` so segments follow it directly, and omits it entirely when there is no strip.
+   */
+  readonly stripSizing?: 'fill' | 'content' | undefined
   readonly segments?: readonly DevbarSegment[] | undefined
+  /** Host-owned item pinned to the row's trailing end; it never joins segment overflow. */
+  readonly trailing?: React.ReactNode | undefined
   /** Selected panel ID; an unknown ID renders no panel. */
   readonly openPanel: string | undefined
   /** Single proposal path for buttons, the close action, Ctrl/Meta+Backquote, and Escape. */
@@ -140,6 +156,9 @@ const styles = stylex.create({
     overflowY: 'hidden',
   },
   stripWidth: (minimum: number) => ({ minWidth: minimum, width: minimum }),
+  stripContentSized: { flexGrow: 0, flexShrink: 0 },
+  trailing: { flexShrink: 0, marginLeft: 'auto', whiteSpace: 'nowrap' },
+  tabs: { display: 'flex', alignItems: 'center', gap: '0.25rem', minWidth: 0 },
   stripContent: {
     width: '100%',
     minWidth: 0,
@@ -198,16 +217,31 @@ const styles = stylex.create({
 /** Hosts supply every panel, the strip, and segments; selection is fully controlled. */
 export const Devbar = ({
   panels,
+  panelControls = 'buttons',
+  panelElementId,
   strip,
   stripMinWidth = 160,
+  stripSizing = 'fill',
   segments,
+  trailing,
   openPanel,
   onOpenPanelChange,
   placement = 'viewport',
   style,
 }: DevbarProps): React.ReactNode => {
-  const panelId = React.useId()
+  const generatedPanelId = React.useId()
+  const panelId = panelElementId ?? generatedPanelId
   const toggleRef = React.useRef<HTMLButtonElement>(null)
+  const controlsRef = React.useRef<HTMLDivElement>(null)
+  const rowRef = React.useRef<HTMLDivElement>(null)
+  const onRowKeyDown = useRovingFocus({
+    rowRef,
+    observe: strip !== undefined || (segments?.length ?? 0) > 0 || trailing !== undefined,
+  })
+  const trailingRef = React.useRef<HTMLDivElement>(null)
+  /** Without a toggle, focus returns to whichever host trigger opened the panel. */
+  const opener = React.useRef<HTMLElement | undefined>(undefined)
+  const wasOpen = React.useRef(false)
   /** Ephemeral toggle bookkeeping only; never selection state or persistence. */
   const lastPanel = React.useRef<string | undefined>(undefined)
   const restoreFocus = React.useRef(false)
@@ -221,9 +255,16 @@ export const Devbar = ({
   }, [selectedId])
 
   React.useLayoutEffect(() => {
-    if (selectedId === undefined && restoreFocus.current === true) {
+    const open = selectedId !== undefined
+    if (open === true && wasOpen.current === false) {
+      const focused = document.activeElement
+      opener.current =
+        focused instanceof HTMLElement && focused !== document.body ? focused : undefined
+    }
+    wasOpen.current = open
+    if (open === false && restoreFocus.current === true) {
       restoreFocus.current = false
-      toggleRef.current?.focus()
+      ;(toggleRef.current ?? opener.current)?.focus()
     }
   }, [selectedId])
 
@@ -283,6 +324,32 @@ export const Devbar = ({
   }, [])
 
   const isOpen = selected !== undefined
+  const omitStrip = strip === undefined && stripSizing === 'content'
+  const reservedStripWidth = omitStrip === true ? 0 : stripMinWidth
+  const tabbed = panelControls === 'none'
+  const moveTab = ({
+    event,
+    index,
+  }: {
+    event: React.KeyboardEvent<HTMLButtonElement>
+    index: number
+  }): void => {
+    const target =
+      event.key === 'ArrowRight'
+        ? (index + 1) % panels.length
+        : event.key === 'ArrowLeft'
+          ? (index - 1 + panels.length) % panels.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? panels.length - 1
+              : undefined
+    if (target === undefined) return
+    event.preventDefault()
+    const tab = event.currentTarget.parentElement?.children[target]
+    if (tab instanceof HTMLElement) tab.focus()
+    propose({ next: panels[target]?.id })
+  }
   return (
     <aside
       aria-label="Developer tools"
@@ -305,10 +372,34 @@ export const Devbar = ({
           ref={attachPanel}
           id={panelId}
           aria-label={selected.label}
+          role={tabbed === true ? 'tabpanel' : undefined}
           {...stylex.props(styles.panel)}
         >
           <header {...stylex.props(styles.panelHeader)}>
-            <h2 {...stylex.props(styles.panelTitle)}>{selected.label}</h2>
+            {tabbed === true ? (
+              <div role="tablist" aria-label="Developer panels" {...stylex.props(styles.tabs)}>
+                {panels.map((panel, index) => (
+                  <button
+                    key={panel.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={panel.id === selectedId}
+                    aria-controls={panelId}
+                    tabIndex={panel.id === selectedId ? 0 : -1}
+                    onClick={() => propose({ next: panel.id })}
+                    onKeyDown={(event) => moveTab({ event, index })}
+                    {...stylex.props(styles.button, panel.id === selectedId && styles.active)}
+                  >
+                    {panel.label}
+                    {panel.badge !== undefined && (
+                      <span {...stylex.props(styles.badge)}>{panel.badge}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <h2 {...stylex.props(styles.panelTitle)}>{selected.label}</h2>
+            )}
             <button
               type="button"
               aria-label={`Close ${selected.label} panel`}
@@ -322,45 +413,71 @@ export const Devbar = ({
           <div {...stylex.props(styles.panelBody)}>{selected.render()}</div>
         </section>
       )}
-      <div role="group" aria-label="Developer bar" {...stylex.props(styles.row)}>
-        <div {...stylex.props(styles.controls)}>
-          <button
-            ref={toggleRef}
-            type="button"
-            aria-label="Toggle developer tools"
-            aria-keyshortcuts="Control+Backquote Meta+Backquote"
-            aria-expanded={isOpen}
-            aria-controls={isOpen === true ? panelId : undefined}
-            disabled={isOpen === false && panels.length === 0}
-            onClick={proposeToggle}
-            {...stylex.props(styles.button)}
+      <div
+        ref={rowRef}
+        role="toolbar"
+        aria-label="Developer bar"
+        onKeyDown={onRowKeyDown}
+        {...stylex.props(styles.row)}
+      >
+        {tabbed === false && (
+          <div ref={controlsRef} {...stylex.props(styles.controls)}>
+            <button
+              ref={toggleRef}
+              type="button"
+              aria-label="Toggle developer tools"
+              aria-keyshortcuts="Control+Backquote Meta+Backquote"
+              aria-expanded={isOpen}
+              aria-controls={isOpen === true ? panelId : undefined}
+              disabled={isOpen === false && panels.length === 0}
+              onClick={proposeToggle}
+              {...stylex.props(styles.button)}
+            >
+              Dev tools
+            </button>
+            {panels.map((panel) => {
+              const isSelected = panel.id === selectedId
+              return (
+                <button
+                  key={panel.id}
+                  type="button"
+                  aria-expanded={isSelected}
+                  aria-controls={isSelected === true ? panelId : undefined}
+                  onClick={() => propose({ next: isSelected === true ? undefined : panel.id })}
+                  {...stylex.props(styles.button, isSelected === true && styles.active)}
+                >
+                  {panel.label}
+                  {panel.badge !== undefined && (
+                    <span {...stylex.props(styles.badge)}>{panel.badge}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {omitStrip === false && (
+          <div
+            {...stylex.props(
+              styles.strip,
+              styles.stripWidth(stripMinWidth),
+              stripSizing === 'content' && styles.stripContentSized,
+            )}
           >
-            Dev tools
-          </button>
-          {panels.map((panel) => {
-            const isSelected = panel.id === selectedId
-            return (
-              <button
-                key={panel.id}
-                type="button"
-                aria-expanded={isSelected}
-                aria-controls={isSelected === true ? panelId : undefined}
-                onClick={() => propose({ next: isSelected === true ? undefined : panel.id })}
-                {...stylex.props(styles.button, isSelected === true && styles.active)}
-              >
-                {panel.label}
-                {panel.badge !== undefined && (
-                  <span {...stylex.props(styles.badge)}>{panel.badge}</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-        <div {...stylex.props(styles.strip, styles.stripWidth(stripMinWidth))}>
-          <div {...stylex.props(styles.stripContent)}>{strip}</div>
-        </div>
+            <div {...stylex.props(styles.stripContent)}>{strip}</div>
+          </div>
+        )}
         {segments !== undefined && segments.length > 0 && (
-          <SegmentGroup segments={segments} stripMinWidth={stripMinWidth} />
+          <SegmentGroup
+            segments={segments}
+            stripMinWidth={reservedStripWidth}
+            controlsRef={controlsRef}
+            trailingRef={trailingRef}
+          />
+        )}
+        {trailing !== undefined && (
+          <div ref={trailingRef} {...stylex.props(styles.trailing)}>
+            {trailing}
+          </div>
         )}
       </div>
     </aside>
@@ -378,9 +495,13 @@ interface SegmentMeasurements {
 const SegmentGroup = ({
   segments,
   stripMinWidth,
+  controlsRef,
+  trailingRef,
 }: {
   readonly segments: readonly DevbarSegment[]
   readonly stripMinWidth: number
+  readonly controlsRef: React.RefObject<HTMLDivElement | null>
+  readonly trailingRef: React.RefObject<HTMLDivElement | null>
 }): React.ReactNode => {
   const groupRef = React.useRef<HTMLDivElement>(null)
   const overflowMeasureRef = React.useRef<HTMLSpanElement>(null)
@@ -391,8 +512,9 @@ const SegmentGroup = ({
     const overflow = overflowMeasureRef.current
     if (group === null || overflow === null) return
     const row = group.parentElement
-    const controls = row?.firstElementChild
-    if (row === null || controls === undefined || controls === null) return
+    if (row === null) return
+    const controls = controlsRef.current
+    const trailing = trailingRef.current
     const nodes = Array.from(
       group.querySelectorAll<HTMLElement>(
         ':scope > [data-devbar-segment] > [data-devbar-segment-content]',
@@ -405,13 +527,13 @@ const SegmentGroup = ({
         (Number.parseFloat(rowStyle.paddingRight) || 0)
       const rowGap = Number.parseFloat(rowStyle.columnGap) || 0
       // Budget from fixed neighbours, never from the current visible set.
+      const neighbours = [controls, trailing].filter((node) => node !== null)
       const available = Math.max(
         0,
-        row.clientWidth -
-          padding -
-          controls.getBoundingClientRect().width -
-          stripMinWidth -
-          rowGap * 2,
+        neighbours.reduce(
+          (remaining, node) => remaining - node.getBoundingClientRect().width - rowGap,
+          row.clientWidth - padding - stripMinWidth - rowGap,
+        ),
       )
       const next: SegmentMeasurements = {
         segments: nodes.map((node, index) => ({
@@ -442,11 +564,12 @@ const SegmentGroup = ({
     const observer = new ResizeObserver(measure)
     observer.observe(group)
     observer.observe(row)
-    observer.observe(controls)
+    if (controls !== null) observer.observe(controls)
+    if (trailing !== null) observer.observe(trailing)
     observer.observe(overflow)
     for (const node of nodes) observer.observe(node)
     return () => observer.disconnect()
-  }, [segments, stripMinWidth])
+  }, [segments, stripMinWidth, controlsRef, trailingRef])
 
   const widths = segments.map((segment) => ({
     id: segment.id,
@@ -510,6 +633,7 @@ const SegmentGroup = ({
         <button
           ref={triggerRef}
           type="button"
+          data-devbar-overflow-trigger
           aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.label ?? segment.id).join(', ')}${hidden.some((segment) => segment.hasAlert === true) === true ? ', including unseen changes' : ''}`}
           aria-expanded={expanded}
           aria-controls={popoverId}

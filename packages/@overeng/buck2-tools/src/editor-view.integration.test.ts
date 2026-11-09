@@ -68,6 +68,7 @@ import * as fingerprintRunner from './typescript-runner.ts'
 // Namespace-property spies do not replace Bun's native named-import bindings.
 // Capture native functions, then register stable mocked exports for fault injection.
 const nativeFs = { ...process.getBuiltinModule('fs') }
+const nativeFsPromises = { ...process.getBuiltinModule('fs/promises') }
 // Scope every retirement entrypoint to real fixture PIDs on Linux and macOS.
 // Host-wide fail-closed policy has one explicit native-lease integration case.
 const fixtureProcessIds = new Set([process.pid])
@@ -88,6 +89,7 @@ const releaseEditorViewRoot = scopeEditorViewTestProcesses({
   operation: releaseEditorViewRootUnscoped,
 })
 const fsMocks = {
+  linkSync: vi.fn(nativeFs.linkSync),
   openSync: vi.fn(nativeFs.openSync),
   fchmodSync: vi.fn(nativeFs.fchmodSync),
   readSync: vi.fn(nativeFs.readSync),
@@ -98,6 +100,8 @@ const fsMocks = {
   realpathSync: vi.fn(nativeFs.realpathSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+const fsPromisesMocks = { link: vi.fn(nativeFsPromises.link) }
+vi.mock('node:fs/promises', () => ({ ...nativeFsPromises, ...fsPromisesMocks }))
 const nativeChildProcess = {
   ...ChildProcess,
   spawn: trackEditorViewTestSpawn({
@@ -191,6 +195,8 @@ afterEach(async () => {
     editorCliProcesses.delete(child)
   }
   fsMocks.openSync.mockReset().mockImplementation(nativeFs.openSync)
+  fsMocks.linkSync.mockReset().mockImplementation(nativeFs.linkSync)
+  fsPromisesMocks.link.mockReset().mockImplementation(nativeFsPromises.link)
   fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
   fsMocks.readSync.mockReset().mockImplementation(nativeFs.readSync)
   fsMocks.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
@@ -680,11 +686,15 @@ describe('editor view publisher', () => {
 
   it('publishes a dereferenced byte-owned snapshot with distinct inodes and stable hops', async () => {
     const fixture = makeFixture()
+    const stderr = vi.spyOn(process.stderr, 'write')
     try {
       const packageManifest = join(fixture.packageDir, 'package.json')
       const manifestContent = readFileSync(packageManifest)
       const manifestIdentity = statSync(packageManifest, { bigint: true }).ino
       const record = await publishEditorView(fixture.options)
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(/^\[editor-view-payload\] .*"casUnclassifiedMs":\d/),
+      )
       expect(readFileSync(packageManifest)).toEqual(manifestContent)
       expect(statSync(packageManifest, { bigint: true }).ino).not.toBe(manifestIdentity)
       expect(statSync(fixture.consumerCache).mode & 0o200).not.toBe(0)
@@ -754,6 +764,7 @@ describe('editor view publisher', () => {
       expect(existsSync(join(fixture.editorRoot, '.legacy', legacyEntries[0]!))).toBe(false)
       await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
     } finally {
+      stderr.mockRestore()
       cleanup(fixture)
     }
   })
@@ -3101,6 +3112,115 @@ describe('editor view publisher', () => {
       cleanup(fixture)
     }
   })
+
+  it('discards a failed direct-link candidate and preserves disjoint payload counters', async () => {
+    const seed = makeFixture()
+    const fixture = makeFixture()
+    const stderr = vi.spyOn(process.stderr, 'write')
+    try {
+      await publishEditorView(seed.options)
+      const options = {
+        ...fixture.options,
+        contentStore: seed.options.contentStore!,
+        backingRoots: [fixture.nodeModules],
+      }
+      await expect(
+        publishEditorView({
+          ...options,
+          afterDirectLink: () => {
+            throw new Error('direct-link fault')
+          },
+        }),
+      ).rejects.toThrow('direct-link fault')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+      for (const shard of readdirSync(options.contentStore))
+        expect(statSync(join(options.contentStore, shard)).mode & 0o777).toBe(0o555)
+      await publishEditorView(options)
+      const line = stderr.mock.calls
+        .map(([line]) => String(line))
+        .findLast((line) => line.startsWith('[editor-view-payload] '))!
+      const counters = JSON.parse(line.slice('[editor-view-payload] '.length))
+      expect(counters.filesDirectLinked).toBeGreaterThan(0)
+      expect(counters.casDirectReuseAdmissionHits).toBeGreaterThanOrEqual(0)
+      expect(counters.casDirectReuseAdmissionCold).toBeGreaterThan(0)
+      expect(counters.filesReused).toBe(0)
+      expect(counters.filesProcessed).toBe(
+        counters.filesDirectLinked + counters.filesLinked + counters.filesAlreadyShared,
+      )
+      expect(counters.filesHashFirstAttempts).toBe(
+        counters.filesDirectLinked + counters.filesDirectLinkFallback,
+      )
+      const directPhases = [
+        'casDirectReuseDirectoryMs',
+        'casDirectReuseBlobRecheckMs',
+        'casDirectReuseSourceRecheckMs',
+        'casDirectReuseLinkMs',
+        'casDirectReusePostLinkMs',
+      ]
+      for (const phase of directPhases) expect(counters[phase]).toBeGreaterThanOrEqual(0)
+      const classifiedMs = [
+        ...directPhases,
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+        'casRepairMs',
+      ].reduce((sum, phase) => sum + (counters[phase] ?? 0), 0)
+      expect(counters.casUnclassifiedMs).toBeGreaterThanOrEqual(0)
+      expect(counters.casUnclassifiedMs).toBe(Math.max(0, counters.casHeldMs - classifiedMs))
+      expect(classifiedMs + counters.casUnclassifiedMs).toBeCloseTo(counters.casHeldMs, 8)
+    } finally {
+      stderr.mockRestore()
+      cleanup(fixture)
+      cleanup(seed)
+    }
+  })
+
+  it.each(['EMLINK', 'EPERM'])(
+    'publishes a private readonly copy after persistent %s',
+    async (code) => {
+      const seed = makeFixture()
+      const fixture = makeFixture()
+      const stderr = vi.spyOn(process.stderr, 'write')
+      try {
+        await publishEditorView(seed.options)
+        const options = {
+          ...fixture.options,
+          contentStore: seed.options.contentStore!,
+          backingRoots: [fixture.nodeModules],
+        }
+        let directFailures = 0
+        let substitutionFailures = 0
+        fsPromisesMocks.link.mockImplementation(async (source, destination) => {
+          if (String(source).startsWith(`${options.contentStore}/`) === true) {
+            if (String(destination).includes('.share-') === true) substitutionFailures += 1
+            else directFailures += 1
+            throw Object.assign(new Error(code), { code })
+          }
+          return nativeFsPromises.link(source, destination)
+        })
+        const record = await publishEditorView(options)
+        expect(directFailures).toBeGreaterThan(0)
+        expect(substitutionFailures).toBeGreaterThan(0)
+        const payload = join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js')
+        expect(statSync(payload).nlink).toBe(1)
+        expect(statSync(payload).mode & 0o777).toBe(0o444)
+        expect(readFileSync(payload, 'utf8')).toBe('export default 1\n')
+        await expect(checkEditorView(options)).resolves.toEqual(record)
+        const content = stderr.mock.calls
+          .map(([line]) => String(line))
+          .findLast((line) => line.startsWith('[editor-view-content] '))!
+        expect(
+          JSON.parse(content.slice('[editor-view-content] '.length)).copiedFiles,
+        ).toBeGreaterThan(0)
+      } finally {
+        stderr.mockRestore()
+        cleanup(fixture)
+        cleanup(seed)
+      }
+    },
+  )
 
   it('fails closed when a declared backing root changes while materializing', async () => {
     const fixture = makeFixture()

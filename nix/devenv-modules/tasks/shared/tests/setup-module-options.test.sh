@@ -99,12 +99,12 @@ fi
 # The repository composes mutation-free setup with observability. Its verifier
 # must profile a task that still exists when setup:gate is deliberately absent.
 if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix" \
-  | grep -q 'smokeTask = "genie:check"'; then
+  | grep 'smokeTask = "genie:check"' >/dev/null; then
   echo "FAIL: mutation-free observability must use an instantiated smoke task" >&2
   exit 1
 fi
 if ! grep -A 14 'import ./nix/devenv-modules/observability.nix' "$ROOT/devenv.nix" \
-  | grep -q 'bridgeTask = "genie:check"'; then
+  | grep 'bridgeTask = "genie:check"' >/dev/null; then
   echo "FAIL: mutation-free observability must use an instantiated bridge task" >&2
   exit 1
 fi

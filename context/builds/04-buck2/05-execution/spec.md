@@ -237,6 +237,30 @@ dylibs cannot use it. Package-specific Cargo profile overrides require a
 package-aware rule projection; the current Cargo projector does not read
 profiles, so the shared workspace profile is the supported boundary.
 
+### Rust Compilation-Input Products
+
+`rust_library -> RustLinkInfo + plugins -> rust_product_library -> ProductArtifactInfo`
+
+`buck2/rust/library.bzl` selects static PIC link and emitted full metadata,
+never fast metadata, plus actual host proc-macro link singletons. It resolves
+dynamic crate names, preserves dependency suffixes, copies a flat closure,
+deduplicates identical sources and rejects conflicting destinations. The primary
+alone becomes `lib<crate>.rlib`. Native link records and unbundled shared
+libraries are rejected rather than omitted. `test:buck2:library-closure` checks
+compiler evidence, external derive loading, archive metadata and zero embedded
+store references. It also builds the real `build_product` library fixture,
+passes its exact descriptor to the distribution-owned Nix validator, and
+compares archive digest, inventory hashes and bytes with the producer closure
+(BUILD.BUCK.EXEC-R06/R07/R09/R10).
+Before its directory is produced, every library closure must link an external
+binary using the recorded underlying compiler, sysroot and panic strategy;
+incompatible transitive artifacts are rejected regardless of producer flags or
+environment, including Nix wrapper flag injection. The acceptance task covers
+both per-crate flags and environment-injected transitive abort mismatches,
+including declared-but-unused dependencies. The probe explicitly imports every
+exported rlib and host proc-macro through unique aliases, so duplicate crate
+names and unused dependency edges cannot bypass compiler compatibility checks.
+
 ### Rust Interop Products
 
 ```text

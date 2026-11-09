@@ -454,25 +454,31 @@ const runGitCommandWithRetry = ({ args, cwd }: { args: ReadonlyArray<string>; cw
     }),
   )
 
+/** Strip HTTP userinfo before commands or instrumentation; Git authentication uses credential helpers. */
+export const withoutHttpCredentials = (value: string): string =>
+  value.replace(/^(https?:\/\/)[^/?#]*@/i, '$1')
+
 /**
  * Clone a git repository
  */
-const cloneUnlocked = (args: { url: string; targetPath: string; bare?: boolean }) =>
-  Effect.gen(function* () {
+const cloneUnlocked = (args: { url: string; targetPath: string; bare?: boolean }) => {
+  const url = withoutHttpCredentials(args.url)
+  return Effect.gen(function* () {
     const cmdArgs = ['clone']
     if (args.bare === true) {
       cmdArgs.push('--bare')
     }
-    cmdArgs.push(args.url, args.targetPath)
+    cmdArgs.push(url, args.targetPath)
     yield* runGitCommandWithRetry({ args: cmdArgs })
   }).pipe(
     Observability.withGitUrlSpan({
       name: 'git/clone',
-      label: args.url,
-      url: args.url,
+      label: url,
+      url,
       bare: args.bare ?? false,
     }),
   )
+}
 
 /** Clone a repository, serializing shared bare targets by their common-directory identity. */
 export const clone = (args: { url: string; targetPath: string; bare?: boolean }) =>
@@ -579,7 +585,19 @@ export const createWorktree = (args: {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
       if (args.startPoint !== undefined) {
-        cmdArgs.push(args.startPoint)
+        // Git's remote-branch DWIM can replace even an explicit `-b` name with the
+        // unqualified start point. Resolve it ourselves so branch identity stays explicit.
+        const resolveStartPoint = (ref: string) =>
+          runGitCommand({
+            args: ['rev-parse', '--verify', `${ref}^{commit}`],
+            cwd: args.repoPath,
+            ...(args.env === undefined ? {} : { env: args.env }),
+          })
+        const startCommit = yield* Effect.firstSuccessOf([
+          resolveStartPoint(args.startPoint),
+          Effect.suspend(() => resolveStartPoint(`refs/remotes/origin/${args.startPoint}`)),
+        ])
+        cmdArgs.push(startCommit)
       }
     } else {
       cmdArgs.push(args.worktreePath, args.branch)
@@ -878,8 +896,9 @@ export const repairBareOriginFetchRefspec = ({ repoPath }: { repoPath: string })
  * Configures fetch refspec so remote tracking refs are created on fetch.
  * (git clone --bare doesn't set this up by default)
  */
-export const cloneBare = (args: { url: string; targetPath: string }) =>
-  Effect.gen(function* () {
+export const cloneBare = (args: { url: string; targetPath: string }) => {
+  const url = withoutHttpCredentials(args.url)
+  return Effect.gen(function* () {
     // Recheck after acquiring the common-dir lock: a sibling may have finished cloning.
     const exists = yield* Effect.tryPromise(() =>
       lstat(args.targetPath).then(
@@ -903,7 +922,7 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
         )
       }
     } else {
-      yield* cloneUnlocked({ url: args.url, targetPath: args.targetPath, bare: true })
+      yield* cloneUnlocked({ url, targetPath: args.targetPath, bare: true })
     }
     // Complete initialization even if a previous holder died after cloning.
     yield* runGitCommand({
@@ -915,10 +934,11 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
     withGitWriterLock({ path: args.targetPath, create: true }),
     Observability.withGitUrlSpan({
       name: 'git/clone-bare',
-      label: args.url,
-      url: args.url,
+      label: url,
+      url,
     }),
   )
+}
 
 /**
  * Refresh a bare store repo from its remote.

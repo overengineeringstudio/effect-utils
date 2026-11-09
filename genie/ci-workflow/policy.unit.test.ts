@@ -256,6 +256,15 @@ const storageRules: Partial<Record<WorkflowPolicyRule, true>> = {
   'docker-gha-cache': true,
 }
 
+describe('megarepo store cache save guard', () => {
+  it('requires success and a cache miss while excluding fork PRs without excluding pushes', () => {
+    expect(saveMegarepoStoreStep().if).toBe(
+      "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' && github.event.pull_request.head.repo.fork != true }}",
+    )
+    expect(restoreMegarepoStoreStep()).not.toHaveProperty('if')
+  })
+})
+
 // Some deploy helpers expose loose records and step helpers return readonly arrays;
 // the fixture boundary only adapts those declarations, without changing emitted values.
 const fixtureWorkflow = (fixture: { jobs: object; on?: unknown }): GitHubWorkflowArgs =>
@@ -273,6 +282,7 @@ const expectedRequiredChecks = [
   'weaver',
   'source-shape',
   'test-integration-restate',
+  'pr-a-inert-buck',
   'build-products',
   'pr-reviews-resolved',
   'test-storybook-plays',
@@ -296,6 +306,47 @@ describe('shared helper fleet policy', () => {
       }
     })
   }
+
+  it('resolves review-gate tools from PATH or Nix and fails closed without either', () => {
+    const reviewJob = prReviewsResolvedJob({ runsOn: 'ubuntu-latest' })
+    const step = reviewJob.steps[0]!
+    const script = String(step.run)
+    expect(step.env?.GH_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}')
+    expect(step.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(
+      prReviewsResolvedJob({
+        runsOn: 'ubuntu-latest',
+        tokenExpression: '${{ secrets.REVIEW_TOKEN }}',
+      }).steps[0]?.env,
+    ).toEqual({
+      GITHUB_TOKEN: '${{ secrets.REVIEW_TOKEN }}',
+      GH_TOKEN: '${{ secrets.REVIEW_TOKEN }}',
+    })
+    expect(reviewJob.steps).toHaveLength(1)
+    expect(script.indexOf('could not determine the pull request number')).toBeLessThan(
+      script.indexOf('command -v gh'),
+    )
+    for (const [tool, variable, output] of [
+      ['gh', 'GH_BIN', 'gh'],
+      ['jq', 'JQ_BIN', 'jq.bin'],
+    ]) {
+      expect(script).toContain(`if command -v ${tool} >/dev/null 2>&1; then`)
+      expect(script).toContain(`  ${variable}="$(command -v ${tool})"`)
+      expect(script).toContain('elif command -v nix >/dev/null 2>&1; then')
+      expect(script).toContain(
+        `::notice::${tool} is not on PATH; resolving nixpkgs#${output} through Nix`,
+      )
+      expect(script).toContain(
+        `  ${variable}="$(nix build --no-link --print-out-paths nixpkgs#${output})/bin/${tool}"`,
+      )
+      expect(script).toContain(
+        `::error::pr-reviews-resolved requires ${tool} on PATH or nix to resolve nixpkgs#${tool}'\n  exit 1`,
+      )
+    }
+    expect(script.match(/"\$GH_BIN" api graphql/g)).toHaveLength(2)
+    expect(script.match(/"\$JQ_BIN"/g)).toHaveLength(3)
+    expect(script).not.toMatch(/\| jq|=\$\(gh api|nix build[^\n]*2>/)
+  })
 
   it('preserves the literal required check contexts in CI and repository settings', () => {
     expect(requiredCIJobs).toEqual(expectedRequiredChecks)
@@ -501,7 +552,6 @@ describe('upstream setup-action cache contracts', () => {
     'v5',
     'v6',
     'v6.1.0',
-    '0123456789abcdef0123456789abcdef01234567',
     'v5-beta',
     '4.x-foo',
     'v4abc',
@@ -542,6 +592,17 @@ describe('upstream setup-action cache contracts', () => {
   it.each(['v4', 'v4.0', 'v4.0.0'])('preserves the exact pre-v5 tag %s contract', (ref) => {
     expect(setupViolations(`actions/setup-node@${ref}`)).toEqual([])
     expect(setupViolations(`actions/setup-node@${ref}`, { cache: 'npm' })).toHaveLength(1)
+  })
+  it('uses registered release metadata for SHA-pinned Node v4', () => {
+    const uses = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020'
+    expect(setupViolations(uses)).toEqual([])
+    expect(setupViolations(uses, { cache: 'npm' })).toHaveLength(1)
+  })
+  it('fails closed for unknown SHA-pinned Node releases, even with cache opt-out', () => {
+    const uses = 'actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444'
+    const violations = setupViolations(uses, { 'package-manager-cache': false })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]?.value).toContain('Unknown SHA-pinned action version')
   })
   it.each(['actions/setup-python@v6', 'actions/setup-java@v5', 'actions/setup-dotnet@v5'])(
     '%s does not cache unless requested',

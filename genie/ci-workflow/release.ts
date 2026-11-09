@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 /**
  * Reusable Changesets-based supervised release workflow generator.
  *
@@ -252,7 +254,11 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
     },
     defaults: bashShellDefaults,
     steps: [
-      { name: 'Checkout', uses: 'actions/checkout@v4', with: { ref: 'main' } },
+      {
+        name: 'Checkout',
+        ...pinnedAction({ name: 'checkoutV4' }),
+        with: { ref: 'main' },
+      },
       ...opts.setupSteps,
       { name: 'Create release plan PR (placeholder)', run: placeholderRun('create-release-pr') },
     ],

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { BigIntStats, Dir } from 'node:fs'
-import { lstat, opendir } from 'node:fs/promises'
+import { constants, type BigIntStats, type Dir } from 'node:fs'
+import { lstat, open, opendir } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 
@@ -10,10 +10,12 @@ import * as FileSystem from 'effect/FileSystem'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import { withGitContainerLock } from './git-writer-lock.ts'
 import {
+  acquireDeletionLease,
   canonicalizeOwnerPath,
   deletionLeasePath,
-  withDeletionLease,
+  releaseDeletionLease,
 } from './store-deletion-lease.ts'
 import { recordGcDeletion, withGcPinnedDeletion } from './store-gc-receipts.ts'
 import { isInsideWorktree, readProcessReferences } from './store-inuse.ts'
@@ -70,7 +72,8 @@ export const BuildOutputBudgets = Schema.Struct({
     Schema.NonEmptyString,
     Schema.Struct({
       budgetBytes: Bytes,
-      paths: Schema.Array(RootPattern).check(Schema.isMinLength(1)),
+      paths: Schema.optionalKey(Schema.Array(RootPattern).check(Schema.isMinLength(1))),
+      repoRoots: Schema.optionalKey(Schema.Literal('*-target')),
     }),
   ),
   worklog: Schema.optionalKey(
@@ -99,6 +102,7 @@ export const BudgetReason = Schema.Literals([
   'artifact-scan-incomplete',
   'scan-incomplete',
   'deletion-partial',
+  'artifact-authority-missing',
 ])
 const CandidateFields = {
   path: AbsolutePath,
@@ -136,8 +140,8 @@ export const BudgetCandidate = Schema.Union([
   }),
 ]).annotate({ identifier: 'Megarepo.BuildOutputBudgetCandidate' })
 export type BudgetCandidate = typeof BudgetCandidate.Type
-type WorktreeCandidate = Extract<BudgetCandidate, { kind: 'worktree' }>
-type MutableCandidate = { -readonly [TKey in keyof WorktreeCandidate]: WorktreeCandidate[TKey] }
+type Mutable<TValue> = { -readonly [TKey in keyof TValue]: TValue[TKey] }
+type MutableCandidate = Mutable<BudgetCandidate>
 /** Per-class allocated-byte accounting, reclamation and safety summary. */
 export const BudgetClassSummary = Schema.Struct({
   totalBytes: Bytes,
@@ -182,7 +186,12 @@ export const loadBuildOutputBudgetPolicyReceipt = Effect.fn(
   )
   const patterns = new Map<string, string>()
   for (const [name, entry] of Object.entries(policy.classes)) {
-    for (const pattern of entry.paths) {
+    if (entry.paths === undefined && entry.repoRoots === undefined)
+      return yield* fail(`Budget class ${name} has no root selector`)
+    for (const pattern of [
+      ...(entry.paths ?? []),
+      ...(entry.repoRoots === undefined ? [] : [`repo:${entry.repoRoots}`]),
+    ]) {
       const owner = patterns.get(pattern)
       if (owner !== undefined && owner !== name)
         return yield* fail(`Budget path ${pattern} belongs to multiple classes`)
@@ -223,6 +232,70 @@ export type BudgetRepoWorktrees = ReadonlyArray<{
   }>
 }>
 
+/** Reuse discovery's whole-worktree layout classification, including for shared repo outputs. */
+const processCoverageIncludesOwner = Effect.fn('store.processCoverageIncludesOwner')(function* ({
+  activity,
+  owner,
+}: {
+  activity: BudgetWorkspaceActivity
+  owner:
+    | { kind: 'worktree'; requiresExpandedProcessCoverage?: boolean | undefined }
+    | {
+        kind: 'repo-build-output'
+        container: string
+        inventory: BudgetRepoWorktrees[number] | undefined
+        registrations: ReadonlyArray<string> | undefined
+      }
+}) {
+  if (activity.processWorktreeCoverage === 'registered-worktrees') return true
+  if (activity.processWorktreeCoverage !== 'layout-worktrees') return false
+  if (owner.kind === 'worktree') return owner.requiresExpandedProcessCoverage !== true
+  const { inventory, registrations, container } = owner
+  if (inventory === undefined || inventory.censusIncomplete === true || registrations === undefined)
+    return false
+  // Git lists the bare repository itself too; it is not a worktree process owner.
+  const covered = registrations.filter((path) => path !== `${container}/.bare`)
+  if (
+    registrations.every(
+      (path) =>
+        path === `${container}/.bare` ||
+        inventory.worktrees.some(
+          (worktree) =>
+            worktree.path.replace(/\/+$/u, '') === path &&
+            worktree.broken === false &&
+            worktree.requiresExpandedProcessCoverage !== true,
+        ),
+    ) === false
+  )
+    return false
+  // Git can silently omit broken admin entries; reconcile the raw registry too.
+  return yield* Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const registry = `${container}/.bare/worktrees`
+    const entries = yield* fs.readDirectory(registry)
+    if (entries.length !== covered.length) return false
+    const seen = new Set<string>()
+    for (const entry of entries) {
+      const admin = `${registry}/${entry}`
+      if ((yield* Effect.tryPromise(() => lstat(admin))).isDirectory() === false) return false
+      const backlink = (yield* fs.readFileString(`${admin}/gitdir`)).trim()
+      if (backlink.length === 0) return false
+      const dotGit = yield* fs.realPath(resolve(admin, backlink))
+      const matches = covered.filter((path) => `${path}/.git` === dotGit)
+      if (matches.length !== 1 || seen.has(dotGit) === true) return false
+      const pointer = yield* fs.readFileString(dotGit)
+      if (
+        pointer.startsWith('gitdir: ') === false ||
+        (yield* fs.realPath(resolve(matches[0]!, pointer.slice(8).trim()))) !==
+          (yield* fs.realPath(admin))
+      )
+        return false
+      seen.add(dotGit)
+    }
+    return true
+  }).pipe(Effect.orElseSucceed(() => false))
+})
+
 const ENTRY_LIMIT = 100_000
 const SCAN_DEADLINE_MS = 30_000
 const fingerprint = ({
@@ -240,6 +313,10 @@ const fingerprint = ({
 const comparePaths = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0
 const encode = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+/** Serialize the complete typed receipt together with opaque policy/admission evidence. */
+export const encodeBudgetPlanEvidence = (
+  evidence: Omit<BudgetPlan, 'planSha256'> & Readonly<Record<string, unknown>>,
+): string => encode(evidence)
 // The candidate fingerprint also binds every ancestor's persisted deletion evidence.
 const deletionFingerprint = ({
   artifactFingerprint,
@@ -354,6 +431,107 @@ const boundedScan = <TScanResult>({
     })
   })
 
+const cargoOutputAuthority = (path: string) =>
+  Effect.tryPromise(async () => {
+    const marker = `${path}/CACHEDIR.TAG`
+    if ((await lstat(marker)).isFile() === false) return false
+    const file = await open(
+      marker,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    )
+    try {
+      if ((await file.stat()).isFile() === false) return false
+      const { buffer, bytesRead } = await file.read({ buffer: Buffer.alloc(44), position: 0 })
+      return (
+        buffer.toString('utf8', 0, bytesRead) === 'Signature: 8a477f597d28d172789f06886806bc55\n'
+      )
+    } finally {
+      await file.close()
+    }
+  }).pipe(Effect.orElseSucceed(() => false))
+
+const repoAdmissionIdentity = Effect.fn('store.repoAdmissionIdentity')(function* ({
+  store,
+  container,
+}: {
+  store: string
+  container: string
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const identity = yield* captureDeletionIdentity({ rootPath: store, path: `${container}/.bare` })
+  const registrations = yield* Git.listWorktrees(`${container}/.bare`)
+  const worktrees = yield* Effect.forEach(registrations, (entry) =>
+    canonicalizeOwnerPath(entry.path),
+  )
+  const registryPath = `${container}/.bare/worktrees`
+  const registry =
+    (yield* fs.exists(registryPath)) === true
+      ? fingerprint({
+          path: registryPath,
+          info: yield* Effect.tryPromise(() => lstat(registryPath, { bigint: true })),
+        })
+      : 'missing'
+  return {
+    identity: createHash('sha256')
+      .update(encode({ identity, registrations, registry }))
+      .digest('hex'),
+    worktrees,
+  }
+})
+
+const repoOutputActive = ({
+  activity,
+  container,
+  output,
+}: {
+  activity: BudgetWorkspaceActivity
+  container: string
+  output: string
+}) => {
+  if (isWorkspaceActive({ activity, canonicalWorktree: output }) === true) return true
+  for (const path of activity.activePaths)
+    if (isInsideWorktree({ candidate: path, worktreePath: container }) === true) return true
+  return false
+}
+
+const discoverRepoOutputs = ({
+  container,
+  worktrees,
+  deadlineAt,
+}: {
+  container: string
+  worktrees: ReadonlyArray<string>
+  deadlineAt: number
+}) =>
+  boundedScan({
+    deadlineAt,
+    scan: async ({ inspect, children }) => {
+      const before = fingerprint({ path: container, info: await inspect(container) })
+      const mount = readDirectoryEvidence(container).mountId
+      const matches: string[] = []
+      for (const path of await children(container)) {
+        // eslint-disable-next-line no-await-in-loop
+        const info = await inspect(path)
+        if (
+          path.endsWith('-target') === false ||
+          info.isDirectory() === false ||
+          info.isSymbolicLink() === true ||
+          readDirectoryEvidence(path).mountId !== mount ||
+          worktrees.some(
+            (owner) =>
+              isInsideWorktree({ candidate: path, worktreePath: owner }) ||
+              isInsideWorktree({ candidate: owner, worktreePath: path }),
+          ) === true
+        )
+          continue
+        matches.push(path)
+      }
+      if (fingerprint({ path: container, info: await inspect(container) }) !== before)
+        throw fail('Repository output census changed')
+      return matches
+    },
+  })
+
 const discoverRoots = ({
   workspacePath,
   policy,
@@ -370,7 +548,10 @@ const discoverRoots = ({
       const matches: Array<{ path: string; artifactClass: string }> = []
       const snapshots = new Map<string, string>()
       const pending = [workspacePath]
-      const configuredClasses = Object.entries(policy.classes)
+      const configuredClasses = Object.entries(policy.classes).filter(
+        ([, entry]) => entry.paths !== undefined,
+      )
+      if (configuredClasses.length === 0) return matches
       while (pending.length > 0) {
         const path = pending.pop()!
         // eslint-disable-next-line no-await-in-loop
@@ -386,7 +567,7 @@ const discoverRoots = ({
         let artifactClass: string | undefined
         for (const [name, entry] of configuredClasses) {
           if (
-            entry.paths.some((pattern) =>
+            (entry.paths ?? []).some((pattern) =>
               pattern.startsWith('**/') === true
                 ? rel.slice(rel.lastIndexOf('/') + 1) === pattern.slice(3)
                 : rel === pattern,
@@ -447,7 +628,7 @@ const scanRoot = ({
       const inodes = new Map<string, number>()
       let newestMtimeMs = 0
       let symlink = false
-      const patterns = Object.values(policy.classes).flatMap((entry) => entry.paths)
+      const patterns = Object.values(policy.classes).flatMap((entry) => entry.paths ?? [])
       while (pending.length > 0) {
         const current = pending.pop()!
         // eslint-disable-next-line no-await-in-loop
@@ -483,8 +664,13 @@ const scanRoot = ({
         if (info.isDirectory() === true) {
           // eslint-disable-next-line no-await-in-loop
           const entries = await children(current)
-          if (entries.some((entry) => entry.endsWith('/.git')) === true)
-            throw fail('Artifact contains a git boundary')
+          if (
+            entries.includes(join(current, '.git')) === true ||
+            entries.includes(join(current, 'commondir')) === true ||
+            (entries.includes(join(current, 'HEAD')) === true &&
+              ['objects', 'refs'].some((name) => entries.includes(join(current, name))) === true)
+          )
+            throw fail('Artifact contains a Git repository boundary')
           pending.push(...entries)
         }
       }
@@ -524,7 +710,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   liveSet,
   activity,
   now,
-  ignoreLeaseOwner,
+  ignoreLeaseOwners,
 }: {
   policy: BuildOutputBudgets
   storeBasePath: AbsoluteDirPath
@@ -532,7 +718,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   liveSet: StoreLiveSet
   activity: BudgetWorkspaceActivity | undefined
   now: number
-  ignoreLeaseOwner?: string | undefined
+  ignoreLeaseOwners?: ReadonlyArray<string> | undefined
 }) {
   if ((yield* storeDeletionPlatform) !== 'linux')
     return yield* fail('unsupported-platform: build-output budgets require Linux pinned deletion')
@@ -609,7 +795,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
             )
           : undefined
       const lease =
-        canonicalOwner === ignoreLeaseOwner
+        ignoreLeaseOwners?.includes(canonicalOwner) === true
           ? false
           : yield* fs
               .exists(deletionLeasePath({ storeBasePath, ownerPath: canonicalOwner }))
@@ -673,7 +859,10 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                               : now - scan.newestMtimeMs < policy.idleRetentionMs
                                 ? 'retention'
                                 : worktree.requiresExpandedProcessCoverage === true &&
-                                    activity.processWorktreeCoverage !== 'registered-worktrees'
+                                    (yield* processCoverageIncludesOwner({
+                                      activity,
+                                      owner: { kind: 'worktree', ...worktree },
+                                    })) === false
                                   ? 'process-liveness-unavailable'
                                   : 'eligible'
         const candidate: MutableCandidate = {
@@ -710,6 +899,102 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
             else existing.roots.add(root.path)
           }
         }
+      }
+    }
+    const selectedClass = Object.entries(policy.classes).find(
+      ([, config]) => config.repoRoots !== undefined,
+    )
+    if (selectedClass === undefined) continue
+    const [artifactClass] = selectedClass
+    const container = resolve(canonicalStore, repo.relativePath)
+    const admission = yield* repoAdmissionIdentity({ store: canonicalStore, container }).pipe(
+      Effect.orElseSucceed(() => undefined),
+    )
+    const roots =
+      admission === undefined
+        ? undefined
+        : yield* discoverRepoOutputs({
+            container,
+            worktrees: admission.worktrees,
+            deadlineAt,
+          })
+    if (roots === undefined || admission === undefined) {
+      incomplete.add(artifactClass)
+      continue
+    }
+    const admissionIdentity = admission.identity
+    admissions.push({ owner: container, identity: admissionIdentity })
+    const lease =
+      ignoreLeaseOwners?.includes(container) === true
+        ? false
+        : yield* fs
+            .exists(deletionLeasePath({ storeBasePath, ownerPath: container }))
+            .pipe(Effect.orElseSucceed(() => undefined))
+    for (const path of roots) {
+      const identity = yield* captureDeletionIdentity({ rootPath: canonicalStore, path }).pipe(
+        Effect.orElseSucceed(() => undefined),
+      )
+      const scan = yield* scanRoot({ path, workspacePath: container, policy, deadlineAt })
+      const authority = yield* cargoOutputAuthority(path)
+      const reason: typeof BudgetReason.Type =
+        identity === undefined || scan === undefined || scan.symlink === true
+          ? 'artifact-scan-incomplete'
+          : activity === undefined
+            ? 'agent-liveness-unavailable'
+            : authority === false
+              ? 'artifact-authority-missing'
+              : repoOutputActive({ activity, container, output: path }) === true ||
+                  (processScan._tag === 'complete' &&
+                    processScan.references.some((entry) =>
+                      isInsideWorktree({ candidate: entry.path, worktreePath: path }),
+                    ) === true)
+                ? 'live'
+                : processScan._tag === 'unknown' ||
+                    (yield* processCoverageIncludesOwner({
+                      activity,
+                      owner: {
+                        kind: 'repo-build-output',
+                        container,
+                        inventory: { repo, worktrees, censusIncomplete: censusIncomplete === true },
+                        registrations: admission.worktrees,
+                      },
+                    })) === false ||
+                    activity.processRepoOutputCoverage !== 'repo-build-outputs'
+                  ? 'process-liveness-unavailable'
+                  : lease === undefined
+                    ? 'lease-unknown'
+                    : lease === true
+                      ? 'lease-held'
+                      : now - scan.newestMtimeMs < policy.idleRetentionMs
+                        ? 'retention'
+                        : 'eligible'
+      if (scan === undefined || identity === undefined || scan.symlink === true)
+        incomplete.add(artifactClass)
+      results.push({
+        kind: 'repo-build-output',
+        containerPath: container,
+        outputRoot: path,
+        livenessKey: path,
+        admissionIdentity,
+        path,
+        artifactClass,
+        allocatedBytes: scan === undefined ? 0 : totalInodes(scan.inodes),
+        reclaimableBytes: 0,
+        mtimeMs: scan?.newestMtimeMs ?? 0,
+        fingerprint:
+          scan === undefined || identity === undefined
+            ? ''
+            : deletionFingerprint({ artifactFingerprint: scan.fingerprint, identity }),
+        reason,
+        outcome: unknownReasons[reason] === true ? 'unknown' : 'keep',
+      })
+      if (scan === undefined) continue
+      const classInodes = inodeRoots.get(artifactClass)!
+      for (const [id, bytes] of scan.inodes) {
+        const existing = classInodes.get(id)
+        if (existing !== undefined && existing.bytes !== bytes) incomplete.add(artifactClass)
+        if (existing === undefined) classInodes.set(id, { bytes, roots: new Set([path]) })
+        else existing.roots.add(path)
       }
     }
   }
@@ -786,11 +1071,12 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   const sorted = results.toSorted((left, right) => comparePaths(left.path, right.path))
   const planSha256 = createHash('sha256')
     .update(
-      encode({
+      encodeBudgetPlanEvidence({
         schemaVersion: 'megarepo.build-output-budget-plan.v2',
         policy,
         activityEpoch: activity?.epoch,
         processWorktreeCoverage: activity?.processWorktreeCoverage,
+        processRepoOutputCoverage: activity?.processRepoOutputCoverage,
         census: repoWorktrees
           .map(({ repo, worktrees, censusIncomplete }) => ({
             repo: repo.relativePath,
@@ -854,20 +1140,53 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
-    const requiresExpandedCoverage = repoWorktrees.some(({ worktrees }) =>
-      worktrees.some(
-        (worktree) =>
-          worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
-          worktree.requiresExpandedProcessCoverage === true,
-      ),
+    const inventory = repoWorktrees.find(({ repo, worktrees }) =>
+      candidate.kind === 'repo-build-output'
+        ? resolve(storeBasePath, repo.relativePath) === candidate.containerPath
+        : worktrees.some(
+            (worktree) => worktree.path.replace(/\/+$/u, '') === candidate.workspacePath,
+          ),
     )
+    const worktreeOwner =
+      candidate.kind === 'worktree'
+        ? inventory?.worktrees.find(
+            (worktree) => worktree.path.replace(/\/+$/u, '') === candidate.workspacePath,
+          )
+        : undefined
     const deletionRoot = yield* fs.realPath(storeBasePath)
     const identity = yield* captureDeletionIdentity({
       rootPath: deletionRoot,
       path: candidate.path,
     })
-    const ownerPath = yield* canonicalizeOwnerPath(candidate.workspacePath)
-    return yield* Effect.gen(function* () {
+    const ownerPath = yield* canonicalizeOwnerPath(
+      candidate.kind === 'worktree' ? candidate.workspacePath : candidate.containerPath,
+    )
+    const admission =
+      candidate.kind === 'repo-build-output'
+        ? yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath })
+        : undefined
+    if (admission !== undefined && admission.identity !== candidate.admissionIdentity)
+      return yield* fail('Repository registration changed before lease acquisition')
+    const leaseOwners = [
+      ownerPath,
+      ...[...new Set(admission?.worktrees ?? [])]
+        .filter((path) => path !== ownerPath && path !== `${ownerPath}/.bare`)
+        .toSorted(comparePaths),
+    ]
+    const applyUnderLeases = Effect.gen(function* () {
+      for (const path of leaseOwners) {
+        if (candidate.kind === 'repo-build-output' && path === ownerPath) continue
+        yield* Effect.acquireRelease(
+          acquireDeletionLease({ storeBasePath, ownerPath: path, now }),
+          releaseDeletionLease,
+        )
+      }
+      if (
+        admission !== undefined &&
+        (yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath })).identity !==
+          admission.identity
+      )
+        return yield* fail('Repository registration changed under deletion leases')
       const freshPolicy = yield* loadBuildOutputBudgets({ path: policyPath })
       const freshActivity = yield* readBudgetWorkspaceActivity({
         fs,
@@ -882,7 +1201,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         liveSet,
         activity: freshActivity,
         now: freshNow,
-        ignoreLeaseOwner: ownerPath,
+        ignoreLeaseOwners: leaseOwners,
       })
       if (fresh.planSha256 !== expectedPlan)
         return yield* fail('Budget plan changed under deletion lease; refusing deletion')
@@ -911,27 +1230,40 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             )
               return yield* fail('Candidate changed before deletion')
             const canonicalRoot = yield* fs.realPath(current.path)
-            const canonicalOwner = yield* fs.realPath(current.workspacePath)
+            const canonicalOwner = yield* fs.realPath(
+              current.kind === 'worktree' ? current.workspacePath : current.containerPath,
+            )
             if (
               canonicalRoot !== current.path ||
               canonicalOwner !== ownerPath ||
               isInsideWorktree({ candidate: canonicalRoot, worktreePath: canonicalOwner }) === false
             )
               return yield* fail('Budget candidate containment changed')
-            const ownerDir = EffectPath.unsafe.absoluteDir(`${candidate.workspacePath}/`)
+            const ownerDir = EffectPath.unsafe.absoluteDir(`${ownerPath}/`)
             const rel = relative(ownerPath, current.path)
-            const tracked = yield* Git.hasTrackedFiles({ cwd: ownerDir, path: rel }).pipe(
-              Effect.orElseSucceed(() => undefined),
-            )
-            const ignored = yield* Git.runCommand({
-              args: ['check-ignore', '--quiet', '--', rel],
-              cwd: ownerDir,
-            }).pipe(
-              Effect.as(true),
-              Effect.orElseSucceed(() => false),
-            )
-            if (tracked !== false || ignored === false)
-              return yield* fail('Candidate tracked/ignore predicates changed')
+            if (current.kind === 'worktree') {
+              const tracked = yield* Git.hasTrackedFiles({ cwd: ownerDir, path: rel }).pipe(
+                Effect.orElseSucceed(() => undefined),
+              )
+              const ignored = yield* Git.runCommand({
+                args: ['check-ignore', '--quiet', '--', rel],
+                cwd: ownerDir,
+              }).pipe(
+                Effect.as(true),
+                Effect.orElseSucceed(() => false),
+              )
+              if (tracked !== false || ignored === false)
+                return yield* fail('Candidate tracked/ignore predicates changed')
+            } else if (
+              freshPolicy.classes[current.artifactClass]?.repoRoots !== '*-target' ||
+              rel.includes('/') === true ||
+              rel.endsWith('-target') === false ||
+              current.livenessKey !== current.path ||
+              current.outputRoot !== current.path ||
+              (yield* cargoOutputAuthority(current.path)) === false
+            ) {
+              return yield* fail('Repository output authority changed')
+            }
             const finalActivity = yield* readBudgetWorkspaceActivity({
               fs,
               config: activityConfig,
@@ -939,20 +1271,47 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             })
             if (
               finalActivity === undefined ||
-              (requiresExpandedCoverage === true &&
-                finalActivity.processWorktreeCoverage !== 'registered-worktrees') ||
-              isWorkspaceActive({ activity: finalActivity, canonicalWorktree: ownerPath }) === true
+              ((current.kind === 'repo-build-output' ||
+                worktreeOwner?.requiresExpandedProcessCoverage === true) &&
+                (yield* processCoverageIncludesOwner({
+                  activity: finalActivity,
+                  owner:
+                    current.kind === 'worktree'
+                      ? {
+                          kind: 'worktree',
+                          requiresExpandedProcessCoverage:
+                            worktreeOwner?.requiresExpandedProcessCoverage,
+                        }
+                      : {
+                          kind: 'repo-build-output',
+                          container: ownerPath,
+                          inventory,
+                          registrations: admission?.worktrees,
+                        },
+                })) === false) ||
+              (current.kind === 'repo-build-output' &&
+                finalActivity.processRepoOutputCoverage !== 'repo-build-outputs') ||
+              (current.kind === 'worktree'
+                ? isWorkspaceActive({ activity: finalActivity, canonicalWorktree: ownerPath })
+                : repoOutputActive({
+                    activity: finalActivity,
+                    container: ownerPath,
+                    output: current.livenessKey,
+                  })) === true
             )
               return yield* fail('Candidate activity became live or unknown')
-            if (
-              (yield* worktreeAdmissionIdentity({
-                owner: ownerPath,
-                barePath: join(storeBasePath, candidate.repo, '.bare'),
-              })) !== candidate.admissionIdentity
-            )
+            const finalAdmission =
+              current.kind === 'worktree'
+                ? yield* worktreeAdmissionIdentity({
+                    owner: ownerPath,
+                    barePath: join(storeBasePath, current.repo, '.bare'),
+                  })
+                : (yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath }))
+                    .identity
+            if (finalAdmission !== current.admissionIdentity)
               return yield* fail('Candidate admission changed before deletion')
             const processState = yield* readBudgetWorktreeInUse({
-              worktreePath: ownerDir,
+              worktreePath: EffectPath.unsafe.absoluteDir(`${current.livenessKey}/`),
               activity: finalActivity,
             })
             if (processState._tag !== 'free') {
@@ -1006,7 +1365,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             },
           }
         }
-        return yield* removal.failure
+        return yield* Effect.fail(removal.failure)
       }
       const summary = fresh.classes[current.artifactClass]!
       return {
@@ -1025,6 +1384,11 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
           },
         },
       }
-    }).pipe(withDeletionLease({ storeBasePath, ownerPath, now }))
+    }).pipe(Effect.scoped)
+    return yield* candidate.kind === 'repo-build-output'
+      ? applyUnderLeases.pipe(
+          withGitContainerLock({ path: `${ownerPath}/.bare`, mode: 'exclusive' }),
+        )
+      : applyUnderLeases
   },
 )

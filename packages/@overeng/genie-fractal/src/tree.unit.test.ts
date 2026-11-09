@@ -6,11 +6,13 @@ import { NodeFileSystem } from '@effect/platform-node'
 import { describe, expect, expectTypeOf, it } from '@effect/vitest'
 import { Effect } from 'effect'
 
+import { agent, emit, person, type PersonReference } from './mod.ts'
 import {
   defineMission,
   pinMission,
   loadSubjectTree,
   type AgentRef,
+  type AgentIntent,
   type MissionRef,
   type MissionIntent,
   type PinnedMissionRef,
@@ -74,6 +76,41 @@ describe('loadSubjectTree', () => {
           steps: [{ assignedTo: { id: 'team/owner' } }, { assignedTo: { id: 'elsewhere' } }],
         },
         exports: { publish: false },
+      })
+    }),
+  )
+
+  it.effect('decodes a person principal from an agent module and round-trips its KDL', () =>
+    Effect.gen(function* () {
+      expectTypeOf<PersonReference>().toExtend<NonNullable<AgentIntent['principal']>>()
+      const principal = person('person/operator')
+      const root = fixture({
+        'team/worker/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: { principal: { kind: 'person', subject: 'person/operator' } } })`,
+      })
+      const subjects = yield* load(root)
+      const declaration = subjects[0]?.declaration
+      expect(declaration).toMatchObject({
+        _tag: 'Module',
+        intent: { id: 'team/worker', principal },
+      })
+      if (declaration?._tag !== 'Module' || 'principal' in declaration.intent === false) {
+        return yield* Effect.die('Expected an agent module with a principal')
+      }
+      expect(emit([agent(declaration.intent)])).toBe(
+        emit([agent({ id: 'team/worker', principal })]),
+      )
+    }),
+  )
+
+  it.effect('rejects an imported agent reference as principal during tree decoding', () =>
+    Effect.gen(function* () {
+      const root = fixture({
+        'team/owner/agent.ts': `${define}export default defineAgent({ meta: import.meta, intent: {} })`,
+        'team/worker/agent.ts': `${define}import owner from '../owner/agent.ts'\nexport default defineAgent({ meta: import.meta, intent: { principal: owner } })`,
+      })
+      expect(yield* loadError(root)).toMatchObject({
+        path: 'team/worker/agent.ts',
+        message: 'Invalid agent declaration',
       })
     }),
   )

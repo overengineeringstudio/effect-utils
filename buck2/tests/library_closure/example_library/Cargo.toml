@@ -1,0 +1,14 @@
+[package]
+name = "example_library"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+path = "../library.rs"
+
+[dependencies]
+generic_bridge = { path = "../generic_bridge" }
+generic_leaf = { path = "../generic_leaf" }
+alternate_leaf = { package = "generic_leaf", path = "../generic_leaf_v2" }
+probe_derive = { path = "../probe_derive" }
+serde = { version = "1", features = ["derive"] }

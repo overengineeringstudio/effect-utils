@@ -488,14 +488,22 @@ R23, R24.
 
 Retry is based on typed error tags, not raw exit codes.
 
-| Error tag                     | Current policy                                          |
-| ----------------------------- | ------------------------------------------------------- |
-| `ProviderProjectLookupFailed` | recorded as retryable; no provider retry loop currently |
-| `ProviderOperationFailed`     | retryable only when classified as transient             |
-| `VerificationFailed`          | retry verification before failing the deploy            |
-| all others                    | no retry                                                |
+| Error tag                     | Current policy                                         |
+| ----------------------------- | ------------------------------------------------------ |
+| `ProviderProjectLookupFailed` | recorded as retryable; Netlify API rate limits retried |
+| `ProviderOperationFailed`     | retryable only when classified as transient            |
+| `VerificationFailed`          | retry verification before failing the deploy           |
+| all others                    | no retry                                               |
 
 Attempt count is included in `DeployResultV1` and workflow-report records.
+
+A Netlify site lookup answered with HTTP 429 is transient and retried at most
+three times. `Retry-After` (seconds or HTTP date) sets the minimum wait; absent
+or unparseable headers fall back to `X-RateLimit-Reset` (Unix seconds), then
+one-second exponential backoff. Negative or nonfinite numeric deadlines fail
+explicitly without fallback. The 60-second window includes the next wait;
+longer provider waits fail without retrying early. No upload runs until lookup
+succeeds. Reported attempts include each lookup.
 
 ## Workflow Report Emission
 
@@ -610,8 +618,28 @@ Vercel prebuilt-output delegation.
 
 ### Non-required Live E2E
 
-Normal CI also runs non-required live Netlify and Vercel E2E jobs when secrets
-are available.
+Normal CI runs non-required live Netlify and Vercel E2E on pushes to `main`
+and eligible manual dispatches on `main` when secrets are available; the live job
+does not run for pull requests or merge groups.
+
+Vercel command failures and live-test logs publish only structured provider
+diagnostics: `failureKind` (`rate_limited`, `auth`, `not_found`, `timeout`,
+`unknown`), `vercelErrorCode`, `httpStatus` (100–599), and digit-only `retryAfter`
+when present, plus the existing exit/error/operation fields.
+Codes are extracted only from stderr CLI `Error: [code]` or `code: "..."`
+contexts, validated against `^[a-z0-9_-]{1,64}$` and an enumerated allowlist of
+known Diagnostic/API codes and documented deployment-limit names. Unknown,
+invalid, or credential-overlapping values become `unrecognized`; a grammar
+alone cannot distinguish a provider code from a private project slug.
+Structured report fields are revalidated before live-test publication.
+Provider stdout/stderr and free-text tails are
+never included in command failure diagnostics or live-test output: redaction
+alone cannot protect project/team names, account identities, URLs, or emails.
+Classification is diagnostic only and introduces no retry or skip policy.
+Error-class selection retains the original auth regex over stderr and project
+lookup regex over stderr plus stdout; `failureKind` never chooses the class.
+API code meanings follow the [Vercel error reference](https://vercel.com/docs/rest-api/errors);
+rate limits follow the [Vercel limits reference](https://vercel.com/docs/limits#rate-limits).
 
 Cloudflare Workers live E2E is opt-in and skipped by default. This integration
 does not claim a live deployment was exercised. Set

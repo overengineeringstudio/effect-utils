@@ -12,7 +12,7 @@
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Tracer } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -93,6 +93,69 @@ describe('git operation-aware timeout', () => {
       expect(commit).toMatch(/^[0-9a-f]{40}$/)
     }).pipe(Effect.provide(NodeServices.layer)),
   )
+
+  for (const bare of [false, true]) {
+    for (const [userinfo, protocol] of [
+      ['fixture-user:fixture-password', 'https'],
+      ['fixture-token', 'http'],
+    ]) {
+      it.live(
+        `strips ${protocol} credentials from ${bare === true ? 'bare' : 'working'} clone origins and spans`,
+        () =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            const { tmp, remote } = yield* makeCloneSource()
+            const target = cloneTargetIn(tmp, 'clone-credentialed')
+            const cleanUrl = `${protocol}://example.com/owner/repo.git`
+            const credentialedUrl = `${protocol}://${userinfo}@example.com/owner/repo.git`
+            const spans: Array<Tracer.NativeSpan> = []
+            const tracer = Tracer.make({
+              span: (options) => {
+                const span = new Tracer.NativeSpan(options)
+                spans.push(span)
+                return span
+              },
+            })
+            // Rewrite both forms so even a regression never contacts the network.
+            const rewrites = [
+              ['GIT_CONFIG_COUNT', '2'],
+              ['GIT_CONFIG_KEY_0', `url.file://${remote}.insteadOf`],
+              ['GIT_CONFIG_VALUE_0', cleanUrl],
+              ['GIT_CONFIG_KEY_1', `url.file://${remote}.insteadOf`],
+              ['GIT_CONFIG_VALUE_1', credentialedUrl],
+            ] as const
+            const cloned = (
+              bare === true
+                ? Git.cloneBare({ url: credentialedUrl, targetPath: target })
+                : Git.clone({ url: credentialedUrl, targetPath: target }).pipe(Effect.as(true))
+            ).pipe(Effect.withTracer(tracer))
+            yield* rewrites.reduceRight(
+              (effect, [key, value]) => withEnv(key, value, effect),
+              cloned,
+            )
+
+            // Read the persisted config, not the transport URL after insteadOf rewriting.
+            const configPath = bare === true ? 'config' : '.git/config'
+            const config = yield* fs.readFileString(
+              EffectPath.ops.join(target, EffectPath.unsafe.relativeFile(configPath)),
+            )
+            expect(config).toContain(`url = ${cleanUrl}`)
+            expect(config).not.toContain('fixture-')
+            for (const name of bare === true ? ['git/clone', 'git/clone-bare'] : ['git/clone']) {
+              const span = spans.find((candidate) => candidate.name === name)
+              expect(span).toBeDefined()
+              expect(span?.attributes.get('git.url')).toBe(cleanUrl)
+            }
+            for (const span of spans) {
+              expect(span.name).not.toContain('fixture-')
+              for (const [key, value] of span.attributes) {
+                expect(`${key}=${String(value)}`).not.toContain('fixture-')
+              }
+            }
+          }).pipe(Effect.provide(NodeServices.layer)),
+      )
+    }
+  }
 
   it.live('a network op is bounded by the network budget (1ms → times out)', () =>
     Effect.gen(function* () {

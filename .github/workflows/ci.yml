@@ -26,6 +26,10 @@ on:
         required: false
         default: ''
         type: string
+      measure-macos:
+        description: Measure only macOS tests, read-only and excluded from cache proofs.
+        type: boolean
+        default: false
       run_notion_integration_on_branch:
         description: Opt into credentialed Notion integration tests on this branch.
         required: false
@@ -63,11 +67,13 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-node@v4
+      - # v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
           node-version: '24'
@@ -81,8 +87,10 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (success()) }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-tested-tree"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -109,17 +117,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -528,8 +541,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success') && steps.default-ref-policy-verdict.outcome == 'success') }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success') && steps.default-ref-policy-verdict.outcome == 'success') }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -545,16 +559,18 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success()) }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-default-ref-policy"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-buck2-tools:
     name: pr/buck2-tools
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name == 'pull_request') }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
@@ -575,17 +591,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -611,9 +632,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -653,8 +675,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -720,7 +743,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -736,7 +761,13 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test test:buck2:library-closure || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
@@ -774,9 +805,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -798,9 +830,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-pr-buck2-tools-${{ github.run_attempt }}'
           path: |
@@ -812,8 +845,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -829,6 +879,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -849,7 +900,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   quality:
     name: pr/quality
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true')) }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
@@ -878,17 +929,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -914,9 +970,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -956,8 +1013,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -1102,6 +1160,9 @@ jobs:
       - name: Genie projection and CI workflow regression tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PR_BOUNDED_ENABLED: ${{ github.event_name == 'pull_request' }}
+          PR_BOUNDED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BOUNDED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
@@ -1114,7 +1175,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -1130,8 +1193,23 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test
+            bun test ./genie/ci-scripts/pr-bounded-tests.unit.test.ts
+            if [ "$PR_BOUNDED_ENABLED" = true ]; then
+              bun ./genie/ci-scripts/pr-bounded-tests.ts &
+              bounded_pid=$!
+            fi
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
+      - name: Validate stage-zero Cargo lock canonicality offline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata'
       - name: CI policy action isolation smoke
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1170,12 +1248,13 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
+          bash genie/ci-scripts/prefetch-locked-inputs.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
       - name: Native cache evidence regressions
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-reports.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-history.unit.test.ts ./genie/ci-scripts/buck2-cache-shards.integration.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-reports.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-history.unit.test.ts ./genie/ci-scripts/buck2-cache-shards.integration.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
       - name: Downstream flake-input regression
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1200,7 +1279,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
-          tracked_product=$(git ls-files -- 'nix/buck2-products/**' ':(glob,exclude)nix/buck2-products/**/*.nix' | grep -Ev '^nix/buck2-products/(cache-targets\.json|cache-targets\.json\.genie\.ts|capability-closure\.test\.sh|compiled-targets\.json|compiled-targets\.json\.genie\.ts|from-source-contract\.test\.sh|from-source-cores\.test\.sh|manifest\.json|native-targets\.json|native-targets\.json\.genie\.ts|private-product-tarballs\.test\.sh|publish\.sh|targets\.json|targets\.json\.genie\.ts)$' || true)
+          tracked_product=$(git ls-files -- 'nix/buck2-products/**' ':(glob,exclude)nix/buck2-products/**/*.nix' | grep -Ev '^nix/buck2-products/(cache-targets\.json|cache-targets\.json\.genie\.ts|capability-closure\.test\.sh|compiled-targets\.json|compiled-targets\.json\.genie\.ts|from-source-contract\.test\.sh|from-source-cores\.test\.sh|manifest\.json|native-targets\.json|native-targets\.json\.genie\.ts|private-product-tarballs\.test\.sh|production-helpers\.bzl|production-helpers\.bzl\.genie\.ts|production-helpers\.json|production-helpers\.json\.genie\.ts|production-helpers\.test\.sh|publish\.sh|root-projection\.test\.sh|targets\.json|targets\.json\.genie\.ts)$' || true)
           invalid_sources=()
           while IFS= read -r -d '' path; do
             case "/$path/" in
@@ -1283,9 +1362,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -1330,9 +1410,10 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
@@ -1348,9 +1429,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-quality-${{ github.run_attempt }}'
           path: |
@@ -1362,8 +1444,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -1380,6 +1479,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -1401,7 +1501,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test:
     name: test (namespace-profile-linux-x86-64)
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -1414,6 +1514,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       EFFECT_UTILS_CI_TEST: '1'
@@ -1449,17 +1550,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -1485,9 +1591,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -1527,8 +1634,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -1641,9 +1749,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -1655,19 +1764,21 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Upload retained Vitest collection reports
+      - # v4.6.2
+        name: Upload retained Vitest collection reports
         if: ${{ always() }}
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
           path: tmp/otel-scrape/summaries/*.vitest.json
           if-no-files-found: ignore
           retention-days: 14
-      - name: Upload test resource samples
+      - # v4.6.2
+        name: Upload test resource samples
         if: ${{ always() }}
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
           path: tmp/ci-resources/test-resources.json
@@ -1706,9 +1817,10 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
@@ -1724,9 +1836,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-${{ github.run_attempt }}'
           path: |
@@ -1738,8 +1851,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -1760,7 +1890,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-macos:
     name: test (namespace-profile-macos-arm64)
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on: ['namespace-profile-macos-arm64;github.run-id=${{ github.run_id }};job.priority=1']
     timeout-minutes: 90
@@ -1770,6 +1900,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       EFFECT_UTILS_CI_TEST: '1'
@@ -1805,22 +1936,28 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Mount local Nix substituter cache volume
-        uses: namespacelabs/nscloud-cache-action@v1
+      - # v1.7.0
+        name: Mount local Nix substituter cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9
         continue-on-error: true
         with:
           path: /Users/runner/.cache/nix-substituter
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -1846,9 +1983,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -1879,6 +2017,7 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
+        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1888,8 +2027,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -1943,7 +2083,7 @@ jobs:
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
         timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Warm local Nix substituter after bootstrap
-        if: ${{ (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -1999,7 +2139,20 @@ jobs:
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:cache-posture:ci-test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:cache-posture:ci-test'
-      - name: Build and smoke native and compiled products
+      - name: Build native and compiled products
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
+        run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --build-only
+        timeout-minutes: 16
+      - name: Smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
@@ -2021,7 +2174,7 @@ jobs:
           nix config show sandbox
           nix build .#buck-product-overeng-content-address-from-source --no-link --print-build-logs --option sandbox false
       - name: Save signed and content-addressed store paths to local Nix substituter
-        if: ${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -2067,9 +2220,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
-        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && failure() && env.NIX_STORE_DIAGNOSTICS_DIR != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -2081,19 +2235,21 @@ jobs:
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
-      - name: Upload retained Vitest collection reports
-        if: ${{ always() }}
+      - # v4.6.2
+        name: Upload retained Vitest collection reports
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
           path: tmp/otel-scrape/summaries/*.vitest.json
           if-no-files-found: ignore
           retention-days: 14
-      - name: Upload test resource samples
-        if: ${{ always() }}
+      - # v4.6.2
+        name: Upload test resource samples
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}'
           path: tmp/ci-resources/test-resources.json
@@ -2132,16 +2288,17 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
-        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() && env.OTEL_SPAN_SPOOL_DIR != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2150,9 +2307,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-macos-${{ github.run_attempt }}'
           path: |
@@ -2164,8 +2322,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -2173,11 +2348,14 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Mark macOS measurement
+        if: ${{ (always() && (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        run: 'echo "## macOS measurement (read-only; excluded from cache proofs)" >> "$GITHUB_STEP_SUMMARY"'
     permissions:
       contents: read
       id-token: write
@@ -2185,7 +2363,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-macos"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-utils:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -2215,17 +2393,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -2251,9 +2434,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -2293,8 +2477,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -2385,9 +2570,10 @@ jobs:
           fi
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:utils' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:utils'
-      - name: Upload Playwright failure evidence
+      - # v4.6.2
+        name: Upload Playwright failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'playwright-test-results-utils-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: packages/@overeng/utils/test-results/
@@ -2429,9 +2615,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -2476,9 +2663,10 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
@@ -2494,9 +2682,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}'
           path: |
@@ -2508,8 +2697,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -2525,6 +2731,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -2545,7 +2752,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-tui-react:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -2575,17 +2782,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -2611,9 +2823,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -2653,8 +2866,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -2745,9 +2959,10 @@ jobs:
           fi
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:pw:tui-react' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:pw:tui-react'
-      - name: Upload Playwright failure evidence
+      - # v4.6.2
+        name: Upload Playwright failure evidence
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'playwright-test-results-tui-react-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: packages/@overeng/tui-react/test-results/
@@ -2789,9 +3004,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -2836,9 +3052,10 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
@@ -2854,9 +3071,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}'
           path: |
@@ -2868,8 +3086,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -2885,6 +3120,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -2905,7 +3141,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-megarepo-store-gc:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group')) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -2934,17 +3170,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -2970,9 +3211,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -3012,8 +3254,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -3117,9 +3360,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -3164,9 +3408,10 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
@@ -3182,9 +3427,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-megarepo-store-gc-${{ github.run_attempt }}'
           path: |
@@ -3196,8 +3442,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -3213,6 +3476,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       EFFECT_UTILS_CI_TEST: '1'
@@ -3234,7 +3498,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-megarepo-store-gc"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   cargo:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -3264,17 +3528,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -3300,9 +3569,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -3323,8 +3593,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -3432,9 +3703,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -3479,16 +3751,18 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -3504,6 +3778,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
@@ -3516,7 +3791,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   weaver:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -3546,17 +3821,22 @@ jobs:
           mkdir -p "$spool_dir"
           printf 'OTEL_SPAN_SPOOL_DIR=%s\n' "$spool_dir" >> "$GITHUB_ENV"
           printf 'OTEL_SPOOL_MULTI_WRITER=1\n' >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -3582,9 +3862,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -3624,8 +3905,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -3740,9 +4022,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -3787,9 +4070,10 @@ jobs:
               ' "${span_files[@]}" | sort -nr | sed -n '1,20p'
             )
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload CI OpenTelemetry spans
+      - # v4.6.2
+        name: Upload CI OpenTelemetry spans
         if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.OTEL_SPAN_SPOOL_DIR }}
@@ -3805,9 +4089,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-weaver-${{ github.run_attempt }}'
           path: |
@@ -3819,8 +4104,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -3836,6 +4138,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -3856,7 +4159,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-a-inert-buck:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -3872,6 +4175,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
@@ -3888,7 +4192,8 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
       - name: Prepare pipeline job identity
@@ -3900,14 +4205,18 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -3924,8 +4233,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -4018,7 +4328,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
-          tracked_product=$(git ls-files -- 'nix/buck2-products/**' ':(glob,exclude)nix/buck2-products/**/*.nix' | grep -Ev '^nix/buck2-products/(cache-targets\.json|cache-targets\.json\.genie\.ts|capability-closure\.test\.sh|compiled-targets\.json|compiled-targets\.json\.genie\.ts|from-source-contract\.test\.sh|from-source-cores\.test\.sh|manifest\.json|native-targets\.json|native-targets\.json\.genie\.ts|private-product-tarballs\.test\.sh|publish\.sh|targets\.json|targets\.json\.genie\.ts)$' || true)
+          tracked_product=$(git ls-files -- 'nix/buck2-products/**' ':(glob,exclude)nix/buck2-products/**/*.nix' | grep -Ev '^nix/buck2-products/(cache-targets\.json|cache-targets\.json\.genie\.ts|capability-closure\.test\.sh|compiled-targets\.json|compiled-targets\.json\.genie\.ts|from-source-contract\.test\.sh|from-source-cores\.test\.sh|manifest\.json|native-targets\.json|native-targets\.json\.genie\.ts|private-product-tarballs\.test\.sh|production-helpers\.bzl|production-helpers\.bzl\.genie\.ts|production-helpers\.json|production-helpers\.json\.genie\.ts|production-helpers\.test\.sh|publish\.sh|root-projection\.test\.sh|targets\.json|targets\.json\.genie\.ts)$' || true)
           invalid_sources=()
           while IFS= read -r -d '' path; do
             case "/$path/" in
@@ -4050,8 +4360,9 @@ jobs:
               effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \
               effect_utils//:editor_view_inputs
           '
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -4068,7 +4379,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   build-products:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -4084,6 +4395,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
@@ -4101,7 +4413,8 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
       - name: Prepare pipeline job identity
@@ -4113,14 +4426,18 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -4141,13 +4458,19 @@ jobs:
           done
           nix build --no-link --print-build-logs "${product_refs[@]}"
         timeout-minutes: 17
-      - name: Build and smoke native and compiled products
+      - name: Build native and compiled products
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --build-only'
+        timeout-minutes: 16
+      - name: Smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
         timeout-minutes: ${{ runner.os == 'macOS' && 4 || 10 }}
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -4164,7 +4487,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-build-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   publish-products:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -4181,13 +4504,19 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     outputs:
+      manifest-writer-tip: ${{ steps.manifest-writer-tip.outputs.manifest-writer-tip }}
       current-sha: ${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}
+      manifest-base64-0: ${{ steps.publication-scope.outputs.manifest-base64-0 || steps.product-publication.outputs.manifest-base64-0 }}
+      manifest-base64-1: ${{ steps.publication-scope.outputs.manifest-base64-1 || steps.product-publication.outputs.manifest-base64-1 }}
+      manifest-base64-2: ${{ steps.publication-scope.outputs.manifest-base64-2 || steps.product-publication.outputs.manifest-base64-2 }}
+      manifest-base64-3: ${{ steps.publication-scope.outputs.manifest-base64-3 || steps.product-publication.outputs.manifest-base64-3 }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -4206,7 +4535,8 @@ jobs:
             -f context=buck2-products/manifest-current -f state=pending \
             -f description="Checking published product manifest" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
       - name: Prepare pipeline job identity
@@ -4249,16 +4579,22 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Publisher manifest-only merge is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            source genie/ci-workflow/published-ref-decide.sh
+            manifest_outputs nix/buck2-products/manifest.json >> "$GITHUB_OUTPUT"
             echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -4279,8 +4615,9 @@ jobs:
         id: product-cachix-cli
         if: steps.publication-scope.outputs.publish == 'true'
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -4291,9 +4628,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix/buck2-products/publish.sh --realise-inputs'
-      - name: Publish to Cachix
+      - # v17
+        name: Publish to Cachix
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication-scope.outputs.publish == 'true'
-        uses: cachix/cachix-action@v17
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -4314,6 +4652,11 @@ jobs:
             echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"
             exit "$result"
           fi
+          source genie/ci-workflow/published-ref-decide.sh
+          manifest_outputs "$proposal" >> "$GITHUB_OUTPUT"
+          echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          source genie/ci-workflow/manifest-pr-decide.sh
+          pins="$(bootstrap_pins)"
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -4321,7 +4664,6 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Published product manifest is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           else
             comparison=$?
             if [ "$comparison" -ne 1 ]; then
@@ -4331,59 +4673,30 @@ jobs:
             fi
             echo "changed=true" >> "$GITHUB_OUTPUT"
             stale=$(jq -nr --slurpfile old nix/buck2-products/manifest.json --slurpfile new "$proposal" '[$old[0].products[], $new[0].products[]] | group_by(.name) | map(select(length != 2 or .[0] != .[1]) | .[0].name) | join(", ")')
-            description="Stale products: $stale"
+            state=success
+            description="Stale rows fall back by design: $stale"
+            if [ "$(bootstrap_rows nix/buck2-products/manifest.json "$pins")" != "$(bootstrap_rows "$proposal" "$pins")" ]; then
+              state=failure
+              description="Stale bootstrap products: $stale"
+            fi
             gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-              -f context=buck2-products/manifest-current -f state=failure \
+              -f context=buck2-products/manifest-current -f state="$state" \
               -f description="${description:0:140}" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "stale-status=true" >> "$GITHUB_OUTPUT"
           fi
         timeout-minutes: 32
-      - id: publisher-app-config
-        name: Check publisher GitHub App configuration
-        if: steps.product-publication.outputs.changed == 'true'
-        env:
-          APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
-          APP_PRIVATE_KEY_PRESENT: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}
+      - id: manifest-writer-tip
+        name: Check manifest writer main tip before queueing
         run: |
-          if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          writer_tip=true
+          if main_tip="$(gh api repos/overengineeringstudio/effect-utils/git/ref/heads/main --jq .object.sha)" && [[ "$main_tip" =~ ^[0-9a-f]{40}$ ]]; then
+            if [ "$main_tip" != "$GITHUB_SHA" ]; then writer_tip=false; fi
           else
-            echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Main tip unavailable; leaving the manifest writer enabled"
           fi
-      - id: publisher-app-token
-        name: Mint publisher GitHub App token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
-          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
-          owner: overengineeringstudio
-          repositories: effect-utils
-        if: steps.publisher-app-config.outputs.enabled == 'true'
-      - name: Propose published product manifest
-        if: steps.publisher-app-config.outputs.enabled == 'true'
-        env:
-          GITHUB_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
-          GH_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
-          branch=automation/buck2-products-manifest
-          git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
-          git switch -C "$branch"
-          cp "$proposal" nix/buck2-products/manifest.json
-          git add nix/buck2-products/manifest.json
-          git config user.name 'overeng-nix-publisher[bot]'
-          git config user.email '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'
-          git commit -m 'chore(buck2): update product cache manifest'
-          gh auth setup-git
-          git push --force-with-lease origin "HEAD:refs/heads/$branch"
-          if ! gh pr list --base main --head "$branch" --state open --json number --jq '.[0].number // empty' | grep -q .; then
-            gh pr create --base main --head "$branch" \
-              --title 'chore(buck2): update product cache manifest' \
-              --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'
-          fi
+          echo "manifest-writer-tip=$writer_tip" >> "$GITHUB_OUTPUT"
       - name: Keep interrupted publication pending
         if: failure() && steps.product-publication.outputs.stale-status != 'true' && steps.publication-scope.outputs.current-sha != github.sha && steps.product-publication.outputs.current-sha != github.sha
         env:
@@ -4393,8 +4706,9 @@ jobs:
             -f context=buck2-products/manifest-current -f state=pending \
             -f description="${PUBLICATION_CAUSE:0:140}" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -4411,7 +4725,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-publish-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   trusted-buck2-remote-cache-proof:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -4426,6 +4740,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '0'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -4450,7 +4765,8 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
       - name: Prepare pipeline job identity
@@ -4481,14 +4797,18 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -4505,8 +4825,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -4569,9 +4890,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-trusted-buck2-remote-cache-proof-${{ github.run_attempt }}'
           path: |
@@ -4583,8 +4905,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ always() && steps.reapi_unavailable.outputs.admission != '' }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ always() && steps.reapi_unavailable.outputs.in_build != '' }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -4601,7 +4940,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-reviews-resolved:
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name != 'schedule') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -4624,6 +4963,7 @@ jobs:
       - name: Check unresolved review threads
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -4634,6 +4974,24 @@ jobs:
           pr_number="${{ github.event.pull_request.number }}"
           if [[ ! "$pr_number" =~ ^[1-9][0-9]*$ ]]; then
             printf '%s\n' '::error::pr-reviews-resolved could not determine the pull request number.'
+            exit 1
+          fi
+          if command -v gh >/dev/null 2>&1; then
+            GH_BIN="$(command -v gh)"
+          elif command -v nix >/dev/null 2>&1; then
+            printf '%s\n' '::notice::gh is not on PATH; resolving nixpkgs#gh through Nix'
+            GH_BIN="$(nix build --no-link --print-out-paths nixpkgs#gh)/bin/gh"
+          else
+            printf '%s\n' '::error::pr-reviews-resolved requires gh on PATH or nix to resolve nixpkgs#gh'
+            exit 1
+          fi
+          if command -v jq >/dev/null 2>&1; then
+            JQ_BIN="$(command -v jq)"
+          elif command -v nix >/dev/null 2>&1; then
+            printf '%s\n' '::notice::jq is not on PATH; resolving nixpkgs#jq.bin through Nix'
+            JQ_BIN="$(nix build --no-link --print-out-paths nixpkgs#jq.bin)/bin/jq"
+          else
+            printf '%s\n' '::error::pr-reviews-resolved requires jq on PATH or nix to resolve nixpkgs#jq'
             exit 1
           fi
           owner="${GITHUB_REPOSITORY%%/*}"
@@ -4649,16 +5007,16 @@ jobs:
               exit 1
             fi
             if [ -z "$cursor" ]; then
-              page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number")
+              page_json=$("$GH_BIN" api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number")
             else
-              page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number" -f cursor="$cursor")
+              page_json=$("$GH_BIN" api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number" -f cursor="$cursor")
             fi
-            page_unresolved=$(printf '%s\n' "$page_json" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length')
+            page_unresolved=$(printf '%s\n' "$page_json" | "$JQ_BIN" '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length')
             unresolved=$((unresolved + page_unresolved))
-            if [ "$(printf '%s\n' "$page_json" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')" != "true" ]; then
+            if [ "$(printf '%s\n' "$page_json" | "$JQ_BIN" -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')" != "true" ]; then
               break
             fi
-            cursor=$(printf '%s\n' "$page_json" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+            cursor=$(printf '%s\n' "$page_json" | "$JQ_BIN" -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
           done
           if [ "$unresolved" -gt 0 ]; then
             printf '%s\n' "::error::pr-reviews-resolved found $unresolved unresolved review thread(s); resolve them before merge, then re-run this check (thread resolution does not retrigger workflows)."
@@ -4668,6 +5026,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
@@ -4690,6 +5049,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
@@ -4710,17 +5070,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -4746,9 +5111,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -4949,9 +5315,10 @@ jobs:
           cat "$artifact_file"
 
         timeout-minutes: 2
-      - name: 'Upload CI measurements: source-shape'
+      - # v4.6.2
+        name: 'Upload CI measurements: source-shape'
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: source-shape
           path: |
@@ -4959,8 +5326,9 @@ jobs:
             !tmp/source-shape-ci/baseline/**
           if-no-files-found: error
           retention-days: 14
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -4974,12 +5342,12 @@ jobs:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     needs: [default-ref-policy]
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-notion:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true))) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -5000,17 +5368,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -5036,9 +5409,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -5078,8 +5452,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -5185,9 +5560,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -5209,9 +5585,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}'
           path: |
@@ -5223,8 +5600,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -5240,6 +5634,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -5259,7 +5654,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-restate:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     concurrency:
       group: 'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
@@ -5284,17 +5679,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -5320,9 +5720,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -5362,8 +5763,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -5471,9 +5873,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -5495,9 +5898,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}'
           path: |
@@ -5509,8 +5913,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -5526,6 +5947,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -5543,7 +5965,7 @@ jobs:
       contents: read
       id-token: write
   test-live-deploy-ci-tools:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     concurrency:
       group: 'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
@@ -5567,17 +5989,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -5603,9 +6030,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -5645,8 +6073,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -5802,9 +6231,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -5826,9 +6256,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}'
           path: |
@@ -5840,8 +6271,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -5857,6 +6305,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -5873,7 +6322,7 @@ jobs:
       contents: read
       id-token: write
   deploy-storybooks:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -5897,17 +6346,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -5933,9 +6387,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Prepare pipeline job identity
@@ -5975,8 +6430,9 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -6154,9 +6610,10 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "- No signature markers found in captured diagnostics." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload Nix diagnostics artifact
+      - # v4.6.2
+        name: Upload Nix diagnostics artifact
         if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
           path: ${{ env.NIX_STORE_DIAGNOSTICS_DIR }}
@@ -6178,9 +6635,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}'
           path: |
@@ -6192,8 +6650,25 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
-      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
-        uses: tailscale/github-action@v4
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - # v4.4.0
+        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -6209,6 +6684,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
@@ -6228,7 +6704,7 @@ jobs:
     runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
     timeout-minutes: 30
     needs: [tested-tree, quality, deploy-storybooks]
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success') }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -6257,12 +6733,162 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-notify-alignment"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  publish-manifest-pr:
+    needs: [publish-products]
+    if: ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.repository == 'overengineeringstudio/effect-utils' && needs.publish-products.outputs.manifest-writer-tip == 'true'
+    runs-on: [sh-linux-x64, nix]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        shell: bash
+    concurrency:
+      group: buck2-products-manifest-writer
+      cancel-in-progress: false
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      GITHUB_TOKEN: ${{ github.token }}
+      MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
+      MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
+      MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
+      MANIFEST_BASE64_3: ${{ needs.publish-products.outputs.manifest-base64-3 }}
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - id: buck2-ci-job-instance
+        name: Initialize Buck2 CI job instance
+        shell: bash
+        run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
+            extra-substituters = 
+            extra-trusted-public-keys = 
+            access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
+          summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
+      - id: manifest-pr-gate
+        name: Decide whether to propose the product manifest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          source genie/ci-workflow/manifest-pr-decide.sh
+          proposal="${RUNNER_TEMP:?}/buck2-products-manifest.json"
+          source genie/ci-workflow/published-ref-decide.sh
+          decode_manifest > "$proposal"
+          main_manifest="${RUNNER_TEMP:?}/main-products-manifest.json"
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          git show refs/remotes/origin/main:nix/buck2-products/manifest.json > "$main_manifest"
+          pins="$(bootstrap_pins)"
+          decision="$(manifest_pr_decide "$main_manifest" "$proposal" "$pins" "$GITHUB_REPOSITORY" "$(date -u +%s)")"
+          pr_manifest=
+          pr="$(gh pr list --base main --head automation/buck2-products-manifest --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ] && [ "$decision" != open ]; then
+            pr_manifest="${RUNNER_TEMP:?}/open-pr-manifest.json"
+            if ! git fetch origin refs/heads/automation/buck2-products-manifest || ! git show FETCH_HEAD:nix/buck2-products/manifest.json > "$pr_manifest"; then
+              : > "$pr_manifest"
+            fi
+          fi
+          decision="$(manifest_pr_heal_decide "$decision" "$proposal" "$pr_manifest" "$pins")"
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          echo "::notice::Manifest PR: $decision; skips retain only matching bootstrap proposals"
+      - id: publisher-app-config
+        name: Check publisher GitHub App configuration
+        if: steps.manifest-pr-gate.outputs.decision == 'open' || steps.manifest-pr-gate.outputs.decision == 'close'
+        env:
+          APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          APP_PRIVATE_KEY_PRESENT: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ -n "$APP_ID" ] && [ "$APP_PRIVATE_KEY_PRESENT" = true ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - # v3.3.0
+        id: publisher-app-token
+        name: Mint publisher GitHub App token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+          owner: overengineeringstudio
+          repositories: effect-utils
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+      - name: Propose published product manifest
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
+          if [ "${{ steps.manifest-pr-gate.outputs.decision }}" = close ]; then
+            source genie/ci-workflow/manifest-pr-decide.sh
+            if [ "$(manifest_pr_writer_decide "$GITHUB_SHA")" != open ]; then exit 0; fi
+            pr="$(gh pr list --base main --head automation/buck2-products-manifest --state open --json number --jq '.[0].number // empty')"
+            if [ -n "$pr" ]; then gh pr close "$pr" --comment 'Main already matches the latest run; closing this stale bootstrap proposal.'; fi
+            exit 0
+          fi
+          branch=automation/buck2-products-manifest
+          git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
+          git switch -C "$branch" refs/remotes/origin/main
+          cp "$proposal" nix/buck2-products/manifest.json
+          git add nix/buck2-products/manifest.json
+          git config user.name 'overeng-nix-publisher[bot]'
+          git config user.email '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'
+          git commit -m 'chore(buck2): update product cache manifest'
+          gh auth setup-git
+          source genie/ci-workflow/manifest-pr-decide.sh
+          decision="$(manifest_pr_writer_decide "$GITHUB_SHA")"
+          if [ "$decision" != open ]; then
+            echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"
+            exit 0
+          fi
+          decision="$(manifest_pr_writer_push "$GITHUB_REPOSITORY" "$branch")"
+          if [ "$decision" = skip-queued ]; then exit 0; fi
+          body='Updates the v2 manifest for bootstrap changes, daily safety, or bootstrap healing. Correctness rests on #2346; published still receives the full manifest on every main push. Skips leave matching bootstrap proposals untouched; stale bootstrap proposals are refreshed or closed if main already matches.'
+          pr="$(gh pr list --base main --head "$branch" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --body "$body"
+          else
+            gh pr create --base main --head "$branch" \
+              --title 'chore(buck2): update product cache manifest' --body "$body"
+          fi
   promote-published:
     needs: [publish-products, consumer-smoke]
     if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha
@@ -6270,6 +6896,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      statuses: write
     defaults:
       run:
         shell: bash
@@ -6285,12 +6912,14 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - id: published-ref-token
+      - # v3.3.0
+        id: published-ref-token
         name: Mint publisher GitHub App token for published ref
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
         with:
           app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
           private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
@@ -6304,6 +6933,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.published-ref-token.outputs.token }}
           GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}
+          SMOKED_TREE: ${{ needs.consumer-smoke.outputs.smoked-tree }}
+          MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
+          MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
+          MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
+          MANIFEST_BASE64_3: ${{ needs.publish-products.outputs.manifest-base64-3 }}
         run: |
           set -euo pipefail
           source genie/ci-workflow/published-ref-decide.sh
@@ -6312,10 +6946,16 @@ jobs:
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
             git fetch --no-tags --unshallow origin main
           fi
+          proposal="${RUNNER_TEMP:?}/published-manifest.json"
+          decode_manifest > "$proposal"
+          tree="$(jq -n --rawfile manifest "$proposal" --arg base "$(git rev-parse "$GITHUB_SHA^{tree}")" \
+            '{base_tree: $base, tree: [{path: "nix/buck2-products/manifest.json", mode: "100644", type: "blob", content: $manifest}]}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)"
           fetch_published() {
             local result
             if git ls-remote --exit-code origin refs/heads/published > /dev/null; then
-              git fetch --no-tags origin +refs/heads/published:refs/remotes/origin/published
+              git fetch --no-tags origin +refs/heads/published:refs/remotes/origin/published || return
+              git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main || return
               git rev-parse refs/remotes/origin/published
             else
               result=$?
@@ -6324,20 +6964,34 @@ jobs:
           }
           for attempt in 1 2 3; do
             tip="$(fetch_published)"
-            case "$(decide "$tip" "$GITHUB_SHA")" in
+            case "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" in
               noop)
-                echo "published $tip -> $tip (already at or ahead of $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+                echo "published $tip -> $tip (candidate $GITHUB_SHA is not newer than the published main parent)" >> "$GITHUB_STEP_SUMMARY"
                 exit 0
                 ;;
               create|push)
-                if git push origin "$GITHUB_SHA:refs/heads/published"; then
-                  echo "published ${tip:-<absent>} -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+                parent="${tip:-$(git rev-parse "$GITHUB_SHA^")}"
+                commit="$(jq -n --arg tree "$tree" --arg tip "$parent" --arg main "$GITHUB_SHA" \
+                  '{tree: $tree, parents: [$tip, $main], message: ("Publish products for " + $main + "\n\nPublished-From: " + $main)}' | \
+                  gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq .sha)"
+                git fetch --no-tags origin "$commit"
+                changed="$(git diff --name-only "$GITHUB_SHA" "$commit")"
+                if [ -n "$changed" ] && [ "$changed" != nix/buck2-products/manifest.json ]; then
+                  echo "::error::Publisher commit changed paths other than the manifest"
+                  exit 1
+                fi
+                if [ "$(git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}" ]; then
+                  echo "::error::Publisher commit differs from the consumer-smoked tree"
+                  exit 1
+                fi
+                if git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"; then
+                  echo "published ${tip:-<absent>} -> $commit (Published-From: $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
                 echo "::notice::published push attempt $attempt rejected; refetching before retry"
                 ;;
               diverged)
-                echo "::error::published $tip is not an ancestor of $GITHUB_SHA; refusing non-fast-forward update"
+                echo "::error::Unrecognized published tip $tip; refusing promotion"
                 exit 1
                 ;;
               *)
@@ -6347,19 +7001,120 @@ jobs:
             esac
           done
           tip="$(fetch_published)"
-          if [ "$(decide "$tip" "$GITHUB_SHA")" = noop ]; then
+          if [ "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" = noop ]; then
             echo "published $tip -> $tip (concurrent run already advanced past $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "::error::Failed to advance published to $GITHUB_SHA after 3 push attempts"
           exit 1
+      - id: report-verified-published-status
+        name: Report verified published/current success
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! tip="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/published" --jq .object.sha)"; then
+            echo "::warning::Unable to resolve published tip; leaving status to published-status"
+            exit 0
+          fi
+          if ! message="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$tip" --jq .message)"; then
+            echo "::warning::Unable to read published commit; leaving status to published-status"
+            exit 0
+          fi
+          if ! trailers="$(printf "%s\n" "$message" | git interpret-trailers --parse)"; then
+            echo "::warning::Unable to parse published trailers; leaving status to published-status"
+            exit 0
+          fi
+          PUBLISHED_FROM=""
+          while IFS= read -r trailer; do
+            case "$trailer" in
+              "Published-From: "*) PUBLISHED_FROM+="${trailer#Published-From: }" ;;
+            esac
+          done <<< "$trailers"
+          if [[ ! "$PUBLISHED_FROM" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::warning::Published-From must be exactly one 40-hex trailer; leaving status to published-status"
+            exit 0
+          fi
+          if ! verified="$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$PUBLISHED_FROM" \
+            --jq '.behind_by == 0 and (.status == "identical" or .status == "ahead")')"; then
+            echo "::warning::Unable to compare published ancestry; leaving status to published-status"
+            exit 0
+          fi
+          if [ "$verified" != true ]; then
+            echo "::warning::Published does not contain this main commit or a later main commit; leaving status to published-status"
+            exit 0
+          fi
+          if ! gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=success -f context=published/current \
+            -f description="Published contains this main commit or a later main commit" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"; then
+            echo "::warning::Unable to post published/current success; leaving status to published-status"
+          fi
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-promote-published"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  published-status:
+    needs: [publish-products, consumer-smoke, promote-published]
+    if: always() && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [sh-linux-x64, nix]
+    timeout-minutes: 3
+    permissions:
+      statuses: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - id: buck2-ci-job-instance
+        name: Initialize Buck2 CI job instance
+        shell: bash
+        run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - name: Report published/current status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RESULT: ${{ needs.publish-products.result }}
+          SMOKE_RESULT: ${{ needs.consumer-smoke.result }}
+          PROMOTE_RESULT: ${{ needs.promote-published.result }}
+        run: |
+          set -euo pipefail
+          state=error
+          if [ "$PUBLISH_RESULT" != success ] || [ "$SMOKE_RESULT" != success ]; then
+            description="Promotion blocked:"
+            if [ "$PUBLISH_RESULT" != success ]; then description+=" publish-products=$PUBLISH_RESULT"; fi
+            if [ "$SMOKE_RESULT" != success ]; then description+=" consumer-smoke=$SMOKE_RESULT"; fi
+          elif [ "$PROMOTE_RESULT" = success ]; then
+            state=success
+            description="Published contains this main commit or a later main commit"
+          elif [ "$PROMOTE_RESULT" = failure ]; then
+            state=failure
+            description="promote-published failed with green publication and consumer inputs"
+          else
+            description="promote-published=$PROMOTE_RESULT with green inputs"
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" -f context=published/current \
+            -f description="${description:0:140}" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-published-status"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pipeline-attempt-close:
     runs-on: ubuntu-latest
@@ -6378,6 +7133,8 @@ jobs:
       - build-products
       - consumer-smoke
       - promote-published
+      - published-status
+      - publish-manifest-pr
       - publish-products
       - trusted-buck2-remote-cache-proof
       - pr-reviews-resolved
@@ -6388,7 +7145,7 @@ jobs:
       - test-live-deploy-ci-tools
       - deploy-storybooks
       - notify-alignment
-    if: ${{ always() }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
     permissions:
       contents: read
       actions: read
@@ -6396,7 +7153,8 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
       PIPELINE_TRUSTED: ${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -6412,18 +7170,21 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Prepare Nix
-        uses: cachix/install-nix-action@v31
+      - # v31.11.3
+        name: Prepare Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b
         with:
           extra_nix_config: |
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
         timeout-minutes: 2
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
+      - # v4.4.0
+        if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
           oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
@@ -6444,7 +7205,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pipeline-traces:
     needs: [pipeline-attempt-close]
-    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload') }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=4",
@@ -6467,15 +7228,20 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -6496,13 +7262,15 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   consumer-smoke:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    needs: [publish-products]
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
@@ -6515,6 +7283,7 @@ jobs:
         shell: bash
     outputs:
       current-sha: ${{ steps.consumer-smoke.outputs.current-sha }}
+      smoked-tree: ${{ steps.consumer-smoke.outputs.smoked-tree }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -6527,17 +7296,22 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -6598,20 +7372,33 @@ jobs:
         name: Install an isolated consumer from the candidate checkout
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
+          MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
+          MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
+          MANIFEST_BASE64_3: ${{ needs.publish-products.outputs.manifest-base64-3 }}
         run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$MANIFEST_BASE64_0" ]; then
+            source genie/ci-workflow/published-ref-decide.sh
+            decode_manifest > nix/buck2-products/manifest.json
+            git add nix/buck2-products/manifest.json
+          fi
+          smoked_tree="$(git write-tree)"
           bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"
           echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "smoked-tree=$smoked_tree" >> "$GITHUB_OUTPUT"
     env:
       FORCE_SETUP: '1'
       CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-consumer-smoke"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-live-alchemy-github:
     name: alchemy-github/live
-    if: ${{ ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    if: ${{ ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     environment: alchemy-github-live
     runs-on: [sh-linux-x64, nix]
     timeout-minutes: 30
@@ -6620,6 +7407,7 @@ jobs:
     env:
       FORCE_SETUP: '1'
       CI: 'true'
+      BUCK2_CI_POSTURE: '1'
       BUCK2_NO_REMOTE_CACHE: '0'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       ALCHEMY_TELEMETRY_DISABLED: '1'
@@ -6669,17 +7457,22 @@ jobs:
           echo "::add-mask::${ALCHEMY_GITHUB_SANDBOX_REPO#*/}"
           echo "owner=${ALCHEMY_GITHUB_SANDBOX_REPO%%/*}" >> "$GITHUB_OUTPUT"
           echo "repository=${ALCHEMY_GITHUB_SANDBOX_REPO#*/}" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -6704,9 +7497,10 @@ jobs:
           done
           unshare -Ur true
           echo "unshare -Ur true: passed"
-      - name: Checkout CI measurement baseline ref
+      - # v6.1.0
+        name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.measurement_baseline_ref }}
       - name: Provide cachix CLI from nixpkgs
@@ -6717,8 +7511,9 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -6773,9 +7568,10 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
-      - id: sandbox-app-token
+      - # v3.3.0
+        id: sandbox-app-token
         name: Mint repository-restricted GitHub sandbox token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
         with:
           app-id: ${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}
           private-key: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY }}
@@ -6800,7 +7596,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -6816,7 +7614,13 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single test:alchemy-github:unbounded
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single test:alchemy-github:unbounded || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-live-alchemy-github"

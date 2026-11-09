@@ -118,6 +118,10 @@ export default ciWorkflow({
                   "'",
                 ].join('\n'),
               ),
+              // Retained locally: tmp/buck2-cache-history-proof/buck2-cache-warm99.json
+              // and buck2-cache-proof-manifest.json. Do not add actions/upload-artifact:
+              // fleet policy bans new uses, and ci-storage (#2157) supplies only the
+              // library/action, not the broker/presigner required for workflow uploads.
             },
           ],
         },

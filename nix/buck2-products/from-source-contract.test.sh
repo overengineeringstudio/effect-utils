@@ -13,6 +13,16 @@ trap 'report_failure "$?" "${failure_line:-unknown}" "${failure_command:-$BASH_C
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
+bash "$repo_root/nix/buck2-products/root-projection.test.sh" "$repo_root"
+bash "$repo_root/nix/buck2-products/production-helpers.test.sh" "$repo_root"
+# The same tracked source must not rebuild settings for revision-only changes.
+revision="$(git -C "$repo_root" rev-parse HEAD)"
+flake_ref="$(jq -cn --arg url "git+file://$repo_root?rev=$revision&shallow=1" '$url')"
+for system in x86_64-linux aarch64-darwin; do
+  nix eval --json \
+    --file "$repo_root/nix/buck2-products/compile-identity.test.nix" \
+    --apply "test: test { flake = builtins.getFlake $flake_ref; system = \"$system\"; }"
+done
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
@@ -35,6 +45,7 @@ contract="$(nix eval --impure --json --expr '
     hasPreparedDeps = product ? preparedDeps;
     hasStandaloneRoot = product ? standaloneRoot;
     source = toString product.source;
+    rootProjection = toString product.rootProjection;
   }
 ')"
 capabilities="$(jq -r .capabilities <<<"$contract")"
@@ -44,6 +55,7 @@ registered_archives="$(jq -r .registeredArchives <<<"$contract")"
 has_prepared_deps="$(jq -r .hasPreparedDeps <<<"$contract")"
 has_standalone_root="$(jq -r .hasStandaloneRoot <<<"$contract")"
 source="$(jq -r .source <<<"$contract")"
+root_projection="$(jq -r .rootProjection <<<"$contract")"
 
 [[ "$capabilities" == "$registered_capabilities" ]] || {
   printf 'megarepo source product did not select its declared capability closure\n' >&2
@@ -61,10 +73,16 @@ jq -e "(.requiredCapabilities | sort) == (.expectedCapabilities | sort)" <<<"$co
 }
 [[ "$has_prepared_deps" == false ]]
 [[ "$has_standalone_root" == false ]]
-[[ -d "$source/genie/weaver-registry" ]]
-[[ -f "$source/nix/weaver-flake/flake.nix" ]]
-[[ -f "$source/.buckconfig" ]]
-[[ -f "$source/buck2/dependencies/BUCK" ]]
+# Package sources and shared rules are staged separately for scoped products.
+[[ -f "$source/packages/@overeng/megarepo/BUCK" ]]
+[[ -f "$source/packages/@overeng/megarepo/src/mod.ts" ]]
+[[ -d "$root_projection/genie/weaver-registry" ]]
+[[ -f "$root_projection/nix/weaver-flake/flake.nix" ]]
+[[ -f "$root_projection/.buckconfig" ]]
+[[ -f "$root_projection/buck2/dependencies/BUCK" ]]
+[[ -f "$root_projection/buck2/rust/library-closure.mjs" ]]
+[[ ! -e "$source/buck2/tests/library_closure/closure.unit.test.mjs" ]]
+[[ ! -e "$root_projection/buck2/tests/library_closure/closure.unit.test.mjs" ]]
 
 nix build "$repo_root#buck-product-megarepo-from-source" --no-link
 

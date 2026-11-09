@@ -40,6 +40,7 @@ let
   extraSourceTestTasks = [
     "devenv-modules:test"
     "buck2:rust:generators:test"
+    "test:buck2:library-closure"
     "genie:buck2:test"
     "genie:ci-workflow:test"
   ];
@@ -571,83 +572,11 @@ let
     ) buck2TestLanes
   );
 
-  # Packages that have storybook (subset of allPackages)
-  packagesWithStorybook = [
-    {
-      path = "packages/@overeng/tui-react";
-      name = "tui-react";
-      port = 6006;
-    }
-    {
-      path = "packages/@overeng/megarepo";
-      name = "megarepo";
-      port = 6007;
-    }
-    {
-      path = "packages/@overeng/genie";
-      name = "genie";
-      port = 6008;
-    }
-    {
-      path = "packages/@overeng/effect-react";
-      name = "effect-react";
-      port = 6009;
-    }
-    {
-      path = "packages/@overeng/effect-schema-form-aria";
-      name = "effect-schema-form-aria";
-      port = 6010;
-      playTests = true;
-    }
-    {
-      path = "packages/@overeng/react-inspector";
-      name = "react-inspector";
-      port = 6011;
-    }
-    {
-      path = "packages/@overeng/notion-cli";
-      name = "notion-cli";
-      port = 6012;
-    }
-    {
-      path = "packages/@overeng/tui-stories";
-      name = "tui-stories";
-      port = 6013;
-    }
-    {
-      path = "packages/@overeng/notion-react";
-      name = "notion-react";
-      port = 6014;
-    }
-    {
-      path = "packages/@overeng/notion-md";
-      name = "notion-md";
-      port = 6015;
-    }
-    {
-      path = "packages/@overeng/gh-ci-utils";
-      name = "gh-ci-utils";
-      port = 6016;
-    }
-    {
-      path = "packages/@overeng/effect-rpc-explorer-react";
-      name = "effect-rpc-explorer-react";
-      port = 6017;
-      playTests = true;
-    }
-    {
-      path = "packages/@overeng/devbar";
-      name = "devbar";
-      port = 6018;
-      playTests = true;
-    }
-    {
-      path = "packages/@overeng/meters";
-      name = "meters";
-      port = 6019;
-      playTests = true;
-    }
-  ];
+  # Reader roots are shared with the trusted proof's declaration closure.
+  readerComposition = builtins.fromJSON (
+    builtins.readFile ./genie/ci-workflow/reader-composition.json
+  );
+  packagesWithStorybook = readerComposition.storybooks;
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
   consumerPublicationPackagePaths = lib.unique (
     map (pkg: pkg.path) packagesWithStorybook
@@ -656,19 +585,10 @@ let
       "packages/@overeng/notion-datasource-sync"
     ]
   );
-  notionIntegrationPackages =
-    map
-      (name: {
-        inherit name;
-        path = "packages/@overeng/${name}";
-      })
-      [
-        "notion-effect-client"
-        "notion-cli"
-        "notion-datasource-sync"
-        "notion-md"
-        "notion-react"
-      ];
+  notionIntegrationPackages = map (path: {
+    inherit path;
+    name = builtins.baseNameOf path;
+  }) readerComposition.notionIntegration;
   # Aggregate-only aliases follow the source-test chain pattern: reuse the final
   # standalone command/runtime, replacing only the dependency that installs views.
   executionAlias =
@@ -851,6 +771,7 @@ let
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
+      bootstrapReceipt = ciUnitTest && mode == "bootstrap" && packagePaths == editorBootstrapPackagePaths;
       packageArgument = lib.optionalString (
         packagePaths != null
       ) " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
@@ -858,6 +779,14 @@ let
     trace.exec traceName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      ${lib.optionalString bootstrapReceipt ''
+        receipt() {
+          ${pkgs.python3}/bin/python "$root/scripts/editor-view-receipt.py" "$1" "$root" bootstrap \
+            ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
+        }
+        if receipt check; then exit 0; fi
+        receipt begin || true
+      ''}
       ${publishBuckCapabilities}
       # Supervise the whole authority/build/publication process tree, including
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
@@ -893,6 +822,9 @@ let
         if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
           echo "Editor-view ${mode} exceeded its ${toString deadlineSeconds}s execution deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
         fi
+      ''}
+      ${lib.optionalString bootstrapReceipt ''
+        if [ "$status" -eq 0 ]; then receipt write || true; fi
       ''}
       exit "$status"
     '';
@@ -1289,12 +1221,13 @@ in
     targets = [ "effect_utils//buck2/static:check_policy" ];
   });
 
-  # The outer devenv verb preserves stage-zero Genie freshness, then delegates
-  # every deterministic repository validation to Buck's static aggregate.
+  # Preserve stage-zero Genie freshness and standalone checks, including Rust
+  # formatting, before delegating the remaining validation to Buck's static aggregate.
   tasks."lint:check".after = lib.mkForce [
     "genie:check"
     "lint:check:no-tailwind"
     "lint:check:getflake"
+    "lint:check:rust"
     "lint:check:standalone-staging"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
@@ -1401,14 +1334,17 @@ in
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/genie-actionlint.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/check-policy.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
+      ${pkgs.bash}/bin/bash ./genie/ci-workflow/manifest-pr-decide.test.sh
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
       "genie/ci-scripts/buck2-cache-*.ts"
+      "genie/ci-scripts/buck2-reapi-classification*.ts"
       "genie/ci.ts"
       ".github/workflows/ci.yml.genie.ts"
       "packages/@overeng/genie/src/runtime/**/*.ts"
@@ -1495,6 +1431,56 @@ in
     '';
   };
 
+  tasks."test:buck2:library-closure" = {
+    description = "Validate the packaged Rust library descriptor, closure bytes, external derives and store references";
+    exec = trace.exec "test:buck2:library-closure" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      ${publishBuckCapabilities}
+      probe="$(${pkgs.coreutils}/bin/mktemp -d)"
+      trap '${pkgs.coreutils}/bin/rm -rf -- "$probe"' EXIT
+      platform="effect_utils//buck2/platforms:${
+        if pkgs.stdenv.isDarwin then
+          "macos_aarch64"
+        else
+          "linux_${pkgs.stdenv.hostPlatform.parsed.cpu.name}"
+      }"
+      for part in closure rustc ar metadata; do
+        target=effect_utils//buck2/tests/library_closure:closure
+        [[ "$part" = closure ]] || target="$target[$part]"
+        "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/$part" "$target"
+      done
+      product=effect_utils//buck2/tests/library_closure:product
+      "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/artifact.tar" "$product"
+      "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/descriptor.json" "$product[descriptor]"
+      BUCK2_LIBRARY_ROOT="$root" BUCK2_LIBRARY_DESCRIPTOR="$probe/descriptor.json" \
+        ${pkgs.nix}/bin/nix-instantiate --eval --strict --expr '
+          let
+            contract = import (builtins.toPath (builtins.getEnv "BUCK2_LIBRARY_ROOT") + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
+            descriptor = builtins.fromJSON (builtins.readFile (builtins.getEnv "BUCK2_LIBRARY_DESCRIPTOR"));
+          in
+          assert descriptor.schema == "buck-rust-library-product/v1";
+          builtins.deepSeq (contract.validateDescriptor descriptor) true
+        '
+      ${pkgs.python3}/bin/python3 buck2/tests/library_closure/accept.py "$probe/closure" \
+        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata" \
+        --artifact "$probe/artifact.tar" --descriptor "$probe/descriptor.json"
+      ${sourceBun}/bin/bun test ./buck2/tests/library_closure/closure.unit.test.mjs
+      for route in flags env unused_flags unused_env; do
+        if "$BUCK2_BIN" build --target-platforms "$platform" \
+          "effect_utils//buck2/tests/library_closure:reject_panic_$route" >"$probe/$route.log" 2>&1; then
+          echo "Expected transitive abort closure rejection ($route)" >&2
+          exit 1
+        fi
+        ${pkgs.coreutils}/bin/cat "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'requires panic strategy' "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'abort' "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'unwind' "$probe/$route.log"
+      done
+    '';
+  };
+
   tasks."buck2:maintain" = {
     description = "Maintain owner-scoped Buck outputs and idle daemons with the repository policy";
     exec = trace.exec "buck2:maintain" ''
@@ -1547,6 +1533,9 @@ in
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
+      inputs="$(nix build --impure --no-link --print-out-paths --file nix/stage0-cargo/refresh-inputs.nix)"
+      export STAGE0_GENIE="$inputs/genie/bin/genie" STAGE0_CARGO="$inputs/cargo/bin/cargo"
+      export STAGE0_RUSTC="$inputs/rustc/bin/rustc" STAGE0_VENDOR="$inputs/vendor"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
       exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
@@ -1555,6 +1544,9 @@ in
       "BUCK"
       "genie/buck2/**/*.ts"
       "genie/buck2/fixtures/**/*"
+      "nix/stage0-cargo/*"
+      "rust/**/Cargo.toml"
+      "rust/Cargo.lock"
       "buck2/dependencies/**/*.ts"
       "packages/@overeng/genie/src/**/*.ts"
       "genie/ci-workflow/test-scheduling.json"
@@ -1678,6 +1670,7 @@ in
     after = [
       "cargo:test:buck2-foundation"
       "cargo:proto-bindings:check"
+      "lint:check:rust"
     ];
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
@@ -1685,7 +1678,6 @@ in
         cd rust
         cargo test --locked --workspace --exclude 'buck2-*'
         cargo clippy --locked --workspace --all-targets -- -D warnings
-        cargo fmt --all --check
       )
       cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
         --target-dir rust/target
@@ -1747,6 +1739,29 @@ in
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-cargo-archives.sh "$PWD"
     '';
   };
+  tasks."nix:buck2-launcher-independence:check" = {
+    description = "Evaluate launcher-independent product recipes and the native positive control";
+    exec = trace.exec "nix:buck2-launcher-independence:check" ''
+      exec ${pkgs.nix}/bin/nix eval --raw \
+        .#checks.${pkgs.stdenv.hostPlatform.system}.buck2-launcher-independence.drvPath
+    '';
+    execIfModified = [
+      "devenv.nix"
+      "flake.nix"
+      "flake.lock"
+      "nix/**"
+      "scripts/buck2-*"
+    ];
+  };
+
+  tasks."lint:check:rust" = {
+    description = "Check formatting of the shared Cargo workspace";
+    exec = trace.exec "lint:check:rust" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      cd rust && cargo fmt --all --check
+    '';
+  };
 
   tasks."lint:check:getflake" = {
     description = "Reject bare-path getFlake inputs that copy ignored worktree state into the Nix store";
@@ -1764,6 +1779,7 @@ in
       "lint:check:getflake"
       "nix:buck2-artifact-import:check"
       "nix:buck2-cargo-archives:check"
+      "nix:buck2-launcher-independence:check"
       "nix:javascript-product-import:check"
     ];
   };
@@ -1950,6 +1966,15 @@ in
     after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec { mode = "check"; };
+  };
+
+  tasks."buck2:editor:budget:recount" = {
+    description = "Recount host editor-view usage without publishing or evicting";
+    exec = trace.exec "buck2:editor:budget:recount" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" budget recount
+    '';
   };
 
   tasks."buck2:editor:recover-lock" = {

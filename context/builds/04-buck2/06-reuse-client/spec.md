@@ -73,6 +73,14 @@ pins remote caching and uploads off. Absent root `remote_cache_enabled` and
 `allow_cache_uploads` retain the rule policy's `true` defaults; the tracked
 reader's explicit upload prohibition still wins. Absent action-upload default
 remains native `false`, and absent HTTP headers remain empty.
+
+Composed workflows explicitly declare `BUCK2_CI_POSTURE=1` through the standard
+CI environment and the posture helper for every cache posture, including `none`.
+Only this marker enables CI daemon admission and
+job probe pinning; ambient `CI=1` or `CI=true` retains local behavior. Admission
+fails closed before daemon access when `GITHUB_ACTIONS=true` lacks the marker
+and remote cache is configured, except for commands that skip admission.
+
 REAPI admission precedes reservation comparison and overlay mutation while holding
 the startup lock. In CI with a GitHub job-instance identity, the first fresh
 probe result is pinned per canonical project root and `(GITHUB_RUN_ID,
@@ -199,13 +207,18 @@ platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
 config (local execution, remote reuse; `remote_enabled = False`).
 `BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
 Read-only endpoint admission failures fail open; either selected writer posture
-fails closed on REAPI unavailability. If an admitted reader command fails solely
-with an RE-client initialization/capabilities/connect unavailable diagnostic, the
-launcher records `reader-reapi-unavailable-shadow` evidence and warns that no
-rerun happened. The native failure and exit code stand; there is no second
-invocation, no cache-posture change, and no admission fallback increment.
-This shadow-only observation preserves the strict outage posture. Unknown/mixed
-diagnostics, compilation/test failures, authentication/authorization failures,
+fails closed on REAPI unavailability. When the effective pre-probe posture is a
+reader (`allow_cache_uploads = false`), a failed-open REAPI probe classifies the
+existing admission row as `reader-reapi-unavailable-admission` before native
+launch, with one REAPI fallback and no shadow observation or legacy rerun.
+If an admitted reader command instead fails solely with an RE-client
+initialization/capabilities/connect unavailable diagnostic, the launcher records
+`reader-reapi-unavailable-shadow` evidence and warns that no rerun happened.
+The native failure and exit code stand; there is no second invocation, no
+cache-posture change, and no admission fallback increment.
+This native in-build shadow-only observation preserves BUILD.BUCK.REUSE-R04's
+strict outage posture.
+Unknown/mixed diagnostics, compilation/test failures, authentication/authorization failures,
 integrity errors, and writer postures produce no shadow event.
 Stdout remains inherited. Supervision applies only when stderr is not a TTY;
 terminal invocations and `run`, `install`, and `bxl` execute unchanged without
@@ -740,13 +753,60 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 }
 ```
 
-New admission writes use only the repository-local, case-sensitive event
-`reader-reapi-unavailable-shadow`, requiring `admissionFallbacks.reapi = 0`
-and a `shadow` payload. It enriches the original admission using the same native
-`invocationId`; it never invents a second invocation or claims a fallback occurred.
-The collector merges a base row and its matching shadow row in either order,
-deduplicates identical observations, and rejects conflicting admission or shadow
-payloads. Rows without an event remain readable.
+New admission writes use the repository-local, case-sensitive events
+`reader-reapi-unavailable-admission` and `reader-reapi-unavailable-shadow`.
+The pre-launch admission classification requires `admissionFallbacks.reapi = 1`
+and forbids `shadow` and `legacyRerun`. It labels the existing invocation row only
+when its effective pre-probe posture has `allow_cache_uploads = false` and REAPI
+admission fails open; writer refusals and unrelated fallback rows remain plain.
+Its fallback and optional `reapiFailure` contribute to the existing endpoint
+counters and failure groups, without a separate classification counter.
+
+The native in-build shadow classification requires `admissionFallbacks.reapi = 0`
+and a `shadow` payload, and forbids `legacyRerun`. It enriches the original
+admission using the same native `invocationId`; it never invents a second
+invocation or claims a fallback occurred. The collector merges a base row and its
+matching classified row in either order, deduplicates identical observations,
+and rejects conflicting admission or shadow payloads. Rows without an event
+remain readable.
+
+Current classified rows include the paired fields `reason` and `phase`.
+`reason` is `init`, `capabilities`, or `connect`; `phase` is `admission` for
+`reader-reapi-unavailable-admission` and `in_build` for
+`reader-reapi-unavailable-shadow`. Admission emits `reason: capabilities`;
+native shadow reasons prioritize capabilities, then client initialization
+(`init`), then `connect`. Older classified rows may omit both fields, but
+partial pairs, unknown values, mismatched phases, and pairs on plain or
+historical rerun rows are rejected. Merging retains this metadata without
+changing admission totals and rejects conflicting classified pairs.
+
+Actual REAPI probes also attach optional repository-local `reapiAttempts` to the
+existing admission sidecar row and collected `admissionInvocations`. Each attempt
+emits one sanitized JSON log line (`Buck2 REAPI admission attempt:`). Attempts have
+`attemptIndex` (1 or 2), `elapsedMs`, `deadlineMs`, and observed milestones
+`dnsResolvedMs`, `tcpConnectedMs`, `tlsReadyMs`, `firstResponseMs`: rounded monotonic
+milliseconds since attempt start, not individual phase durations. Unobserved
+milestones are omitted (including DNS for IP literals and TLS for plaintext).
+Failures additionally carry the existing closed `failure` class/phase/timing
+shape. No endpoint paths, headers, credentials, or transport error text enter
+these fields. Cached and pinned invocations that perform no probe omit attempts;
+the original probing invocation retains the measurements. Older rows without
+attempts remain valid, so evidence and join schema versions do not change.
+
+Every cache-evidence-enabled CI job appends an `always()` collect step named
+`Collect REAPI unavailable classifications`, followed by two gated no-op steps.
+The collector reads the admission sidecar through the admission decoder and
+sets `admission` and `in_build` outputs to the first classified reason per phase.
+Only the fixed reasons `init`, `capabilities`, and `connect` can enter step names.
+The rendered names are `reapi-unavailable/admission/<reason>` and
+`reapi-unavailable/in_build/<reason>`; each runs under `always()` only when its
+phase output is nonempty. All three steps retain the shared job-admission
+conditions: unadmitted jobs cannot have launched Buck2 or produced an occurrence.
+Their occurrence counters mean jobs with at least one classification in that
+phase, not invocation counts or admission fallback totals.
+Missing sidecars produce no outputs. Malformed rows produce plain diagnostics
+and do not fail the job; valid rows remain collectable. This local projection
+uses no network, credentials, workflow actions, artifacts, or caches.
 
 The decoder also retains the historical `reader-reapi-unavailable-rerun` event
 as read-only measured evidence: it requires `admissionFallbacks.reapi = 1` and
@@ -1059,7 +1119,7 @@ the legacy compact outcome classes and missing-evidence counters.
 ### Per-lane warm99 evaluation
 
 ```text
-writer upload completion < fresh reader command start
+trusted writer per-action observation < fresh reader invocation start
     exact (category,target,configuration,digest) join
     eligible remote identities / eligible identities
     >=99% for each enabled lane, twice consecutively
@@ -1099,11 +1159,19 @@ omit a failed job:
 
 Paths resolve relative to the manifest; reports omit them. Observation sequence
 numbers strictly increase. Each enabled lane has explicitly enumerated reader
-jobs, and each expected job needs a complete fresh-root attestation. All writer
-artifacts must be complete before they establish eligible uploads. The reader
-tuple is eligible only where an exact successful upload completed strictly
-before the invocation containing its first occurrence in that fresh job root
-started. An identity is `(category,target,configuration,digest)`. Its first
+jobs, and each expected job needs a complete fresh-root attestation. Only complete
+`main-writer` artifacts with writer posture establish trusted presence: either a
+successful upload at `uploadCompletedAt` or a verified native execution-kind `3`
+remote hit at that action's `completedAt`. Each exact observation must precede
+the invocation containing the reader's first occurrence strictly; equality and
+future timestamps do not bind. There is no cohort-wide timestamp cutoff.
+PR and merge-group artifacts never bind, even with writer posture or uploads;
+intentionally ineligible writer references are not missing-evidence errors.
+A raw reader remote hit without such a trusted anchor remains cold.
+Historical proof manifests expose these per-invocation bindings as
+`writerPriorObservationBindings`, with `priorObservationCount` and an exact-identity
+hash per contributing writer reference.
+An identity is `(category,target,configuration,digest)`. Its first
 occurrence in each root counts, in any invocation; every repetition in the same
 root is excluded-nonfresh. All eligible first occurrences across distinct reader
 roots must have raw execution kind `3` to count as a remote hit. Local-action-cache,
@@ -1112,6 +1180,39 @@ never remote hits, even if the compact mapping calls them cache hits.
 Writer and reader repository metadata must agree. Distinct observations require
 distinct native reader build IDs; replaying one artifact under a new manifest
 sequence is an evidence gap, not a second fresh-root measurement.
+
+Native invocation evidence records `cacheReadPolicy` as `enabled`,
+`disabled-by-design`, or `unknown`. Collection accepts `--cache-read-policy`;
+the capability-identity proof explicitly declares only its `dependency` phase
+disabled, matching `--no-remote-cache --config buck2.remote_cache_enabled=false`.
+Its baseline/selected/unused/action-env phases remain cache-enabled, including
+the same dependency action categories. A deliberately disabled invocation does
+not attempt an ActionCache lookup: its rows count as excluded, never eligible,
+cold, avoidable/local reader misses, or trusted presence anchors. It does not
+consume an identity's later cache-enabled first occurrence in the same root.
+Native outcomes and category policy counts remain unchanged.
+
+Retained evidence without the new field remains authoritative. The decoder's
+reader arm recognizes the reserved `capability-identity-dependency` context
+protocol as disabled, independently of run or revision. The context's
+[evidence-producing introduction](https://github.com/overengineeringstudio/effect-utils/blob/7bda6fe68793924bd37bea44a3535237d6912e79/scripts/buck2-capability-identity-proof.sh)
+already required `--no-remote-cache` and `buck2.remote_cache_enabled=false`;
+the [original dependency control](https://github.com/overengineeringstudio/effect-utils/blob/6e05e3dc23f52dda3323c8d79653c3595fc48dbc/scripts/buck2-capability-identity-proof.sh)
+also disabled reads, before its native rows were collected.
+Inspected reader sources
+[`d749e890d67386a5f23d9787444bfcb3e491f4da`](https://github.com/overengineeringstudio/effect-utils/blob/d749e890d67386a5f23d9787444bfcb3e491f4da/scripts/buck2-capability-identity-proof.sh#L106-L115)
+and
+[`110fa22c52d387f440494118adfe2013bb5dacfa`](https://github.com/overengineeringstudio/effect-utils/blob/110fa22c52d387f440494118adfe2013bb5dacfa/scripts/buck2-capability-identity-proof.sh#L106-L115)
+preserve that protocol. These are evidence citations, not a head-SHA whitelist.
+This is source-contract classification, not a retroactive producer attestation;
+proof invocation projections expose the classified policy with source metadata
+and original artifact checksums. Every other missing-policy case stays
+`unknown`, preserving the existing lane/posture scoring behavior rather than
+inventing a disabled lookup or invalidating all retained writer anchors.
+Local execution alone never proves reads were disabled.
+An explicit policy field takes precedence. Remove the retained reader arm only
+after an admitted-artifact inventory reports zero invocations without
+`cacheReadPolicy`; its no-retained-input behavior is covered by decoder tests.
 
 Freshness belongs to an identity's first occurrence in an attested fresh job
 root, not to the first cache-bearing invocation alone. Each root represented by
@@ -1156,11 +1257,11 @@ Missing identity fields or timestamps remain evidence gaps. Cargo and
 default-ref-policy jobs execute no native Buck actions and are explicitly
 disabled-by-design, not remote-cache reader or writer lanes.
 
-The report separates cold tuples (no prior upload), changed tuples (same
-category/target/configuration, different prior uploaded digest), excluded
+The report separates cold tuples (no prior trusted observation), changed tuples
+(same category/target/configuration, different previously observed trusted digest), excluded
 nonfresh/disabled actions, reason-keyed `excludedByDesign` policy counts,
 noncacheable native actions, upload failures, and evidence gaps. Policy rows
-cannot seed the prior-upload cohort or enter the eligible denominator, including
+cannot seed the trusted-presence cohort or enter the eligible denominator, including
 historical remote-hit/upload rows. Nix substitution totals are separate and
 never augment the Buck denominator.
 Missing expected jobs/files, malformed/schema-incompatible or
@@ -1173,6 +1274,14 @@ rates are not pooled across lanes or observations. The CLI emits a normalized
 JSON report and exits nonzero when acceptance is unmet or input is invalid.
 This temporal eligible-denominator measurement is distinct from the legacy
 observed action-span rate and from Nix substitution.
+
+Each lane observation also records up to 50 missed eligible occurrences and an
+overflow count in the warm99 report and proof manifest. Failure diagnostics include
+the Buck target label, action category, SHA-256 of the exact identity tuple, reader
+job key, and per-build read posture. A matching admission invocation with a REAPI
+fallback reports `admission-fallback`; otherwise explicitly enabled invocation reads
+report `remote-reads-enabled`, with missing evidence reported as `unknown`.
+Native configuration, digest and build identifiers are not exposed in these diagnostics.
 
 ### Action reuse versus verdict reuse
 
@@ -1239,16 +1348,16 @@ is substituted for a measured lane budget (axe record `uttvbj`).
 BUILD.BUCK.REUSE-R08–R14 retain their rolling 7-day evidence window. The legacy
 compact observed rate counts native outcome spans:
 remote hit / (remote hit + local execution + local cache + upload).
-The warm99 acceptance gate uses the distinct exact-identity, prior-upload,
+The warm99 acceptance gate uses the distinct exact-identity, trusted-presence,
 fresh-root denominator specified above, not that observed aggregate.
 
-| Requirement | Evidence                                                                                                                      |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| R08–R10     | Full CI action-identity artifacts and warm99 reports; R08 joins local executions against prior successful public-tier uploads |
-| R11         | public tier server request counters (`GetActionResult` hits/misses, `UpdateActionResult` writes)                              |
-| R12         | weekly two-root probe per trusted host, native event log                                                                      |
-| R13         | narinfo presence for each published product and the publish-run derivation diff                                               |
-| R14         | daily cache-health measurement history                                                                                        |
+| Requirement | Evidence                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| R08–R10     | Full CI action-identity artifacts and warm99 reports; R08 joins local executions against prior trusted public-tier observations |
+| R11         | public tier server request counters (`GetActionResult` hits/misses, `UpdateActionResult` writes)                                |
+| R12         | weekly two-root probe per trusted host, native event log                                                                        |
+| R13         | narinfo presence for each published product and the publish-run derivation diff                                                 |
+| R14         | daily cache-health measurement history                                                                                          |
 
 R09 and R10 apply only to lanes where queue writers populate the public tier
 before readers run. Rates measured before that ordering exists form a separate

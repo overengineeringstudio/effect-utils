@@ -273,6 +273,7 @@ export class ProviderProjectLookupFailed extends Schema.TaggedError<ProviderProj
 )('ProviderProjectLookupFailed', {
   ...DeployFailureFields,
   transient: Schema.Boolean,
+  retryAfterMs: Schema.optional(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
 }) {
   override get message(): string {
     return `${this.provider} project lookup failed for ${this.target}`
@@ -434,10 +435,11 @@ export const redactDeployDiagnosticText = (
   opts: { readonly secretValues?: readonly string[] } = {},
 ) => {
   let redacted = text
-  for (const secret of opts.secretValues ?? []) {
-    if (secret.trim().length > 0) {
-      redacted = redacted.split(secret).join('[REDACTED]')
-    }
+  const secrets = new Set((opts.secretValues ?? []).filter((secret) => secret.trim().length > 0))
+  // Replace whole longer credentials before a shorter credential can redact
+  // their prefix and leave an identifying suffix behind.
+  for (const secret of [...secrets].toSorted((left, right) => right.length - left.length)) {
+    redacted = redacted.split(secret).join('[REDACTED]')
   }
   return redacted
     .replace(/(authorization:\s*bearer\s+)[^\s]+/giu, '$1[REDACTED]')

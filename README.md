@@ -29,6 +29,19 @@ pipeline traces, alignment notices and review-request notifications use 4. The r
 PR source-shape check retains delivery priority. Shapes, caches, access controls,
 required checks and workflow frequency are independent of these labels.
 
+## CI environment preparation diagnostics
+
+The outer Nix retry launcher logs environment-realization and observed task-start
+phases without changing Devenv's output buffering. At the existing heartbeat,
+`CI_PREPARATION_DIAGNOSTIC_SECONDS` (default 600) enables one preparation dump per
+attempt if `Running tasks` has not appeared. This is not a timeout: retry counts,
+command exit codes, signal handling and the existing CI limits remain unchanged.
+The dump reports up to eight descendant processes (basenames and elapsed times)
+and unmatched Nix build/download markers, capped at 40 lines / 8 KiB with explicit
+truncation. These are observations, not proof of lock ownership or a network stall.
+Run the FIFO-controlled regression with
+`CI=1 python3 genie/ci-scripts/preparation-watchdog.test.py`.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
@@ -295,6 +308,46 @@ freshness lane) runs `content-address:contract:check`, which uses that same runt
 and requires byte-identical regeneration of the committed contract and provenance.
 The check restores checkout read-only permissions without rewriting any bytes.
 
+### Worktree leases
+
+`worktree-lease run WORKTREE --mode shared|exclusive (--try|--await SECONDS) [--agent AGENT] [--job JOB] [--json] -- COMMAND...`
+holds a per-worktree lease until command exit. Await uses interruptible kernel waiting with an integer-second deadline.
+Exclusive callers require an `agent/…` identity; shared callers without attribution warn and continue.
+JSON emits one tagged result with optional job correlation on stderr. Refusal exits are 75 (busy/deadline), 1 (safety), and 2 (input).
+SIGINT/SIGTERM/SIGHUP are forwarded to the isolated child process group; foreground terminal ownership and child status are restored.
+Identity lookup clears every `GIT_*` environment variable. Linux-only PDEATHSIG kills the immediate child when its supervisor dies; macOS has no equivalent protection here.
+Release never removes the lock file. PDEATHSIG kills only the direct payload, not its process group; grandchildren can survive the supervisor's death and require separate caller supervision.
+The Rust `record` API atomically creates schema-1 last-holder evidence in `gate-lease.json`, inspects bounded no-follow reads, and renews only through an acquired `Lease`.
+Renewal preserves the first creator, purpose and creation time; records are not a complete shared-holder registry and expiry never revokes a live flock.
+Creation holds a shared gate scope; publication rejects records over 65,536 bytes, syncs record bytes before atomic publication and syncs the admin directory before success. Unknown schema fields are malformed.
+Renewal serializes read/max/write using the separate, never-unlinked `gate-lease.publish.lock` sidecar; expiry never decreases, including concurrent shared publishers.
+Linux holders persist the device/inode of `/proc/self/ns/pid`; absent, unreadable or differing PID-namespace identity means unknown process state and retains legacy evidence rather than interpreting a PID in another namespace.
+Linux probes also require `readlink("/proc/self")` to match the caller's PID; mismatched procfs numbering is unknown, retaining records and refusing holder capture.
+`guard::reclaim` returns an exclusively held lease only for absent records or supported expired, same-host, positively dead holders; unknown identity and live kernel locks retain.
+Either `WORKTREE/reclaim-keep` or `ADMIN/reclaim-keep`, including unreadable marker state, retains the worktree. This eligibility guard does not establish clean-tree, reference or live-cwd deletion safety.
+The standalone CLI exposes `create WORKTREE --purpose gate|lander|ci-baseline --creator AGENT [--holder-pid PID] --ttl SECONDS`, `renew WORKTREE --holder-pid PID --agent AGENT --ttl SECONDS`, `inspect WORKTREE --json`, and `guard --git-dir ADMIN`.
+Create defaults holder PID to its parent; adapters can preserve their caller with an explicit PID. Renew acquires a shared scope internally. CLI successes are tagged `Created`, `Renewed`, `Inspected` or `Eligible` objects with a `record` field (possibly `null`). Guard success is only an eligibility observation, not a lock surviving CLI exit.
+`reap --common-dir COMMON [--scheduled] -- ARCHIVE_COMMAND...` emits one tagged `Eligible` (with archive exit status) or `Retained` (with reason) JSON line per examined child.
+Only registered, physical direct children of `COMMON/gate-worktrees` with supported expired/dead records qualify; unknown cwd visibility, dirty/untracked state and HEAD absent from remote refs retain.
+The exclusive fence stays held through archive command exit. The command receives `WORKTREE_LEASE_WORKTREE`, `WORKTREE_LEASE_EXPECT_HEAD`, `WORKTREE_LEASE_EXPECT_BRANCH`, and `WORKTREE_LEASE_LOCK_FD`.
+The archive command must recheck the expected HEAD/branch and preserve its independent consent/reference gates; eligibility is not permission to skip them. An empty expected branch denotes detached HEAD.
+Linux scans process cwd links conservatively; other platforms retain. Each pass examines at most 64 children and attempts at most four archives; Git probes have a three-second deadline. Failed archives are reported without aborting other candidates.
+Passes take a common nonblocking singleton fence, rotate a sorted persisted cursor even for retained children, and stamp attempts before invoking archives. Scheduled passes observe a 600-second interval; corrupt cursors or unreadable progress state refuse a pass.
+The pass stops at the fourth archive attempt, including failures, leaving the next unattempted child at the start of the following rotated pass.
+`Lease::validate_inherited_exclusive(identity, fd)` duplicates a caller-owned FD with close-on-exec, checks the named lock inode, independently probes shared-lock contention, and requires successful nonblocking exclusive flock.
+`validate-inherited WORKTREE --lock-fd N` performs the same validation and emits `Validated`; invalid, closed, wrong-inode, unlocked or shared descriptors refuse. This observation leaves the caller's original fence untouched, but confers no scope after CLI exit.
+Ignored content in managed worktrees is disposable by policy: `Eligible` decisions include `ignored_content: "disposable"`. Matching ignored `.env`, `.env.*`, `*.local` and `.envrc.local` entries retain; ignored directories such as `node_modules` are treated as opaque disposable units rather than recursively inventoried.
+The directory's device/inode is pinned before probing and rechecked without following symlinks, along with both keep markers, immediately before handoff. The archive command receives `WORKTREE_LEASE_WORKTREE_DEV`/`WORKTREE_LEASE_WORKTREE_INO` and must recheck them before deleting.
+Archive command stdout is redirected to stderr: stdout is reserved for decision JSON. Only HEAD's containment in a remote ref is established here; stashes and other unpushed branches remain the archive command's responsibility.
+All `WORKTREE_LEASE_*` values are metadata, not authentication; consumers must validate the inherited fence. Descendants of the archive command can inherit and keep that fence after its direct child exits.
+Linux callers always retain when mountinfo reports restricted process visibility (`hidepid`, `invisible`, `noaccess` or `subset=pid`), including root in user namespaces; unreadable visibility evidence also retains.
+The native Nix package temporarily includes `gate-lease-write WORKTREE PURPOSE CREATOR` (creation only; no surviving scope), and `reclaim-worktree-guard [--lock-exec|--check-lock] ADMIN [--inherit-fd FD] [-- COMMAND...]`.
+Writer attribution preserves the original caller PID, uses `FRACTAL_AGENT`, then `ST_AGENT`, then creator, and defaults `GATE_WORKTREE_LEASE_SECONDS` to 7500 only in this bridge; native commands still require explicit TTL.
+Writer failures exit 2; guard/check failures exit 1; lock-exec retains its exclusive fence through child exit and forwards child status. `--reference-fd-env NAME` (default: `WORKTREE_LEASE_REFERENCE_FD_ENV`) optionally preserves exactly the FD named by that existing environment variable, without changing its caller-owned descriptor flags; without a name, no reference channel is forwarded.
+Python imports live in `PACKAGE/share/worktree-lease`: `gate_worktree_lease` exposes `publish`, `dead_expired`; `reclaim_worktree_guard` exposes `lease_lock` and `guard_git_dir`. Add that directory to `PYTHONPATH` for named imports.
+Scopes receive an owning close-on-exec descriptor from native core over a private socket, never implement another flock or record policy, and validate supplied inherited descriptors. `guard_git_dir` alone is evidence, not mutation authority; its optional `now` is an epoch passed to the native predicate.
+`WORKTREE_LEASE_BIN` may explicitly select the matching native executable; missing executables fail closed. No admission implementation is included. Remove this narrow bridge only after all packaged callers and live processes migrate and both-direction mixed-version exclusion remains proven.
+
 ### Work storage contract
 
 [`@overeng/work-storage`](./packages/@overeng/work-storage) and the
@@ -468,6 +521,14 @@ suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, i
 the interop service and wasm guest packager integration tests. Both tasks participate
 in `test:run`; the platform-neutral Rust generator suite runs in the Linux CI partition,
 while the Darwin partition retains only host-sensitive suites.
+
+The generated `nix/buck2-products/production-helpers.{json,BUCK}` contract derives
+build runtimes and application helper imports from source. Its closure and
+development-target parity are checked by `genie/buck2/production-helpers.unit.test.ts`;
+regenerate it with Genie, never by editing the generated inventory or declarations.
+Cache products stage this as a separate build input, not the development package.
+`nix/buck2-products/production-helpers.test.sh` checks compile identity isolation
+for test/validation edits and sensitivity to real runtime and configuration edits.
 
 ### Type Checking
 
@@ -835,6 +896,32 @@ CLI packaging uses Buck products and the validated Nix import boundary described
 in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces share
 install policy and source-input algebra; Buck products use immutable dependency
 archives.
+
+`genie/buck2/stage0-workspace.ts` derives each stage-zero tool's transitive path
+dependency members while preserving shared workspace configuration byte-for-byte.
+
+Stage-zero Cargo projections are committed in `nix/stage0-cargo/inventory.json`.
+Normal Genie checks validate root-lock and manifest authority without Cargo or a
+registry cache. Refresh explicitly with `bash nix/stage0-cargo/refresh.sh`, which
+uses pinned Cargo offline against Nix-vendored dependencies. Root feature-unification
+changes can require a refresh even when the resulting projected lock stays identical.
+Refresh preparation is offline too, including the repository-declared Genie package.
+Missing local inputs fail with an explicit provisioning command; refresh never downloads.
+Inputs resolve for the current host system; lock resolution is platform-independent.
+On fleet hosts, callers wrap the whole script with
+`gate-slot --lane build -- nice -n 19 bash nix/stage0-cargo/refresh.sh`;
+standalone use needs no fleet tooling.
+Static fingerprints detect authority drift, not Cargo canonicality: that requires
+the separate locked, offline Cargo metadata check.
+
+The stage-zero source and `cargoLock` consume the same projected lock before
+addressing. `checks.<system>.stage0-cargo-metadata` validates each tool with
+`cargo metadata --locked --offline` against its Nix vendor tree, without compiling.
+The PR/merge-group quality lane builds this check. Tool sources currently support
+`Cargo.toml` and `src/**/*.rs`; future `build.rs`, `include!`, or `.cargo` inputs
+must extend that explicit source contract before adoption.
+Static Genie validation rejects build scripts, manifest `build` keys, and root or
+Rust workspace Cargo configuration until that source filter is extended.
 
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking

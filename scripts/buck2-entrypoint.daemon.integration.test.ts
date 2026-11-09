@@ -69,6 +69,7 @@ import {admitCacheDaemonCommand,directBuckArguments} from ${JSON.stringify(join(
 const [root,isolation,posture,hold,job]=process.argv.slice(2);
 const fallback=posture==='fallback'||posture==='online';
 const env={...process.env,CI:'1',GITHUB_ACTIONS:'true',GITHUB_RUN_ID:'2112-run',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'matrix-test',BUCK2_CI_JOB_INSTANCE:job==='missing'?'':job,GITHUB_STEP_SUMMARY:job?root+'/summary':'',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PUBLIC_CACHE_READ_ONLY:fallback?'1':'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_PRIVATE_CACHE_ADDRESS:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_OPTIONAL:'',CI_BUCK2_CACHE_EVIDENCE_PATH:job?root+'/admission':''};
+env.BUCK2_CI_POSTURE='1';delete env.CI;
 const values={'buck2.remote_cache_enabled':'true','buck2.allow_cache_uploads':posture,...(posture==='true'?{'buck2.default_allow_cache_upload':'true','buck2_re_client.http_headers':'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH'}:{})};
 const auditArgs=posture==='true'?['@'+root+'/'+isolation+'.outer']:['audit','config','--json'];
 if(posture==='true') {

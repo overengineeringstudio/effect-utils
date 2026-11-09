@@ -16,11 +16,23 @@ export default githubWorkflow({
   jobs: {
     test: {
       'runs-on': 'ubuntu-latest',
-      steps: [{ uses: 'actions/checkout@v4' }, { run: 'npm test' }],
+      steps: [
+        {
+          $comment: 'v4.4.0',
+          uses: 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
+        },
+        { run: 'npm test' },
+      ],
     },
   },
 })
 ```
+
+External action steps use full commit SHAs; `$comment` records the matching release
+tag as a YAML comment before the step. Consumers of the shared CI helpers must
+regenerate their workflows with `devenv tasks run genie:run` after updating their
+`published` ref. Action literals authored in a consumer's own workflow sources are
+independent of the helpers and must be pinned there as well.
 
 ## Features
 
@@ -159,3 +171,17 @@ reviewable update to existing migration debt, not an exception mechanism.
 ## Type Reference
 
 See [GitHub Actions workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) for detailed documentation on all options.
+
+## Devenv resolution diagnostics
+
+The shared resolver streams Nix build stderr into the job log and an incremental
+`resolve-devenv.nix-build.*.log` in the uploaded Nix diagnostics directory.
+Invalid-store-path repair reads that persisted log; each resolution keeps its own copy.
+
+Before tasks start, the retry wrapper takes one best-effort preparation snapshot per
+attempt after 120 seconds (below the Linux and macOS resolution deadlines). The
+snapshot includes bounded process-group arguments and wait channels, daemon state,
+open Nix state descriptors, and prefetch log tails. URLs, credential options, and
+known environment secrets are redacted before persistence. Descriptor presence is
+not proof of lock ownership. This observation never kills or changes the attempt;
+retry counts, step deadlines, and download settings remain unchanged.

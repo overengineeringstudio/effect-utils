@@ -81,6 +81,69 @@ declared: process.env.DECLARED,
     }
   })
 
+  it('rejects body-time Git use without declared Git authority in the bounded runner', async () => {
+    const root = await mkdtemp(join(realpathSync(tmpdir()), 'javascript-runner-no-git-'))
+    const packageTree = join(root, 'package-tree')
+    try {
+      await mkdir(join(packageTree, 'node_modules'), { recursive: true })
+      await symlink(
+        dirname(fileURLToPath(import.meta.resolve('vitest/package.json'))),
+        join(packageTree, 'node_modules/vitest'),
+      )
+      await writeFile(join(packageTree, 'package.json'), '{"type":"module"}')
+      await writeFile(join(packageTree, 'vitest.config.ts'), 'export default { test: {} }\n')
+      await writeFile(
+        join(packageTree, 'git.test.ts'),
+        `import { it, expect } from 'vitest'
+import { spawn } from 'node:child_process'
+import { dirname } from 'node:path'
+it('needs real Git', async () => {
+  expect(process.env.PATH).toBe(dirname(process.env.BUN_BIN))
+  const { promise, resolve, reject } = Promise.withResolvers<void>()
+  const child = spawn('git', ['--version'])
+  child.once('error', reject)
+  child.once('exit', code => code === 0 ? resolve() : reject(new Error('git failed')))
+  await promise
+})
+`,
+      )
+      const child = Bun.spawn(
+        [
+          bun,
+          runner,
+          'vitest',
+          bun,
+          packageTree,
+          'vitest.config.ts',
+          '30000',
+          '30000',
+          '--fingerprint-tool',
+          fingerprintTool,
+          // Match megarepo's Bun-only authority; an empty PATH permits host-default lookup.
+          '--external-path',
+          'BUN_BIN',
+          bun,
+        ],
+        {
+          env: { ...process.env, BUCK_SCRATCH_PATH: join(root, 'scratch') },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [stdout, stderr, status] = await Promise.all([
+        text(child.stdout),
+        text(child.stderr),
+        child.exited,
+      ])
+      expect(status, stdout + stderr).not.toBe(0)
+      expect(stdout + stderr).toContain('needs real Git')
+      expect(stdout + stderr).toMatch(/ENOENT|Executable not found/)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('collects runtime-generated cases without executing their assertions', async () => {
     const root = await mkdtemp(join(realpathSync(tmpdir()), 'javascript-runner-collection-'))
     const packageTree = join(root, 'package-tree')

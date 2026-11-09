@@ -26,7 +26,13 @@ import { type PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
-import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from '../core/config.ts'
+import {
+  DEFAULT_STORE_PATH,
+  ENV_VARS,
+  getStorePath,
+  RESERVED_STORE_TOOL_ROOTS,
+  type MemberSource,
+} from '../core/config.ts'
 import * as Observability from '../core/observability.ts'
 import { classifyRef, refTypeToPathSegment, type RefType } from '../core/ref.ts'
 import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
@@ -101,25 +107,71 @@ export class Store extends Context.Service<Store, MegarepoStore>()('megarepo/Sto
 // Store Implementation
 // =============================================================================
 
-/** Stat the entry itself before using a directory-shaped path (which ends in `/`).
- * Keep FileSystem.stat's existing symlink semantics; never mutate foreign entries.
+/** Inspect the entry itself before using a directory-shaped path (which ends in `/`).
+ * Never follow symlinks: they can dangle, duplicate repos, or escape the store.
  */
-export const isStoreDirectory = Effect.fn('megarepo/store/is-directory')(function* ({
-  fs,
-  path,
-}: {
-  fs: FileSystem.FileSystem
-  path: string
-}) {
-  const entryPath = path.replace(/\/+$/, '')
-  const stat = yield* fs.stat(entryPath)
-  if (stat.type === 'Directory') return true
+export const isStoreDirectory = ({ fs, path }: { fs: FileSystem.FileSystem; path: string }) =>
+  fs.lstat(path.replace(/\/+$/, '')).pipe(Effect.map((stat) => stat.type === 'Directory'))
 
-  yield* Effect.logWarning(`store enumeration: skipping non-directory entry ${entryPath}`).pipe(
-    Effect.annotateLogs({ path: entryPath, type: stat.type }),
-  )
-  return false
-})
+/** One diagnostic per walk; samples never grow with the number of entries. */
+export const withStoreEnumeration =
+  (name: string) =>
+  <A, E, R>(
+    run: (
+      telemetry: StoreEnumerationTelemetry,
+    ) => Generator<Effect.Effect<unknown, E, R>, A, never>,
+  ) =>
+    Effect.suspend(() => {
+      const counts = { nonDirectory: 0, foreignNamespace: 0, depthLimited: 0 }
+      const samples: Record<keyof typeof counts, Array<string>> = {
+        nonDirectory: [],
+        foreignNamespace: [],
+        depthLimited: [],
+      }
+      const record = ({ kind, path }: { kind: keyof typeof counts; path: string }) => {
+        counts[kind]++
+        if (samples[kind].length < 10) samples[kind].push(path)
+      }
+      const telemetry: StoreEnumerationTelemetry = {
+        isDirectory: (args) =>
+          isStoreDirectory(args).pipe(
+            Effect.map((directory) => {
+              if (directory === false)
+                record({ kind: 'nonDirectory', path: args.path.replace(/\/+$/, '') })
+              return directory
+            }),
+          ),
+        foreignNamespace: (path) => record({ kind: 'foreignNamespace', path }),
+        depthLimited: (path) => record({ kind: 'depthLimited', path }),
+      }
+      const report = Effect.gen(function* () {
+        const attributes = {
+          'megarepo.store.enumeration.non_directory.count': counts.nonDirectory,
+          'megarepo.store.enumeration.non_directory.samples': samples.nonDirectory,
+          'megarepo.store.enumeration.foreign_namespace.count': counts.foreignNamespace,
+          'megarepo.store.enumeration.foreign_namespace.samples': samples.foreignNamespace,
+          'megarepo.store.enumeration.depth_limited.count': counts.depthLimited,
+          'megarepo.store.enumeration.depth_limited.samples': samples.depthLimited,
+        }
+        yield* Observability.annotateStoreEnumeration(attributes)
+        if (Object.values(counts).some((count) => count > 0) === true) {
+          yield* Effect.logWarning(
+            `store enumeration: skipped entries (non-directory=${counts.nonDirectory}, foreign-namespace=${counts.foreignNamespace}, depth-limited=${counts.depthLimited})`,
+          ).pipe(Effect.annotateLogs(attributes))
+        }
+      })
+      return Effect.gen(() => run(telemetry)).pipe(
+        Effect.onExit(() => report),
+        Observability.withLabelSpan({ name, labelValue: name.slice(name.lastIndexOf('/') + 1) }),
+      )
+    })
+
+/** Mutable diagnostics owned by exactly one enumeration run. */
+export interface StoreEnumerationTelemetry {
+  readonly isDirectory: typeof isStoreDirectory
+  readonly foreignNamespace: (path: string) => void
+  readonly depthLimited: (path: string) => void
+}
 
 const shouldSkipStoreRootEntry = (entry: string): boolean =>
   // The store root holds member namespaces (`<host>/<owner>/<repo>/`) AND
@@ -135,13 +187,16 @@ const shouldSkipStoreRootEntry = (entry: string): boolean =>
   //   - `tmp` is a conventional scratch dir.
   // The `_`-prefix convention is a stable contract for co-tenants, owned here; a
   // co-tenant writer that emits `_`-prefixed roots is well-behaved by design.
-  entry.startsWith('.') === true || entry.startsWith('_') === true || entry === 'tmp'
+  entry.startsWith('.') === true ||
+  entry.startsWith('_') === true ||
+  entry === 'tmp' ||
+  RESERVED_STORE_TOOL_ROOTS.has(entry)
 
 // Backstop depth for the store filesystem walks. For the `listRepos` layout walk
 // the documented layout is `<host>/<owner>/<repo>/.bare` (repos at depth ~2–3
-// from the store root); this generous bound lets nested namespaces (e.g. GitLab
-// subgroups) resolve while guaranteeing the walk can never descend into a
-// checked-out working tree (node_modules, build output) and exhaust memory.
+// from the store root); this generous bound supports nested URL namespaces
+// (e.g. GitLab subgroups). Repository markers and worktree markers stop descent
+// into payloads; unknown over-depth namespaces receive one diagnostic.
 // `collectNestedWorktrees` reuses it as a ref-NAME-nesting bound under
 // `refs/heads/<a>/<b>/…`; real branch names nest only a few segments, so the same
 // value (8) comfortably clears any legitimate worktree while still capping a
@@ -191,11 +246,13 @@ const make = ({
     currentPath,
     refType,
     depth,
+    telemetry,
   }: {
     refTypePath: AbsoluteDirPath
     currentPath: AbsoluteDirPath
     refType: RefType
     depth: number
+    telemetry: StoreEnumerationTelemetry
   }): Effect.Effect<
     Array<{
       ref: string
@@ -222,9 +279,7 @@ const make = ({
       // names nest only a handful of levels, so reusing the layout walk's bound (8)
       // can never truncate a legitimate worktree.
       if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
-        yield* Effect.logWarning(
-          'store listWorktrees: nested-worktree walk depth limit reached; not descending',
-        ).pipe(Effect.annotateLogs({ currentPath, depth }))
+        telemetry.depthLimited(currentPath)
         return []
       }
 
@@ -244,9 +299,9 @@ const make = ({
           EffectPath.unsafe.relativeDir(`${entry}/`),
         )
         if (
-          (yield* isStoreDirectory({ fs, path: entryPath }).pipe(
-            Effect.orElseSucceed(() => false),
-          )) === false
+          (yield* telemetry
+            .isDirectory({ fs, path: entryPath })
+            .pipe(Effect.orElseSucceed(() => false))) === false
         )
           continue
 
@@ -256,6 +311,7 @@ const make = ({
             currentPath: entryPath,
             refType,
             depth: depth + 1,
+            telemetry,
           })),
         )
       }
@@ -283,7 +339,9 @@ const make = ({
       return fs.exists(gitFilePath)
     },
 
-    listRepos: Effect.gen(function* () {
+    // Admit namespaces using the canonical marker at host/owner/repo only.
+    // Never recursively search an unclassified co-tenant's payload for members.
+    listRepos: withStoreEnumeration('megarepo/store/list-repos')(function* (telemetry) {
       const exists = yield* fs.exists(basePath)
       if (exists === false) {
         return []
@@ -297,9 +355,11 @@ const make = ({
       const walk = ({
         dir,
         depth,
+        census,
       }: {
         dir: AbsoluteDirPath
         depth: number
+        census: { overflow: AbsoluteDirPath | undefined }
       }): Effect.Effect<void, PlatformError> =>
         Effect.gen(function* () {
           yield* Effect.yieldNow
@@ -336,12 +396,12 @@ const make = ({
             isHostNamespace === false && (hasNestedState === true || hasNestedLocks === true)
           if (isNestedStore === true) return
 
-          // Backstop: never descend past the layout's plausible repo depth, so a
-          // pathological non-git directory tree can't drive an unbounded walk.
+          // Admission already established ownership; incomplete census of a
+          // member namespace must fail closed even if no repo was reached yet.
           if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
-            return yield* Effect.die(
-              new Error(`store listRepos census exceeded the supported depth at ${dir}`),
-            )
+            census.overflow ??= dir
+            telemetry.depthLimited(dir)
+            return
           }
 
           const entries = yield* fs.readDirectory(dir)
@@ -357,9 +417,9 @@ const make = ({
                   dir,
                   EffectPath.unsafe.relativeDir(`${entry}/`),
                 )
-                if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
+                if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) return
 
-                yield* walk({ dir: entryPath, depth: depth + 1 })
+                yield* walk({ dir: entryPath, depth: depth + 1, census })
               }),
             { concurrency: 32 },
           )
@@ -371,6 +431,8 @@ const make = ({
         (entry) =>
           Effect.gen(function* () {
             if (shouldSkipStoreRootEntry(entry) === true) {
+              if (RESERVED_STORE_TOOL_ROOTS.has(entry) === true)
+                telemetry.foreignNamespace(`${basePath}${entry}/`)
               return
             }
 
@@ -378,20 +440,51 @@ const make = ({
               basePath,
               EffectPath.unsafe.relativeDir(`${entry}/`),
             )
-            if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
+            if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) return
 
-            yield* walk({ dir: entryPath, depth: 1 })
+            const owners = yield* fs.readDirectory(entryPath)
+            let memberNamespace = false
+            for (const owner of owners) {
+              if (owner.startsWith('.') === true) continue
+              const ownerPath = `${entryPath}${owner}`
+              if ((yield* isStoreDirectory({ fs, path: ownerPath })) === false) continue
+              for (const repo of yield* fs.readDirectory(ownerPath)) {
+                if (repo.startsWith('.') === true) continue
+                if ((yield* isStoreDirectory({ fs, path: `${ownerPath}/${repo}` })) === false)
+                  continue
+                const marker = `${ownerPath}/${repo}/.bare`
+                if ((yield* fs.exists(marker)) === true) {
+                  if ((yield* isStoreDirectory({ fs, path: marker })) === true) {
+                    memberNamespace = true
+                    break
+                  }
+                }
+              }
+              if (memberNamespace === true) break
+            }
+            if (memberNamespace === false) {
+              telemetry.foreignNamespace(entryPath)
+              return
+            }
+
+            const census = { overflow: undefined as AbsoluteDirPath | undefined }
+            yield* walk({ dir: entryPath, depth: 1, census })
+            if (census.overflow !== undefined) {
+              return yield* Effect.die(
+                new Error(
+                  `store listRepos census exceeded the supported depth at ${census.overflow}`,
+                ),
+              )
+            }
           }),
         { concurrency: 32 },
-      ).pipe(
-        Observability.withLabelSpan({ name: 'megarepo/store/list-repos', labelValue: 'repos' }),
       )
 
       return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
     }),
 
     listWorktrees: (source) =>
-      Effect.gen(function* () {
+      withStoreEnumeration('megarepo/store/list-worktrees')(function* (telemetry) {
         const repoBase = getRepoBasePath(source)
         const refsDir = EffectPath.ops.join(repoBase, EffectPath.unsafe.relativeDir('refs/'))
 
@@ -399,7 +492,7 @@ const make = ({
         if (exists === false) {
           return []
         }
-        if ((yield* isStoreDirectory({ fs, path: refsDir })) === false) return []
+        if ((yield* telemetry.isDirectory({ fs, path: refsDir })) === false) return []
 
         const result: Array<{
           ref: string
@@ -418,7 +511,7 @@ const make = ({
             refsDir,
             EffectPath.unsafe.relativeDir(`${refTypeDir}/`),
           )
-          if ((yield* isStoreDirectory({ fs, path: refTypePath })) === false) continue
+          if ((yield* telemetry.isDirectory({ fs, path: refTypePath })) === false) continue
 
           result.push(
             ...(yield* collectNestedWorktrees({
@@ -426,6 +519,7 @@ const make = ({
               currentPath: refTypePath,
               refType,
               depth: 0,
+              telemetry,
             })),
           )
         }

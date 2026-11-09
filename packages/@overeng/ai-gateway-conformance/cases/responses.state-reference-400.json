@@ -1,0 +1,36 @@
+{
+  "id": "responses.state-reference-400",
+  "summary": "Reject a server-side Responses state reference locally instead of forwarding cross-request provider state.",
+  "requirements": ["AIG-R10"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/reasoning-model",
+      "stream": false
+    },
+    "body": {
+      "input": "Continue.",
+      "previous_response_id": "resp_previous",
+      "store": false
+    }
+  },
+  "response": {
+    "status": 400,
+    "json": {
+      "error": {
+        "message": "Server-side state references are not supported; send self-contained input with encrypted reasoning items",
+        "type": "gateway_error",
+        "code": null
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 400,
+      "type": "gateway_error"
+    }
+  }
+}

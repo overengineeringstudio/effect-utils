@@ -1,3 +1,4 @@
+import { pinnedActionVersion } from './action-pins.ts'
 import type { GitHubWorkflowArgs } from './mod.ts'
 import { workflowPolicyStepIdentity } from './policy-step-identity.ts'
 
@@ -766,7 +767,18 @@ export const collectWorkflowPolicyViolations = ({
         add({ job, rule: 'banned-action', path: `${stepPath}.uses`, value: step.uses })
       for (const cache of policy.setupActionCaches ?? []) {
         if (matchesAction({ uses: step.uses, action: cache.action }) === false) continue
-        const major = /^v(\d+)(?:\.\d+){0,2}$/.exec(step.uses.split('@')[1] ?? '')
+        const ref = step.uses.split('@')[1] ?? ''
+        const version = /^[0-9a-f]{40}$/i.test(ref) === true ? pinnedActionVersion(step.uses) : ref
+        if (cache.minimumMajor !== undefined && version === undefined) {
+          add({
+            job,
+            rule: 'setup-action-cache',
+            path: `${stepPath}.uses`,
+            value: 'Unknown SHA-pinned action version; register its verified release in actionPins',
+          })
+          continue
+        }
+        const major = /^v(\d+)(?:\.\d+){0,2}$/.exec(version ?? '')
         if (
           cache.minimumMajor !== undefined &&
           major !== null &&

@@ -532,7 +532,7 @@ canonical branch, including when an administrative mutation override is set.
 The old worktree and its edits remain untouched; only the workspace symlink
 changes. A warm rerun reuses the exact-lock mount.
 
-`mr apply --commit-members <a,b>` (apply only, requires `--lock-sync off`, exclusive with `--all`) materializes the listed root members as commit worktrees and applies their nested megarepos recursively in commit mode; unlisted members keep `--worktree-mode` and are not recursed into. `--only`/`--skip` select root members only and never filter a listed member's subtree, so a fresh commit subtree is complete or absent. It is the local path for consumers whose nested hooks only validate prepared trees (devenv option `setupCommitMembers`). Recursion populates only commit worktrees created by the invocation; a preexisting nested commit worktree is accepted when its locked tree is already mounted and refused otherwise.
+`mr apply --commit-members <a,b>` (apply only, requires `--lock-sync off`, exclusive with `--all`) materializes the listed root members as commit worktrees and applies their nested megarepos recursively in commit mode; unlisted members keep `--worktree-mode` and are not recursed into. `--only`/`--skip` select root members only and never filter a listed member's subtree. It is the local path for consumers whose nested hooks only validate prepared trees (devenv option `setupCommitMembers`). Recursive locked apply prepares incomplete shared commit trees under an exclusive per-tree kernel lock, rechecking readiness and verifying their config and lock match the commit before granting mount-only permission. Config, lock, generators and worktree identity remain protected; failed preparation is retried rather than trusted.
 
 `mr apply --commit-all-members` behaves like `--commit-members` with every root member listed (same `--lock-sync off` requirement, exclusive with `--all` and `--commit-members`). It selects members from the config inside `mr`, so names containing commas are not split by a list; CI `mr:setup` uses it with `--worktree-mode commit`.
 
@@ -962,14 +962,29 @@ mr store status [--json]
 
 **Detected Issues:**
 
-| Issue             | Description                                    | Severity |
-| ----------------- | ---------------------------------------------- | -------- |
-| `dirty`           | Worktree has uncommitted changes               | warning  |
-| `unpushed`        | Worktree has commits not pushed to remote      | warning  |
-| `ref_mismatch`    | Checked-out branch doesn't match worktree path | error    |
-| `missing_bare`    | Worktree exists but `.bare/` repo is missing   | error    |
-| `broken_worktree` | Worktree directory is corrupted or incomplete  | error    |
-| `orphaned`        | Not referenced by current megarepo's lock      | info     |
+| Issue             | Description                                          | Severity |
+| ----------------- | ---------------------------------------------------- | -------- |
+| `dirty`           | Worktree has uncommitted changes                     | warning  |
+| `unpushed`        | Worktree has commits not pushed to remote            | warning  |
+| `ref_mismatch`    | Checked-out branch doesn't match worktree path       | error    |
+| `missing_bare`    | Worktree exists but `.bare/` repo is missing         | error    |
+| `broken_worktree` | Worktree directory is corrupted or incomplete        | error    |
+| `foreign-git-dir` | Worktree is registered in a different Git repository | error    |
+| `orphaned`        | Not referenced by current megarepo's lock            | info     |
+
+`mr store fix --dry-run` plans repair without writes. `mr store fix` re-homes only clean
+exact-commit trees into their store `.bare`, preserving tracked and ignored files in place.
+Foreign branch/tag trees remain report-only. The bounded collector may classify branch
+namespaces known only to the foreign repository as broken rather than foreign.
+
+Repository discovery stops at `.bare` markers, preserving nested URL namespaces and
+single-label hosts. Reserved tool roots (including the externally owned shared pnpm
+store) are not scanned. Unknown namespaces exceeding the depth bound without any
+repository marker are ignored with one diagnostic; overflow in a namespace containing
+repositories remains an error to prevent an incomplete census. `mr store fix <member>`
+inspects only that member's resolved repository, not unrelated store namespaces.
+Foreign files encountered at every enumerated layout level are reported as warnings
+without being modified; skipping foreign directory payloads does not suppress them.
 
 **Example output:**
 

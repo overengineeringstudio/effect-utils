@@ -36,6 +36,8 @@ in
   expectedPlatform,
   url ? null,
   artifact ? null,
+  expectedRustTarget ? pkgs.stdenv.hostPlatform.rust.rustcTarget,
+  expectedPanicStrategy ? "unwind",
 }:
 
 let
@@ -68,11 +70,18 @@ assert lib.assertMsg (
 ) "buck2-artifact-import: a published URL or declared artifact path is required";
 realize {
   inherit (checkedDescriptor) name;
-  inherit expectedPlatform expectedDescriptorDigest;
-  runtimeKind = checkedDescriptor.runtime.kind;
+  inherit
+    expectedPlatform
+    expectedDescriptorDigest
+    expectedRustTarget
+    expectedPanicStrategy
+    ;
+  runtimeKind =
+    if (checkedDescriptor.kind or null) == "library" then "library" else checkedDescriptor.runtime.kind;
   descriptorPath = lib.escapeShellArg "${descriptorFile}";
   archivePath = lib.escapeShellArg (toString fetchedArtifact);
   passthru = {
+    descriptorPath = descriptorFile;
     descriptorDigest = expectedDescriptorDigest;
     inherit checkedDescriptor;
   };

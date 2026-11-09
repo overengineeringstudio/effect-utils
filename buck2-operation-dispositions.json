@@ -57,6 +57,10 @@
       "operation": "test-integration-restate"
     },
     {
+      "disposition": "outside-by-policy:cross-boundary-aggregate",
+      "operation": "pr-a-inert-buck"
+    },
+    {
       "disposition": "outside-by-policy:nix-realization",
       "operation": "build-products"
     },
@@ -85,12 +89,20 @@
       "operation": "publish-products"
     },
     {
+      "disposition": "outside-by-policy:live-publication",
+      "operation": "publish-manifest-pr"
+    },
+    {
       "disposition": "outside-by-policy:bootstrap-integration",
       "operation": "consumer-smoke"
     },
     {
       "disposition": "outside-by-policy:live-publication",
       "operation": "promote-published"
+    },
+    {
+      "disposition": "outside-by-policy:ci-control-plane",
+      "operation": "published-status"
     },
     {
       "disposition": "outside-by-policy:ci-measurement-with-run-timestamp",

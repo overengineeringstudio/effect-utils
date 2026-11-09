@@ -230,6 +230,27 @@ mr store ls [--json]
 mr store fetch [--json]
 ```
 
+### `mr store worktree new`
+
+```bash
+mr store worktree new owner/repo --ref feature --base main --porcelain
+```
+
+Creates `feature` at the base commit in the canonical `refs/heads/feature`
+worktree. A base can be a local ref, a remote-only branch name (including
+slash-separated names), an explicit `origin/branch`, or a commit SHA.
+The new worktree's branch is always the name passed to `--ref`, not the base.
+`--porcelain` prints only its path.
+
+### `mr worktree lease`
+
+The `create`, `renew`, `inspect`, `guard`, `run` and `reap` subcommands delegate to the native `worktree-lease` binary. Relative worktree/admin/common paths resolve against `mr --cwd`; native Git identity resolution remains authoritative.
+The packaged command pins its native helper; source execution uses `WORKTREE_LEASE_BIN` when supplied, otherwise `worktree-lease` on PATH. No lease/lock state is implemented in TypeScript.
+Native tagged JSON streams pass through unchanged, including stderr diagnostics. Busy/deadline 75, safety refusal 1, input refusal 2 and payload exit statuses are preserved.
+Creation defaults holder PID to the original parent of `mr`, not the extra native-helper process. Pass `--holder-pid` to select an explicit holder.
+Use `mr worktree lease run WORKTREE --mode shared --try --json -- COMMAND...` for a scoped fence; `create` and `inspect` do not grant lasting exclusion.
+Reaping requires a caller-selected archive command after `--`; all native consent/reference/identity requirements remain in force. This surface is separate from `mr store lease`, whose store-deletion protocol is unchanged.
+
 ### `mr store gc`
 
 ```bash

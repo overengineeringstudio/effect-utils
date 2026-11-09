@@ -18,6 +18,7 @@ import {
   isValidMemberName,
   MegarepoConfig,
   parseSourceString,
+  sourceCredentialError,
   rejectRetiredRootConfig,
   validateMemberName,
 } from './config.ts'
@@ -143,6 +144,50 @@ describe('config', () => {
   })
 
   describe('parseSourceString', () => {
+    it.each([
+      'https://user:secret@example.com/org/repo#main',
+      'http://secret@example.com/org/repo',
+      'https://us%65r:s%65cret@example.com/org/repo',
+      'https://s%65cret@example.com/org/repo',
+    ])('rejects HTTP userinfo without exposing it: %s', (source) => {
+      expect(parseSourceString(source)).toBeUndefined()
+      const safeUrl = source.replace(/\/\/.*@/, '//***@')
+      expect(sourceCredentialError(source)).toContain(safeUrl)
+      for (const format of ['json', 'kdl'] as const) {
+        const content =
+          format === 'json'
+            ? JSON.stringify({ members: { repo: source } })
+            : `members { repo "${source}" }`
+        const exit = Effect.runSyncExit(decodeMegarepoConfigContent({ content, format }))
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit) === true) {
+          const message = Cause.pretty(exit.cause)
+          expect(message).toContain(safeUrl)
+          expect(message).toContain('credential helper')
+          expect(message).toContain('SSH')
+          expect(message).not.toContain(source)
+          expect(message).not.toMatch(/secret|s%65cret|us%65r/)
+          const error = Effect.runSync(
+            decodeMegarepoConfigContent({ content, format }).pipe(Effect.flip),
+          )
+          expect(JSON.stringify({ cause: exit.cause, issue: error.issue })).not.toMatch(
+            /secret|s%65cret|us%65r/,
+          )
+        }
+      }
+    })
+
+    it.each(['ssh://git@example.com/org/repo.git', 'git@example.com:org/repo.git'])(
+      'preserves SSH sources: %s',
+      (source) => {
+        expect(parseSourceString(source)?.type).toBe('url')
+        expect(Schema.decodeSync(MegarepoConfig)({ members: { repo: source } }).members.repo).toBe(
+          source,
+        )
+        expect(sourceCredentialError(source)).toBeUndefined()
+      },
+    )
+
     describe('GitHub shorthand', () => {
       it('should parse owner/repo', () => {
         const source = parseSourceString('owner/repo')

@@ -36,6 +36,12 @@ let
   };
 in product'
 eval_path() { nix eval --impure --raw --expr "($expr).outPath"; }
+# Opaque rule outputs cannot prove membership; the scoped fileset must own the entry.
+if eval_path >"$work/missing-entry.log" 2>&1; then
+  echo 'missing entry BUCK was accepted' >&2; exit 1
+fi
+[[ "$(<"$work/missing-entry.log")" == *'entry package BUCK missing from product projection'* ]]
+printf '# fixture entry package\n' > "$work/repo/packages/app/BUCK"
 first="$(eval_path)"
 darwin_first="$(BUCK2_SYSTEM=aarch64-darwin eval_path)"
 printf 'unrelated changed\n' > "$work/repo/packages/unrelated/source.txt"
@@ -79,7 +85,10 @@ let
   selected = builtins.getEnv "BUCK2_SYSTEM";
   system = if selected == "" then builtins.currentSystem else selected;
   packages = outputs.packages.${system};
-  names = [
+  jsIdentity = builtins.getEnv "BUCK2_JS_IDENTITY" == "1";
+  names = if jsIdentity then [
+    "ai-gateway-edge" "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories"
+  ] else [
     "buck2" "buck2-capabilities" "buck2-archive-tool" "buck2-events"
     "buck2-fingerprint" "buck2-product" "otelite" "otel-scrape"
     "typescript-api-server" "ci-tools-compiled"
@@ -87,7 +96,8 @@ let
   ];
 in builtins.listToAttrs (map (name: {
   inherit name;
-  value = packages.${name}.outPath;
+  value = if jsIdentity then packages."buck-product-${name}-from-source".compileProduct.drvPath
+    else packages.${name}.outPath;
 }) names)'
 shell_paths() { nix eval --impure --json --expr "$shell_expr"; }
 linux_before="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
@@ -117,11 +127,13 @@ jq -ne --argjson before "$linux_after" --argjson after "$events_after" '
   and $before["buck2-archive-tool"] == $after["buck2-archive-tool"]
   and $before.otelite == $after.otelite
 ' >/dev/null
+# Stage-0 tools use committed projected locks, so an unrelated root lock edit
+# must preserve their identities while still invalidating root-lock consumers.
 printf '\n# shell cache lock input edit\n' >> "$work/shell/rust/Cargo.lock"
 lock_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
 jq -ne --argjson before "$events_after" --argjson after "$lock_after" '
-  $before["buck2-events"] != $after["buck2-events"]
-  and $before["buck2-archive-tool"] != $after["buck2-archive-tool"]
+  $before["buck2-events"] == $after["buck2-events"]
+  and $before["buck2-archive-tool"] == $after["buck2-archive-tool"]
   and $before.otelite != $after.otelite
 ' >/dev/null
 
@@ -150,3 +162,55 @@ jq -ne --argjson before "$fingerprint_after" --argjson after "$core_after" '
   and $before["typescript-api-server"] != $after["typescript-api-server"]
   and $before["ci-tools-compiled"] != $after["ci-tools-compiled"]
 ' >/dev/null
+
+# Plugin source still keys the compile output even though publication stamps do not.
+printf '\n// shell plugin source control\n' >> "$work/shell/packages/@overeng/oxc-config/src/mod.ts"
+plugin_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
+jq -ne --argjson before "$core_after" --argjson after "$plugin_after" '
+  $before["oxlint-with-plugins"] != $after["oxlint-with-plugins"]
+  and $before["buck2-capabilities"] != $after["buck2-capabilities"]
+  and $before.otelite == $after.otelite
+' >/dev/null
+
+# One package graph per bounded evaluation: never retain several whole-flake
+# source variants together. Root-projection separately covers rule sensitivity.
+js_paths() {
+  BUCK2_JS_IDENTITY=1 BUCK2_SYSTEM=x86_64-linux timeout 600 \
+    nix eval --impure --option allow-import-from-derivation false --json --expr "$shell_expr"
+}
+export BUCK2_SHELL_IDENTITY_REV=1111111111111111111111111111111111111111
+js_before="$(js_paths)"
+printf '\nJS cache unrelated context edit\n' >> "$work/shell/context/pingping/spec.md"
+export BUCK2_SHELL_IDENTITY_REV=2222222222222222222222222222222222222222
+js_after="$(js_paths)"
+[[ "$js_before" == "$js_after" ]] || {
+  echo 'context-only edit and producer revision changed scoped JS compile recipes' >&2; exit 1;
+}
+# ai-gateway-edge does not declare megarepo (unlike tui-stories).
+cp "$work/shell/packages/@overeng/megarepo/src/mod.ts" "$work/js-unrelated-source"
+printf '\n// unrelated package source control\n' >> "$work/shell/packages/@overeng/megarepo/src/mod.ts"
+js_unrelated="$(js_paths)"
+jq -ne --argjson before "$js_after" --argjson after "$js_unrelated" \
+  '$before["ai-gateway-edge"] == $after["ai-gateway-edge"]' >/dev/null || {
+  echo 'unrelated megarepo source edit changed ai-gateway-edge compile recipe' >&2; exit 1;
+}
+cp "$work/js-unrelated-source" "$work/shell/packages/@overeng/megarepo/src/mod.ts"
+# Each real own-source mutation must invalidate its product, not just the
+# publication wrapper. Restore between controls so failures name one input.
+while read -r name relative; do
+  cp "$work/shell/$relative" "$work/js-source"
+  printf '\n// JS compile identity source control\n' >> "$work/shell/$relative"
+  changed="$(js_paths)"
+  jq -ne --arg name "$name" --argjson before "$js_after" --argjson after "$changed" \
+    '$before[$name] != $after[$name]' >/dev/null || {
+    echo "own source edit did not change $name compile recipe: $relative" >&2; exit 1;
+  }
+  cp "$work/js-source" "$work/shell/$relative"
+done <<'SOURCES'
+ai-gateway-edge packages/@overeng/ai-gateway-edge/src/mod.ts
+ci-tools packages/@overeng/ci-tools/src/mod.ts
+gh-ci-utils packages/@overeng/gh-ci-utils/src/mod.ts
+notion-cli packages/@overeng/notion-cli/src/mod.ts
+notion-db-runtime packages/@overeng/notion-datasource-sync/src/cli/main.ts
+tui-stories packages/@overeng/tui-stories/src/mod.ts
+SOURCES

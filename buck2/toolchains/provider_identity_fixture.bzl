@@ -2,19 +2,21 @@
 
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule")
 load("//buck2/products:defs.bzl", "build_product")
-load("//buck2/provenance:defs.bzl", "product_executable_info")
+load("//buck2/provenance:defs.bzl", "product_artifact_info", "product_executable_info")
 
 def _product_executable_impl(ctx):
     executable = ctx.attrs.executable
+    product_executable = product_executable_info(
+        ctx = ctx,
+        executable = executable,
+        recipe = "cross-cell-provider-identity/v1",
+        toolchain = "cross-cell-provider-identity/v1",
+        target_platform = ctx.attrs.target_platform[ProductPlatformInfo],
+    )
     return [
         DefaultInfo(default_output = executable),
-        product_executable_info(
-            ctx = ctx,
-            executable = executable,
-            recipe = "cross-cell-provider-identity/v1",
-            toolchain = "cross-cell-provider-identity/v1",
-            target_platform = ctx.attrs.target_platform[ProductPlatformInfo],
-        ),
+        product_executable,
+        product_artifact_info("executable", product_executable, ctx.attrs.target_platform[ProductPlatformInfo], product_executable.provenance),
     ]
 
 _product_executable = cache_guarded_rule(
@@ -31,12 +33,12 @@ def cross_cell_product_identity(name, target_platform, executable_target_platfor
     executable = name + "_executable"
     _product_executable(
         name = executable,
-        executable = "//buck2/products:fixture_executable",
+        executable = "//buck2/toolchains:provider_identity_fixture.bzl",
         target_platform = executable_target_platform,
     )
     build_product(
         name = name,
-        executable = ":" + executable,
+        artifact = ":" + executable,
         target_platform = target_platform,
         product_name = "cross-cell-provider-identity",
         entrypoint = "bin/cross-cell-provider-identity",

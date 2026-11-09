@@ -247,8 +247,14 @@ if [ "\${1:-}" = "deploy" ]; then
     printf 'Deployment completed without URL\\n'
     exit 0
   fi
+  if [ "\${FAKE_VERCEL_MODE:-success}" = "failure-output" ]; then
+    printf '%s\\n' "\${FAKE_VERCEL_STDOUT:-}"
+    printf '%s\\n' "\${FAKE_VERCEL_STDERR:-}" >&2
+    exit 1
+  fi
   if [ "\${FAKE_VERCEL_MODE:-success}" = "unauthorized" ]; then
     echo 'Error: invalid token ${vercelTokenSentinel}' >&2
+    printf '%s\\n' "\${CI_TOOLS_BYPASS_SENTINEL:-}" >&2
     exit 1
   fi
   printf 'https://deploy-web.vercel.app\\n'
@@ -645,7 +651,46 @@ exit 1
     }
   })
 
-  it('redacts Vercel tokens from provider command failures', async () => {
+  it('redacts Vercel tokens and protection bypass secrets from provider command failures', async () => {
+    apiMode = 'ok'
+    const workspace = makeWorkspace()
+    const reportFile = join(workspace.root, 'report.jsonl')
+    const bypassSecret = 'ci-tools-bypass-secret-sentinel'
+    try {
+      const result = await runCiTools({
+        workdir: workspace.root,
+        fakeVercelBin: workspace.fakeVercelBin,
+        reportFile,
+        args: [
+          '--target',
+          'web',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--mode',
+          'preview',
+          '--protection-bypass-env',
+          'CI_TOOLS_BYPASS_SENTINEL',
+        ],
+        env: { FAKE_VERCEL_MODE: 'unauthorized', CI_TOOLS_BYPASS_SENTINEL: bypassSecret },
+      })
+      expect(result.status).not.toBe(0)
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain(vercelTokenSentinel)
+      expect(JSON.stringify(readRecord(reportFile))).not.toContain(vercelTokenSentinel)
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain(bypassSecret)
+      expect(JSON.stringify(readRecord(reportFile))).not.toContain(bypassSecret)
+    } finally {
+      rmSync(workspace.root, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    ['Error: forbidden', '', 'ProviderOperationFailed'],
+    ['', 'Error: [not_found] Resource unavailable', 'ProviderOperationFailed'],
+    ['Error: project not found', '', 'ProviderProjectLookupFailed'],
+    ['code: "my-team-slug"', '', 'ProviderOperationFailed'],
+    ['code: "rate_limited"', '', 'ProviderOperationFailed'],
+    ['', 'code: "my-team-slug"', 'ProviderOperationFailed'],
+  ])('preserves class choice for stdout=%s stderr=%s', async (stdout, stderr, errorKind) => {
     apiMode = 'ok'
     const workspace = makeWorkspace()
     const reportFile = join(workspace.root, 'report.jsonl')
@@ -655,11 +700,20 @@ exit 1
         fakeVercelBin: workspace.fakeVercelBin,
         reportFile,
         args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'preview'],
-        env: { FAKE_VERCEL_MODE: 'unauthorized' },
+        env: {
+          FAKE_VERCEL_MODE: 'failure-output',
+          FAKE_VERCEL_STDOUT: stdout,
+          FAKE_VERCEL_STDERR: stderr,
+        },
       })
       expect(result.status).not.toBe(0)
-      expect(`${result.stdout}\n${result.stderr}`).not.toContain(vercelTokenSentinel)
-      expect(JSON.stringify(readRecord(reportFile))).not.toContain(vercelTokenSentinel)
+      const record = readRecord(reportFile)
+      expect(record.data).toMatchObject({ errorKind })
+      if (stderr === '') {
+        expect(record.data?.diagnostics).not.toHaveProperty('vercelErrorCode')
+      }
+      expect(JSON.stringify(record)).not.toContain('my-team-slug')
+      expect(result.stdout).not.toContain('my-team-slug')
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }
@@ -857,9 +911,12 @@ exit 1
         errorKind: 'ProviderOperationFailed',
         retryable: false,
         attempts: 2,
+        diagnostics: { exitCode: '1', failureKind: 'unknown' },
       })
       expect(record.summary).toMatch(/alias/iu)
-      expect(JSON.stringify(record)).toContain('already in use')
+      expect(JSON.stringify(record)).not.toContain('already in use')
+      expect(record.data?.diagnostics).not.toHaveProperty('stderr')
+      expect(record.data?.diagnostics).not.toHaveProperty('stdout')
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

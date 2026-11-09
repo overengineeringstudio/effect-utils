@@ -9,7 +9,7 @@ assert_contains() {
   local needle="$2"
   local label="$3"
 
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" != *"$needle"* ]]; then
     echo "FAIL: $label"
     echo "  expected to contain: $needle"
     echo "  actual output:"

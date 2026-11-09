@@ -6,13 +6,15 @@ import { join, resolve } from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-site'
+type ApiMode = 'ok' | 'unauthorized' | 'missing' | 'blank-site' | 'rate-limit'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
 let apiMode: ApiMode = 'ok'
 let server: Server
 let apiBaseUrl = ''
+let rateLimitHeaders: Record<string, string> = {}
+let apiRequests = 0
 
 const testProcessEnv = () => {
   const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
@@ -91,6 +93,11 @@ beforeAll(async () => {
   server = createServer((request, response) => {
     if (request.url !== '/api/v1/sites/fake-site-id') {
       response.writeHead(404, { connection: 'close' }).end('not found')
+      return
+    }
+    apiRequests += 1
+    if (apiMode === 'rate-limit') {
+      response.writeHead(429, { connection: 'close', ...rateLimitHeaders }).end('rate limited')
       return
     }
     if (apiMode === 'unauthorized') {
@@ -437,6 +444,7 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
 
   it('fails before upload when API-first site lookup rejects credentials', async () => {
     apiMode = 'unauthorized'
+    apiRequests = 0
     const workspace = makeWorkspace()
     const reportFile = join(workspace.root, 'report.jsonl')
     try {
@@ -448,6 +456,7 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
       })
       expect(result.status).not.toBe(0)
       expect(readRecord(reportFile).data).toMatchObject({ errorKind: 'Unauthorized' })
+      expect(apiRequests).toBe(1)
       expect(existsSync(workspace.logPath)).toBe(false)
     } finally {
       apiMode = 'ok'
@@ -488,4 +497,40 @@ printf '{"deploy_id":"deploy123","site_name":"fake-site","deploy_url":"https://d
       rmSync(workspace.root, { recursive: true, force: true })
     }
   })
+
+  it.each(['61', '1e309'])(
+    'rejects excessive provider delay %s without uploading',
+    async (delay) => {
+      apiMode = 'rate-limit'
+      apiRequests = 0
+      rateLimitHeaders = { 'retry-after': delay }
+      const workspace = makeWorkspace()
+      const reportFile = join(workspace.root, 'report.jsonl')
+      try {
+        const result = await runCiTools({
+          workdir: workspace.root,
+          fakeNetlifyBin: workspace.fakeNetlifyBin,
+          reportFile,
+          args: [
+            '--target',
+            'storybook',
+            '--artifact-dir',
+            workspace.artifactDir,
+            '--mode',
+            'draft',
+          ],
+        })
+        expect(result.status).not.toBe(0)
+        expect(apiRequests).toBe(1)
+        expect(readRecord(reportFile)).toMatchObject({
+          status: 'failure',
+          data: { errorKind: 'ProviderProjectLookupFailed', retryable: false, attempts: 1 },
+        })
+        expect(existsSync(workspace.logPath)).toBe(false)
+      } finally {
+        apiMode = 'ok'
+        rmSync(workspace.root, { recursive: true, force: true })
+      }
+    },
+  )
 })

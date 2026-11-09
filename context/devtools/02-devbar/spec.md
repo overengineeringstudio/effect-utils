@@ -118,6 +118,14 @@ Width priority is panel toggle and panel buttons (never shrinking), then the str
 
 Keep semantic `devbarTokens` roles `canvas`, `panel`, `panelActive`, `text`, `mutedText`, `border`, `focusRing`, `fontUi`, and `fontData`; light/dark theme objects and host-created themes set those roles. No hard-coded tool palette, global theme detection, or imported explorer theme belongs in the shell. Canvas colors are meter renderer tokens; host applies shell, meter, and explorer themes on a shared ancestor when desired. Geometry-owned position cannot be replaced through `style`.
 
+### Host-driven panels
+
+Traces: DT.BAR-R13–R14. With `panelControls: 'none'` the row holds no toggle or panel buttons; `openPanel` and `onOpenPanelChange` remain the only selection contract. An open panel renders a `tablist` of every panel in its header (Arrow keys, Home and End move and select), its section becomes the `tabpanel`, and Ctrl/Meta+Backquote and Escape behave as with buttons. `panelElementId` gives host triggers a stable `aria-controls` target. When a panel closes with focus inside it, focus returns to the element focused when it opened. `trailing` is measured out of the segment budget like the controls. `stripSizing: 'content'` stops the strip growing, so free space falls after the segments; with no `strip` it omits the slot and reserves no width, letting a host compose every meter as a segment. `MeterStrip`'s `freezeControl: false` removes its freeze button for hosts that freeze elsewhere. Width priority is otherwise unchanged. `MeterTile` (`onActivate`, `expanded`, `controls`) and `MeterStrip` (`detailExpanded`, `detailControls`) report that state on their own buttons; `BuildIdentitySegment`'s `action` does the same for a version chip.
+
+### Row focus
+
+Traces: DT.BAR-R15. The row is a `toolbar` named `Developer bar` with roving tabindex over its reachable items: buttons, links, form controls, editable content and other focusable host content that is not disabled, not a hidden input, not hidden by CSS, and not inside an `inert` (overflowed) wrapper, a `hidden` element, a popover or an `aria-hidden` subtree. Unreachable candidates outside popovers get `tabindex="-1"`, so they leave the Tab sequence too. The shell rewrites only `tabindex`, so host elements keep their identity across re-renders. Items are re-evaluated after every shell render, on focus and key presses, and, through a `MutationObserver`, after host content changes. A `style` or `class` change re-evaluates items only when it hides the current Tab stop; stylesheet changes are not observed. When the focused item leaves the reachable set while focus is in the row, focus moves to the `+N` control if present, otherwise to the item at the same index. Text inputs, editable content and sliders keep their own arrow keys, so arrows cannot move past them; hosts place such controls last in the row.
+
 ### Segment fitting and overflow
 
 ```text

@@ -69,7 +69,7 @@ test('Playwright jobs capture network events only during tests and upload failur
       },
     })
     const tailnetStepIndex = steps.findIndex(
-      (step) => 'uses' in step && step.uses === 'tailscale/github-action@v4',
+      (step) => 'uses' in step && step.uses === 'tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c',
     )
     expect(tailnetStepIndex).toBeGreaterThan(testStepIndex + 1)
   }

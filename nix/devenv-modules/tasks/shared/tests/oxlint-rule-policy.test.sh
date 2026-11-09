@@ -45,7 +45,7 @@ fail() {
 
 assert_contains() {
   local needle="$1" haystack="$2" label="$3"
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" != *"$needle"* ]]; then
     fail "$label" "expected output to contain: $needle" "actual output:" "$haystack"
   fi
   echo "  ok: $label"
@@ -53,7 +53,7 @@ assert_contains() {
 
 assert_not_contains() {
   local needle="$1" haystack="$2" label="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" == *"$needle"* ]]; then
     fail "$label" "expected output NOT to contain: $needle" "actual output:" "$haystack"
   fi
   echo "  ok: $label"
@@ -137,7 +137,7 @@ resolve_oxlint() {
   on_path="$(command -v oxlint || true)"
   if [ -n "$on_path" ] &&
     grep -q 'OVERENG_OXC_CONFIG_PLUGIN' "$(readlink -f "$on_path")" 2>/dev/null &&
-    "$on_path" --version 2>&1 | grep -qF "$pinned_version"; then
+    "$on_path" --version 2>&1 | grep -F "$pinned_version" >/dev/null; then
     printf '%s' "$on_path"
     return
   fi

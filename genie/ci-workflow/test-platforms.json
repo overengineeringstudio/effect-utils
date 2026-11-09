@@ -9,6 +9,10 @@
       "rationale": "Real Nix/devenv closures, Darwin store paths, compiled staging and BSD/GNU shell behavior."
     },
     {
+      "task": "test:buck2:library-closure",
+      "rationale": "Native rlib metadata, flat transitive compilation inputs and external host proc-macro loading differ across ELF and Mach-O."
+    },
+    {
       "task": "test:buck2-tools",
       "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection; snapshot link containment must name hardlinked CAS files through their link path because Darwin realpath (F_GETPATH) may report any hardlink name."
     },
@@ -336,12 +340,20 @@
         "rationale": "Real Nix GC-root symlinks and filesystem publication; concurrent native Bun publishers and PID-based pruning/liveness."
       },
       {
+        "script": "buck2-product-contract.test.sh",
+        "rationale": "Pure Nix descriptor validation and canonical bytes must agree on Darwin and Linux, including host-specific Rust proc-macro extensions."
+      },
+      {
         "script": "buck2-rust-deps.test.sh",
         "rationale": "Physical workspace/CARGO_HOME canonicalization explicitly covers macOS /var-to-/private/var aliases; symlink-escape rejection and real pinned Reindeer/Cargo subprocesses."
       },
       {
         "script": "devenv-module-tests-runner.test.sh",
         "rationale": "Native shell/xargs worker dispatch, FIFO coordination, supervisor SIGTERM, child reaping and platform-selection execution across serial/parallel queues."
+      },
+      {
+        "script": "editor-view-supervisor.test.sh",
+        "rationale": "Real outer flock admission, bounded holder diagnostics, process-group termination and child reaping on Linux and Darwin."
       },
       {
         "script": "genie-compiled-staging.test.sh",
@@ -501,6 +513,10 @@
       {
         "script": "pnpm-store-gc.test.sh",
         "rationale": "Linux-only collector coverage for /proc process evidence, directory mount identities, bind/overlay mounts, maintenance leases and post-proof root replacement; non-Linux execution only refuses before filesystem access, so Linux is the authoritative lane."
+      },
+      {
+        "script": "pnpm-lockfile-mode.test.sh",
+        "rationale": "Evaluates generated install functions and records argv for runtime CI selection and legacy lockfile modes without network installs."
       },
       {
         "script": "pnpm-task-smoke.test.sh",

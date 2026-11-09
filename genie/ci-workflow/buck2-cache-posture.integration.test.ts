@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,6 +50,7 @@ const evaluate = (
   ref: string,
   baseRef = 'refs/heads/main',
   tested = false,
+  repository = 'overengineeringstudio/effect-utils',
 ): unknown => {
   if (value.startsWith('${{') === false) return value
   const expression = value
@@ -57,7 +66,7 @@ const evaluate = (
     'needs',
     `return (${expression})`,
   )(
-    { event_name: event, ref, event: { merge_group: { base_ref: baseRef } } },
+    { repository, event_name: event, ref, event: { merge_group: { base_ref: baseRef } } },
     { measurement_baseline_ref: '' },
     { BUCK2_PUBLIC_CACHE_WRITE_AUTH: 'fixture-credential' },
     (text: string, prefix: string) => text.startsWith(prefix),
@@ -111,6 +120,58 @@ const scenarios = [
 ]
 
 describe('generated CI cache trust behavior', () => {
+  it('excludes measurement credentials and trace/evidence publication without disabling normal runs', async () => {
+    const job = (await readWorkflow()).jobs['test-macos']!
+    const excluded = job.steps.filter(
+      (step) =>
+        /^(Save signed|Warm local|Export completed job trace)|Buck2 cache evidence/.test(
+          step.name ?? '',
+        ) || /^(tailscale\/github-action|actions\/upload-artifact)@/.test(step.uses ?? ''),
+    )
+    expect(excluded.some((step) => step.uses?.startsWith('tailscale/github-action@'))).toBe(true)
+    expect(excluded.some((step) => step.name === 'Export completed job trace')).toBe(true)
+    for (const measurement of [true, false]) {
+      for (const step of excluded) {
+        expect(step.if).toContain(
+          "!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)",
+        )
+        const enabled = new Function(
+          'github',
+          'inputs',
+          'env',
+          'vars',
+          'runner',
+          'success',
+          'always',
+          'cancelled',
+          'failure',
+          `return (${step.if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '')})`,
+        )(
+          { event_name: 'workflow_dispatch', ref: 'refs/heads/main' },
+          { 'measure-macos': measurement },
+          {
+            CI_EVIDENCE_MODE: 'upload',
+            PIPELINE_TRUSTED: 'true',
+            OTEL_SPAN_SPOOL_DIR: '/tmp/spans',
+            NIX_STORE_DIAGNOSTICS_DIR: '/tmp/diagnostics',
+          },
+          { TS_EVIDENCE_CLIENT_ID: 'client', TS_EVIDENCE_AUDIENCE: 'audience' },
+          { os: 'macOS' },
+          () => true,
+          () => true,
+          () => false,
+          () => true,
+        )
+        expect(enabled, step.name ?? step.uses).toBe(!measurement)
+      }
+    }
+    for (const step of job.steps.filter((step) => step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH)) {
+      expect(
+        evaluate(step.env!.BUCK2_PUBLIC_CACHE_WRITE_AUTH!, 'workflow_dispatch', 'refs/heads/main'),
+      ).toBe('')
+    }
+  })
+
   it('keeps source-shape outside native proof production and expected membership', async () => {
     for (const [filename, jobId] of [
       ['ci.yml', 'source-shape'],
@@ -122,6 +183,29 @@ describe('generated CI cache trust behavior', () => {
       expect(coreProofDisabledJobIds[jobId]).toBe(true)
       expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe('1')
       expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_DISABLED).toBe('1')
+      expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_START).toBeUndefined()
+      expect(job.env?.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH).toBeUndefined()
+      expect(job.steps.some((step) => step.name?.includes('Buck2 cache evidence'))).toBe(false)
+      expect(
+        job.steps.some((step) => String(step.with?.name ?? '').startsWith('buck2-cache-evidence-')),
+      ).toBe(false)
+    }
+  })
+
+  it('disables native cache posture and proof membership for control and isolated consumer jobs', async () => {
+    const workflow = await readWorkflow()
+    for (const jobId of [
+      'tested-tree',
+      'pipeline-attempt-close',
+      'pipeline-traces',
+      'consumer-smoke',
+    ]) {
+      const job = workflow.jobs[jobId]!
+      expect(coreProofDisabledJobIds[jobId]).toBe(true)
+      expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe('1')
+      expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
+      expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBeUndefined()
+      expect(job.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH).toBeUndefined()
       expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_START).toBeUndefined()
       expect(job.env?.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH).toBeUndefined()
       expect(job.steps.some((step) => step.name?.includes('Buck2 cache evidence'))).toBe(false)
@@ -293,6 +377,20 @@ describe('generated CI cache trust behavior', () => {
     ).toBe(false)
   })
 
+  it('builds the offline stage-zero metadata check on PRs and merge groups', async () => {
+    const quality = (await readWorkflow()).jobs.quality!
+    const step = quality.steps.find(
+      ({ name }) => name === 'Validate stage-zero Cargo lock canonicality offline',
+    )
+    expect(step?.run).toContain('nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata')
+    expect(step?.if).toBeUndefined()
+    expect(step?.['continue-on-error']).toBeUndefined()
+    expect(Boolean(evaluate(quality.if!, 'pull_request', 'refs/pull/123/merge'))).toBe(true)
+    expect(
+      Boolean(evaluate(quality.if!, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-123')),
+    ).toBe(true)
+  })
+
   it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {
     const workflow = await readWorkflow()
     const files = [
@@ -311,6 +409,19 @@ describe('generated CI cache trust behavior', () => {
         expect(focused?.run).not.toContain(`  ${file}`)
       }
     }
+  })
+
+  it('runs REAPI classification regressions by exact source path in CI and the local task', async () => {
+    const workflow = await readWorkflow()
+    const regression = workflow.jobs.quality!.steps.find(
+      (step) => step.name === 'Native cache evidence regressions',
+    )
+    const path = './genie/ci-scripts/buck2-reapi-classification.unit.test.ts'
+    expect(regression?.run).toContain(` ${path} `)
+    const tasks = readFileSync(new URL('../../devenv.nix', import.meta.url), 'utf8')
+    expect(tasks).toContain(`bun-test-runner.ts test ${path}\n`)
+    const localTask = tasks.split('tasks."genie:ci-workflow:test" = {')[1]?.split('\n  };')[0]
+    expect(localTask).toContain('"genie/ci-scripts/buck2-reapi-classification*.ts"')
   })
 
   it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {
@@ -422,18 +533,32 @@ describe('generated CI cache trust behavior', () => {
       expect(evaluate(publisher.if!, event, 'refs/heads/main')).toBe(false)
     }
     expect(evaluate(publisher.if!, 'workflow_dispatch', 'refs/heads/topic')).toBe(false)
+    expect(
+      evaluate(publisher.if!, 'push', 'refs/heads/main', 'refs/heads/main', false, 'other/repo'),
+    ).toBe(false)
+    expect(
+      evaluate(
+        publisher.if!,
+        'workflow_dispatch',
+        'refs/heads/main',
+        'refs/heads/main',
+        false,
+        'other/repo',
+      ),
+    ).toBe(false)
     expect(publication.run).toContain('compiled-products.sh --push')
     expect(publication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
     const script = await Bun.file(
       new URL('../ci-scripts/compiled-products.sh', import.meta.url),
     ).text()
     expect(script).toContain('refs=(.#ci-test-shell-products .#buck2-rules)')
-    expect(script.match(/\bnix build\b/g)).toHaveLength(1)
+    expect(script.match(/\bnix build\b/g)).toHaveLength(5)
     expect(script).toContain('--json "${refs[@]}"')
     expect(script).toContain('cachix push overeng-effect-utils $outputs')
     expect(script).toContain('if [ "$matches" -ne 1 ]; then')
     expect(script).toContain('"$out/bin/$name" --help')
     expect(script).toContain('if [ "$push" = true ]; then')
+    expect(script).toContain('publish-compile-products.sh" "$PWD"')
     const flake = await Bun.file(new URL('../../flake.nix', import.meta.url)).text()
     expect(flake).toContain('ci-test-shell-products = pkgs.linkFarm')
     expect(flake).toContain(
@@ -441,13 +566,31 @@ describe('generated CI cache trust behavior', () => {
     )
   })
 
-  it('realizes every inventoried product once, smokes unordered outputs and publishes only on request', () => {
+  it('roundtrips libraries during preparation, then smokes outputs and publishes only on request', () => {
     const work = mkdtempSync(join(tmpdir(), 'compiled-products-contract-'))
     const script = fileURLToPath(new URL('../ci-scripts/compiled-products.sh', import.meta.url))
+    const compileScript = fileURLToPath(
+      new URL('../ci-scripts/publish-compile-products.sh', import.meta.url),
+    )
     const names = ['compiled-one', 'compiled-two', 'native-one']
     const outputPaths = names.map((name) => join(work, `output-${name}`))
     const shellOutput = join(work, 'output-shell')
     const rulesOutput = join(work, 'output-buck2-rules')
+    const libraryOutput = join(work, 'output-library')
+    const librarySource = join(work, 'source-library')
+    // Reuse the test runtime's immutable store directory; the fixture never builds.
+    const compileOutput = realpathSync(process.execPath).match(/^\/nix\/store\/[^/]+/)![0]
+    const compileAttrs = [
+      'buck-product-overeng-cache-one-from-source.compileProduct',
+      'compiled-one-compiled.buck2Product.compileProduct',
+      'compiled-two-compiled.buck2Product.compileProduct',
+      'native-one.buck2Product.compileProduct',
+      'library.buck2Product.compileProduct',
+    ]
+    const availablePackages = compileAttrs.map((attr) => attr.split('.')[0]!)
+    const compileBuild = `build --no-link --print-out-paths --keep-going ${compileAttrs.map((attr) => `${work}#${attr}`).join(' ')}`
+    const compilePush = `push overeng-effect-utils ${compileAttrs.map(() => compileOutput).join(' ')}\n`
+    const roundtripCommand = `build --impure --no-link --print-build-logs --file nix/buck2-products/library-roundtrip.nix --argstr repositoryPath ${work} --argstr productName library --argstr sourcePath ${librarySource}`
     const logs = {
       NIX_LOG: join(work, 'nix.log'),
       SMOKE_LOG: join(work, 'smoke.log'),
@@ -462,13 +605,25 @@ describe('generated CI cache trust behavior', () => {
       mkdirSync(join(work, 'tools'))
       mkdirSync(shellOutput)
       mkdirSync(rulesOutput)
+      mkdirSync(join(libraryOutput, 'lib'), { recursive: true })
+      writeFileSync(
+        join(work, 'nix/buck2-products/cache-targets.json'),
+        JSON.stringify({ products: [{ name: '@overeng/cache-one' }] }),
+      )
       writeFileSync(
         join(work, 'nix/buck2-products/compiled-targets.json'),
-        JSON.stringify({ products: names.slice(0, 2).map((name) => ({ name })) }),
+        JSON.stringify({
+          products: names.slice(0, 2).map((name) => ({ name, kind: 'compiled-executable' })),
+        }),
       )
       writeFileSync(
         join(work, 'nix/buck2-products/native-targets.json'),
-        JSON.stringify({ products: [{ name: names[2] }] }),
+        JSON.stringify({
+          products: [
+            { name: names[2], kind: 'native' },
+            { name: 'library', kind: 'rust-library' },
+          ],
+        }),
       )
       names.forEach((name, index) => {
         const bin = join(outputPaths[index]!, 'bin')
@@ -480,51 +635,186 @@ describe('generated CI cache trust behavior', () => {
       })
       executable({
         path: join(work, 'tools/nix'),
-        content: 'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nprintf \'%s\\n\' "$BUILD_JSON"',
+        content: `printf '%s\\n' "$*" >> "$NIX_LOG"
+if [[ "$1" = eval ]]; then
+  printf '%s\\n' "$AVAILABLE_PACKAGES"; exit 0
+fi
+if [[ "$*" = *'--log-format raw'* ]]; then
+  printf "building '/fake/input.drv'...\\ncopying path '/fake/output' from 'cache'...\\n" >&2
+  printf '%s\\n' "$BUILD_JSON"
+  exit "\${BUILD_STATUS:-0}"
+elif [[ "$*" = *".compileProduct"* ]]; then
+  [ "$FAIL_PRODUCT" != compile-realize ] || exit 1
+  if [ "$FAIL_PRODUCT" = compile-partial ]; then
+    if [ "$1" = build ]; then exit 1; fi
+    [[ "$*" = *'${compileAttrs[0]}' || "$*" = *'${compileAttrs.at(-1)}' ]] || exit 1
+    printf '%s\\n' '${compileOutput}'; exit 0
+  fi
+  for ref in "$@"; do
+    [[ "$ref" = *".compileProduct" ]] || continue
+    if [ "$FAIL_PRODUCT" = compile-invalid ]; then printf '/invalid\\n'; else printf '%s\\n' '${compileOutput}'; fi
+  done
+  exit 0
+elif [[ "$*" = *".buck2Product"* ]]; then
+  printf '%s\\n' '${JSON.stringify([{ outputs: { out: librarySource } }])}'; exit 0
+elif [[ "$*" = *"library-roundtrip.nix"* ]]; then
+  [ "$FAIL_PRODUCT" != roundtrip ]; printf '[]\\n'; exit 0
+elif [[ "$*" = *".mismatch"* ]]; then
+  [ "$FAIL_PRODUCT" != mismatch-accepted ] || exit 0
+  [ "$FAIL_PRODUCT" != mismatch-unrelated ] || exit 1
+  printf "library compiler identity mismatch\\nproducer identity:\\nconsumer identity:\\n"; exit 1
+fi
+printf '%s\\n' "$BUILD_JSON"`,
       })
       executable({
         path: join(work, 'tools/cachix'),
-        content: 'printf \'%s\\n\' "$*" >> "$CACHE_LOG"',
+        content: `printf '%s\\n' "$*" >> "$CACHE_LOG"
+if [[ "$*" = *'${libraryOutput}'* ]]; then [ "$FAIL_PRODUCT" != final-push ]; else [ "$FAIL_PRODUCT" != compile-push ]; fi`,
       })
       const outputs = [outputPaths[2]!, shellOutput, rulesOutput, outputPaths[1]!, outputPaths[0]!]
+      outputs.unshift(libraryOutput)
       const run = ({
         args,
         selectedOutputs = outputs,
         failProduct = '',
+        buildStatus = 0,
+        event = 'push',
+        ref = 'refs/heads/main',
+        repository = 'overengineeringstudio/effect-utils',
+        available = availablePackages,
+        compileOnly = false,
       }: {
         args: string[]
         selectedOutputs?: string[]
         failProduct?: string
+        buildStatus?: number
+        event?: string
+        ref?: string
+        repository?: string
+        available?: string[]
+        compileOnly?: boolean
       }) => {
         for (const path of Object.values(logs)) writeFileSync(path, '')
         return Bun.spawnSync({
-          cmd: ['bash', script, ...args],
+          cmd: compileOnly === true ? ['bash', compileScript, work] : ['bash', script, ...args],
           cwd: work,
           env: {
             ...process.env,
             ...logs,
             PATH: `${join(work, 'tools')}:${process.env.PATH ?? ''}`,
+            GITHUB_EVENT_NAME: event,
+            GITHUB_REF: ref,
+            GITHUB_REPOSITORY: repository,
             BUILD_JSON: JSON.stringify(
               selectedOutputs.map((out) => ({ drvPath: `${out}.drv`, outputs: { out } })),
             ),
+            AVAILABLE_PACKAGES: JSON.stringify(available),
             FAIL_PRODUCT: failProduct,
+            BUILD_STATUS: String(buildStatus),
           },
           stdout: 'pipe',
           stderr: 'pipe',
         })
       }
+      for (const trust of [
+        { event: 'pull_request' },
+        { event: 'merge_group' },
+        { event: 'workflow_dispatch', ref: 'refs/heads/topic' },
+        { event: 'workflow_dispatch', repository: 'other/repo' },
+        { ref: 'refs/heads/topic' },
+        { repository: 'other/repo' },
+      ]) {
+        expect(run({ args: ['--push'], ...trust }).exitCode).not.toBe(0)
+        expect(readFileSync(logs.NIX_LOG, 'utf8')).toBe('')
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+        expect(run({ args: [], compileOnly: true, ...trust }).exitCode).not.toBe(0)
+        expect(readFileSync(logs.NIX_LOG, 'utf8')).toBe('')
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      }
+      expect(run({ args: ['--push'], event: 'workflow_dispatch' }).exitCode).toBe(0)
+      const build = run({ args: ['--build-only'] })
+      expect(build.exitCode).toBe(0)
+      expect(build.stdout.toString()).toMatch(
+        /product build: duration=\d+s built=1 substituted=1 status=0/,
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        'build --no-link --print-build-logs --log-format raw --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library.compositionChecks .#library',
+        'build --no-link --json .#library.buck2Product',
+        roundtripCommand,
+      ])
+      expect(readFileSync(logs.SMOKE_LOG, 'utf8')).toBe('')
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      const failedBuild = run({ args: ['--build-only'], buildStatus: 7 })
+      expect(failedBuild.exitCode).toBe(7)
+      expect(failedBuild.stdout.toString()).toContain('built=1 substituted=1 status=7')
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toHaveLength(1)
+      expect(run({ args: ['--build-only'], failProduct: 'roundtrip' }).exitCode).not.toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n').at(-1)).toBe(roundtripCommand)
+      expect(readFileSync(logs.SMOKE_LOG, 'utf8')).toBe('')
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
-          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one',
+          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library.compositionChecks .#library',
+          'build --no-link --print-build-logs .#library.libraryChecks.mismatch',
+          ...(args.length === 0
+            ? []
+            : [
+                `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+              ]),
+          ...(args.length === 0 ? [] : [compileBuild]),
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(
           names.map((name) => `${name} --help`),
         )
         expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(
-          args.length === 0 ? '' : `push overeng-effect-utils ${outputs.join(' ')}\n`,
+          args.length === 0 ? '' : `push overeng-effect-utils ${outputs.join(' ')}\n${compilePush}`,
         )
       }
+      expect(run({ args: [], compileOnly: true }).exitCode).toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+        compileBuild,
+      ])
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(compilePush)
+      const partial = run({ args: [], compileOnly: true, failProduct: 'compile-partial' })
+      expect(partial.exitCode).toBe(0)
+      expect(partial.stderr.toString()).toContain(
+        '::warning title=Compile cache realization failed::',
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+        compileBuild,
+        ...compileAttrs.map((attr) => `path-info ${work}#${attr}`),
+      ])
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(
+        `push overeng-effect-utils ${compileOutput} ${compileOutput}\n`,
+      )
+      expect(run({ args: [], compileOnly: true, available: [] }).exitCode).toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toHaveLength(1)
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      const platformFiltered = run({
+        args: ['--push'],
+        available: availablePackages.filter((name) => name !== 'native-one'),
+      })
+      expect(platformFiltered.exitCode).toBe(0)
+      expect(platformFiltered.stdout.toString()).toContain(
+        'skipping native-one.buck2Product.compileProduct (not exported on this system)',
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8')).not.toContain(
+        `${work}#native-one.buck2Product.compileProduct`,
+      )
+      for (const failProduct of ['compile-realize', 'compile-invalid', 'compile-push']) {
+        const result = run({ args: ['--push'], failProduct })
+        expect(result.exitCode).toBe(0)
+        expect(result.stderr.toString()).toContain('::warning title=Compile cache')
+        expect(readFileSync(logs.NIX_LOG, 'utf8')).toContain(compileAttrs.at(-1)!)
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toStartWith(
+          `push overeng-effect-utils ${outputs.join(' ')}\n`,
+        )
+      }
+      expect(run({ args: ['--push'], failProduct: 'final-push' }).exitCode).not.toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8')).not.toContain('.compileProduct')
       expect(
         run({
           args: ['--push'],
@@ -540,6 +830,10 @@ describe('generated CI cache trust behavior', () => {
       )
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       expect(run({ args: ['--push'], failProduct: 'compiled-two' }).exitCode).not.toBe(0)
+      for (const failProduct of ['mismatch-accepted', 'mismatch-unrelated']) {
+        expect(run({ args: ['--push'], failProduct }).exitCode).not.toBe(0)
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      }
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
     } finally {
       rmSync(work, { recursive: true, force: true })
@@ -554,7 +848,7 @@ describe('generated CI cache trust behavior', () => {
       'storybook-preview-build.yml',
     ]) {
       const workflow = await readWorkflow(filename)
-      for (const job of Object.values(workflow.jobs)) {
+      for (const [jobId, job] of Object.entries(workflow.jobs)) {
         const start = job.steps.find((step) => step.name === 'Start Buck2 cache evidence window')
         if (start === undefined) continue
         expect(job.env?.CI_BUCK2_CACHE_ACTIONS_PATH).toBe(
@@ -565,7 +859,11 @@ describe('generated CI cache trust behavior', () => {
         expect(start.run).toContain('[ ! -L "$source_root/buck-out" ]')
         const uploads = job.steps.filter((step) => step.name === 'Upload Buck2 cache evidence')
         expect(uploads).toHaveLength(1)
-        expect(uploads[0]?.if).toBe('${{ always() }}')
+        expect(uploads[0]?.if).toBe(
+          filename === 'ci.yml' && jobId === 'test-macos'
+            ? "${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}"
+            : '${{ always() }}',
+        )
         expect(String(uploads[0]?.with?.path).trimEnd()).toBe(
           [
             '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',

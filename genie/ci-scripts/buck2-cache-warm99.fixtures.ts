@@ -78,6 +78,7 @@ export const artifactFixture = (writer = false, input = [actionFixture()]): Acti
         {
           buildId,
           context: 'test',
+          cacheReadPolicy: 'enabled',
           startedAt: writer ? 10 : 200,
           completedAt: 300,
           freshRoot: true,

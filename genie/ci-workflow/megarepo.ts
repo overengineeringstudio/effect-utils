@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defaultRefPolicyCheckScript } from './default-ref-policy-script.ts'
 import { defaultRefPolicyVerdictStepId, githubTokenEnv, shellSingleQuote } from './shared.ts'
@@ -48,18 +50,19 @@ const megarepoStoreCacheKey = (skip?: readonly string[]): string => {
 export const restoreMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Restore megarepo store',
   id: 'restore-megarepo-store',
-  uses: 'actions/cache/restore@v4',
+  ...pinnedAction({ name: 'cache', subpath: 'restore' }),
   with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
 })
 
 /**
- * Save the {@link cacheableMegarepoStore} AFTER the sync step, guarded on a cold restore. Pass the
- * same `skip` as {@link restoreMegarepoStoreStep} / {@link applyMegarepoLockStep}.
+ * Save the {@link cacheableMegarepoStore} AFTER the sync step on a cold restore, excluding fork PRs.
+ * Restores remain available to forks; the fork field is null on push events, so saves stay enabled.
+ * Pass the same `skip` as {@link restoreMegarepoStoreStep} / {@link applyMegarepoLockStep}.
  */
 export const saveMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Save megarepo store',
-  if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' }}",
-  uses: 'actions/cache/save@v4',
+  if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' && github.event.pull_request.head.repo.fork != true }}",
+  ...pinnedAction({ name: 'cache', subpath: 'save' }),
   with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
 })
 

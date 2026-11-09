@@ -209,9 +209,18 @@ const skippedCases: Record<string, string> = {
     'The compatible provider ignores UnknownChatCompletionEvent, including error data envelopes after HTTP 200; it cannot assert a stream-error outcome or error type.',
 }
 
+/** Edge-only cases are named individually: the client has no Responses API. */
+const notApplicableCases: Record<string, string> = {
+  'responses.text': 'Not applicable: AiGateway does not expose a Responses API.',
+  'responses.stream.usage': 'Not applicable: AiGateway does not expose a Responses API.',
+  'responses.upstream-404': 'Not applicable: AiGateway does not expose a Responses API.',
+  'responses.state-reference-400': 'Not applicable: AiGateway does not expose a Responses API.',
+  'responses.missing-model-400': 'Not applicable: AiGateway does not expose a Responses API.',
+}
+
 describe('AiGateway shared wire conformance', () => {
   for (const replayCase of cases) {
-    const skipReason = skippedCases[replayCase.id]
+    const skipReason = notApplicableCases[replayCase.id] ?? skippedCases[replayCase.id]
     if (skipReason !== undefined) {
       it.skip(`${replayCase.id}: ${skipReason}`, () => {})
       continue

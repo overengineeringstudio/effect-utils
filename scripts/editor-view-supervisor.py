@@ -2,9 +2,15 @@
 """Own publication admission and process-group cleanup, with optional deadlines."""
 import ctypes
 import fcntl
+import json
+from itertools import islice
+import math
 import os
 import signal
+import re
 import subprocess
+import threading
+import tempfile
 import sys
 import time
 
@@ -26,7 +32,122 @@ def signal_group(pgid, sig):
                 raise
         return False
 
+def safe_name(value):
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(str(value)))[:80]
 
+def record_holder(fd, command, pid):
+    # Only the admitted owner writes this inode; torn metadata never gates admission.
+    payload = json.dumps({"pid": pid, "command": safe_name(command), "started": time.monotonic()}).encode()
+    try:
+        os.pwrite(fd, payload, 0)
+        os.ftruncate(fd, len(payload))
+    except OSError:
+        pass  # Diagnostics must not turn successful admission into failure.
+
+def guard_collector(parent_fd):
+    # A private lifetime pipe works on Darwin too; EOF cancels even after the
+    # supervisor is SIGKILLed. Kill the session's native status probe as well.
+    def cancel(*_args):
+        os.killpg(os.getpid(), signal.SIGKILL)
+    signal.signal(signal.SIGALRM, cancel)
+    signal.setitimer(signal.ITIMER_REAL, 3)
+    def parent_gone():
+        os.read(parent_fd, 1)
+        cancel()
+    threading.Thread(target=parent_gone, daemon=True).start()
+
+def admission_dump(path):
+    """Read-only, bounded evidence; never launch a Buck wrapper or probe EX leases."""
+    lines = ["[editor-view-admission-wait] begin"]
+    try:
+        with open(path, "rb") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                lines.append("holder=none-at-observation")
+            except BlockingIOError:
+                owner = json.loads(lock.read(1024))
+                pid, started = owner["pid"], owner["started"]
+                if (type(pid) is not int or pid <= 0 or
+                        type(started) not in (int, float) or not math.isfinite(started)):
+                    raise ValueError("invalid owner")
+                elapsed = max(0, time.monotonic() - started)
+                lines.append(f"holder recorded-pid={pid} command={safe_name(owner['command'])} "
+                             f"held-seconds={elapsed:.1f} identity=advisory")
+    except (ValueError, TypeError, KeyError, OverflowError):
+        lines.append("holder=unparseable")
+    except Exception:
+        lines.append("holder=unknown")
+    isolation = os.environ.get("BUCK_ISOLATION_DIR", "v2")
+    native = os.environ.get("BUCK2_NATIVE_BIN")
+    # Never invoke a wrapper: require the explicitly provided immutable native binary.
+    if native and os.path.isabs(native) and native.startswith("/nix/store/"):
+        try:
+            with tempfile.TemporaryFile() as output:
+                result = subprocess.run([native, "--isolation-dir", isolation, "status"],
+                                        stdout=output, stderr=subprocess.DEVNULL, timeout=1)
+                output.seek(0)
+                status = json.loads(output.read(4096))
+            lines.append(f"buck isolation={safe_name(isolation)} status-exit={result.returncode} active={len(status['active_commands'])}")
+        except Exception:
+            lines.append(f"buck isolation={safe_name(isolation)} status=unavailable")
+    else:
+        lines.append(f"buck isolation={safe_name(isolation)} status=unavailable native=not-provided")
+    root = os.environ.get("DEVENV_ROOT", os.getcwd())
+    for label, suffix in (("root", ".editor-view"), ("genie", "packages/@overeng/genie/.editor-view")):
+        try:
+            with os.scandir(os.path.join(root, suffix, ".leases")) as entries:
+                count = sum(1 for _ in islice(entries, 64))
+            state = f"{count} truncated={int(count == 64)}"
+        except OSError:
+            state = "unknown"
+        lines.append(f"leases root={label} controls={state} held=unknown")
+    # EX lease probes outside the CAS fence could disrupt readers; report inventory only.
+    lines.append("[editor-view-admission-wait] end")
+    payload = ("\n".join(lines[:39]) + "\n").encode()
+    if len(lines) > 39 or len(payload) > 8100:
+        payload = payload[:8100] + b"\n[editor-view-admission-wait] truncated\n"
+    os.write(2, payload)
+
+class AdmissionDiagnostic:
+    def __init__(self):
+        # 600s exceeds valid measured waits (399s); admission/deadlines stay unchanged.
+        try:
+            self.threshold = float(os.environ.get("EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS", "600"))
+            if not math.isfinite(self.threshold) or self.threshold < 0:
+                raise ValueError("invalid threshold")
+        except ValueError:
+            self.threshold = 600
+        self.attempted = False
+        self.child = None
+        self.parent_fd = None
+
+    def observe(self, path, started):
+        now = time.monotonic()
+        if self.child is not None and now - self.started >= 3:
+            self.close()
+        if self.attempted or started is None or now - started < self.threshold:
+            return
+        self.attempted = True
+        self.started = now
+        try:
+            read_fd, self.parent_fd = os.pipe()
+            try:
+                self.child = subprocess.Popen(
+                    [sys.executable, __file__, "--admission-dump", path, str(read_fd)],
+                    pass_fds=(read_fd,), start_new_session=True, stdout=subprocess.DEVNULL)
+            finally:
+                os.close(read_fd)
+        except OSError:
+            if self.parent_fd is not None:
+                os.close(self.parent_fd)
+
+    def close(self):
+        if self.child is not None:
+            if self.child.poll() is None:
+                signal_group(self.child.pid, signal.SIGKILL)
+            self.child.wait()
+            os.close(self.parent_fd)
+            self.child = None
 
 def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
@@ -46,6 +167,7 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     started = time.monotonic()
     admitted = waiting_lock is None
     expires = started + deadline if admitted and deadline is not None else float("inf")
+    diagnostic = AdmissionDiagnostic()
     def observe_admission():
         nonlocal admitted, expires
         if not admitted:
@@ -60,14 +182,20 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
                 print(f"Editor-view publication admitted on lock {lock_path} after waiting {now - started:.3f}s.", file=sys.stderr, flush=True)
     while not interrupted and time.monotonic() < expires:
         observe_admission()
+        if waiting_lock is not None and not admitted:
+            diagnostic.observe(waiting_lock[0], started)
+        elif diagnostic.child is not None:
+            diagnostic.close()
         try:
             result = child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
             observe_admission()  # Also report admission for a child that exits immediately.
             if not interrupted:
+                diagnostic.close()
                 return result
             break
         except subprocess.TimeoutExpired:
             pass
+    diagnostic.close()
     status = 128 + interrupted[0] if interrupted else 124
     if waiting_lock is not None and not admitted:
         print(f"Editor-view publication was waiting for another publication on lock {waiting_lock[0]}.", file=sys.stderr, flush=True)
@@ -93,7 +221,7 @@ def supervise_locked(command, deadline, grace, lock_path):
     os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
     # Keep the shared open-file description alive in the supervisor until all
     # descendants have been killed/reaped, not merely until the authority exits.
-    with open(lock_path, "a") as lock:
+    with os.fdopen(os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600), "r+") as lock:
         ready_read, ready_write = os.pipe()
         os.set_blocking(ready_read, False)
         try:
@@ -109,9 +237,15 @@ def supervise_locked(command, deadline, grace, lock_path):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "--acquire":
+    if sys.argv[1] == "--admission-dump":
+        if len(sys.argv) > 3:
+            guard_collector(int(sys.argv[3]))
+        admission_dump(sys.argv[2])
+        sys.exit(0)
+    elif sys.argv[1] == "--acquire":
         lock_fd, ready_fd = int(sys.argv[2]), int(sys.argv[3])
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        record_holder(lock_fd, sys.argv[4], os.getppid())
         os.write(ready_fd, b"1")
         os.close(ready_fd)
         os.set_inheritable(lock_fd, True)

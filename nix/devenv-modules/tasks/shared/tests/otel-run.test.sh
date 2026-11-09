@@ -200,9 +200,9 @@ eval_check_exec() {
 }
 quick_exec="$(eval_check_exec check:quick:trace)"
 all_exec="$(eval_check_exec check:all:trace)"
-printf '%s' "$quick_exec" | grep -qF "otel-run devenv tasks run check:quick" \
+[[ "$quick_exec" == *"otel-run devenv tasks run check:quick"* ]] \
   && ok || fail "check:quick:trace exec should be 'otel-run devenv tasks run check:quick', got '$quick_exec'"
-printf '%s' "$all_exec" | grep -qF "otel-run devenv tasks run check:all" \
+[[ "$all_exec" == *"otel-run devenv tasks run check:all"* ]] \
   && ok || fail "check:all:trace exec should be 'otel-run devenv tasks run check:all', got '$all_exec'"
 
 echo ""

@@ -17,6 +17,8 @@ import {
   getSourceRef,
   type MemberSource,
   parseSourceString,
+  redactSourceCredentials,
+  sourceCredentialError,
   validateMemberName,
 } from '../core/config.ts'
 import * as Git from '../core/git.ts'
@@ -28,6 +30,7 @@ import {
   canonicalizeStorePath,
   resolveStoreBranchWorktree,
 } from '../store/store-branch-worktree.ts'
+import { createStoreWorktree, createStoreWorktreeDetached } from '../store/store-deletion-lease.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { assertCanonicalMutationAllowed, makeStoreDirectory } from '../store/store-path.ts'
 import { Store } from '../store/store.ts'
@@ -424,13 +427,14 @@ export const syncMember = <R = never>({
       } satisfies MemberSyncResult
     }
 
-    // Parse the source string
     const source = parseSourceString(sourceString)
     if (source === undefined) {
       return {
         name,
         status: 'error',
-        message: `Invalid source string: ${sourceString}`,
+        message:
+          sourceCredentialError(sourceString) ??
+          `Invalid source string: ${redactSourceCredentials(sourceString)}`,
       } satisfies MemberSyncResult
     }
 
@@ -1084,7 +1088,8 @@ export const syncMember = <R = never>({
 
             // Create worktree
             if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
-              yield* Git.createWorktreeDetached({
+              yield* createStoreWorktreeDetached({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 commit: targetCommit ?? worktreeRef,
@@ -1093,14 +1098,16 @@ export const syncMember = <R = never>({
                 onWorktreeCreated?.(yield* fs.realPath(worktreePath))
               }
             } else {
-              yield* Git.createWorktree({
+              yield* createStoreWorktree({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 branch: targetRef,
                 createBranch: false,
               }).pipe(
                 Effect.catch(() =>
-                  Git.createWorktree({
+                  createStoreWorktree({
+                    storeBasePath: store.basePath,
                     repoPath: bareRepoPath,
                     worktreePath,
                     branch: `origin/${targetRef}`,
@@ -1147,7 +1154,8 @@ export const syncMember = <R = never>({
             if (parent !== undefined) {
               yield* makeStoreDirectory(parent)
             }
-            yield* Git.createWorktreeDetached({
+            yield* createStoreWorktreeDetached({
+              storeBasePath: store.basePath,
               repoPath: bareRepoPath,
               worktreePath: commitWorktreePath,
               commit: targetCommit!,
@@ -1276,5 +1284,8 @@ export const syncMember = <R = never>({
         } satisfies MemberSyncResult
       })
     }),
-    Observability.withSyncMemberSpan({ name, source: sourceString }),
+    Observability.withSyncMemberSpan({
+      name,
+      source: redactSourceCredentials(sourceString),
+    }),
   )

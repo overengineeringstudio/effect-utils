@@ -39,6 +39,11 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
+The reconciliation command runner waits for child close after a stdin write
+failure. A nonzero or signaled child exit takes precedence over a concurrent
+broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
+A successful child exit still fails if its input could not be delivered.
+
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.
 Bootstrap publishes only `.` and `packages/@overeng/otel-contract`, never the
@@ -109,6 +114,21 @@ treated as termination only after a process census proves no live members remain
 live-member permission failures still fail closed. The supervisor retains ownership through
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
+
+Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
+Buck build or an interrupted reconciliation prints the last 40 stderr/progress
+lines (at most 16 KiB), followed by
+`<task>: Buck exited with code N; event log: <repo-relative path>`.
+Repository paths are relative; home and external temporary paths use `<home>` and
+`<tmp>`. Longest-prefix redaction precedes line/byte retention, including split
+prefixes. Capture is bounded in memory and preserves UTF-8 code-point boundaries.
+The tail remains available during publication after a successful build; interruption
+then reports `interrupted by SIGTERM after Buck completed (code 0)` instead.
+Event logs are removed after successful reconciliation, once the Buck entrypoint
+has decoded its caller-provided sink and completed cache-evidence collection.
+Failed or interrupted reconciliation retains its log for diagnosis.
+Signal diagnostics flush synchronously during the supervisor's TERM grace;
+a direct SIGKILL of the reconciliation process cannot flush buffered evidence.
 
 This deliberately serializes task invocations, not private candidates within one
 batch, and never adds unrelated package views to a standalone request. It leaves

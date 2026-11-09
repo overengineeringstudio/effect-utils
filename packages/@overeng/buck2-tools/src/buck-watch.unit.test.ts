@@ -466,14 +466,19 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
-  it.each([false, true])(
-    'forwards budget diagnostics before the publisher exits (batch=%s)',
-    async (batchPublication) => {
+  it.each([
+    [false, 'budget'],
+    [true, 'budget'],
+    [false, 'payload'],
+    [true, 'payload'],
+  ] as const)(
+    'forwards publisher diagnostics before exit (batch=%s, prefix=%s)',
+    async (batchPublication, diagnosticPrefix) => {
       const root = await mkdtemp(join(tmpdir(), 'buck-watch-budget-'))
       const release = join(root, 'release')
       const publisher = join(root, 'publisher.mjs')
       const manifest = join(root, 'editor-inputs.json')
-      const diagnostic = '[editor-view-budget] {"event":"working","reason":"census"}\n'
+      const diagnostic = `[editor-view-${diagnosticPrefix}] {"event":"working","reason":"census"}\n`
       const observed = Promise.withResolvers<void>()
       const shutdown = new AbortController()
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
@@ -781,6 +786,37 @@ describe('Buck watch reconciliation', () => {
     expect((error as CommandFailure).signal).toBe('SIGTERM')
     // The signal kill must not be marked ok even though stderr contains "exited 0".
     expect(exitCodeOf(error)).toBe(1)
+  })
+
+  it('retains signaled child status when stdin fails before close', async () => {
+    const inputError = new Error('EPIPE: broken pipe, write')
+    const spawned = childProcessMocks.spawn.mockImplementationOnce((...args) => {
+      const child = Reflect.apply(
+        nativeChildProcess.spawn,
+        ChildProcess,
+        args,
+      ) as ChildProcess.ChildProcess
+      child.stderr?.once('data', () => {
+        child.stdin?.emit('error', inputError)
+        child.kill('SIGTERM')
+      })
+      return child
+    })
+    try {
+      const error = await runCommand({
+        command: process.execPath,
+        args: ['-e', 'require("node:net").createServer().listen(0, () => console.error("ready"))'],
+        cwd: tmpdir(),
+        input: '',
+      }).then(
+        () => undefined,
+        (rejection: unknown) => rejection,
+      )
+      expect(error).toBeInstanceOf(CommandFailure)
+      expect((error as CommandFailure).signal).toBe('SIGTERM')
+    } finally {
+      spawned.mockReset().mockImplementation(nativeChildProcess.spawn)
+    }
   })
 
   it('keeps embedded command output from forging an exit status', async () => {

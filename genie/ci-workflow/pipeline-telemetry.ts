@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import {
   pipelineExportStepName,
   pipelineIdentityStepName,
@@ -16,7 +18,7 @@ const script = 'bash genie/ci-scripts/evidence-job.sh'
 
 const joinTailnetStep = {
   if: "${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}",
-  uses: 'tailscale/github-action@v4',
+  ...pinnedAction({ name: 'tailscale' }),
   'continue-on-error': true,
   with: {
     'oauth-client-id': '${{ vars.TS_EVIDENCE_CLIENT_ID }}',
@@ -114,10 +116,13 @@ export const pipelineCloseJob = ({
       "${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}",
   },
   steps: [
-    { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },
+    {
+      ...pinnedAction({ name: 'checkout' }),
+      with: { 'persist-credentials': false },
+    },
     {
       name: 'Prepare Nix',
-      uses: 'cachix/install-nix-action@v31',
+      ...pinnedAction({ name: 'installNix' }),
       with: { extra_nix_config: linuxNixSandboxFallbackConf },
     },
     joinTailnetStep,

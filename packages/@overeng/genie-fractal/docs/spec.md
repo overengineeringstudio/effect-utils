@@ -29,6 +29,8 @@ Launch distinguishes argv and shell execution. Shared environment, removal and w
 
 Reuse existing module-path SubjectRef/SubjectDefinition and scoped StepHandle, input and product APIs. Cross-declaration references carry subject-kind information; the resolver owns path identity and revision serialization. Source identities and scope-bearing capabilities are not interchangeable. Runtime assembly rejects absent targets, incorrect scopes and invalid dependencies even when TypeScript checks are bypassed.
 
+Agent declarations accept an optional `principal: person('person/NAME')`. A principal is a `PersonReference`, never an agent reference. Lowering emits exactly one `principal "person/NAME"` child with no properties or body when set, and no child when omitted. Subject-tree module loading preserves and validates the same field through `AgentSchema`.
+
 Generic values and lowering live in this package. Graph/kit libraries own domain policy and choose values; loaders own discovery/resolution; publishers own publication; native Fractal owns admission and running behavior. Layer-style requirement/output composition is vocabulary for boundaries, not a second runtime scheduler.
 
 Pure values use schema-derived or Effect structural equivalence. Equivalent values hash equally. Scoped handles retain exact provenance; structural equality cannot grant ownership. Effect hashes are not immutable-document cryptographic digests.

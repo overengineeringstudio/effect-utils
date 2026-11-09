@@ -656,6 +656,19 @@ describe('readBudgetWorkspaceActivity manifest admission', () => {
     ),
   )
 
+  it('distinguishes published ownership roots from raw process references', () => {
+    const activity = {
+      activePaths: new Set<string>(),
+      processPaths: new Set(['/']),
+      processClaimPaths: new Set(['/store/repo/cache-target']),
+      epoch: { host: 'test' },
+    }
+    for (const path of ['/store/repo', '/store/repo/cache-target/debug'])
+      expect(isWorkspaceActive({ activity, canonicalWorktree: path })).toBe(true)
+    for (const path of ['/store/idle', '/store/repo/cache-target-sibling'])
+      expect(isWorkspaceActive({ activity, canonicalWorktree: path })).toBe(false)
+  })
+
   it.live(
     'protects custom and hidden budget owners without treating their siblings as active',
     Effect.fnUntraced(

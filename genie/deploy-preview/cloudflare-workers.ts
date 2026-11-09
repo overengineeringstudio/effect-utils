@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   workflowReportCollectorStep,
@@ -154,7 +156,7 @@ export const cloudflareWorkersDeployJobs = (
           {
             name: `Upload ${target.name} deployment report`,
             if: 'always()',
-            uses: 'actions/upload-artifact@v4',
+            ...pinnedAction({ name: 'uploadArtifact' }),
             with: {
               name: `cloudflare-workers-report-${target.name}`,
               path: `\${{ runner.temp }}/workflow-reports/cloudflare-workers-${deployTargetEnvSuffix(target.name)}.jsonl`,
@@ -182,7 +184,7 @@ export const cloudflareWorkersDeployJobs = (
       ...(opts.commentBaseSteps ?? opts.baseSteps),
       {
         name: 'Download Cloudflare Workers deployment reports',
-        uses: 'actions/download-artifact@v4',
+        ...pinnedAction({ name: 'downloadArtifact' }),
         with: {
           pattern: 'cloudflare-workers-report-*',
           path: '${{ runner.temp }}/workflow-reports/cloudflare-workers-inputs',

@@ -5,7 +5,7 @@ import { constants as osConstants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 
 import { NodeStream } from '@effect/platform-node'
-import { Clock, Context, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import { Clock, Context, Effect, Layer, Option, Schedule, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
 
@@ -16,6 +16,13 @@ export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()
   'GitWriterLockError',
   { path: Schema.String, cause: Schema.Defect() },
 ) {}
+/** Internal deterministic contention seam; ordinary callers need no observer. */
+export class CommitTreePreparationObserver extends Context.Service<
+  CommitTreePreparationObserver,
+  Effect.Effect<void>
+>()('megarepo/CommitTreePreparationObserver') {
+  static readonly layer = Layer.succeed(this, Effect.void)
+}
 
 class WriterDescriptor extends Context.Service<
   WriterDescriptor,
@@ -100,13 +107,19 @@ const loadFlock = (): Promise<FlockLibrary> =>
   })
 let flockLibrary: Promise<FlockLibrary> | undefined
 
-/**
- * One host-local, kernel-released lock per real common dir. The sibling control
- * file survives clone and must NEVER be removed (unlinking splits ownership).
- * No TTL, stale-owner recovery or lock-file deletion participates in admission.
- */
-export const withGitWriterLock =
-  ({ path, create = false }: { readonly path: string; readonly create?: boolean }) =>
+/** Kernel lock controls persist: unlinking them would split ownership. */
+const withGitLock =
+  ({
+    path,
+    create = false,
+    containerMode,
+    onContention = Effect.void,
+  }: {
+    readonly path: string
+    readonly create?: boolean
+    readonly containerMode?: 'shared' | 'exclusive'
+    readonly onContention?: Effect.Effect<void>
+  }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const common =
@@ -120,7 +133,7 @@ export const withGitWriterLock =
               }
             })
           : yield* resolveGitCommonDir(path)
-      const lockPath = `${common}.mr-writer.lock`
+      const lockPath = `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
       const native = yield* io(lockPath)(() => (flockLibrary ??= loadFlock()))
       return yield* Effect.scoped(
         Effect.gen(function* () {
@@ -154,10 +167,14 @@ export const withGitWriterLock =
           // Nonblocking flock lets fibers progress and remains interruptible while
           // waiting. Kernel acquisition, not the polling interval, grants ownership.
           yield* Effect.suspend(() => {
-            if (native.flock(file.fd, 2 | 4) === 0) return Effect.succeed(true)
+            if (native.flock(file.fd, (containerMode === 'shared' ? 1 : 2) | 4) === 0)
+              return Effect.succeed(true)
             const errno = native.errno()
-            if (errno === 4 || errno === (process.platform === 'darwin' ? 35 : 11))
-              return Effect.succeed(false)
+            if (
+              errno === 4 ||
+              (containerMode !== 'exclusive' && errno === (process.platform === 'darwin' ? 35 : 11))
+            )
+              return Effect.as(errno === 4 ? Effect.void : onContention, false)
             return Effect.fail(
               new GitWriterLockError({ path: lockPath, cause: `flock errno=${errno}` }),
             )
@@ -176,16 +193,80 @@ export const withGitWriterLock =
               cause: 'Persistent lock control was replaced',
             })
           }
-          return yield* effect.pipe(
-            Effect.provideService(WriterDescriptor, {
-              fd: file.fd,
-              dev: opened.dev,
-              ino: opened.ino,
-            }),
-          )
+          return yield* containerMode === undefined
+            ? effect.pipe(
+                Effect.provideService(WriterDescriptor, {
+                  fd: file.fd,
+                  dev: opened.dev,
+                  ino: opened.ino,
+                }),
+              )
+            : effect
         }),
       )
     }).pipe(Observability.withRepoPathSpan({ name: 'git/writer-lock', path }))
+
+/** Exclusive Git-writer admission, retained by spawned writer descendants. */
+export const withGitWriterLock = ({ path, create = false }: { path: string; create?: boolean }) =>
+  withGitLock({ path, create })
+
+/** Per-commit-tree preparation admission, independent of repository Git writers. */
+export const withCommitTreePreparationLock =
+  (worktreePath: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const observer = yield* Effect.serviceOption(CommitTreePreparationObserver)
+      return yield* effect.pipe(
+        withGitLock({
+          path: `${worktreePath}.mr-preparation`,
+          create: true,
+          onContention: Option.getOrElse(observer, () => Effect.void),
+        }),
+      )
+    })
+
+/** Exclusive no-follow creation; retries accept only an owned empty regular marker. */
+export const ensurePreparationMarker = ({
+  root,
+  create = true,
+}: {
+  root: string
+  create?: boolean
+}) =>
+  io(root)(async () => {
+    const marker = `${root}.mr-unprepared`
+    try {
+      const entry = await lstat(marker)
+      if (
+        entry.isFile() === false ||
+        entry.nlink !== 1 ||
+        entry.size !== 0 ||
+        entry.uid !== process.getuid?.()
+      )
+        throw new GitWriterLockError({ path: marker, cause: 'Unexpected preparation marker' })
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
+      if (create === true) {
+        const file = await open(
+          marker,
+          constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_WRONLY,
+          0o600,
+        )
+        await file.close()
+      }
+    }
+  })
+
+/** Shared activation/creation or exclusive repository-output reclamation fence. */
+export const withGitContainerLock =
+  ({ path, mode }: { path: string; mode: 'shared' | 'exclusive' }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    io(path)(() => realpath(path)).pipe(
+      Effect.flatMap((existing) =>
+        effect.pipe(withGitLock({ path: existing, containerMode: mode })),
+      ),
+    )
+
 /** Minimal process handle shared by the standard and descriptor-inheriting spawners. */
 export interface GitWriterProcess {
   readonly stdout: Stream.Stream<Uint8Array, GitWriterLockError | PlatformError>

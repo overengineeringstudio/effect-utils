@@ -20,27 +20,40 @@
  */
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { link, lstat, mkdir, readdir, statfs, symlink, utimes, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect, vi } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { BudgetCandidate, BudgetPlan } from '../store/store-build-budgets.ts'
+import {
+  applyBuildOutputBudgetCandidate,
+  BudgetCandidate,
+  BudgetPlan,
+  encodeBudgetPlanEvidence,
+  loadBuildOutputBudgets,
+  planBuildOutputBudgets,
+} from '../store/store-build-budgets.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
+  createStoreWorktree,
   releaseDeletionLease,
+  withStoreWorktreeLease,
 } from '../store/store-deletion-lease.ts'
+import {
+  readActivityManifest,
+  readBudgetWorkspaceActivity,
+} from '../store/store-workspace-activity.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import { createStoreFixture, getWorktreeCommit } from '../test-utils/store-setup.ts'
 
@@ -91,11 +104,28 @@ describe('versioned budget owner contract', () => {
     ]
     const codec = Schema.fromJsonString(BudgetCandidate)
     const decode = Schema.decodeSync(codec, { onExcessProperty: 'error' })
+    const rows: BudgetCandidate[] = []
     for (const owner of owners) {
       const candidate = { ...common, ...owner }
       const decoded = decode(encodeJson(candidate))
+      rows.push(decoded)
       expect(decode(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
     }
+    const evidence = {
+      schemaVersion: 'megarepo.build-output-budget-plan.v2' as const,
+      results: [rows[0]!],
+      classes: {},
+    }
+    const hashBudgetPlanEvidence = (value: typeof evidence) =>
+      createHash('sha256').update(encodeBudgetPlanEvidence(value)).digest('hex')
+    const digest = hashBudgetPlanEvidence(evidence)
+    expect(hashBudgetPlanEvidence({ ...evidence, results: [rows[1]!] })).not.toBe(digest)
+    expect(
+      hashBudgetPlanEvidence({
+        ...evidence,
+        results: [{ ...rows[0]!, livenessKey: '/store/other-output' }],
+      }),
+    ).not.toBe(digest)
   })
 })
 
@@ -611,6 +641,526 @@ if (inOwnerNamespace === false) {
 }
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
+    for (const kind of ['repo-output', 'non-refs-worktree'] as const)
+      for (const holder of ['cwd', 'flock', 'fd-only'] as const)
+        for (const keying of ['root', 'container', 'cwd'] as const)
+          it.live(
+            `published foreign-UID ${holder} protects ${kind} keyed at ${keying}`,
+            Effect.fnUntraced(
+              function* () {
+                const f = yield* budgetFixture(['main'])
+                const nativeFs = yield* FileSystem.FileSystem
+                // Model privileged publication without changing host ownership or permissions.
+                const fs: FileSystem.FileSystem = {
+                  ...nativeFs,
+                  stat: (file) =>
+                    nativeFs
+                      .stat(file)
+                      .pipe(Effect.map((info) => ({ ...info, uid: Option.some(0) }))),
+                }
+                const pty = `${f.commandDir}/pty`
+                yield* fs.writeFileString(pty, '#!/bin/sh\nprintf "[]\\n"\n', { mode: 0o755 })
+                yield* Effect.acquireRelease(
+                  Effect.sync(() => {
+                    const previous = process.env['MEGAREPO_GC_PTY_BIN']
+                    process.env['MEGAREPO_GC_PTY_BIN'] = pty
+                    return previous
+                  }),
+                  (previous) =>
+                    Effect.sync(() => {
+                      if (previous === undefined) delete process.env['MEGAREPO_GC_PTY_BIN']
+                      else process.env['MEGAREPO_GC_PTY_BIN'] = previous
+                    }),
+                )
+                const bare = f.bareRepoPaths[REPO_KEY]!
+                const container = dirname(bare.replace(/\/$/u, ''))
+                const owner = kind === 'repo-output' ? container : `${container}/custom-checkout`
+                const path =
+                  kind === 'repo-output' ? `${container}/cache-target` : `${owner}/target`
+                if (kind === 'non-refs-worktree') {
+                  yield* Git.createWorktree({
+                    repoPath: bare,
+                    worktreePath: owner,
+                    branch: 'custom',
+                    createBranch: true,
+                  })
+                  yield* ignoreTargets(EffectPath.unsafe.absoluteDir(`${owner}/`))
+                }
+                yield* makeArtifact(path, {
+                  files: { 'debug/.cargo-lock': 1, 'debug/mapped.bin': MiB },
+                  ageMs: 3 * DAY_MS,
+                })
+                yield* writePolicy(f, { budgetBytes: 0 })
+                if (kind === 'repo-output') {
+                  const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+                    string,
+                    unknown
+                  >
+                  yield* fs.writeFileString(
+                    f.policyPath,
+                    encodeJson({
+                      ...policy,
+                      classes: { 'repo-cargo': { budgetBytes: 0, repoRoots: '*-target' } },
+                    }),
+                  )
+                  yield* fs.writeFileString(
+                    `${path}/CACHEDIR.TAG`,
+                    'Signature: 8a477f597d28d172789f06886806bc55\n',
+                  )
+                  yield* Effect.promise(() => backdate(path, new Date(Date.now() - 3 * DAY_MS)))
+                }
+                const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+                  string,
+                  unknown
+                >
+                const idle = {
+                  ...manifest,
+                  processCoverage: 'all-uids',
+                  processIdentities: [],
+                  processRoots: [f.storePath.replace(/\/$/u, '')],
+                  processWorktreeCoverage: 'registered-worktrees',
+                  processRepoOutputCoverage: 'repo-build-outputs',
+                }
+                const root = kind === 'repo-output' ? path : owner
+                // Foreign holders are represented only by the producer's admitted claim.
+                // A flock/fd-only holder's cwd is outside; its referenced file is inside.
+                const reference = holder === 'cwd' ? `${path}/debug` : `${path}/debug/.cargo-lock`
+                const workspace =
+                  keying === 'root'
+                    ? root
+                    : keying === 'container'
+                      ? container
+                      : holder === 'cwd'
+                        ? reference
+                        : dirname(reference)
+                const live = encodeJson({
+                  ...idle,
+                  claims: [
+                    {
+                      workspace,
+                      sources: ['process'],
+                      agents: [],
+                      activeRuntimeIds: [],
+                      active: true,
+                      processes: [{ pid: 2147483000, startTime: '1', executableClass: 'other' }],
+                    },
+                  ],
+                })
+                const activityConfig = {
+                  manifestPath: f.manifestPath,
+                  agentLivenessProducers: [PRODUCER],
+                  builtin: false,
+                }
+                const worktrees = [
+                  {
+                    ref: 'main',
+                    refType: 'heads' as const,
+                    path: worktree(f, 'main'),
+                    broken: false,
+                  },
+                  ...(kind === 'repo-output'
+                    ? []
+                    : [
+                        {
+                          ref: 'custom',
+                          refType: 'heads' as const,
+                          path: EffectPath.unsafe.absoluteDir(`${owner}/`),
+                          broken: false,
+                          requiresExpandedProcessCoverage: true,
+                        },
+                      ]),
+                ]
+                const inputs = {
+                  policy: yield* loadBuildOutputBudgets({ path: f.policyPath }),
+                  storeBasePath: f.storePath,
+                  repoWorktrees: [{ repo: { relativePath: REPO_KEY }, worktrees }],
+                  liveSet: {
+                    paths: new Set<string>(),
+                    uncleanReconcilePaths: new Set<string>(),
+                    workspaceCount: 0,
+                  },
+                  now: Date.now(),
+                }
+                yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+                yield* readActivityManifest({ fs, path: f.manifestPath, producers: [PRODUCER] })
+                const activity = yield* readBudgetWorkspaceActivity({ fs, config: activityConfig })
+                expect(activity?.processCoverage).toBeDefined()
+                const plan = yield* planBuildOutputBudgets({ ...inputs, activity }).pipe(
+                  Effect.provideService(FileSystem.FileSystem, fs),
+                )
+                expect(row(plan, path)?.outcome).toBe('would-delete')
+                yield* fs.writeFileString(f.manifestPath, live)
+                const protectedPlan = yield* planBuildOutputBudgets({
+                  ...inputs,
+                  activity: yield* readBudgetWorkspaceActivity({ fs, config: activityConfig }),
+                }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+                expect.soft(row(protectedPlan, path)?.reason).toBe('live')
+                yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+                let reads = 0
+                const lateClaimFs: FileSystem.FileSystem = {
+                  ...fs,
+                  readFileString: (file, options) =>
+                    file === f.manifestPath && ++reads === 3
+                      ? Effect.succeed(live)
+                      : fs.readFileString(file, options),
+                }
+                const applied = yield* applyBuildOutputBudgetCandidate({
+                  ...inputs,
+                  policyPath: f.policyPath,
+                  expectedPlan: plan.planSha256,
+                  candidatePath: path,
+                  activityConfig,
+                }).pipe(Effect.provideService(FileSystem.FileSystem, lateClaimFs), Effect.result)
+                expect(reads).toBe(3)
+                expect.soft(applied._tag).toBe('Failure')
+                expect.soft(yield* exists(path)).toBe(true)
+              },
+              Effect.provide(NodeServices.layer),
+              Effect.scoped,
+            ),
+          )
+    for (const registration of [
+      'layout',
+      'off-layout',
+      'hidden',
+      'external',
+      'missing-admin-backlink',
+      'empty-admin-backlink',
+    ] as const)
+      it.effect(
+        `layout process coverage admits shared outputs only with covered registrations: ${registration}`,
+        Effect.fnUntraced(
+          function* () {
+            const f = yield* budgetFixture(['main', 'feature/nested'])
+            const fs = yield* FileSystem.FileSystem
+            const bare = f.bareRepoPaths[REPO_KEY]!
+            const container = dirname(bare.replace(/\/$/u, ''))
+            const output = `${container}/foo-target`
+            yield* makeArtifact(output, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+            yield* fs.writeFileString(
+              `${output}/CACHEDIR.TAG`,
+              'Signature: 8a477f597d28d172789f06886806bc55\n',
+            )
+            yield* Effect.promise(() => backdate(output, new Date(Date.now() - 3 * DAY_MS)))
+            yield* writePolicy(f, { budgetBytes: 0 })
+            const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+              string,
+              unknown
+            >
+            yield* fs.writeFileString(
+              f.policyPath,
+              encodeJson({
+                ...policy,
+                classes: {
+                  cargo: { budgetBytes: 0, paths: ['target'], repoRoots: '*-target' },
+                },
+              }),
+            )
+            const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+              string,
+              unknown
+            >
+            yield* fs.writeFileString(
+              f.manifestPath,
+              encodeJson({
+                ...manifest,
+                processWorktreeCoverage: 'layout-worktrees',
+                processRepoOutputCoverage: 'repo-build-outputs',
+              }),
+            )
+            const covered = planOk(f)
+            expect(row(covered, output)?.outcome).toBe('would-delete')
+            if (registration === 'layout') {
+              const applied = applyCandidate(f, { plan: covered, path: output })
+              expect(applied.exitCode, applied.stderr).toBe(0)
+              expect(yield* exists(output)).toBe(false)
+              return
+            }
+            const path =
+              registration === 'external'
+                ? `${f.outside}checkout`
+                : registration === 'hidden'
+                  ? `${container}/.hidden/checkout`
+                  : `${container}/worktrees/checkout`
+            yield* Git.createWorktree({
+              repoPath: bare,
+              worktreePath: path,
+              branch: 'off-layout',
+              createBranch: true,
+            })
+            yield* ignoreTargets(EffectPath.unsafe.absoluteDir(`${path}/`))
+            yield* makeArtifact(`${path}/target`, {
+              files: { 'build.bin': MiB },
+              ageMs: 3 * DAY_MS,
+            })
+            if (
+              registration === 'missing-admin-backlink' ||
+              registration === 'empty-admin-backlink'
+            ) {
+              const pointer = yield* fs.readFileString(`${path}/.git`)
+              const gitdir = resolve(path, pointer.slice(8).trim())
+              if (registration === 'missing-admin-backlink') yield* fs.remove(`${gitdir}/gitdir`)
+              else yield* fs.writeFileString(`${gitdir}/gitdir`, '')
+            }
+            const uncovered = planOk(f)
+            expect(row(uncovered, output)?.reason).toBe('process-liveness-unavailable')
+            expect(row(uncovered, output)?.outcome).not.toBe('would-delete')
+            expect(applyCandidate(f, { plan: uncovered, path: output }).exitCode).not.toBe(0)
+            if (registration === 'off-layout' || registration === 'hidden') {
+              expect(row(uncovered, `${path}/target`)?.reason).toBe('process-liveness-unavailable')
+              expect(row(uncovered, `${path}/target`)?.outcome).not.toBe('would-delete')
+            }
+            expect(applyCandidate(f, { plan: covered, path: output }).exitCode).not.toBe(0)
+            expect(yield* exists(output)).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    it.effect(
+      'repository output requires exclusive worktree leases and excludes Git boundaries',
+      Effect.fnUntraced(
+        function* () {
+          const f = yield* budgetFixture(['main'])
+          const fs = yield* FileSystem.FileSystem
+          const container = dirname(f.bareRepoPaths[REPO_KEY]!.replace(/\/$/u, ''))
+          const output = `${container}/foo-target`
+          const sibling = `${output}-evil`
+          yield* makeArtifact(output, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+          yield* fs.makeDirectory(sibling)
+          yield* writePolicy(f, { budgetBytes: 0 })
+          const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.policyPath,
+            encodeJson({
+              ...policy,
+              classes: { 'repo-cargo': { budgetBytes: 0, repoRoots: '*-target' } },
+            }),
+          )
+          expect(row(planOk(f), output)?.reason).toBe('artifact-authority-missing')
+          yield* fs.writeFileString(
+            `${output}/CACHEDIR.TAG`,
+            'Signature: 8a477f597d28d172789f06886806bc55\n',
+          )
+          yield* Effect.promise(() => backdate(output, new Date(Date.now() - 3 * DAY_MS)))
+          expect(row(planOk(f), output)?.reason).toBe('process-liveness-unavailable')
+          const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.manifestPath,
+            encodeJson({
+              ...manifest,
+              processWorktreeCoverage: 'registered-worktrees',
+            }),
+          )
+          expect(row(planOk(f), output)?.reason).toBe('process-liveness-unavailable')
+          const idle = {
+            ...manifest,
+            processWorktreeCoverage: 'registered-worktrees',
+            processRepoOutputCoverage: 'repo-build-outputs',
+          }
+          yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+          for (const boundary of [output, `${output}/source.git`]) {
+            yield* Git.runCommand({ args: ['init', '--bare', boundary], cwd: f.outside })
+            yield* fs.remove(`${boundary}/config`)
+            const protectedPlan = planOk(f)
+            expect(row(protectedPlan, output)?.reason).toBe('artifact-scan-incomplete')
+            expect(applyCandidate(f, { plan: protectedPlan, path: output }).exitCode).not.toBe(0)
+            expect(yield* exists(output)).toBe(true)
+            yield* fs.remove(output, { recursive: true })
+            yield* makeArtifact(output, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+            yield* fs.writeFileString(
+              `${output}/CACHEDIR.TAG`,
+              'Signature: 8a477f597d28d172789f06886806bc55\n',
+            )
+            yield* Effect.promise(() => backdate(output, new Date(Date.now() - 3 * DAY_MS)))
+          }
+          const eligible = planOk(f)
+          expect(row(eligible, output)?.outcome).toBe('would-delete')
+          for (const source of ['st3-seat', 'pty']) {
+            yield* fs.writeFileString(
+              f.manifestPath,
+              encodeJson({
+                ...idle,
+                claims: [
+                  {
+                    workspace: worktree(f, 'main').replace(/\/$/u, ''),
+                    sources: [source],
+                    agents: [],
+                    activeRuntimeIds: [],
+                    active: true,
+                  },
+                ],
+              }),
+            )
+            expect(row(planOk(f), output)?.reason).toBe('live')
+            expect(applyCandidate(f, { plan: eligible, path: output }).exitCode).not.toBe(0)
+          }
+          yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+          const direct = yield* holderIn(output)
+          expect(row(planOk(f), output)?.reason).toBe('live')
+          yield* Effect.promise(() => killHolder(direct))
+          const adjacent = yield* holderIn(sibling)
+          expect(row(planOk(f), output)?.outcome).toBe('would-delete')
+          const ready = planOk(f)
+          const lease = yield* Effect.acquireRelease(
+            acquireDeletionLease({
+              storeBasePath: f.storePath,
+              ownerPath: yield* canonicalizeOwnerPath(worktree(f, 'main')),
+              now: Date.now(),
+            }),
+            releaseDeletionLease,
+          )
+          expect(applyCandidate(f, { plan: ready, path: output }).exitCode).not.toBe(0)
+          expect(yield* exists(output)).toBe(true)
+          yield* releaseDeletionLease(lease)
+          const beforeRegistration = planOk(f)
+          yield* Effect.gen(function* () {
+            const contended = applyCandidate(f, { plan: beforeRegistration, path: output })
+            expect(contended.exitCode).not.toBe(0)
+            expect(contended.stderr).toContain('flock')
+            yield* createStoreWorktree({
+              storeBasePath: f.storePath,
+              repoPath: f.bareRepoPaths[REPO_KEY]!,
+              worktreePath: `${container}/late-checkout`,
+              branch: 'late-checkout',
+              createBranch: true,
+            })
+          }).pipe(
+            withStoreWorktreeLease({
+              storeBasePath: f.storePath,
+              ownerPath: `${container}/prospective-activation`,
+              bareRepoPath: f.bareRepoPaths[REPO_KEY]!,
+            }),
+          )
+          expect(applyCandidate(f, { plan: beforeRegistration, path: output }).exitCode).not.toBe(0)
+          expect(planOk(f).planSha256).not.toBe(beforeRegistration.planSha256)
+          expect(yield* exists(output)).toBe(true)
+          const applied = applyCandidate(f, { plan: planOk(f), path: output })
+          expect(applied.exitCode, applied.stderr).toBe(0)
+          expect(applied.plan?.results).toEqual([
+            expect.objectContaining({
+              kind: 'repo-build-output',
+              path: output,
+              outcome: 'deleted',
+            }),
+          ])
+          expect(yield* exists(output)).toBe(false)
+          expect(yield* exists(sibling)).toBe(true)
+          yield* Effect.promise(() => killHolder(adjacent))
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+    it.effect(
+      'repository selector accounts only immediate non-overlapping output directories',
+      Effect.fnUntraced(
+        function* () {
+          const f = yield* budgetFixture(['main'])
+          const fs = yield* FileSystem.FileSystem
+          const bare = f.bareRepoPaths[REPO_KEY]!
+          const container = dirname(bare.replace(/\/$/u, ''))
+          for (const name of [
+            'foo-target',
+            'foo-target-evil',
+            'nested/inner-target',
+            'unsigned-target',
+            'ordinary',
+            'overlap-target',
+          ]) {
+            const path = `${container}/${name}`
+            yield* makeArtifact(path, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+            if (name !== 'unsigned-target')
+              yield* fs.writeFileString(
+                `${path}/CACHEDIR.TAG`,
+                'Signature: 8a477f597d28d172789f06886806bc55\n',
+              )
+            yield* Effect.promise(() => backdate(path, new Date(Date.now() - 3 * DAY_MS)))
+          }
+          const fifo = `${container}/unsigned-target/CACHEDIR.TAG`
+          expect(spawnSync('mkfifo', [fifo]).status).toBe(0)
+          for (const name of ['worktree-target', 'overlap-target/nested']) {
+            yield* Git.createWorktree({
+              repoPath: bare,
+              worktreePath: `${container}/${name}`,
+              branch: name.replace('/', '-'),
+              createBranch: true,
+            })
+          }
+          const mounted = `${container}/mount-target`
+          yield* fs.makeDirectory(mounted)
+          yield* Effect.promise(() =>
+            symlink(`${container}/foo-target`, `${container}/link-target`),
+          )
+          yield* writePolicy(f, { budgetBytes: 0 })
+          expect(planOk(f).results).toEqual([])
+          const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.policyPath,
+            encodeJson({
+              ...policy,
+              classes: { 'repo-cargo': { budgetBytes: 0, repoRoots: '*-target' } },
+            }),
+          )
+          // The bind mount exists only in this child's disposable mount namespace.
+          const result = spawnSync(
+            'unshare',
+            [
+              '--user',
+              '--map-root-user',
+              '--mount',
+              'sh',
+              '-c',
+              'mount --bind "$1" "$2" && shift 2 && exec "$@"',
+              'fixture',
+              f.outside,
+              mounted,
+              'env',
+              ...cliEnv(f),
+              'bun',
+              MR_BIN,
+              'store',
+              'gc',
+              '--budgets',
+              f.policyPath,
+              '--dry-run',
+              '--output',
+              'json',
+            ],
+            { cwd: f.outside, encoding: 'utf8', timeout: 120_000 },
+          )
+          expect(result.status, result.stderr).toBe(0)
+          const plan = decodePlan(result.stdout.trim())
+          expect(plan.results.map((entry) => entry.path)).toEqual([
+            `${container}/foo-target`,
+            `${container}/unsigned-target`,
+          ])
+          expect(row(plan, `${container}/foo-target`)).toMatchObject({
+            kind: 'repo-build-output',
+            containerPath: container,
+            outputRoot: `${container}/foo-target`,
+            livenessKey: `${container}/foo-target`,
+            reason: 'process-liveness-unavailable',
+          })
+          expect(row(plan, `${container}/foo-target`)?.allocatedBytes).toBeGreaterThan(0)
+          expect(row(plan, `${container}/unsigned-target`)?.reason).toBe(
+            'artifact-authority-missing',
+          )
+          expect(applyCandidate(f, { plan, path: `${container}/foo-target` }).exitCode).not.toBe(0)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
     it.effect(
       'registration and ownership changes invalidate budget application',
       Effect.fnUntraced(

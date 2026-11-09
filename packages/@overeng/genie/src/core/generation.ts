@@ -703,11 +703,11 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   return Option.some(config)
 })
 
-/** Formats one target file; falls back to the unformatted content on formatter errors so a check reports drift instead of failing. */
+/** Formats one target file; ordinary formatter errors fall back to unformatted content. */
 export type OxfmtFormatter = (options: {
   targetFilePath: string
   content: string
-}) => Effect.Effect<string, never, FileSystem.FileSystem>
+}) => Effect.Effect<string, OxfmtTimeoutError, FileSystem.FileSystem>
 
 /**
  * Reuse successful config preflight as a snapshot within one read-only check invocation.
@@ -826,16 +826,34 @@ const generatedFileMode = ({
   return readOnly === true ? 0o444 : undefined
 }
 
+/** Maximum runtime of each formatter subprocess, including stdin writes. */
+export const OXFMT_TIMEOUT_MS = 30_000
+
+/** A formatter exceeded its subprocess deadline; generation must fail. */
+export class OxfmtTimeoutError extends Schema.TaggedError<OxfmtTimeoutError>()(
+  'OxfmtTimeoutError',
+  {
+    targetFilePath: Schema.String,
+    timeoutMs: Schema.Finite,
+  },
+) {
+  override get message() {
+    return `oxfmt timed out after ${this.timeoutMs} ms while formatting ${this.targetFilePath}`
+  }
+}
+
 /** Format content using oxfmt if the file type is supported */
-const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
+export const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   targetFilePath,
   content,
   configPath,
+  timeoutMs = OXFMT_TIMEOUT_MS,
   loadConfig = loadOxfmtConfig({ configPath }).pipe(Effect.result),
 }: {
   targetFilePath: string
   content: string
   configPath: Option.Option<string>
+  timeoutMs?: number
   loadConfig?: Effect.Effect<
     Result.Result<Option.Option<OxfmtConfig>, PlatformError | InvalidOxfmtConfigError>,
     never,
@@ -881,11 +899,20 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return yield* Effect.tryPromise(
       (signal) =>
         new Promise<string>((resolve, reject) => {
-          const child = spawn('oxfmt', args, { stdio: ['pipe', 'pipe', 'ignore'], signal })
+          const child = spawn('oxfmt', args, {
+            stdio: ['pipe', 'pipe', 'ignore'],
+            signal,
+            killSignal: 'SIGKILL',
+          })
           let output = ''
           let failure: unknown
+          // Wait for close even on timeout so the child is reaped before failing.
+          const timer = setTimeout(() => {
+            failure = new OxfmtTimeoutError({ targetFilePath, timeoutMs })
+            child.kill('SIGKILL')
+          }, timeoutMs)
           const onError = (error: Error) => {
-            failure = error
+            if (failure instanceof OxfmtTimeoutError === false) failure = error
           }
           child.on('error', onError)
           child.stdin.on('error', onError)
@@ -895,6 +922,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
             output += chunk
           })
           child.once('close', () => {
+            clearTimeout(timer)
             child.stdin.off('error', onError)
             child.stdout.off('error', onError)
             child.off('error', onError)
@@ -904,7 +932,11 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
           child.stdin.end(content)
         }),
     )
-  }).pipe(Effect.orElseSucceed(() => content))
+  }).pipe(
+    Effect.catch((error) =>
+      error.cause instanceof OxfmtTimeoutError ? Effect.fail(error.cause) : Effect.succeed(content),
+    ),
+  )
 
   // If oxfmt returned empty output (e.g., failed to parse), return original content.
   // This handles YAML with GitHub Actions ${{ }} expressions in flow sequences (inline arrays)
@@ -1350,7 +1382,11 @@ export const checkFile = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   void,
-  GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
+  | GenieCheckError
+  | GenieImportError
+  | GenieRuntimeTranspilerCacheError
+  | OxfmtTimeoutError
+  | PlatformError,
   FileSystem.FileSystem
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
@@ -1367,7 +1403,11 @@ export const checkFileDetailed = ({
   formatter?: OxfmtFormatter
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
-  GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
+  | GenieCheckError
+  | GenieImportError
+  | GenieRuntimeTranspilerCacheError
+  | OxfmtTimeoutError
+  | PlatformError,
   FileSystem.FileSystem
 > =>
   Effect.gen(function* () {

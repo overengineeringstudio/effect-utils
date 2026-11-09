@@ -8,7 +8,7 @@ load("//buck2/products:defs.bzl", "build_product", "bun_compiled_product_executa
 # Projection source: packages/@overeng/ci-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:bdbea363668b99087593e322bdfa80570911365d74cf0665bcd360583861d98e
+# Semantic fingerprint: sha256:784d50ec30a39197975fca32765a84e97d4f7d6ccc2a9a246ee2a9fbefa1a213
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -41,6 +41,7 @@ export_materialization_inputs([
     "src/deploy-netlify.e2e.test.ts",
     "src/deploy-netlify.live.e2e.test.ts",
     "src/deploy-netlify.ts",
+    "src/deploy-netlify.unit.test.ts",
     "src/deploy-vercel.e2e.test.ts",
     "src/deploy-vercel.live.e2e.test.ts",
     "src/deploy-vercel.ts",
@@ -117,6 +118,7 @@ package_view(
         "src/deploy-netlify.e2e.test.ts": "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts": "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-netlify.ts": "src/deploy-netlify.ts",
+        "src/deploy-netlify.unit.test.ts": "src/deploy-netlify.unit.test.ts",
         "src/deploy-vercel.e2e.test.ts": "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts": "src/deploy-vercel.live.e2e.test.ts",
         "src/deploy-vercel.ts": "src/deploy-vercel.ts",
@@ -180,6 +182,7 @@ package_view(
         "src/deploy-netlify.e2e.test.ts": "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts": "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-netlify.ts": "src/deploy-netlify.ts",
+        "src/deploy-netlify.unit.test.ts": "src/deploy-netlify.unit.test.ts",
         "src/deploy-vercel.e2e.test.ts": "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts": "src/deploy-vercel.live.e2e.test.ts",
         "src/deploy-vercel.ts": "src/deploy-vercel.ts",
@@ -241,6 +244,7 @@ package_view(
         "src/deploy-netlify.e2e.test.ts": "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts": "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-netlify.ts": "src/deploy-netlify.ts",
+        "src/deploy-netlify.unit.test.ts": "src/deploy-netlify.unit.test.ts",
         "src/deploy-vercel.e2e.test.ts": "src/deploy-vercel.e2e.test.ts",
         "src/deploy-vercel.live.e2e.test.ts": "src/deploy-vercel.live.e2e.test.ts",
         "src/deploy-vercel.ts": "src/deploy-vercel.ts",
@@ -432,7 +436,7 @@ bun_compiled_product_executable(
 build_product(
     name = "ci-tools-compiled-product",
     entrypoint = "bin/ci-tools",
-    executable = ":ci-tools-compiled-executable",
+    artifact = ":ci-tools-compiled-executable",
     product_name = "ci-tools",
     target_platform = host_platform_label(),
     visibility = ["PUBLIC"],

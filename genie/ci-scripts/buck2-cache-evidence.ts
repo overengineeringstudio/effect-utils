@@ -29,6 +29,8 @@ import { gzipSync, gunzipSync } from 'node:zlib'
 
 import {
   canonicalCacheAdmissionInvocationId,
+  decodeReapiAdmissionAttempts,
+  type ReapiAdmissionAttempt,
   decodeReapiAdmissionFailure,
   type ReapiAdmissionFailure,
 } from '../../scripts/buck2-cache-posture.ts'
@@ -37,6 +39,7 @@ import {
   decodeActionArtifact,
   decodeActionExclusionCounts,
   decodeCacheUploadErrors,
+  decodeCacheReadPolicy,
   decodeOutputTinyDigests,
 } from './buck2-action-evidence-codec.ts'
 import {
@@ -55,6 +58,7 @@ import {
   type ActionArtifact,
   type ActionInvocation,
   type ActionRecord,
+  type CacheReadPolicy,
   type CacheUploadError,
 } from './buck2-action-evidence.ts'
 import type { OutputTinyDigests } from './buck2-action-evidence.ts'
@@ -90,11 +94,17 @@ export type CacheAdmissionInvocation = {
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
   reapiFailure?: ReapiAdmissionFailure
+  reapiAttempts?: ReapiAdmissionAttempt[]
   reapiDecision?:
     | 'first-probe-for-ci-job'
     | 'pinned-from-first-probe'
     | 'unpinned-missing-job-instance'
-  event?: 'reader-reapi-unavailable-shadow' | 'reader-reapi-unavailable-rerun'
+  event?:
+    | 'reader-reapi-unavailable-admission'
+    | 'reader-reapi-unavailable-shadow'
+    | 'reader-reapi-unavailable-rerun'
+  reason?: 'init' | 'capabilities' | 'connect'
+  phase?: 'admission' | 'in_build'
   shadow?: ReaderReapiUnavailableShadow
   /** Read-only provenance for measured historical reruns; never emitted by the launcher. */
   legacyRerun?: true
@@ -283,6 +293,9 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
       (legacyTag !== undefined && legacyTag !== true)
     )
       throw new Error('Invalid legacy reader REAPI rerun event')
+  } else if (event === 'reader-reapi-unavailable-admission') {
+    if (admissionFallbacks.reapi !== 1 || shadow !== undefined || legacyTag !== undefined)
+      throw new Error('Invalid reader REAPI admission event')
   } else if (
     (event !== undefined && event !== 'reader-reapi-unavailable-shadow') ||
     (event === undefined) !== (shadow === undefined) ||
@@ -290,13 +303,33 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
     (event !== undefined && admissionFallbacks.reapi !== 0)
   )
     throw new Error('Invalid cache admission shadow event')
+  const reason = field({ value, key: 'reason' })
+  const phase = field({ value, key: 'phase' })
+  if (
+    (reason === undefined) !== (phase === undefined) ||
+    (reason !== undefined &&
+      reason !== 'init' &&
+      reason !== 'capabilities' &&
+      reason !== 'connect') ||
+    (phase !== undefined &&
+      !(
+        (event === 'reader-reapi-unavailable-admission' && phase === 'admission') ||
+        (event === 'reader-reapi-unavailable-shadow' && phase === 'in_build')
+      ))
+  )
+    throw new Error('Invalid reader REAPI classification metadata')
   return {
     invocationId,
     admissionFallbacks,
     admissionRetrySuccesses,
     ...(failure === undefined ? {} : { reapiFailure: decodeReapiAdmissionFailure(failure) }),
+    ...(field({ value, key: 'reapiAttempts' }) === undefined
+      ? {}
+      : { reapiAttempts: decodeReapiAdmissionAttempts(field({ value, key: 'reapiAttempts' })) }),
     ...(decision === undefined ? {} : { reapiDecision: decision }),
     ...(event === undefined ? {} : { event }),
+    ...(reason === undefined ? {} : { reason }),
+    ...(phase === undefined ? {} : { phase }),
     ...(shadow === undefined ? {} : { shadow: decodeReaderReapiUnavailableShadow(shadow) }),
     ...(legacyRerun === true ? { legacyRerun } : {}),
   }
@@ -309,19 +342,30 @@ const collectAdmissionInvocations = (
   for (const invocation of invocations) {
     const previous = seen.get(invocation.invocationId)
     if (previous !== undefined) {
-      const { event: previousEvent, shadow: previousShadow, ...previousAdmission } = previous
-      const { event, shadow, ...admission } = invocation
+      const {
+        event: previousEvent,
+        shadow: previousShadow,
+        reason: previousReason,
+        phase: previousPhase,
+        ...previousAdmission
+      } = previous
+      const { event, shadow, reason, phase, ...admission } = invocation
       if (
         JSON.stringify(previousAdmission) !== JSON.stringify(admission) ||
         (previousEvent !== undefined &&
           event !== undefined &&
-          JSON.stringify(previousShadow) !== JSON.stringify(shadow))
+          (previousEvent !== event || JSON.stringify(previousShadow) !== JSON.stringify(shadow))) ||
+        (previousReason !== undefined &&
+          reason !== undefined &&
+          (previousReason !== reason || previousPhase !== phase))
       )
         throw new Error('Conflicting cache admission invocation')
       // A post-command shadow row enriches its original admission without
       // inventing another invocation or incrementing admission fallback totals.
       if (previousEvent === undefined && event !== undefined)
         Object.assign(previous, { event, shadow })
+      if (previousReason === undefined && reason !== undefined)
+        Object.assign(previous, { reason, phase })
       continue
     }
     seen.set(invocation.invocationId, invocation)
@@ -612,12 +656,14 @@ export const createCacheEvidenceProjector = ({
   onInvocation,
   freshRoot = false,
   rootId,
+  cacheReadPolicy = 'unknown',
 }: {
   context?: string
   onAction?: (action: ActionRecord) => void
   onInvocation?: (invocation: ActionInvocation) => void
   freshRoot?: boolean
   rootId?: string
+  cacheReadPolicy?: CacheReadPolicy
 } = {}): {
   add: (value: unknown) => void
   finish: () => CacheEvidence
@@ -851,6 +897,7 @@ export const createCacheEvidenceProjector = ({
       buildId,
       ...(rootId === undefined ? {} : { rootId }),
       context: context ?? null,
+      cacheReadPolicy,
       startedAt: invocationStartedAt,
       completedAt: invocationCompletedAt,
       freshRoot,
@@ -1247,6 +1294,7 @@ const run = async (): Promise<void> => {
       events: { type: 'string' },
       output: { type: 'string' },
       context: { type: 'string' },
+      'cache-read-policy': { type: 'string' },
       'actions-output': { type: 'string' },
       'fresh-root': { type: 'boolean', default: false },
       finalize: { type: 'boolean', default: false },
@@ -1285,6 +1333,7 @@ const run = async (): Promise<void> => {
       freshRoot: values['fresh-root'],
       rootId: values['root-id'],
       context: values.context,
+      cacheReadPolicy: decodeCacheReadPolicy(values['cache-read-policy'] ?? 'unknown'),
       exitCode:
         values['native-exit-code'] === undefined ? undefined : Number(values['native-exit-code']),
       onReady: () => console.log('ready'),
@@ -1374,6 +1423,7 @@ const run = async (): Promise<void> => {
     const invocations: ActionInvocation[] = []
     const projector = createCacheEvidenceProjector({
       context: values.context,
+      cacheReadPolicy: decodeCacheReadPolicy(values['cache-read-policy'] ?? 'unknown'),
       // Native-log candidates resolve by command start time at finalization.
       // Explicit proof contexts own independent wiped roots.
       freshRoot: values['fresh-root'] === true,

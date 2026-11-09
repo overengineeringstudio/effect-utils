@@ -10,7 +10,6 @@ import {
   openSync,
   readSync,
   type BigIntStats,
-  copyFileSync,
   chmodSync,
   existsSync,
   lstatSync,
@@ -42,6 +41,7 @@ import {
   touchEditorViewBudgetGeneration,
   collectEditorViewBudgetFootprints,
   reclaimEditorViewOrphans,
+  recountEditorViewBudget,
   withHostBudgetLock,
   type EditorViewBudgetRoot,
   type EditorViewBudgetRootLock,
@@ -79,11 +79,17 @@ import {
   editorViewSourceKey,
   readEditorViewSourceManifest,
   reuseEditorViewSourceFiles,
+  materializeEditorViewSourceFiles,
+  type EditorViewPreparedSource,
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
-import { closeFingerprintAdmission, runFingerprintTool } from './typescript-runner.ts'
+import {
+  closeFingerprintAdmission,
+  editorViewTimingContext,
+  runFingerprintTool,
+} from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v2' as const
@@ -175,6 +181,8 @@ export type EditorViewOptions = {
    * changed inside that window are caught by the publication stability check.
    */
   readonly beforeMaterialize?: () => void | Promise<void>
+  /** Fault barrier after a direct CAS link, before leaving its exclusion. */
+  readonly afterDirectLink?: () => void
   /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
   readonly beforeSnapshotRetirement?: () => void | Promise<void>
   /** Barrier while budget eviction holds another root's lock, before final eligibility checks. */
@@ -1566,6 +1574,7 @@ type MaterializedDeclaredRoots = {
   readonly sourceFiles: Map<string, { readonly source: string; readonly sourceKey: string }>
   readonly manifest: Map<string, EditorViewSourceFile>
   readonly reusedFiles: Set<string>
+  readonly preparedSources: Map<string, EditorViewPreparedSource>
 }
 
 const materializeDeclaredRoots = async ({
@@ -1573,16 +1582,19 @@ const materializeDeclaredRoots = async ({
   roots,
   contentStore,
   previousManifest,
+  afterDirectLink,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   contentStore: string
   previousManifest: ReadonlyMap<string, EditorViewSourceFile>
+  afterDirectLink?: (() => void) | undefined
 }): Promise<MaterializedDeclaredRoots> => {
   mkdirSync(join(candidate, '.backing'))
   const sourceFiles = new Map<string, { source: string; sourceKey: string }>()
   const manifest = new Map<string, EditorViewSourceFile>()
   const reusable: { path: string; entry: EditorViewSourceFile }[] = []
+  const pending: { source: string; path: string }[] = []
   const visit = ({ source, destination }: { source: string; destination: string }): void => {
     mkdirSync(destination, { recursive: true })
     for (const name of readdirSync(source)) {
@@ -1601,11 +1613,7 @@ const materializeDeclaredRoots = async ({
           reusable.push({ path: destinationPath, entry: previous })
           manifest.set(relative(candidate, destinationPath), previous)
         } else {
-          copyFileSync(
-            sourcePath,
-            destinationPath,
-            constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE,
-          )
+          pending.push({ source: sourcePath, path: destinationPath })
         }
       } else fail(`declared root contains unsupported special file: ${sourcePath}`)
     }
@@ -1617,9 +1625,30 @@ const materializeDeclaredRoots = async ({
     if (reusedFiles.has(file.path) === true) continue
     const source = sourceFiles.get(file.path) ?? fail(`source file mapping is absent: ${file.path}`)
     manifest.delete(relative(candidate, file.path))
-    copyFileSync(source.source, file.path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+    pending.push({ source: source.source, path: file.path })
   }
-  return { links: rewriteSnapshotLinks({ candidate, roots }), sourceFiles, manifest, reusedFiles }
+  const preparedSources = await materializeEditorViewSourceFiles({
+    contentStore,
+    files: pending,
+    reusedFiles,
+    afterDirectLink,
+  })
+  for (const [path, file] of preparedSources) {
+    if (reusedFiles.has(path) === false) continue
+    manifest.set(relative(candidate, path), {
+      sourceKey: sourceFiles.get(path)!.sourceKey,
+      digest: file.digest,
+      mode: Number(file.status.mode & 0o777n),
+      blobKey: editorViewSourceKey(file.status),
+    })
+  }
+  return {
+    links: rewriteSnapshotLinks({ candidate, roots }),
+    sourceFiles,
+    manifest,
+    reusedFiles,
+    preparedSources,
+  }
 }
 
 const assertByteOwnedFiniteSnapshot = ({
@@ -3487,6 +3516,28 @@ const publishEditorViewCoordinated = async ({
       budgetReservation = reserved?.token
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
+      const payloadTimings: Record<string, number> = {
+        casExistingBlobVerifyMs: 0,
+        casBlobInstallMs: 0,
+        casViewLinkMs: 0,
+        casDirectoryMs: 0,
+        casDirectReuseDirectoryMs: 0,
+        casDirectReuseBlobRecheckMs: 0,
+        casDirectReuseSourceRecheckMs: 0,
+        casDirectReuseLinkMs: 0,
+        casDirectReusePostLinkMs: 0,
+        casDirectReuseAdmissionHits: 0,
+        casDirectReuseAdmissionCold: 0,
+        filesLinked: 0,
+        filesAlreadyShared: 0,
+        blobsCreated: 0,
+        filesDirectLinked: 0,
+        filesDirectLinkFallback: 0,
+        filesHashFirstAttempts: 0,
+        filesHashFirstMiss: 0,
+        hashFirstMs: 0,
+        hashFirstMissMs: 0,
+      }
       enterPhase('materialize')
       let materialized = false
       let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
@@ -3506,12 +3557,17 @@ const publishEditorViewCoordinated = async ({
           previousSnapshot === undefined
             ? new Map<string, EditorViewSourceFile>()
             : readEditorViewSourceManifest(join(previousSnapshot, editorViewSourceManifestName))
-        materializedRoots = await materializeDeclaredRoots({
-          candidate,
-          roots,
-          contentStore: paths.contentStore,
-          previousManifest,
-        })
+        materializedRoots = await editorViewTimingContext.run(
+          payloadTimings,
+          materializeDeclaredRoots,
+          {
+            candidate,
+            roots,
+            contentStore: paths.contentStore,
+            previousManifest,
+            afterDirectLink: options.afterDirectLink,
+          },
+        )
         materializedLinks = materializedRoots.links
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
@@ -3540,13 +3596,19 @@ const publishEditorViewCoordinated = async ({
         })
       }
       enterPhase('payload')
-      const payload = await fingerprintSnapshotPayload({
-        snapshotDir: candidate,
-        fingerprintTool: options.fingerprintTool,
-        admissionDirectory: options.admissionDirectory,
-        onFailure: captureFailure,
-        ...(finite === true ? { roots } : {}),
-      })
+      const payloadStartedAt = performance.now()
+      const payload = await editorViewTimingContext.run(
+        payloadTimings,
+        fingerprintSnapshotPayload,
+        {
+          snapshotDir: candidate,
+          fingerprintTool: options.fingerprintTool,
+          admissionDirectory: options.admissionDirectory,
+          onFailure: captureFailure,
+          ...(finite === true ? { roots } : {}),
+        },
+      )
+      payloadTimings.snapshotFingerprintMs = performance.now() - payloadStartedAt
       if (materialized === true && declaredRoots !== undefined) {
         // The materialized copy is compared against the state admitted before the
         // copy in owner-resolved link form, so a faithful copy of unmodified roots
@@ -3584,7 +3646,8 @@ const publishEditorViewCoordinated = async ({
       created = true
       onContentChanged()
       const sharedCandidate = candidate
-      const sharing = await shareSnapshotFiles({
+      const sharingStartedAt = performance.now()
+      const sharing = await editorViewTimingContext.run(payloadTimings, shareSnapshotFiles, {
         candidate,
         contentStore: paths.contentStore,
         ...(materializedRoots === undefined
@@ -3592,6 +3655,7 @@ const publishEditorViewCoordinated = async ({
           : {
               reusedFiles: materializedRoots.reusedFiles,
               candidateFiles: materializedRoots.sourceFiles.keys(),
+              preparedSources: materializedRoots.preparedSources,
             }),
         onSharedFile: (file) => {
           if (materializedRoots === undefined) return
@@ -3605,6 +3669,12 @@ const publishEditorViewCoordinated = async ({
             })
         },
       })
+      payloadTimings.shareMs = performance.now() - sharingStartedAt
+      // Direct links are disjoint from prior-manifest reuse and normal CAS outcomes.
+      payloadTimings.filesReused =
+        (materializedRoots?.reusedFiles.size ?? 0) - (payloadTimings.filesDirectLinked ?? 0)
+      payloadTimings.filesProcessed =
+        sharing.linkedFiles + sharing.copiedFiles - payloadTimings.filesReused
       if (materializedRoots !== undefined)
         writeFileSync(
           join(candidate, editorViewSourceManifestName),
@@ -3613,6 +3683,27 @@ const publishEditorViewCoordinated = async ({
         )
       if (sharing.copiedFiles > 0)
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
+      const durationMs = performance.now() - payloadStartedAt
+      const otherMs = durationMs - payloadTimings.snapshotFingerprintMs - payloadTimings.shareMs
+      const casClassifiedMs = [
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+        'casRepairMs',
+        'casDirectReuseDirectoryMs',
+        'casDirectReuseBlobRecheckMs',
+        'casDirectReuseSourceRecheckMs',
+        'casDirectReuseLinkMs',
+        'casDirectReusePostLinkMs',
+      ].reduce((sum, phase) => sum + (payloadTimings[phase] ?? 0), 0)
+      payloadTimings.casUnclassifiedMs = Math.max(
+        0,
+        (payloadTimings.casHeldMs ?? 0) - casClassifiedMs,
+      )
+      process.stderr.write(
+        `[editor-view-payload] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
+      )
     }
     if (created === true) {
       enterPhase('harden')
@@ -4370,6 +4461,11 @@ const main = async (): Promise<void> => {
     setTimeout(() => process.exit(143), 100)
   })
   const args = process.argv.slice(2)
+  if (args[0] === 'budget') {
+    if (args.length !== 2 || args[1] !== 'recount') fail('expected budget recount')
+    process.stdout.write(`${JSON.stringify(await recountEditorViewBudget())}\n`)
+    return
+  }
   if (args[0] === 'publish-batch') {
     if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')
     const raw: unknown = JSON.parse(readFileSync(0, 'utf8'))

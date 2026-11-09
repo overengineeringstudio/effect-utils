@@ -19,6 +19,23 @@ export class NotInMegarepoError extends Schema.TaggedError<NotInMegarepoError>()
   },
 ) {}
 
+/** A candidate refused during owner-locked GC revalidation. */
+export class StoreGcCandidateRefused extends Schema.TaggedError<StoreGcCandidateRefused>()(
+  'StoreGcCandidateRefused',
+  {
+    outcome: Schema.Literals([
+      'skipped-changed',
+      'skipped-ineligible',
+      'skipped-missing',
+      'unsupported-kind',
+    ]),
+  },
+) {
+  override get message(): string {
+    return `GC candidate refused: ${this.outcome}`
+  }
+}
+
 /** Error when not in a git repository */
 export class NotGitRepoError extends Schema.TaggedError<NotGitRepoError>()('NotGitRepoError', {
   message: Schema.String,

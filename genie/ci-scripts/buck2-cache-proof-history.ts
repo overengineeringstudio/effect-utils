@@ -12,6 +12,7 @@ export type HistorySource = {
   cell: string
   trustedWriter: boolean
   startedAt: number | null
+  latestStartedAt?: number | null
   finishedAt: number | null
 }
 /** `filter=latest` preserves each display-name cell's own attempt, not the run-wide maximum. */
@@ -54,7 +55,7 @@ export const selectProofRelevantRuns = (runs: readonly EvidenceRun[]): EvidenceR
     const writers = runs
       .filter(
         (run) =>
-          (proofReaderLane(run) === 'main-reader' || proofReaderLane(run) === 'merge_group') &&
+          proofReaderLane(run) === 'main-reader' &&
           Date.parse(run.created_at) < Date.parse(reader.created_at),
       )
       .toSorted(
@@ -131,30 +132,26 @@ export const planProofHistory = ({
         })
       }
     }
-    const readerStarts = readerSources.flatMap((source) =>
-      source.startedAt === null ? [] : [source.startedAt],
+    // A writer starting after every reader cannot establish earlier trusted presence.
+    // Job completion is not a cutoff: individual observations can precede later readers.
+    const latestReaderStart = Math.max(
+      ...readerSources.map((source) => source.latestStartedAt ?? source.startedAt ?? -Infinity),
+      ...chosen.map((run) => Date.parse(run.created_at)),
     )
-    const earliestReaderStart =
-      readerStarts.length > 0
-        ? Math.min(...readerStarts)
-        : chosen.length > 0
-          ? Math.min(...chosen.map((run) => Date.parse(run.created_at)))
-          : -Infinity
     const writerSources = expectedSources
       .filter(
         (source) =>
           relevantRuns.some((run) => run.id === source.runId) &&
           source.trustedWriter === true &&
+          source.lane === 'main-writer' &&
           readerSources.includes(source) !== true &&
-          source.finishedAt !== null &&
-          source.finishedAt < earliestReaderStart,
+          (source.startedAt === null || source.startedAt < latestReaderStart),
       )
       .toSorted((left, right) => left.id - right.id)
     const writers = writerSources.map(reference)
     for (const run of relevantRuns.filter(
       (item) =>
-        (proofReaderLane(item) === 'main-reader' || proofReaderLane(item) === 'merge_group') &&
-        Date.parse(item.created_at) < earliestReaderStart,
+        Date.parse(item.created_at) < latestReaderStart && proofReaderLane(item) === 'main-reader',
     )) {
       const expected = expectedJobs.filter(
         (job) => job.runId === run.id && coreWriterJobIds.has(job.job) === true,
@@ -169,8 +166,7 @@ export const planProofHistory = ({
             (source) =>
               source.trustedWriter !== true ||
               readerSources.includes(source) === true ||
-              (source.startedAt !== null && source.startedAt >= earliestReaderStart) ||
-              (source.finishedAt !== null && source.finishedAt >= earliestReaderStart),
+              (source.startedAt !== null && source.startedAt >= latestReaderStart),
           ) === true
         )
           continue
@@ -184,7 +180,7 @@ export const planProofHistory = ({
           continue
         evidenceGaps.push('expected-writer-job-evidence-unavailable')
         writers.push({
-          lane: proofReaderLane(run) === 'merge_group' ? 'merge_group' : 'main-writer',
+          lane: 'main-writer',
           summary: `missing/writer-${run.id}-${position}.json`,
           actions: `missing/writer-${run.id}-${position}.gz`,
         })

@@ -496,7 +496,48 @@ describe('discoverGenieFiles', () => {
     write(dir, 'node_modules/pkg/ignored.genie.ts', `export default {}`)
     write(dir, '.git/hooks/ignored.genie.ts', `export default {}`)
     write(dir, 'dist/ignored.genie.ts', `export default {}`)
+    for (const root of ['.editor-view', 'packages/.editor-view', 'context/.editor-view']) {
+      write(dir, `${root}/.store/generation/copied.genie.ts`, `export default {}`)
+      write(dir, `${root}/.publish.lock/ignored.genie.ts`, `export default {}`)
+      write(dir, `${root}/.leases/ignored.genie.ts`, `export default {}`)
+    }
 
-    expect(discoverGenieFiles(dir)).toEqual([nestedSource, rootSource])
+    expect(discoverGenieFiles({ repoRoot: dir })).toEqual([nestedSource, rootSource])
+  })
+
+  it('excludes a stale publication-lock listing that disappears during source discovery', () => {
+    const dir = makeDir()
+    const source = write(dir, 'source.genie.ts', `export default {}`)
+    const editorRoot = path.join(dir, 'packages', '.editor-view')
+    const lock = path.join(editorRoot, '.publish.lock')
+    write(dir, 'packages/.editor-view/.publish.lock/owner.json', '{}')
+    const staleListing = readdirSync(editorRoot, { withFileTypes: true })
+    let removed = false
+    const visited: string[] = []
+    const readDirectory = (directory: string) => {
+      visited.push(directory)
+      // A former walker would receive the lock Dirent, then fail reading the removed lock.
+      if (directory === editorRoot) return staleListing
+      const entries = readdirSync(directory, { withFileTypes: true })
+      if (directory === dir) {
+        rmSync(lock, { recursive: true })
+        removed = true
+      }
+      return entries
+    }
+    expect(discoverGenieFiles({ repoRoot: dir, readDirectory })).toEqual([source])
+    expect(removed).toBe(true)
+    expect(visited).not.toContain(editorRoot)
+  })
+
+  it('still fails when a real source directory disappears during discovery', () => {
+    const dir = makeDir()
+    write(dir, 'sources/source.genie.ts', `export default {}`)
+    const readDirectory = (directory: string) => {
+      const entries = readdirSync(directory, { withFileTypes: true })
+      if (directory === dir) rmSync(path.join(dir, 'sources'), { recursive: true })
+      return entries
+    }
+    expect(() => discoverGenieFiles({ repoRoot: dir, readDirectory })).toThrow('ENOENT')
   })
 })

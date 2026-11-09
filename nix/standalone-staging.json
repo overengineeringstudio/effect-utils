@@ -22,8 +22,17 @@
     "nix/buck2-capabilities.nix": {
       "noStandaloneStaging": "closure: The capability projector is carried in a directory source projection with its manifest."
     },
+    "nix/buck2-products/buck-inputs.nix": {
+      "noStandaloneStaging": "not-a-source: The .genie.ts suffix excludes generator inputs from the Buck dependency projection; no standalone JavaScript or TypeScript source is staged."
+    },
+    "nix/buck2-products/compile-identity.test.nix": {
+      "noStandaloneStaging": "fixture: Removes the Genie entrypoint from an existing product source projection to test derivation sensitivity; does not stage the entrypoint as a standalone source."
+    },
     "nix/buck2-products/consumer-root.nix": {
       "noStandaloneStaging": "build-rules: The TypeScript runner is resolved from the complete rules cell."
+    },
+    "nix/buck2-products/launcher-independence.nix": {
+      "noStandaloneStaging": "closure: Synthetic launcher edits preserve the multi-file launcher source closure; the entrypoint is not staged as a standalone source."
     },
     "nix/buck2-products/root-projection.nix": {
       "noStandaloneStaging": "closure: Generator sources and suffix filters belong to the repository directory projection."
