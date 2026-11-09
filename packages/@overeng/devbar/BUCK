@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/devbar/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4c539d2b28d57acc6a1e3bc7fc135f6f500f556857f62390c27e638f08bdef48
+# Semantic fingerprint: sha256:56f03686013653e3b0fe0a5eb618b49d1eb0df3d7a0010e8f4e543fa08cafa8c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -31,6 +31,7 @@ export_materialization_inputs([
     "src/fitSegments.ts",
     "src/fitSegments.unit.test.ts",
     "src/mod.ts",
+    "src/rovingFocus.ts",
     "src/stories/BuildIdentityDisclosure.stories.tsx",
     "src/stories/BuildIdentitySegment.stories.tsx",
     "src/stories/Devbar.stories.tsx",
@@ -97,6 +98,7 @@ package_view(
         "src/fitSegments.ts": "src/fitSegments.ts",
         "src/fitSegments.unit.test.ts": "src/fitSegments.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
+        "src/rovingFocus.ts": "src/rovingFocus.ts",
         "src/stories/BuildIdentityDisclosure.stories.tsx": "src/stories/BuildIdentityDisclosure.stories.tsx",
         "src/stories/BuildIdentitySegment.stories.tsx": "src/stories/BuildIdentitySegment.stories.tsx",
         "src/stories/Devbar.stories.tsx": "src/stories/Devbar.stories.tsx",
@@ -165,6 +167,7 @@ package_view(
         "src/fitSegments.ts": "src/fitSegments.ts",
         "src/fitSegments.unit.test.ts": "src/fitSegments.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
+        "src/rovingFocus.ts": "src/rovingFocus.ts",
         "src/stories/BuildIdentityDisclosure.stories.tsx": "src/stories/BuildIdentityDisclosure.stories.tsx",
         "src/stories/BuildIdentitySegment.stories.tsx": "src/stories/BuildIdentitySegment.stories.tsx",
         "src/stories/Devbar.stories.tsx": "src/stories/Devbar.stories.tsx",
@@ -225,6 +228,7 @@ package_view(
         "src/fitSegments.ts": "src/fitSegments.ts",
         "src/fitSegments.unit.test.ts": "src/fitSegments.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
+        "src/rovingFocus.ts": "src/rovingFocus.ts",
         "src/stories/BuildIdentityDisclosure.stories.tsx": "src/stories/BuildIdentityDisclosure.stories.tsx",
         "src/stories/BuildIdentitySegment.stories.tsx": "src/stories/BuildIdentitySegment.stories.tsx",
         "src/stories/Devbar.stories.tsx": "src/stories/Devbar.stories.tsx",

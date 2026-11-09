@@ -108,10 +108,21 @@ provides `BUCK.foreign.bzl.genie.ts` using the same Cargo projector with
 targets from workspace Cargo metadata, rejecting conflicting labels or sources
 outside the resource package; it loads only standard `@prelude` rules.
 Stage the resource files and copy this companion to that package's `BUCK`, too.
-For `rust/work-storage`, stage `packages/@overeng/work-storage`'s
-`protocol.schema.json`, `fixtures/conformance.json` and resource companion.
-Its ordinary TypeScript `BUCK` is neither required nor staged. Other cross-package
-compile-time inputs still require their declared source providers.
+For `rust/work-storage`, stage the crate-local generated
+`resources/protocol.schema.json` and `resources/conformance.json` with the crate.
+Its foreign projection exports these as `cargo-source/resources/*`; no TypeScript
+resource package or companion is required. The authoritative files remain in
+`packages/@overeng/work-storage`. `devenv tasks run work-storage:resources:fix`
+copies their exact bytes; `work-storage:resources:check`, included in `check:quick`,
+rejects drift. These JSON copies deliberately stay writable, like ordinary Git
+checkout files: the byte comparison owns freshness without modifying permissions.
+Genie's JSON emission passes through a formatter, so it does not own these
+byte-preserving copies. Other cross-package compile-time inputs still require
+their declared source providers. The `work-storage` Reindeer fixup enables
+build-script execution for git dependencies so the embedded resources have an
+`OUT_DIR`. The first-party Cargo projector derives its own build-script rule from
+the manifest and does not read third-party fixups; enabling this fixup does not
+add a second execution there.
 
 The plain consumer derivation declares exactly:
 
@@ -161,6 +172,16 @@ against fixed-output archives derived from the reviewed digest/size sidecar and
 projects those archives through `nix_store.root`; Buck verifies each projected
 archive before extraction. The derivation emits the artifact plus
 `effect-utils/buck-product-provenance/v1`.
+
+Sandbox recipes accept a Buck2 launcher with `passthru.native` or a plain native
+Buck2 package. The repository uses `buck2.native`, the pinned native binary and
+Prelude, without the developer launcher. Their `.buckconfig.local` explicitly selects
+`buck2.file_watcher = fs_hash_crawler`, `buck2.remote_cache_enabled = false`,
+and `buck2.allow_cache_uploads = false`; offline admission does not probe REAPI.
+`checks.<system>.buck2-launcher-independence` evaluates every inventory recipe:
+two synthetic launcher edits preserve product drvPaths and recipe identities,
+while a native-derivation change changes both. The eval-only
+`nix:buck2-launcher-independence:check` task belongs to `nix:check:quick`.
 
 Npm archive acquisition has one digest authority. Package manifests select
 versions, the pnpm lock records registry URLs and integrity, and the generated

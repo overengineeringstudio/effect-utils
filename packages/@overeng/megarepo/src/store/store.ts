@@ -107,11 +107,11 @@ export class Store extends Context.Service<Store, MegarepoStore>()('megarepo/Sto
 // Store Implementation
 // =============================================================================
 
-/** Stat the entry itself before using a directory-shaped path (which ends in `/`).
- * Keep FileSystem.stat's existing symlink semantics; never mutate foreign entries.
+/** Inspect the entry itself before using a directory-shaped path (which ends in `/`).
+ * Never follow symlinks: they can dangle, duplicate repos, or escape the store.
  */
 export const isStoreDirectory = ({ fs, path }: { fs: FileSystem.FileSystem; path: string }) =>
-  fs.stat(path.replace(/\/+$/, '')).pipe(Effect.map((stat) => stat.type === 'Directory'))
+  fs.lstat(path.replace(/\/+$/, '')).pipe(Effect.map((stat) => stat.type === 'Directory'))
 
 /** One diagnostic per walk; samples never grow with the number of entries. */
 export const withStoreEnumeration =

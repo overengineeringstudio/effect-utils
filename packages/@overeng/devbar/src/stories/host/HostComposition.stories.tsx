@@ -110,7 +110,7 @@ export const Light: Story = {
     await ready.promise
     const rpc = await canvas.findByRole('button', { name: 'RPC' })
     const meters = canvas.getByRole('button', { name: 'Meters' })
-    const row = within(canvas.getByRole('group', { name: 'Developer bar' }))
+    const row = within(canvas.getByRole('toolbar', { name: 'Developer bar' }))
     // The segment overflow trigger also carries aria-expanded; panel buttons do not open a dialog.
     const panelButtons = row
       .getAllByRole('button')

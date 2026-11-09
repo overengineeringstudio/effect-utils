@@ -203,6 +203,10 @@ const cachedProbe = async ({
   return available
 }
 
+/** Only workflow-owned declarations opt into CI daemon admission and probe pinning. */
+export const ciPostureDeclared = (env: Readonly<Record<string, string | undefined>>): boolean =>
+  env['BUCK2_CI_POSTURE'] === '1'
+
 /**
  * Called under CI's root admission lock. Availability is a job decision, not
  * a per-launch policy input: a later fast probe cannot invalidate live leases.
@@ -222,7 +226,7 @@ const pinCiJobReapiProbe = async ({
   readonly admission: CacheAdmissionInvocation
   readonly probe: (fresh: boolean) => Promise<boolean>
 }): Promise<boolean> => {
-  if (env['CI'] !== '1' && env['CI'] !== 'true') return probe(false)
+  if (ciPostureDeclared(env) === false) return probe(false)
   const instance = env['BUCK2_CI_JOB_INSTANCE']
   if (instance === undefined || instance === '') {
     // Unconfigured workflows retain the pre-pinning probe policy, never a shared
@@ -1121,14 +1125,16 @@ export const admitCacheDaemonCommand = async ({
   args,
   env,
   admit,
+  deadlineMs = 30000,
 }: {
   readonly native: string
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
+  readonly deadlineMs?: number
 }): Promise<string[]> => {
-  if (env['CI'] !== '1' && env['CI'] !== 'true') return admit()
+  if (ciPostureDeclared(env) === false && env['GITHUB_ACTIONS'] !== 'true') return admit()
   const initialValues = buckConfigValues(
     `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
   )
@@ -1141,6 +1147,10 @@ export const admitCacheDaemonCommand = async ({
   if (invocation === undefined)
     throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
+  // Check here, before any daemon access: cache-less roots and skipped commands
+  // need no admission, but GitHub jobs must never silently inherit local policy.
+  if (ciPostureDeclared(env) === false)
+    throw new Error('Buck2 cache posture: GitHub Actions job without BUCK2_CI_POSTURE declaration')
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
   mkdirSync(state, { recursive: true, mode: 0o700 })
@@ -1152,15 +1162,27 @@ export const admitCacheDaemonCommand = async ({
     },
   )
   const descriptor = openSync(join(state, 'root.lock'), 'a', 0o600)
-  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
+  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: deadlineMs }
   const call = (command: readonly string[]) => {
+    const started = performance.now()
     const result = spawnSync(native, ['--isolation-dir', isolation, ...command], {
       ...options,
       env: { ...env, BUCK_WRAPPER_UUID: randomUUID() },
     })
-    // Native stderr can contain RE diagnostics/headers. Never include it in an admission error.
-    if (result.error !== undefined || result.status !== 0)
-      throw new Error('Buck2 cache posture: native daemon admission command failed')
+    // Only fixed metadata may cross this boundary: native output and error messages
+    // can contain RE headers/secrets. Never attach the spawn error as a cause.
+    if (result.error !== undefined || result.status !== 0) {
+      const code = result.error?.code
+      const spawnError =
+        code === undefined ? 'none' : /^[A-Z0-9_]+$/u.test(code) === true ? code : 'other'
+      const subcommand =
+        command[0] === 'status' || command[0] === 'kill' || command[0] === 'audit'
+          ? command[0]
+          : 'other'
+      throw new Error(
+        `Buck2 cache posture: native daemon admission command failed (subcommand=${subcommand} exit=${result.status ?? 'none'} signal=${result.signal ?? 'none'} timed_out=${code === 'ETIMEDOUT'} spawn_error=${spawnError} elapsed_ms=${Math.round(performance.now() - started)} deadline_ms=${deadlineMs})`,
+      )
+    }
     return result.stdout.trim()
   }
   const status = (): unknown => {

@@ -1656,6 +1656,51 @@ in
     '';
   };
 
+  # Generated resource copies must preserve content addresses, not JSON formatting.
+  # Genie formats JSON output; keep the byte-copy writer and comparator together.
+  tasks."work-storage:resources:fix" = {
+    description = "Refresh generated crate-local work-storage resources (exact bytes)";
+    exec = trace.exec "work-storage:resources:fix" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      mkdir -p rust/work-storage/resources
+      cp packages/@overeng/work-storage/protocol.schema.json rust/work-storage/resources/protocol.schema.json
+      cp packages/@overeng/work-storage/fixtures/conformance.json rust/work-storage/resources/conformance.json
+    '';
+  };
+
+  tasks."work-storage:resources:check" = {
+    description = "Check generated work-storage resources against authoritative package bytes";
+    exec = trace.exec "work-storage:resources:check" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      cmp packages/@overeng/work-storage/protocol.schema.json rust/work-storage/resources/protocol.schema.json
+      cmp packages/@overeng/work-storage/fixtures/conformance.json rust/work-storage/resources/conformance.json
+    '';
+  };
+
+  tasks."cargo:test:work-storage" = {
+    description = "Test work-storage and prove its build script works with only crate-local inputs";
+    after = [ "work-storage:resources:check" ];
+    exec = trace.exec "cargo:test:work-storage" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      cargo test --locked --manifest-path rust/Cargo.toml --package work-storage
+      temporary=$(mktemp -d)
+      trap 'rm -r "$temporary"' EXIT
+      # No workspace or packages directory is available to this build script.
+      cp -R rust/work-storage "$temporary/work-storage"
+      mkdir "$temporary/out"
+      rustc --edition=2021 "$temporary/work-storage/build.rs" -o "$temporary/build-script"
+      (
+        cd "$temporary"
+        CARGO_MANIFEST_DIR="$temporary/work-storage" OUT_DIR="$temporary/out" ./build-script
+      )
+      cmp "$temporary/work-storage/resources/protocol.schema.json" "$temporary/out/protocol.schema.json"
+      cmp "$temporary/work-storage/resources/conformance.json" "$temporary/out/conformance.json"
+    '';
+  };
+
   tasks."cargo:test:ci-storage" = {
     description = "Test canonical CI storage archives and presigned transport";
     exec = trace.exec "cargo:test:ci-storage" ''
@@ -1668,6 +1713,7 @@ in
   tasks."cargo:check" = {
     description = "Test, lint, and format-check the shared Cargo workspace";
     after = [
+      "cargo:test:work-storage"
       "cargo:test:buck2-foundation"
       "cargo:proto-bindings:check"
       "lint:check:rust"
@@ -1739,6 +1785,20 @@ in
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-cargo-archives.sh "$PWD"
     '';
   };
+  tasks."nix:buck2-launcher-independence:check" = {
+    description = "Evaluate launcher-independent product recipes and the native positive control";
+    exec = trace.exec "nix:buck2-launcher-independence:check" ''
+      exec ${pkgs.nix}/bin/nix eval --raw \
+        .#checks.${pkgs.stdenv.hostPlatform.system}.buck2-launcher-independence.drvPath
+    '';
+    execIfModified = [
+      "devenv.nix"
+      "flake.nix"
+      "flake.lock"
+      "nix/**"
+      "scripts/buck2-*"
+    ];
+  };
 
   tasks."lint:check:rust" = {
     description = "Check formatting of the shared Cargo workspace";
@@ -1765,6 +1825,7 @@ in
       "lint:check:getflake"
       "nix:buck2-artifact-import:check"
       "nix:buck2-cargo-archives:check"
+      "nix:buck2-launcher-independence:check"
       "nix:javascript-product-import:check"
     ];
   };
@@ -2143,6 +2204,7 @@ in
   };
 
   tasks."check:quick".after = lib.mkForce [
+    "work-storage:resources:check"
     "buck2:quick"
     "lint:check:format:parity"
     "lint:check:standalone-staging"
