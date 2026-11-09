@@ -7577,6 +7577,25 @@ jobs:
           private-key: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY }}
           owner: ${{ steps.sandbox-config.outputs.owner }}
           repositories: ${{ steps.sandbox-config.outputs.repository }}
+      - name: Verify GitHub sandbox token repository scope
+        env:
+          SANDBOX_TOKEN: ${{ steps.sandbox-app-token.outputs.token }}
+          INSTALLATION_ID: ${{ steps.sandbox-app-token.outputs.installation-id }}
+          ALCHEMY_GITHUB_SANDBOX_REPO: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_REPO }}
+        run: |
+          set -euo pipefail
+          set +x
+          echo "GitHub App installation id: $INSTALLATION_ID"
+          response="$(curl --fail --silent --show-error -H "Authorization: Bearer $SANDBOX_TOKEN" -H "Accept: application/vnd.github+json" "$GITHUB_API_URL/installation/repositories?per_page=100")"
+          count="$(jq -er '.total_count | numbers' <<< "$response")"
+          repository="$(jq -r '.repositories[0].full_name // empty' <<< "$response")"
+          echo "Accessible repository count: $count"
+          if [ "$count" = 1 ] && [ "$repository" = "$ALCHEMY_GITHUB_SANDBOX_REPO" ]; then
+            echo "Sandbox repository scope: match"
+          else
+            echo "::error::Sandbox repository scope: mismatch"
+            exit 1
+          fi
       - name: Generate ephemeral sandbox secret value
         run: |
           set -euo pipefail
