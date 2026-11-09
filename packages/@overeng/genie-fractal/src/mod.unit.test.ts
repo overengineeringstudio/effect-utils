@@ -17,6 +17,8 @@ import {
   type GateSchema,
   type HumanGateSchema,
   Launch,
+  LoopSchema,
+  RoundSchema,
   Review,
   Timing,
   mission,
@@ -66,7 +68,7 @@ const humanReviewGate = {
   reviewer: operator,
 } satisfies typeof HumanGateSchema.Encoded
 
-describe('declared admission', () => {
+describe('canonical budget authoring', () => {
   const base = {
     id: 'example/admission',
     state: 'ready',
@@ -74,11 +76,9 @@ describe('declared admission', () => {
     goal: 'Check admission.',
     steps: [],
   } as const
-  const admission = {
-    declaredPriority: 'background',
-    declaredLane: 'check',
-    declaredBudgets: { cpuSeconds: 300, tokenBudget: 100000, memoryMax: '8G', diskMax: '20G' },
-  } as const
+  const scheduling = { priority: 'background', lane: 'check' } as const
+  const resources = { cpuSeconds: 300, tokenBudget: 100000, memoryMax: '8G', diskMax: '20G' }
+  const budget = { scheduling, resources }
   const metadata = `  declared-priority "background"
   declared-lane "check"
   declared-budgets {
@@ -90,21 +90,35 @@ describe('declared admission', () => {
 `
 
   it('renders agent and mission admission in native order', () => {
-    expect(emit([agent({ id: base.id, identity: 'worker', ...admission })])).toBe(
+    expect(
+      emit([
+        agent({
+          id: base.id,
+          identity: 'worker',
+          budget: { scheduling, resources: { memoryMax: '8G', diskMax: '20G' } },
+        }),
+      ]),
+    ).toBe(
       `version 2
 agent "example/admission" {
   identity "worker"
-${metadata}}
+  declared-priority "background"
+  declared-lane "check"
+  declared-budgets {
+    memory-max "8G"
+    disk-max "20G"
+  }
+}
 `,
     )
-    expect(emit([mission({ ...base, ...admission })])).toBe(
+    expect(emit([mission({ ...base, budget })])).toBe(
       `version 2
 mission "example/admission" report-to="agent/example/owner" state="ready" {
 ${metadata}  goal "Check admission."
 }
 `,
     )
-    expect(missionWire({ ...base, ...admission })).toMatchObject(admission)
+    expect(missionWire({ ...base, budget })).toMatchObject({ budget })
   })
 
   it('keeps output unchanged when admission is absent', () => {
@@ -121,10 +135,9 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
 
   it.each([
     [{}, ''],
-    [{ cpuSeconds: 1, diskMax: '20g' }, '    cpu-seconds 1\n    disk-max "20g"\n'],
-    [{ tokenBudget: Number.MAX_SAFE_INTEGER }, '    token-budget 9007199254740991\n'],
-  ])('renders empty and partial budgets %j', (declaredBudgets, children) => {
-    expect(emit([agent({ id: base.id, declaredBudgets })])).toBe(
+    [{ memoryMax: '1', diskMax: '20g' }, '    memory-max "1"\n    disk-max "20g"\n'],
+  ])('renders empty and partial agent resources %j', (resources, children) => {
+    expect(emit([agent({ id: base.id, budget: { resources } })])).toBe(
       `version 2
 agent "example/admission" {
   declared-budgets {
@@ -132,7 +145,7 @@ ${children}  }
 }
 `,
     )
-    expect(emit([mission({ ...base, declaredBudgets })])).toBe(
+    expect(emit([mission({ ...base, budget: { resources } })])).toBe(
       `version 2
 mission "example/admission" report-to="agent/example/owner" state="ready" {
   declared-budgets {
@@ -144,26 +157,32 @@ ${children}  }
   })
 
   it.each([
-    { declaredPriority: 'urgent' },
-    { declaredLane: 'free-lane' },
+    { scheduling: { priority: 'urgent' } },
+    { scheduling: { lane: 'free-lane' } },
     ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity].flatMap((value) => [
-      { declaredBudgets: { cpuSeconds: value } },
-      { declaredBudgets: { tokenBudget: value } },
+      { resources: { cpuSeconds: value } },
+      { resources: { tokenBudget: value } },
     ]),
     ...['8GB', '0', '0G', '00K', '1.5G', '-1G', ''].flatMap((value) => [
-      { declaredBudgets: { memoryMax: value } },
-      { declaredBudgets: { diskMax: value } },
+      { resources: { memoryMax: value } },
+      { resources: { diskMax: value } },
     ]),
   ])('rejects invalid admission %j on agents and missions', (invalid) => {
-    expect(() => Schema.decodeUnknownSync(AgentSchema)({ id: base.id, ...invalid })).toThrow()
-    expect(() => Schema.decodeUnknownSync(MissionSchema)({ ...base, ...invalid })).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema, { onExcessProperty: 'error' })({
+        id: base.id,
+        budget: invalid,
+      }),
+    ).toThrow()
+    expect(() => Schema.decodeUnknownSync(MissionSchema)({ ...base, budget: invalid })).toThrow()
   })
 
   it('accepts both literal alternatives and positive sizes with leading zeros', () => {
     const value = {
-      declaredPriority: 'normal',
-      declaredLane: 'build',
-      declaredBudgets: { memoryMax: '001k', diskMax: '1' },
+      budget: {
+        scheduling: { priority: 'normal', lane: 'build' },
+        resources: { memoryMax: '001k', diskMax: '1' },
+      },
     } as const
     expect(Schema.decodeSync(AgentSchema)({ id: base.id, ...value })).toMatchObject(value)
     expect(Schema.decodeSync(MissionSchema)({ ...base, ...value })).toMatchObject(value)
@@ -175,7 +194,7 @@ ${children}  }
       emit([
         node({
           ...parent,
-          children: [...(parent.children ?? []), mission({ ...base, id: 'child', ...admission })],
+          children: [...(parent.children ?? []), mission({ ...base, id: 'child', budget })],
         }),
       ]),
     ).toBe(
@@ -198,17 +217,95 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     )
   })
 
-  it.each(['declaredPriority', 'declaredLane', 'declaredBudgets'] as const)(
-    'rejects %s on steps',
-    (field) => {
-      expect(() =>
-        Schema.decodeSync(StepSchema, { onExcessProperty: 'error' })({
-          id: 'check',
-          [field]: admission[field],
-        }),
-      ).toThrow()
-    },
-  )
+  it.each(['cpuSeconds', 'tokenBudget'] as const)('rejects agent resource %s', (field) => {
+    const input: unknown = { id: base.id, budget: { resources: { [field]: 1 } } }
+    expect(() => Schema.decodeUnknownSync(AgentSchema)(input)).toThrow()
+  })
+
+  it('rejects step budgets', () => {
+    // @ts-expect-error Steps have no budget.
+    expect(() => step({ id: 'check', budget: {} })).toThrow()
+  })
+
+  const round = { completion: { when: 'all-steps-exhausted' }, steps: [] } as const
+  const boundedLoop = { id: 'retry', maxRounds: 2, round }
+  it('rejects loop and round budgets in authoring helpers', () => {
+    expect(Schema.decodeSync(LoopSchema)(boundedLoop).maxRounds).toBe(2)
+    expect(
+      Schema.decodeSync(MissionSchema)({ ...base, steps: [boundedLoop] }).steps[0],
+    ).toMatchObject({
+      maxRounds: 2,
+    })
+    // @ts-expect-error Loops have no budget.
+    expect(() => loop({ ...boundedLoop, budget: {} })).toThrow()
+    // @ts-expect-error Loops nested in missions have no budget.
+    expect(() => mission({ ...base, steps: [{ ...boundedLoop, budget: {} }] })).toThrow()
+    // @ts-expect-error Round containers have no budget.
+    expect(() => loop({ ...boundedLoop, round: { ...round, budget: {} } })).toThrow()
+  })
+
+  it.each([
+    [AgentSchema, { id: base.id, budget: { resources: { cpuSeconds: 1 } } }],
+    [AgentSchema, { id: base.id, budget: { scheduling: { extra: true } } }],
+    [AgentSchema, { id: base.id, budget: { extra: true } }],
+    [MissionSchema, { ...base, budget: { timeout: '30m' } }],
+    [MissionSchema, { ...base, budget: { resources: { extra: true } } }],
+    [MissionSchema, { ...base, budget: { scheduling: { extra: true } } }],
+    [StepSchema, { id: 'check', budget: { resources: { cpuSeconds: 1 } } }],
+    [StepSchema, { id: 'check', budget: { attention: {} } }],
+    [
+      MissionSchema,
+      { ...base, steps: [{ id: 'check', budget: { resources: { cpuSeconds: 1 } } }] },
+    ],
+    [LoopSchema, { ...boundedLoop, budget: {} }],
+    [RoundSchema, { ...round, budget: {} }],
+    [MissionSchema, { ...base, steps: [{ ...boundedLoop, budget: {} }] }],
+    [MissionSchema, { ...base, steps: [{ ...boundedLoop, round: { ...round, budget: {} } }] }],
+  ] as const)('refuses unknown budget keys with raw decoders (%#)', (schema, input) => {
+    expect(() => Schema.decodeUnknownSync(schema)(input)).toThrow()
+    expect(() => Schema.decodeUnknownSync(schema, { onExcessProperty: 'ignore' })(input)).toThrow()
+  })
+
+  it('refuses invalid loops instead of stripping them to plain steps', () => {
+    const input: unknown = { ...base, steps: [{ ...boundedLoop, round: { steps: [] } }] }
+    expect(() => Schema.decodeUnknownSync(MissionSchema)(input)).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema, { onExcessProperty: 'ignore' })(input),
+    ).toThrow()
+  })
+
+  it('has no legacy authoring aliases', () => {
+    // @ts-expect-error Scheduling is authored through budget.
+    expect(() => agent({ id: base.id, declaredPriority: 'normal' })).toThrow()
+    // @ts-expect-error Scheduling is authored through budget.
+    expect(() => mission({ ...base, declaredLane: 'build' })).toThrow()
+    // @ts-expect-error Resources are authored through budget.
+    expect(() => agent({ id: base.id, declaredBudgets: {} })).toThrow()
+  })
+
+  it.each(
+    (
+      [
+        ['declaredPriority', 'normal'],
+        ['declaredLane', 'build'],
+        ['declaredBudgets', { memoryMax: '8G' }],
+      ] as const
+    ).flatMap(([field, value]) => [value, null, undefined].map((input) => [field, input] as const)),
+  )('refuses retired %s=%j even when excess keys are ignored', (field, value) => {
+    const oldAgent = { id: base.id, [field]: value }
+    const oldMission = { ...base, [field]: value }
+    const rawAgent: unknown = oldAgent
+    const rawMission: unknown = oldMission
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema, { onExcessProperty: 'ignore' })(rawAgent),
+    ).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(MissionSchema, { onExcessProperty: 'ignore' })(rawMission),
+    ).toThrow()
+    expect(() => agent(oldAgent)).toThrow()
+    expect(() => mission(oldMission)).toThrow()
+    expect(() => node({ ...mission(base), children: [mission(oldMission)] })).toThrow()
+  })
 })
 
 describe('mission lanes', () => {
