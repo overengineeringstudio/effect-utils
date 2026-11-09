@@ -15,7 +15,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
-import generatedRoots from '../nix/buck2-products/generated-worktree-roots.json'
+import generatedRoots from '../nix/buck2-generated-worktree-roots.json'
 import { projectResolvedCapabilities } from '../packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts'
 import { publishCapabilities } from './buck2-capability-publish.ts'
 

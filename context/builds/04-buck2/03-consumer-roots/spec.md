@@ -56,7 +56,7 @@ with one more cell, `rules = .buck2/rules`: the shipped rules product, which
 also carries the prelude. Its platform labels are
 `rules//buck2/platforms:host_platform` and `…:host_execution_platform`.
 
-`nix/buck2-products/generated-worktree-roots.json` is the producer authority for
+`nix/buck2-generated-worktree-roots.json` is the producer authority for
 generated worktree roots, exported as `lib.buck2GeneratedWorktreeRoots` and
 `lib.buck2GeneratedWorktreeRootsFile`. Its schema-versioned entries have stable
 receipt IDs and `follow = "never"`: consumers classify directories and literal
