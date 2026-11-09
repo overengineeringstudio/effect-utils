@@ -112,23 +112,28 @@ experiments (as tested hypotheses).
   complete by-ID counts in three synthetic traces as upstream resolution
   or a guarantee of immediate search visibility.
 
-## OQ9: Does Tempo 3.1 shut down cleanly after sustained uptime? — open
+## OQ9: Does Tempo 3.1 shut down cleanly after sustained uptime? — resolved
 
-- Blocks: reliable switches that restart the Tempo service owned outside
-  this lane. Tempo 3.0.3 can hang on SIGTERM when live-store complete
-  queues stop. The 2026-10-07 switch reproduced
+- Tempo 3.0.3 can hang on SIGTERM when live-store complete queues stop.
+  The 2026-10-07 switch reproduced
   [grafana/tempo#7983](https://github.com/grafana/tempo/issues/7983):
-  PID 2420410 started at 21:39:51Z and received SIGTERM at 22:05:01Z
-  (~25 minutes uptime); at 22:05:31Z, `live_store_background.go:176`
-  logged `failed to requeue block for flushing ... complete queues are stopped`.
-  At 22:06:31Z, systemd logged `State 'stop-sigterm' timed out. Killing.`
-  and sent SIGKILL after `TimeoutStopSec=90s`.
-- Upstream #7983 is closed (2026-09-23), with the fix in v3.1.0-rc.1.
-  Tempo 3.1.0 has been live since 2026-10-07T22:06:31Z, but its shutdown
-  after at least one hour of uptime has not been measured. The deployer
-  is asked to record stop duration and switch outcome at the next switch;
-  this question stays open pending that measurement. Consumers selecting
-  Tempo own upgrade evaluation and sustained-uptime shutdown verification.
+  after ~25 minutes of uptime, shutdown exceeded `TimeoutStopSec=90s`
+  and systemd sent SIGKILL. Upstream #7983 is closed (2026-09-23),
+  with the fix in v3.1.0-rc.1.
+- On 2026-11-07, dev3 journald logs queried through Loki recorded a
+  Tempo 3.1.0 stop during a system switch after 2 h 36 min of uptime.
+  Systemd began stopping the service at 12:12:54.837Z; Tempo logged
+  `Tempo stopped` at 12:13:16.397Z, and systemd recorded successful
+  deactivation at 12:13:16.422Z. The stop took ~21.6 s, below
+  `TimeoutStopSec=90s`, with no stop-sigterm timeout or SIGKILL.
+  The service started again at 12:13:25.782Z and logged `Tempo started`
+  at 12:13:38.920Z (version 3.1.0). The switch completed successfully.
+- On restart, `wal.go:117` logged `failed to replay block. removing.`
+  for one vParquet4 WAL block because its WAL meta JSON could not be
+  read. That in-flight block was not replayed; this observation does
+  not block resolution of the sustained-uptime shutdown question.
+  Consumers selecting Tempo own upgrade evaluation and
+  sustained-uptime shutdown verification.
 
 ## OQ10: What policy admits labeled forks to export? — open
 
