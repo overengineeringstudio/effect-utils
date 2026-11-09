@@ -108,10 +108,17 @@ provides `BUCK.foreign.bzl.genie.ts` using the same Cargo projector with
 targets from workspace Cargo metadata, rejecting conflicting labels or sources
 outside the resource package; it loads only standard `@prelude` rules.
 Stage the resource files and copy this companion to that package's `BUCK`, too.
-For `rust/work-storage`, stage `packages/@overeng/work-storage`'s
-`protocol.schema.json`, `fixtures/conformance.json` and resource companion.
-Its ordinary TypeScript `BUCK` is neither required nor staged. Other cross-package
-compile-time inputs still require their declared source providers.
+For `rust/work-storage`, stage the crate-local generated
+`resources/protocol.schema.json` and `resources/conformance.json` with the crate.
+Its foreign projection exports these as `cargo-source/resources/*`; no TypeScript
+resource package or companion is required. The authoritative files remain in
+`packages/@overeng/work-storage`. `devenv tasks run work-storage:resources:fix`
+copies their exact bytes; `work-storage:resources:check`, included in `check:quick`,
+rejects drift. These JSON copies deliberately stay writable, like ordinary Git
+checkout files: the byte comparison owns freshness without modifying permissions.
+Genie's JSON emission passes through a formatter, so it does not own these
+byte-preserving copies. Other cross-package compile-time inputs still require
+their declared source providers.
 
 The plain consumer derivation declares exactly:
 
