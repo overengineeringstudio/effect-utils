@@ -17,6 +17,8 @@ import {
   type GateSchema,
   type HumanGateSchema,
   Launch,
+  LoopSchema,
+  RoundSchema,
   Review,
   Timing,
   mission,
@@ -225,6 +227,17 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     expect(() => step({ id: 'check', budget: {} })).toThrow()
   })
 
+  const round = { completion: { when: 'all-steps-exhausted' }, steps: [] } as const
+  const boundedLoop = { id: 'retry', maxRounds: 2, round }
+  it('rejects loop and round budgets in authoring helpers', () => {
+    // @ts-expect-error Loops have no budget.
+    expect(() => loop({ ...boundedLoop, budget: {} })).toThrow()
+    // @ts-expect-error Loops nested in missions have no budget.
+    expect(() => mission({ ...base, steps: [{ ...boundedLoop, budget: {} }] })).toThrow()
+    // @ts-expect-error Round containers have no budget.
+    expect(() => loop({ ...boundedLoop, round: { ...round, budget: {} } })).toThrow()
+  })
+
   it.each([
     [AgentSchema, { id: base.id, budget: { resources: { cpuSeconds: 1 } } }],
     [AgentSchema, { id: base.id, budget: { scheduling: { extra: true } } }],
@@ -238,6 +251,10 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
       MissionSchema,
       { ...base, steps: [{ id: 'check', budget: { resources: { cpuSeconds: 1 } } }] },
     ],
+    [LoopSchema, { ...boundedLoop, budget: {} }],
+    [RoundSchema, { ...round, budget: {} }],
+    [MissionSchema, { ...base, steps: [{ ...boundedLoop, budget: {} }] }],
+    [MissionSchema, { ...base, steps: [{ ...boundedLoop, round: { ...round, budget: {} } }] }],
   ] as const)('refuses unknown budget keys with raw decoders (%#)', (schema, input) => {
     expect(() => Schema.decodeUnknownSync(schema)(input)).toThrow()
     expect(() => Schema.decodeUnknownSync(schema, { onExcessProperty: 'ignore' })(input)).toThrow()

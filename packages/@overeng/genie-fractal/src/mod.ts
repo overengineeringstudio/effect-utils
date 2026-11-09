@@ -878,6 +878,7 @@ const validGraph = (m: {
 /** The embedded mission for one sequential loop round. */
 export const RoundSchema = Schema.Struct({
   ...OwnedDeclarationFields,
+  budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Rounds have no budget' })),
   completion: CompletionSchema,
   steps: Schema.Array(StepSchema),
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
@@ -889,6 +890,7 @@ export const RoundSchema = Schema.Struct({
 export const LoopSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
+  budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Loops have no budget' })),
   dependsOn: Schema.optionalKey(Dependencies),
   maxRounds: Schema.Int.pipe(Schema.refine((n): n is number => n >= 1 && n <= 100)),
   until: Schema.optionalKey(
