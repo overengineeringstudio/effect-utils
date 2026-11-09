@@ -2238,7 +2238,9 @@ const assembleMission = <const TMission extends string>(
     input.steps,
     input.finally ?? [],
     ...input.steps.flatMap((value) =>
-      'round' in value ? [value.round.steps, value.round.finally ?? []] : [],
+      'round' in value && value.round !== undefined
+        ? [value.round.steps, value.round.finally ?? []]
+        : [],
     ),
   ]
   const allHandles = phases.flatMap((phase) => phase.filter(isStepHandle))
@@ -2253,7 +2255,7 @@ const assembleMission = <const TMission extends string>(
     ...[...input.steps, ...(input.finally ?? [])].flatMap((value) =>
       isStepHandle(value) === true
         ? stepData.get(value)!.references
-        : 'round' in value
+        : 'round' in value && value.round !== undefined
           ? loopReferences(value)
           : authoredStepReferences(value),
     ),
@@ -2294,7 +2296,7 @@ const assembleMission = <const TMission extends string>(
       ...outerSteps.flatMap((value) =>
         isStepHandle(value) === true
           ? stepData.get(value)!.references
-          : 'round' in value
+          : 'round' in value && value.round !== undefined
             ? []
             : authoredStepReferences(value),
       ),
@@ -2302,7 +2304,7 @@ const assembleMission = <const TMission extends string>(
     handles: outerHandles,
   })
   for (const value of input.steps) {
-    if ('round' in value) {
+    if ('round' in value && value.round !== undefined) {
       validateProductScope({
         references: loopReferences(value),
         handles: [...value.round.steps, ...(value.round.finally ?? [])].filter(isStepHandle),
@@ -2351,7 +2353,7 @@ const assembleMission = <const TMission extends string>(
       steps: input.steps.map((s) =>
         isStepHandle(s) === true
           ? stepData.get(s)!.wire
-          : 'round' in s
+          : 'round' in s && s.round !== undefined
             ? authoredLoopWire(s)
             : authoredStepWire(s),
       ),
@@ -2409,7 +2411,7 @@ export const missionWire = <const TMission extends string>(
       ? { assignedTo: { id: m.assignedTo.id } }
       : {}),
     steps: m.steps.map((value) =>
-      'maxRounds' in value
+      value.maxRounds !== undefined
         ? {
             ...value,
             round: {
@@ -2471,7 +2473,7 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
           ],
         }),
       ),
-      ...m.steps.map((s) => ('maxRounds' in s ? loop(s) : lowerStep(s))),
+      ...m.steps.map((s) => (s.maxRounds !== undefined ? loop(s) : lowerStep(s))),
       ...(m.finally === undefined
         ? []
         : [block({ name: 'finally', children: m.finally.map(lowerStep) })]),
