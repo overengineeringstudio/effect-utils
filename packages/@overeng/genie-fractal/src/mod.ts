@@ -338,33 +338,44 @@ const DeclaredBudgetSize = Schema.String.pipe(
     { message: 'declared budget size must be a positive integer with an optional K/M/G/T suffix' },
   ),
 )
+/** Refuse unknown budget keys independently of the caller's excess-property policy. */
+const budgetStruct = <TFields extends Schema.Struct.Fields>(fields: TFields) => {
+  const schema = Schema.Struct(fields)
+  return Schema.declare<typeof schema.Encoded>(
+    (input): input is typeof schema.Encoded =>
+      typeof input === 'object' &&
+      input !== null &&
+      Reflect.ownKeys(input).every((key) => Object.hasOwn(fields, key)),
+  ).pipe(Schema.decodeTo(schema))
+}
 /** Declared resource metadata, not enforced limits. */
-const AgentResources = Schema.Struct({
+const AgentResourceFields = {
   memoryMax: Schema.optionalKey(DeclaredBudgetSize),
   diskMax: Schema.optionalKey(DeclaredBudgetSize),
-}).annotate({ parseOptions: { onExcessProperty: 'error' } })
-const MissionResources = Schema.Struct({
-  ...AgentResources.fields,
+}
+const AgentResources = budgetStruct(AgentResourceFields)
+const MissionResources = budgetStruct({
+  ...AgentResourceFields,
   /** CPU seconds per mission run, cumulative across attempts; declared, not enforced. */
   cpuSeconds: Schema.optionalKey(DeclaredBudgetInteger),
   /** Cost-weighted tokens per mission run, cumulative across attempts, pricing pinned at admission; declared, not enforced. */
   tokenBudget: Schema.optionalKey(DeclaredBudgetInteger),
-}).annotate({ parseOptions: { onExcessProperty: 'error' } })
-const BudgetScheduling = Schema.Struct({
+})
+const BudgetScheduling = budgetStruct({
   priority: Schema.optionalKey(
     Schema.Union([Schema.Literal('background'), Schema.Literal('normal')]),
   ),
   lane: Schema.optionalKey(Schema.Union([Schema.Literal('check'), Schema.Literal('build')])),
-}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+})
 /** Declared admission metadata belongs to agents and missions, never steps. */
-const AgentBudget = Schema.Struct({
+const AgentBudget = budgetStruct({
   scheduling: Schema.optionalKey(BudgetScheduling),
   resources: Schema.optionalKey(AgentResources),
-}).annotate({ parseOptions: { onExcessProperty: 'error' } })
-const MissionBudget = Schema.Struct({
+})
+const MissionBudget = budgetStruct({
   scheduling: Schema.optionalKey(BudgetScheduling),
   resources: Schema.optionalKey(MissionResources),
-}).annotate({ parseOptions: { onExcessProperty: 'error' } })
+})
 /** Retired spellings must refuse even when an external decoder ignores excess keys. */
 const RetiredAdmission = Schema.Never.annotate({
   identifier: 'Use budget.scheduling or budget.resources',

@@ -224,27 +224,21 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     ).toThrow()
   })
 
-  it('rejects step budgets, unknown nested keys and budget timeouts', () => {
+  it('rejects step budgets', () => {
     // @ts-expect-error Steps have no budget.
     expect(() => step({ id: 'check', budget: {} })).toThrow()
-    expect(() =>
-      Schema.decodeUnknownSync(AgentSchema)({
-        id: base.id,
-        budget: { scheduling: { extra: true } },
-      }),
-    ).toThrow()
-    expect(() =>
-      Schema.decodeUnknownSync(MissionSchema)({
-        ...base,
-        budget: { resources: { extra: true } },
-      }),
-    ).toThrow()
-    expect(() =>
-      Schema.decodeUnknownSync(MissionSchema)({
-        ...base,
-        budget: { timeout: '30m' },
-      }),
-    ).toThrow()
+  })
+
+  it.each([
+    [AgentSchema, { id: base.id, budget: { resources: { cpuSeconds: 1 } } }],
+    [AgentSchema, { id: base.id, budget: { scheduling: { extra: true } } }],
+    [AgentSchema, { id: base.id, budget: { extra: true } }],
+    [MissionSchema, { ...base, budget: { timeout: '30m' } }],
+    [MissionSchema, { ...base, budget: { resources: { extra: true } } }],
+    [MissionSchema, { ...base, budget: { scheduling: { extra: true } } }],
+  ] as const)('refuses unknown budget keys with raw decoders (%#)', (schema, input) => {
+    expect(() => Schema.decodeUnknownSync(schema)(input)).toThrow()
+    expect(() => Schema.decodeUnknownSync(schema, { onExcessProperty: 'ignore' })(input)).toThrow()
   })
 
   it('has no legacy authoring aliases', () => {
