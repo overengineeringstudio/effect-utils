@@ -197,6 +197,8 @@ incomplete internal discovery prevents eviction.
 These additional roots never enter whole-worktree GC or archive discovery.
 These roots remain observation-only unless the admitted activity manifest explicitly declares
 `processWorktreeCoverage: "registered-worktrees"`; store-wide process roots alone are insufficient.
+`processWorktreeCoverage: "layout-worktrees"` covers only the conventional
+`refs/heads|tags|commits/...` worktrees discovered by whole-worktree GC, not these additional roots.
 Admission verifies the admin directory's canonical `.git` backlink and matching registration HEAD.
 
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
@@ -246,9 +248,11 @@ Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspaceP
 `containerPath` and `outputRoot`, without ref fields. A class may select these independently with
 `repoRoots: "*-target"` instead of (or alongside) worktree `paths`. Only immediate directories
 are admitted, never symlinks, mount crossings or registered-worktree overlaps.
-Repository outputs require both `processWorktreeCoverage: "registered-worktrees"` and
-`processRepoOutputCoverage: "repo-build-outputs"` in admitted activity, plus the standard `CACHEDIR.TAG`
-signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
+Repository outputs require `processRepoOutputCoverage: "repo-build-outputs"` and either
+`processWorktreeCoverage: "registered-worktrees"` or `"layout-worktrees"` in admitted activity.
+The latter requires a complete registration census with every worktree inside the conventional layout.
+Raw worktree admin entries must also reconcile with that census; missing or unreadable backlinks keep outputs.
+They also require the standard `CACHEDIR.TAG` signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
 container veto all its outputs. Process claims protect overlapping roots in either direction:
 an output root, a directory below it, or its containing repository all keep the output.
 Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
