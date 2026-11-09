@@ -39,3 +39,7 @@ pnpm-lock.yaml linguist-generated=true
 
 # The root Cargo lock is selected dependency topology and must stay visible.
 rust/Cargo.lock -linguist-generated
+
+# Byte-identical generated copies; authority remains in packages/@overeng/work-storage.
+# Regenerate with devenv tasks run work-storage:resources:fix.
+rust/work-storage/resources/*.json linguist-generated=true

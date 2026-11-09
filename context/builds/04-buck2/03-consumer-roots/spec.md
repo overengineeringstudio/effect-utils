@@ -56,6 +56,16 @@ with one more cell, `rules = .buck2/rules`: the shipped rules product, which
 also carries the prelude. Its platform labels are
 `rules//buck2/platforms:host_platform` and `…:host_execution_platform`.
 
+`nix/buck2-generated-worktree-roots.json` is the producer authority for
+generated worktree roots, exported as `lib.buck2GeneratedWorktreeRoots` and
+`lib.buck2GeneratedWorktreeRootsFile`. Its schema-versioned entries have stable
+receipt IDs and `follow = "never"`: consumers classify directories and literal
+symlink targets without traversing them, including dangling projections.
+The capability cell admits directory, consumer-root projection, and legacy
+profile-symlink forms. Generation links under `.buck2/capability-roots` remain
+indirect Nix GC roots and require the reclaimer's GC-root gate. Publication,
+reference, trash, lock, migration, and candidate state is not declared reclaimable.
+
 ## Capability Cell
 
 The devenv shell links the pure `packages.<system>.buck2-capabilities` output
