@@ -819,6 +819,87 @@ if (inOwnerNamespace === true && process.platform === 'linux')
               Effect.scoped,
             ),
           )
+    for (const registration of ['layout', 'off-layout', 'hidden', 'external'] as const)
+      it.effect(
+        `layout process coverage admits shared outputs only with covered registrations: ${registration}`,
+        Effect.fnUntraced(
+          function* () {
+            const f = yield* budgetFixture(['main', 'feature/nested'])
+            const fs = yield* FileSystem.FileSystem
+            const bare = f.bareRepoPaths[REPO_KEY]!
+            const container = dirname(bare.replace(/\/$/u, ''))
+            const output = `${container}/foo-target`
+            yield* makeArtifact(output, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+            yield* fs.writeFileString(
+              `${output}/CACHEDIR.TAG`,
+              'Signature: 8a477f597d28d172789f06886806bc55\n',
+            )
+            yield* Effect.promise(() => backdate(output, new Date(Date.now() - 3 * DAY_MS)))
+            yield* writePolicy(f, { budgetBytes: 0 })
+            const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+              string,
+              unknown
+            >
+            yield* fs.writeFileString(
+              f.policyPath,
+              encodeJson({
+                ...policy,
+                classes: {
+                  cargo: { budgetBytes: 0, paths: ['target'], repoRoots: '*-target' },
+                },
+              }),
+            )
+            const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+              string,
+              unknown
+            >
+            yield* fs.writeFileString(
+              f.manifestPath,
+              encodeJson({
+                ...manifest,
+                processWorktreeCoverage: 'layout-worktrees',
+                processRepoOutputCoverage: 'repo-build-outputs',
+              }),
+            )
+            const covered = planOk(f)
+            expect(row(covered, output)?.outcome).toBe('would-delete')
+            if (registration === 'layout') {
+              const applied = applyCandidate(f, { plan: covered, path: output })
+              expect(applied.exitCode, applied.stderr).toBe(0)
+              expect(yield* exists(output)).toBe(false)
+              return
+            }
+            const path =
+              registration === 'external'
+                ? `${f.outside}checkout`
+                : registration === 'hidden'
+                  ? `${container}/.hidden/checkout`
+                  : `${container}/worktrees/checkout`
+            yield* Git.createWorktree({
+              repoPath: bare,
+              worktreePath: path,
+              branch: 'off-layout',
+              createBranch: true,
+            })
+            yield* ignoreTargets(EffectPath.unsafe.absoluteDir(`${path}/`))
+            yield* makeArtifact(`${path}/target`, {
+              files: { 'build.bin': MiB },
+              ageMs: 3 * DAY_MS,
+            })
+            const uncovered = planOk(f)
+            expect(row(uncovered, output)?.reason).toBe('process-liveness-unavailable')
+            expect(row(uncovered, output)?.outcome).not.toBe('would-delete')
+            if (registration !== 'external') {
+              expect(row(uncovered, `${path}/target`)?.reason).toBe('process-liveness-unavailable')
+              expect(row(uncovered, `${path}/target`)?.outcome).not.toBe('would-delete')
+            }
+            expect(applyCandidate(f, { plan: covered, path: output }).exitCode).not.toBe(0)
+            expect(yield* exists(output)).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
     it.effect(
       'repository output requires exclusive worktree leases and excludes Git boundaries',
       Effect.fnUntraced(

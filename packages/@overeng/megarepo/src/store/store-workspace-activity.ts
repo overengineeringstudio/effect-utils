@@ -480,7 +480,9 @@ const ActivityManifest = Schema.Struct({
    */
   processCoverage: Schema.optionalKey(Schema.Literal('all-uids')),
   processRoots: Schema.optionalKey(Schema.Array(AbsolutePath)),
-  processWorktreeCoverage: Schema.optionalKey(Schema.Literal('registered-worktrees')),
+  processWorktreeCoverage: Schema.optionalKey(
+    Schema.Literals(['registered-worktrees', 'layout-worktrees']),
+  ),
   processRepoOutputCoverage: Schema.optionalKey(Schema.Literal('repo-build-outputs')),
   processIdentities: Schema.optionalKey(
     Schema.Array(
@@ -536,8 +538,8 @@ export interface BudgetWorkspaceActivityEpoch extends WorkspaceActivityEpoch {
 /** Activity whose epoch identifies the admitted producer snapshot. */
 export interface BudgetWorkspaceActivity extends WorkspaceActivity {
   readonly epoch: BudgetWorkspaceActivityEpoch
-  /** Explicit producer opt-in: process claims retain non-refs registered roots. */
-  readonly processWorktreeCoverage?: 'registered-worktrees' | undefined
+  /** Explicit producer opt-in to registered or layout-conventional process coverage. */
+  readonly processWorktreeCoverage?: 'registered-worktrees' | 'layout-worktrees' | undefined
   readonly processRepoOutputCoverage?: 'repo-build-outputs' | undefined
   /** Seat ownership is retained even for inactive claims; activity remains a separate gate. */
   readonly ownerClaims?: ReadonlyArray<{

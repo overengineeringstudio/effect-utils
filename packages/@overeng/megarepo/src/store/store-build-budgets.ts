@@ -232,6 +232,40 @@ export type BudgetRepoWorktrees = ReadonlyArray<{
   }>
 }>
 
+/** Reuse discovery's whole-worktree layout classification, including for shared repo outputs. */
+const processCoverageIncludesOwner = ({
+  activity,
+  owner,
+}: {
+  activity: BudgetWorkspaceActivity
+  owner:
+    | { kind: 'worktree'; requiresExpandedProcessCoverage?: boolean | undefined }
+    | {
+        kind: 'repo-build-output'
+        container: string
+        inventory: BudgetRepoWorktrees[number] | undefined
+        registrations: ReadonlyArray<string> | undefined
+      }
+}) => {
+  if (activity.processWorktreeCoverage === 'registered-worktrees') return true
+  if (activity.processWorktreeCoverage !== 'layout-worktrees') return false
+  if (owner.kind === 'worktree') return owner.requiresExpandedProcessCoverage !== true
+  const { inventory, registrations, container } = owner
+  if (inventory === undefined || inventory.censusIncomplete === true || registrations === undefined)
+    return false
+  // Git lists the bare repository itself too; it is not a worktree process owner.
+  return registrations.every(
+    (path) =>
+      path === `${container}/.bare` ||
+      inventory.worktrees.some(
+        (worktree) =>
+          worktree.path.replace(/\/+$/u, '') === path &&
+          worktree.broken === false &&
+          worktree.requiresExpandedProcessCoverage !== true,
+      ),
+  )
+}
+
 const ENTRY_LIMIT = 100_000
 const SCAN_DEADLINE_MS = 30_000
 const fingerprint = ({
@@ -795,7 +829,10 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                               : now - scan.newestMtimeMs < policy.idleRetentionMs
                                 ? 'retention'
                                 : worktree.requiresExpandedProcessCoverage === true &&
-                                    activity.processWorktreeCoverage !== 'registered-worktrees'
+                                    processCoverageIncludesOwner({
+                                      activity,
+                                      owner: { kind: 'worktree', ...worktree },
+                                    }) === false
                                   ? 'process-liveness-unavailable'
                                   : 'eligible'
         const candidate: MutableCandidate = {
@@ -883,7 +920,15 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                     ) === true)
                 ? 'live'
                 : processScan._tag === 'unknown' ||
-                    activity.processWorktreeCoverage !== 'registered-worktrees' ||
+                    processCoverageIncludesOwner({
+                      activity,
+                      owner: {
+                        kind: 'repo-build-output',
+                        container,
+                        inventory: { repo, worktrees, censusIncomplete: censusIncomplete === true },
+                        registrations: admission.worktrees,
+                      },
+                    }) === false ||
                     activity.processRepoOutputCoverage !== 'repo-build-outputs'
                   ? 'process-liveness-unavailable'
                   : lease === undefined
@@ -1065,15 +1110,19 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
-    const requiresExpandedCoverage =
-      candidate.kind === 'repo-build-output' ||
-      repoWorktrees.some(({ worktrees }) =>
-        worktrees.some(
-          (worktree) =>
-            worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
-            worktree.requiresExpandedProcessCoverage === true,
-        ),
-      )
+    const inventory = repoWorktrees.find(({ repo, worktrees }) =>
+      candidate.kind === 'repo-build-output'
+        ? resolve(storeBasePath, repo.relativePath) === candidate.containerPath
+        : worktrees.some(
+            (worktree) => worktree.path.replace(/\/+$/u, '') === candidate.workspacePath,
+          ),
+    )
+    const worktreeOwner =
+      candidate.kind === 'worktree'
+        ? inventory?.worktrees.find(
+            (worktree) => worktree.path.replace(/\/+$/u, '') === candidate.workspacePath,
+          )
+        : undefined
     const deletionRoot = yield* fs.realPath(storeBasePath)
     const identity = yield* captureDeletionIdentity({
       rootPath: deletionRoot,
@@ -1192,8 +1241,24 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             })
             if (
               finalActivity === undefined ||
-              (requiresExpandedCoverage === true &&
-                finalActivity.processWorktreeCoverage !== 'registered-worktrees') ||
+              ((current.kind === 'repo-build-output' ||
+                worktreeOwner?.requiresExpandedProcessCoverage === true) &&
+                processCoverageIncludesOwner({
+                  activity: finalActivity,
+                  owner:
+                    current.kind === 'worktree'
+                      ? {
+                          kind: 'worktree',
+                          requiresExpandedProcessCoverage:
+                            worktreeOwner?.requiresExpandedProcessCoverage,
+                        }
+                      : {
+                          kind: 'repo-build-output',
+                          container: ownerPath,
+                          inventory,
+                          registrations: admission?.worktrees,
+                        },
+                }) === false) ||
               (current.kind === 'repo-build-output' &&
                 finalActivity.processRepoOutputCoverage !== 'repo-build-outputs') ||
               (current.kind === 'worktree'
