@@ -23,7 +23,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { link, lstat, mkdir, readdir, statfs, symlink, utimes, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
@@ -819,7 +819,14 @@ if (inOwnerNamespace === true && process.platform === 'linux')
               Effect.scoped,
             ),
           )
-    for (const registration of ['layout', 'off-layout', 'hidden', 'external'] as const)
+    for (const registration of [
+      'layout',
+      'off-layout',
+      'hidden',
+      'external',
+      'missing-admin-backlink',
+      'empty-admin-backlink',
+    ] as const)
       it.effect(
         `layout process coverage admits shared outputs only with covered registrations: ${registration}`,
         Effect.fnUntraced(
@@ -886,10 +893,20 @@ if (inOwnerNamespace === true && process.platform === 'linux')
               files: { 'build.bin': MiB },
               ageMs: 3 * DAY_MS,
             })
+            if (
+              registration === 'missing-admin-backlink' ||
+              registration === 'empty-admin-backlink'
+            ) {
+              const pointer = yield* fs.readFileString(`${path}/.git`)
+              const gitdir = resolve(path, pointer.slice(8).trim())
+              if (registration === 'missing-admin-backlink') yield* fs.remove(`${gitdir}/gitdir`)
+              else yield* fs.writeFileString(`${gitdir}/gitdir`, '')
+            }
             const uncovered = planOk(f)
             expect(row(uncovered, output)?.reason).toBe('process-liveness-unavailable')
             expect(row(uncovered, output)?.outcome).not.toBe('would-delete')
-            if (registration !== 'external') {
+            expect(applyCandidate(f, { plan: uncovered, path: output }).exitCode).not.toBe(0)
+            if (registration === 'off-layout' || registration === 'hidden') {
               expect(row(uncovered, `${path}/target`)?.reason).toBe('process-liveness-unavailable')
               expect(row(uncovered, `${path}/target`)?.outcome).not.toBe('would-delete')
             }

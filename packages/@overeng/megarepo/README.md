@@ -251,6 +251,7 @@ are admitted, never symlinks, mount crossings or registered-worktree overlaps.
 Repository outputs require `processRepoOutputCoverage: "repo-build-outputs"` and either
 `processWorktreeCoverage: "registered-worktrees"` or `"layout-worktrees"` in admitted activity.
 The latter requires a complete registration census with every worktree inside the conventional layout.
+Raw worktree admin entries must also reconcile with that census; missing or unreadable backlinks keep outputs.
 They also require the standard `CACHEDIR.TAG` signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
 container veto all its outputs. Process claims protect overlapping roots in either direction:
 an output root, a directory below it, or its containing repository all keep the output.

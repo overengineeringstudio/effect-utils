@@ -233,7 +233,7 @@ export type BudgetRepoWorktrees = ReadonlyArray<{
 }>
 
 /** Reuse discovery's whole-worktree layout classification, including for shared repo outputs. */
-const processCoverageIncludesOwner = ({
+const processCoverageIncludesOwner = Effect.fn('store.processCoverageIncludesOwner')(function* ({
   activity,
   owner,
 }: {
@@ -246,7 +246,7 @@ const processCoverageIncludesOwner = ({
         inventory: BudgetRepoWorktrees[number] | undefined
         registrations: ReadonlyArray<string> | undefined
       }
-}) => {
+}) {
   if (activity.processWorktreeCoverage === 'registered-worktrees') return true
   if (activity.processWorktreeCoverage !== 'layout-worktrees') return false
   if (owner.kind === 'worktree') return owner.requiresExpandedProcessCoverage !== true
@@ -254,17 +254,47 @@ const processCoverageIncludesOwner = ({
   if (inventory === undefined || inventory.censusIncomplete === true || registrations === undefined)
     return false
   // Git lists the bare repository itself too; it is not a worktree process owner.
-  return registrations.every(
-    (path) =>
-      path === `${container}/.bare` ||
-      inventory.worktrees.some(
-        (worktree) =>
-          worktree.path.replace(/\/+$/u, '') === path &&
-          worktree.broken === false &&
-          worktree.requiresExpandedProcessCoverage !== true,
-      ),
+  const covered = registrations.filter((path) => path !== `${container}/.bare`)
+  if (
+    registrations.every(
+      (path) =>
+        path === `${container}/.bare` ||
+        inventory.worktrees.some(
+          (worktree) =>
+            worktree.path.replace(/\/+$/u, '') === path &&
+            worktree.broken === false &&
+            worktree.requiresExpandedProcessCoverage !== true,
+        ),
+    ) === false
   )
-}
+    return false
+  // Git can silently omit broken admin entries; reconcile the raw registry too.
+  return yield* Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const registry = `${container}/.bare/worktrees`
+    const entries = yield* fs.readDirectory(registry)
+    if (entries.length !== covered.length) return false
+    const seen = new Set<string>()
+    for (const entry of entries) {
+      const admin = `${registry}/${entry}`
+      if ((yield* Effect.tryPromise(() => lstat(admin))).isDirectory() === false) return false
+      const backlink = (yield* fs.readFileString(`${admin}/gitdir`)).trim()
+      if (backlink.length === 0) return false
+      const dotGit = yield* fs.realPath(resolve(admin, backlink))
+      const matches = covered.filter((path) => `${path}/.git` === dotGit)
+      if (matches.length !== 1 || seen.has(dotGit) === true) return false
+      const pointer = yield* fs.readFileString(dotGit)
+      if (
+        pointer.startsWith('gitdir: ') === false ||
+        (yield* fs.realPath(resolve(matches[0]!, pointer.slice(8).trim()))) !==
+          (yield* fs.realPath(admin))
+      )
+        return false
+      seen.add(dotGit)
+    }
+    return true
+  }).pipe(Effect.orElseSucceed(() => false))
+})
 
 const ENTRY_LIMIT = 100_000
 const SCAN_DEADLINE_MS = 30_000
@@ -829,10 +859,10 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                               : now - scan.newestMtimeMs < policy.idleRetentionMs
                                 ? 'retention'
                                 : worktree.requiresExpandedProcessCoverage === true &&
-                                    processCoverageIncludesOwner({
+                                    (yield* processCoverageIncludesOwner({
                                       activity,
                                       owner: { kind: 'worktree', ...worktree },
-                                    }) === false
+                                    })) === false
                                   ? 'process-liveness-unavailable'
                                   : 'eligible'
         const candidate: MutableCandidate = {
@@ -920,7 +950,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                     ) === true)
                 ? 'live'
                 : processScan._tag === 'unknown' ||
-                    processCoverageIncludesOwner({
+                    (yield* processCoverageIncludesOwner({
                       activity,
                       owner: {
                         kind: 'repo-build-output',
@@ -928,7 +958,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                         inventory: { repo, worktrees, censusIncomplete: censusIncomplete === true },
                         registrations: admission.worktrees,
                       },
-                    }) === false ||
+                    })) === false ||
                     activity.processRepoOutputCoverage !== 'repo-build-outputs'
                   ? 'process-liveness-unavailable'
                   : lease === undefined
@@ -1243,7 +1273,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
               finalActivity === undefined ||
               ((current.kind === 'repo-build-output' ||
                 worktreeOwner?.requiresExpandedProcessCoverage === true) &&
-                processCoverageIncludesOwner({
+                (yield* processCoverageIncludesOwner({
                   activity: finalActivity,
                   owner:
                     current.kind === 'worktree'
@@ -1258,7 +1288,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
                           inventory,
                           registrations: admission?.worktrees,
                         },
-                }) === false) ||
+                })) === false) ||
               (current.kind === 'repo-build-output' &&
                 finalActivity.processRepoOutputCoverage !== 'repo-build-outputs') ||
               (current.kind === 'worktree'
