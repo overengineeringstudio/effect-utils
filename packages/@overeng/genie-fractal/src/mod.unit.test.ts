@@ -230,6 +230,12 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
   const round = { completion: { when: 'all-steps-exhausted' }, steps: [] } as const
   const boundedLoop = { id: 'retry', maxRounds: 2, round }
   it('rejects loop and round budgets in authoring helpers', () => {
+    expect(Schema.decodeSync(LoopSchema)(boundedLoop).maxRounds).toBe(2)
+    expect(
+      Schema.decodeSync(MissionSchema)({ ...base, steps: [boundedLoop] }).steps[0],
+    ).toMatchObject({
+      maxRounds: 2,
+    })
     // @ts-expect-error Loops have no budget.
     expect(() => loop({ ...boundedLoop, budget: {} })).toThrow()
     // @ts-expect-error Loops nested in missions have no budget.
