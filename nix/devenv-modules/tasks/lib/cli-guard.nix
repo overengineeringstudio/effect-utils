@@ -85,7 +85,8 @@ let
     else
       ''
         _real=""
-        IFS=: read -ra _dirs <<< "$PATH"
+        # Feed read concurrently: large here-strings can block before the reader starts.
+        IFS=: read -ra _dirs < <(printf '%s\n' "$PATH")
         for _d in "''${_dirs[@]}"; do
           [ -z "$_d" ] && continue
           _resolved="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
