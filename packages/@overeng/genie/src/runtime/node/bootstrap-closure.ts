@@ -302,7 +302,8 @@ const resolveFollowableSpecifier = async ({
   // analysis for it and contributes no edges, which is the pre-existing missing-file behaviour.
   if (resolved === undefined || existsSync(resolved) === false) return resolved
   return canonicalResolvedPath({
-    file: process.platform === 'darwin' ? realpathThroughName(resolved) : realpathSync.native(resolved),
+    file:
+      process.platform === 'darwin' ? realpathThroughName(resolved) : realpathSync.native(resolved),
     importer: importerFile,
     listings,
   })

@@ -57,8 +57,12 @@ describe('checkBootstrapClosure', () => {
   it('walks hardlinked roots and relative dependencies through their reached names', async () => {
     const dir = makeDir()
     const source = write(dir, 'source.genie.ts', `export { value } from './runtime.ts'`)
-    const runtime = write(dir, 'runtime.ts', `import { Effect } from 'effect'
-export const value = Effect`)
+    const runtime = write(
+      dir,
+      'runtime.ts',
+      `import { Effect } from 'effect'
+export const value = Effect`,
+    )
     linkSync(source, path.join(dir, 'source-cas-0444'))
     linkSync(runtime, path.join(dir, 'runtime-cas-0444'))
     const { violations } = await checkBootstrapClosure({ genieFiles: [source] })

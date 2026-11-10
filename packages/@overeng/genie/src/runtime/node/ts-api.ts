@@ -36,7 +36,9 @@ export const realpathThroughName = (file: string): string => {
     if (value.endsWith(path.sep) === true) parts.push('.')
     return parts
   }
-  const pending = split(path.isAbsolute(file) === true ? file : `${process.cwd()}${path.sep}${file}`)
+  const pending = split(
+    path.isAbsolute(file) === true ? file : `${process.cwd()}${path.sep}${file}`,
+  )
   let resolved = path.parse(path.resolve(file)).root
   let hops = 0
   for (;;) {
