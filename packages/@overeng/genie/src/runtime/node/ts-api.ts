@@ -228,7 +228,10 @@ type ServerMonitor = {
 }
 const serverMonitors = new WeakMap<API, ServerMonitor>()
 
-/** Use the supported executable override: do not patch the client's global spawn or private fields. */
+/**
+ * Use the supported executable override, not global spawn patches or private client fields.
+ * Resolution mirrors typescript@7.0.2 lib/getExePath.js; recheck it on TypeScript bumps.
+ */
 const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
   let executable = options?.tsserverPath
   if (executable === undefined) {
@@ -273,21 +276,34 @@ exit "$status"
   const watcher = fs.watch(directory, () => {
     if (readStatus() !== undefined) controller.abort()
   })
+  const stderrTail = () => {
+    if (fs.existsSync(stderrPath) === false) return Buffer.alloc(0)
+    const fd = fs.openSync(stderrPath, 'r')
+    try {
+      const size = fs.fstatSync(fd).size
+      const tail = Buffer.alloc(Math.min(size, 4096))
+      fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length))
+      return tail
+    } finally {
+      fs.closeSync(fd)
+    }
+  }
   const monitor: ServerMonitor = {
     signal: controller.signal,
     error: (stage) => {
       const status = readStatus()
       if (status === undefined) return undefined
-      const fd = fs.openSync(stderrPath, 'r')
-      let tail: Buffer
-      try {
-        const size = fs.fstatSync(fd).size
-        tail = Buffer.alloc(Math.min(size, 4096))
-        fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length))
-      } finally { fs.closeSync(fd) }
-      return new Error(`TypeScript API server exited at ${stage} (status ${status}): ${tail.toString('utf8')}`)
+      return new Error(`TypeScript API server exited at ${stage} (status ${status}): ${stderrTail().toString('utf8')}`)
     },
-    dispose: () => { watcher.close(); fs.rmSync(directory, { recursive: true, force: true }) },
+    dispose: () => {
+      watcher.close()
+      try {
+        const tail = stderrTail()
+        if (tail.length > 0) process.stderr.write(tail)
+      } finally {
+        fs.rmSync(directory, { recursive: true, force: true })
+      }
+    },
   }
   try {
     const api = new API({ ...options, tsserverPath: wrapper })
