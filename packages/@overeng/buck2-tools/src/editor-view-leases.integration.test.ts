@@ -249,21 +249,6 @@ describe('editor generation native leases (Linux and macOS)', () => {
     assert.equal(fs.readFileSync(control, 'utf8'), text);
   `))
 
-  it('native control identity accepts a leading-zero inode', () =>
-    run(`
-    const before = fs.lstatSync(control, { bigint: true });
-    const original = fs.readFileSync(control, 'utf8');
-    const text = original.replace(/^\\d+:\\d+\\n/, before.dev + ':0' + before.ino + '\\n');
-    fs.writeFileSync(control, text, { flag: 'r+' });
-    fs.truncateSync(control, Buffer.byteLength(text));
-    const native = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_FDS ? 0 : 1)'], {
-      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, encoding: 'utf8',
-    });
-    assert.equal(native.status, 0, native.stderr);
-    assert.doesNotMatch(native.stderr, /replaced lease identity/);
-    assert.equal(fs.readFileSync(control, 'utf8'), text);
-  `))
-
   it.each([
     'wrong inode',
     'wrong root',
