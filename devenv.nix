@@ -1736,9 +1736,10 @@ in
     description = "Check the committed buck2-events prost bindings against the vendored Buck2 protos";
     exec = trace.exec "cargo:proto-bindings:check" ''
       set -euo pipefail
+      # Keep target dirs unnested to avoid races during concurrent cold Cargo target creation.
       cargo run --quiet --locked \
         --manifest-path rust/buck2-tools/events/proto/generate/Cargo.toml \
-        --target-dir rust/target/proto-generate -- --check
+        --target-dir rust/target-proto-generate -- --check
     '';
   };
 

@@ -25,6 +25,7 @@ __pycache__/
 
 # Rust workspace build state
 /rust/target/
+/rust/target-proto-generate/
 
 # Buck2 daemon and materialized build state
 buck-out/
