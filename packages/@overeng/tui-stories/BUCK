@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b93d0006b8d5a54a23a32e8c4de47701ff523f71c088bc9b0e0552f48e8f04c7
+# Semantic fingerprint: sha256:ce22cb54526b18bc11014f2c33324601fcee76b158c2d84c92e5d79f8fbe9bbb
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -315,6 +315,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
         "node_modules/@overeng/megarepo/src/core/config.unit.test.ts": "//packages/@overeng/megarepo:src/core/config.unit.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-memory.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-memory.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/core/git-reflog.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-reflog.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-streaming-parsers.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-streaming-parsers.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-timeout.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-timeout.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git.ts": "//packages/@overeng/megarepo:src/core/git.ts",
@@ -716,6 +717,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
         "node_modules/@overeng/megarepo/src/core/config.unit.test.ts": "//packages/@overeng/megarepo:src/core/config.unit.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-memory.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-memory.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/core/git-reflog.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-reflog.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-streaming-parsers.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-streaming-parsers.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-timeout.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-timeout.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git.ts": "//packages/@overeng/megarepo:src/core/git.ts",
@@ -1117,6 +1119,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
         "node_modules/@overeng/megarepo/src/core/config.unit.test.ts": "//packages/@overeng/megarepo:src/core/config.unit.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-memory.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-memory.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/core/git-reflog.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-reflog.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-streaming-parsers.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-streaming-parsers.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-timeout.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-timeout.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git.ts": "//packages/@overeng/megarepo:src/core/git.ts",
