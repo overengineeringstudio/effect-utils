@@ -338,45 +338,99 @@ const DeclaredBudgetSize = Schema.String.pipe(
     { message: 'declared budget size must be a positive integer with an optional K/M/G/T suffix' },
   ),
 )
-const DeclaredBudgets = Schema.Struct({
-  cpuSeconds: Schema.optionalKey(DeclaredBudgetInteger),
-  tokenBudget: Schema.optionalKey(DeclaredBudgetInteger),
+/** Refuse unknown budget keys independently of the caller's excess-property policy. */
+const budgetStruct = <TFields extends Schema.Struct.Fields>(fields: TFields) => {
+  const schema = Schema.Struct(fields)
+  return Schema.declare<typeof schema.Encoded>(
+    (input): input is typeof schema.Encoded =>
+      typeof input === 'object' &&
+      input !== null &&
+      Reflect.ownKeys(input).every((key) => Object.hasOwn(fields, key)),
+  ).pipe(Schema.decodeTo(schema))
+}
+/** Declared resource metadata, not enforced limits. */
+const AgentResourceFields = {
   memoryMax: Schema.optionalKey(DeclaredBudgetSize),
   diskMax: Schema.optionalKey(DeclaredBudgetSize),
+}
+const AgentResources = budgetStruct(AgentResourceFields)
+const MissionResources = budgetStruct({
+  ...AgentResourceFields,
+  /** CPU seconds per mission run, cumulative across attempts; declared, not enforced. */
+  cpuSeconds: Schema.optionalKey(DeclaredBudgetInteger),
+  /** Cost-weighted tokens per mission run, cumulative across attempts, pricing pinned at admission; declared, not enforced. */
+  tokenBudget: Schema.optionalKey(DeclaredBudgetInteger),
 })
-/** Declared admission metadata belongs to agents and missions, never steps. */
-const DeclaredAdmissionFields = {
-  declaredPriority: Schema.optionalKey(
+const BudgetScheduling = budgetStruct({
+  priority: Schema.optionalKey(
     Schema.Union([Schema.Literal('background'), Schema.Literal('normal')]),
   ),
-  declaredLane: Schema.optionalKey(
-    Schema.Union([Schema.Literal('check'), Schema.Literal('build')]),
+  lane: Schema.optionalKey(Schema.Union([Schema.Literal('check'), Schema.Literal('build')])),
+})
+/** Declared admission metadata belongs to agents and missions, never steps. */
+const AgentBudget = budgetStruct({
+  scheduling: Schema.optionalKey(BudgetScheduling),
+  resources: Schema.optionalKey(AgentResources),
+})
+const MissionBudget = budgetStruct({
+  scheduling: Schema.optionalKey(BudgetScheduling),
+  resources: Schema.optionalKey(MissionResources),
+  /**
+   * Declared, not enforced: asks in a rolling 7-day window per mission and person.
+   * Adoption requires a Fractal release with native attention support on every member.
+   */
+  attention: Schema.optionalKey(
+    Schema.Array(
+      budgetStruct({
+        person: Schema.String.pipe(
+          Schema.refine((value): value is string => /^person\/[^/\s]+$/u.test(value), {
+            message: 'invalid attention budget person subject',
+          }),
+        ),
+        asks: DeclaredBudgetInteger,
+      }),
+    ).pipe(
+      Schema.refine(
+        (entries): entries is typeof entries =>
+          new Set(entries.map((entry) => entry.person)).size === entries.length,
+        { message: 'attention budget must occur once per person' },
+      ),
+    ),
   ),
-  declaredBudgets: Schema.optionalKey(DeclaredBudgets),
+})
+/** Retired spellings must refuse even when an external decoder ignores excess keys. */
+const RetiredAdmission = Schema.Never.annotate({
+  identifier: 'Use budget.scheduling or budget.resources',
+})
+const RetiredAdmissionFields = {
+  declaredPriority: Schema.optionalKey(RetiredAdmission),
+  declaredLane: Schema.optionalKey(RetiredAdmission),
+  declaredBudgets: Schema.optionalKey(RetiredAdmission),
 }
-const declaredAdmissionNodes = (
-  value: Pick<typeof AgentSchemaFields.Type, keyof typeof DeclaredAdmissionFields>,
-): Node[] => [
-  ...optionalChild({ name: 'declared-priority', value: value.declaredPriority }),
-  ...optionalChild({ name: 'declared-lane', value: value.declaredLane }),
-  ...(value.declaredBudgets === undefined
-    ? []
-    : [
-        block({
-          name: 'declared-budgets',
-          children: [
-            ...(value.declaredBudgets.cpuSeconds === undefined
-              ? []
-              : [child({ name: 'cpu-seconds', value: value.declaredBudgets.cpuSeconds })]),
-            ...(value.declaredBudgets.tokenBudget === undefined
-              ? []
-              : [child({ name: 'token-budget', value: value.declaredBudgets.tokenBudget })]),
-            ...optionalChild({ name: 'memory-max', value: value.declaredBudgets.memoryMax }),
-            ...optionalChild({ name: 'disk-max', value: value.declaredBudgets.diskMax }),
-          ],
-        }),
-      ]),
-]
+const declaredAdmissionNodes = ({
+  budget,
+}: {
+  readonly budget?: typeof MissionBudget.Type
+}): Node[] => {
+  const children = [
+    ...(budget?.resources?.cpuSeconds === undefined
+      ? []
+      : [child({ name: 'cpu-seconds', value: budget.resources.cpuSeconds })]),
+    ...(budget?.resources?.tokenBudget === undefined
+      ? []
+      : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
+    ...optionalChild({ name: 'memory-max', value: budget?.resources?.memoryMax }),
+    ...optionalChild({ name: 'disk-max', value: budget?.resources?.diskMax }),
+    ...(budget?.attention ?? []).map(({ person: id, asks }) =>
+      node({ name: 'attention', args: [id], props: { asks } }),
+    ),
+  ]
+  return [
+    ...optionalChild({ name: 'declared-priority', value: budget?.scheduling?.priority }),
+    ...optionalChild({ name: 'declared-lane', value: budget?.scheduling?.lane }),
+    ...(children.length === 0 ? [] : [block({ name: 'declared-budgets', children })]),
+  ]
+}
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
@@ -384,7 +438,8 @@ const AgentSchemaFields = Schema.Struct({
   name: Schema.optionalKey(Text),
   description: Schema.optionalKey(Text),
   principal: Schema.optionalKey(PersonReferenceSchema),
-  ...DeclaredAdmissionFields,
+  budget: Schema.optionalKey(AgentBudget),
+  ...RetiredAdmissionFields,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
   create: Schema.optionalKey(Schema.Boolean),
@@ -761,6 +816,12 @@ export const StepSchema = Schema.Struct({
   ...OwnedDeclarationFields,
   documents: Schema.optionalKey(Schema.Array(PinnedDocumentReferenceSchema)),
   timeout: Schema.optionalKey(Duration),
+  budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Steps have no budget' })),
+  // Invalid loop declarations must not fall back to a plain step in the graph union.
+  maxRounds: Schema.optionalKey(Schema.Never),
+  round: Schema.optionalKey(Schema.Never),
+  until: Schema.optionalKey(Schema.Never),
+  onExhausted: Schema.optionalKey(Schema.Never),
   agentless: Schema.optionalKey(Schema.Literal(true)),
   assignedTo: Schema.optionalKey(Schema.Union([AgentReferenceSchema, PersonReferenceSchema])),
   dependsOn: Schema.optionalKey(Dependencies),
@@ -843,6 +904,7 @@ const validGraph = (m: {
 /** The embedded mission for one sequential loop round. */
 export const RoundSchema = Schema.Struct({
   ...OwnedDeclarationFields,
+  budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Rounds have no budget' })),
   completion: CompletionSchema,
   steps: Schema.Array(StepSchema),
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
@@ -854,6 +916,7 @@ export const RoundSchema = Schema.Struct({
 export const LoopSchema = Schema.Struct({
   id: LocalId,
   timeout: Schema.optionalKey(Duration),
+  budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Loops have no budget' })),
   dependsOn: Schema.optionalKey(Dependencies),
   maxRounds: Schema.Int.pipe(Schema.refine((n): n is number => n >= 1 && n <= 100)),
   until: Schema.optionalKey(
@@ -925,7 +988,8 @@ export const ReportToSchema = Schema.declare<typeof AgentSchema.Encoded>(isAgent
 /** A ready mission with required reporting and unique graph nodes. */
 export const MissionSchema = Schema.Struct({
   id: MissionId,
-  ...DeclaredAdmissionFields,
+  budget: Schema.optionalKey(MissionBudget),
+  ...RetiredAdmissionFields,
   inputs: Schema.optionalKey(
     Schema.Array(MissionInputSchema).pipe(
       Schema.refine(
@@ -2195,7 +2259,9 @@ const assembleMission = <const TMission extends string>(
     input.steps,
     input.finally ?? [],
     ...input.steps.flatMap((value) =>
-      'round' in value ? [value.round.steps, value.round.finally ?? []] : [],
+      'round' in value && value.round !== undefined
+        ? [value.round.steps, value.round.finally ?? []]
+        : [],
     ),
   ]
   const allHandles = phases.flatMap((phase) => phase.filter(isStepHandle))
@@ -2210,7 +2276,7 @@ const assembleMission = <const TMission extends string>(
     ...[...input.steps, ...(input.finally ?? [])].flatMap((value) =>
       isStepHandle(value) === true
         ? stepData.get(value)!.references
-        : 'round' in value
+        : 'round' in value && value.round !== undefined
           ? loopReferences(value)
           : authoredStepReferences(value),
     ),
@@ -2251,7 +2317,7 @@ const assembleMission = <const TMission extends string>(
       ...outerSteps.flatMap((value) =>
         isStepHandle(value) === true
           ? stepData.get(value)!.references
-          : 'round' in value
+          : 'round' in value && value.round !== undefined
             ? []
             : authoredStepReferences(value),
       ),
@@ -2259,7 +2325,7 @@ const assembleMission = <const TMission extends string>(
     handles: outerHandles,
   })
   for (const value of input.steps) {
-    if ('round' in value) {
+    if ('round' in value && value.round !== undefined) {
       validateProductScope({
         references: loopReferences(value),
         handles: [...value.round.steps, ...(value.round.finally ?? [])].filter(isStepHandle),
@@ -2308,7 +2374,7 @@ const assembleMission = <const TMission extends string>(
       steps: input.steps.map((s) =>
         isStepHandle(s) === true
           ? stepData.get(s)!.wire
-          : 'round' in s
+          : 'round' in s && s.round !== undefined
             ? authoredLoopWire(s)
             : authoredStepWire(s),
       ),
@@ -2366,7 +2432,7 @@ export const missionWire = <const TMission extends string>(
       ? { assignedTo: { id: m.assignedTo.id } }
       : {}),
     steps: m.steps.map((value) =>
-      'maxRounds' in value
+      value.maxRounds !== undefined
         ? {
             ...value,
             round: {
@@ -2428,7 +2494,7 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
           ],
         }),
       ),
-      ...m.steps.map((s) => ('maxRounds' in s ? loop(s) : lowerStep(s))),
+      ...m.steps.map((s) => (s.maxRounds !== undefined ? loop(s) : lowerStep(s))),
       ...(m.finally === undefined
         ? []
         : [block({ name: 'finally', children: m.finally.map(lowerStep) })]),

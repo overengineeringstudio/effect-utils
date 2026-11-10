@@ -396,10 +396,26 @@ static void defaultCloseOnExec(void) {
   if(closedir(dir)) die("cannot close descriptor directory",path);
 }
 static void leaseIdentity(const char *path, int fd, const char *root, const char *name) {
-  struct stat s; char actual[8192], expected[8192];
+  struct stat s; char actual[8193];
   if (fstat(fd, &s)) die("cannot stat lease",path);
-  int length=snprintf(expected,sizeof(expected),"%ju:%ju\n%s\n%s\n",(uintmax_t)s.st_dev,(uintmax_t)s.st_ino,root,name);
-  if(length<0 || length>=(int)sizeof(expected) || s.st_size!=length || pread(fd,actual,(size_t)length,0)!=length || memcmp(actual,expected,(size_t)length))
+  ssize_t length=pread(fd,actual,sizeof(actual),0);
+  if(length<=0 || length>8192 || s.st_size!=length) die("replaced lease identity",path);
+  actual[length]=0;
+  char *cursor=actual;
+  /* st_dev is not stable across mounts or reboots (for example ZFS). */
+  while(*cursor>='0' && *cursor<='9') cursor++;
+  if(cursor==actual || *cursor!=':') die("replaced lease identity",path);
+  char *inode=++cursor;
+  while(*cursor>='0' && *cursor<='9') cursor++;
+  if(cursor==inode || *cursor!='\n') die("replaced lease identity",path);
+  char *end; errno=0;
+  uintmax_t number=strtoumax(inode,&end,10);
+  if(errno==ERANGE || end!=cursor || number!=(uintmax_t)s.st_ino) die("replaced lease identity",path);
+  cursor++;
+  size_t rootLength=strlen(root), nameLength=strlen(name);
+  if((size_t)(actual+length-cursor)!=rootLength+nameLength+2 ||
+     memcmp(cursor,root,rootLength) || cursor[rootLength]!='\n' ||
+     memcmp(cursor+rootLength+1,name,nameLength) || actual[length-1]!='\n')
     die("replaced lease identity",path);
 }
 static void generation(const char *root, const char *name) {

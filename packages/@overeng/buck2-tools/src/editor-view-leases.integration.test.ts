@@ -214,6 +214,74 @@ describe('editor generation native leases (Linux and macOS)', () => {
     reader.release(); assert.equal(probe(), 'clear');
   `))
 
+  it('persistent control identity tolerates a device number change across mounts', () =>
+    run(`
+    const before = fs.lstatSync(control, { bigint: true });
+    const original = fs.readFileSync(control, 'utf8');
+    assert.equal(original, before.dev + ':' + before.ino + '\\n' + editorRoot + '\\n' + snapshot + '\\n');
+    const text = original.replace(/^\\d+:/, (before.dev + 1n) + ':');
+    fs.writeFileSync(control, text, { flag: 'r+' });
+    fs.truncateSync(control, Buffer.byteLength(text));
+    const after = fs.lstatSync(control, { bigint: true });
+    for (const key of ['dev', 'ino', 'mode', 'uid', 'gid', 'nlink']) assert.equal(after[key], before[key]);
+    const lease = await acquire();
+    try { assert.equal(probe(), 'held'); } finally { lease.release(); }
+    assert.equal(probe(), 'clear');
+    const native = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_FDS ? 0 : 1)'], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, encoding: 'utf8',
+    });
+    assert.equal(native.status, 0, native.stderr);
+    assert.equal(fs.readFileSync(control, 'utf8'), text);
+  `))
+
+  it('rejects a persistent control identity with an overflowing inode', () =>
+    run(`
+    const before = fs.lstatSync(control, { bigint: true });
+    const original = fs.readFileSync(control, 'utf8');
+    const text = original.replace(/^\\d+:\\d+\\n/, before.dev + ':99999999999999999999999\\n');
+    fs.writeFileSync(control, text, { flag: 'r+' });
+    fs.truncateSync(control, Buffer.byteLength(text));
+    const native = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_FDS === undefined ? 0 : 1)'], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, encoding: 'utf8',
+    });
+    assert.equal(native.status, 0, native.stderr);
+    assert.match(native.stderr, /replaced lease identity/);
+    assert.equal(fs.readFileSync(control, 'utf8'), text);
+  `))
+
+  it.each([
+    'wrong inode',
+    'wrong root',
+    'wrong generation',
+    'extra trailing content',
+    'extra trailing newline',
+    'missing trailing newline',
+    'malformed device',
+  ])('rejects a persistent control identity with %s', (mutation) =>
+    run(`
+    const original = fs.readFileSync(control, 'utf8');
+    const lines = original.split('\\n');
+    switch (${JSON.stringify(mutation)}) {
+      case 'wrong inode': lines[0] = lines[0].split(':')[0] + ':' + (fs.lstatSync(control, { bigint: true }).ino + 1n); break;
+      case 'wrong root': lines[1] += '-wrong'; break;
+      case 'wrong generation': lines[2] += '-wrong'; break;
+      case 'extra trailing content': lines.push('extra'); break;
+      case 'extra trailing newline': lines.push(''); break;
+      case 'missing trailing newline': lines.pop(); break;
+      case 'malformed device': lines[0] = 'invalid:' + lines[0].split(':')[1]; break;
+    }
+    const text = lines.join('\\n');
+    fs.writeFileSync(control, text, { flag: 'r+' });
+    fs.truncateSync(control, Buffer.byteLength(text));
+    const native = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', ''], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, encoding: 'utf8',
+    });
+    assert.equal(native.status, 0, native.stderr);
+    assert.match(native.stderr, /replaced lease identity/);
+    await assert.rejects(acquire(), /replaced control identity/);
+  `),
+  )
+
   it.each(['retire', 'admit'])(
     'lazy fenced control admission serializes a concurrent reader: %s',
     (outcome) =>
