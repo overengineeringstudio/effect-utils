@@ -135,8 +135,8 @@ let
 
       echo "" >&2
       echo "'${cli}' is guarded." >&2
-      echo "For touched files:" >&2
-      echo "  DEVENV_TASK_PASSTHROUGH=1 ${cli} FILES" >&2
+      echo "Direct run (for example on touched files):" >&2
+      echo "  DEVENV_TASK_PASSTHROUGH=1 ${cli} ARGS" >&2
       echo "For the whole repo:" >&2
       ${taskLines}
       echo "Run 'devenv tasks list' to see all available tasks." >&2
