@@ -396,6 +396,20 @@ describe('namespaceRunner', () => {
     expect(script.indexOf('exit 1')).toBeLessThan(script.indexOf('nix config show'))
   })
 
+  it('keeps Namespace container admission off dedicated fleet jobs', () => {
+    for (const id of ['test-live-alchemy-github', 'publish-manifest-pr', 'published-status']) {
+      expect(
+        ciWorkflow.data.jobs[id]!.steps.some((step) => step.id === linuxSandboxAdmissionStepId),
+        id,
+      ).toBe(false)
+    }
+    expect(
+      ciWorkflow.data.jobs['test-integration-notion']!.steps.some(
+        (step) => step.id === linuxSandboxAdmissionStepId,
+      ),
+    ).toBe(true)
+  })
+
   it('denies fork PR admission but admits same-repository PRs and non-PR jobs', () => {
     const allowed = new Function('github', `return (${namespacePrivilegeTrustedPredicate})`)
     const repository = 'overengineeringstudio/effect-utils'
