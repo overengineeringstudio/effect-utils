@@ -133,28 +133,28 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     )
   })
 
-  it.each([
-    [{}, ''],
-    [{ memoryMax: '1', diskMax: '20g' }, '    memory-max "1"\n    disk-max "20g"\n'],
-  ])('renders empty and partial agent resources %j', (resources, children) => {
-    expect(emit([agent({ id: base.id, budget: { resources } })])).toBe(
-      `version 2
+  it.each([[{ memoryMax: '1', diskMax: '20g' }, '    memory-max "1"\n    disk-max "20g"\n']])(
+    'renders partial agent resources %j',
+    (resources, children) => {
+      expect(emit([agent({ id: base.id, budget: { resources } })])).toBe(
+        `version 2
 agent "example/admission" {
   declared-budgets {
 ${children}  }
 }
 `,
-    )
-    expect(emit([mission({ ...base, budget: { resources } })])).toBe(
-      `version 2
+      )
+      expect(emit([mission({ ...base, budget: { resources } })])).toBe(
+        `version 2
 mission "example/admission" report-to="agent/example/owner" state="ready" {
   declared-budgets {
 ${children}  }
   goal "Check admission."
 }
 `,
-    )
-  })
+      )
+    },
+  )
 
   it.each([
     { scheduling: { priority: 'urgent' } },
@@ -1074,6 +1074,113 @@ const fanInMission = () => ({
 })
 
 describe('Fractal declarations', () => {
+  const attention = [
+    { person: 'person/operator', asks: 6 },
+    { person: 'person/reviewer', asks: Number.MAX_SAFE_INTEGER },
+  ] as const
+
+  it('round-trips attention budgets and emits them in authored order with resources', () => {
+    const budget = { resources: { cpuSeconds: 30 }, attention }
+    const input = { ...fanInMission(), budget }
+    const wire = missionWire(input)
+    expect(wire.budget).toEqual(budget)
+    const kdl = emit([mission({ ...wire, reportTo: input.reportTo })])
+    expect(kdl).toContain(
+      'declared-budgets {\n    cpu-seconds 30\n    attention "person/operator" asks=6\n    attention "person/reviewer" asks=9007199254740991\n  }',
+    )
+    expect(kdl).not.toContain('attention-budget')
+  })
+
+  it('emits declared-budgets for an attention-only mission', () => {
+    expect(emit([mission({ ...fanInMission(), budget: { attention } })])).toContain(
+      'declared-budgets {\n    attention "person/operator" asks=6\n    attention "person/reviewer" asks=9007199254740991\n  }',
+    )
+    expect(emit([mission(fanInMission())])).not.toContain('declared-budgets')
+  })
+
+  it('accepts an empty attention array like the native grammar', () => {
+    expect(missionWire({ ...fanInMission(), budget: { attention: [] } }).budget).toEqual({
+      attention: [],
+    })
+    expect(emit([mission({ ...fanInMission(), budget: { attention: [] } })])).toBe(
+      emit([mission(fanInMission())]),
+    )
+    expect(emit([mission({ ...fanInMission(), budget: { resources: {} } })])).toBe(
+      emit([mission(fanInMission())]),
+    )
+    expect(emit([agent({ id: 'example/worker', budget: { resources: {} } })])).toBe(
+      emit([agent({ id: 'example/worker' })]),
+    )
+  })
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid attention asks %j',
+    (asks) => {
+      expect(() =>
+        Schema.decodeSync(MissionSchema)({
+          ...fanInMission(),
+          budget: { attention: [{ person: 'person/operator', asks }] },
+        }),
+      ).toThrow()
+    },
+  )
+
+  it.each(['person/', 'person/a/b', 'person/a b', 'person/a\n', 'agent/operator'])(
+    'rejects invalid attention person %j',
+    (person) => {
+      expect(() =>
+        Schema.decodeSync(MissionSchema)({
+          ...fanInMission(),
+          budget: { attention: [{ person, asks: 1 }] },
+        }),
+      ).toThrow('invalid attention budget person subject')
+    },
+  )
+
+  it('rejects duplicate attention people and agent attention', () => {
+    expect(() =>
+      Schema.decodeSync(MissionSchema)({
+        ...fanInMission(),
+        budget: { attention: [attention[0], attention[0]] },
+      }),
+    ).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema)({ id: 'example/worker', budget: { attention } }),
+    ).toThrow()
+  })
+
+  it.each([undefined, { onExcessProperty: 'ignore' as const }])(
+    'refuses malformed raw attention under parse options %j',
+    (options) => {
+      for (const entry of [
+        null,
+        {},
+        { person: 'person/operator' },
+        { person: 'person/operator', asks: '1' },
+        { person: 'person/operator', asks: 1, extra: true },
+      ]) {
+        expect(() =>
+          Schema.decodeUnknownSync(
+            MissionSchema,
+            options,
+          )({
+            ...fanInMission(),
+            budget: { attention: [entry] },
+          }),
+        ).toThrow()
+      }
+      expect(() =>
+        Schema.decodeUnknownSync(
+          AgentSchema,
+          options,
+        )({
+          id: 'example/worker',
+          budget: { attention },
+        }),
+      ).toThrow()
+    },
+  )
+
   it('requires a typed agent declaration rather than a string or omitted report', () => {
     expectTypeOf<string>().not.toMatchTypeOf<(typeof MissionSchema.Encoded)['reportTo']>()
     expectTypeOf<Omit<typeof MissionSchema.Encoded, 'reportTo'>>().not.toMatchTypeOf<
