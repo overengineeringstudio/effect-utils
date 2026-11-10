@@ -227,6 +227,11 @@ describe('editor generation native leases (Linux and macOS)', () => {
     const lease = await acquire();
     try { assert.equal(probe(), 'held'); } finally { lease.release(); }
     assert.equal(probe(), 'clear');
+    const native = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_FDS ? 0 : 1)'], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, encoding: 'utf8',
+    });
+    assert.equal(native.status, 0, native.stderr);
+    assert.equal(fs.readFileSync(control, 'utf8'), text);
   `))
 
   it.each([
@@ -253,6 +258,11 @@ describe('editor generation native leases (Linux and macOS)', () => {
     const text = lines.join('\\n');
     fs.writeFileSync(control, text, { flag: 'r+' });
     fs.truncateSync(control, Buffer.byteLength(text));
+    const native = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', ''], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, encoding: 'utf8',
+    });
+    assert.equal(native.status, 0, native.stderr);
+    assert.match(native.stderr, /replaced lease identity/);
     await assert.rejects(acquire(), /replaced control identity/);
   `),
   )
