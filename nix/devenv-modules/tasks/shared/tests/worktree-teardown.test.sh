@@ -171,6 +171,7 @@ watchman_response() { printf %s "$1" | "$JQ" -Rsc '{version:"fixture",roots:[.]}
 watchman_case unwatched '{"version":"fixture","roots":[]}' 1 0 0
 watched="$(watchman_response "$watch_root")"
 watchman_case watched "$watched" 0 0 1
+watchman_case reordered-keys "$(printf %s "$watched" | "$JQ" -c '{roots,version,extra:true}')" 0 0 1
 watchman_case delete-failure "$watched" 1 1 1
 watchman_case sibling "$(watchman_response "$watch_root-other")" 1 0 0
 watchman_case escaped-slashes "${watched//\//\\/}" 0 0 1

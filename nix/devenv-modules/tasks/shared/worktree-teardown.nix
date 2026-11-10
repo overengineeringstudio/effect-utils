@@ -20,6 +20,7 @@ in
           pkgs.coreutils
           pkgs.findutils
           pkgs.gawk
+          pkgs.jq
           pkgs.watchman
         ]
       }:"$PATH"
