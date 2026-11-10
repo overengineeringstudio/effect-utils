@@ -464,7 +464,8 @@ export const runTsFileAnalysis = async <A>({
   /** Internal deadline injection for exercising stalled servers without a long-running test. */
   requestTimeoutMs?: number
 }): Promise<A> => {
-  const api = new API({ ...apiSpawnOptions(cwd), fs: darwinTsgoRealpathWorkaround(process.platform) })
+  const fs = darwinTsgoRealpathWorkaround(process.platform)
+  const api = new API({ ...apiSpawnOptions(cwd), ...(fs === undefined ? {} : { fs }) })
   return withApiSession({
     api,
     timeoutMs: requestTimeoutMs,
