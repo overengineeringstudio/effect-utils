@@ -30,6 +30,65 @@ import type { SourceFile, StringLiteral } from 'typescript/unstable/ast'
 import type { Diagnostic } from 'typescript/unstable/async'
 import { API } from 'typescript/unstable/async'
 
+const splitPathComponents = (value: string): string[] => {
+  const parts = value.split(path.sep).filter((part) => part.length > 0)
+  if (value.endsWith(path.sep) === true) parts.push('.')
+  return parts
+}
+
+/** Resolve symlinks component-by-component without asking Darwin for a regular file's hardlink name. */
+export const realpathThroughName = (file: string): string => {
+  const pending = splitPathComponents(
+    path.isAbsolute(file) === true ? file : `${process.cwd()}${path.sep}${file}`,
+  )
+  let resolved = path.parse(path.resolve(file)).root
+  let hops = 0
+  for (;;) {
+    const component = pending.shift()
+    if (component === undefined) return fs.realpathSync(resolved)
+    if (component === '.') continue
+    if (component === '..') {
+      resolved = path.dirname(resolved)
+      continue
+    }
+    const candidate = path.join(resolved, component)
+    const status = fs.lstatSync(candidate)
+    if (status.isSymbolicLink() === true) {
+      if (++hops > 40)
+        throw Object.assign(new Error(`too many symbolic links: ${file}`), { code: 'ELOOP' })
+      const target = fs.readlinkSync(candidate)
+      if (path.isAbsolute(target) === true) resolved = path.parse(target).root
+      pending.unshift(...splitPathComponents(target))
+    } else {
+      if (pending.length === 0) return path.join(fs.realpathSync(resolved), component)
+      if (status.isDirectory() === false)
+        throw Object.assign(new Error(`not a directory: ${candidate}`), { code: 'ENOTDIR' })
+      resolved = candidate
+    }
+  }
+}
+
+/**
+ * TEMPORARY WORKAROUND: tsgo 7.0.2's Darwin F_GETPATH can return an extensionless CAS hardlink.
+ * Remove once pinned stable tsgo contains microsoft/typescript-go#4867 (effect-utils#2492).
+ * Keep this local: buck2-tools is bootstrap tooling, not a runtime dependency of genie.
+ */
+export const darwinTsgoRealpathWorkaround = (
+  platform: NodeJS.Platform,
+): { realpath: (file: string) => string | undefined } | undefined =>
+  platform === 'darwin'
+    ? {
+        realpath: (file) => {
+          try {
+            return realpathThroughName(file)
+          } catch {
+            // Null RPC results delegate to the native FS, preserving missing/virtual-file behavior.
+            return undefined
+          }
+        },
+      }
+    : undefined
+
 const analyzableSourceExtensions: Record<string, true> = {
   '.ts': true,
   '.tsx': true,
@@ -539,7 +598,11 @@ export const runTsFileAnalysis = async <A>({
   /** Internal deadline injection for exercising stalled servers without a long-running test. */
   requestTimeoutMs?: number
 }): Promise<A> => {
-  const api = createApi(apiSpawnOptions(cwd))
+  const realpathFs = darwinTsgoRealpathWorkaround(process.platform)
+  const api = createApi({
+    ...apiSpawnOptions(cwd),
+    ...(realpathFs === undefined ? {} : { fs: realpathFs }),
+  })
   return withApiSession({
     api,
     timeoutMs: requestTimeoutMs,
@@ -648,6 +711,7 @@ export const runTsVirtualProject = async <A>({
     // `undefined` means "fall through to the real filesystem", which is what the bundled `lib.*.d.ts`
     // files and any real dependency of an in-memory source need.
     fs: {
+      ...darwinTsgoRealpathWorkaround(process.platform),
       readFile: (file) => (file === configPath ? configText : overlay.get(file)),
       fileExists: (file) => (file === configPath || overlay.has(file) === true ? true : undefined),
       directoryExists: (directory) =>
