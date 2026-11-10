@@ -34,6 +34,7 @@ export const pipelineJobIds = [
   'pr-reviews-resolved',
   'test-integration-notion',
   'test-live-deploy-ci-tools',
+  'test-live-alchemy-github',
   'deploy-storybooks',
   'publish-products',
   'publish-manifest-pr',
@@ -73,7 +74,9 @@ export const pipelineJobIdentityResolver = (workflow: {
               ? 'ci/measurements-report'
               : job === 'main-source-shape'
                 ? 'main/source-shape'
-                : job,
+                : job === 'test-live-alchemy-github'
+                  ? 'alchemy-github/live'
+                  : job,
       identity: { job, dimensions: {} },
     })),
     ...workflow.runnerProfiles.map((runner) => ({
