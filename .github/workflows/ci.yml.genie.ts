@@ -109,10 +109,12 @@ const prepareSourceGeneratorDependencyViewsStep = {
   run: runDevenvTasksBefore('buck2:editor:bootstrap'),
 } as const
 
+const namespaceSandboxPrerequisitesStep = linuxSandboxPrerequisitesStep({ privileged: 'trusted' })
+
 const baseSteps = [
   checkoutStep(),
   installNixStep({ binaryCaches: [binaryCache] }),
-  linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
+  namespaceSandboxPrerequisitesStep,
   ciMeasurementBaselineCheckoutStep,
   cachixCliBuildStep,
   trustedCachixStep,
@@ -2210,7 +2212,8 @@ const extraJobs: Record<string, any> = {
           'echo "repository=${ALCHEMY_GITHUB_SANDBOX_REPO#*/}" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
       },
-      ...baseSteps,
+      // Fleet runners do not use the Namespace container privilege admission probe.
+      ...baseSteps.filter((step) => step !== namespaceSandboxPrerequisitesStep),
       githubAppInstallationTokenStep({
         id: 'sandbox-app-token',
         name: 'Mint repository-restricted GitHub sandbox token',
