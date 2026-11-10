@@ -37,6 +37,10 @@ Global repository cache at `~/.megarepo/` (configurable via `MEGAREPO_STORE`).
 
 The store uses **bare repos with worktrees per ref**:
 
+New bare stores set local `core.logAllRefUpdates=true` so branch updates leave
+reflogs for last-touch and recovery evidence. Fetching an existing store enables
+this setting before updating refs, preserving an existing `always` value.
+
 ```
 ~/.megarepo/
   github.com/
