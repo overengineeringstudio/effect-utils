@@ -164,9 +164,18 @@ const validateControl = ({
     fail(`unsafe or replaced control: ${control}`)
   // A fresh buffer uses pread semantics; descriptor position must not affect validation.
   const text = Buffer.alloc(Number(status.size))
+  if (readSync(fd, text, 0, text.length, 0) !== text.length)
+    fail(`replaced control identity: ${control}`)
+  const lines = text.toString('utf8').split('\n')
+  const identity = /^\d+:(\d+)$/u.exec(lines[0] ?? '')
+  // st_dev is not stable across mounts or reboots (for example ZFS).
   if (
-    readSync(fd, text, 0, text.length, 0) !== text.length ||
-    text.toString('utf8') !== controlIdentity({ control, status })
+    lines.length !== 4 ||
+    lines[3] !== '' ||
+    identity === null ||
+    BigInt(identity[1]!) !== status.ino ||
+    lines[1] !== dirname(dirname(control)) ||
+    lines[2] !== basename(control, '.lock')
   )
     fail(`replaced control identity: ${control}`)
   const descriptorFlags = editorViewDescriptorFlags(fd)
