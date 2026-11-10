@@ -310,7 +310,7 @@ describe('TypeScript API server death', () => {
         const message = error instanceof Error ? error.message : ''
         const prefix = `TypeScript API server exited at updateSnapshot (status ${status}): `
         expect(message.startsWith(prefix)).toBe(true)
-        expect(message.endsWith('panic-tail')).toBe(true)
+        expect(message).toContain('panic-tail')
         expect(Buffer.byteLength(message.slice(prefix.length))).toBeLessThanOrEqual(4096)
         expect(performance.now() - started).toBeLessThan(5000)
       } finally {

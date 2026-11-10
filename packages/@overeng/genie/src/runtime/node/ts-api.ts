@@ -286,13 +286,15 @@ type ServerMonitor = {
   readonly dispose: () => void
 }
 const serverMonitors = new WeakMap<API, ServerMonitor>()
+const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
 
 /**
  * Use the supported executable override, not global spawn patches or private client fields.
  * Resolution mirrors typescript@7.0.2 lib/getExePath.js; recheck it on TypeScript bumps.
  */
 const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
-  let executable = options?.tsserverPath
+  let executable =
+    options !== undefined && 'tsserverPath' in options ? options.tsserverPath : undefined
   if (executable === undefined) {
     // Match typescript@7.0.2 lib/getExePath.js's installed-package resolution, relative to the client.
     const require = createRequire(createRequire(import.meta.url).resolve('typescript/package.json'))
@@ -309,35 +311,16 @@ const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
   fs.chmodSync(directory, 0o700)
   const statusPath = path.join(directory, 'status')
   const stderrPath = path.join(directory, 'stderr')
-  const wrapper = path.join(directory, 'server.cjs')
-  // Use the current JS runtime: background POSIX shells can replace RPC stdin with /dev/null.
-  // Reload the bootstrap mapper so its spawn hook retains every inherited editor-view lease.
+  const wrapper = path.join(directory, 'server')
+  // Foreground execution preserves RPC stdin and inherited lease fds, including under dash.
+  // Do not use process.execPath: in compiled Bun products it names the product, not a JS runtime.
   fs.writeFileSync(
     wrapper,
-    `#!${process.execPath}
-const fs = require('node:fs')
-if (process.env.EDITOR_VIEW_LEASE_ACTIVE === '1') require(process.env.EDITOR_VIEW_LEASE_PRELOAD)
-const { spawn } = require('node:child_process')
-const stderrPath = ${JSON.stringify(stderrPath)}
-const stderrFd = fs.openSync(stderrPath, 'a')
-const child = spawn(${JSON.stringify(executable)}, process.argv.slice(2), {
-  stdio: ['inherit', 'inherit', stderrFd],
-})
-fs.closeSync(stderrFd)
-const finish = (status) => {
-  fs.writeFileSync(${JSON.stringify(statusPath)}, String(status))
-  process.exit(status)
-}
-child.once('error', (error) => {
-  fs.appendFileSync(stderrPath, String(error))
-  finish(127)
-})
-child.once('exit', (code, signal) => {
-  finish(code ?? (128 + require('node:os').constants.signals[signal]))
-})
-for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
-  process.on(signal, () => child.kill(signal))
-}
+    `#!/bin/sh
+${quote(executable)} "$@" 2>${quote(stderrPath)}
+status=$?
+printf '%s\\n' "$status" >${quote(statusPath)}
+exit "$status"
 `,
     { mode: 0o700 },
   )
