@@ -1736,9 +1736,9 @@ in
     description = "Check the committed buck2-events prost bindings against the vendored Buck2 protos";
     exec = trace.exec "cargo:proto-bindings:check" ''
       set -euo pipefail
+      # Cargo's default target for this standalone workspace; a target nested in rust/target races concurrent cold Cargo target creation.
       cargo run --quiet --locked \
-        --manifest-path rust/buck2-tools/events/proto/generate/Cargo.toml \
-        --target-dir rust/target/proto-generate -- --check
+        --manifest-path rust/buck2-tools/events/proto/generate/Cargo.toml -- --check
     '';
   };
 
