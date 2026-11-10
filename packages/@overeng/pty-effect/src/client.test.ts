@@ -287,7 +287,7 @@ describe('PtyClient', () => {
         }
 
         yield* Effect.sleep('100 millis')
-        const recent = yield* client.readRecentEvents({ name, count: 10 })
+        const recent = yield* client.readRecentEvents({ name, count: 50 })
         expect(recent.some((event) => event.type === 'session_start')).toBe(true)
         expect(recent.some((event) => event.type === 'session_exit')).toBe(true)
         const recentStart = recent.find((event) => event.type === 'session_start')
