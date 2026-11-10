@@ -14,6 +14,9 @@ FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
 MV="${MV_BIN:?MV_BIN must name pinned mv}"
 JQ="${JQ_BIN:-$(command -v jq)}"
+# Direct script calls need the same pinned JSON parser as the production wrapper.
+PATH="$(dirname "$JQ"):$PATH"
+export PATH
 # Match the TypeScript lease fixtures: supported data semantics, not ambient /tmp.
 # The helper throws when neither candidate qualifies; never silently skip teardown.
 fixture_data_root="$("$BUN" -e 'const { editorViewTestDataRoot } = await import(process.argv[1]); console.log(editorViewTestDataRoot())' \
@@ -23,6 +26,7 @@ TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 main="$TEMP_ROOT/main"
 worktree="$TEMP_ROOT/retired"
 socket_dir=""
+fake_bin=""
 watchman_started=false
 nested_outer=""
 nested_child=""
@@ -68,6 +72,7 @@ cleanup() {
     watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server >/dev/null
   fi
   [ -z "$socket_dir" ] || rm -rf "$socket_dir"
+  [ -z "$fake_bin" ] || rm -rf "$fake_bin"
   # The ordinary Git fixture's shared CAS is beside .git and remains readonly
   # after blob collection. Only test-owned directories need unlocking; never
   # chmod shared payload files or follow links outside this temporary root.
@@ -129,6 +134,70 @@ git -C "$main" add .
 git -C "$main" -c core.hooksPath=/dev/null -c user.name=teardown-test -c user.email=teardown-test@example.invalid commit -qm fixture
 git -C "$main" worktree add -q --detach "$worktree" HEAD
 cp "$ROOT/devenv.lock" "$worktree/devenv.lock"
+
+# Deterministic service responses cover roots that a running service never watched.
+# Lease data can live on noexec /dev/shm; executable helpers stay in normal tmpdir.
+fake_bin="$(mktemp -d)"
+watch_root="$TEMP_ROOT/watch-root"
+mkdir -p "$fake_bin" "$watch_root" "$TEMP_ROOT/watch-home"
+# Isolate teardown dependencies so ambient jq cannot hide a missing fixture tool.
+for tool in bash git realpath find sort awk xargs chmod sha256sum rm rmdir; do
+  ln -s "$(command -v "$tool")" "$fake_bin/$tool"
+done
+git -C "$watch_root" init -q
+# Use the runner's Bash directly: sandboxed hosts need not have /usr/bin/env.
+printf '#!%s\n' "$BASH" >"$fake_bin/watchman"
+cat >>"$fake_bin/watchman" <<'WATCHMAN'
+set -euo pipefail
+[ "$1" = --no-spawn ] && [ "$2" = --no-local ] && [ "$3" = --output-encoding=json ]
+[ "$4" = --sockname=fixture.sock ]
+case "$5" in
+  watch-list) printf '%s\n' "$FAKE_WATCH_LIST"; exit "${FAKE_LIST_STATUS:-0}" ;;
+  watch-del)
+    [ "$6" = "$DEVENV_ROOT" ]
+    printf '%s\n' "$6" >>"$FAKE_WATCH_LOG"
+    exit "$FAKE_DELETE_STATUS"
+    ;;
+  *) exit 99 ;;
+esac
+WATCHMAN
+chmod +x "$fake_bin/watchman"
+watchman_case() {
+  local name="$1" response="$2" delete_status="$3" expected="$4" calls="$5" list_status="${6:-0}"
+  local status=0
+  : >"$TEMP_ROOT/watch-calls"
+  PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$watch_root" \
+    WATCHMAN_SOCK=fixture.sock WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+    FAKE_WATCH_LIST="$response" FAKE_DELETE_STATUS="$delete_status" FAKE_LIST_STATUS="$list_status" \
+    FAKE_WATCH_LOG="$TEMP_ROOT/watch-calls" \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" \
+    >"$TEMP_ROOT/watch-case.log" 2>&1 || status=$?
+  if [ "$status" -ne "$expected" ]; then
+    cat "$TEMP_ROOT/watch-case.log"
+    fail "$name: expected exit $expected, got $status"
+  fi
+  [ "$(wc -l <"$TEMP_ROOT/watch-calls")" -eq "$calls" ] || fail "$name: unexpected watch-del calls"
+}
+watchman_response() { printf %s "$1" | "$JQ" -Rsc '{version:"fixture",roots:[.]}'; }
+watchman_case missing-jq '{"version":"fixture","roots":[]}' 0 1 0
+grep -q 'jq is required to check watched roots' "$TEMP_ROOT/watch-case.log" || fail 'missing jq diagnostic'
+ln -s "$JQ" "$fake_bin/jq"
+watchman_case unwatched '{"version":"fixture","roots":[]}' 1 0 0
+watched="$(watchman_response "$watch_root")"
+watchman_case watched "$watched" 0 0 1
+watchman_case reordered-keys "$(printf %s "$watched" | "$JQ" -c '{roots,version,extra:true}')" 0 0 1
+watchman_case delete-failure "$watched" 1 1 1
+watchman_case sibling "$(watchman_response "$watch_root-other")" 1 0 0
+watchman_case escaped-slashes "${watched//\//\\/}" 0 0 1
+watchman_case unreachable '' 1 0 0 1
+watchman_case malformed '{"version":"fixture","roots":[' 1 0 0
+watchman_case ambiguous "$watched trailing" 1 0 0
+watch_root="$TEMP_ROOT/watch-\"quoted\\root"
+mkdir -p "$watch_root"
+git -C "$watch_root" init -q
+watched="$(watchman_response "$watch_root")"
+watchman_case quoted-root "$watched" 0 0 1
+watchman_case quoted-sibling "$(watchman_response "$watch_root-other")" 1 0 0
 
 # Real byte-owning editor publication, not hand-built snapshot metadata.
 mkdir -p "$worktree/inputs/editor" "$worktree/inputs/modules/dep"
