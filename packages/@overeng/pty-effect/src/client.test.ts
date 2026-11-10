@@ -4,7 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import { describe, expect, it } from '@effect/vitest'
-import { Effect, Fiber, Schema, Stream } from 'effect'
+import { Deferred, Effect, Fiber, Schema, Stream } from 'effect'
 
 import { PtyClient, layer as ptyClientLayer } from './client.ts'
 import { PtyName } from './PtySpec.ts'
@@ -218,7 +218,7 @@ describe('PtyClient', () => {
         yield* client.spawnDaemon({
           name,
           command: 'sh',
-          args: ['-c', 'sleep 0.5'],
+          args: ['-c', 'while read -r line; do [ "$line" = exit ] && exit 0; printf "\\a"; done'],
           tags: {
             'forge.tab': 'tab-1',
             'forge.workspace': 'ws-1',
@@ -247,14 +247,17 @@ describe('PtyClient', () => {
           'forge.tab': 'tab-2',
         })
 
-        // Watch session_exit (fires ~500ms later when sleep 0.5 completes) rather
-        // than session_start: EventFollower.watchFile sets its read offset to the
-        // current file size on new-session discovery, so session_start (written at
-        // creation time) is skipped. session_exit is written after the offset is
-        // established and is reliably captured. session_start tag verification uses
-        // readRecentEvents below.
+        // Existing event logs are followed from EOF. Keep the process alive until
+        // a live bell acknowledges that the follower has subscribed, then request
+        // exit explicitly instead of racing daemon startup against a fixed sleep.
+        const following = yield* Deferred.make<void>()
         const exitEvents = yield* Effect.forkScoped(
           client.followEvents({}).pipe(
+            Stream.tap((event) =>
+              event.session === name && event.type === 'bell'
+                ? Deferred.succeed(following, undefined)
+                : Effect.void,
+            ),
             Stream.filter((event) => event.session === name && event.type === 'session_exit'),
             Stream.take(1),
             Stream.runCollect,
@@ -265,10 +268,18 @@ describe('PtyClient', () => {
           name,
           size: { rows: 24, cols: 80 },
         })
+        const bells = yield* Effect.forkScoped(
+          session
+            .write({ data: 'ready\n' })
+            .pipe(Effect.andThen(Effect.sleep('50 millis')), Effect.forever),
+        )
+        yield* Deferred.await(following).pipe(Effect.timeout('2 seconds'))
+        yield* Fiber.interrupt(bells)
+        yield* session.write({ data: 'exit\n' })
         const exit = yield* session.exit.pipe(Effect.timeout('2 seconds'))
         expect(exit.code).toBe(0)
 
-        const seenExitEvents = yield* Fiber.join(exitEvents)
+        const seenExitEvents = yield* Fiber.join(exitEvents).pipe(Effect.timeout('2 seconds'))
         const [exitEvent] = Array.from(seenExitEvents)
         expect(exitEvent?.type).toBe('session_exit')
         if (exitEvent?.type === 'session_exit') {
