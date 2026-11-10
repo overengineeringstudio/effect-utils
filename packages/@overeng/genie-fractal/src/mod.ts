@@ -411,30 +411,26 @@ const declaredAdmissionNodes = ({
   budget,
 }: {
   readonly budget?: typeof MissionBudget.Type
-}): Node[] => [
-  ...optionalChild({ name: 'declared-priority', value: budget?.scheduling?.priority }),
-  ...optionalChild({ name: 'declared-lane', value: budget?.scheduling?.lane }),
-  ...(budget?.resources === undefined && budget?.attention === undefined
-    ? []
-    : [
-        block({
-          name: 'declared-budgets',
-          children: [
-            ...(budget.resources?.cpuSeconds === undefined
-              ? []
-              : [child({ name: 'cpu-seconds', value: budget.resources.cpuSeconds })]),
-            ...(budget.resources?.tokenBudget === undefined
-              ? []
-              : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
-            ...optionalChild({ name: 'memory-max', value: budget.resources?.memoryMax }),
-            ...optionalChild({ name: 'disk-max', value: budget.resources?.diskMax }),
-            ...(budget.attention ?? []).map(({ person: id, asks }) =>
-              node({ name: 'attention', args: [id], props: { asks } }),
-            ),
-          ],
-        }),
-      ]),
-]
+}): Node[] => {
+  const children = [
+    ...(budget?.resources?.cpuSeconds === undefined
+      ? []
+      : [child({ name: 'cpu-seconds', value: budget.resources.cpuSeconds })]),
+    ...(budget?.resources?.tokenBudget === undefined
+      ? []
+      : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
+    ...optionalChild({ name: 'memory-max', value: budget?.resources?.memoryMax }),
+    ...optionalChild({ name: 'disk-max', value: budget?.resources?.diskMax }),
+    ...(budget?.attention ?? []).map(({ person: id, asks }) =>
+      node({ name: 'attention', args: [id], props: { asks } }),
+    ),
+  ]
+  return [
+    ...optionalChild({ name: 'declared-priority', value: budget?.scheduling?.priority }),
+    ...optionalChild({ name: 'declared-lane', value: budget?.scheduling?.lane }),
+    ...(children.length === 0 ? [] : [block({ name: 'declared-budgets', children })]),
+  ]
+}
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,

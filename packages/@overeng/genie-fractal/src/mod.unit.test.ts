@@ -133,28 +133,28 @@ mission "example/admission" report-to="agent/example/owner" state="ready" {
     )
   })
 
-  it.each([
-    [{}, ''],
-    [{ memoryMax: '1', diskMax: '20g' }, '    memory-max "1"\n    disk-max "20g"\n'],
-  ])('renders empty and partial agent resources %j', (resources, children) => {
-    expect(emit([agent({ id: base.id, budget: { resources } })])).toBe(
-      `version 2
+  it.each([[{ memoryMax: '1', diskMax: '20g' }, '    memory-max "1"\n    disk-max "20g"\n']])(
+    'renders partial agent resources %j',
+    (resources, children) => {
+      expect(emit([agent({ id: base.id, budget: { resources } })])).toBe(
+        `version 2
 agent "example/admission" {
   declared-budgets {
 ${children}  }
 }
 `,
-    )
-    expect(emit([mission({ ...base, budget: { resources } })])).toBe(
-      `version 2
+      )
+      expect(emit([mission({ ...base, budget: { resources } })])).toBe(
+        `version 2
 mission "example/admission" report-to="agent/example/owner" state="ready" {
   declared-budgets {
 ${children}  }
   goal "Check admission."
 }
 `,
-    )
-  })
+      )
+    },
+  )
 
   it.each([
     { scheduling: { priority: 'urgent' } },
@@ -1102,6 +1102,15 @@ describe('Fractal declarations', () => {
     expect(missionWire({ ...fanInMission(), budget: { attention: [] } }).budget).toEqual({
       attention: [],
     })
+    expect(emit([mission({ ...fanInMission(), budget: { attention: [] } })])).toBe(
+      emit([mission(fanInMission())]),
+    )
+    expect(emit([mission({ ...fanInMission(), budget: { resources: {} } })])).toBe(
+      emit([mission(fanInMission())]),
+    )
+    expect(emit([agent({ id: 'example/worker', budget: { resources: {} } })])).toBe(
+      emit([agent({ id: 'example/worker' })]),
+    )
   })
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
