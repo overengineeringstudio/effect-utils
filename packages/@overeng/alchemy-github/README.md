@@ -278,6 +278,8 @@ Real beta.84 Plan/Deploy engine tests persist registration attributes, then veri
 
 The `alchemy-github/live` CI check runs only on pushes to `main` and `merge_group`, never on pull requests. It uses environment `alchemy-github-live` and fails if required configuration is missing; missing credentials are not a successful skip. Provision the sandbox App and environment before enabling/merging the workflow.
 
+The lane inherits the shared per-step Nix realisation timeouts while remaining outside the pipeline telemetry and cache-evidence artifact adapters.
+
 Configure these environment values without checking their contents into source:
 
 - Secret `ALCHEMY_GITHUB_SANDBOX_REPO`: sandbox `owner/repo`; secret-backed so GitHub masks the full identity in logs. Preflight also masks owner and repository components separately.

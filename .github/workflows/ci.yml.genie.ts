@@ -2587,6 +2587,8 @@ export default ciWorkflow({
             ],
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
+          // Keep this credentialed resource lane free of legacy artifact-action debt.
+          'test-live-alchemy-github': alchemyGithubLiveJob!,
           'publish-manifest-pr': publishManifestPrJob!,
           'promote-published': promotePublishedJob!,
           'published-status': publishedStatusJob!,
@@ -2602,8 +2604,6 @@ export default ciWorkflow({
       ),
       // Isolated pnpm consumer: no checkout-native Buck or root-shell cache evidence.
       'consumer-smoke': consumerSmokeJob!,
-      // Keep this credentialed resource lane free of legacy artifact-action debt.
-      'test-live-alchemy-github': alchemyGithubLiveJob!,
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.
