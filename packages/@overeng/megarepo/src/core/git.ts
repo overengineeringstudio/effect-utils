@@ -905,7 +905,8 @@ export const ensureBareRefLogging = Effect.fn('git/ensure-bare-ref-logging')(fun
       error.exitCode === 1 && error.stderr === '' ? Effect.succeed('') : Effect.fail(error),
     ),
   )
-  if (value === 'true' || value === 'always') return
+  const normalized = value.toLowerCase()
+  if (normalized === 'true' || normalized === 'always') return
   yield* runGitCommand({
     args: ['config', '--local', 'core.logAllRefUpdates', 'true'],
     cwd: repoPath,

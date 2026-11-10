@@ -6,6 +6,9 @@ import { expect } from 'vitest'
 
 import * as Git from './git.ts'
 
+process.env.GIT_CONFIG_GLOBAL = '/dev/null'
+process.env.GIT_CONFIG_SYSTEM = '/dev/null'
+
 const makeFixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const root = yield* fs.makeTempDirectoryScoped()
@@ -71,18 +74,20 @@ describe('bare store reflogs', () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
-  for (const value of ['false', 'always']) {
-    it.effect(`fetch ${value === 'always' ? 'preserves always' : 'enables disabled reflogs'}`, () =>
-      Effect.gen(function* () {
-        const { bare } = yield* makeFixture
-        yield* Git.runCommand({
-          cwd: bare,
-          args: ['config', '--local', 'core.logAllRefUpdates', value],
-        })
-        yield* Git.fetchBare({ repoPath: bare })
-        expect(yield* readLogging(bare)).toBe(value === 'always' ? 'always' : 'true')
-        yield* expectFetchedReflog(bare)
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  for (const value of ['false', 'always', 'ALWAYS']) {
+    it.effect(
+      `fetch ${value === 'false' ? 'enables disabled reflogs' : `preserves ${value}`}`,
+      () =>
+        Effect.gen(function* () {
+          const { bare } = yield* makeFixture
+          yield* Git.runCommand({
+            cwd: bare,
+            args: ['config', '--local', 'core.logAllRefUpdates', value],
+          })
+          yield* Git.fetchBare({ repoPath: bare })
+          expect(yield* readLogging(bare)).toBe(value === 'false' ? 'true' : value)
+          yield* expectFetchedReflog(bare)
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   }
 })
