@@ -150,6 +150,7 @@ export type ClosableTsApi = {
   readonly client?:
     | {
         readonly process?: JoinableChildProcess | undefined
+        readonly connect?: () => Promise<void>
         readonly close: () => Promise<void>
       }
     | undefined
@@ -281,15 +282,17 @@ const withCleanupCause = ({
 }
 
 type ServerMonitor = {
-  readonly signal: AbortSignal
-  readonly error: (stage: string) => Error | undefined
-  readonly dispose: () => void
+  readonly error: (args: {
+    stage: string
+    child: JoinableChildProcess | undefined
+  }) => Error | undefined
+  readonly dispose: (failed: boolean) => void
 }
 const serverMonitors = new WeakMap<API, ServerMonitor>()
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
 
 /**
- * Use the supported executable override, not global spawn patches or private client fields.
+ * Capture stderr through the supported executable override without patching global spawn.
  * Resolution mirrors typescript@7.0.2 lib/getExePath.js; recheck it on TypeScript bumps.
  */
 const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
@@ -308,72 +311,54 @@ const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
     )
   }
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-ts-api-'))
-  fs.chmodSync(directory, 0o700)
-  const statusPath = path.join(directory, 'status')
-  const stderrPath = path.join(directory, 'stderr')
-  const wrapper = path.join(directory, 'server')
-  // Foreground execution preserves RPC stdin and inherited lease fds, including under dash.
-  // Do not use process.execPath: in compiled Bun products it names the product, not a JS runtime.
-  fs.writeFileSync(
-    wrapper,
-    `#!/bin/sh
-${quote(executable)} "$@" 2>${quote(stderrPath)}
-status=$?
-printf '%s\\n' "$status" >${quote(statusPath)}
-exit "$status"
-`,
-    { mode: 0o700 },
-  )
-  const readStatus = () => {
-    try {
-      const status = fs.readFileSync(statusPath, 'utf8').trim()
-      return /^\d+$/.test(status) === true ? status : undefined
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
-      throw error
-    }
-  }
-  const controller = new AbortController()
-  const watcher = fs.watch(directory, () => {
-    if (readStatus() !== undefined) controller.abort()
-  })
-  const stderrTail = () => {
-    if (fs.existsSync(stderrPath) === false) return Buffer.alloc(0)
-    const fd = fs.openSync(stderrPath, 'r')
-    try {
-      const size = fs.fstatSync(fd).size
-      const tail = Buffer.alloc(Math.min(size, 4096))
-      fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length))
-      return tail
-    } finally {
-      fs.closeSync(fd)
-    }
-  }
-  const monitor: ServerMonitor = {
-    signal: controller.signal,
-    error: (stage) => {
-      const status = readStatus()
-      if (status === undefined) return undefined
-      return new Error(
-        `TypeScript API server exited at ${stage} (status ${status}): ${stderrTail().toString('utf8')}`,
-      )
-    },
-    dispose: () => {
-      watcher.close()
-      try {
-        const tail = stderrTail()
-        if (tail.length > 0) process.stderr.write(tail)
-      } finally {
-        fs.rmSync(directory, { recursive: true, force: true })
-      }
-    },
-  }
   try {
+    fs.chmodSync(directory, 0o700)
+    const stderrPath = path.join(directory, 'stderr')
+    const wrapper = path.join(directory, 'server')
+    // Exec preserves the child's PID, RPC stdin and inherited lease fds, including under dash.
+    // Do not use process.execPath: in compiled Bun products it names the product, not a JS runtime.
+    fs.writeFileSync(
+      wrapper,
+      `#!/bin/sh
+exec ${quote(executable)} "$@" 2>${quote(stderrPath)}
+`,
+      { mode: 0o700 },
+    )
+    const stderrTail = () => {
+      if (fs.existsSync(stderrPath) === false) return Buffer.alloc(0)
+      const fd = fs.openSync(stderrPath, 'r')
+      try {
+        const size = fs.fstatSync(fd).size
+        const tail = Buffer.alloc(Math.min(size, 4096))
+        fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length))
+        return tail
+      } finally {
+        fs.closeSync(fd)
+      }
+    }
+    const monitor: ServerMonitor = {
+      error: ({ stage, child }) => {
+        if (child === undefined || childIsAlive(child) === true) return undefined
+        return new Error(
+          `TypeScript API server exited at ${stage} (code ${child.exitCode} / signal ${child.signalCode ?? null}): ${stderrTail().toString('utf8')}`,
+        )
+      },
+      dispose: (failed) => {
+        try {
+          if (failed === true) {
+            const tail = stderrTail()
+            if (tail.length > 0) process.stderr.write(tail)
+          }
+        } finally {
+          fs.rmSync(directory, { recursive: true, force: true })
+        }
+      },
+    }
     const api = new API({ ...options, tsserverPath: wrapper })
     serverMonitors.set(api, monitor)
     return api
   } catch (error) {
-    monitor.dispose()
+    fs.rmSync(directory, { recursive: true, force: true })
     throw error
   }
 }
@@ -390,18 +375,29 @@ const apiRequest = async <A>({
   run: () => A | Promise<A>
 }): Promise<A> => {
   const monitor = serverMonitors.get(api)
+  let child: JoinableChildProcess | undefined
   const death = Promise.withResolvers<never>()
-  const onDeath = () => death.reject(monitor?.error(stage))
-  monitor?.signal.addEventListener('abort', onDeath, { once: true })
-  if (monitor?.signal.aborted === true) onDeath()
+  const onExit = () => {
+    const error = monitor?.error({ stage, child })
+    if (error !== undefined) death.reject(error)
+  }
   try {
     return await withDeadline({
       stage,
       timeoutMs,
-      run: () => Promise.race([Promise.resolve().then(run), death.promise]),
+      run: async () => {
+        const client = apiClient(api)
+        // connect() awaits a dynamic spawn import. Join it before reading the process, not after RPC.
+        await client?.connect?.()
+        child = client?.process
+        child?.once('exit', onExit)
+        const error = monitor?.error({ stage, child })
+        if (error !== undefined) throw error
+        return Promise.race([Promise.resolve().then(run), death.promise])
+      },
     })
   } catch (error) {
-    const deathError = monitor?.error(stage)
+    const deathError = monitor?.error({ stage, child })
     if (deathError !== undefined) throw deathError
     if (error instanceof TsApiTimeoutError) {
       try {
@@ -412,7 +408,7 @@ const apiRequest = async <A>({
     }
     throw error
   } finally {
-    monitor?.signal.removeEventListener('abort', onDeath)
+    child?.removeListener('exit', onExit)
   }
 }
 
@@ -531,7 +527,7 @@ const withApiSession = async <A>({
           : withCleanupCause({ error: outcome.error, cleanupError }),
     }
   }
-  serverMonitors.get(api)?.dispose()
+  serverMonitors.get(api)?.dispose(outcome.ok === false)
   serverMonitors.delete(api)
   if (outcome.ok === false) throw outcome.error
   return outcome.value

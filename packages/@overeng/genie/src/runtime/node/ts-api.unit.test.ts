@@ -286,8 +286,8 @@ describe('runTsVirtualProject', () => {
 
 describe('TypeScript API server death', () => {
   it.each([
-    ['exit 23', '23'],
-    ['kill -KILL $$', '137'],
+    ['exit 23', 'code 23 / signal null'],
+    ['kill -KILL $$', 'code null / signal SIGKILL'],
   ])(
     'fails fast with bounded stderr when the server runs %s',
     async (exit, status) => {
@@ -308,7 +308,7 @@ describe('TypeScript API server death', () => {
         )
         expect(error).toBeInstanceOf(Error)
         const message = error instanceof Error ? error.message : ''
-        const prefix = `TypeScript API server exited at updateSnapshot (status ${status}): `
+        const prefix = `TypeScript API server exited at updateSnapshot (${status}): `
         expect(message.startsWith(prefix)).toBe(true)
         expect(message).toContain('panic-tail')
         expect(Buffer.byteLength(message.slice(prefix.length))).toBeLessThanOrEqual(4096)
