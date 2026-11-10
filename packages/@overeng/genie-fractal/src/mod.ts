@@ -375,6 +375,28 @@ const AgentBudget = budgetStruct({
 const MissionBudget = budgetStruct({
   scheduling: Schema.optionalKey(BudgetScheduling),
   resources: Schema.optionalKey(MissionResources),
+  /**
+   * Declared, not enforced: asks in a rolling 7-day window per mission and person.
+   * Adoption requires a Fractal release with native attention support on every member.
+   */
+  attention: Schema.optionalKey(
+    Schema.Array(
+      budgetStruct({
+        person: Schema.String.pipe(
+          Schema.refine((value): value is string => /^person\/[^/\s]+$/u.test(value), {
+            message: 'invalid attention budget person subject',
+          }),
+        ),
+        asks: DeclaredBudgetInteger,
+      }),
+    ).pipe(
+      Schema.refine(
+        (entries): entries is typeof entries =>
+          new Set(entries.map((entry) => entry.person)).size === entries.length,
+        { message: 'attention budget must occur once per person' },
+      ),
+    ),
+  ),
 })
 /** Retired spellings must refuse even when an external decoder ignores excess keys. */
 const RetiredAdmission = Schema.Never.annotate({
@@ -389,27 +411,26 @@ const declaredAdmissionNodes = ({
   budget,
 }: {
   readonly budget?: typeof MissionBudget.Type
-}): Node[] => [
-  ...optionalChild({ name: 'declared-priority', value: budget?.scheduling?.priority }),
-  ...optionalChild({ name: 'declared-lane', value: budget?.scheduling?.lane }),
-  ...(budget?.resources === undefined
-    ? []
-    : [
-        block({
-          name: 'declared-budgets',
-          children: [
-            ...(budget.resources.cpuSeconds === undefined
-              ? []
-              : [child({ name: 'cpu-seconds', value: budget.resources.cpuSeconds })]),
-            ...(budget.resources.tokenBudget === undefined
-              ? []
-              : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
-            ...optionalChild({ name: 'memory-max', value: budget.resources.memoryMax }),
-            ...optionalChild({ name: 'disk-max', value: budget.resources.diskMax }),
-          ],
-        }),
-      ]),
-]
+}): Node[] => {
+  const children = [
+    ...(budget?.resources?.cpuSeconds === undefined
+      ? []
+      : [child({ name: 'cpu-seconds', value: budget.resources.cpuSeconds })]),
+    ...(budget?.resources?.tokenBudget === undefined
+      ? []
+      : [child({ name: 'token-budget', value: budget.resources.tokenBudget })]),
+    ...optionalChild({ name: 'memory-max', value: budget?.resources?.memoryMax }),
+    ...optionalChild({ name: 'disk-max', value: budget?.resources?.diskMax }),
+    ...(budget?.attention ?? []).map(({ person: id, asks }) =>
+      node({ name: 'attention', args: [id], props: { asks } }),
+    ),
+  ]
+  return [
+    ...optionalChild({ name: 'declared-priority', value: budget?.scheduling?.priority }),
+    ...optionalChild({ name: 'declared-lane', value: budget?.scheduling?.lane }),
+    ...(children.length === 0 ? [] : [block({ name: 'declared-budgets', children })]),
+  ]
+}
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
