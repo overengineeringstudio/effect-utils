@@ -120,7 +120,7 @@ experiments (as tested hypotheses).
   after ~25 minutes of uptime, shutdown exceeded `TimeoutStopSec=90s`
   and systemd sent SIGKILL. Upstream #7983 is closed (2026-09-23),
   with the fix in v3.1.0-rc.1.
-- On 2026-11-07, the deployment host's journald logs, queried through Loki recorded a
+- On 2026-11-07, the deployment host's journald logs, queried through Loki, recorded a
   Tempo 3.1.0 stop during a system switch after 2 h 36 min of uptime.
   Systemd began stopping the service at 12:12:54.837Z; Tempo logged
   `Tempo stopped` at 12:13:16.397Z, and systemd recorded successful
