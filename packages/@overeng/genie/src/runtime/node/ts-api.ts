@@ -227,7 +227,6 @@ type ServerMonitor = {
   readonly dispose: () => void
 }
 const serverMonitors = new WeakMap<API, ServerMonitor>()
-const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
 
 /**
  * Use the supported executable override, not global spawn patches or private client fields.
@@ -251,25 +250,35 @@ const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
   fs.chmodSync(directory, 0o700)
   const statusPath = path.join(directory, 'status')
   const stderrPath = path.join(directory, 'stderr')
-  const wrapper = path.join(directory, 'server')
-  // Preserve stdin explicitly: POSIX shells otherwise redirect asynchronous commands to /dev/null.
-  // Do not repurpose fd3+: those descriptors may carry inherited editor-view leases.
-  // A trapped signal interrupts wait, so keep waiting until the compiler really exits.
+  const wrapper = path.join(directory, 'server.cjs')
+  // Use the current JS runtime: background POSIX shells can replace RPC stdin with /dev/null.
+  // Reload the bootstrap mapper so its spawn hook retains every inherited editor-view lease.
   fs.writeFileSync(
     wrapper,
-    `#!/bin/sh
-${quote(executable)} "$@" <&0 2>${quote(stderrPath)} &
-child=$!
-trap 'kill -s TERM "$child" 2>/dev/null' TERM
-trap 'kill -s INT "$child" 2>/dev/null' INT
-trap 'kill -s HUP "$child" 2>/dev/null' HUP
-while :; do
-  wait "$child"
-  status=$?
-  kill -0 "$child" 2>/dev/null || break
-done
-printf '%s\\n' "$status" >${quote(statusPath)}
-exit "$status"
+    `#!${process.execPath}
+const fs = require('node:fs')
+if (process.env.EDITOR_VIEW_LEASE_ACTIVE === '1') require(process.env.EDITOR_VIEW_LEASE_PRELOAD)
+const { spawn } = require('node:child_process')
+const stderrPath = ${JSON.stringify(stderrPath)}
+const stderrFd = fs.openSync(stderrPath, 'a')
+const child = spawn(${JSON.stringify(executable)}, process.argv.slice(2), {
+  stdio: ['inherit', 'inherit', stderrFd],
+})
+fs.closeSync(stderrFd)
+const finish = (status) => {
+  fs.writeFileSync(${JSON.stringify(statusPath)}, String(status))
+  process.exit(status)
+}
+child.once('error', (error) => {
+  fs.appendFileSync(stderrPath, String(error))
+  finish(127)
+})
+child.once('exit', (code, signal) => {
+  finish(code ?? (128 + require('node:os').constants.signals[signal]))
+})
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+  process.on(signal, () => child.kill(signal))
+}
 `,
     { mode: 0o700 },
   )

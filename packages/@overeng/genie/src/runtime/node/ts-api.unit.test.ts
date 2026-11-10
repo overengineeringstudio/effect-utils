@@ -281,7 +281,8 @@ describe('TypeScript API server death', () => {
       const previous = process.env.GENIE_TYPESCRIPT_API_SERVER
       fs.writeFileSync(
         executable,
-        `#!/bin/sh\ndd bs=1 count=1 >/dev/null 2>/dev/null\nprintf '%s' '${'x'.repeat(5000)}panic-tail' >&2\n${exit}\n`,
+        // EOF must fail distinctly: the former dash wrapper incorrectly handed the server /dev/null.
+        `#!/bin/sh\nIFS= read -r request || exit 91\nprintf '%s' '${'x'.repeat(5000)}panic-tail' >&2\n${exit}\n`,
         { mode: 0o700 },
       )
       process.env.GENIE_TYPESCRIPT_API_SERVER = executable
