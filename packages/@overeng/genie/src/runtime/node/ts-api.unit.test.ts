@@ -270,17 +270,26 @@ describe('runTsVirtualProject', () => {
 })
 
 describe('TypeScript API server death', () => {
-  it.each([['exit 23', '23'], ['kill -KILL $$', '137']])(
+  it.each([
+    ['exit 23', '23'],
+    ['kill -KILL $$', '137'],
+  ])(
     'fails fast with bounded stderr when the server runs %s',
     async (exit, status) => {
       const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-ts-api-test-'))
       const executable = path.join(directory, 'fake-server')
       const previous = process.env.GENIE_TYPESCRIPT_API_SERVER
-      fs.writeFileSync(executable, `#!/bin/sh\ndd bs=1 count=1 >/dev/null 2>/dev/null\nprintf '%s' '${'x'.repeat(5000)}panic-tail' >&2\n${exit}\n`, { mode: 0o700 })
+      fs.writeFileSync(
+        executable,
+        `#!/bin/sh\ndd bs=1 count=1 >/dev/null 2>/dev/null\nprintf '%s' '${'x'.repeat(5000)}panic-tail' >&2\n${exit}\n`,
+        { mode: 0o700 },
+      )
       process.env.GENIE_TYPESCRIPT_API_SERVER = executable
       const started = performance.now()
       try {
-        const error = await runTsFileAnalysis({ cwd: directory, use: () => undefined }).catch((error: unknown) => error)
+        const error = await runTsFileAnalysis({ cwd: directory, use: () => undefined }).catch(
+          (error: unknown) => error,
+        )
         expect(error).toBeInstanceOf(Error)
         const message = error instanceof Error ? error.message : ''
         const prefix = `TypeScript API server exited at updateSnapshot (status ${status}): `

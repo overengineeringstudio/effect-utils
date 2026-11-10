@@ -227,6 +227,7 @@ type ServerMonitor = {
   readonly dispose: () => void
 }
 const serverMonitors = new WeakMap<API, ServerMonitor>()
+const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
 
 /**
  * Use the supported executable override, not global spawn patches or private client fields.
@@ -237,19 +238,26 @@ const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
   if (executable === undefined) {
     // Match typescript@7.0.2 lib/getExePath.js's installed-package resolution, relative to the client.
     const require = createRequire(createRequire(import.meta.url).resolve('typescript/package.json'))
-    const platformPackage = require.resolve(`@typescript/typescript-${process.platform}-${process.arch}/package.json`)
-    executable = path.join(path.dirname(platformPackage), 'lib', process.platform === 'win32' ? 'tsc.exe' : 'tsc')
+    const platformPackage = require.resolve(
+      `@typescript/typescript-${process.platform}-${process.arch}/package.json`,
+    )
+    executable = path.join(
+      path.dirname(platformPackage),
+      'lib',
+      process.platform === 'win32' ? 'tsc.exe' : 'tsc',
+    )
   }
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-ts-api-'))
   fs.chmodSync(directory, 0o700)
   const statusPath = path.join(directory, 'status')
   const stderrPath = path.join(directory, 'stderr')
   const wrapper = path.join(directory, 'server')
-  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
   // Preserve stdin explicitly: POSIX shells otherwise redirect asynchronous commands to /dev/null.
   // Do not repurpose fd3+: those descriptors may carry inherited editor-view leases.
   // A trapped signal interrupts wait, so keep waiting until the compiler really exits.
-  fs.writeFileSync(wrapper, `#!/bin/sh
+  fs.writeFileSync(
+    wrapper,
+    `#!/bin/sh
 ${quote(executable)} "$@" <&0 2>${quote(stderrPath)} &
 child=$!
 trap 'kill -s TERM "$child" 2>/dev/null' TERM
@@ -262,11 +270,13 @@ while :; do
 done
 printf '%s\\n' "$status" >${quote(statusPath)}
 exit "$status"
-`, { mode: 0o700 })
+`,
+    { mode: 0o700 },
+  )
   const readStatus = () => {
     try {
       const status = fs.readFileSync(statusPath, 'utf8').trim()
-      return /^\d+$/.test(status) ? status : undefined
+      return /^\d+$/.test(status) === true ? status : undefined
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
       throw error
@@ -293,7 +303,9 @@ exit "$status"
     error: (stage) => {
       const status = readStatus()
       if (status === undefined) return undefined
-      return new Error(`TypeScript API server exited at ${stage} (status ${status}): ${stderrTail().toString('utf8')}`)
+      return new Error(
+        `TypeScript API server exited at ${stage} (status ${status}): ${stderrTail().toString('utf8')}`,
+      )
     },
     dispose: () => {
       watcher.close()
@@ -333,12 +345,13 @@ const apiRequest = async <A>({
   if (monitor?.signal.aborted === true) onDeath()
   try {
     return await withDeadline({
-      stage, timeoutMs,
+      stage,
+      timeoutMs,
       run: () => Promise.race([Promise.resolve().then(run), death.promise]),
     })
   } catch (error) {
-    const death = serverMonitors.get(api)?.error(stage)
-    if (death !== undefined) throw death
+    const deathError = monitor?.error(stage)
+    if (deathError !== undefined) throw deathError
     if (error instanceof TsApiTimeoutError) {
       try {
         await terminateApi(apiClient(api)?.process)
