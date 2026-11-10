@@ -891,6 +891,27 @@ export const repairBareOriginFetchRefspec = ({ repoPath }: { repoPath: string })
     }),
   )
 
+/** Enable store reflogs without weakening an existing `always` policy. Caller holds the writer lock. */
+export const ensureBareRefLogging = Effect.fn('git/ensure-bare-ref-logging')(function* ({
+  repoPath,
+}: {
+  repoPath: string
+}) {
+  const value = yield* runGitCommand({
+    args: ['config', '--local', '--get', 'core.logAllRefUpdates'],
+    cwd: repoPath,
+  }).pipe(
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed('') : Effect.fail(error),
+    ),
+  )
+  if (value === 'true' || value === 'always') return
+  yield* runGitCommand({
+    args: ['config', '--local', 'core.logAllRefUpdates', 'true'],
+    cwd: repoPath,
+  })
+})
+
 /**
  * Clone a repository as a bare repo.
  * Configures fetch refspec so remote tracking refs are created on fetch.
@@ -929,6 +950,10 @@ export const cloneBare = (args: { url: string; targetPath: string }) => {
       args: ['config', 'remote.origin.fetch', bareOriginFetchRefspec],
       cwd: args.targetPath,
     })
+    yield* runGitCommand({
+      args: ['config', '--local', 'core.logAllRefUpdates', 'true'],
+      cwd: args.targetPath,
+    })
     return exists === false
   }).pipe(
     withGitWriterLock({ path: args.targetPath, create: true }),
@@ -959,6 +984,7 @@ export const fetchBare = (args: {
   refs?: ReadonlyArray<string>
 }) =>
   Effect.gen(function* () {
+    yield* ensureBareRefLogging({ repoPath: args.repoPath })
     const remote = args.remote ?? 'origin'
     yield* runGitCommandWithRetry({
       args: ['fetch', '--no-tags', '--prune', remote, bareOriginFetchRefspec],
