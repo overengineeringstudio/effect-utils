@@ -130,6 +130,60 @@ git -C "$main" -c core.hooksPath=/dev/null -c user.name=teardown-test -c user.em
 git -C "$main" worktree add -q --detach "$worktree" HEAD
 cp "$ROOT/devenv.lock" "$worktree/devenv.lock"
 
+# Deterministic service responses cover roots that a running service never watched.
+fake_bin="$TEMP_ROOT/fake-bin"
+watch_root="$TEMP_ROOT/watch-root"
+mkdir -p "$fake_bin" "$watch_root" "$TEMP_ROOT/watch-home"
+git -C "$watch_root" init -q
+cat >"$fake_bin/watchman" <<'WATCHMAN'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$1" = --no-spawn ] && [ "$2" = --no-local ] && [ "$3" = --output-encoding=json ]
+[ "$4" = --sockname=fixture.sock ]
+case "$5" in
+  watch-list) printf '%s\n' "$FAKE_WATCH_LIST"; exit "${FAKE_LIST_STATUS:-0}" ;;
+  watch-del)
+    [ "$6" = "$DEVENV_ROOT" ]
+    printf '%s\n' "$6" >>"$FAKE_WATCH_LOG"
+    exit "$FAKE_DELETE_STATUS"
+    ;;
+  *) exit 99 ;;
+esac
+WATCHMAN
+chmod +x "$fake_bin/watchman"
+watchman_case() {
+  local name="$1" response="$2" delete_status="$3" expected="$4" calls="$5" list_status="${6:-0}"
+  local status=0
+  : >"$TEMP_ROOT/watch-calls"
+  PATH="$fake_bin:$PATH" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$watch_root" \
+    WATCHMAN_SOCK=fixture.sock WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+    FAKE_WATCH_LIST="$response" FAKE_DELETE_STATUS="$delete_status" FAKE_LIST_STATUS="$list_status" \
+    FAKE_WATCH_LOG="$TEMP_ROOT/watch-calls" \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" \
+    >"$TEMP_ROOT/watch-case.log" 2>&1 || status=$?
+  if [ "$status" -ne "$expected" ]; then
+    cat "$TEMP_ROOT/watch-case.log"
+    fail "$name: expected exit $expected, got $status"
+  fi
+  [ "$(wc -l <"$TEMP_ROOT/watch-calls")" -eq "$calls" ] || fail "$name: unexpected watch-del calls"
+}
+watchman_response() { printf %s "$1" | "$JQ" -Rsc '{version:"fixture",roots:[.]}'; }
+watchman_case unwatched '{"version":"fixture","roots":[]}' 1 0 0
+watched="$(watchman_response "$watch_root")"
+watchman_case watched "$watched" 0 0 1
+watchman_case delete-failure "$watched" 1 1 1
+watchman_case sibling "$(watchman_response "$watch_root-other")" 1 0 0
+watchman_case escaped-slashes "${watched//\//\\/}" 0 0 1
+watchman_case unreachable '' 1 0 0 1
+watchman_case malformed '{"version":"fixture","roots":[' 1 0 0
+watchman_case ambiguous "$watched trailing" 1 0 0
+watch_root="$TEMP_ROOT/watch-\"quoted\\root"
+mkdir -p "$watch_root"
+git -C "$watch_root" init -q
+watched="$(watchman_response "$watch_root")"
+watchman_case quoted-root "$watched" 0 0 1
+watchman_case quoted-sibling "$(watchman_response "$watch_root-other")" 1 0 0
+
 # Real byte-owning editor publication, not hand-built snapshot metadata.
 mkdir -p "$worktree/inputs/editor" "$worktree/inputs/modules/dep"
 printf '{}\n' >"$worktree/inputs/editor/install-descriptor.json"

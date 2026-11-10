@@ -121,7 +121,52 @@ fi
 if command -v watchman >/dev/null 2>&1; then
   watchman_args=(--no-spawn --no-local --output-encoding=json)
   if [ -n "${WATCHMAN_SOCK:-}" ]; then watchman_args+=("--sockname=$WATCHMAN_SOCK"); fi
-  if watchman "${watchman_args[@]}" watch-list >/dev/null 2>&1; then
+  # Parse exact roots, failing closed on unfamiliar JSON rather than masking watch-del errors.
+  if watch_list="$(watchman "${watchman_args[@]}" watch-list 2>/dev/null)" &&
+    WATCHMAN_TEARDOWN_ROOT="$root" awk '
+      function trim() { sub(/^[[:space:]]+/, "", json) }
+      function string(    token, value, i, c) {
+        trim()
+        if (!match(json, /^"([^"\\[:cntrl:]]|\\["\\/bfnrt])*"/)) { invalid = 1; return "" }
+        token = substr(json, 2, RLENGTH - 2)
+        json = substr(json, RLENGTH + 1)
+        value = ""
+        for (i = 1; i <= length(token); i++) {
+          c = substr(token, i, 1)
+          if (c == "\\") {
+            c = substr(token, ++i, 1)
+            if (c in escapes) c = escapes[c]
+          }
+          value = value c
+        }
+        return value
+      }
+      BEGIN {
+        escapes["b"] = "\b"; escapes["f"] = "\f"; escapes["n"] = "\n"
+        escapes["r"] = "\r"; escapes["t"] = "\t"
+      }
+      { json = json $0 "\n" }
+      END {
+        trim()
+        if (!sub(/^\{[[:space:]]*"version"[[:space:]]*:[[:space:]]*/, "", json)) exit 1
+        string()
+        trim()
+        if (invalid || !sub(/^,[[:space:]]*"roots"[[:space:]]*:[[:space:]]*\[/, "", json)) exit 1
+        trim()
+        if (substr(json, 1, 1) != "]") {
+          while (1) {
+            value = string()
+            if (invalid) exit 1
+            if (value == ENVIRON["WATCHMAN_TEARDOWN_ROOT"]) found = 1
+            trim()
+            if (substr(json, 1, 1) != ",") break
+            json = substr(json, 2)
+          }
+        }
+        if (json !~ /^\][[:space:]]*\}[[:space:]]*$/) exit 1
+        exit !found
+      }
+    ' <<<"$watch_list"; then
     watchman "${watchman_args[@]}" watch-del "$root"
   fi
 fi
