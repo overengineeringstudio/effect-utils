@@ -1,4 +1,14 @@
 import { EventEmitter, once } from 'node:events'
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Writable } from 'node:stream'
 
@@ -6,7 +16,14 @@ import { API } from 'typescript/unstable/async'
 import { describe, expect, it } from 'vitest'
 
 import type { ClosableTsApi, JoinableChildProcess } from './ts-api.ts'
-import { closeApi, runTsFileAnalysis, runTsVirtualProject, TsApiTimeoutError } from './ts-api.ts'
+import {
+  closeApi,
+  darwinTsgoRealpathWorkaround,
+  realpathThroughName,
+  runTsFileAnalysis,
+  runTsVirtualProject,
+  TsApiTimeoutError,
+} from './ts-api.ts'
 
 /** A structural stand-in for the spawned child: liveness plus the exit event, no process. */
 const fakeChild = (exitCode: number | null): JoinableChildProcess =>
@@ -264,5 +281,33 @@ describe('runTsVirtualProject', () => {
     })
 
     expect(messages).toEqual([])
+  })
+})
+
+describe('darwinTsgoRealpathWorkaround', () => {
+  it('does not install a realpath callback on other platforms', () => {
+    expect(darwinTsgoRealpathWorkaround('linux')).toBeUndefined()
+    expect(darwinTsgoRealpathWorkaround('win32')).toBeUndefined()
+  })
+
+  it('retains the reached hardlink name through symlinked node_modules', () => {
+    const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-realpath-')))
+    try {
+      const target = path.join(root, 'packages', 'effect')
+      mkdirSync(target, { recursive: true })
+      const store = path.join(root, 'sha256-0444')
+      writeFileSync(store, 'export declare const value: number')
+      const reached = path.join(target, 'index.d.ts')
+      linkSync(store, reached)
+      symlinkSync(path.dirname(target), path.join(root, 'node_modules'))
+      symlinkSync('index.d.ts', path.join(target, 'alias.d.ts'))
+      const fs = darwinTsgoRealpathWorkaround('darwin')!
+      expect(fs.realpath(path.join(root, 'node_modules', 'effect', 'index.d.ts'))).toBe(reached)
+      expect(fs.realpath(path.join(root, 'node_modules', 'effect', 'alias.d.ts'))).toBe(reached)
+      expect(fs.realpath(path.join(root, 'missing.ts'))).toBeUndefined()
+      expect(realpathThroughName(`${root}/node_modules/effect/../effect/index.d.ts`)).toBe(reached)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
