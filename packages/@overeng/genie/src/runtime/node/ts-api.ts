@@ -29,14 +29,15 @@ import type { SourceFile, StringLiteral } from 'typescript/unstable/ast'
 import type { Diagnostic } from 'typescript/unstable/async'
 import { API } from 'typescript/unstable/async'
 
+const splitPathComponents = (value: string): string[] => {
+  const parts = value.split(path.sep).filter((part) => part.length > 0)
+  if (value.endsWith(path.sep) === true) parts.push('.')
+  return parts
+}
+
 /** Resolve symlinks component-by-component without asking Darwin for a regular file's hardlink name. */
 export const realpathThroughName = (file: string): string => {
-  const split = (value: string): string[] => {
-    const parts = value.split(path.sep).filter((part) => part.length > 0)
-    if (value.endsWith(path.sep) === true) parts.push('.')
-    return parts
-  }
-  const pending = split(
+  const pending = splitPathComponents(
     path.isAbsolute(file) === true ? file : `${process.cwd()}${path.sep}${file}`,
   )
   let resolved = path.parse(path.resolve(file)).root
@@ -56,7 +57,7 @@ export const realpathThroughName = (file: string): string => {
         throw Object.assign(new Error(`too many symbolic links: ${file}`), { code: 'ELOOP' })
       const target = readlinkSync(candidate)
       if (path.isAbsolute(target) === true) resolved = path.parse(target).root
-      pending.unshift(...split(target))
+      pending.unshift(...splitPathComponents(target))
     } else {
       if (pending.length === 0) return path.join(realpathSync(resolved), component)
       if (status.isDirectory() === false)
