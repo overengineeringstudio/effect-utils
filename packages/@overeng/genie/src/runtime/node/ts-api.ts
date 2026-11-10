@@ -20,8 +20,9 @@
  * Both own the session lifetime: the `tsgo` child process is always closed, including on throw.
  */
 
-import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
+import * as fs from 'node:fs'
 import { createRequire } from 'node:module'
+import os from 'node:os'
 import path from 'node:path'
 import type { Writable } from 'node:stream'
 
@@ -44,22 +45,22 @@ export const realpathThroughName = (file: string): string => {
   let hops = 0
   for (;;) {
     const component = pending.shift()
-    if (component === undefined) return realpathSync(resolved)
+    if (component === undefined) return fs.realpathSync(resolved)
     if (component === '.') continue
     if (component === '..') {
       resolved = path.dirname(resolved)
       continue
     }
     const candidate = path.join(resolved, component)
-    const status = lstatSync(candidate)
+    const status = fs.lstatSync(candidate)
     if (status.isSymbolicLink() === true) {
       if (++hops > 40)
         throw Object.assign(new Error(`too many symbolic links: ${file}`), { code: 'ELOOP' })
-      const target = readlinkSync(candidate)
+      const target = fs.readlinkSync(candidate)
       if (path.isAbsolute(target) === true) resolved = path.parse(target).root
       pending.unshift(...splitPathComponents(target))
     } else {
-      if (pending.length === 0) return path.join(realpathSync(resolved), component)
+      if (pending.length === 0) return path.join(fs.realpathSync(resolved), component)
       if (status.isDirectory() === false)
         throw Object.assign(new Error(`not a directory: ${candidate}`), { code: 'ENOTDIR' })
       resolved = candidate
@@ -112,7 +113,7 @@ export const isAnalyzableSourcePath = (file: string): boolean =>
  *
  * The API client's JSON-RPC protocol is versioned with the compiler binary, so the ONLY server
  * guaranteed to speak it is the `@typescript/typescript-<platform>` executable published alongside the
- * `typescript` package we import — which the client resolves itself when no path is configured. A
+ * `typescript` package we import — resolved with the client's installed-package rules. A
  * `tsgo` on `PATH` is deliberately NOT considered: the dev shell exposes the Effect-TS fork, whose
  * revision differs from the npm client and answers `updateSnapshot` with zero projects (surfacing as
  * `no project found for file`). `GENIE_TYPESCRIPT_API_SERVER` remains the explicit override, and the
@@ -149,6 +150,7 @@ export type ClosableTsApi = {
   readonly client?:
     | {
         readonly process?: JoinableChildProcess | undefined
+        readonly connect?: () => Promise<void>
         readonly close: () => Promise<void>
       }
     | undefined
@@ -279,6 +281,88 @@ const withCleanupCause = ({
   return error
 }
 
+type ServerMonitor = {
+  readonly error: (args: {
+    stage: string
+    child: JoinableChildProcess | undefined
+  }) => Error | undefined
+  readonly dispose: (failed: boolean) => void
+}
+const serverMonitors = new WeakMap<API, ServerMonitor>()
+const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+
+/**
+ * Capture stderr through the supported executable override without patching global spawn.
+ * Resolution mirrors typescript@7.0.2 lib/getExePath.js; recheck it on TypeScript bumps.
+ */
+const createApi = (options: ConstructorParameters<typeof API>[0]): API => {
+  let executable =
+    options !== undefined && 'tsserverPath' in options ? options.tsserverPath : undefined
+  if (executable === undefined) {
+    // Match typescript@7.0.2 lib/getExePath.js's installed-package resolution, relative to the client.
+    const require = createRequire(createRequire(import.meta.url).resolve('typescript/package.json'))
+    const platformPackage = require.resolve(
+      `@typescript/typescript-${process.platform}-${process.arch}/package.json`,
+    )
+    executable = path.join(
+      path.dirname(platformPackage),
+      'lib',
+      process.platform === 'win32' ? 'tsc.exe' : 'tsc',
+    )
+  }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-ts-api-'))
+  try {
+    fs.chmodSync(directory, 0o700)
+    const stderrPath = path.join(directory, 'stderr')
+    const wrapper = path.join(directory, 'server')
+    // Exec preserves the child's PID, RPC stdin and inherited lease fds, including under dash.
+    // Do not use process.execPath: in compiled Bun products it names the product, not a JS runtime.
+    fs.writeFileSync(
+      wrapper,
+      `#!/bin/sh
+exec ${quote(executable)} "$@" 2>${quote(stderrPath)}
+`,
+      { mode: 0o700 },
+    )
+    const stderrTail = () => {
+      if (fs.existsSync(stderrPath) === false) return Buffer.alloc(0)
+      const fd = fs.openSync(stderrPath, 'r')
+      try {
+        const size = fs.fstatSync(fd).size
+        const tail = Buffer.alloc(Math.min(size, 4096))
+        fs.readSync(fd, tail, 0, tail.length, Math.max(0, size - tail.length))
+        return tail
+      } finally {
+        fs.closeSync(fd)
+      }
+    }
+    const monitor: ServerMonitor = {
+      error: ({ stage, child }) => {
+        if (child === undefined || childIsAlive(child) === true) return undefined
+        return new Error(
+          `TypeScript API server exited at ${stage} (code ${child.exitCode} / signal ${child.signalCode ?? null}): ${stderrTail().toString('utf8')}`,
+        )
+      },
+      dispose: (failed) => {
+        try {
+          if (failed === true) {
+            const tail = stderrTail()
+            if (tail.length > 0) process.stderr.write(tail)
+          }
+        } finally {
+          fs.rmSync(directory, { recursive: true, force: true })
+        }
+      },
+    }
+    const api = new API({ ...options, tsserverPath: wrapper })
+    serverMonitors.set(api, monitor)
+    return api
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true })
+    throw error
+  }
+}
+
 const apiRequest = async <A>({
   api,
   stage,
@@ -290,9 +374,31 @@ const apiRequest = async <A>({
   timeoutMs: number
   run: () => A | Promise<A>
 }): Promise<A> => {
+  const monitor = serverMonitors.get(api)
+  let child: JoinableChildProcess | undefined
+  const death = Promise.withResolvers<never>()
+  const onExit = () => {
+    const error = monitor?.error({ stage, child })
+    if (error !== undefined) death.reject(error)
+  }
   try {
-    return await withDeadline({ stage, timeoutMs, run })
+    return await withDeadline({
+      stage,
+      timeoutMs,
+      run: async () => {
+        const client = apiClient(api)
+        // connect() awaits a dynamic spawn import. Join it before reading the process, not after RPC.
+        await client?.connect?.()
+        child = client?.process
+        child?.once('exit', onExit)
+        const error = monitor?.error({ stage, child })
+        if (error !== undefined) throw error
+        return Promise.race([Promise.resolve().then(run), death.promise])
+      },
+    })
   } catch (error) {
+    const deathError = monitor?.error({ stage, child })
+    if (deathError !== undefined) throw deathError
     if (error instanceof TsApiTimeoutError) {
       try {
         await terminateApi(apiClient(api)?.process)
@@ -301,6 +407,8 @@ const apiRequest = async <A>({
       }
     }
     throw error
+  } finally {
+    child?.removeListener('exit', onExit)
   }
 }
 
@@ -419,6 +527,8 @@ const withApiSession = async <A>({
           : withCleanupCause({ error: outcome.error, cleanupError }),
     }
   }
+  serverMonitors.get(api)?.dispose(outcome.ok === false)
+  serverMonitors.delete(api)
   if (outcome.ok === false) throw outcome.error
   return outcome.value
 }
@@ -467,8 +577,11 @@ export const runTsFileAnalysis = async <A>({
   /** Internal deadline injection for exercising stalled servers without a long-running test. */
   requestTimeoutMs?: number
 }): Promise<A> => {
-  const fs = darwinTsgoRealpathWorkaround(process.platform)
-  const api = new API({ ...apiSpawnOptions(cwd), ...(fs === undefined ? {} : { fs }) })
+  const realpathFs = darwinTsgoRealpathWorkaround(process.platform)
+  const api = createApi({
+    ...apiSpawnOptions(cwd),
+    ...(realpathFs === undefined ? {} : { fs: realpathFs }),
+  })
   return withApiSession({
     api,
     timeoutMs: requestTimeoutMs,
@@ -572,7 +685,7 @@ export const runTsVirtualProject = async <A>({
     [configPath, ...overlay.keys()].map((file) => path.dirname(file)),
   )
 
-  const api = new API({
+  const api = createApi({
     ...apiSpawnOptions(root),
     // `undefined` means "fall through to the real filesystem", which is what the bundled `lib.*.d.ts`
     // files and any real dependency of an in-memory source need.
