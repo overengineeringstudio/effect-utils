@@ -1,4 +1,5 @@
 import {
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -53,6 +54,18 @@ afterEach(() => {
 })
 
 describe('checkBootstrapClosure', () => {
+  it('walks hardlinked roots and relative dependencies through their reached names', async () => {
+    const dir = makeDir()
+    const source = write(dir, 'source.genie.ts', `export { value } from './runtime.ts'`)
+    const runtime = write(dir, 'runtime.ts', `import { Effect } from 'effect'
+export const value = Effect`)
+    linkSync(source, path.join(dir, 'source-cas-0444'))
+    linkSync(runtime, path.join(dir, 'runtime-cas-0444'))
+    const { violations } = await checkBootstrapClosure({ genieFiles: [source] })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]!.chain).toEqual([source, runtime])
+  })
+
   it('FAILs on a wide barrel with the correct importer chain (source -> barrel -> runtime -> effect)', async () => {
     const dir = makeDir()
     write(dir, 'runtime.ts', `import { Effect } from 'effect'\nexport const value = Effect`)

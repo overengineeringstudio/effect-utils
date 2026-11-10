@@ -45,7 +45,7 @@ import {
   resolveImportMapSpecifierForImporterSync,
 } from '../../core/import-map/sync-resolver.ts'
 import { inputFileSystem } from './inputs.ts'
-import { runTsFileAnalysis } from './ts-api.ts'
+import { realpathThroughName, runTsFileAnalysis } from './ts-api.ts'
 import type { TsFileAnalysis, TsFileAnalysisSession } from './ts-api.ts'
 
 /** A transitive edge from a `.genie.ts` source to a runtime-only package, with the importer chain. */
@@ -261,10 +261,14 @@ export const canonicalResolvedPath = ({
 /**
  * Symlink-resolved identity of a walk root. The caller's spelling is authoritative for case (nothing
  * upstream folded it), so only the symlink hop is resolved; a root that does not exist is kept as given
- * and fails later in the walk, exactly as before.
+ * and fails later in the walk, exactly as before. Darwin must keep hardlinked source-file names.
  */
 const canonicalRootPath = (file: string): string =>
-  existsSync(file) === true ? realpathSync.native(file) : file
+  existsSync(file) === true
+    ? process.platform === 'darwin'
+      ? realpathThroughName(file)
+      : realpathSync.native(file)
+    : file
 
 /**
  * Resolve a bootstrap-safe specifier (relative or `#`/`#mr`) to an absolute file path, using genie's own
@@ -298,7 +302,7 @@ const resolveFollowableSpecifier = async ({
   // analysis for it and contributes no edges, which is the pre-existing missing-file behaviour.
   if (resolved === undefined || existsSync(resolved) === false) return resolved
   return canonicalResolvedPath({
-    file: realpathSync.native(resolved),
+    file: process.platform === 'darwin' ? realpathThroughName(resolved) : realpathSync.native(resolved),
     importer: importerFile,
     listings,
   })
