@@ -14,6 +14,9 @@ FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
 MV="${MV_BIN:?MV_BIN must name pinned mv}"
 JQ="${JQ_BIN:-$(command -v jq)}"
+# Direct script calls need the same pinned JSON parser as the production wrapper.
+PATH="$(dirname "$JQ"):$PATH"
+export PATH
 # Match the TypeScript lease fixtures: supported data semantics, not ambient /tmp.
 # The helper throws when neither candidate qualifies; never silently skip teardown.
 fixture_data_root="$("$BUN" -e 'const { editorViewTestDataRoot } = await import(process.argv[1]); console.log(editorViewTestDataRoot())' \
@@ -134,6 +137,10 @@ cp "$ROOT/devenv.lock" "$worktree/devenv.lock"
 fake_bin="$TEMP_ROOT/fake-bin"
 watch_root="$TEMP_ROOT/watch-root"
 mkdir -p "$fake_bin" "$watch_root" "$TEMP_ROOT/watch-home"
+# Isolate teardown dependencies so ambient jq cannot hide a missing fixture tool.
+for tool in bash git realpath find sort awk xargs chmod sha256sum rm rmdir; do
+  ln -s "$(command -v "$tool")" "$fake_bin/$tool"
+done
 git -C "$watch_root" init -q
 cat >"$fake_bin/watchman" <<'WATCHMAN'
 #!/usr/bin/env bash
@@ -155,7 +162,7 @@ watchman_case() {
   local name="$1" response="$2" delete_status="$3" expected="$4" calls="$5" list_status="${6:-0}"
   local status=0
   : >"$TEMP_ROOT/watch-calls"
-  PATH="$fake_bin:$PATH" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$watch_root" \
+  PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$watch_root" \
     WATCHMAN_SOCK=fixture.sock WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
     FAKE_WATCH_LIST="$response" FAKE_DELETE_STATUS="$delete_status" FAKE_LIST_STATUS="$list_status" \
     FAKE_WATCH_LOG="$TEMP_ROOT/watch-calls" \
@@ -168,6 +175,9 @@ watchman_case() {
   [ "$(wc -l <"$TEMP_ROOT/watch-calls")" -eq "$calls" ] || fail "$name: unexpected watch-del calls"
 }
 watchman_response() { printf %s "$1" | "$JQ" -Rsc '{version:"fixture",roots:[.]}'; }
+watchman_case missing-jq '{"version":"fixture","roots":[]}' 0 1 0
+grep -q 'jq is required to check watched roots' "$TEMP_ROOT/watch-case.log" || fail 'missing jq diagnostic'
+ln -s "$JQ" "$fake_bin/jq"
 watchman_case unwatched '{"version":"fixture","roots":[]}' 1 0 0
 watched="$(watchman_response "$watch_root")"
 watchman_case watched "$watched" 0 0 1

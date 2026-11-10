@@ -121,11 +121,16 @@ fi
 if command -v watchman >/dev/null 2>&1; then
   watchman_args=(--no-spawn --no-local --output-encoding=json)
   if [ -n "${WATCHMAN_SOCK:-}" ]; then watchman_args+=("--sockname=$WATCHMAN_SOCK"); fi
-  # Check exact root membership rather than suppressing genuine watch-del errors.
-  # shellcheck disable=SC2016
-  if watch_list="$(watchman "${watchman_args[@]}" watch-list 2>/dev/null)" &&
-    jq -e --arg root "$root" 'any(.roots[]?; . == $root)' >/dev/null <<<"$watch_list"; then
-    watchman "${watchman_args[@]}" watch-del "$root"
+  if watch_list="$(watchman "${watchman_args[@]}" watch-list 2>/dev/null)"; then
+    if ! command -v jq >/dev/null 2>&1; then
+      echo "worktree:teardown: jq is required to check watched roots" >&2
+      exit 1
+    fi
+    # Check exact root membership rather than suppressing genuine watch-del errors.
+    # shellcheck disable=SC2016
+    if jq -e --arg root "$root" 'any(.roots[]?; . == $root)' >/dev/null <<<"$watch_list"; then
+      watchman "${watchman_args[@]}" watch-del "$root"
+    fi
   fi
 fi
 
