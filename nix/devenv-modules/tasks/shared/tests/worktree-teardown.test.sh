@@ -26,6 +26,7 @@ TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 main="$TEMP_ROOT/main"
 worktree="$TEMP_ROOT/retired"
 socket_dir=""
+fake_bin=""
 watchman_started=false
 nested_outer=""
 nested_child=""
@@ -71,6 +72,7 @@ cleanup() {
     watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server >/dev/null
   fi
   [ -z "$socket_dir" ] || rm -rf "$socket_dir"
+  [ -z "$fake_bin" ] || rm -rf "$fake_bin"
   # The ordinary Git fixture's shared CAS is beside .git and remains readonly
   # after blob collection. Only test-owned directories need unlocking; never
   # chmod shared payload files or follow links outside this temporary root.
@@ -134,7 +136,8 @@ git -C "$main" worktree add -q --detach "$worktree" HEAD
 cp "$ROOT/devenv.lock" "$worktree/devenv.lock"
 
 # Deterministic service responses cover roots that a running service never watched.
-fake_bin="$TEMP_ROOT/fake-bin"
+# Lease data can live on noexec /dev/shm; executable helpers stay in normal tmpdir.
+fake_bin="$(mktemp -d)"
 watch_root="$TEMP_ROOT/watch-root"
 mkdir -p "$fake_bin" "$watch_root" "$TEMP_ROOT/watch-home"
 # Isolate teardown dependencies so ambient jq cannot hide a missing fixture tool.
@@ -142,8 +145,9 @@ for tool in bash git realpath find sort awk xargs chmod sha256sum rm rmdir; do
   ln -s "$(command -v "$tool")" "$fake_bin/$tool"
 done
 git -C "$watch_root" init -q
-cat >"$fake_bin/watchman" <<'WATCHMAN'
-#!/usr/bin/env bash
+# Use the runner's Bash directly: sandboxed hosts need not have /usr/bin/env.
+printf '#!%s\n' "$BASH" >"$fake_bin/watchman"
+cat >>"$fake_bin/watchman" <<'WATCHMAN'
 set -euo pipefail
 [ "$1" = --no-spawn ] && [ "$2" = --no-local ] && [ "$3" = --output-encoding=json ]
 [ "$4" = --sockname=fixture.sock ]
