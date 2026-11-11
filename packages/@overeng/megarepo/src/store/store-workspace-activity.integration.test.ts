@@ -85,6 +85,8 @@ const fixture = Effect.gen(function* () {
   const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
   const workspace = `${root}/workspace`
   yield* fs.makeDirectory(workspace)
+  yield* withNativeProjection({ fs, root, subjects: {} })
+  yield* withPtyProjection({ fs, root, sessions: [] })
   return { fs, root, workspace, manifestPath: `${root}/activity.json` }
 })
 
@@ -137,6 +139,7 @@ const runActivityFixture = ({
       '/usr/bin/env',
       `PATH=${process.env['PATH'] ?? ''}`,
       'MEGAREPO_GC_PTY_BIN=pty',
+      `MEGAREPO_GC_ST3_BIN=${root}/st3-fixture`,
       `PTY_ROOT=${root}/pty`,
       `HOME=${root}/pty`,
       'bun',
@@ -167,6 +170,7 @@ const trustedFixture = Effect.gen(function* () {
     yield* f.fs.makeDirectory(directory, { recursive: true })
     yield* f.fs.chmod(directory, 0o755)
   }
+  yield* f.fs.chmod(`${f.root}/st3-fixture`, 0o755)
   // Export the actual implementation and dependencies from a scoped readable
   // bundle; nobody never needs access to the private checkout's ancestors.
   const entry = `${f.root}/activity-runtime.ts`
@@ -584,6 +588,20 @@ describe('readWorkspaceActivity native ownership', () => {
             },
           ])
           expect(activity?.activePaths).toEqual(new Set([workspace, ptyWorkspace]))
+          const manifestPath = `${root}/activity.json`
+          yield* fs.writeFileString(manifestPath, manifest({ workspace }))
+          const budget = yield* readBudgetWorkspaceActivity({
+            fs,
+            config: {
+              manifestPath,
+              agentLivenessProducers: [PRODUCER],
+              builtin: false,
+            },
+          })
+          expect(
+            budget?.ownerClaims?.find((claim) => claim.workspace === workspace)?.agents,
+          ).toEqual([...statuses.map((status) => `agent-${status}`), 'agent-1'])
+          expect(budget?.nativeEvidence?.complete).toBe(true)
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
