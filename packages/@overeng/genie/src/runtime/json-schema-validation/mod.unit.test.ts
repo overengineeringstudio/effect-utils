@@ -7,7 +7,7 @@ import { expect } from 'vitest'
 import { renderJsonSchemaValidator } from './mod.ts'
 
 const RecordSchema = Schema.Struct({
-  _tag: Schema.Literal('record/v1'),
+  kind: Schema.Literal('record/v1'),
   level: Schema.Literals(['warning', 'critical']),
   id: Schema.String.check(
     Schema.isPattern(/^[a-z]+$/),
@@ -24,16 +24,16 @@ const generatedIs = (input: unknown): boolean =>
 
 describe('standalone JSON schema validator projection', () => {
   it('derives closed string-record validation including enum, pattern, and length constraints', () => {
-    expect(generatedIs({ _tag: 'record/v1', level: 'critical', id: 'abcd' })).toBe(true)
+    expect(generatedIs({ kind: 'record/v1', level: 'critical', id: 'abcd' })).toBe(true)
     for (const invalid of [
       {},
-      { _tag: 'record/v1', level: 'critical' },
-      { _tag: 'record/v2', level: 'critical', id: 'abc' },
-      { _tag: 'record/v1', level: 'unknown', id: 'abc' },
-      { _tag: 'record/v1', level: 'critical', id: 'a' },
-      { _tag: 'record/v1', level: 'critical', id: 'abcde' },
-      { _tag: 'record/v1', level: 'critical', id: 'a1' },
-      { _tag: 'record/v1', level: 'critical', id: 'abc', extra: true },
+      { kind: 'record/v1', level: 'critical' },
+      { kind: 'record/v2', level: 'critical', id: 'abc' },
+      { kind: 'record/v1', level: 'unknown', id: 'abc' },
+      { kind: 'record/v1', level: 'critical', id: 'a' },
+      { kind: 'record/v1', level: 'critical', id: 'abcde' },
+      { kind: 'record/v1', level: 'critical', id: 'a1' },
+      { kind: 'record/v1', level: 'critical', id: 'abc', extra: true },
     ])
       expect(generatedIs(invalid)).toBe(false)
   })
