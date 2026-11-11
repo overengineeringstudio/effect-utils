@@ -10,6 +10,7 @@ def repo_key($node):
       | sub("^git\\+ssh://git@github.com/"; "")
       | sub("^ssh://git@github.com/"; "")
       | sub("^git@github.com:"; "")
+      | sub("^git\\+https://github.com/"; "")
       | sub("^https://github.com/"; "")
       | sub("\\.git$"; "")
     end
