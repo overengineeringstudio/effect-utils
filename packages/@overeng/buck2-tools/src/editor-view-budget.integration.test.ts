@@ -16,6 +16,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import * as fsPromises from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -91,9 +92,6 @@ const fsMocks = {
   readlinkSync: vi.fn(nativeFs.readlinkSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
-const nativeFsPromises = { ...process.getBuiltinModule('fs/promises') }
-const fsPromiseMocks = { readdir: vi.fn(nativeFsPromises.readdir) }
-vi.mock('node:fs/promises', () => ({ ...nativeFsPromises, ...fsPromiseMocks }))
 
 /** Match the publisher's integration fixtures: tools never resolve through ambient PATH. */
 const requireTool = (name: string): string => {
@@ -826,11 +824,12 @@ describe('host budget census-only recount', () => {
       const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
       restore.push(() => clock.mockRestore())
       // Model a cold unmanaged walk consuming the entire publication enumeration budget.
-      fsPromiseMocks.readdir.mockImplementation((...args) => {
+      const readDirectory = fsPromises.readdir
+      const directoryRead = vi.spyOn(fsPromises, 'readdir').mockImplementation((...args) => {
         if (String(args[0]).endsWith('/.aaa-unmanaged') === true) now += 60_000
-        return nativeFsPromises.readdir(...args)
+        return readDirectory(...args)
       })
-      restore.push(() => fsPromiseMocks.readdir.mockImplementation(nativeFsPromises.readdir))
+      restore.push(() => directoryRead.mockRestore())
       const lines: string[] = []
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
         const line = String(chunk)
