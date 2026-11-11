@@ -162,7 +162,7 @@ export type MergeQueueAdmissionStepOptions = {
 }
 
 export const mergeQueueAdmissionStep = (opts: MergeQueueAdmissionStepOptions = {}) => ({
-  name: 'Check Hypermerge admission',
+  name: 'Check merge-queue admission',
   shell: 'bash',
   env: {
     GITHUB_TOKEN: opts.tokenExpression ?? '${{ secrets.GITHUB_TOKEN }}',
@@ -170,8 +170,8 @@ export const mergeQueueAdmissionStep = (opts: MergeQueueAdmissionStepOptions = {
   run: [
     'set -euo pipefail',
     ...mergeQueueAdmissionCheckLines({
-      failureMessage: opts.failureMessage ?? 'waiting for Hypermerge admission (mq:ci-admitted).',
-      notice: opts.notice ?? 'Semantic gates fail closed until Hypermerge admits the queue head.',
+      failureMessage: opts.failureMessage ?? 'waiting for merge-queue admission (mq:ci-admitted).',
+      notice: opts.notice ?? 'Semantic gates fail closed until the queue head is admitted.',
     }),
   ].join('\n'),
 })
@@ -202,7 +202,8 @@ export const mergeQueueAdmittedJob = ({
   permissions: mergeRequiredAdmissionPermissions(permissions),
   steps: [
     mergeQueueAdmissionStep({
-      failureMessage: 'legacy required check is waiting for Hypermerge admission (mq:ci-admitted).',
+      failureMessage:
+        'legacy required check is waiting for merge-queue admission (mq:ci-admitted).',
       notice:
         'The full CI lane is intentionally gated so non-admitted PRs do not consume scarce Nix runners ahead of the queue head.',
       ...admission,
@@ -244,7 +245,7 @@ export type MergeQueueSemanticGateSpec = MergeQueueSemanticGateJobOptions & {
 
 export const mergeQueueAdmissionDeferredLines = (name: string) =>
   mergeQueueAdmissionCheckLines({
-    failureMessage: `${name} is waiting for Hypermerge admission (mq:ci-admitted).`,
+    failureMessage: `${name} is waiting for merge-queue admission (mq:ci-admitted).`,
     notice:
       'The full CI lane is intentionally gated so non-admitted PRs do not consume scarce Nix runners ahead of the queue head.',
     trustNeedsAdmission: true,
