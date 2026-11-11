@@ -1,3 +1,4 @@
+// Measurement-only bounded package input change; this draft must not merge.
 /**
  * Regression: a symlinked store root must resolve to its real path before the
  * Store is built (e.g. a store relocated to a bulk disk behind a compat
