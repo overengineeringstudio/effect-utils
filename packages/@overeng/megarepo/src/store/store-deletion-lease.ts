@@ -52,12 +52,18 @@ export class DeletionLeaseUnavailableError extends Schema.TaggedError<DeletionLe
 /**
  * Lease record. `token` identifies one acquisition so a holder only ever
  * releases its own lease; `host`/`pid` are the sole recovery evidence.
+ * Optional activation identity and process start time authorize descendant
+ * admission, never deletion or recovery. Older records remain non-reentrant.
  */
 const DeletionLeaseRecord = Schema.Struct({
   version: Schema.Literal(DELETION_LEASE_VERSION),
   ownerPath: Schema.String,
   host: Schema.String,
   pid: Schema.Finite,
+  processStartTime: Schema.optional(Schema.String),
+  activationIdentity: Schema.optional(
+    Schema.Struct({ storePath: Schema.String, containerPath: Schema.String }),
+  ),
   token: Schema.String,
   acquiredAtMs: Schema.Finite,
 })
@@ -138,6 +144,65 @@ const readLeaseRecord = ({
     return yield* decodeLeaseRecord(content).pipe(Effect.orElseSucceed(() => undefined))
   })
 
+/** Linux stat's comm may contain spaces and ')'; fields after its last ')' are unambiguous. */
+const readProcessIdentity = (fs: FileSystem.FileSystem, pid: number) =>
+  Effect.gen(function* () {
+    if (process.platform !== 'linux' || Number.isSafeInteger(pid) === false || pid <= 0)
+      return undefined
+    const stat = yield* fs
+      .readFileString(`/proc/${pid}/stat`)
+      .pipe(Effect.orElseSucceed(() => undefined))
+    if (stat === undefined || stat.startsWith(`${pid} (`) === false) return undefined
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/u)
+    const ppid = Number(fields[1])
+    const startTime = fields[19]
+    if (Number.isSafeInteger(ppid) === false || ppid < 0 || /^\d+$/u.test(startTime ?? '') === false)
+      return undefined
+    return { ppid, startTime }
+  })
+
+/** Only activation descendants borrow admission; deletion always takes its own exclusive lease. */
+const hasAncestorActivationLease = ({
+  fs,
+  leasePath,
+  ownerPath,
+  storePath,
+  containerPath,
+}: {
+  fs: FileSystem.FileSystem
+  leasePath: string
+  ownerPath: string
+  storePath: string
+  containerPath: string
+}) =>
+  Effect.gen(function* () {
+    const record = yield* readLeaseRecord({ fs, leasePath })
+    if (
+      record === undefined ||
+      record.host !== hostname() ||
+      record.ownerPath !== ownerPath ||
+      record.activationIdentity?.storePath !== storePath ||
+      record.activationIdentity.containerPath !== containerPath ||
+      record.processStartTime === undefined
+    )
+      return false
+    const visited = new Set<number>([process.pid])
+    let pid = process.ppid
+    while (pid > 0 && visited.has(pid) === false) {
+      visited.add(pid)
+      const identity = yield* readProcessIdentity(fs, pid)
+      if (identity === undefined) return false
+      if (pid === record.pid) {
+        if (identity.startTime !== record.processStartTime) return false
+        // Do not borrow an acquisition that ended while ancestry was being read.
+        const current = yield* readLeaseRecord({ fs, leasePath })
+        return current !== undefined && encodeLeaseRecord(current) === encodeLeaseRecord(record)
+      }
+      pid = identity.ppid
+    }
+    return false
+  })
+
 /**
  * True only when the record names this host and a pid that is provably gone.
  *
@@ -169,10 +234,12 @@ export const acquireDeletionLease = ({
   storeBasePath,
   ownerPath,
   now,
+  activationIdentity,
 }: {
   storeBasePath: AbsoluteDirPath
   ownerPath: string
   now: number
+  activationIdentity?: { readonly storePath: string; readonly containerPath: string }
 }): Effect.Effect<DeletionLease, DeletionLeaseUnavailableError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -184,6 +251,8 @@ export const acquireDeletionLease = ({
       ownerPath: canonicalOwnerPath,
       host: hostname(),
       pid: process.pid,
+      processStartTime: (yield* readProcessIdentity(fs, process.pid))?.startTime,
+      activationIdentity,
       token,
       acquiredAtMs: now,
     }
@@ -300,16 +369,18 @@ export const withDeletionLease =
     storeBasePath,
     ownerPath,
     now,
+    activationIdentity,
   }: {
     storeBasePath: AbsoluteDirPath
     ownerPath: string
     now: number
+    activationIdentity?: { readonly storePath: string; readonly containerPath: string }
   }) =>
   <A, E, R>(
     effect: Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E | DeletionLeaseUnavailableError, R | FileSystem.FileSystem> =>
     Effect.acquireUseRelease(
-      acquireDeletionLease({ storeBasePath, ownerPath, now }),
+      acquireDeletionLease({ storeBasePath, ownerPath, now, activationIdentity }),
       () => effect,
       (lease) => releaseDeletionLease(lease),
     )
@@ -348,7 +419,26 @@ export const withStoreWorktreeLease =
           ? dirname(bare)
           : undefined
       const now = yield* Clock.currentTimeMillis
-      const run = withDeletionLease({ storeBasePath, ownerPath: owner, now })(effect)
+      const run = Effect.gen(function* () {
+        if (
+          bare !== undefined &&
+          (yield* hasAncestorActivationLease({
+            fs,
+            leasePath: deletionLeasePath({ storeBasePath, ownerPath: owner }),
+            ownerPath: owner,
+            storePath: store,
+            containerPath: bare,
+          }))
+        )
+          return yield* effect
+        return yield* withDeletionLease({
+          storeBasePath,
+          ownerPath: owner,
+          now,
+          activationIdentity:
+            bare === undefined ? undefined : { storePath: store, containerPath: bare },
+        })(effect)
+      })
       if (container === undefined) {
         if (bare === undefined || owner.startsWith(`${store}/`) === true) {
           return yield* new DeletionLeaseUnavailableError({

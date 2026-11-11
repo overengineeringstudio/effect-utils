@@ -477,6 +477,15 @@ Activation needs no protocol code of its own; wrap it:
 mr store lease --owner-path /path/to/store/worktree -- <activation command>
 ```
 
+On Linux, descendants of the activation lease holder can create the same owner worktree
+without reacquiring its exclusive owner lease. Admission requires the same canonical
+store, owner and repository container, and an ancestor PID plus `/proc` process start
+time matching the lease record. Nested scopes never change or release the outer lease;
+they retain shared container admission, and exclusive container requests fail with
+`GitWriterLockError` rather than upgrading. No environment variable or token grants
+reentrancy. Missing, unreadable or mismatched ancestry evidence (including platforms
+without a process start-time source) falls back to ordinary exclusive acquisition.
+
 A lease is reclaimed only when its record is decodable, names this host, and names a pid that is
 provably gone. A foreign host, a live pid, or an unreadable record keeps the lease and refuses the
 caller. `mr store lease` propagates the wrapped command's own exit code.
