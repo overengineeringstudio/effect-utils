@@ -69,7 +69,6 @@ The executable record authority is
 exported by `@overeng/genie/node`. It defines artifact, comparison, and managed-comment
 cache schemas with numeric `schemaVersion: 1` and strict complete-record decoders.
 The Effect-backed authority is isolated from the dependency-free `@overeng/genie` entrypoint.
-
 The standalone validator compiler in
 `packages/@overeng/genie/src/runtime/json-schema-validation/mod.ts` renders
 dependency-free JavaScript predicates from native Effect schema nodes and checks.
