@@ -130,14 +130,12 @@ working-directory ancestors on startup, so the size of a shared system temporary
 directory must not become part of a fake native command's workload. Test guards
 and native admission deadlines remain unchanged.
 
-The repository's own devenv shell and tasks temporarily use Bun 1.4.4 via a local
-overlay. This includes the upstream `spawnSync` GC/poll-lifetime fix
-([Bun #44581](https://github.com/oven-sh/bun/pull/44581)); it does not change
-published package runtimes or consumer overlays. The override preserves the
-locked nixpkgs Bun derivation and asserts that it must be removed once the locked
-version reaches 1.4.3. Contract generation and freshness checks explicitly retain
-the published Bun 1.4.2 runtime because its version is part of the committed
-contract fingerprint.
+The repository shell and tasks use the locked nixpkgs Bun runtime, which includes
+the upstream `spawnSync` GC/poll-lifetime fix
+([Bun #44581](https://github.com/oven-sh/bun/pull/44581)). Contract generation and
+freshness checks require the version declared in `nix/bun-compile-runtime.nix`,
+the same release as the bundler. The runtime version and its pin source are part
+of the committed contract fingerprint.
 
 Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
 retain the fixed-source/offline posture contract: they remove the RE client

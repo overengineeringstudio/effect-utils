@@ -1,19 +1,23 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:08e538b158018b0dffc72d6766ff4e65964e4a14d77e0916a7c8d0941b1afc51",
-  "generatedAt": "2026-11-06T13:14:35.350Z",
+  "inputFingerprint": "sha256:97f1f2549f2782960e2c2ece36ed0fde550c4a5f38bc142fdcfc9cb6eafc95e6",
+  "generatedAt": "2026-11-11T10:59:38.982Z",
   "runtime": {
     "name": "bun",
-    "version": "1.4.2"
+    "version": "1.4.4"
   },
   "inputs": [
     {
       "path": "flake.lock",
-      "sha256": "80638622b37c8c7349f3734af5cecac8ba036a0fb21a612d95e7f59463131382"
+      "sha256": "23ed0c0f7f5e384f92591f8d4a09ac75c84cdf527ee3418936a6153f5d0ce5c0"
+    },
+    {
+      "path": "nix/bun-compile-runtime.nix",
+      "sha256": "316f286e74592c4f4987c44001bcb79e70740a7ea574cf9ecf9f7111726c3808"
     },
     {
       "path": "packages/@overeng/content-address/src/generate-contract.ts",
-      "sha256": "a0dda3205a08781cf3d393b98ddd86da7ca70242b2f5d5ca53a06ab508e852af"
+      "sha256": "7e633d3310d8001916677c7f8e140a70b7beb1db3aaf5b6c0b91592975b29000"
     },
     {
       "path": "packages/@overeng/content-address/src/schema.ts",
