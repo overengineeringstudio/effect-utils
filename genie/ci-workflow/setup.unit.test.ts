@@ -23,6 +23,7 @@ import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { fleetWorkflowPolicy } from './policy.ts'
 import { publishedRefIf } from './published-ref.ts'
+import { manifestWriterRunner } from './runners.ts'
 import {
   installNixStep,
   linuxSandboxPrerequisitesStep,
@@ -55,6 +56,38 @@ import {
   preparationDiagnosticSeconds,
 } from './support-files.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
+
+describe('manifest runner label model', () => {
+  it('reserves the exclusive scale set for exactly the two CI manifest-writer jobs', () => {
+    expect(manifestWriterRunner).toEqual(['sh-linux-x64-effect-utils-manifest'])
+    // Label-model safeguard: other jobs must not take this exclusive scale set.
+    const cwd = `${import.meta.dir}/../../.github/workflows`
+    const paths = [...new Glob('*.yml.genie.ts').scanSync({ cwd, onlyFiles: true })]
+    const workflows: Record<string, { data: GitHubWorkflowArgs }> = {
+      'auto-review.yml.genie.ts': autoReviewWorkflow,
+      'ci.yml.genie.ts': ciWorkflow,
+      'compiled-products.yml.genie.ts': compiledWorkflow,
+      'empirical-proofs.yml.genie.ts': empiricalWorkflow,
+      'storybook-plays.yml.genie.ts': storybookPlaysWorkflow,
+      'storybook-preview-build.yml.genie.ts': previewBuildWorkflow,
+      'storybook-preview-deploy.yml.genie.ts': previewDeployWorkflow,
+    }
+    // New workflow sources must join the census before this safeguard can pass.
+    expect(Object.keys(workflows).sort()).toEqual(paths.sort())
+    const manifestJobs: string[] = []
+    for (const [path, definition] of Object.entries(workflows)) {
+      for (const [id, job] of Object.entries(definition.data.jobs)) {
+        if ([job['runs-on']].flat().includes(manifestWriterRunner[0]) === false) continue
+        expect(job['runs-on'], `${path}/${id}`).toEqual(manifestWriterRunner)
+        manifestJobs.push(`${path}/${id}`)
+      }
+    }
+    expect(manifestJobs.sort()).toEqual([
+      'ci.yml.genie.ts/publish-manifest-pr',
+      'ci.yml.genie.ts/published-status',
+    ])
+  })
+})
 
 describe('Resolve devenv hang diagnostics', () => {
   it('streams stderr to the job and a retained repair log', () => {
@@ -1242,7 +1275,7 @@ describe('published consumer ref', () => {
       `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
     )
     expect(reporter.permissions).toEqual({ statuses: 'write' })
-    expect(reporter['runs-on']).toEqual(['sh-linux-x64', 'nix'])
+    expect(reporter['runs-on']).toEqual(manifestWriterRunner)
     expect(reporter.steps.every((step) => step.uses === undefined)).toBe(true)
     const report = reporter.steps.find((step) => step.name === 'Report published/current status')!
     expect(report.env).toEqual({

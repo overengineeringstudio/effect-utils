@@ -63,7 +63,7 @@ import {
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import readerComposition from '../../genie/ci-workflow/reader-composition.json'
-import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
+import { manifestWriterRunner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
@@ -1369,7 +1369,7 @@ const extraJobs: Record<string, any> = {
   'published-status': {
     needs: ['publish-products', 'consumer-smoke', 'promote-published'],
     if: `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
-    'runs-on': linuxX64Runner,
+    'runs-on': manifestWriterRunner,
     'timeout-minutes': 3,
     permissions: { statuses: 'write' },
     defaults: bashShellDefaults,
@@ -1409,7 +1409,7 @@ const extraJobs: Record<string, any> = {
   'publish-manifest-pr': {
     needs: ['publish-products'],
     if: `(${trustedSecretCiIf.replace(/^\$\{\{\s*|\s*\}\}$/g, '')}) && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && needs.publish-products.outputs.manifest-writer-tip == 'true'`,
-    'runs-on': linuxX64Runner,
+    'runs-on': manifestWriterRunner,
     'timeout-minutes': 15,
     permissions: { contents: 'read', 'pull-requests': 'read' },
     defaults: bashShellDefaults,
