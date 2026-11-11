@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3e20b02be4507aabe89df91f9f9e1b2eec732a38159f0c5407002d76028a19d2
+# Semantic fingerprint: sha256:34f6dbd19a83064b45f2e2595cff5ea1f2431f24abd560bf1fd5014f057e9c18
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -35,6 +35,7 @@ export_materialization_inputs([
     "src/build/GenieOutput/stories/_fixtures.ts",
     "src/build/app.ts",
     "src/build/ci-measurements/schema.ts",
+    "src/build/ci-measurements/schema.unit.test.ts",
     "src/build/defer-validation.unit.test.ts",
     "src/build/github-repo-settings/cli.ts",
     "src/build/github-repo-settings/reconcile.ts",
@@ -210,6 +211,7 @@ package_view(
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
         "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
+        "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
         "src/build/github-repo-settings/cli.ts": "src/build/github-repo-settings/cli.ts",
         "src/build/github-repo-settings/reconcile.ts": "src/build/github-repo-settings/reconcile.ts",
@@ -375,6 +377,7 @@ package_view(
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
         "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
+        "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
         "src/build/github-repo-settings/cli.ts": "src/build/github-repo-settings/cli.ts",
         "src/build/github-repo-settings/reconcile.ts": "src/build/github-repo-settings/reconcile.ts",
@@ -537,6 +540,7 @@ package_view(
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
         "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
+        "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
         "src/build/github-repo-settings/cli.ts": "src/build/github-repo-settings/cli.ts",
         "src/build/github-repo-settings/reconcile.ts": "src/build/github-repo-settings/reconcile.ts",

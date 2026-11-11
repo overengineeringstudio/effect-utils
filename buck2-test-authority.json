@@ -596,6 +596,7 @@
       "packagePath": "packages/@overeng/genie",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts",
         "src/build/mod.integration.test.ts",
         "src/build/watch-cycle.unit.test.ts",
@@ -651,6 +652,7 @@
       "target": "effect_utils//packages/@overeng/genie:test",
       "taskName": "test:genie",
       "testFiles": [
+        "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts",
         "src/build/mod.integration.test.ts",
         "src/build/watch-cycle.unit.test.ts",
