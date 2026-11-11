@@ -855,11 +855,16 @@ newest write older than `idleRetentionMs`, an ignored root with no tracked
 file, and canonical containment; unknown keeps. Incomplete scans mark the class
 `scan-incomplete` regardless of `keptByReason`.
 
-Output is the `megarepo.build-output-budget-plan.v2` document (`planSha256`,
+Output is the `megarepo.build-output-budget-plan.v3` document (`planSha256`,
 `results`, `classes`). Application takes the candidate's owner lock and deletion
 lease, recaptures activity, replans with the same digest, re-checks the
-candidate, then deletes that root only. Budget mode never tears down worktrees;
-the policy's optional `worklog` field is consumed only by default-GC teardown
+candidate, then deletes that root only. Budget mode never tears down worktrees.
+Each activity read composes process evidence with a fresh native agent/actual/retained-PTY
+capture; unknown or incomplete native evidence keeps all rows. Native owner claims are
+unioned with process claims. The plan digest binds native reader version, coverage and
+completeness, excluding capture IDs/timestamps. Native activity is checked under the
+lease and immediately before removal; a live claim vetoes and unknown evidence aborts.
+The policy's optional `worklog` field is consumed only by default-GC teardown
 (step 7). Builds that have not written yet are protected only by the
 process veto until activations hold `mr store lease` (follow-up).
 

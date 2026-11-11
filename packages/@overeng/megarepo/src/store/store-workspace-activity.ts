@@ -25,6 +25,21 @@ export interface WorkspaceActivityEpoch {
   readonly host: string
 }
 
+/** Version of the direct native capture semantics, not a publication identity. */
+export const NATIVE_ACTIVITY_READER_VERSION = 1
+
+/** Stable coverage of a fresh native read, excluding transient capture identity. */
+export interface NativeActivityEvidence {
+  readonly readerVersion: number
+  readonly coverage: {
+    readonly host: string
+    readonly agents: 'all-states-all-hosts'
+    readonly subjects: 'nonhistorical-actuals'
+    readonly ptys: 'retained-local'
+  }
+  readonly complete: boolean
+}
+
 /** Canonical workspace paths protected by observed agents and retained PTY records. */
 export interface WorkspaceActivity {
   readonly activePaths: ReadonlySet<string>
@@ -45,6 +60,7 @@ export interface WorkspaceActivity {
   /** Producer-selected ownership roots; unlike raw references, ancestors protect too. */
   readonly processClaimPaths?: ReadonlySet<string> | undefined
   readonly epoch: WorkspaceActivityEpoch
+  readonly nativeEvidence?: NativeActivityEvidence | undefined
 }
 
 const NonEmpty = Schema.NonEmptyString
@@ -434,7 +450,21 @@ export const readWorkspaceActivity: (options: {
       workspace,
       agents: Array.from(agentIds),
     }))
-    return { activePaths, ownerClaims, epoch: { host } }
+    return {
+      activePaths,
+      ownerClaims,
+      epoch: { host },
+      nativeEvidence: {
+        readerVersion: NATIVE_ACTIVITY_READER_VERSION,
+        coverage: {
+          host,
+          agents: 'all-states-all-hosts',
+          subjects: 'nonhistorical-actuals',
+          ptys: 'retained-local',
+        },
+        complete: true,
+      } satisfies NativeActivityEvidence,
+    }
   })
   return yield* read.pipe(
     Effect.timeout(CAPTURE_TIMEOUT_MS),
@@ -885,11 +915,9 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
  * keep every candidate: no admitted source, missing/expired/foreign/incomplete
  * manifest, an epoch that differs from `admittedEpoch`, or any capture failure.
  *
- * A generic admitted manifest is complete agent/PTY/process evidence; builtin
- * capture then adds PTYs and a full all-uid `/proc` scan. A trusted `all-uids`
- * manifest is process-only, so the owner's PTY records and own-uid processes
- * are always captured fresh beside it, regardless of `builtin`.
- * Independent of native st3 activity; that remains `readWorkspaceActivity`.
+ * Process evidence is always composed with a fresh native capture, including
+ * when a trusted all-UID process manifest is supplied. Either source being
+ * unknown vetoes the entire capture. Process exclusions never waive native claims.
  */
 export const readBudgetWorkspaceActivity: (options: {
   readonly fs: FileSystem.FileSystem
@@ -941,6 +969,8 @@ export const readBudgetWorkspaceActivity: (options: {
               epoch: manifest.epoch,
             }
     if (activity === undefined) return undefined
+    const native = yield* readWorkspaceActivity({ fs })
+    if (native?.nativeEvidence?.complete !== true) return undefined
     if (
       admittedEpoch !== undefined &&
       (admittedEpoch.host !== activity.epoch.host ||
@@ -950,7 +980,21 @@ export const readBudgetWorkspaceActivity: (options: {
     ) {
       return undefined
     }
-    return activity
+    const owners = new Map<string, Set<string>>()
+    for (const claim of [...(native.ownerClaims ?? []), ...(activity.ownerClaims ?? [])]) {
+      const agents = owners.get(claim.workspace) ?? new Set<string>()
+      for (const agent of claim.agents) agents.add(agent)
+      owners.set(claim.workspace, agents)
+    }
+    return {
+      ...activity,
+      activePaths: new Set([...native.activePaths, ...activity.activePaths]),
+      ownerClaims: Array.from(owners, ([workspace, agents]) => ({
+        workspace,
+        agents: Array.from(agents),
+      })),
+      nativeEvidence: native.nativeEvidence,
+    }
   })
   return yield* read.pipe(
     Effect.timeout(CAPTURE_TIMEOUT_MS),
