@@ -219,7 +219,7 @@ export const removeStoreWorktree = Effect.fn('store.removeStoreWorktree')(
       if (editorRoots.length > 0)
         return yield* refuse({
           reason: 'teardown-required',
-          message: `Unreleased editor-view materialization: ${editorRoots.join(', ')}. Run \`devenv tasks run worktree:teardown --mode single\` in this worktree, then retry.`,
+          message: `Unreleased editor-view materialization: ${editorRoots.join(', ')}. Run the installed \`WORKTREE_TEARDOWN_EDITOR_RELEASE=1 worktree-teardown <worktree-path>\` from outside this worktree, then retry (Nix builds are disabled).`,
         })
       const marker = (yield* fs.readFileString(join(path, '.git'))).trim()
       if (marker.startsWith('gitdir: ') === false)
