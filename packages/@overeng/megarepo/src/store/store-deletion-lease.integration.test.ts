@@ -8,8 +8,9 @@
  * record all keep the lease and fail the caller closed.
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { hostname } from 'node:os'
+import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
@@ -19,6 +20,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import * as Git from '../core/git.ts'
 import { encodeJson } from '../test-utils/mod.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { withGitContainerLock, withGitWriterLock } from './git-writer-lock.ts'
@@ -71,6 +73,148 @@ const writeLease = ({
   })
 
 describe('store deletion lease', () => {
+  for (const scenario of ['canonical', 'wrong-start-time', 'store-alias']) {
+    const wrongStartTime = scenario === 'wrong-start-time'
+    const useStoreAlias = scenario === 'store-alias'
+    it.effect.skipIf(process.platform !== 'linux')(
+      wrongStartTime === true
+        ? 'refuses an ancestor lease with a mismatched process start time'
+        : useStoreAlias === true
+          ? 'admits the same owner through a symlinked outer store and a real-path nested store'
+          : 'admits descendant creation without releasing outer admission and excludes non-descendants',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const f = yield* createStoreFixture([
+            { host: 'github.com', owner: 'test-owner', repo: 'leased-repo', branches: ['main'] },
+          ])
+          const bare = f.bareRepoPaths['github.com/test-owner/leased-repo']!
+          const base = yield* Git.getCurrentCommit(
+            f.worktreePaths['github.com/test-owner/leased-repo#main']!,
+          )
+          const owner = `${bare}../refs/heads/nested`
+          const canonicalOwner = yield* canonicalizeOwnerPath(owner)
+          const leasePath = deletionLeasePath({
+            storeBasePath: f.storePath,
+            ownerPath: canonicalOwner,
+          })
+          const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
+          const alias = `${f.storePath}../store-alias`
+          if (useStoreAlias === true) yield* fs.symlink(f.storePath, alias)
+          const outerStore = useStoreAlias === true ? `${alias}/` : f.storePath
+          const outerOwner = owner.replace(f.storePath, outerStore)
+          const env = { ...process.env, MEGAREPO_STORE: outerStore, NO_COLOR: '1' }
+          const childCode = `
+            import { spawnSync } from 'node:child_process'
+            import { Effect } from 'effect'
+            import { NodeServices } from '@effect/platform-node'
+            import { withGitContainerLock } from ${encodeJson(new URL('./git-writer-lock.ts', import.meta.url).href)}
+            const lease = Bun.file(${encodeJson(leasePath)})
+            const original = await lease.text()
+            const before = ${wrongStartTime}
+              ? original.replace(/"processStartTime":"\\d+"/u, '"processStartTime":"0"')
+              : original
+            if (${wrongStartTime} && before === original) throw new Error('missing start time')
+            if (${wrongStartTime}) await Bun.write(lease, before)
+            const nested = spawnSync('bun', [
+              ${encodeJson(cli)}, 'store', 'worktree', 'new', 'test-owner/leased-repo',
+              '--no-fetch', '--ref', 'nested', '--base', ${encodeJson(base)}, '--porcelain'
+            ], { encoding: 'utf8', env: { ...process.env, MEGAREPO_STORE: ${encodeJson(f.storePath)} } })
+            if (nested.status !== ${wrongStartTime === true ? 1 : 0})
+              throw new Error('nested exit=' + nested.status + '\\n' + nested.stderr + nested.stdout)
+            if (await lease.text() !== before) throw new Error('outer lease changed')
+            const exclusive = await Effect.runPromise(
+              withGitContainerLock({ path: ${encodeJson(bare)}, mode: 'exclusive' })(Effect.void)
+                .pipe(Effect.result, Effect.provide(NodeServices.layer))
+            )
+            if (exclusive._tag !== 'Failure' || exclusive.failure._tag !== 'GitWriterLockError')
+              throw new Error('exclusive container admission was not refused')
+            process.stdout.write('nested-finished\\n')
+            const release = Promise.withResolvers()
+            process.stdin.once('data', release.resolve)
+            await release.promise
+          `
+          const child = yield* Effect.acquireRelease(
+            Effect.sync(() => {
+              const process = spawn(
+                'bun',
+                [
+                  cli,
+                  'store',
+                  'lease',
+                  '--owner-path',
+                  outerOwner,
+                  '--repo-path',
+                  bare,
+                  '--',
+                  'bun',
+                  '-e',
+                  childCode,
+                ],
+                { env, stdio: ['pipe', 'pipe', 'pipe'] },
+              )
+              let output = ''
+              let errors = ''
+              const ready = Promise.withResolvers<void>()
+              const exited = Promise.withResolvers<number | null>()
+              process.stdout.on('data', (data) => {
+                output += data.toString()
+                if (output.includes('nested-finished\n') === true) ready.resolve()
+              })
+              process.stderr.on('data', (data) => {
+                errors += data.toString()
+              })
+              process.once('error', ready.reject)
+              process.once('close', (code) => {
+                ready.reject(new Error(`holder exit=${code}: ${errors}`))
+                exited.resolve(code)
+              })
+              return { process, ready: ready.promise, exited: exited.promise }
+            }),
+            (child) =>
+              Effect.promise(async () => {
+                if (
+                  child.process.stdin.writableEnded === false &&
+                  child.process.stdin.destroyed === false
+                )
+                  child.process.stdin.end('release\n')
+                await child.exited
+              }),
+          )
+          yield* Effect.promise(() => child.ready)
+          expect(yield* fs.exists(leasePath)).toBe(true)
+          expect(yield* fs.exists(`${canonicalOwner}/.git`)).toBe(!wrongStartTime)
+          const contender = yield* Effect.sync(() =>
+            spawnSync(
+              'bun',
+              [
+                cli,
+                'store',
+                'lease',
+                '--owner-path',
+                owner,
+                '--repo-path',
+                bare,
+                '--',
+                'sh',
+                '-c',
+                'exit 0',
+              ],
+              { env, encoding: 'utf8' },
+            ),
+          )
+          expect(contender.status, contender.stderr).toBe(1)
+          child.process.stdin.end('release\n')
+          expect(yield* Effect.promise(() => child.exited)).toBe(0)
+          expect(yield* fs.exists(leasePath)).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+      { timeout: 60_000 },
+    )
+  }
+
   it.effect(
     'excludes a second holder while the lease is held, and admits one after release',
     Effect.fnUntraced(
