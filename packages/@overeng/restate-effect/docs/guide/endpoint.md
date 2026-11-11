@@ -30,6 +30,7 @@ pnpm add @effect/platform-node
 ```ts
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
+
 import { serve } from '@overeng/restate-effect'
 
 serve({ services: [GreeterLive], port: 9080 }).pipe(
@@ -65,6 +66,7 @@ the Object (which needs nothing) rides along for free:
 
 ```ts
 import { Layer } from 'effect'
+
 import { type EndpointOptions, layer } from '@overeng/restate-effect'
 
 // Service (AppR = Greeting) + Object (AppR = never) → endpoint AppR = Greeting.

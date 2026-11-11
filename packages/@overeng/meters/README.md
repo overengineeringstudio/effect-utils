@@ -16,6 +16,7 @@ provider keeps `meters.start` acquired until unmount.
 
 ```tsx
 import * as React from 'react'
+
 import { makeMeters, makeSeries, type FpsValue } from '@overeng/meters'
 import { frameBlock, lightMeterTheme } from '@overeng/meters/canvas'
 import { makeBrowserPlatform } from '@overeng/meters/platform/browser'

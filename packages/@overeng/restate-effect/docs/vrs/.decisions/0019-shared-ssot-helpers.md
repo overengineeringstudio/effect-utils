@@ -7,7 +7,7 @@ Cross-cutting helpers that were hand-copied across packages now live ONCE in
   the single "ask the OS for a free TCP port" surface. The testing harness and
   the (now-deleted) test helpers no longer carry their own copy.
 - `@overeng/utils` (isomorphic) `formatReasonMessage({ reason, label?, method?,
-cause? })` — the SSOT for the tagged-error `get message()` body. `RestateError`
+  cause? })` — the SSOT for the tagged-error `get message()` body. `RestateError`
   delegates to it; the format is preserved verbatim.
 - `Serde.ts` byte encoding goes through `@overeng/utils`'s
   `textEncodeToArrayBuffer` (the existing byte-encoding SSOT), not an inline

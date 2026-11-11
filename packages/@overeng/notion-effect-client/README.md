@@ -21,9 +21,10 @@ bun add @overeng/notion-effect-client
 ## Usage
 
 ```ts
-import { Effect, Layer } from 'effect'
 import { HttpClient } from '@effect/platform'
 import { NodeHttpClient } from '@effect/platform-node'
+import { Effect, Layer } from 'effect'
+
 import { NotionConfigLive, NotionDatabases, NotionPages } from '@overeng/notion-effect-client'
 
 const program = Effect.gen(function* () {
@@ -74,9 +75,10 @@ const results =
 const allPages =
   yield * NotionDatabases.queryStream({ dataSourceId: '...' }).pipe(Stream.runCollect)
 
+import { Schema } from 'effect'
+
 // Query with typed schema decoding
 import { NotionSchema } from '@overeng/notion-effect-schema'
-import { Schema } from 'effect'
 
 const TaskSchema = Schema.Struct({
   Name: NotionSchema.title,

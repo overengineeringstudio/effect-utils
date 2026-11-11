@@ -41,8 +41,7 @@ Neither devbar nor explorer imports the other or integration; devbar has no mete
 ```ts
 import type { Effect, Scope } from 'effect'
 import type { RpcClient, RpcServer, RpcGroup, RpcMiddleware } from 'effect/rpc'
-import type { SourceRegistration } from '@overeng/meters'
-import type { ObserverSide, ProtocolSink, ProtocolObserver } from '@overeng/effect-rpc-observer'
+
 import type {
   ExplorerConfig,
   ExplorerServices,
@@ -50,6 +49,8 @@ import type {
   ExplorerEncodedDecodersByTag,
   ExplorerTelemetryRegistrationError,
 } from '@overeng/effect-rpc-explorer'
+import type { ObserverSide, ProtocolSink, ProtocolObserver } from '@overeng/effect-rpc-observer'
+import type { SourceRegistration } from '@overeng/meters'
 
 export type RpcMetric = 'requestsPerSecond' | 'inFlight' | 'errorsPerSecond' | 'durationP95'
 export interface RpcMetersConfig {
@@ -152,6 +153,7 @@ The local adapter invokes inspector handlers in-process and yields decoded wire 
 
 ```ts
 import type * as React from 'react'
+
 import type {
   ExplorerInitialFilters,
   RpcExplorerPresentation,

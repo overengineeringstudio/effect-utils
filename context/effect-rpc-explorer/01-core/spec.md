@@ -67,6 +67,7 @@ with the transport, rather than rebuilding observation in place:
 ```ts
 import { Effect } from 'effect'
 import { RpcClient } from 'effect/rpc'
+
 import { makeExplorer } from '@overeng/effect-rpc-explorer'
 import { decorateClientProtocol, makeProtocolObserver } from '@overeng/effect-rpc-observer'
 

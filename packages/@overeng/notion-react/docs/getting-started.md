@@ -42,8 +42,9 @@ has no children the renderer needs to reconcile. Use this for
 first-time creation or one-off scripts.
 
 ```tsx
-import { Effect, Layer } from 'effect'
 import { NodeHttpClient } from '@effect/platform-node'
+import { Effect, Layer } from 'effect'
+
 import { NotionConfig } from '@overeng/notion-effect-client'
 import { Heading1, Paragraph, renderToNotion } from '@overeng/notion-react'
 

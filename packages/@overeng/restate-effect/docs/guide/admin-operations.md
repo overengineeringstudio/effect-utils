@@ -26,6 +26,7 @@ end-to-end by [`src/admin/admin.integration.test.ts`](../../src/admin/admin.inte
 
 ```ts
 import { Effect } from 'effect'
+
 import { RestateAdmin } from '@overeng/restate-effect/admin'
 
 const program = Effect.gen(function* () {

@@ -37,7 +37,7 @@ trace fetched back from the Tempo backend by trace id.
    That capture used Option 2 (parser prefers `TRACEPARENT`); its command span is
    named `bash`, because nesting requires parse+emit to run INSIDE otel-scrape's
    child — wrapping the whole `tscWithDiagnostics` body (child = `bash -c
-'<body>'`). Wrapping only the compiler earns a `tsgo`-named span but leaves
+   '<body>'`). Wrapping only the compiler earns a `tsgo`-named span but leaves
    parse+emit in the task env → the falsified sibling case (S1). A
    `tsgo`-named-AND-nested span needs a span-name override not currently
    specified; name and nesting are separate axes.

@@ -22,7 +22,7 @@ by trace id. Call-site footprint read from the real task modules
 ## Result
 
 1. **Blanket wrap = 100% noise, 0% signal.** `otel-scrape -- bash -c '<otel-span
-… -- bash -c body>'` always produces a `program=bash, adapter=none` command
+   … -- bash -c body>'` always produces a `program=bash, adapter=none` command
    span ABOVE `devenv.task.exec` (trace `d6887239…`). The concrete command runs
    as a plain `bash -c '<cmd>'` inside otel-span, so no adapter ever fires on the
    devenv path.

@@ -15,8 +15,9 @@ and `installationHttpClientLayer`. Supply an App client ID, a redacted RSA PEM,
 an Effect `HttpClient` transport, and a stable `consumer` name for telemetry.
 
 ```ts
-import { GitHubApp, installationHttpClientLayer } from '@overeng/utils/node/github-app'
 import { Layer, Redacted } from 'effect'
+
+import { GitHubApp, installationHttpClientLayer } from '@overeng/utils/node/github-app'
 
 const app = GitHubApp.layer({
   config: { identity: { clientID }, privateKey: Redacted.make(privateKeyPem) },
@@ -232,10 +233,11 @@ The `@overeng/utils/lock` subpath re-exports the first-party `@overeng/effect-di
 For single-machine scenarios where you need to coordinate locks across multiple Node.js processes (e.g., parallel builds, CLI tools), use the file-based backing:
 
 ```typescript
-import { FileSystemBacking } from '@overeng/utils/node'
-import { DistributedSemaphore } from '@overeng/utils/lock'
-import { Effect, Duration } from 'effect'
 import { NodeContext } from '@effect/platform-node'
+import { Effect, Duration } from 'effect'
+
+import { DistributedSemaphore } from '@overeng/utils/lock'
+import { FileSystemBacking } from '@overeng/utils/node'
 
 const program = Effect.gen(function* () {
   const semaphore = yield* DistributedSemaphore.make({
@@ -285,8 +287,9 @@ stat. Each assertion file is written once after readiness, without retries.
 The file-system backing provides additional functions for forcibly revoking locks, useful for recovering from dead processes or administrative intervention:
 
 ```typescript
-import { FileSystemBacking } from '@overeng/utils/node'
 import { Effect } from 'effect'
+
+import { FileSystemBacking } from '@overeng/utils/node'
 
 const options = { lockDir: '/tmp/my-app-locks' }
 
@@ -359,6 +362,7 @@ Debug utilities:
 
 ```ts
 import { Effect } from 'effect'
+
 import { makeFileLogger } from '@overeng/utils/node'
 
 const program = Effect.gen(function* () {
@@ -399,6 +403,7 @@ environment so it can be overridden in tests or nested executions. Utilities lik
 ```ts
 import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
+
 import { cmd, CurrentWorkingDirectory } from '@overeng/utils/node'
 
 const program = Effect.gen(function* () {
@@ -415,6 +420,7 @@ Use `EffectUtilsWorkspace` when you want a workspace root derived from `WORKSPAC
 
 ```ts
 import { Effect, Layer } from 'effect'
+
 import { EffectUtilsWorkspace } from '@overeng/utils/node'
 
 const WorkspaceLayer = Layer.mergeAll(
@@ -430,6 +436,7 @@ const WorkspaceLayer = Layer.mergeAll(
 ```ts
 import { NodeContext } from '@effect/platform-node'
 import { Effect, Layer, Stream } from 'effect'
+
 import { CurrentWorkingDirectory, printFinalSummary, TaskRunner } from '@overeng/utils/node'
 
 const program = Effect.gen(function* () {
@@ -502,6 +509,7 @@ Capture logs from SharedWorkers and display them in a tab. Supports multiple wor
 // SharedWorker side (sync-worker.ts)
 // ═══════════════════════════════════════════════════════════════════════════
 import { Effect } from 'effect'
+
 import { BroadcastLoggerLive } from '@overeng/utils/browser'
 
 const workerProgram = Effect.gen(function* () {
@@ -520,6 +528,7 @@ const workerProgram = Effect.gen(function* () {
 // Tab side (main.ts) - Option 1: Effect-native bridge (recommended)
 // ═══════════════════════════════════════════════════════════════════════════
 import { Effect } from 'effect'
+
 import { makeLogBridgeLive } from '@overeng/utils/browser'
 
 const app = Effect.gen(function* () {
@@ -536,6 +545,7 @@ const app = Effect.gen(function* () {
 // Tab side - Option 2: Stream-based processing
 // ═══════════════════════════════════════════════════════════════════════════
 import { Effect, Stream } from 'effect'
+
 import { logStream, formatLogEntry } from '@overeng/utils/browser'
 
 const logViewer = logStream.pipe(

@@ -99,7 +99,7 @@ lives where and why.
 ## Commit / PR conventions
 
 - Conventional commits: `feat(notion-react): …`, `fix(notion-react):
-…`, `docs(notion-react): …`, etc. The scope is always the package
+  …`, `docs(notion-react): …`, etc. The scope is always the package
   name.
 - Reference GitHub issues in the body (`Fixes #123` or
   `Tracks #123`).

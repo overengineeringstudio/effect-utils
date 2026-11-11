@@ -56,9 +56,10 @@ notion-effect-cli generate <database-id> -o ./src/schemas/tasks.ts
 This produces a fully typed Effect schema that works with `@overeng/notion-effect-client`:
 
 ```ts
+import { Schema } from 'effect'
+
 // Generated file: tasks.ts
 import { NotionSchema } from '@overeng/notion-effect-schema'
-import { Schema } from 'effect'
 
 export const TasksPageProperties = Schema.Struct({
   Name: NotionSchema.title,
@@ -201,9 +202,11 @@ When using the programmatic API, you can override it with `CurrentWorkingDirecto
 ### Basic Query
 
 ```ts
-import { Effect, Layer, Stream } from 'effect'
 import { FetchHttpClient } from '@effect/platform'
+import { Effect, Layer, Stream } from 'effect'
+
 import { NotionConfigLive, NotionDatabases } from '@overeng/notion-effect-client'
+
 import { TasksPageProperties } from './schemas/tasks.ts'
 
 const program = Effect.gen(function* () {
@@ -239,9 +242,11 @@ notion-effect-cli generate <db-id> -o ./src/schemas/tasks.ts --include-api
 This creates `tasks.ts` (schema) and `tasks.api.ts` (API wrapper):
 
 ```ts
-import { Effect, Layer } from 'effect'
 import { FetchHttpClient } from '@effect/platform'
+import { Effect, Layer } from 'effect'
+
 import { NotionConfigLive } from '@overeng/notion-effect-client'
+
 import * as TasksApi from './schemas/tasks.api.ts'
 
 const program = Effect.gen(function* () {
@@ -280,7 +285,9 @@ With `--include-write`, a write schema is generated for creating and updating pa
 
 ```ts
 import { Effect } from 'effect'
+
 import { NotionPages } from '@overeng/notion-effect-client'
+
 import { TasksPageWrite, encodeTasksWrite } from './schemas/tasks.ts'
 
 const program = Effect.gen(function* () {
@@ -342,11 +349,12 @@ export default defineConfig({
 ## Programmatic Usage
 
 ```ts
-import { Effect, Layer } from 'effect'
 import { FetchHttpClient, NodeContext } from '@effect/platform-node'
+import { Effect, Layer } from 'effect'
+
+import { introspectDatabase, generateSchemaCode, formatCode } from '@overeng/notion-effect-cli'
 import { NotionConfigLive } from '@overeng/notion-effect-client'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
-import { introspectDatabase, generateSchemaCode, formatCode } from '@overeng/notion-effect-cli'
 
 const program = Effect.gen(function* () {
   const dbInfo = yield* introspectDatabase('abc123...')

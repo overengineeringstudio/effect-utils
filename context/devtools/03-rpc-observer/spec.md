@@ -52,7 +52,11 @@ export interface ChunkEvent {
   readonly valueCount: number
 }
 export type TerminalOutcome =
-  'success' | 'typedFailure' | 'defect' | 'interrupted' | 'transportFailure'
+  | 'success'
+  | 'typedFailure'
+  | 'defect'
+  | 'interrupted'
+  | 'transportFailure'
 export interface TerminalEvent {
   readonly identity: RequestIdentity
   readonly at: Timestamp
@@ -64,7 +68,12 @@ export interface FaultEvent {
   readonly connectionId: string
   readonly at: Timestamp
   readonly reason:
-    'defect' | 'clientProtocolError' | 'disconnect' | 'eof' | 'sendFailure' | 'capacity'
+    | 'defect'
+    | 'clientProtocolError'
+    | 'disconnect'
+    | 'eof'
+    | 'sendFailure'
+    | 'capacity'
 }
 export interface ProtocolSink {
   readonly onRequest: (event: RequestEvent) => void
@@ -74,7 +83,13 @@ export interface ProtocolSink {
 }
 export interface RawValue {
   readonly channel:
-    'payload' | 'headers' | 'success' | 'typedFailure' | 'defect' | 'streamElement' | 'streamError'
+    | 'payload'
+    | 'headers'
+    | 'success'
+    | 'typedFailure'
+    | 'defect'
+    | 'streamElement'
+    | 'streamError'
   readonly encoding: 'encoded' | 'decoded'
   readonly value: unknown
 }

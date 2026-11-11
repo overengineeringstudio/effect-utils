@@ -174,7 +174,9 @@ Runtime choice never performs environment detection or transport fallback.
 
 ```ts
 import { Context, Effect } from 'effect'
+
 import { Interop } from '@overeng/effect-rust'
+
 import { load as loadContentCore } from './generated/content-core/load.ts'
 
 interface Api {
@@ -460,6 +462,7 @@ evolution policy without accepting unknown runtime tags.
 
 ```ts
 import { Schema } from 'effect'
+
 import { Borsh, ContractJson, EffectRust } from '@overeng/effect-rust'
 
 const Deployment = Schema.TaggedStruct('Deployment', {

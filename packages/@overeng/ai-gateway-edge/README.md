@@ -40,8 +40,9 @@ Names and verifier digests must each be unique. Removing a verifier and restarti
 ## Compose
 
 ```ts
-import { GatewayConfig, makeRoutes } from '@overeng/ai-gateway-edge'
 import { Schema } from 'effect'
+
+import { GatewayConfig, makeRoutes } from '@overeng/ai-gateway-edge'
 
 const config = Schema.decodeUnknownSync(GatewayConfig)({
   upstream: 'https://upstream.example',

@@ -107,8 +107,9 @@ Companion annotations (`Authority`, `Freshness`, `ForeignKey`) compose
 with any `Lineage` and surface as extra tooltip rows.
 
 ```tsx
-import { Lineage } from '@overeng/react-inspector'
 import { Schema } from 'effect'
+
+import { Lineage } from '@overeng/react-inspector'
 
 const OrderTotals = Schema.Struct({
   subtotal: Schema.Number.pipe(Lineage.sourceOfTruth({ owner: 'orders' })),

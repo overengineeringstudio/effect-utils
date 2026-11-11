@@ -113,6 +113,7 @@ live operation or artifact:
 
 ```ts
 import { gate, mission, person } from '@overeng/genie-fractal'
+
 import owner from './agents/owner.ts'
 import worker from './agents/worker.ts'
 

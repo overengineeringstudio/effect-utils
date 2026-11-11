@@ -17,7 +17,7 @@ store-as-CAS-input with constructed virtual dirs (tier d)?
   canonical, tests, genie projection, and the tui-core target — ~2,700 LOC
   total surface.
 - Tier-b prototype ran real `pnpm deploy --filter <pkg> --prod=false
---ignore-scripts --offline` from a manifest-only skeleton (lockfile,
+  --ignore-scripts --offline` from a manifest-only skeleton (lockfile,
   workspace file, root manifest, all 36 workspace `package.json`, the 2 patch
   files — pnpm fails loudly when a referenced patch is missing).
 - Determinism was checked by byte-diffing two independent deploy runs.
@@ -30,7 +30,7 @@ store-as-CAS-input with constructed virtual dirs (tier d)?
 - Tier a today is selection-only. The emitted artifact
   (`packages/@overeng/tui-core/buck2/typescript-input-plan.json`) is stamped
   `non-authoritative-input-plan` / `"authoritativeCompiler":
-"buck-action-required"`; its content digests are stubbed
+  "buck-action-required"`; its content digests are stubbed
   (`unverified-plan-only`). No component materializes `node_modules` from it;
   the consuming Buck rule archives evidence tars. Full realization still
   requires per-package fetch/normalize materializers, patch application,

@@ -62,6 +62,7 @@ Effect, serve it, and call it through the typed ingress client. The full file is
 
 ```ts
 import { Context, Effect, Layer, Schema } from 'effect'
+
 import { Restate, RestateService } from '@overeng/restate-effect'
 
 class Greeting extends Context.Tag('example/Greeting')<Greeting, { readonly prefix: string }>() {
@@ -114,6 +115,7 @@ pnpm add @effect/platform-node
 ```ts
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
+
 import { callTyped, RestateIngress, serve } from '@overeng/restate-effect'
 
 // The production entrypoint: SIGTERM → fiber interruption → finalizers (server

@@ -52,12 +52,10 @@ const runWith = <A, E>(
 
 /** Read the fake server's live tree back as public-API-shaped block JSON. */
 const observeFake = (fake: FakeNotion, parentId: string): readonly ObservedBlockTree[] =>
-  fake.childrenOf(parentId).map(
-    (b: FakeBlock): ObservedBlockTree => ({
-      block: { object: 'block', id: b.id, type: b.type, [b.type]: b.payload },
-      children: observeFake(fake, b.id),
-    }),
-  )
+  fake.childrenOf(parentId).map((b: FakeBlock): ObservedBlockTree => ({
+    block: { object: 'block', id: b.id, type: b.type, [b.type]: b.payload },
+    children: observeFake(fake, b.id),
+  }))
 
 const element: ReactNode = (
   <>

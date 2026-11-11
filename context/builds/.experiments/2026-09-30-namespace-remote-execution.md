@@ -16,7 +16,7 @@ operations enough to justify replacing the public cache or local execution?
 
 1. Use the prelude-less [probe kit](./2026-09-30-namespace-remote-execution/BUCK.fixture)
    with a remote-only executor. Obtain endpoints through `nsc bazel setup
---static -o json`; use plain `host:443`, TLS, and bearer expansion in the
+   --static -o json`; use plain `host:443`, TLS, and bearer expansion in the
    Buck daemon environment. Compare a remote input hash with local `sha256sum`,
    clean Buck state, and repeat. Probe default Linux/Darwin workers and named
    pools whose startup scripts realize Nix paths before registration.

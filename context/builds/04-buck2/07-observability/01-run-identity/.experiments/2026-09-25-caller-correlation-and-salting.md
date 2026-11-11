@@ -19,7 +19,7 @@ purpose-built reproductions on a local-disk checkout; the pinned Buck
 - Source reading of the wrapper's invocation-id parsing plus an empirical
   12-case matrix (unset, hyphenated uuid, simple 32-hex, uppercase, nil, a
   reserved-variant nibble, `not-a-uuid`, 31/33 hex, empty) — one real `buck2
-targets` per row on a shared-isolation daemon.
+  targets` per row on a shared-isolation daemon.
 - Two real builds of the repository's check aggregate after a one-file edit
   (edit→build→sha256-verified restore), one per scheme: (a) derived uuid +
   traceparent conversion; (b) independent uuid + root link to the caller task

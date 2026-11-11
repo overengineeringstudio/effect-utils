@@ -207,36 +207,34 @@ const requestEvents: ReadonlyArray<ExplorerEvent> = lifecycleStates.map((state, 
 }))
 
 // oxlint-disable-next-line oxc/no-map-spread -- Each iteration constructs an immutable fixture with exact optional trace semantics.
-const records = lifecycleStates.map(
-  (state, index): RpcRecord => ({
-    key: identity({ index: index + 1, observerSide: index % 3 === 0 ? 'server' : 'client' }),
-    descriptorId: state === 'streaming' ? 'rpc:events.subscribe' : 'rpc:projects.lookup',
-    state,
-    notification: state === 'notificationSent',
-    startedAt: at(index * 700),
-    lastAt: at(index * 700 + (isActive(state) === true ? 400 : 1_250)),
-    ...(index % 3 === 1
-      ? {
-          trace: {
-            traceId: `4bf92f3577b34da6a3ce929d0e0e47${String(index).padStart(2, '0')}`,
-            spanId: `00f067aa0ba902${String(index).padStart(2, '0')}`,
-            sampled: true,
-          },
-        }
-      : {}),
-    send: state === 'sendFailed' ? 'failed' : state === 'sending' ? 'attempted' : 'sent',
-    chunkEnvelopes: state === 'streaming' ? 4 : 0,
-    streamValues: state === 'streaming' ? 17 : 0,
-    retainedStreamValues: state === 'streaming' ? 8 : 0,
-    events: [index + 1],
-    evidence:
-      state === 'uncertain'
-        ? [{ _tag: 'ConnectionFault', faultId: 'fault-fixture-1', fault: 'disconnect' }]
-        : state === 'streaming'
-          ? [{ _tag: 'ValuesTruncated', count: 9 }]
-          : [],
-  }),
-)
+const records = lifecycleStates.map((state, index): RpcRecord => ({
+  key: identity({ index: index + 1, observerSide: index % 3 === 0 ? 'server' : 'client' }),
+  descriptorId: state === 'streaming' ? 'rpc:events.subscribe' : 'rpc:projects.lookup',
+  state,
+  notification: state === 'notificationSent',
+  startedAt: at(index * 700),
+  lastAt: at(index * 700 + (isActive(state) === true ? 400 : 1_250)),
+  ...(index % 3 === 1
+    ? {
+        trace: {
+          traceId: `4bf92f3577b34da6a3ce929d0e0e47${String(index).padStart(2, '0')}`,
+          spanId: `00f067aa0ba902${String(index).padStart(2, '0')}`,
+          sampled: true,
+        },
+      }
+    : {}),
+  send: state === 'sendFailed' ? 'failed' : state === 'sending' ? 'attempted' : 'sent',
+  chunkEnvelopes: state === 'streaming' ? 4 : 0,
+  streamValues: state === 'streaming' ? 17 : 0,
+  retainedStreamValues: state === 'streaming' ? 8 : 0,
+  events: [index + 1],
+  evidence:
+    state === 'uncertain'
+      ? [{ _tag: 'ConnectionFault', faultId: 'fault-fixture-1', fault: 'disconnect' }]
+      : state === 'streaming'
+        ? [{ _tag: 'ValuesTruncated', count: 9 }]
+        : [],
+}))
 
 const normalizedSafetyValue: NormalizedValue = {
   _tag: 'Object',

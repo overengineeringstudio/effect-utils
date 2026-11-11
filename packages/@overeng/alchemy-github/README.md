@@ -24,9 +24,10 @@ The deployment credentials configured through upstream `GitHub.providers()` need
 
 ```ts
 import * as Alchemy from 'alchemy'
-import * as GitHub from '@overeng/alchemy-github'
 import { Layer } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+
+import * as GitHub from '@overeng/alchemy-github'
 
 const state = GitHub.githubRepoState().pipe(
   Layer.provide(
@@ -91,8 +92,9 @@ Declare the App in an Alchemy stack:
 ```ts
 import * as Alchemy from 'alchemy'
 import { localState } from 'alchemy/State/LocalState'
-import * as GitHub from '@overeng/alchemy-github'
 import { Effect } from 'effect'
+
+import * as GitHub from '@overeng/alchemy-github'
 
 export default Alchemy.Stack(
   'RepositoryChecks',

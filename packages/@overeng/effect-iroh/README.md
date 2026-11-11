@@ -10,6 +10,7 @@ An Effect 4 wrapper over the official [`@number0/iroh`](https://docs.iroh.comput
 
 ```ts
 import { Effect, Option, Stream } from 'effect'
+
 import { IrohEndpoint } from '@overeng/effect-iroh'
 
 const program = Effect.gen(function* () {

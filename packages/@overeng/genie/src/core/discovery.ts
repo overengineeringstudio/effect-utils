@@ -222,11 +222,9 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
 
   const safeStat = (fullPath: string): Effect.Effect<StatResult, never, never> =>
     fs.stat(fullPath).pipe(
-      Effect.map(
-        (stat): StatResult => ({
-          type: stat.type === 'Directory' ? 'directory' : 'file',
-        }),
-      ),
+      Effect.map((stat): StatResult => ({
+        type: stat.type === 'Directory' ? 'directory' : 'file',
+      })),
       Effect.catchTag('PlatformError', (e) => {
         // Handle broken symlinks and other stat failures gracefully
         if (e.reason._tag === 'NotFound') {

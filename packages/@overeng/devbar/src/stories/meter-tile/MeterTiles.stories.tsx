@@ -236,22 +236,20 @@ const TileDevbar = (props: MeterTilesProps & { readonly meters: Meters }): React
         />
       ),
     },
-    ...tileRows.map(
-      (row): DevbarSegment => ({
-        id: row.block.id,
-        label: row.block.label,
-        priority: row.priority,
-        render: () => (
-          <MeterTile
-            meters={meters}
-            block={row.block}
-            theme={theme}
-            frozen={freeze}
-            heightPx={tileHeightPx}
-          />
-        ),
-      }),
-    ),
+    ...tileRows.map((row): DevbarSegment => ({
+      id: row.block.id,
+      label: row.block.label,
+      priority: row.priority,
+      render: () => (
+        <MeterTile
+          meters={meters}
+          block={row.block}
+          theme={theme}
+          frozen={freeze}
+          heightPx={tileHeightPx}
+        />
+      ),
+    })),
     {
       id: 'api.subscriptions',
       label: 'Live subscriptions',

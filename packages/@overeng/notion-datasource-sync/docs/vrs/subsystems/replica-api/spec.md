@@ -189,7 +189,11 @@ type NotionConflictResolution = {
   readonly resolutionId: string
   readonly conflictId: SyncEventId
   readonly action:
-    'choose_remote' | 'abandon_local' | 'retry_after_refresh' | 'choose_local' | 'manual_value'
+    | 'choose_remote'
+    | 'abandon_local'
+    | 'retry_after_refresh'
+    | 'choose_local'
+    | 'manual_value'
   readonly valueJson: CanonicalPropertyValueJson | undefined
   readonly status: LocalChangeStatus
 }

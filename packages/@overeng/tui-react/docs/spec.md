@@ -1079,6 +1079,7 @@ Helper for running TUI CLI applications as the main entry point with proper erro
 
 ```typescript
 import { NodeRuntime } from '@effect/platform-node'
+
 import { runTuiMain, outputModeLayer } from '@overeng/tui-react'
 
 // Run the CLI with proper error handling

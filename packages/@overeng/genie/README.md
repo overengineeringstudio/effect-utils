@@ -231,6 +231,7 @@ For example, export `ciDefinition` (a `GitHubWorkflowArgs`) from
 ```ts
 // genie/seed-policy-ledger.ts (one-time script; remove after seeding)
 import { writeFileSync } from 'node:fs'
+
 import { consumerMigrationLedger } from '../repos/effect-utils/genie/ci-workflow.ts'
 import { ciDefinition } from './ci-definition.ts'
 
@@ -254,9 +255,9 @@ keys must likewise match exactly.
 Apply the ledger in `.github/workflows/ci.yml.genie.ts`:
 
 ```ts
-import { ciWorkflow, consumerMigrationPolicy } from '../../repos/effect-utils/genie/ci-workflow.ts'
 import { ciDefinition } from '../../genie/ci-definition.ts'
 import ledger from '../../genie/policy-migration-ledger.json' with { type: 'json' }
+import { ciWorkflow, consumerMigrationPolicy } from '../../repos/effect-utils/genie/ci-workflow.ts'
 
 export default ciWorkflow({
   ...ciDefinition,
@@ -471,6 +472,7 @@ Then import in your `.genie.ts` files:
 
 ```ts
 import { packageJsonWithContext } from '@overeng/genie/lib'
+
 import { catalog, workspacePackagePatterns } from '../genie/repo.ts'
 
 export default packageJsonWithContext({

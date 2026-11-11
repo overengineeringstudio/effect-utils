@@ -277,7 +277,6 @@ The consumer devShell includes `effect-utils.packages.${system}.genie`, Rust and
 flake input store path. Workflow sources can then import through that symlink:
 
 ```ts
-import { githubWorkflow, githubWorkflowEvent } from '../../repos/effect-utils/genie/external.ts'
 import {
   cargoFmtJob,
   cargoClippyJob,
@@ -287,6 +286,7 @@ import {
   RUNNER_PROFILES,
   defaultActionlintConfig,
 } from '../../repos/effect-utils/genie/ci-workflow.ts'
+import { githubWorkflow, githubWorkflowEvent } from '../../repos/effect-utils/genie/external.ts'
 
 const linuxRunner = namespaceRunner({
   profile: RUNNER_PROFILES[0],

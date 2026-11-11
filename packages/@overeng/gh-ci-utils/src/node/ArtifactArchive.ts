@@ -283,14 +283,12 @@ export const listArtifactMembers = Effect.fn('artifacts.list-members')(
       selection: selection,
       member: null,
       consume: async (_zip, entries) =>
-        entries.map(
-          (entry): ArtifactMember => ({
-            path: entry.fileName,
-            compressedBytes: entry.compressedSize,
-            decompressedBytes: entry.uncompressedSize,
-            directory: entry.fileName.endsWith('/'),
-          }),
-        ),
+        entries.map((entry): ArtifactMember => ({
+          path: entry.fileName,
+          compressedBytes: entry.compressedSize,
+          decompressedBytes: entry.uncompressedSize,
+          directory: entry.fileName.endsWith('/'),
+        })),
     }),
 )
 

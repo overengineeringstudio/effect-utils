@@ -70,12 +70,10 @@ export const readTreeIndexOptional = (
       .readFileString(path)
       .pipe(Effect.mapError((cause) => makeFsError({ operation: 'read', path, cause })))
     return yield* decodeTreeIndexJson(content).pipe(
-      Effect.map(
-        (index): NormalizedTreeIndex => ({
-          ...index,
-          authority: index.authority ?? 'local',
-        }),
-      ),
+      Effect.map((index): NormalizedTreeIndex => ({
+        ...index,
+        authority: index.authority ?? 'local',
+      })),
       Effect.mapError(
         (cause) =>
           new NmdCliError({

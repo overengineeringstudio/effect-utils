@@ -21,8 +21,9 @@ import '@overeng/effect-schema-form-aria/styles.css'
 ```
 
 ```tsx
-import { AriaSchemaForm } from '@overeng/effect-schema-form-aria'
 import { Schema } from 'effect'
+
+import { AriaSchemaForm } from '@overeng/effect-schema-form-aria'
 
 const UserSchema = Schema.Struct({
   name: Schema.String.annotations({ title: 'Name', description: 'Your full name' }),

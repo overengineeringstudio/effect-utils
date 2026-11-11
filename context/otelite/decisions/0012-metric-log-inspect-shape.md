@@ -21,15 +21,15 @@ ids makes bread-and-butter scenarios impossible for a tiny field saving.
 ## The shape (golden-locked)
 
 - `otelite.metric/v1` — one row per data point: `{schema, service, name, type,
-unit, attrs, time_unix_nano, start_time_unix_nano}` + type-specific: gauge/sum
+  unit, attrs, time_unix_nano, start_time_unix_nano}` + type-specific: gauge/sum
   `value` (sum also `monotonic`, `temporality`); histogram `count, sum, min, max,
-mean, bucket_counts, explicit_bounds`; exphistogram `count, sum, scale,
-zero_count, positive_buckets, negative_buckets`.
+  mean, bucket_counts, explicit_bounds`; exphistogram `count, sum, scale,
+  zero_count, positive_buckets, negative_buckets`.
 - `otelite.metric-summary/v1` — per-name `{name, type, unit, data_points,
-services}` + (gauge/sum only) `value_min/value_max/value_sum` + totals.
+  services}` + (gauge/sum only) `value_min/value_max/value_sum` + totals.
 - `otelite.log/v1` — one row per record: `{schema, service, scope,
-severity_number, severity_text, body, trace_id, span_id, time_unix_nano,
-attrs}` (trace_id/span_id null when absent).
+  severity_number, severity_text, body, trace_id, span_id, time_unix_nano,
+  attrs}` (trace_id/span_id null when absent).
 - `otelite.log-summary/v1` — `{total, by_severity, by_service}`.
 
 Refinements folded from all three evaluators: sum `monotonic`/`temporality`

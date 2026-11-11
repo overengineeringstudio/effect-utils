@@ -220,7 +220,7 @@ Effect helper for the Effect/TS test harness. The helper is built
 **Effect-native** (`/sk-effect`):
 
 - Spawns the CLI via `@effect/platform` `Command` (`Command.make("otelite",
-...)` + `CommandExecutor`), not `node:child_process`. Receiver lifecycle is a
+  ...)` + `CommandExecutor`), not `node:child_process`. Receiver lifecycle is a
   scoped resource so the Child + capture are released deterministically.
 - Decodes the `run` summary and `inspect` rows with `Schema` — `Schema.decode`
   over the CLI's JSON contract — so consumers get typed `Summary` / `SpanRow`

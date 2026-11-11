@@ -76,14 +76,12 @@ const fileUnitsOf = (storage: NmdStorage | undefined): readonly NmdFileUnit[] =>
     case 'object_store':
       // object_store keeps only ids, but a non-empty id set is still modeled
       // byte-backed media that this phase cannot durably write.
-      return storage.file_ids.map(
-        (id): NmdFileUnit => ({
-          _tag: 'file_unit',
-          id,
-          role: 'block_file',
-          filename: id,
-        }),
-      )
+      return storage.file_ids.map((id): NmdFileUnit => ({
+        _tag: 'file_unit',
+        id,
+        role: 'block_file',
+        filename: id,
+      }))
   }
 }
 

@@ -151,7 +151,7 @@ export type ReleaseWorkflowOptions = {
 - `workflow_dispatch` with two `choice` inputs:
   - `npm_tag` — populated from `Object.keys(releaseChannels)`.
   - `mode` — fixed to `['create-release-pr', 'validate-release-plan',
-'publish-release']`.
+    'publish-release']`.
 - `pull_request` on `releasePlanPaths` (validates release tooling
   changes even when they do not carry a real release plan).
 - `push` to `main` on `releasePlanPath` (the merge of the release-plan

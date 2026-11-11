@@ -40,10 +40,10 @@ Client wiring proven identical for both backends:
 - `[buck2_re_client]` `engine_address` / `action_cache_address` / `cas_address`
   all at one `grpc://` endpoint, `instance_name`, `tls = false`. The section
   must live in a buckconfig file (`.buckconfig.local` works); `-c
-buck2_re_client.*` CLI overrides never reach the RE client and fail with
+  buck2_re_client.*` CLI overrides never reach the RE client and fail with
   "Error creating Capabilities client: No address".
 - Executor: `CommandExecutorConfig(local_enabled = True, remote_enabled =
-False, remote_cache_enabled = True, allow_cache_uploads = True)`.
+  False, remote_cache_enabled = True, allow_cache_uploads = True)`.
 - Uploads additionally require `[buck2] default_allow_cache_upload = true`;
   without it builds succeed but the cache stays empty.
 - Digests: the pinned Buck2 already produces SHA256 action digests with

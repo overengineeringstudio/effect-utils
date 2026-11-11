@@ -68,6 +68,7 @@ body is re-decoded into the original tagged error. The client requires a
 
 ```ts
 import { Effect } from 'effect'
+
 import {
   callTyped,
   objectCall,
