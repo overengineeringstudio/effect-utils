@@ -603,8 +603,10 @@ Install the effect-utils flake's `worktree-teardown` package before retirement;
 the command never realizes the target checkout's shell. Its single positional
 path may be absolute or relative to the caller; no target code runs by default.
 It resolves the physical absolute Git checkout root and operates only on state
-keyed to that root. Exit 0 means completed; nonzero reports a failure and removal
-must stop. It is offline and idempotent; missing daemons,
+keyed to that root. Exit 0 means completed; 2 is invalid usage; 3 refuses an
+owned `.editor-view` (even lease-only) without release opt-in, before mutation.
+Rerun with `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`; any nonzero status stops removal.
+Other command failures propagate their status. It is offline and idempotent; missing daemons,
 unreachable Watchman, and absent cache/editor roots are no-ops. Watcher admission
 filenames under `${XDG_CACHE_HOME:-~/.cache}/effect-utils/buck2-posture-v2` begin
 with `sha256(absolute-root)-`, followed by the invocation-key hash; endpoint-only
@@ -625,8 +627,9 @@ state container is removed only if empty. State paths outside the canonical base
 and any symlinked state component are refused.
 
 `devenv tasks run buck2:editor:release --mode single` is the editor-only release
-surface. The installed command reports editor release skipped by default:
-there is no reliable shell identity available without evaluation. Explicit
+surface. Without opt-in, the installed command refuses any owned editor root
+before mutation; it reports editor release skipped only when no such root exists.
+There is no reliable shell identity available without evaluation. Explicit
 `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` permits running this checkout-defined task;
 Nix local/remote builds and substitutions are disabled, so an unrealized shell
 fails rather than building. This opt-in is the only execution of checkout code.

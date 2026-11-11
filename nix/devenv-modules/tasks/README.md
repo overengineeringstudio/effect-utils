@@ -132,9 +132,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
   `worktree-teardown <worktree-path>` command from the effect-utils flake's
   `worktree-teardown` package, not the retiring checkout's devenv shell.
   It accepts one absolute/relative path from any cwd, executes no checkout code
-  by default, and exits 0 on completion or nonzero with a failure diagnostic.
+  by default. Exit 0 means completed; 2 is invalid usage; 3 means an owned
+  `.editor-view` or lease-only root is present without release opt-in: rerun with
+  `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`. Exit 3 occurs before any mutation.
+  Other nonzero statuses are failures, including propagated command statuses.
   It stops every root-owned Buck isolation and releases reachable Watchman and
-  root-keyed admission state. Editor release is reported as skipped unless
+  root-keyed admission state. Editor-free checkouts report release skipped unless
   `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` explicitly permits the checkout's task;
   Nix builds/substitutions are disabled even then. The warm-shell devenv wrapper
   opts in when `buck2:editor:release` is defined, with final retirement enabled.
@@ -145,8 +148,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
   directories; owned unreadable roots still receive owner-write permission.
   Never auto-scheduled; indirect Nix gcroots are left to become dangling and be
   pruned by Nix GC.
-  If editor release is skipped, successful plain `git worktree remove` unlinks
-  checkout-local snapshots but leaves host-shared content-store blobs. These are
+  Bypassing this refusal with plain `git worktree remove` can unlink
+  checkout-local snapshots while leaving host-shared content-store blobs. These are
   not Nix GC objects: `collect-content --content-store <store>` or subsequent
   publisher/release maintenance collects validated blobs once their link count
   is one. See [editor-root removal](../../../packages/@overeng/buck2-tools/README.md#retired-worktree-removal).
