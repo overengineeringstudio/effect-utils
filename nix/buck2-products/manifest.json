@@ -777,7 +777,7 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/bws76i3b6p8kpn3qw64ys03y37iv66w7/mr.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/58zli720hglqb6hpadfi67giynd9apxi/mr.js",
       "descriptor": {
         "externalCapabilities": [
           "git",
@@ -785,7 +785,7 @@
           "worktree-lease"
         ],
         "externalModules": [],
-        "integrity": "sha256-Bo5ykrX9AE8zPJRtBJm4aVTMYIlT8ZAL4aiuwbOS7JU=",
+        "integrity": "sha256-ufjCQxQ6PpS/SxDy0z+gCqYqXk5szp/f9u4Nc6Bc4C8=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -803,23 +803,23 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3023061,
+        "sizeBytes": 3024157,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "9261c6278a77fc39b1ec24c878e6b6281f1e57cf13c9666ffbd76af96ab7eec1",
+      "descriptorSha256": "49c955e159cd76eb188b6a8909a96494518310023edc39432dd3bcfb08f434bf",
       "name": "megarepo",
       "provenance": {
-        "producerCommit": "83fd7d7fd254b49ad918b18053ecfac84b4bc8ce",
-        "productDigest": "068e7292b5fd004f333c946d0499b86954cc608953f1900be1a8aec1b392ec95",
+        "producerCommit": "2aedd0893252fcadda5ef2cc4da65449b477f183",
+        "productDigest": "b9f8c243143a3e94bf4b10f2d33fa00aa62a5e4e6cce9fdff6ee0d73a05ce02f",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "recipeIdentity": "d9e66c49ec60aeb8903a9684ffb87026799f50c37e1b41fd6555b4cce21c4dfb",
-      "sha256": "068e7292b5fd004f333c946d0499b86954cc608953f1900be1a8aec1b392ec95",
-      "size": 3023061,
-      "sourceEvidenceSha256": "d387463e8d6da9634414af94f02078152ba957dbb44a97ed0983f6377c84bb97",
-      "sourceEvidenceStorePath": "/nix/store/jkpzq2v64z0m64pj17ilxbzg0jidjhi1-megarepo-source-evidence",
-      "storePath": "/nix/store/bws76i3b6p8kpn3qw64ys03y37iv66w7-megarepo-buck2-from-source-0.0.0",
+      "recipeIdentity": "4e56e9572560831f0ea230776c7113e8d9e74d2a074a5f6ad2784485c6c63a12",
+      "sha256": "b9f8c243143a3e94bf4b10f2d33fa00aa62a5e4e6cce9fdff6ee0d73a05ce02f",
+      "size": 3024157,
+      "sourceEvidenceSha256": "5cffed475e76e05a4a359e27777e40136cabcc601900d5eb499506f57a885757",
+      "sourceEvidenceStorePath": "/nix/store/nvnsn7r6m60sfq6dfidwclqsjczyh0bn-megarepo-source-evidence",
+      "storePath": "/nix/store/58zli720hglqb6hpadfi67giynd9apxi-megarepo-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
@@ -1121,11 +1121,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate"
       },
-      "recipeIdentity": "47f1b821d98acd6b3565726093d62732d01d71a8a61b799eb8a8c7b9b68b96bd",
+      "recipeIdentity": "c47b194d63b754c72b390dc396dd96c6ea3f9660c7e61a145875fefa8094257a",
       "sha256": "ead4b618be5ac277d73a2f561d23b429ec47a439d6587bed2451bcc5639106be",
       "size": 1665013,
-      "sourceEvidenceSha256": "5120a9fef9ff0eebdcaeaf7ded9f2e726333c2ce4a16b765006f81569ed121ff",
-      "sourceEvidenceStorePath": "/nix/store/3gp7sbi7rm1cp37w904hbvi5k2gn5d8n-tui-stories-source-evidence",
+      "sourceEvidenceSha256": "0722c798985afbb4bdd4cdab7bff00649c4df44ee5763ab835711de4a83daf9e",
+      "sourceEvidenceStorePath": "/nix/store/sqaskkrqajqkghsgf0spmwysd3cwjy7g-tui-stories-source-evidence",
       "storePath": "/nix/store/phzijfrjq9ga5abv0jyy94d9s9dwdx40-tui-stories-buck2-from-source-0.0.0",
       "version": "0.0.0"
     }

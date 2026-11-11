@@ -63,11 +63,13 @@ never rewritten. SSH URLs (including scp-style `git@host:path`) are unchanged.
 
 `mr check` accepts GitHub member Nix inputs using either `github:OWNER/REPO`
 or `git+https://github.com/OWNER/REPO?rev=<40-character-sha>&shallow=1`.
-The latter avoids GitHub archive fetching; an optional `ref` query parameter may
-appear in any order. Git transport must match the member repository
+The latter avoids GitHub archive fetching; optional `ref` and `dir` query parameters may
+appear in any order. Source and lock suggestions preserve `dir`. Git transport must match the member repository
 (case-insensitively) and exact locked member commit. Both Nix lock sections must
 use shallow HTTPS Git sources, with complete locked fetch metadata. Other Git
-hosts, transports, duplicate or unknown URL parameters are not accepted.
+hosts, transports, duplicate or unknown URL parameters are not accepted. Rejected
+lock attributes are reported by section and key (for example, `original.submodules`).
+Lock synchronization compares repository identity case-insensitively as well.
 
 ### Standalone Nix lock synchronization
 
