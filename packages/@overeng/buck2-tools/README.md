@@ -756,6 +756,15 @@ files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
 
+Skipping editor release is not shared-store reclamation. If ordinary
+`git worktree remove` succeeds, it unlinks checkout-local editor snapshots but
+leaves their host-shared content-store blobs behind. Nix GC does not collect
+these blobs. Explicit `collect-content --content-store <store>` or subsequent
+publisher/release content-store maintenance reclaims validated blobs only when
+their link count is one; other snapshots' hardlinks keep shared content alive.
+Release before removal remains preferable: it performs lifecycle cleanup under
+the publication and lease fences instead of relying on later collection.
+
 If teardown fails, fix its reported error and rerun it; do not fall back to
 `chmod -R` or `rm -rf` on the worktree. Snapshot files are hardlinks to the
 host-shared store, so a recursive permission change also makes other worktrees'

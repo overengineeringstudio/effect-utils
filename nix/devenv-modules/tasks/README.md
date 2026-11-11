@@ -145,6 +145,11 @@ for outer tasks that must complete before the nested devenv process can evaluate
   directories; owned unreadable roots still receive owner-write permission.
   Never auto-scheduled; indirect Nix gcroots are left to become dangling and be
   pruned by Nix GC.
+  If editor release is skipped, successful plain `git worktree remove` unlinks
+  checkout-local snapshots but leaves host-shared content-store blobs. These are
+  not Nix GC objects: `collect-content --content-store <store>` or subsequent
+  publisher/release maintenance collects validated blobs once their link count
+  is one. See [editor-root removal](../../../packages/@overeng/buck2-tools/README.md#retired-worktree-removal).
   Its live shell fixture also runs through `devenv-modules:test`; the repository's
   aggregate runner supplies pinned fingerprint, copy, move, and JSON tools rather
   than relying on a developer's ambient tool-input environment. The fixture uses
