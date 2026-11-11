@@ -977,7 +977,7 @@ mod tests {
                 true,
             );
             if width == 40 {
-                assert!(frame.notes.is_empty());
+                assert_eq!(frame.notes, [] as [(usize, usize, usize, usize); 0]);
                 continue;
             }
             let (line, _, start, end) = frame.notes[0];
@@ -997,9 +997,10 @@ mod tests {
             assert!(plain(&frame.lines).contains("tailnet direct"));
             assert!(!plain(&frame.lines).contains("203.0.113.1"));
         }
-        assert!(frame(&[host], Layout::Rows, &LIVE, 180, 40, true)
-            .notes
-            .is_empty());
+        assert_eq!(
+            frame(&[host], Layout::Rows, &LIVE, 180, 40, true).notes,
+            [] as [(usize, usize, usize, usize); 0]
+        );
     }
 
     #[test]
@@ -1326,7 +1327,7 @@ mod tests {
                 assert_eq!(hovered.len(), 1);
                 assert_eq!(hovered[0].text.width(), 1);
             } else {
-                assert!(hovered.is_empty());
+                assert_eq!(hovered, [] as [&Span; 0]);
             }
         }
         let chart: Vec<_> = frame
@@ -1535,7 +1536,7 @@ mod tests {
                         .timeline_lines
                         .iter()
                         .all(|(line, _, _)| *line < axis_line));
-                    assert!(frame.lines[axis_line + 1].is_empty());
+                    assert_eq!(frame.lines[axis_line + 1], [] as [Span; 0]);
                     assert!(plain(&[frame.lines[axis_line + 2].clone()]).contains("2 hosts"));
                     assert_eq!(
                         frame.lines[axis_line]
