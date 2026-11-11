@@ -161,7 +161,7 @@ describe('checkSourcePolicy', () => {
       ),
     ))
 
-  it('preserves flake dir query params in canonical source suggestions', () =>
+  it('preserves source dir suggestions and names accepted lock transports', () =>
     runWithContext(
       withWorkspace((root) =>
         Effect.gen(function* () {
@@ -211,7 +211,9 @@ describe('checkSourcePolicy', () => {
               .map((violation) => violation.expected),
           ).toEqual([
             'github:overengineeringstudio/private-member?dir=nix/flake',
-            'github:overengineeringstudio/private-member?dir=nix/flake',
+            expect.stringContaining(
+              ` or git+${makeLockFile().members['private-member']!.url}?[ref=<ref>&]rev=${commit}&shallow=1`,
+            ),
           ])
         }),
       ),
