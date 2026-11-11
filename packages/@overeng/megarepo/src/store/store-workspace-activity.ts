@@ -463,7 +463,7 @@ export const readWorkspaceActivity: (options: {
           ptys: 'retained-local',
         },
         complete: true,
-      },
+      } satisfies NativeActivityEvidence,
     }
   })
   return yield* read.pipe(
