@@ -5,10 +5,11 @@ import { Schema } from 'effect'
 import { expect } from 'vitest'
 
 import {
-  CiMeasurementArtifact,
+  type CiMeasurementArtifact,
   type CiMeasurementCommentState,
   type CiMeasurementComparison,
   ciMeasurementAuthority,
+  decodeCiMeasurementArtifact,
   renderCiMeasurementValidators,
 } from './schema.ts'
 
@@ -24,7 +25,7 @@ const artifact = {
   target: { kind: 'source-shape', id: 'source' },
   observations: [{ name: 'source.lines', unit: 'lines', value: 5 }],
   artifacts: [{ name: 'details', path: 'details.json', contentType: 'application/json' }],
-} satisfies typeof CiMeasurementArtifact.Type
+} satisfies CiMeasurementArtifact
 
 const state = {
   _tag: 'ci-measurement-comment-state',
@@ -56,14 +57,14 @@ const state = {
       ],
     },
   ],
-} satisfies typeof CiMeasurementCommentState.Type
+} satisfies CiMeasurementCommentState
 
 const comparison = {
   schemaVersion: 1,
   status: 'skipped',
   mode: 'off',
   comparisons: {},
-} satisfies typeof CiMeasurementComparison.Type
+} satisfies CiMeasurementComparison
 
 describe('CI measurement record authorities', () => {
   it('renders all validators including the tagged comment-state authority', () => {
@@ -81,9 +82,7 @@ describe('CI measurement record authorities', () => {
 
   it('generates dependency-free artifact validation from the typed producer contract', () => {
     expect(generatedIs('isCiMeasurementArtifact', artifact)).toBe(true)
-    expect(
-      Schema.decodeUnknownSync(CiMeasurementArtifact, { onExcessProperty: 'error' })(artifact),
-    ).toEqual(artifact)
+    expect(decodeCiMeasurementArtifact(artifact)).toEqual(artifact)
     for (const malformed of [
       { ...artifact, schemaVersion: '1' },
       { ...artifact, schemaVersion: 2 },
@@ -110,6 +109,7 @@ describe('CI measurement record authorities', () => {
   it('validates every cached history run and visible row rather than only the tag', () => {
     expect(generatedIs('isCiMeasurementCommentState', state)).toBe(true)
     for (const malformed of [
+      { ...state, _tag: 'wrong-comment-state' },
       { ...state, schemaVersion: '1' },
       { ...state, schemaVersion: 2 },
       { ...state, runs: [{}] },
