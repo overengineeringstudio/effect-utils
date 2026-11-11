@@ -8,10 +8,6 @@ import type { PlatformError } from 'effect/PlatformError'
 
 import { compile } from '@overeng/effect-rust/compiler'
 
-import {
-  ContractGenerationRuntime,
-  readPinnedContractBunVersion,
-} from '../../../../rust/content-address-contract/generation-freshness.ts'
 import { Codec, ContentDescriptor, ContentDigest, MediaType, NonNegativeInt } from './schema.ts'
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
@@ -49,7 +45,7 @@ const GenerationManifest = Schema.Struct({
       { description: 'canonical ISO generation timestamp' },
     ),
   ),
-  runtime: ContractGenerationRuntime,
+  runtime: Schema.Struct({ name: Schema.Literal('bun'), version: Schema.NonEmptyString }),
   inputs: Schema.Array(HashEntry),
   artifacts: Schema.Array(HashEntry),
 })
@@ -112,14 +108,14 @@ NodeRuntime.runMain(
         paths: [],
       })
     const check = args.includes('--check')
-    const pinnedVersion = yield* Effect.try({
-      try: () => readPinnedContractBunVersion({ root: repoRoot }),
-      catch: (cause) =>
-        new ContractGenerationError({
-          message: `Cannot read the pinned Bun compile runtime version: ${cause}`,
-          paths: ['nix/bun-compile-runtime.nix'],
-        }),
-    })
+    const runtimePinPath = 'nix/bun-compile-runtime.nix'
+    const runtimePin = yield* fs.readFileString(`${repoRoot}${runtimePinPath}`)
+    const pinnedVersion = /^\s*version = "([^"]+)";$/m.exec(runtimePin)?.[1]
+    if (pinnedVersion === undefined)
+      return yield* new ContractGenerationError({
+        message: 'Cannot read the pinned Bun compile runtime version',
+        paths: [runtimePinPath],
+      })
     const version = process.versions.bun
     if (version !== pinnedVersion)
       return yield* new ContractGenerationError({

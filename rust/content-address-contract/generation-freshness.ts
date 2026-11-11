@@ -5,11 +5,6 @@ import { fileURLToPath } from 'node:url'
 
 import { Data, Schema } from 'effect'
 
-export const ContractGenerationRuntime = Schema.Struct({
-  name: Schema.Literal('bun'),
-  version: Schema.NonEmptyString,
-})
-
 const Digest = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}(?![\s\S])/))
 const RelativePath = Schema.String.check(
   Schema.makeFilter(
@@ -30,7 +25,7 @@ const GenerationManifest = Schema.Struct({
       return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
     }),
   ),
-  runtime: ContractGenerationRuntime,
+  runtime: Schema.Struct({ name: Schema.Literal('bun'), version: Schema.NonEmptyString }),
   inputs: Schema.Array(Entry),
   artifacts: Schema.Array(Entry),
 }).annotate({ identifier: 'ContentAddressContract.GenerationManifest' })
@@ -45,7 +40,7 @@ const fail = ({ message }: { readonly message: string }): never => {
   })
 }
 
-export const readPinnedContractBunVersion = ({ root }: { readonly root: string }): string => {
+const readPinnedContractBunVersion = ({ root }: { readonly root: string }): string => {
   const pin = readFileSync(path.join(root, 'nix/bun-compile-runtime.nix'), 'utf8')
   const version = /^\s*version = "([^"]+)";$/m.exec(pin)?.[1]
   if (version === undefined) return fail({ message: 'cannot read the pinned Bun runtime version' })
