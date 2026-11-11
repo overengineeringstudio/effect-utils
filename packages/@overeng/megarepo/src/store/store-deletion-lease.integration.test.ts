@@ -73,11 +73,15 @@ const writeLease = ({
   })
 
 describe('store deletion lease', () => {
-  for (const wrongStartTime of [false, true]) {
+  for (const scenario of ['canonical', 'wrong-start-time', 'store-alias']) {
+    const wrongStartTime = scenario === 'wrong-start-time'
+    const useStoreAlias = scenario === 'store-alias'
     it.effect.skipIf(process.platform !== 'linux')(
       wrongStartTime === true
         ? 'refuses an ancestor lease with a mismatched process start time'
-        : 'admits descendant creation without releasing outer admission and excludes non-descendants',
+        : useStoreAlias === true
+          ? 'admits the same owner through a symlinked outer store and a real-path nested store'
+          : 'admits descendant creation without releasing outer admission and excludes non-descendants',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
@@ -95,7 +99,11 @@ describe('store deletion lease', () => {
             ownerPath: canonicalOwner,
           })
           const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
-          const env = { ...process.env, MEGAREPO_STORE: f.storePath, NO_COLOR: '1' }
+          const alias = `${f.storePath}../store-alias`
+          if (useStoreAlias === true) yield* fs.symlink(f.storePath, alias)
+          const outerStore = useStoreAlias === true ? `${alias}/` : f.storePath
+          const outerOwner = owner.replace(f.storePath, outerStore)
+          const env = { ...process.env, MEGAREPO_STORE: outerStore, NO_COLOR: '1' }
           const childCode = `
             import { spawnSync } from 'node:child_process'
             import { Effect } from 'effect'
@@ -111,7 +119,7 @@ describe('store deletion lease', () => {
             const nested = spawnSync('bun', [
               ${encodeJson(cli)}, 'store', 'worktree', 'new', 'test-owner/leased-repo',
               '--no-fetch', '--ref', 'nested', '--base', ${encodeJson(base)}, '--porcelain'
-            ], { encoding: 'utf8', env: process.env })
+            ], { encoding: 'utf8', env: { ...process.env, MEGAREPO_STORE: ${encodeJson(f.storePath)} } })
             if (nested.status !== ${wrongStartTime === true ? 1 : 0})
               throw new Error('nested exit=' + nested.status + '\\n' + nested.stderr + nested.stdout)
             if (await lease.text() !== before) throw new Error('outer lease changed')
@@ -135,7 +143,7 @@ describe('store deletion lease', () => {
                   'store',
                   'lease',
                   '--owner-path',
-                  owner,
+                  outerOwner,
                   '--repo-path',
                   bare,
                   '--',
