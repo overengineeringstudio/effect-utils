@@ -588,19 +588,23 @@ recovery surface; it requires both `EDITOR_VIEW_PACKAGE` and the exact printed
 ## Retired Worktree Teardown
 
 ```text
-worktree:teardown
+worktree-teardown <worktree-path>
   -> stop root-owned Buck isolations and remove only their state
   -> delete the root's watch from reachable Watchman
   -> remove root-keyed watcher admission entries
-  -> buck2:editor:release
+  -> buck2:editor:release only with explicit opt-in (no Nix builds)
   -> chmod owner-write on remaining real directories
   -> operator leaves checkout and runs git worktree remove
 ```
 
-After closing editors and builds, run
-`devenv tasks run worktree:teardown --mode single` from the retired worktree.
-The shared task resolves the physical absolute Git checkout root and operates
-only on state keyed to that root. It is offline and idempotent; missing daemons,
+After closing editors and builds, run the installed
+`worktree-teardown <worktree-path>` from outside the retired worktree.
+Install the effect-utils flake's `worktree-teardown` package before retirement;
+the command never realizes the target checkout's shell. Its single positional
+path may be absolute or relative to the caller; no target code runs by default.
+It resolves the physical absolute Git checkout root and operates only on state
+keyed to that root. Exit 0 means completed; nonzero reports a failure and removal
+must stop. It is offline and idempotent; missing daemons,
 unreachable Watchman, and absent cache/editor roots are no-ops. Watcher admission
 filenames under `${XDG_CACHE_HOME:-~/.cache}/effect-utils/buck2-posture-v2` begin
 with `sha256(absolute-root)-`, followed by the invocation-key hash; endpoint-only
@@ -621,11 +625,16 @@ state container is removed only if empty. State paths outside the canonical base
 and any symlinked state component are refused.
 
 `devenv tasks run buck2:editor:release --mode single` is the editor-only release
-surface. Teardown calls that existing task when the consuming repository defines
-it. Both are explicit lifecycle operations, never dependencies of publication,
-setup, tests, or checks. The evaluated task graph asserts that isolation.
-Consumers inherit teardown through the shared setup, check, clean, or
-worktree-guard module, or import the exported worktree-teardown module directly.
+surface. The installed command reports editor release skipped by default:
+there is no reliable shell identity available without evaluation. Explicit
+`WORKTREE_TEARDOWN_EDITOR_RELEASE=1` permits running this checkout-defined task;
+Nix local/remote builds and substitutions are disabled, so an unrealized shell
+fails rather than building. This opt-in is the only execution of checkout code.
+The `worktree:teardown` devenv task is a thin wrapper over the same command and
+opts in when the consumer defines editor release, preserving warm-shell use.
+Both remain explicit lifecycle operations, never dependencies of publication,
+setup, tests, or checks. Consumers inherit the wrapper through the shared setup,
+check, clean, or worktree-guard module, or import worktree-teardown directly.
 
 Teardown makes remaining directories owner-writable without following symlinks
 or changing file modes. Before chmod, it prunes any nested directory containing

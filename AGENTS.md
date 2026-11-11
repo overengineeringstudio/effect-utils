@@ -30,7 +30,7 @@ Buck owns checking for every TypeScript project and declaration production for e
 
 # Worktree removal
 
-Before removing a worktree, run `devenv tasks run worktree:teardown --mode single` in it, then run `git worktree remove` from another worktree.
+Before removing a worktree, close its editors/builds and run the installed `worktree-teardown <worktree-path>` command from outside it, then run `git worktree remove`. The command is exported as the effect-utils flake's `worktree-teardown` package; it does not realize the retiring checkout's shell. Editor release is skipped unless explicitly opted in with `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` (Nix builds remain disabled).
 Never use `chmod -R` or `rm -rf` on an effect-utils worktree: editor-view snapshot files are hardlinks into the shared content store, and changing their mode corrupts the store for every worktree.
 See [buck2-tools retired worktree removal](packages/@overeng/buck2-tools/README.md#retired-worktree-removal) and [#2041](https://github.com/overengineeringstudio/effect-utils/issues/2041).
 

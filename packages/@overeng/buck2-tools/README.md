@@ -752,16 +752,28 @@ making that publication fail/retry rather than retaining its staging inode forev
 
 ### Retired worktree removal
 
-After closing editors and builds using a retired worktree, run
-`devenv tasks run worktree:teardown --mode single` from that worktree. It stops
-every Buck daemon isolation for the absolute checkout root, removes only its
-isolation state, deletes its Watchman watch when the service is reachable, removes only
-its root-keyed admission cache entries, invokes `buck2:editor:release` with final
-editor-root retirement enabled, and makes
+After closing editors and builds using a retired worktree, run the installed
+`worktree-teardown <worktree-path>` from outside it (exported by the effect-utils
+flake's `worktree-teardown` package). It does not realize the target's shell or
+execute its code by default. It stops every Buck daemon isolation for the absolute
+checkout root, removes only its isolation state, deletes its Watchman watch when
+the service is reachable, and removes only its root-keyed admission cache entries.
+Editor release is reported as skipped unless `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`
+explicitly permits the checkout's `buck2:editor:release` task with final retirement
+enabled; Nix builds/substitutions remain disabled. The command makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
+
+Skipping editor release is not shared-store reclamation. If ordinary
+`git worktree remove` succeeds, it unlinks checkout-local editor snapshots but
+leaves their host-shared content-store blobs behind. Nix GC does not collect
+these blobs. Explicit `collect-content --content-store <store>` or subsequent
+publisher/release content-store maintenance reclaims validated blobs only when
+their link count is one; other snapshots' hardlinks keep shared content alive.
+Release before removal remains preferable: it performs lifecycle cleanup under
+the publication and lease fences instead of relying on later collection.
 
 If teardown fails, fix its reported error and rerun it; do not fall back to
 `chmod -R` or `rm -rf` on the worktree. Snapshot files are hardlinks to the

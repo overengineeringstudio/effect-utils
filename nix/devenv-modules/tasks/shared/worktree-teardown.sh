@@ -1,18 +1,36 @@
 #!/usr/bin/env bash
+# Usage: worktree-teardown <worktree-path> (absolute or relative).
+# Requires Bash, Git, GNU coreutils/findutils and awk with NUL record support.
+# buck2 is required when root-owned daemon state exists; Watchman is optional
+# and never spawned, with jq required only when its service is reachable.
+# HOME locates Buck state; XDG_CACHE_HOME overrides the admission cache location;
+# WATCHMAN_SOCK selects a service. WORKTREE_TEARDOWN_EDITOR_RELEASE=1 explicitly
+# permits the checkout's devenv editor-release task; otherwise no checkout code
+# is executed. Even opted-in release disables Nix builds and substitutions.
+# Exit 0: teardown completed (possibly with editor release skipped).
+# Nonzero: failure with a diagnostic; do not remove the checkout.
 set -euo pipefail
 shopt -s dotglob nullglob
 
 # A failed teardown is not permission to mutate shared snapshot payload inodes.
-trap 'status=$?; if [ "$status" -ne 0 ]; then
+report_failure() {
+  local status=$?
+  if [ "$status" -eq 0 ]; then return; fi
+  printf 'worktree-teardown: failed; fix the reported error and rerun: worktree-teardown %q\n' \
+    "${root:-<worktree-path>}" >&2
   printf "%s\n" \
-    "worktree:teardown: failed; fix the reported error and rerun worktree:teardown." \
     "Never fall back to chmod -R or rm -rf on a worktree: recursive permission changes corrupt the hardlinked shared content store." \
-    "If shared blobs were made writable, stop all editor-view readers/writers, then run:" \
-    "bun packages/@overeng/buck2-tools/src/editor-view.ts repair-content --repo-root <repo> --quiesced true" >&2
-fi' EXIT
+    "If shared blobs were made writable, stop all editor-view readers/writers, then use a trusted effect-utils checkout's absolute script path:" \
+    "bun /absolute/path/to/effect-utils/packages/@overeng/buck2-tools/src/editor-view.ts repair-content --repo-root <repo> --quiesced true" >&2
+}
+trap report_failure EXIT
 
-# Resolve the checkout itself, not the caller's subdirectory or a logical symlink.
-root="$(git -C "${DEVENV_ROOT:-$PWD}" rev-parse --show-toplevel)"
+# Resolve only the explicit target, never the caller's cwd or shell environment.
+if [ "$#" -ne 1 ] || [ -z "$1" ]; then
+  echo "Usage: worktree-teardown <worktree-path>" >&2
+  exit 2
+fi
+root="$(git -C "$1" rev-parse --show-toplevel)"
 root="$(realpath "$root")"
 cd "$root"
 
@@ -144,9 +162,17 @@ for entry in "$cache/$root_hash-"*; do
   rm -f -- "$entry"
 done
 
-# The module sets this only when the consumer defines the existing release task.
+# There is no reliable cached-shell identity available without evaluation.
+# Opt-in is explicit because this task executes code from the retiring checkout.
 if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
-  WORKTREE_TEARDOWN_EDITOR_RETIRE=1 DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
+  NIX_CONFIG="${NIX_CONFIG:-}
+max-jobs = 0
+builders =
+substitute = false" \
+    WORKTREE_TEARDOWN_EDITOR_RETIRE=1 DEVENV_TUI=false DEVENV_ROOT="$root" \
+    devenv tasks run buck2:editor:release --mode single
+else
+  echo "worktree:teardown: editor release skipped (set WORKTREE_TEARDOWN_EDITOR_RELEASE=1 to opt in; Nix builds remain disabled)"
 fi
 
 # Find ownership markers separately from directories: no shell/stat tests per

@@ -7,27 +7,18 @@
 }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  teardown = pkgs.writeShellScript "worktree-teardown" (builtins.readFile ./worktree-teardown.sh);
+  teardown = import ../../../worktree-teardown.nix { inherit pkgs; };
 in
 {
   tasks."worktree:teardown" = {
     description = "Stop worktree-owned daemons and release state before worktree removal";
     exec = trace.exec "worktree:teardown" ''
       set -euo pipefail
-      export PATH=${
-        lib.makeBinPath [
-          pkgs.git
-          pkgs.coreutils
-          pkgs.findutils
-          pkgs.gawk
-          pkgs.jq
-          pkgs.watchman
-        ]
-      }:"$PATH"
+      export PATH=${lib.makeBinPath [ pkgs.watchman ]}:"$PATH"
       export WORKTREE_TEARDOWN_EDITOR_RELEASE=${
         if builtins.hasAttr "buck2:editor:release" config.tasks then "1" else "0"
       }
-      exec ${teardown}
+      exec ${teardown}/bin/worktree-teardown "$DEVENV_ROOT"
     '';
   };
 }
