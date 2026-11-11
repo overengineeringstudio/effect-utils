@@ -370,6 +370,8 @@ Admission enumeration has a cooperative 60 s budget, one fifth of the 300 s
 publication deadline, checked between directory reads and bounded stat batches.
 An in-flight filesystem request must still return. Unfinished roots are reported
 as `unaccounted`, and all their entries are excluded from eviction proofs.
+Any unreadable path discovered during enumeration also discards the whole root's
+entries from accounting and eviction proofs, even when the budget has not expired.
 On exhaustion, admission records the reservation without eviction or CAS collection,
 even above budget, and emits `census-incomplete`; reservations and pins remain protected.
 Explicit recount remains unbounded so it can finish warming sidecars.

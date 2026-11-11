@@ -473,7 +473,7 @@ const decodeState = ({
       if (
         separator === -1 ||
         state.contentStores.has(key.slice(0, separator)) === false ||
-        /^editor-view\.host-budget\.(warning|over-budget|evicted|underreserved)$/.test(
+        /^editor-view\.host-budget\.(warning|over-budget|evicted|underreserved|census-incomplete)$/.test(
           key.slice(separator + 1),
         ) === false ||
         isObject(entry) === false ||
