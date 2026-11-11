@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:97f1f2549f2782960e2c2ece36ed0fde550c4a5f38bc142fdcfc9cb6eafc95e6",
-  "generatedAt": "2026-11-11T10:59:38.982Z",
+  "inputFingerprint": "sha256:83947239e025ef291d21b9783d3ea70407f620c8cd96c44b166de833019b85b6",
+  "generatedAt": "2026-11-11T12:59:56.387Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.4"
@@ -17,7 +17,7 @@
     },
     {
       "path": "packages/@overeng/content-address/src/generate-contract.ts",
-      "sha256": "7e633d3310d8001916677c7f8e140a70b7beb1db3aaf5b6c0b91592975b29000"
+      "sha256": "a63f3e32c01050bb8d66a47b34a8f833c3365cf646fad56bba333411ba8926db"
     },
     {
       "path": "packages/@overeng/content-address/src/schema.ts",
@@ -126,6 +126,10 @@
     {
       "path": "rust/Cargo.toml",
       "sha256": "bdbc29dcffc87354302345ce379b7b7c6cd27ac3ca06eb217c0bae830a0e24d0"
+    },
+    {
+      "path": "rust/content-address-contract/generation-freshness.ts",
+      "sha256": "5ac19c0a14eaa5da6fef838650e34ced70abc845f9e1b9f257d365b069b0d13d"
     }
   ],
   "artifacts": [
