@@ -20,6 +20,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import * as Git from '../core/git.ts'
 import { encodeJson } from '../test-utils/mod.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { withGitContainerLock, withGitWriterLock } from './git-writer-lock.ts'
@@ -74,7 +75,7 @@ const writeLease = ({
 describe('store deletion lease', () => {
   for (const wrongStartTime of [false, true]) {
     it.effect.skipIf(process.platform !== 'linux')(
-      wrongStartTime
+      wrongStartTime === true
         ? 'refuses an ancestor lease with a mismatched process start time'
         : 'admits descendant creation without releasing outer admission and excludes non-descendants',
       Effect.fnUntraced(
@@ -84,6 +85,9 @@ describe('store deletion lease', () => {
             { host: 'github.com', owner: 'test-owner', repo: 'leased-repo', branches: ['main'] },
           ])
           const bare = f.bareRepoPaths['github.com/test-owner/leased-repo']!
+          const base = yield* Git.getCurrentCommit(
+            f.worktreePaths['github.com/test-owner/leased-repo#main']!,
+          )
           const owner = `${bare}../refs/heads/nested`
           const canonicalOwner = yield* canonicalizeOwnerPath(owner)
           const leasePath = deletionLeasePath({
@@ -106,9 +110,9 @@ describe('store deletion lease', () => {
             if (${wrongStartTime}) await Bun.write(lease, before)
             const nested = spawnSync('bun', [
               ${encodeJson(cli)}, 'store', 'worktree', 'new', 'test-owner/leased-repo',
-              '--no-fetch', '--ref', 'nested', '--base', 'main', '--porcelain'
+              '--no-fetch', '--ref', 'nested', '--base', ${encodeJson(base)}, '--porcelain'
             ], { encoding: 'utf8', env: process.env })
-            if (nested.status !== ${wrongStartTime ? 1 : 0})
+            if (nested.status !== ${wrongStartTime === true ? 1 : 0})
               throw new Error('nested exit=' + nested.status + '\\n' + nested.stderr + nested.stdout)
             if (await lease.text() !== before) throw new Error('outer lease changed')
             const exclusive = await Effect.runPromise(
@@ -147,7 +151,7 @@ describe('store deletion lease', () => {
               const exited = Promise.withResolvers<number | null>()
               process.stdout.on('data', (data) => {
                 output += data.toString()
-                if (output.includes('nested-finished\n')) ready.resolve()
+                if (output.includes('nested-finished\n') === true) ready.resolve()
               })
               process.stderr.on('data', (data) => {
                 errors += data.toString()

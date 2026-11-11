@@ -145,7 +145,7 @@ const readLeaseRecord = ({
   })
 
 /** Linux stat's comm may contain spaces and ')'; fields after its last ')' are unambiguous. */
-const readProcessIdentity = (fs: FileSystem.FileSystem, pid: number) =>
+const readProcessIdentity = ({ fs, pid }: { fs: FileSystem.FileSystem; pid: number }) =>
   Effect.gen(function* () {
     if (process.platform !== 'linux' || Number.isSafeInteger(pid) === false || pid <= 0)
       return undefined
@@ -153,10 +153,17 @@ const readProcessIdentity = (fs: FileSystem.FileSystem, pid: number) =>
       .readFileString(`/proc/${pid}/stat`)
       .pipe(Effect.orElseSucceed(() => undefined))
     if (stat === undefined || stat.startsWith(`${pid} (`) === false) return undefined
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/u)
+    const fields = stat
+      .slice(stat.lastIndexOf(')') + 2)
+      .trim()
+      .split(/\s+/u)
     const ppid = Number(fields[1])
     const startTime = fields[19]
-    if (Number.isSafeInteger(ppid) === false || ppid < 0 || /^\d+$/u.test(startTime ?? '') === false)
+    if (
+      Number.isSafeInteger(ppid) === false ||
+      ppid < 0 ||
+      /^\d+$/u.test(startTime ?? '') === false
+    )
       return undefined
     return { ppid, startTime }
   })
@@ -190,7 +197,7 @@ const hasAncestorActivationLease = ({
     let pid = process.ppid
     while (pid > 0 && visited.has(pid) === false) {
       visited.add(pid)
-      const identity = yield* readProcessIdentity(fs, pid)
+      const identity = yield* readProcessIdentity({ fs, pid })
       if (identity === undefined) return false
       if (pid === record.pid) {
         if (identity.startTime !== record.processStartTime) return false
@@ -251,7 +258,7 @@ export const acquireDeletionLease = ({
       ownerPath: canonicalOwnerPath,
       host: hostname(),
       pid: process.pid,
-      processStartTime: (yield* readProcessIdentity(fs, process.pid))?.startTime,
+      processStartTime: (yield* readProcessIdentity({ fs, pid: process.pid }))?.startTime,
       activationIdentity,
       token,
       acquiredAtMs: now,
@@ -380,7 +387,12 @@ export const withDeletionLease =
     effect: Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E | DeletionLeaseUnavailableError, R | FileSystem.FileSystem> =>
     Effect.acquireUseRelease(
-      acquireDeletionLease({ storeBasePath, ownerPath, now, activationIdentity }),
+      acquireDeletionLease({
+        storeBasePath,
+        ownerPath,
+        now,
+        ...(activationIdentity === undefined ? {} : { activationIdentity }),
+      }),
       () => effect,
       (lease) => releaseDeletionLease(lease),
     )
@@ -428,15 +440,16 @@ export const withStoreWorktreeLease =
             ownerPath: owner,
             storePath: store,
             containerPath: bare,
-          }))
+          })) === true
         )
           return yield* effect
         return yield* withDeletionLease({
           storeBasePath,
           ownerPath: owner,
           now,
-          activationIdentity:
-            bare === undefined ? undefined : { storePath: store, containerPath: bare },
+          ...(bare === undefined
+            ? {}
+            : { activationIdentity: { storePath: store, containerPath: bare } }),
         })(effect)
       })
       if (container === undefined) {
