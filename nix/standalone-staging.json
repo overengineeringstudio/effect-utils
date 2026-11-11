@@ -85,6 +85,9 @@
     "nix/devenv-modules/tasks/shared/weaver-live-check.nix": {
       "noStandaloneStaging": "workspace: The integration test runs from its workspace package."
     },
+    "nix/editor-view-budget.nix": {
+      "noStandaloneStaging": "closure: The budget CLI and its sibling modules are carried together in a filtered buck2-tools/src directory projection."
+    },
     "nix/editor-view-lease/consumer.nix": {
       "stages": true
     },
