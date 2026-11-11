@@ -375,11 +375,17 @@ Any unreadable path discovered during enumeration also discards the whole root's
 entries from accounting and eviction proofs, even when the budget has not expired.
 On exhaustion, admission records the reservation without eviction or CAS collection,
 even above budget, and emits `census-incomplete`; reservations and pins remain protected.
-Warm cold sidecars **outside publication** with the existing explicit recount entrypoint:
+Warm cold sidecars **outside publication** with the packaged recount entrypoint:
 
 ```sh
-bun packages/@overeng/buck2-tools/src/editor-view.ts budget recount
+nix run github:overengineeringstudio/effect-utils#editor-view-budget -- recount
 ```
+
+The `editor-view-budget` flake package provides `editor-view-budget recount` for
+scheduled execution without a checkout or development shell. It includes the
+pinned Bun runtime, native lease library, and source modules; no npm installation or compiler is needed.
+From a checkout, the equivalent source command remains
+`bun packages/@overeng/buck2-tools/src/editor-view.ts budget recount`.
 
 Run this explicitly after registering large roots, or periodically from your existing
 scheduler with the same `EDITOR_VIEW_HOST_BUDGET_STATE` as publishers. Recount is
