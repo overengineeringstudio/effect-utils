@@ -127,11 +127,18 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
   wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
-- `worktree-teardown.nix` - Explicit offline `worktree:teardown` before worktree
-  removal; inherited by setup, check, clean, and worktree-guard imports. Stops
-  every root-owned Buck isolation, releases reachable Watchman and root-keyed
-  admission state, calls `buck2:editor:release` with final editor-root retirement
-  enabled when defined, and makes real
+- `worktree-teardown.nix` - Thin `worktree:teardown` wrapper, inherited by setup,
+  check, clean, and worktree-guard imports. For removal, use the installed
+  `worktree-teardown <worktree-path>` command from the effect-utils flake's
+  `worktree-teardown` package, not the retiring checkout's devenv shell.
+  It accepts one absolute/relative path from any cwd, executes no checkout code
+  by default, and exits 0 on completion or nonzero with a failure diagnostic.
+  It stops every root-owned Buck isolation and releases reachable Watchman and
+  root-keyed admission state. Editor release is reported as skipped unless
+  `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` explicitly permits the checkout's task;
+  Nix builds/substitutions are disabled even then. The warm-shell devenv wrapper
+  opts in when `buck2:editor:release` is defined, with final retirement enabled.
+  The command makes real
   directories owner-writable using NUL-delimited find scans and a sorted streaming
   ownership-prefix filter before batched chmod. It never follows symlinks or
   chmods nested Git/megarepo ownership boundaries. Both scans prune unreadable

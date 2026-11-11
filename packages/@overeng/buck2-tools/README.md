@@ -742,12 +742,15 @@ making that publication fail/retry rather than retaining its staging inode forev
 
 ### Retired worktree removal
 
-After closing editors and builds using a retired worktree, run
-`devenv tasks run worktree:teardown --mode single` from that worktree. It stops
-every Buck daemon isolation for the absolute checkout root, removes only its
-isolation state, deletes its Watchman watch when the service is reachable, removes only
-its root-keyed admission cache entries, invokes `buck2:editor:release` with final
-editor-root retirement enabled, and makes
+After closing editors and builds using a retired worktree, run the installed
+`worktree-teardown <worktree-path>` from outside it (exported by the effect-utils
+flake's `worktree-teardown` package). It does not realize the target's shell or
+execute its code by default. It stops every Buck daemon isolation for the absolute
+checkout root, removes only its isolation state, deletes its Watchman watch when
+the service is reachable, and removes only its root-keyed admission cache entries.
+Editor release is reported as skipped unless `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`
+explicitly permits the checkout's `buck2:editor:release` task with final retirement
+enabled; Nix builds/substitutions remain disabled. The command makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete

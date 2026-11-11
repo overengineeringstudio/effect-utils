@@ -48,8 +48,8 @@ cleanup() {
     fi
     for checkout in "$nested_child" "$nested_outer"; do
       if [ -d "$checkout" ]; then
-        DEVENV_ROOT="$checkout" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
-          bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" >/dev/null 2>&1 || true
+        WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+          bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$checkout" >/dev/null 2>&1 || true
       fi
     done
     # These are test-owned fixtures; restore their protected nested directories
@@ -145,6 +145,34 @@ for tool in bash git realpath find sort awk xargs chmod sha256sum rm rmdir; do
   ln -s "$(command -v "$tool")" "$fake_bin/$tool"
 done
 git -C "$watch_root" init -q
+# The installed command's script is independent of checkout contents and cwd.
+# This isolated PATH deliberately contains neither devenv nor Nix nor Watchman.
+if PATH="$fake_bin" command -v devenv; then fail 'fixture unexpectedly contains devenv'; fi
+(
+  cd "$TEMP_ROOT"
+  PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$main" \
+    WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" watch-root
+) >"$TEMP_ROOT/no-devenv.log" 2>&1
+grep -q 'editor release skipped' "$TEMP_ROOT/no-devenv.log" || fail 'missing editor skip diagnostic'
+echo 'PASS: explicit relative target works from another cwd without devenv or Nix on PATH'
+# Explicit editor opt-in retains the release contract but cannot build a shell.
+printf '#!%s\n' "$BASH" >"$fake_bin/devenv"
+cat >>"$fake_bin/devenv" <<'DEVENV'
+set -euo pipefail
+[[ "$NIX_CONFIG" == *$'\nmax-jobs = 0\nbuilders =\nsubstitute = false' ]]
+[ "$WORKTREE_TEARDOWN_EDITOR_RETIRE" = 1 ]
+[ "$DEVENV_TUI" = false ]
+[ "$DEVENV_ROOT" = "$PWD" ]
+[ "$*" = 'tasks run buck2:editor:release --mode single' ]
+printf '%s\n' "$PWD" >"$EDITOR_RELEASE_LOG"
+DEVENV
+chmod +x "$fake_bin/devenv"
+PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" WORKTREE_TEARDOWN_EDITOR_RELEASE=1 \
+  EDITOR_RELEASE_LOG="$TEMP_ROOT/editor-release.log" \
+  bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$watch_root"
+[ "$(cat "$TEMP_ROOT/editor-release.log")" = "$watch_root" ] || fail 'editor release ran in wrong root'
+rm -f "$fake_bin/devenv"
 # Use the runner's Bash directly: sandboxed hosts need not have /usr/bin/env.
 printf '#!%s\n' "$BASH" >"$fake_bin/watchman"
 cat >>"$fake_bin/watchman" <<'WATCHMAN'
@@ -170,7 +198,7 @@ watchman_case() {
     WATCHMAN_SOCK=fixture.sock WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
     FAKE_WATCH_LIST="$response" FAKE_DELETE_STATUS="$delete_status" FAKE_LIST_STATUS="$list_status" \
     FAKE_WATCH_LOG="$TEMP_ROOT/watch-calls" \
-    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$watch_root" \
     >"$TEMP_ROOT/watch-case.log" 2>&1 || status=$?
   if [ "$status" -ne "$expected" ]; then
     cat "$TEMP_ROOT/watch-case.log"
@@ -295,7 +323,7 @@ for target in "$TEMP_ROOT/attack-outside" "$attack_base/alias"; do
   printf 'untouched\n' >"$target/sentinel"
   ln -s "$target" "$attack_base/$first_component"
   if HOME="$attack_home" DEVENV_ROOT="$worktree" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
-    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$worktree" \
     >"$TEMP_ROOT/symlink-refusal.log" 2>&1; then
     fail 'teardown accepted a symlinked intermediate state component'
   fi
@@ -436,8 +464,8 @@ chmod 700 "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
 # path component. Start the parent first, since native startup rotates its state.
 rm -rf -- "$descendant_state"
 descendant_state=""
-DEVENV_ROOT="$nested_child" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
-  bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh"
+WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+  bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$nested_child"
 collision_started=true
 (cd "$nested_outer" && "$BUCK2" --isolation-dir nested targets //: >/dev/null)
 (cd "$nested_child" && "$BUCK2" --isolation-dir child targets //: >/dev/null)

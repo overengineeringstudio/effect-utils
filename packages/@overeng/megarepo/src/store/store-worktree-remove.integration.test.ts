@@ -126,7 +126,7 @@ describe('scoped store worktree removal', () => {
             _tag: 'StoreWorktreeRemoveError',
             reason: 'teardown-required',
           })
-          expect(String(failure)).toContain('devenv tasks run worktree:teardown --mode single')
+          expect(String(failure)).toContain('WORKTREE_TEARDOWN_EDITOR_RELEASE=1 worktree-teardown')
           expect((yield* f.fs.stat(snapshot)).mode & 0o777).toBe(0o555)
           expect((yield* f.fs.stat(`${snapshot}/payload`)).mode & 0o777).toBe(0o444)
           expect(yield* f.fs.exists(f.admin)).toBe(true)
