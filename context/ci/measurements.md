@@ -64,6 +64,12 @@ example `devenv.shell_eval_warm.duration`, `nix.closure.nar_size`, or
 to improve hierarchy, but IDs should only change when the measurement protocol
 or semantic target changes.
 
+The standalone validator compiler in
+`packages/@overeng/genie/src/runtime/json-schema-validation/mod.ts` renders
+dependency-free JavaScript predicates from native Effect schema nodes and checks.
+It preserves UTF-16 length bounds and regular-expression flags, and rejects
+unsupported nodes or checks at generation time rather than weakening validation.
+
 New measurement producers should emit the shared artifact format directly:
 
 ```text
