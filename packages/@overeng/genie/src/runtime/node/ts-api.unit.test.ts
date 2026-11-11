@@ -13,7 +13,7 @@ import path from 'node:path'
 import { Writable } from 'node:stream'
 
 import { API } from 'typescript/unstable/async'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { ClosableTsApi, JoinableChildProcess } from './ts-api.ts'
 import {
@@ -321,6 +321,58 @@ describe('TypeScript API server death', () => {
     },
     5000,
   )
+
+  it.each([
+    ['EPIPE', 'exit 23'],
+    ['ECONNRESET', 'exit 23'],
+    ['ERR_STREAM_DESTROYED', 'exit 23'],
+    ['ERR_STREAM_PREMATURE_CLOSE', 'exit 23'],
+    ['ERR_STREAM_WRITE_AFTER_END', 'exit 23'],
+    [undefined, 'exit 23'],
+    ['EPIPE', 'while IFS= read -r _; do :; done'],
+  ])('classifies transport error %s before child exit (%s)', async (code, exit) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'genie-ts-api-test-'))
+    const executable = path.join(directory, 'fake-server')
+    const previous = process.env.GENIE_TYPESCRIPT_API_SERVER
+    const transportError = Object.assign(new Error(code ?? 'Stream is closed'), { code })
+    writeFileSync(
+      executable,
+      `#!/bin/sh\nIFS= read -r request || exit 91\nprintf panic-tail >&2\n${exit}\n`,
+      { mode: 0o700 },
+    )
+    process.env.GENIE_TYPESCRIPT_API_SERVER = executable
+    // Reject in the same turn that unblocks the server: Node cannot dispatch its exit first.
+    // This deterministically covers the ordering that a real JSON-RPC write only sometimes hits.
+    const update = vi
+      .spyOn(API.prototype, 'updateSnapshot')
+      .mockImplementation(function (this: API) {
+        const child = (this as unknown as ClosableTsApi).client?.process
+        expect(child?.exitCode).toBeNull()
+        child?.stdin?.write('request\n')
+        return Promise.reject(transportError)
+      })
+    try {
+      const error = await runTsFileAnalysis({
+        cwd: directory,
+        requestTimeoutMs: 1000,
+        use: () => undefined,
+      }).catch((error: unknown) => error)
+      if (exit === 'exit 23') {
+        expect(error).toBeInstanceOf(Error)
+        expect(error instanceof Error ? error.message : '').toBe(
+          'TypeScript API server exited at updateSnapshot (code 23 / signal null): panic-tail',
+        )
+      } else {
+        // A transport failure is not proof of death: preserve it if the join deadline expires.
+        expect(error).toBe(transportError)
+      }
+    } finally {
+      update.mockRestore()
+      if (previous === undefined) delete process.env.GENIE_TYPESCRIPT_API_SERVER
+      else process.env.GENIE_TYPESCRIPT_API_SERVER = previous
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('darwinTsgoRealpathWorkaround', () => {
