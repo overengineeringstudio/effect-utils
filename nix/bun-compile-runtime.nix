@@ -15,20 +15,20 @@
 # different runtime, and patching the Darwin binary invalidates its signature.
 let
   release = {
-    version = "1.4.2";
+    version = "1.4.4";
     baseUrl = "https://github.com/oven-sh/bun/releases/download";
     platforms = {
       x86_64-linux = {
         bunPlatform = "linux-x64";
-        sha256 = "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913";
+        sha256 = "bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c";
       };
       aarch64-linux = {
         bunPlatform = "linux-aarch64";
-        sha256 = "54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7";
+        sha256 = "baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e";
       };
       aarch64-darwin = {
         bunPlatform = "darwin-aarch64";
-        sha256 = "90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f";
+        sha256 = "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510";
       };
     };
   };

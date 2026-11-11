@@ -852,6 +852,16 @@ let
     };
 in
 {
+  overlays = [
+    (_final: previous: {
+      # Upstream failure: https://hydra.nixos.org/build/352528529
+      # Remove once nixpkgs Reindeer declares its required system libgit2.
+      reindeer = previous.reindeer.overrideAttrs (old: {
+        buildInputs = (old.buildInputs or [ ]) ++ [ previous.libgit2 ];
+      });
+    })
+  ];
+
   # Shared source tasks lease before resolving their package binary.
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";

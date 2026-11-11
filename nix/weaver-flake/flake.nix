@@ -136,7 +136,10 @@
             };
             pnpmRoot = "ui";
 
-            buildInputs = [ pkgs.openssl ];
+            buildInputs = [
+              pkgs.openssl
+              pkgs.zstd
+            ];
 
             nativeBuildInputs = [
               pkgs.installShellFiles

@@ -23,7 +23,7 @@ let
       null;
   wasmTargetTriple = "wasm32-unknown-unknown";
   wasmBindgenVersion = "0.2.127";
-  wasmOptVersion = "132";
+  wasmOptVersion = "133";
   # nixpkgs' native rustc includes wasm std. A cross stdenv would instead try
   # to build a compiler executing on wasm, and Darwin's native product wrapper
   # injects Apple linker flags that must never reach a wasm link.
@@ -45,7 +45,7 @@ let
     rust-wasm-compiler = pkgs.rustc;
     rust-wasm-rustdoc = pkgs.rustc;
     rust-wasm-linker = pkgs.llvmPackages.lld;
-    wasm-bindgen = pkgs.wasm-bindgen-cli;
+    wasm-bindgen = pkgs."wasm-bindgen-cli_${lib.replaceStrings [ "." ] [ "_" ] wasmBindgenVersion}";
     wasm-opt = pkgs.binaryen;
   };
   executableNames = {
@@ -149,7 +149,7 @@ assert lib.assertMsg (
   builtins.isString nixpkgsRevision && builtins.match "[0-9a-f]{40}" nixpkgsRevision != null
 ) "buck2-rust-toolchain-capability requires the exact 40-character nixpkgs revision";
 assert lib.assertMsg (
-  pkgs.wasm-bindgen-cli.version == wasmBindgenVersion
+  upstreamPackages.wasm-bindgen.version == wasmBindgenVersion
 ) "Buck wasm-bindgen CLI must exactly match the Cargo wasm-bindgen ${wasmBindgenVersion} pin";
 assert lib.assertMsg (
   pkgs.binaryen.version == wasmOptVersion
