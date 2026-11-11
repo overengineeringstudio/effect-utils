@@ -7,15 +7,15 @@
 # WATCHMAN_SOCK selects a service. WORKTREE_TEARDOWN_EDITOR_RELEASE=1 explicitly
 # permits the checkout's devenv editor-release task; otherwise no checkout code
 # is executed. Even opted-in release disables Nix builds and substitutions.
-# Exit 0: teardown completed (possibly with editor release skipped).
-# Nonzero: failure with a diagnostic; do not remove the checkout.
+# Exit 0: completed; 2: usage error; 3: editor view present without release opt-in.
+# Other nonzero statuses: failure (including command failures); do not remove.
 set -euo pipefail
 shopt -s dotglob nullglob
 
 # A failed teardown is not permission to mutate shared snapshot payload inodes.
 report_failure() {
   local status=$?
-  if [ "$status" -eq 0 ]; then return; fi
+  if [ "$status" -eq 0 ] || [ "$status" -eq 3 ]; then return; fi
   printf 'worktree-teardown: failed; fix the reported error and rerun: worktree-teardown %q\n' \
     "${root:-<worktree-path>}" >&2
   printf "%s\n" \
@@ -33,6 +33,30 @@ fi
 root="$(git -C "$1" rev-parse --show-toplevel)"
 root="$(realpath "$root")"
 cd "$root"
+
+# Refuse before stopping services, deleting state, or changing any permissions.
+# Include lease-only roots and dangling symlinks; nested owners are not ours.
+if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" != 1 ]; then
+  find -P . -name .git -prune -o -name .bare -prune -o \
+    -name .editor-view -print0 -prune |
+    while IFS= read -r -d '' editor_root; do
+      owner="${editor_root%/*}"
+      while [ "$owner" != . ]; do
+        if [ -e "$owner/.git" ] || [ -L "$owner/.git" ] || \
+          [ -e "$owner/.bare" ] || [ -L "$owner/.bare" ] || \
+          [ -f "$owner/megarepo.kdl" ] || [ -f "$owner/megarepo.json" ]; then
+          continue 2
+        fi
+        if [ "$owner" = ./repos ] && { [ -f megarepo.kdl ] || [ -f megarepo.json ]; }; then
+          continue 2
+        fi
+        owner="${owner%/*}"
+      done
+      printf 'worktree-teardown: editor view present: %s; rerun with WORKTREE_TEARDOWN_EDITOR_RELEASE=1 worktree-teardown %q\n' \
+        "$root/${editor_root#./}" "$root" >&2
+      exit 3
+    done
+fi
 
 home="$(realpath -m -- "$HOME")"
 for component_path in "$home/.buck" "$home/.buck/buckd"; do

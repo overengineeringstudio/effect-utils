@@ -758,16 +758,18 @@ flake's `worktree-teardown` package). It does not realize the target's shell or
 execute its code by default. It stops every Buck daemon isolation for the absolute
 checkout root, removes only its isolation state, deletes its Watchman watch when
 the service is reachable, and removes only its root-keyed admission cache entries.
-Editor release is reported as skipped unless `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`
-explicitly permits the checkout's `buck2:editor:release` task with final retirement
-enabled; Nix builds/substitutions remain disabled. The command makes
+Without `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`, any owned `.editor-view`, including
+lease-only state, refuses with exit 3 before mutation and reports the opt-in retry.
+Only editor-free checkouts skip release successfully. Opt-in permits the checkout's
+`buck2:editor:release` task with final retirement enabled; Nix builds/substitutions
+remain disabled. The command makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
 
-Skipping editor release is not shared-store reclamation. If ordinary
-`git worktree remove` succeeds, it unlinks checkout-local editor snapshots but
+Bypassing this refusal is not shared-store reclamation. If ordinary
+`git worktree remove` nevertheless succeeds, it unlinks checkout-local editor snapshots but
 leaves their host-shared content-store blobs behind. Nix GC does not collect
 these blobs. Explicit `collect-content --content-store <store>` or subsequent
 publisher/release content-store maintenance reclaims validated blobs only when
