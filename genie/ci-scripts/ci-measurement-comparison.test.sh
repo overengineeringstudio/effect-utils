@@ -59,6 +59,9 @@ assert.equal(isCiMeasurementArtifact(produced), true, 'generated CI helper must 
 writeFileSync('$tmp_dir/download.sh', downloadPreviousGitHubArtifactStep({
   artifactName: 'measurements', outputDir: '$tmp_dir/download',
 }).run)
+writeFileSync('$tmp_dir/compare-with-comments.sh', compareCiMeasurementsStep({
+  prComment: { enabled: true },
+}).run)
 
 process.stdout.write(compareCiMeasurementsStep({
   currentDir: '$tmp_dir/current',
@@ -401,7 +404,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 const dir = process.argv[2]
-const renderer = readFileSync(join(dir, 'compare.sh'), 'utf8')
+const renderer = readFileSync(join(dir, 'compare-with-comments.sh'), 'utf8')
   .match(/cat > "\$renderer_script" <<'EOF'\n([\s\S]*?)\nEOF/)?.[1]
 assert.ok(renderer, 'generated comparison script must include the real renderer')
 const script = join(dir, 'renderer.mjs')
