@@ -165,7 +165,6 @@ const gitLockSourceKeys: Readonly<Record<string, true | undefined>> = {
   lastModified: true,
   revCount: true,
 }
-
 const isShallowGithubLockSource = ({
   section,
   commit,
