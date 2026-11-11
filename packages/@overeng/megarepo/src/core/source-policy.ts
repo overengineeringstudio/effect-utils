@@ -82,7 +82,7 @@ const canonicalFlakeSource = ({
   owner: string
   repo: string
   ref: string | undefined
-  params?: ReadonlyMap<string, string>
+  params?: ReadonlyMap<string, string> | undefined
 }) => {
   const canonicalParams = new Map(params)
   canonicalParams.delete('ref')
