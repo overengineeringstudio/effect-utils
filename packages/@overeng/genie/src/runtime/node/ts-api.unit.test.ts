@@ -329,7 +329,7 @@ describe('TypeScript API server death', () => {
     ['ERR_STREAM_PREMATURE_CLOSE', 'exit 23'],
     ['ERR_STREAM_WRITE_AFTER_END', 'exit 23'],
     [undefined, 'exit 23'],
-    ['EPIPE', 'cat >/dev/null'],
+    ['EPIPE', 'while IFS= read -r _; do :; done'],
   ])('classifies transport error %s before child exit (%s)', async (code, exit) => {
     const directory = mkdtempSync(path.join(os.tmpdir(), 'genie-ts-api-test-'))
     const executable = path.join(directory, 'fake-server')
