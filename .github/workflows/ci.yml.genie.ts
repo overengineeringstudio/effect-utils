@@ -2212,8 +2212,14 @@ const extraJobs: Record<string, any> = {
           'echo "repository=${ALCHEMY_GITHUB_SANDBOX_REPO#*/}" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
       },
-      // Fleet runners do not use the Namespace container privilege admission probe.
-      ...baseSteps.filter((step) => step !== namespaceSandboxPrerequisitesStep),
+      // The host daemon owns caches and sandbox policy; the runner user is not trusted.
+      // Fleet runners also do not use the Namespace container privilege admission probe.
+      ...baseSteps.filter(
+        (step) =>
+          step !== namespaceSandboxPrerequisitesStep &&
+          step !== cachixCliBuildStep &&
+          step !== trustedCachixStep,
+      ),
       githubAppInstallationTokenStep({
         id: 'sandbox-app-token',
         name: 'Mint repository-restricted GitHub sandbox token',
@@ -2521,6 +2527,7 @@ const {
 export default ciWorkflow({
   policy: effectUtilsWorkflowPolicy('ci.yml'),
   trustTier: 'public',
+  hostManagedNixJobs: ['test-live-alchemy-github'],
   name: 'CI',
   on: {
     push: { branches: ['main'] },

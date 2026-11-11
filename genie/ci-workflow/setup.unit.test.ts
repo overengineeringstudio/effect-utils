@@ -410,6 +410,31 @@ describe('namespaceRunner', () => {
     ).toBe(true)
   })
 
+  it('leaves binary cache configuration to dedicated fleet runners', () => {
+    for (const id of ['test-live-alchemy-github', 'publish-manifest-pr', 'published-status']) {
+      expect(
+        ciWorkflow.data.jobs[id]!.steps.some((step) => step.uses?.startsWith('cachix/cachix-action@')),
+        id,
+      ).toBe(false)
+    }
+    expect(
+      ciWorkflow.data.jobs['test-integration-notion']!.steps.some(
+        (step) => step.uses?.startsWith('cachix/cachix-action@'),
+      ),
+    ).toBe(true)
+    const live = ciWorkflow.data.jobs['test-live-alchemy-github']!
+    expect(live.env?.NIX_CONFIG).toBeUndefined()
+    expect(
+      live.steps.some(
+        (step) =>
+          step.id === linuxNixSandboxFallbackStep.id ||
+          step.name === 'Provide cachix CLI from nixpkgs' ||
+          /\b(?:sudo|nix-store --repair-path|cachix use)\b/.test(step.run ?? '') ||
+          /\bsandbox(?:-fallback)?\s*=/.test(step.env?.NIX_CONFIG ?? ''),
+      ),
+    ).toBe(false)
+  })
+
   it('denies fork PR admission but admits same-repository PRs and non-PR jobs', () => {
     const allowed = new Function('github', `return (${namespacePrivilegeTrustedPredicate})`)
     const repository = 'overengineeringstudio/effect-utils'
@@ -762,6 +787,10 @@ describe('Linux Nix sandbox fallback', () => {
         await Bun.file(`${cwd}/${path}`).text(),
       )
       for (const [jobId, job] of Object.entries(workflow.jobs)) {
+        if (path === 'ci.yml' && jobId === 'test-live-alchemy-github') {
+          expect(job.steps.some((step) => step.id === linuxNixSandboxFallbackStep.id)).toBe(false)
+          continue
+        }
         const first = job.steps[0]
         expect(first?.id, `${path}/${jobId}`).toBe(linuxNixSandboxFallbackStep.id)
         expect(first?.if, `${path}/${jobId}`).toBe("${{ runner.os == 'Linux' }}")
@@ -1130,7 +1159,9 @@ describe('Buck2 CI job instance projection', () => {
         if (job.env?.BUCK2_NO_REMOTE_CACHE !== '0') continue
         const initializers = job.steps.filter((step) => step.id === 'buck2-ci-job-instance')
         expect(initializers, jobId).toHaveLength(1)
-        expect(job.steps[1], jobId).toBe(initializers[0]!)
+        const firstExecutionStep =
+          job.steps[0]?.id === linuxNixSandboxFallbackStep.id ? job.steps[1] : job.steps[0]
+        expect(firstExecutionStep, jobId).toBe(initializers[0]!)
         expect(initializers[0]!.run, jobId).toContain('BUCK2_CI_JOB_INSTANCE=%s')
         expect(initializers[0]!.run, jobId).toContain('/dev/urandom')
         expect(initializers[0]!.run, jobId).toContain('>> "$GITHUB_ENV"')
