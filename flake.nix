@@ -337,6 +337,7 @@ rec {
           // capabilityPackages
           // {
             worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs; };
+            editor-view-budget = import ./nix/editor-view-budget.nix { inherit pkgs; };
             editor-view-lease = pkgs.callPackage ./nix/editor-view-lease { };
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
