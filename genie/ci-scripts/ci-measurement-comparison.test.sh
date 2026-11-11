@@ -29,7 +29,8 @@ emit_compare_script() {
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { compareCiMeasurementsStep, sourceShapeMeasurementSteps } from '$ROOT/genie/ci-workflow/measurements.ts'
+import { writeFileSync } from 'node:fs'
+import { compareCiMeasurementsStep, downloadPreviousGitHubArtifactStep, sourceShapeMeasurementSteps } from '$ROOT/genie/ci-workflow/measurements.ts'
 import { decodeCiMeasurementArtifact } from '$ROOT/packages/@overeng/genie/src/build/ci-measurements/schema.ts'
 const { isCiMeasurementArtifact } = createRequire(import.meta.url)('$ROOT/genie/ci-scripts/ci-measurement-validators.cjs')
 
@@ -55,6 +56,9 @@ assert.equal(produced.observations.length, 2)
 assert.ok(produced.observations.find((row) => row.name === 'source.files')?.value > 0)
 assert.deepEqual(decodeCiMeasurementArtifact(produced), produced)
 assert.equal(isCiMeasurementArtifact(produced), true, 'generated CI helper must accept the real producer output')
+writeFileSync('$tmp_dir/download.sh', downloadPreviousGitHubArtifactStep({
+  artifactName: 'measurements', outputDir: '$tmp_dir/download',
+}).run)
 
 process.stdout.write(compareCiMeasurementsStep({
   currentDir: '$tmp_dir/current',
@@ -64,6 +68,24 @@ process.stdout.write(compareCiMeasurementsStep({
 }).run)
 TS
   run_bun_to_file "$tmp_dir/compare.sh" "$emitter"
+}
+
+test_baseline_helper_failure() {
+  local sandbox="$tmp_dir/helper-failure"
+  mkdir -p "$sandbox/genie/ci-scripts"
+  for helper_state in missing broken; do
+    if [ "$helper_state" = broken ]; then
+      printf 'module.exports = {};\n' >"$sandbox/genie/ci-scripts/ci-measurement-validators.cjs"
+    fi
+    if (cd "$sandbox" && BASELINE_OUTPUT_DIR="$tmp_dir/download" bash "$tmp_dir/download.sh") >"$tmp_dir/helper.log" 2>&1; then
+      echo "Expected baseline download to fail with $helper_state validator helper" >&2
+      exit 1
+    fi
+    if ! grep -Eq 'Cannot find module|Invalid CI measurement validator helper' "$tmp_dir/helper.log"; then
+      cat "$tmp_dir/helper.log" >&2
+      exit 1
+    fi
+  done
 }
 
 write_measurement() {
@@ -113,6 +135,7 @@ policy='{"enabled":true,"minBaselineSources":1,"minCurrentSamples":5,"warnRatio"
 paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":1,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 strict_paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":20,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 emit_compare_script
+test_baseline_helper_failure
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/measurements.json" 12 legacy "$policy"

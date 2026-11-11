@@ -69,6 +69,8 @@ The executable record authority is
 exported by `@overeng/genie/node`. It defines artifact, comparison, and managed-comment
 cache schemas with numeric `schemaVersion: 1` and strict complete-record decoders.
 The Effect-backed authority is isolated from the dependency-free `@overeng/genie` entrypoint.
+Dependency-free generators import wire constants from the adjacent `constants.ts`;
+the schema authority re-exports them without changing its public API.
 The standalone validator compiler in
 `packages/@overeng/genie/src/runtime/json-schema-validation/mod.ts` renders
 dependency-free JavaScript predicates from native Effect schema nodes and checks.
@@ -83,6 +85,8 @@ in workflow YAML. Current artifact or comparison decode failures fail the
 measurement step. Invalid or incompatible downloaded baselines are rejected so
 another successful producer run can rebuild them. Invalid comment-history
 caches start fresh; the artifacts, not the comment cache, remain authoritative.
+Baseline downloads preflight-load the helper before considering candidates;
+missing or broken validator tooling fails the step instead of discarding every baseline.
 
 New measurement producers should emit the shared artifact format directly:
 

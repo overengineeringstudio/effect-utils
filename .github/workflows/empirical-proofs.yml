@@ -2885,6 +2885,8 @@ jobs:
           const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
             createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
               ? preparedValidators : 'genie/ci-scripts/ci-measurement-validators.cjs'))
+          if (![isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState]
+            .every((validate) => typeof validate === 'function')) throw new Error('Invalid CI measurement validator helper')
 
           for (const path of process.argv.slice(2)) {
             try {
@@ -2896,6 +2898,8 @@ jobs:
           }
           NODE
           trap 'rm -rf "$measurement_validator_dir"' EXIT
+          # Load the helper outside candidate conditionals: broken tooling must fail this step.
+          node "$measurement_validator"
 
           if command -v gh >/dev/null 2>&1; then
             GH_BIN="$(command -v gh)"
@@ -3221,6 +3225,8 @@ jobs:
           const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
             createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
               ? preparedValidators : 'genie/ci-scripts/ci-measurement-validators.cjs'))
+          if (![isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState]
+            .every((validate) => typeof validate === 'function')) throw new Error('Invalid CI measurement validator helper')
 
           for (const path of process.argv.slice(2)) {
             try {
@@ -3232,6 +3238,8 @@ jobs:
           }
           NODE
           trap 'rm -rf "$measurement_validator_dir"' EXIT
+          # Load the helper outside candidate conditionals: broken tooling must fail this step.
+          node "$measurement_validator"
 
           if command -v gh >/dev/null 2>&1; then
             GH_BIN="$(command -v gh)"
@@ -3557,6 +3565,8 @@ jobs:
           const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
             createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
               ? preparedValidators : 'genie/ci-scripts/ci-measurement-validators.cjs'))
+          if (![isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState]
+            .every((validate) => typeof validate === 'function')) throw new Error('Invalid CI measurement validator helper')
 
           for (const path of process.argv.slice(2)) {
             try {
@@ -3568,6 +3578,8 @@ jobs:
           }
           NODE
           trap 'rm -rf "$measurement_validator_dir"' EXIT
+          # Load the helper outside candidate conditionals: broken tooling must fail this step.
+          node "$measurement_validator"
 
           if command -v gh >/dev/null 2>&1; then
             GH_BIN="$(command -v gh)"
@@ -3917,6 +3929,8 @@ jobs:
           const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
             createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
               ? preparedValidators : 'genie/ci-scripts/ci-measurement-validators.cjs'))
+          if (![isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState]
+            .every((validate) => typeof validate === 'function')) throw new Error('Invalid CI measurement validator helper')
 
           try {
             const validate = process.argv[3] === 'comparison' ? isCiMeasurementComparison : isCiMeasurementArtifact
@@ -4541,6 +4555,8 @@ jobs:
           const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
             createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
               ? preparedValidators : 'genie/ci-scripts/ci-measurement-validators.cjs'))
+          if (![isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState]
+            .every((validate) => typeof validate === 'function')) throw new Error('Invalid CI measurement validator helper')
 
 
           const comparison = JSON.parse(readFileSync(comparisonPath, 'utf8'))

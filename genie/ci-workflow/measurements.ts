@@ -1,8 +1,8 @@
 import {
   ciMeasurementSchemaVersion,
   ciMeasurementCommentStateTag,
-  type CiMeasurementGatePolicy as MeasurementGatePolicy,
-} from '../../packages/@overeng/genie/src/build/ci-measurements/schema.ts'
+} from '../../packages/@overeng/genie/src/build/ci-measurements/constants.ts'
+import type { CiMeasurementGatePolicy as MeasurementGatePolicy } from '../../packages/@overeng/genie/src/build/ci-measurements/schema.ts'
 export type {
   CiMeasurementArtifact,
   CiMeasurementComparison,
@@ -38,6 +38,8 @@ const preparedValidators = '${preparedCiRuntimeScriptsDir}/ci-measurement-valida
 const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
   createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
     ? preparedValidators : '${ciWorkflowMeasurementValidatorsPath}'))
+if (![isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState]
+  .every((validate) => typeof validate === 'function')) throw new Error('Invalid CI measurement validator helper')
 `
 
 export type CiMeasurementDescriptor = {
@@ -1243,6 +1245,8 @@ for (const path of process.argv.slice(2)) {
 }
 NODE
 trap 'rm -rf "$measurement_validator_dir"' EXIT
+# Load the helper outside candidate conditionals: broken tooling must fail this step.
+node "$measurement_validator"
 
 if command -v gh >/dev/null 2>&1; then
   GH_BIN="$(command -v gh)"
