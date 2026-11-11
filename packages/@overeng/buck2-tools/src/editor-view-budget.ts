@@ -398,8 +398,8 @@ const decodeState = ({
       isText(entry.editorRoot) === false ||
       isAbsolute(entry.editorRoot) === false ||
       typeof entry.name !== 'string' ||
-      (generationPattern.test(entry.name) === false &&
-        /^\.legacy\/[^/]+$/.test(entry.name) === false) ||
+      /^(?:\.(?:legacy|store)\/)?[^/]+$/.test(entry.name) === false ||
+      entry.name.split('/').some((part) => part === '.' || part === '..') === true ||
       key !== generationKey({ editorRoot: entry.editorRoot, name: entry.name }) ||
       isText(entry.identity) === false ||
       isCount(entry.ownedBytes) === false ||
@@ -1223,7 +1223,7 @@ const generationIdentity = (
   }
 }
 
-/** Legacy imports have no generation record; sealed directory identity owns their sidecar. */
+/** Sealed unmanaged trees have no generation record; directory identity owns their sidecar. */
 const cachedTreeIdentity = ({
   editorRoot,
   name,
@@ -1231,9 +1231,9 @@ const cachedTreeIdentity = ({
   readonly editorRoot: string
   readonly name: string
 }) =>
-  name.startsWith('.legacy/') === true
-    ? orphanIdentity({ dir: join(editorRoot, name), immutable: true })
-    : generationIdentity(join(editorRoot, '.store', name))
+  generationPattern.test(name) === true
+    ? generationIdentity(join(editorRoot, '.store', name))
+    : orphanIdentity({ dir: join(editorRoot, name), immutable: true })
 
 const orphanIdentity = ({
   dir,
@@ -1815,6 +1815,7 @@ const takeCensus = async ({
   let footprintBytes = 0
   let sidecarWriteMs = 0
   let sidecarWrites = 0
+  let lastFootprintLogMs = -Infinity
   const measureFootprint = async ({
     dir,
     seal = false,
@@ -1823,15 +1824,18 @@ const takeCensus = async ({
     readonly seal?: boolean
   }) => {
     const started = performance.now()
-    censusStage({
-      stage: 'footprint-start',
-      dir,
-      durationMs: started - enumerationStarted,
-      sidecarHits,
-      sidecarMisses,
-      footprintWalks,
-      footprintMs,
-    })
+    if (started - lastFootprintLogMs >= 5_000) {
+      censusStage({
+        stage: 'footprint-start',
+        dir,
+        durationMs: started - enumerationStarted,
+        sidecarHits,
+        sidecarMisses,
+        footprintWalks,
+        footprintMs,
+      })
+      lastFootprintLogMs = started
+    }
     const footprint = await walkTree({ root: dir, unknown, seal, deadline })
     footprintMs += performance.now() - started
     footprintWalks += 1
@@ -1854,6 +1858,12 @@ const takeCensus = async ({
     dir: string
     name: string
   }) => {
+    const kind =
+      name.startsWith('.store/.candidate-') === true ||
+      name.startsWith('.gc-') === true ||
+      name.startsWith('.legacy/') === true
+        ? 'orphan'
+        : 'unmanaged'
     const pointers =
       name.startsWith('.legacy/') === true ? pointerInventory.read(rootView.root) : undefined
     const reachedLegacy =
@@ -1870,7 +1880,7 @@ const takeCensus = async ({
             },
           ],
         }).has(dir) === true)
-    if (name.startsWith('.legacy/') === true && reachedLegacy === true) {
+    {
       const key = generationKey({ editorRoot: rootView.key, name })
       const stamp = cachedTreeIdentity({ editorRoot: rootView.key, name })
       const existing = state.generations.get(key)
@@ -1887,7 +1897,7 @@ const takeCensus = async ({
             root: rootView,
             name,
             dir,
-            kind: 'orphan',
+            kind,
             identity: existing.identity,
             ownedBytes: existing.ownedBytes,
             linked,
@@ -1908,7 +1918,7 @@ const takeCensus = async ({
     })
     if (footprint === undefined) return
     const stamp = unknown.length === unknownBefore ? orphanIdentity({ dir }) : undefined
-    if (reachedLegacy === true && footprint.readOnly === true && stamp !== undefined) {
+    if (footprint.readOnly === true && stamp !== undefined) {
       const key = generationKey({ editorRoot: rootView.key, name })
       const sidecar = sidecarName({ key, identity: stamp.identity })
       const writeStarted = performance.now()
@@ -1930,12 +1940,7 @@ const takeCensus = async ({
       root: rootView,
       name,
       dir,
-      kind:
-        name.startsWith('.store/.candidate-') === true ||
-        name.startsWith('.gc-') === true ||
-        name.startsWith('.legacy/') === true
-          ? 'orphan'
-          : 'unmanaged',
+      kind,
       identity: stamp?.identity,
       ownedBytes: footprint.ownedBytes,
       linked: footprint.linked,
