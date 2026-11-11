@@ -171,7 +171,7 @@ jobs:
           ALLOW_LEGACY_MEMBER_COMMIT_REFS: '0'
         run: |
           set -euo pipefail
-          node_out="$(nix build --no-update-lock-file --no-link --print-out-paths 'github:NixOS/nixpkgs/4ba99f3209788ed04f01af38f77ddb803ad6ec63?narHash=sha256-QKzNhJrBkLagm1tF3ifpCptUygt5eBYUxjdNWRSgzHc%3D#nodejs_24')"
+          node_out="$(nix build --no-update-lock-file --no-link --print-out-paths 'github:NixOS/nixpkgs/f4a03c008967841f2a0b3cb7c436fc6fc31671f6?narHash=sha256-ziZn2PvCJE5JEEpqTdxXwJpPB%2BL3YqoCpTAMCzyaP3U%3D#nodejs_24')"
           "$node_out/bin/node" <<'NODE'
           const fs = require('node:fs')
           const path = require('node:path')
