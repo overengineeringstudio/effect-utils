@@ -74,7 +74,11 @@ type Plan = BudgetPlan
 describe('versioned budget owner contract', () => {
   it('rejects old and unversioned receipts', () => {
     const receipt = { planSha256: 'a'.repeat(64), results: [], classes: {} }
-    for (const schemaVersion of ['megarepo.build-output-budget-plan.v1', undefined]) {
+    for (const schemaVersion of [
+      'megarepo.build-output-budget-plan.v1',
+      'megarepo.build-output-budget-plan.v2',
+      undefined,
+    ]) {
       expect(() => decodePlan(encodeJson({ ...receipt, schemaVersion }))).toThrow()
     }
   })
@@ -112,7 +116,7 @@ describe('versioned budget owner contract', () => {
       expect(decode(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
     }
     const evidence = {
-      schemaVersion: 'megarepo.build-output-budget-plan.v2' as const,
+      schemaVersion: 'megarepo.build-output-budget-plan.v3' as const,
       results: [rows[0]!],
       classes: {},
     }
@@ -183,6 +187,8 @@ const cliEnv = (f: Fixture): ReadonlyArray<string> => {
     `HOME=${f.home}`,
     `PATH=${f.commandDir}/bin:${process.env['PATH'] ?? ''}`,
     `MEGAREPO_STORE=${f.storePath}`,
+    `MEGAREPO_GC_ST3_BIN=${f.commandDir}/native`,
+    `MEGAREPO_GC_PTY_BIN=${f.commandDir}/native-pty`,
     'NO_COLOR=1',
     `PTY_SESSION_DIR=${f.home}/pty`,
   ]
@@ -293,8 +299,8 @@ const writePolicy = (
   })
 
 /**
- * Producer-neutral gc-config: only the manifest fixture is admitted, never a
- * builtin st2/st3. The budgets policy file is the sole worklog-teardown source.
+ * Producer-neutral gc-config admits the process manifest fixture. Native evidence
+ * is captured separately through deterministic command fixtures.
  */
 const writeGcConfig = (
   f: Fixture,
@@ -446,6 +452,49 @@ const budgetFixture = (
       home,
       policyPath: `${state}/build-output-budgets.json`,
       manifestPath: `${state}/workspace-activity.json`,
+    }
+    yield* fs.writeFileString(
+      `${commandDir}/native-page.json`,
+      encodeJson({
+        api_version: 'st3.client.v0',
+        snapshot: {
+          id: 'native-fixture',
+          host_id: `host/${hostname()}`,
+          created_at: '2020-01-01T00:00:00.000Z',
+          store_index: 1,
+        },
+        value: {
+          kind: 'page',
+          collection: 'agents',
+          items: [],
+          page: { has_more: false, next_cursor: null },
+        },
+      }),
+    )
+    yield* fs.writeFileString(
+      `${commandDir}/native`,
+      '#!/bin/sh\ncase "$1" in\nagents) cat "$0-page.json";;\nsubject) cat "$0-subject.json";;\n*) exit 1;;\nesac\n',
+      { mode: 0o755 },
+    )
+    yield* fs.writeFileString(`${commandDir}/native-pty`, '#!/bin/sh\nprintf "[]\\n"\n', {
+      mode: 0o755,
+    })
+    for (const [key, value] of [
+      ['MEGAREPO_GC_ST3_BIN', `${commandDir}/native`],
+      ['MEGAREPO_GC_PTY_BIN', `${commandDir}/native-pty`],
+    ] as const) {
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const previous = process.env[key]
+          process.env[key] = value
+          return previous
+        }),
+        (previous) =>
+          Effect.sync(() => {
+            if (previous === undefined) delete process.env[key]
+            else process.env[key] = previous
+          }),
+      )
     }
     yield* writeGcConfig(f)
     yield* writeManifest(f)
@@ -814,6 +863,76 @@ if (inOwnerNamespace === true && process.platform === 'linux')
                 expect(reads).toBe(3)
                 expect.soft(applied._tag).toBe('Failure')
                 expect.soft(yield* exists(path)).toBe(true)
+                const pagePath = `${f.commandDir}/native-page.json`
+                const emptyPage = yield* fs.readFileString(pagePath)
+                const nativePage = decodeJson(emptyPage) as {
+                  value: { items: Array<{ id: string }> }
+                }
+                nativePage.value.items = [{ id: 'native-owner' }]
+                const claimPage = encodeJson(nativePage)
+                yield* fs.writeFileString(
+                  `${f.commandDir}/native-subject.json`,
+                  encodeJson({
+                    status: {
+                      store_index: 1,
+                      subjects: [
+                        {
+                          subject: 'native-owner',
+                          actual: { status: 'idle', workspace: root, host: hostname() },
+                        },
+                      ],
+                    },
+                  }),
+                )
+                const capturePlan = Effect.gen(function* () {
+                  return yield* planBuildOutputBudgets({
+                    ...inputs,
+                    activity: yield* readBudgetWorkspaceActivity({ fs, config: activityConfig }),
+                  })
+                }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+                yield* fs.writeFileString(pagePath, claimPage)
+                expect(row(yield* capturePlan, path)?.reason).toBe('live')
+                yield* fs.writeFileString(pagePath, '{}')
+                const unknownPlan = yield* capturePlan
+                expect(
+                  unknownPlan.results.some((candidate) => candidate.outcome === 'would-delete'),
+                ).toBe(false)
+                yield* fs.writeFileString(pagePath, emptyPage)
+                for (const nativeEvidence of [
+                  { ...activity!.nativeEvidence!, complete: false },
+                  {
+                    ...activity!.nativeEvidence!,
+                    coverage: {
+                      ...activity!.nativeEvidence!.coverage,
+                      host: 'host/other-fixture',
+                    },
+                  },
+                ]) {
+                  const changed = yield* planBuildOutputBudgets({
+                    ...inputs,
+                    activity: { ...activity!, nativeEvidence },
+                  }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+                  expect(changed.planSha256).not.toBe(plan.planSha256)
+                }
+                reads = 0
+                const lateNativeFs: FileSystem.FileSystem = {
+                  ...fs,
+                  readFileString: (file, options) =>
+                    (file === f.manifestPath && ++reads === 3
+                      ? fs.writeFileString(pagePath, claimPage)
+                      : Effect.void
+                    ).pipe(Effect.andThen(fs.readFileString(file, options))),
+                }
+                const nativeApplied = yield* applyBuildOutputBudgetCandidate({
+                  ...inputs,
+                  policyPath: f.policyPath,
+                  expectedPlan: plan.planSha256,
+                  candidatePath: path,
+                  activityConfig,
+                }).pipe(Effect.provideService(FileSystem.FileSystem, lateNativeFs), Effect.result)
+                expect(reads).toBe(3)
+                expect(nativeApplied._tag).toBe('Failure')
+                expect(yield* exists(path)).toBe(true)
               },
               Effect.provide(NodeServices.layer),
               Effect.scoped,
@@ -1337,7 +1456,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(totalBefore).toBeGreaterThan(4 * MiB)
 
           const plan = planOk(f)
-          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v2')
+          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v3')
           expect(
             plan.results.filter((r) => r.outcome === 'would-delete').map((r) => r.path),
           ).toEqual([targetA])

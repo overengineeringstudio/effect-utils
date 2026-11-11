@@ -237,11 +237,14 @@ older than `idleRetentionMs`, Git-ignored with no tracked file, and canonically 
 worktree. Any unknown keeps. When nothing idle remains, the class reports
 `over-budget-no-idle-candidate` rather than evicting live work.
 
-JSON output is the `megarepo.build-output-budget-plan.v2` document: `planSha256`, the candidate
+JSON output is the `megarepo.build-output-budget-plan.v3` document: `planSha256`, the candidate
 `results`, and `classes` keyed by class name with `totalBytes`, `budgetBytes`,
 `idleCandidateBytes`, `evictedBytes`, `projectedBytes`, `keptByReason`, `scanStatus`, and `status`
 for exporting gauges. Application holds the owner-worktree lock and deletion lease, recaptures
-activity on the admitted epoch, replans completely, requires the same digest, and re-checks every
+native agent/actual/retained-PTY evidence alongside process activity on every check. Unknown or
+incomplete native capture keeps all candidates. The digest binds native reader version,
+coverage and completeness, not transient capture IDs or timestamps. Application recaptures
+activity on the admitted process epoch, replans completely, requires the same digest, and re-checks every
 idle predicate on the one candidate before deleting it.
 Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspacePath`;
 `symbolic` refs retain the full Git ref name. The `repo-build-output` schema instead carries

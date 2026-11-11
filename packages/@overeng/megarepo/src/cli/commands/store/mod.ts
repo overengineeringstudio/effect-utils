@@ -2827,15 +2827,23 @@ const storeGcCommand = Cli.Command.make(
             config: activityConfig,
             admittedEpoch: activity.epoch,
           })
-          if (afterScan === undefined) {
-            plan = yield* planBuildOutputBudgets({
-              policy: budgetPolicy,
-              storeBasePath: store.basePath,
-              ...inputs,
-              activity: undefined,
-              now,
-            })
-          }
+          plan = yield* planBuildOutputBudgets({
+            policy: budgetPolicy,
+            storeBasePath: store.basePath,
+            ...inputs,
+            activity:
+              afterScan === undefined
+                ? undefined
+                : {
+                    ...afterScan,
+                    activePaths: new Set([...activity.activePaths, ...afterScan.activePaths]),
+                    ownerClaims: [
+                      ...(activity.ownerClaims ?? []),
+                      ...(afterScan.ownerClaims ?? []),
+                    ],
+                  },
+            now,
+          })
         }
         if (Option.isSome(expectedPlan) === true && Option.isSome(candidatePath) === true) {
           const expectedPlanValue = expectedPlan.value

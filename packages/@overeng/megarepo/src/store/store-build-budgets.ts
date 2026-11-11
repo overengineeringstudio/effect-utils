@@ -155,7 +155,7 @@ export const BudgetClassSummary = Schema.Struct({
 })
 /** Plan-hash-bound budget dry-run or single-root apply receipt. */
 export const BudgetPlan = Schema.Struct({
-  schemaVersion: Schema.Literal('megarepo.build-output-budget-plan.v2'),
+  schemaVersion: Schema.Literal('megarepo.build-output-budget-plan.v3'),
   planSha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
   results: Schema.Array(BudgetCandidate),
   classes: Schema.Record(Schema.String, BudgetClassSummary),
@@ -1072,11 +1072,12 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   const planSha256 = createHash('sha256')
     .update(
       encodeBudgetPlanEvidence({
-        schemaVersion: 'megarepo.build-output-budget-plan.v2',
+        schemaVersion: 'megarepo.build-output-budget-plan.v3',
         policy,
         activityEpoch: activity?.epoch,
         processWorktreeCoverage: activity?.processWorktreeCoverage,
         processRepoOutputCoverage: activity?.processRepoOutputCoverage,
+        nativeEvidence: activity?.nativeEvidence,
         census: repoWorktrees
           .map(({ repo, worktrees, censusIncomplete }) => ({
             repo: repo.relativePath,
@@ -1091,7 +1092,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
     )
     .digest('hex')
   return {
-    schemaVersion: 'megarepo.build-output-budget-plan.v2' as const,
+    schemaVersion: 'megarepo.build-output-budget-plan.v3' as const,
     planSha256,
     results: sorted,
     classes,
