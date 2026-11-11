@@ -364,7 +364,8 @@ bytes), sidecar staging, CAS accounting, linked-inode merge (entries and distinc
 entries), sidecar installation, and fenced admission. Enumeration time excludes
 the separately measured reads, walks, and staging. Per-root `root-enumeration`
 records report `sidecarHits`, `sidecarMisses`, `footprintWalks`, `footprintMs`, and
-the five slowest roots; `footprint-start` identifies the entry about to be walked.
+the five slowest roots; `footprint-start` identifies the entry about to be walked,
+at most once every five seconds per census.
 Installation and admission durations include waiting for the host ledger fence.
 Admission enumeration has a cooperative 60 s budget, one fifth of the 300 s
 publication deadline, checked between directory reads and bounded stat batches.
@@ -374,7 +375,21 @@ Any unreadable path discovered during enumeration also discards the whole root's
 entries from accounting and eviction proofs, even when the budget has not expired.
 On exhaustion, admission records the reservation without eviction or CAS collection,
 even above budget, and emits `census-incomplete`; reservations and pins remain protected.
-Explicit recount remains unbounded so it can finish warming sidecars.
+Warm cold sidecars **outside publication** with the existing explicit recount entrypoint:
+
+```sh
+bun packages/@overeng/buck2-tools/src/editor-view.ts budget recount
+```
+
+Run this explicitly after registering large roots, or periodically from your existing
+scheduler with the same `EDITOR_VIEW_HOST_BUDGET_STATE` as publishers. Recount is
+unbounded, performs no admission or eviction, and prints one JSON accounting result.
+It fills sidecars for immutable generations and read-only unmanaged trees, including
+legacy imports; writable unmanaged trees are still walked on each census. Sidecar
+hits retain the existing sealed-directory identity validation (inode, mode, mtime,
+ctime; generation records also validate inode, size, and mtime). Changed identities
+are remeasured. This lets later bounded publication censuses account for roots whose
+cold walks exceed 60 s without using partial measurements for eviction.
 The structured `over-budget` event and `editor-view.host-budget` span record
 rejected admission with nonzero exit status, alongside the protected-share
 early warning at 80%. Budget, publication, phase, and
