@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:34f6dbd19a83064b45f2e2595cff5ea1f2431f24abd560bf1fd5014f057e9c18
+# Semantic fingerprint: sha256:3f93ffcc3da7b2511d106bd9ce28428c145a67aef9d47335fd8cb4a4a6fe195d
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -34,6 +34,7 @@ export_materialization_inputs([
     "src/build/GenieOutput/stories/Success.stories.tsx",
     "src/build/GenieOutput/stories/_fixtures.ts",
     "src/build/app.ts",
+    "src/build/ci-measurements/constants.ts",
     "src/build/ci-measurements/schema.ts",
     "src/build/ci-measurements/schema.unit.test.ts",
     "src/build/defer-validation.unit.test.ts",
@@ -210,6 +211,7 @@ package_view(
         "src/build/GenieOutput/stories/Success.stories.tsx": "src/build/GenieOutput/stories/Success.stories.tsx",
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
+        "src/build/ci-measurements/constants.ts": "src/build/ci-measurements/constants.ts",
         "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
         "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
@@ -376,6 +378,7 @@ package_view(
         "src/build/GenieOutput/stories/Success.stories.tsx": "src/build/GenieOutput/stories/Success.stories.tsx",
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
+        "src/build/ci-measurements/constants.ts": "src/build/ci-measurements/constants.ts",
         "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
         "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
@@ -539,6 +542,7 @@ package_view(
         "src/build/GenieOutput/stories/Success.stories.tsx": "src/build/GenieOutput/stories/Success.stories.tsx",
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
+        "src/build/ci-measurements/constants.ts": "src/build/ci-measurements/constants.ts",
         "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
         "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",

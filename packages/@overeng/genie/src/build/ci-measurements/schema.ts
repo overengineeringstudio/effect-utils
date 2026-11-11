@@ -1,10 +1,8 @@
 import { Schema } from 'effect'
 
 import { renderJsonSchemaValidator } from '../../runtime/json-schema-validation/mod.ts'
-
-/** Numeric versions are wire contracts, shared by producers and generated decoders. */
-export const ciMeasurementSchemaVersion = 1
-export const ciMeasurementCommentStateTag = 'ci-measurement-comment-state'
+import { ciMeasurementSchemaVersion, ciMeasurementCommentStateTag } from './constants.ts'
+export { ciMeasurementSchemaVersion, ciMeasurementCommentStateTag } from './constants.ts'
 
 const optionalStrings = <const TNames extends readonly string[]>(names: TNames) =>
   Object.fromEntries(names.map((name) => [name, Schema.optional(Schema.String)])) as {
