@@ -34,6 +34,7 @@ const sharedScriptArtifact = (repoRelativePath: string): GenieOutput<string> => 
 }
 
 export const ciWorkflowNixGcRaceRetryScriptPath = 'genie/ci-scripts/nix-gc-race-retry.sh'
+export const ciWorkflowMeasurementValidatorsPath = 'genie/ci-scripts/ci-measurement-validators.cjs'
 /**
  * Where consumers emit the shared validator. Distinct from the `ciWorkflow*` paths below, which name
  * the source inside this repo: these are the paths in the consuming repository.
@@ -538,6 +539,12 @@ export SCCACHE_SERVER_UDS="${dollar}RUNNER_TEMP/sc-${dollar}sccache_server_key.s
 unset sccache_server_key`
 
 export const ciWorkflowSupportFiles = {
+  measurementValidators: {
+    path: ciWorkflowMeasurementValidatorsPath,
+    get output() {
+      return sharedScriptArtifact(ciWorkflowMeasurementValidatorsPath)
+    },
+  },
   jobLocalRustState: {
     path: ciWorkflowJobLocalRustStateScriptPath,
     output: textArtifact(ciWorkflowJobLocalRustStateScript),
