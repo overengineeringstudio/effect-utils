@@ -219,8 +219,7 @@ const CommentRow = Schema.Struct({
   ratio: Schema.String,
   impact: Schema.String,
 })
-export const CiMeasurementCommentState = Schema.Struct({
-  _tag: Schema.Literal(ciMeasurementCommentStateTag),
+export const CiMeasurementCommentState = Schema.TaggedStruct(ciMeasurementCommentStateTag, {
   schemaVersion: Schema.Literal(ciMeasurementSchemaVersion),
   title: Schema.String,
   runs: Schema.Array(
