@@ -245,6 +245,8 @@ export const ciWorkflowConcurrency = {
 export type CiWorkflowArgs = GitHubWorkflowArgs & {
   readonly trustTier: CiTrustTier
   readonly binaryCaches?: readonly BinaryCacheDescriptor[]
+  /** Jobs whose host daemon owns Nix sandbox policy rather than the runner user. */
+  readonly hostManagedNixJobs?: readonly string[]
   /**
    * Attest sandbox support for jobs whose runs-on cannot be resolved statically.
    * This does not override an explicitly unprivileged Namespace Linux label.
@@ -459,9 +461,11 @@ export const buck2CiJobInstanceStep = {
 const withStandardCIEnv = ({
   jobs,
   trustTier,
+  hostManagedNixJobs,
 }: {
   readonly jobs: GitHubWorkflowArgs['jobs']
   readonly trustTier: CiTrustTier
+  readonly hostManagedNixJobs: readonly string[]
 }): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => [
@@ -473,7 +477,7 @@ const withStandardCIEnv = ({
           ...job.env,
         },
         steps: withCiAdmissionCleanup([
-          linuxNixSandboxFallbackStep,
+          ...(hostManagedNixJobs.includes(jobId) ? [] : [linuxNixSandboxFallbackStep]),
           buck2CiJobInstanceStep,
           ...job.steps.filter((step) => step.id !== linuxNixSandboxFallbackStep.id),
         ]),
@@ -493,6 +497,7 @@ export const ciWorkflow = ({
   trustTier,
   binaryCaches,
   linuxNixSandboxCapabilities,
+  hostManagedNixJobs = [],
   ...args
 }: CiWorkflowArgs) => {
   const { concurrency, actionlint, jobs, on, ...rest } = args
@@ -511,6 +516,7 @@ export const ciWorkflow = ({
     actionlint: actionlint ?? defaultActionlintConfig,
     jobs: withStandardCIEnv({
       trustTier,
+      hostManagedNixJobs,
       jobs:
         concurrency === undefined
           ? withDefaultJobConcurrency({
