@@ -243,8 +243,10 @@ export {
 
 export {
   deriveSystemLabels,
+  deriveSystemNames,
   systemLabelColor,
   type DeriveSystemLabelsArgs,
+  type DeriveSystemNamesArgs,
 } from './system-labels.ts'
 
 /**

@@ -975,7 +975,7 @@ printf '%s\\n' "$NIX_OUTPUT"
 })
 
 describe('ci workflow merge queue helpers', () => {
-  it('centralizes the Hypermerge semantic required checks and admission label expressions', () => {
+  it('centralizes the merge-queue semantic required checks and admission label expressions', () => {
     expect(mergeQueueSource).toContain('mergeQueueRequiredCIJobs')
     expect(mergeQueueSource).toContain('mq/admission')
     expect(mergeQueueSource).toContain('pr/quality')
