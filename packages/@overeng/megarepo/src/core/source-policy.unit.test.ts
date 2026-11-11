@@ -8,7 +8,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { encodeJson } from '../test-utils/mod.ts'
 import type { MegarepoConfig } from './config.ts'
 import type { LockFile } from './lock.ts'
-import { checkSourcePolicy } from './source-policy.ts'
+import { checkSourcePolicy, formatSourcePolicyViolation } from './source-policy.ts'
 
 const commit = '41e0ed18178ecef0afde18a932e24372d5d61b11'
 
@@ -161,7 +161,7 @@ describe('checkSourcePolicy', () => {
       ),
     ))
 
-  it('preserves flake dir query params in canonical source suggestions', () =>
+  it('preserves source dir suggestions and names accepted lock transports', () =>
     runWithContext(
       withWorkspace((root) =>
         Effect.gen(function* () {
@@ -270,4 +270,202 @@ describe('checkSourcePolicy', () => {
         }),
       ),
     ))
+
+  const gitRepo = 'https://github.com/example-org/example-repo'
+  const gitCommit = '0123456789abcdef0123456789abcdef01234567'
+  const gitOriginal = { type: 'git', url: gitRepo, rev: gitCommit, shallow: true }
+  const gitLocked = {
+    ...gitOriginal,
+    narHash: 'sha256-9GjX7BCxjoimhsxW7zLHuzK+rZS1m3DtiMoo3B0xpxc=',
+    lastModified: 1779125469,
+  }
+  const gitLockFile = {
+    ...makeLockFile(),
+    members: {
+      example: { ...makeLockFile().members['private-member']!, url: gitRepo, commit: gitCommit },
+    },
+  }
+
+  it.each([
+    `rev=${gitCommit}&shallow=1`,
+    `shallow=1&ref=main&rev=${gitCommit}`,
+    `ref=feature/topic&rev=${gitCommit}&shallow=1`,
+    `dir=nix/flake&ref=main&rev=${gitCommit}&shallow=1`,
+  ])('allows pinned shallow GitHub HTTPS sources: %s', (query) =>
+    runWithContext(
+      withWorkspace((root) =>
+        Effect.gen(function* () {
+          const dir = query.includes('dir=') === true ? { dir: 'nix/flake' } : {}
+          yield* writeFile({
+            root,
+            path: 'flake.nix',
+            content: `inputs.example.url = "git+${gitRepo}?${query}";`,
+          })
+          for (const path of ['flake.lock', 'devenv.lock']) {
+            yield* writeFile({
+              root,
+              path,
+              content: encodeJson({
+                root: 'root',
+                nodes: {
+                  root: { inputs: { example: 'example' } },
+                  example: {
+                    original: {
+                      ...gitOriginal,
+                      ...dir,
+                      url: gitRepo
+                        .toUpperCase()
+                        .replace('HTTPS://GITHUB.COM', 'https://github.com'),
+                    },
+                    locked: { ...gitLocked, ...dir },
+                  },
+                },
+              }),
+            })
+          }
+          const result = yield* checkSourcePolicy({
+            megarepoRoot: root,
+            config: makeConfig({ example: 'example-org/example-repo' }),
+            lockFile: gitLockFile,
+            includeMembers: false,
+          })
+          expect(result.violations).toEqual([])
+        }),
+      ),
+    ),
+  )
+
+  it.each([
+    ['wrong original owner', { url: 'https://github.com/other-org/example-repo' }, {}],
+    ['wrong locked repo', {}, { url: 'https://github.com/example-org/other-repo' }],
+    ['short rev', {}, { rev: '0123456' }],
+    ['rev mismatch', {}, { rev: 'f'.repeat(40) }],
+    ['missing rev', {}, { rev: undefined }],
+    [
+      'non-GitHub host',
+      { url: 'https://example.com/example-org/example-repo' },
+      { url: 'https://example.com/example-org/example-repo' },
+    ],
+    ['mixed transports', {}, { type: 'github', owner: 'example-org', repo: 'example-repo' }],
+    ['non-shallow', { shallow: false }, {}],
+    ['unknown parameter', { submodules: true }, {}],
+  ])('rejects inconsistent git lock sources: %s', (_name, original, locked) =>
+    runWithContext(
+      withWorkspace((root) =>
+        Effect.gen(function* () {
+          yield* writeFile({
+            root,
+            path: 'flake.lock',
+            content: encodeJson({
+              root: 'root',
+              nodes: {
+                root: { inputs: { example: 'example' } },
+                example: {
+                  original: { ...gitOriginal, ...original },
+                  locked: { ...gitLocked, ...locked },
+                },
+              },
+            }),
+          })
+          const result = yield* checkSourcePolicy({
+            megarepoRoot: root,
+            config: makeConfig({ example: 'example-org/example-repo' }),
+            lockFile: gitLockFile,
+            includeMembers: false,
+          })
+          expect(result.violations).toMatchObject([
+            {
+              _tag: 'NonCanonicalNixInputSource',
+              upstreamMember: 'example',
+              expected:
+                _name === 'non-GitHub host'
+                  ? 'github:example-org/example-repo'
+                  : `github:example-org/example-repo or git+${gitRepo}?[ref=<ref>&]rev=${gitCommit}&shallow=1`,
+            },
+          ])
+          if (_name === 'unknown parameter') {
+            expect(result.violations[0]).toMatchObject({ unsupportedKeys: ['original.submodules'] })
+            expect(formatSourcePolicyViolation(result.violations[0]!)).toContain(
+              'unsupported lock keys: original.submodules',
+            )
+          }
+        }),
+      ),
+    ),
+  )
+
+  it.each([
+    `git+${gitRepo}?rev=0123456&shallow=1`,
+    `git+${gitRepo}?rev=${'f'.repeat(40)}&shallow=1`,
+    `git+${gitRepo}?rev=${gitCommit}`,
+    `git+${gitRepo}?rev=${gitCommit}&shallow=1&submodules=1`,
+    `git+${gitRepo}?rev=${gitCommit}&rev=${gitCommit}&shallow=1`,
+    `git+https://example.com/example-org/example-repo?rev=${gitCommit}&shallow=1`,
+    `git+https://github.com/other-org/example-repo?rev=${gitCommit}&shallow=1`,
+  ])('rejects unsupported git source URL: %s', (url) =>
+    runWithContext(
+      withWorkspace((root) =>
+        Effect.gen(function* () {
+          yield* writeFile({ root, path: 'flake.nix', content: `inputs.example.url = "${url}";` })
+          const result = yield* checkSourcePolicy({
+            megarepoRoot: root,
+            config: makeConfig({ example: 'example-org/example-repo' }),
+            lockFile: gitLockFile,
+            includeMembers: false,
+          })
+          expect(result.violations).toMatchObject([{ _tag: 'NonCanonicalNixInputSource' }])
+        }),
+      ),
+    ),
+  )
+
+  it.each(['https', 'ssh'])(
+    'preserves dir in rejected %s source and lock suggestions',
+    (transport) =>
+      runWithContext(
+        withWorkspace((root) =>
+          Effect.gen(function* () {
+            const url =
+              transport === 'https' ? gitRepo : 'ssh://git@github.com/example-org/example-repo'
+            yield* writeFile({
+              root,
+              path: 'flake.nix',
+              content: `inputs.example.url = "git+${url}?dir=nix/flake&ref=main&rev=0123456&shallow=1";`,
+            })
+            yield* writeFile({
+              root,
+              path: 'flake.lock',
+              content: encodeJson({
+                root: 'root',
+                nodes: {
+                  root: { inputs: { example: 'example' } },
+                  example: {
+                    original: { ...gitOriginal, url, dir: 'nix/flake', ref: 'main' },
+                    locked: { ...gitLocked, url, dir: 'nix/flake', rev: '0123456' },
+                  },
+                },
+              }),
+            })
+            const result = yield* checkSourcePolicy({
+              megarepoRoot: root,
+              config: makeConfig({ example: 'example-org/example-repo' }),
+              lockFile: gitLockFile,
+              includeMembers: false,
+            })
+            const expected =
+              transport === 'https'
+                ? `github:example-org/example-repo?dir=nix/flake or git+${gitRepo}?[ref=<ref>&]dir=nix/flake&rev=${gitCommit}&shallow=1`
+                : 'github:example-org/example-repo?dir=nix/flake&shallow=1'
+            expect(
+              result.violations.map((violation) =>
+                violation._tag === 'NonCanonicalNixInputSource' ? violation.expected : undefined,
+              ),
+            ).toEqual([
+              expected,
+              transport === 'https' ? expected : 'github:example-org/example-repo?dir=nix/flake',
+            ])
+          }),
+        ),
+      ),
+  )
 })
