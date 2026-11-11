@@ -148,6 +148,28 @@ git -C "$watch_root" init -q
 # The installed command's script is independent of checkout contents and cwd.
 # This isolated PATH deliberately contains neither devenv nor Nix nor Watchman.
 if PATH="$fake_bin" command -v devenv; then fail 'fixture unexpectedly contains devenv'; fi
+# A lease-only root is still registered editor state: refuse before any mutation.
+mkdir -p "$watch_root/owned" "$TEMP_ROOT/refusal-cache/effect-utils/buck2-posture-v2"
+refusal_hash="$(printf %s "$watch_root" | sha256sum)"; refusal_hash="${refusal_hash%% *}"
+refusal_cache="$TEMP_ROOT/refusal-cache/effect-utils/buck2-posture-v2/$refusal_hash-fixture"
+printf sentinel >"$refusal_cache"
+chmod 555 "$watch_root/owned"
+for suffix in .editor-view packages/.editor-view context/.editor-view packages/example/.editor-view; do
+  mkdir -p "$watch_root/$suffix/.leases"
+  refusal_status=0
+  PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" \
+    XDG_CACHE_HOME="$TEMP_ROOT/refusal-cache" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$watch_root" \
+    >"$TEMP_ROOT/editor-refusal.log" 2>&1 || refusal_status=$?
+  [ "$refusal_status" -eq 3 ] || fail "editor root $suffix: expected exit 3, got $refusal_status"
+  grep -q 'editor view present.*WORKTREE_TEARDOWN_EDITOR_RELEASE=1' "$TEMP_ROOT/editor-refusal.log" \
+    || fail 'editor refusal lacks explicit release guidance'
+  [ "$(cat "$refusal_cache")" = sentinel ] || fail 'editor refusal deleted admission state'
+  [ "$(stat -c %a "$watch_root/owned")" = 555 ] || fail 'editor refusal changed directory permissions'
+  [ -d "$watch_root/$suffix/.leases" ] || fail 'editor refusal deleted lease state'
+  rmdir "$watch_root/$suffix/.leases" "$watch_root/$suffix"
+done
+echo 'PASS: editor and lease-only roots refuse with exit 3 before cache or permission mutation'
 (
   cd "$TEMP_ROOT"
   PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$main" \
