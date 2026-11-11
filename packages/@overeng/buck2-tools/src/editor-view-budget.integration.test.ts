@@ -2057,6 +2057,79 @@ describe('budget admission defers complete reader proof until eviction needs it'
     childProcessMocks.spawnSync.mock.calls.filter(([command]) => command === '/usr/sbin/lsof')
       .length
 
+  it.each([0, 100])(
+    'admits with unfinished roots protected at a %i ms enumeration budget',
+    async (enumerationBudgetMs) => {
+      const host = makeHost()
+      const restore: (() => void)[] = []
+      try {
+        const victim = host.fixture('budget-victim', 192, 64)
+        const incoming = host.fixture('budget-incoming', 193, 64)
+        const record = await host.publish(victim)
+        await host.publish(incoming)
+        // Force an unmanaged walk before generation enumeration, after root metadata.
+        mkdirSync(join(victim.editorRoot, 'node_modules'))
+        let now = 0
+        const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
+        restore.push(() => clock.mockRestore())
+        const lines: string[] = []
+        const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+          const line = String(chunk)
+          lines.push(line)
+          if (line.includes('"stage":"footprint-start"') === true) now = enumerationBudgetMs
+          return true
+        })
+        restore.push(() => stderr.mockRestore())
+        const tryLockRoot = vi.fn(() => {
+          throw new Error('an unfinished root must never become an eviction candidate')
+        })
+        const reservation = await host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            tryLockRoot,
+            reservationBytes: 1,
+            budgetBytes: 1,
+            enumerationBudgetMs,
+          }),
+        )
+        expect(tryLockRoot).not.toHaveBeenCalled()
+        expectCurrent(victim, record)
+        expect(readBudgetLedger(host).reservations).toEqual(
+          expect.arrayContaining([expect.objectContaining({ token: reservation.token, bytes: 1 })]),
+        )
+        const events = lines.flatMap((line) => {
+          const prefix = '[editor-view-budget] '
+          return line.startsWith(prefix) === true
+            ? [JSON.parse(line.slice(prefix.length))]
+            : [JSON.parse(line)]
+        })
+        expect(events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              stage: 'generation-enumeration',
+              exhausted: 1,
+              generations: 0,
+            }),
+            expect.objectContaining({
+              event: 'editor-view.host-budget.census-incomplete',
+              unaccounted: expect.arrayContaining([victim.editorRoot, incoming.editorRoot]),
+            }),
+          ]),
+        )
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: reservation.token,
+        })
+      } finally {
+        for (const reset of restore) reset()
+        await host.cleanup()
+      }
+    },
+  )
+
   it('reports aggregate census substage durations and counts', async () => {
     const host = makeHost()
     try {
@@ -2112,12 +2185,25 @@ describe('budget admission defers complete reader proof until eviction needs it'
         expect(matching[0].durationMs).toBeGreaterThanOrEqual(0)
         for (const key of keys) expect(matching[0][key]).toBeGreaterThanOrEqual(0)
       }
-      expect(stages).toHaveLength(9)
+      expect(stages.filter((entry) => entry.stage === 'root-enumeration')).toHaveLength(2)
+      expect(stages.filter((entry) => entry.stage === 'footprint-start')).toHaveLength(4)
+      for (const entry of stages.filter((entry) => entry.stage === 'root-enumeration')) {
+        for (const key of ['sidecarHits', 'sidecarMisses', 'footprintWalks', 'footprintMs'])
+          expect(entry[key]).toBeGreaterThanOrEqual(0)
+        expect(entry.slowestRoots.length).toBeGreaterThan(0)
+        expect(entry.slowestRoots.length).toBeLessThanOrEqual(5)
+      }
       const stageCounts = Object.fromEntries(stages.map((entry) => [entry.stage, entry]))
       expect(stageCounts['root-discovery']).toMatchObject({ roots: 2 })
       // Two generations, the held publication lock, and two persistent lease directories.
       expect(stageCounts['generation-enumeration']).toMatchObject({ generations: 5 })
       expect(stageCounts['sidecar-reads']).toMatchObject({ hits: 1, misses: 1 })
+      expect(stageCounts['generation-enumeration']).toMatchObject({
+        sidecarHits: 1,
+        sidecarMisses: 1,
+        footprintWalks: 4,
+        exhausted: 0,
+      })
       expect(stageCounts['sidecar-reads'].bytes).toBeGreaterThan(0)
       expect(stageCounts['footprint-walks']).toMatchObject({ walks: 4 })
       expect(stageCounts['footprint-walks'].linkedBytes).toBeGreaterThan(0)
