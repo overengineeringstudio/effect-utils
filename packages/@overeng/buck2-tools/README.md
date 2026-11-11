@@ -362,9 +362,17 @@ Census completion records use `event: "completed"`, `stage`, and monotonic
 sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked
 bytes), sidecar staging, CAS accounting, linked-inode merge (entries and distinct
 entries), sidecar installation, and fenced admission. Enumeration time excludes
-the separately measured reads, walks, and staging; records are per census or
-admission attempt, never per generation. Installation and admission durations
-include waiting for the host ledger fence.
+the separately measured reads, walks, and staging. Per-root `root-enumeration`
+records report `sidecarHits`, `sidecarMisses`, `footprintWalks`, `footprintMs`, and
+the five slowest roots; `footprint-start` identifies the entry about to be walked.
+Installation and admission durations include waiting for the host ledger fence.
+Admission enumeration has a cooperative 60 s budget, one fifth of the 300 s
+publication deadline, checked between directory reads and bounded stat batches.
+An in-flight filesystem request must still return. Unfinished roots are reported
+as `unaccounted`, and all their entries are excluded from eviction proofs.
+On exhaustion, admission records the reservation without eviction or CAS collection,
+even above budget, and emits `census-incomplete`; reservations and pins remain protected.
+Explicit recount remains unbounded so it can finish warming sidecars.
 The structured `over-budget` event and `editor-view.host-budget` span record
 rejected admission with nonzero exit status, alongside the protected-share
 early warning at 80%. Budget, publication, phase, and
