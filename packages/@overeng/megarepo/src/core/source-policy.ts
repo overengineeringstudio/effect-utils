@@ -39,6 +39,7 @@ export type SourcePolicyViolation =
       readonly upstreamMember: string
       readonly actual: string
       readonly expected: string
+      readonly unsupportedKeys?: ReadonlyArray<string>
     }
   | {
       readonly _tag: 'IncompleteGitHubLockMetadata'
@@ -148,9 +149,21 @@ const isShallowGithubSource = ({ url, commit }: { url: string; commit: string })
     params.get('rev') === commit &&
     params.get('shallow') === '1' &&
     [...params.keys()].every(
-      (key) => ['ref', 'rev', 'shallow'].includes(key) && params.getAll(key).length === 1,
+      (key) => ['ref', 'rev', 'shallow', 'dir'].includes(key) && params.getAll(key).length === 1,
     )
   )
+}
+
+const gitLockSourceKeys: Readonly<Record<string, true | undefined>> = {
+  type: true,
+  url: true,
+  ref: true,
+  rev: true,
+  shallow: true,
+  dir: true,
+  narHash: true,
+  lastModified: true,
+  revCount: true,
 }
 
 const isShallowGithubLockSource = ({
@@ -168,11 +181,10 @@ const isShallowGithubLockSource = ({
   /^https:\/\/github\.com\/[^/?#]+\/[^/?#]+$/.test(section['url']) &&
   section['shallow'] === true &&
   (section['ref'] === undefined || typeof section['ref'] === 'string') &&
+  (section['dir'] === undefined || typeof section['dir'] === 'string') &&
   (locked === false && section['rev'] === undefined ? true : section['rev'] === commit) &&
   /^[0-9a-f]{40}$/i.test(commit) &&
-  Object.keys(section).every((key) =>
-    ['type', 'url', 'ref', 'rev', 'shallow', 'narHash', 'lastModified', 'revCount'].includes(key),
-  )
+  Object.keys(section).every((key) => gitLockSourceKeys[key] === true)
 
 const sameGithubRepo = ({
   left,
@@ -188,11 +200,17 @@ const sameGithubRepo = ({
 const acceptedFlakeSources = ({
   repo,
   commit,
+  params,
 }: {
   repo: { owner: string; repo: string }
   commit: string
-}): string =>
-  `github:${repo.owner}/${repo.repo} or git+https://github.com/${repo.owner}/${repo.repo}?[ref=<ref>&]rev=${commit}&shallow=1`
+  params?: ReadonlyMap<string, string> | undefined
+}): string => {
+  const dir = params?.get('dir')
+  const githubDir = dir === undefined ? '' : `?dir=${dir}`
+  const gitDir = dir === undefined ? '' : `dir=${dir}&`
+  return `github:${repo.owner}/${repo.repo}${githubDir} or git+https://github.com/${repo.owner}/${repo.repo}?[ref=<ref>&]${gitDir}rev=${commit}&shallow=1`
+}
 
 const checkConfigMemberSources = ({
   config,
@@ -266,7 +284,7 @@ const checkSourceInputs = ({
       actual: input.url,
       expected:
         input.url.startsWith('git+https:') === true
-          ? acceptedFlakeSources({ repo, commit: member.commit })
+          ? acceptedFlakeSources({ repo, commit: member.commit, params: parsed?.params })
           : canonicalFlakeSource({
               owner: parsed?.owner ?? repo.owner,
               repo: parsed?.repo ?? repo.repo,
@@ -411,6 +429,13 @@ const checkLockFileInputs = ({
         ? validGitSource === false
         : lockedRepo !== undefined && lockedRepo.type !== 'github') === true
     ) {
+      const sourceUrl = original?.['url'] ?? locked['url']
+      const unsupportedKeys = Object.entries({ original, locked }).flatMap(
+        ([sectionName, section]) =>
+          Object.keys(section?.['type'] === 'git' ? section : {})
+            .filter((key) => gitLockSourceKeys[key] !== true)
+            .map((key) => `${sectionName}.${key}`),
+      )
       violations.push({
         _tag: 'NonCanonicalNixInputSource',
         file,
@@ -419,14 +444,21 @@ const checkLockFileInputs = ({
         upstreamMember: upstream.memberName,
         actual: JSON.stringify({ original, locked }),
         expected:
-          gitSource === true
-            ? acceptedFlakeSources({ repo: upstream, commit })
+          gitSource === true &&
+          typeof sourceUrl === 'string' &&
+          sourceUrl.startsWith('https://github.com/') === true
+            ? acceptedFlakeSources({
+                repo: upstream,
+                commit,
+                params: originalRepo?.params ?? lockedRepo?.params,
+              })
             : canonicalFlakeSource({
                 owner: upstream.owner,
                 repo: upstream.repo,
                 ref: originalRepo?.ref ?? lockedRepo?.ref,
                 params: originalRepo?.params ?? lockedRepo?.params,
               }),
+        ...(gitSource === true && unsupportedKeys.length > 0 ? { unsupportedKeys } : {}),
       })
       continue
     }
@@ -538,7 +570,7 @@ export const formatSourcePolicyViolation = (violation: SourcePolicyViolation): s
     case 'NonCanonicalGitHubMemberSource':
       return `${violation.path}: member ${violation.memberName} uses ${violation.actual}; expected ${violation.expected}`
     case 'NonCanonicalNixInputSource':
-      return `${violation.path}: input ${violation.inputName} -> ${violation.upstreamMember} uses ${violation.actual}; expected ${violation.expected}`
+      return `${violation.path}: input ${violation.inputName} -> ${violation.upstreamMember} uses ${violation.actual}; expected ${violation.expected}${violation.unsupportedKeys === undefined ? '' : `; unsupported lock keys: ${violation.unsupportedKeys.join(', ')}`}`
     case 'IncompleteGitHubLockMetadata':
       return `${violation.path}: input ${violation.inputName} -> ${violation.upstreamMember} is missing GitHub lock metadata: ${violation.missingFields.join(', ')}`
   }
