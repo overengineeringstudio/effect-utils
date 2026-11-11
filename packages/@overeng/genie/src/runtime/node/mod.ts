@@ -11,6 +11,8 @@
 
 export * from '../mod.ts'
 
+export * from '../../build/ci-measurements/schema.ts'
+
 export { nodeGenieIO } from './io.ts'
 
 export {
