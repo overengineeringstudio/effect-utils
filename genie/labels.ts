@@ -5,14 +5,13 @@
  * relevant axes (`commonLabels`, `andonLabels`) and add their own repo-local
  * `area:*`/`system:*` labels (see `deriveSystemLabels` in `./system-labels.ts`).
  *
- * The merge-queue `mq:*` axis is retired (see `mqDeprecated` below); Hypermerge's
- * `hy:*` labels live in dotfiles' hypermerge flake (only enrolled repo). The
- * `devenv tasks run gh:apply-labels` task is the canonical writer;
+ * The merge-queue `mq:*` axis is retired (see `mqDeprecated` below).
+ * The `devenv tasks run gh:apply-labels` task is the canonical writer;
  * `devenv tasks run gh:check-labels` reports drift without applying.
  *
  * Every description includes a trailing `· Set: <who>` clause naming the
- * party responsible for applying the label (manual, Hypermerge daemon,
- * janitor-cli, andon CLI, or AI agent).
+ * party responsible for applying the label (manual, janitor-cli, andon CLI,
+ * or AI agent).
  */
 
 import type {
@@ -222,12 +221,9 @@ const sharedAreaLabels: readonly LabelDef[] = [
 
 // ============================================================================
 // mq:* — RETIRED merge-queue labels (cleanup only)
-//   The merge-queue runtime that owned these (`flakes/merge-queue/crates/mq-core`)
-//   is deleted; its successor Hypermerge uses `hy:req/*` + `hy:state/*` (defined in
-//   dotfiles' hypermerge flake) and deprecates every `mq:*`. No runtime acts on
-//   `mq:*` anymore, so the catalog no longer *provisions* them — it only exports
-//   their names as `mqDeprecated` so each repo can DELETE the vestigial live labels
-//   by composing them into its `deprecated` list. Do not re-add `mqLabels`.
+//   No runtime acts on `mq:*` anymore, so the catalog no longer provisions them.
+//   It only exports their names as `mqDeprecated` so each repo can delete the
+//   vestigial live labels by composing them into its `deprecated` list.
 // ============================================================================
 
 const mqPriorityLevels = [0, 1, 10, 20, 30, 100] as const
@@ -246,12 +242,7 @@ export const mqDeprecated: readonly string[] = [
   ...mqPriorityLevels.map((n) => `mq:priority-${n}`),
 ]
 
-/**
- * @deprecated The `mq:*` axis is retired — no labels are provisioned anymore. This is
- * kept as an empty array purely so existing `...mqLabels` spreads / `mqLabels.map(...)`
- * in consumer repos keep evaluating (non-breaking) until they migrate to `mqDeprecated`.
- * Remove once no consumer references it.
- */
+/** @deprecated The merge-queue label axis is retired; use `mqDeprecated` for cleanup. */
 export const mqLabels: readonly LabelDef[] = []
 
 // ============================================================================
