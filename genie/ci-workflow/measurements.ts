@@ -1,7 +1,6 @@
 import {
   ciMeasurementSchemaVersion,
   ciMeasurementCommentStateTag,
-  renderCiMeasurementValidators,
   type CiMeasurementGatePolicy as MeasurementGatePolicy,
 } from '../../packages/@overeng/genie/src/build/ci-measurements/schema.ts'
 export type {
@@ -24,9 +23,22 @@ import {
   dollar,
   githubTokenEnv,
   linuxX64Runner,
+  preparedCiRuntimeScriptsDir,
   shellSingleQuote,
   withCiSourceRoot,
 } from './shared.ts'
+import { ciWorkflowMeasurementValidatorsPath } from './support-files.ts'
+
+// Use the prepared copy when source checkout changes during baseline collection.
+const ciMeasurementValidatorImports = `
+import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { resolve } from 'node:path'
+const preparedValidators = '${preparedCiRuntimeScriptsDir}/ci-measurement-validators.cjs'
+const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
+  createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
+    ? preparedValidators : '${ciWorkflowMeasurementValidatorsPath}'))
+`
 
 export type CiMeasurementDescriptor = {
   readonly id: string
@@ -1220,7 +1232,7 @@ measurement_validator_dir="$(mktemp -d)"
 measurement_validator="$measurement_validator_dir/validate.mjs"
 cat >"$measurement_validator" <<'NODE'
 import { readFileSync } from 'node:fs'
-${renderCiMeasurementValidators()}
+${ciMeasurementValidatorImports}
 for (const path of process.argv.slice(2)) {
   try {
     if (!isCiMeasurementArtifact(JSON.parse(readFileSync(path, 'utf8')))) throw new Error('schema mismatch')
@@ -2048,7 +2060,7 @@ measurement_validator_dir="$(mktemp -d)"
 measurement_validator="$measurement_validator_dir/validate.mjs"
 cat >"$measurement_validator" <<'NODE'
 import { readFileSync } from 'node:fs'
-${renderCiMeasurementValidators()}
+${ciMeasurementValidatorImports}
 try {
   const validate = process.argv[3] === 'comparison' ? isCiMeasurementComparison : isCiMeasurementArtifact
   if (!validate(JSON.parse(readFileSync(process.argv[2], 'utf8')))) throw new Error('schema mismatch')
@@ -2666,7 +2678,7 @@ const statePrefix = '<!-- ci-measurement-comment:state\n'
 const stateSuffix = '\n-->'
 const stateTag = '${ciMeasurementCommentStateTag}'
 const schemaVersion = ${ciMeasurementSchemaVersion}
-${renderCiMeasurementValidators()}
+${ciMeasurementValidatorImports}
 
 const comparison = JSON.parse(readFileSync(comparisonPath, 'utf8'))
 if (!isCiMeasurementComparison(comparison)) throw new Error('Invalid CI measurement comparison')

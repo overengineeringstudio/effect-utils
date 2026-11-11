@@ -28,9 +28,10 @@ emit_compare_script() {
   cat >"$emitter" <<TS
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { runInNewContext } from 'node:vm'
+import { createRequire } from 'node:module'
 import { compareCiMeasurementsStep, sourceShapeMeasurementSteps } from '$ROOT/genie/ci-workflow/measurements.ts'
-import { decodeCiMeasurementArtifact, renderCiMeasurementValidators } from '$ROOT/packages/@overeng/genie/src/build/ci-measurements/schema.ts'
+import { decodeCiMeasurementArtifact } from '$ROOT/packages/@overeng/genie/src/build/ci-measurements/schema.ts'
+const { isCiMeasurementArtifact } = createRequire(import.meta.url)('$ROOT/genie/ci-scripts/ci-measurement-validators.cjs')
 
 // Execute the real source producer's embedded Node program, without realising its Nix tool closure.
 const scopes = [{ id: 'producer-contract', label: 'Producer contract', includePaths: ['genie/ci-workflow/measurements.ts'] }]
@@ -53,10 +54,7 @@ assert.equal(produced.producer.measurementProtocol, 'source-shape-v1')
 assert.equal(produced.observations.length, 2)
 assert.ok(produced.observations.find((row) => row.name === 'source.files')?.value > 0)
 assert.deepEqual(decodeCiMeasurementArtifact(produced), produced)
-assert.equal(runInNewContext(
-  renderCiMeasurementValidators() + '\nisCiMeasurementArtifact(input)',
-  { input: produced },
-), true, 'generated predicate must accept the real producer output')
+assert.equal(isCiMeasurementArtifact(produced), true, 'generated CI helper must accept the real producer output')
 
 process.stdout.write(compareCiMeasurementsStep({
   currentDir: '$tmp_dir/current',

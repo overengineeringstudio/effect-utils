@@ -76,8 +76,10 @@ It preserves UTF-16 length bounds and regular-expression flags, and rejects
 unsupported nodes or checks at generation time rather than weakening validation.
 
 Every producer emits numeric `schemaVersion: 1`, including the timing summary.
-Workflow generation compiles the authorities to dependency-free validators for
-plain Node consumers. Current artifact or comparison decode failures fail the
+The authorities compile once into the generated
+`genie/ci-scripts/ci-measurement-validators.cjs` support file for plain Node consumers.
+Workflow steps load the prepared CI helper copy rather than embedding validators
+in workflow YAML. Current artifact or comparison decode failures fail the
 measurement step. Invalid or incompatible downloaded baselines are rejected so
 another successful producer run can rebuild them. Invalid comment-history
 caches start fresh; the artifacts, not the comment cache, remain authoritative.
