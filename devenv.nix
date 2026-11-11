@@ -852,14 +852,6 @@ let
     };
 in
 {
-  # Only this repository's shell/tasks receive the temporary Bun runtime fix.
-  # repoFlake/flakePkgs and all published package closures remain independent.
-  overlays = [
-    (_final: previous: {
-      bun = import ./nix/devenv-bun.nix { pkgs = previous; };
-    })
-  ];
-
   # Shared source tasks lease before resolving their package binary.
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
