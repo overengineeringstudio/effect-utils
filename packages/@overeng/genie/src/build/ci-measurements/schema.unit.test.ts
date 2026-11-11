@@ -66,6 +66,11 @@ const comparison = {
 } satisfies typeof CiMeasurementComparison.Type
 
 describe('CI measurement record authorities', () => {
+  it('renders all validators including the tagged comment-state authority', () => {
+    expect(() => renderCiMeasurementValidators()).not.toThrow()
+    expect(generatedIs('isCiMeasurementCommentState', state)).toBe(true)
+  })
+
   it('publishes three independently released record fragments', () => {
     expect(ciMeasurementAuthority.fragments.map(({ id }) => id)).toEqual([
       'ci-measurement-artifact/v1',
