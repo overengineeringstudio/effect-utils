@@ -61,6 +61,16 @@ how to migrate to a credential helper or SSH. Remove embedded credentials from
 existing configuration or lock files before running commands; accepted source identities are
 never rewritten. SSH URLs (including scp-style `git@host:path`) are unchanged.
 
+`mr check` accepts GitHub member Nix inputs using either `github:OWNER/REPO`
+or `git+https://github.com/OWNER/REPO?rev=<40-character-sha>&shallow=1`.
+The latter avoids GitHub archive fetching; optional `ref` and `dir` query parameters may
+appear in any order. Source and lock suggestions preserve `dir`. Git transport must match the member repository
+(case-insensitively) and exact locked member commit. Both Nix lock sections must
+use shallow HTTPS Git sources, with complete locked fetch metadata. Other Git
+hosts, transports, duplicate or unknown URL parameters are not accepted. Rejected
+lock attributes are reported by section and key (for example, `original.submodules`).
+Lock synchronization compares repository identity case-insensitively as well.
+
 ### Standalone Nix lock synchronization
 
 Check or update standalone flake locks from an already resolved root input, or
@@ -237,11 +247,14 @@ older than `idleRetentionMs`, Git-ignored with no tracked file, and canonically 
 worktree. Any unknown keeps. When nothing idle remains, the class reports
 `over-budget-no-idle-candidate` rather than evicting live work.
 
-JSON output is the `megarepo.build-output-budget-plan.v2` document: `planSha256`, the candidate
+JSON output is the `megarepo.build-output-budget-plan.v3` document: `planSha256`, the candidate
 `results`, and `classes` keyed by class name with `totalBytes`, `budgetBytes`,
 `idleCandidateBytes`, `evictedBytes`, `projectedBytes`, `keptByReason`, `scanStatus`, and `status`
 for exporting gauges. Application holds the owner-worktree lock and deletion lease, recaptures
-activity on the admitted epoch, replans completely, requires the same digest, and re-checks every
+native agent/actual/retained-PTY evidence alongside process activity on every check. Unknown or
+incomplete native capture keeps all candidates. The digest binds native reader version,
+coverage and completeness, not transient capture IDs or timestamps. Application recaptures
+activity on the admitted process epoch, replans completely, requires the same digest, and re-checks every
 idle predicate on the one candidate before deleting it.
 Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspacePath`;
 `symbolic` refs retain the full Git ref name. The `repo-build-output` schema instead carries
@@ -476,6 +489,15 @@ Activation needs no protocol code of its own; wrap it:
 ```bash
 mr store lease --owner-path /path/to/store/worktree -- <activation command>
 ```
+
+On Linux, descendants of the activation lease holder can create the same owner worktree
+without reacquiring its exclusive owner lease. Admission requires the same canonical
+store, owner and repository container, and an ancestor PID plus `/proc` process start
+time matching the lease record. Nested scopes never change or release the outer lease;
+they retain shared container admission, and exclusive container requests fail with
+`GitWriterLockError` rather than upgrading. No environment variable or token grants
+reentrancy. Missing, unreadable or mismatched ancestry evidence (including platforms
+without a process start-time source) falls back to ordinary exclusive acquisition.
 
 A lease is reclaimed only when its record is decodable, names this host, and names a pid that is
 provably gone. A foreign host, a live pid, or an unreadable record keeps the lease and refuses the

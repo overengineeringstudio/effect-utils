@@ -10,6 +10,7 @@ def repo_key($node):
       | sub("^git\\+ssh://git@github.com/"; "")
       | sub("^ssh://git@github.com/"; "")
       | sub("^git@github.com:"; "")
+      | sub("^git\\+https://github.com/"; "")
       | sub("^https://github.com/"; "")
       | sub("\\.git$"; "")
     end
@@ -18,13 +19,13 @@ def repo_key($node):
   end;
 
 [$lf[0].nodes | to_entries[] |
-  (repo_key(.value)) as $key |
+  (repo_key(.value) | ascii_downcase) as $key |
   select($key != null and $key != "") |
   { key: $key, rev: .value.locked.rev, name: .key }
 ] as $lock_inputs |
 [$ml[0].members | to_entries[] |
   {
-    key: (.value.url | split("/") | .[-2:] | join("/")),
+    key: (.value.url | split("/") | .[-2:] | join("/") | ascii_downcase),
     rev: .value.commit,
     name: .key
   }

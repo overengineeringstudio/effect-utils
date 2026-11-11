@@ -280,7 +280,7 @@ Real beta.84 Plan/Deploy engine tests persist registration attributes, then veri
 
 The `alchemy-github/live` CI check runs only on pushes to `main` and `merge_group`, never on pull requests. It uses environment `alchemy-github-live` and fails if required configuration is missing; missing credentials are not a successful skip. Provision the sandbox App and environment before enabling/merging the workflow.
 
-The lane inherits the shared per-step Nix realisation timeouts while remaining outside the pipeline telemetry and cache-evidence artifact adapters.
+The lane inherits the shared per-step Nix realisation timeouts while remaining outside the pipeline telemetry and cache-evidence artifact adapters. Its self-hosted runner uses host-managed Nix binary caches and sandbox policy instead of running `cachix use` or setting restricted sandbox options as the untrusted runner user. It also omits the Namespace container privilege admission probe; Namespace jobs retain their Cachix setup, sandbox policy, and fail-closed probe.
 
 Configure these environment values without checking their contents into source:
 

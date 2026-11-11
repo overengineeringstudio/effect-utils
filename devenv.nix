@@ -1336,6 +1336,7 @@ in
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy-step-identity.unit.test.ts ./genie/ci-workflow/binary-cache-composition.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/system-labels.unit.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/genie-actionlint.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/check-policy.integration.test.ts
@@ -1346,6 +1347,7 @@ in
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
+      "genie/system-labels*.ts"
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
       "genie/ci-scripts/buck2-cache-*.ts"

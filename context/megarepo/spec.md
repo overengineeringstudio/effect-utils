@@ -318,9 +318,14 @@ validated through their nearest existing physical ancestor, so proven orphan
 registrations can still be repaired and a retry returns `not-found`.
 
 Editor-view teardown is a prerequisite, not an implicit side effect. Close
-editors/builds and run `devenv tasks run worktree:teardown --mode single` inside
-the retired worktree, leave it, then run `mr store worktree rm <path>`. Unreleased
-editor roots are detected through the publisher's shared lifecycle markers and
+editors/builds and run the installed `worktree-teardown <path>` from outside
+the retired worktree, then run `mr store worktree rm <path>`. The effect-utils
+flake exports this command independently of the retiring checkout's shell.
+Editor release requires explicit `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`;
+otherwise any owned editor root, including lease-only state, refuses with exit 3
+before mutation. Only an editor-free checkout reports release skipped.
+Opted-in release disables Nix builds.
+Unreleased editor roots are detected through the publisher's shared lifecycle markers and
 produce a structured refusal with this guidance. `mr` never invokes devenv,
 changes materialization permissions, or follows symlinks to remove external
 trees. In particular, read-only editor snapshot files may be CAS hardlinks:

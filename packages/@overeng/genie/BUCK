@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:5c8530542793e08a8ac7baed8bb81dffc2c2fdf317b46a2a42e9b589b98c9b68
+# Semantic fingerprint: sha256:3f93ffcc3da7b2511d106bd9ce28428c145a67aef9d47335fd8cb4a4a6fe195d
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -34,6 +34,9 @@ export_materialization_inputs([
     "src/build/GenieOutput/stories/Success.stories.tsx",
     "src/build/GenieOutput/stories/_fixtures.ts",
     "src/build/app.ts",
+    "src/build/ci-measurements/constants.ts",
+    "src/build/ci-measurements/schema.ts",
+    "src/build/ci-measurements/schema.unit.test.ts",
     "src/build/defer-validation.unit.test.ts",
     "src/build/github-repo-settings/cli.ts",
     "src/build/github-repo-settings/reconcile.ts",
@@ -112,6 +115,8 @@ export_materialization_inputs([
     "src/runtime/github-workflow/policy.unit.test.ts",
     "src/runtime/json-artifact/json-artifact.unit.test.ts",
     "src/runtime/json-artifact/mod.ts",
+    "src/runtime/json-schema-validation/mod.ts",
+    "src/runtime/json-schema-validation/mod.unit.test.ts",
     "src/runtime/megarepo-config/mod.ts",
     "src/runtime/mod.ts",
     "src/runtime/node/bootstrap-closure-check-cli.ts",
@@ -206,6 +211,9 @@ package_view(
         "src/build/GenieOutput/stories/Success.stories.tsx": "src/build/GenieOutput/stories/Success.stories.tsx",
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
+        "src/build/ci-measurements/constants.ts": "src/build/ci-measurements/constants.ts",
+        "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
+        "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
         "src/build/github-repo-settings/cli.ts": "src/build/github-repo-settings/cli.ts",
         "src/build/github-repo-settings/reconcile.ts": "src/build/github-repo-settings/reconcile.ts",
@@ -284,6 +292,8 @@ package_view(
         "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
         "src/runtime/json-artifact/mod.ts": "src/runtime/json-artifact/mod.ts",
+        "src/runtime/json-schema-validation/mod.ts": "src/runtime/json-schema-validation/mod.ts",
+        "src/runtime/json-schema-validation/mod.unit.test.ts": "src/runtime/json-schema-validation/mod.unit.test.ts",
         "src/runtime/megarepo-config/mod.ts": "src/runtime/megarepo-config/mod.ts",
         "src/runtime/mod.ts": "src/runtime/mod.ts",
         "src/runtime/node/bootstrap-closure-check-cli.ts": "src/runtime/node/bootstrap-closure-check-cli.ts",
@@ -368,6 +378,9 @@ package_view(
         "src/build/GenieOutput/stories/Success.stories.tsx": "src/build/GenieOutput/stories/Success.stories.tsx",
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
+        "src/build/ci-measurements/constants.ts": "src/build/ci-measurements/constants.ts",
+        "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
+        "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
         "src/build/github-repo-settings/cli.ts": "src/build/github-repo-settings/cli.ts",
         "src/build/github-repo-settings/reconcile.ts": "src/build/github-repo-settings/reconcile.ts",
@@ -446,6 +459,8 @@ package_view(
         "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
         "src/runtime/json-artifact/mod.ts": "src/runtime/json-artifact/mod.ts",
+        "src/runtime/json-schema-validation/mod.ts": "src/runtime/json-schema-validation/mod.ts",
+        "src/runtime/json-schema-validation/mod.unit.test.ts": "src/runtime/json-schema-validation/mod.unit.test.ts",
         "src/runtime/megarepo-config/mod.ts": "src/runtime/megarepo-config/mod.ts",
         "src/runtime/mod.ts": "src/runtime/mod.ts",
         "src/runtime/node/bootstrap-closure-check-cli.ts": "src/runtime/node/bootstrap-closure-check-cli.ts",
@@ -527,6 +542,9 @@ package_view(
         "src/build/GenieOutput/stories/Success.stories.tsx": "src/build/GenieOutput/stories/Success.stories.tsx",
         "src/build/GenieOutput/stories/_fixtures.ts": "src/build/GenieOutput/stories/_fixtures.ts",
         "src/build/app.ts": "src/build/app.ts",
+        "src/build/ci-measurements/constants.ts": "src/build/ci-measurements/constants.ts",
+        "src/build/ci-measurements/schema.ts": "src/build/ci-measurements/schema.ts",
+        "src/build/ci-measurements/schema.unit.test.ts": "src/build/ci-measurements/schema.unit.test.ts",
         "src/build/defer-validation.unit.test.ts": "src/build/defer-validation.unit.test.ts",
         "src/build/github-repo-settings/cli.ts": "src/build/github-repo-settings/cli.ts",
         "src/build/github-repo-settings/reconcile.ts": "src/build/github-repo-settings/reconcile.ts",
@@ -605,6 +623,8 @@ package_view(
         "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
         "src/runtime/json-artifact/mod.ts": "src/runtime/json-artifact/mod.ts",
+        "src/runtime/json-schema-validation/mod.ts": "src/runtime/json-schema-validation/mod.ts",
+        "src/runtime/json-schema-validation/mod.unit.test.ts": "src/runtime/json-schema-validation/mod.unit.test.ts",
         "src/runtime/megarepo-config/mod.ts": "src/runtime/megarepo-config/mod.ts",
         "src/runtime/mod.ts": "src/runtime/mod.ts",
         "src/runtime/node/bootstrap-closure-check-cli.ts": "src/runtime/node/bootstrap-closure-check-cli.ts",

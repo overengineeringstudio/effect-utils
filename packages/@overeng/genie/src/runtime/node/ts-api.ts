@@ -188,6 +188,15 @@ const apiClient = (api: API | ClosableTsApi) => (api as unknown as ClosableTsApi
 const childIsAlive = (child: JoinableChildProcess) =>
   child.exitCode === null && child.signalCode == null
 
+const isTransportError = (error: unknown): boolean =>
+  error instanceof Error &&
+  (('code' in error &&
+    (error.code === 'EPIPE' ||
+      error.code === 'ECONNRESET' ||
+      error.code === 'ERR_STREAM_DESTROYED' ||
+      error.code === 'ERR_STREAM_PREMATURE_CLOSE' ||
+      error.code === 'ERR_STREAM_WRITE_AFTER_END')) ||
+    /(?:stream|connection) (?:is |got )?(?:closed|disposed|destroyed)/i.test(error.message))
 const withDeadline = async <A>({
   stage,
   timeoutMs,
@@ -397,6 +406,22 @@ const apiRequest = async <A>({
       },
     })
   } catch (error) {
+    // A broken pipe can reject before Node dispatches the child's exit event. Join that event
+    // before classifying the failure, without killing a server that merely lost its transport.
+    // A live server retains the original transport error after this bounded grace period.
+    if (child !== undefined && childIsAlive(child) === true && isTransportError(error) === true) {
+      try {
+        await joinChild({
+          child,
+          timeoutMs: Math.min(timeoutMs, terminationJoinMs),
+          initiate: () => {},
+        })
+      } catch (joinError) {
+        if (!(joinError instanceof TsApiTimeoutError)) {
+          throw withCleanupCause({ error, cleanupError: joinError })
+        }
+      }
+    }
     const deathError = monitor?.error({ stage, child })
     if (deathError !== undefined) throw deathError
     if (error instanceof TsApiTimeoutError) {

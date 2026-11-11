@@ -127,17 +127,32 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
   wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
-- `worktree-teardown.nix` - Explicit offline `worktree:teardown` before worktree
-  removal; inherited by setup, check, clean, and worktree-guard imports. Stops
-  every root-owned Buck isolation, releases reachable Watchman and root-keyed
-  admission state, calls `buck2:editor:release` with final editor-root retirement
-  enabled when defined, and makes real
+- `worktree-teardown.nix` - Thin `worktree:teardown` wrapper, inherited by setup,
+  check, clean, and worktree-guard imports. For removal, use the installed
+  `worktree-teardown <worktree-path>` command from the effect-utils flake's
+  `worktree-teardown` package, not the retiring checkout's devenv shell.
+  It accepts one absolute/relative path from any cwd, executes no checkout code
+  by default. Exit 0 means completed; 2 is invalid usage; 3 means an owned
+  `.editor-view` or lease-only root is present without release opt-in: rerun with
+  `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`. Exit 3 occurs before any mutation.
+  Other nonzero statuses are failures, including propagated command statuses.
+  It stops every root-owned Buck isolation and releases reachable Watchman and
+  root-keyed admission state. Editor-free checkouts report release skipped unless
+  `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` explicitly permits the checkout's task;
+  Nix builds/substitutions are disabled even then. The warm-shell devenv wrapper
+  opts in when `buck2:editor:release` is defined, with final retirement enabled.
+  The command makes real
   directories owner-writable using NUL-delimited find scans and a sorted streaming
   ownership-prefix filter before batched chmod. It never follows symlinks or
   chmods nested Git/megarepo ownership boundaries. Both scans prune unreadable
   directories; owned unreadable roots still receive owner-write permission.
   Never auto-scheduled; indirect Nix gcroots are left to become dangling and be
   pruned by Nix GC.
+  Bypassing this refusal with plain `git worktree remove` can unlink
+  checkout-local snapshots while leaving host-shared content-store blobs. These are
+  not Nix GC objects: `collect-content --content-store <store>` or subsequent
+  publisher/release maintenance collects validated blobs once their link count
+  is one. See [editor-root removal](../../../packages/@overeng/buck2-tools/README.md#retired-worktree-removal).
   Its live shell fixture also runs through `devenv-modules:test`; the repository's
   aggregate runner supplies pinned fingerprint, copy, move, and JSON tools rather
   than relying on a developer's ambient tool-input environment. The fixture uses

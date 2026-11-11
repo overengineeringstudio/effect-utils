@@ -26,7 +26,42 @@ run_bun_to_file() {
 emit_compare_script() {
   local emitter="$tmp_dir/emit-compare.ts"
   cat >"$emitter" <<TS
-import { compareCiMeasurementsStep } from '$ROOT/genie/ci-workflow/measurements.ts'
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { writeFileSync } from 'node:fs'
+import { compareCiMeasurementsStep, downloadPreviousGitHubArtifactStep, sourceShapeMeasurementSteps } from '$ROOT/genie/ci-workflow/measurements.ts'
+import { decodeCiMeasurementArtifact } from '$ROOT/packages/@overeng/genie/src/build/ci-measurements/schema.ts'
+const { isCiMeasurementArtifact } = createRequire(import.meta.url)('$ROOT/genie/ci-scripts/ci-measurement-validators.cjs')
+
+// Execute the real source producer's embedded Node program, without realising its Nix tool closure.
+const scopes = [{ id: 'producer-contract', label: 'Producer contract', includePaths: ['genie/ci-workflow/measurements.ts'] }]
+const producer = sourceShapeMeasurementSteps({ scopes })[1]
+const producerSource = producer.run.match(/<<'NODE'[^\n]*\n([\s\S]*?)\nNODE/)?.[1]
+assert.ok(producerSource, 'source-shape step must contain its executable producer')
+const produced = JSON.parse(execFileSync('node', ['-e', producerSource], {
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    SCOPES_JSON: JSON.stringify(scopes),
+    TARGET_ID: 'producer-contract',
+    TARGET_NAME: 'Producer contract',
+    TARGET_LABEL: 'Producer contract',
+    TARGET_GROUP: 'source shape',
+    TARGET_SYSTEM: 'test',
+  },
+}))
+assert.equal(produced.producer.measurementProtocol, 'source-shape-v1')
+assert.equal(produced.observations.length, 2)
+assert.ok(produced.observations.find((row) => row.name === 'source.files')?.value > 0)
+assert.deepEqual(decodeCiMeasurementArtifact(produced), produced)
+assert.equal(isCiMeasurementArtifact(produced), true, 'generated CI helper must accept the real producer output')
+writeFileSync('$tmp_dir/download.sh', downloadPreviousGitHubArtifactStep({
+  artifactName: 'measurements', outputDir: '$tmp_dir/download',
+}).run)
+writeFileSync('$tmp_dir/compare-with-comments.sh', compareCiMeasurementsStep({
+  prComment: { enabled: true },
+}).run)
 
 process.stdout.write(compareCiMeasurementsStep({
   currentDir: '$tmp_dir/current',
@@ -36,6 +71,24 @@ process.stdout.write(compareCiMeasurementsStep({
 }).run)
 TS
   run_bun_to_file "$tmp_dir/compare.sh" "$emitter"
+}
+
+test_baseline_helper_failure() {
+  local sandbox="$tmp_dir/helper-failure"
+  mkdir -p "$sandbox/genie/ci-scripts"
+  for helper_state in missing broken; do
+    if [ "$helper_state" = broken ]; then
+      printf 'module.exports = {};\n' >"$sandbox/genie/ci-scripts/ci-measurement-validators.cjs"
+    fi
+    if (cd "$sandbox" && BASELINE_OUTPUT_DIR="$tmp_dir/download" bash "$tmp_dir/download.sh") >"$tmp_dir/helper.log" 2>&1; then
+      echo "Expected baseline download to fail with $helper_state validator helper" >&2
+      exit 1
+    fi
+    if ! grep -Eq 'Cannot find module|Invalid CI measurement validator helper' "$tmp_dir/helper.log"; then
+      cat "$tmp_dir/helper.log" >&2
+      exit 1
+    fi
+  done
 }
 
 write_measurement() {
@@ -85,6 +138,7 @@ policy='{"enabled":true,"minBaselineSources":1,"minCurrentSamples":5,"warnRatio"
 paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":1,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 strict_paired_policy='{"enabled":true,"comparisonMode":"paired","minBaselineSources":20,"minCurrentSamples":5,"minPairedSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":0.5,"noiseFloor":0.1}'
 emit_compare_script
+test_baseline_helper_failure
 
 rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
 write_measurement "$tmp_dir/current/measurements.json" 12 legacy "$policy"
@@ -319,6 +373,83 @@ actual_gateable_count="$(jq -r '.readiness.gateableCount' "$tmp_dir/comparison.j
 actual_enabled_count="$(jq -r '.readiness.enabledCount' "$tmp_dir/comparison.json")"
 if [ "$actual_status" != "partial" ] || [ "$actual_row" != "pass" ] || [ "$actual_gate" != "low_baseline_count" ] || [ "$actual_enforceable" != "false" ] || [ "$actual_gateable_count" != "0" ] || [ "$actual_enabled_count" != "1" ]; then
   echo "expected low baseline count to be partial but not enforceable; got status=$actual_status row=$actual_row gate=$actual_gate enforceable=$actual_enforceable readiness=$actual_gateable_count/$actual_enabled_count" >&2
+  exit 1
+fi
+
+for invalid_version in '"1"' 2; do
+  rm -rf "$tmp_dir/current" "$tmp_dir/baseline"
+  write_measurement "$tmp_dir/current/measurements.json" 12 devenv-perf-warm-median-v2 "$policy"
+  write_measurement "$tmp_dir/baseline/run-1/measurements.json" 10 devenv-perf-warm-median-v2 "$policy"
+  jq --argjson version "$invalid_version" '.schemaVersion = $version' \
+    "$tmp_dir/baseline/run-1/measurements.json" >"$tmp_dir/invalid.json"
+  mv "$tmp_dir/invalid.json" "$tmp_dir/baseline/run-1/measurements.json"
+  run_compare
+  if [ "$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")" != "missing_baseline" ]; then
+    echo "expected incompatible baseline schema to require a rebuild" >&2
+    exit 1
+  fi
+done
+
+printf '{broken json\n' >"$tmp_dir/baseline/run-1/measurements.json"
+run_compare
+if [ "$(jq -r '.comparisons[] | .gateReason' "$tmp_dir/comparison.json")" != "missing_baseline" ]; then
+  echo "expected malformed baseline to require a rebuild" >&2
+  exit 1
+fi
+
+node --input-type=module - "$tmp_dir" <<'NODE'
+import assert from 'node:assert/strict'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+
+const dir = process.argv[2]
+const renderer = readFileSync(join(dir, 'compare-with-comments.sh'), 'utf8')
+  .match(/cat > "\$renderer_script" <<'EOF'\n([\s\S]*?)\nEOF/)?.[1]
+assert.ok(renderer, 'generated comparison script must include the real renderer')
+const script = join(dir, 'renderer.mjs')
+writeFileSync(script, renderer)
+const row = {
+  status: 'warn', target: 'shell', observation: 'duration', meaning: 'regressed',
+  dimensions: '', baseline: '10', current: '12', delta: '2', ratio: '1.2x', impact: '1x',
+}
+const history = {
+  _tag: 'ci-measurement-comment-state', schemaVersion: 1, title: 'CI Measurements',
+  runs: [{
+    commitSha: 'previous', shortSha: 'prev', generatedAt: '2026-10-12T00:00:00Z',
+    status: 'warn', mode: 'warn', runAttempt: '1', workflow: 'CI', job: 'measurement',
+    visibleRows: [row],
+  }],
+}
+for (const [cached, expectedRuns] of [
+  [history, 2],
+  [{ ...history, schemaVersion: '1' }, 1],
+  [{ ...history, schemaVersion: 2 }, 1],
+  [{ ...history, runs: [{}] }, 1],
+  [{ ...history, runs: [{ ...history.runs[0], visibleRows: [{}] }] }, 1],
+]) {
+  const comments = join(dir, 'comments.json')
+  const body = join(dir, 'comment.md')
+  const id = join(dir, 'comment-id.txt')
+  writeFileSync(comments, JSON.stringify([{
+    id: 123,
+    body: '<!-- ci-measurement-comment:managed:ci-measurements -->\n'
+      + '<!-- ci-measurement-comment:state\n' + JSON.stringify(cached) + '\n-->',
+  }]))
+  execFileSync(process.execPath, [script, join(dir, 'comparison.json'), comments, body, id], {
+    env: { ...process.env, CI_MEASUREMENT_PR_COMMENT_TITLE: 'CI Measurements', GITHUB_SHA: 'current' },
+  })
+  const encoded = readFileSync(body, 'utf8')
+    .match(/<!-- ci-measurement-comment:state\n([\s\S]*?)\n-->/)?.[1]
+  assert.ok(encoded)
+  assert.equal(JSON.parse(encoded).runs.length, expectedRuns)
+  assert.equal(readFileSync(id, 'utf8').trim(), '123', 'invalid cache must still update the scoped comment')
+}
+NODE
+
+printf '{broken json\n' >"$tmp_dir/current/measurements.json"
+if run_compare; then
+  echo "expected malformed current measurements to fail closed" >&2
   exit 1
 fi
 

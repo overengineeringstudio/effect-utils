@@ -16,6 +16,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import * as fsPromises from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -753,6 +754,150 @@ const expectCurrent = (fixture: Fixture, record: EditorViewRecord): void => {
 }
 
 describe('host budget census-only recount', () => {
+  const censusStages = (stderr: string) =>
+    stderr.split('\n').flatMap((line) => {
+      const prefix = '[editor-view-budget] '
+      return line.startsWith(prefix) === true ? [JSON.parse(line.slice(prefix.length))] : []
+    })
+
+  it.each(['unmanaged', '.store/unmanaged'])(
+    'caches a read-only %s tree and invalidates its changed identity',
+    async (name) => {
+      const host = makeHost()
+      try {
+        const fixture = host.fixture('unmanaged-sidecar', 203, 64)
+        await host.publish(fixture)
+        const dir = join(fixture.editorRoot, name)
+        mkdirSync(dir)
+        // Explicit read-only modes are safe here: these fixture files are not shared CAS inodes.
+        writeFileSync(join(dir, 'payload'), Buffer.alloc(64), { mode: 0o444 })
+        chmodSync(dir, 0o555)
+        const census = async () => {
+          const captured = await captureStderr(() => recountEditorViewBudget())
+          return censusStages(captured.stderr).find(
+            (stage) => stage.stage === 'generation-enumeration',
+          )
+        }
+        const cold = await census()
+        const entries = () =>
+          Object.values(readBudgetLedger(host).generations).filter(
+            (entry) =>
+              typeof entry === 'object' && entry !== null && 'name' in entry && entry.name === name,
+          )
+        expect(entries()).toHaveLength(1)
+        const original = entries()[0]!
+        const warm = await census()
+        expect(warm.footprintWalks).toBe(cold.footprintWalks - 1)
+        expect(warm.sidecarHits).toBe(cold.sidecarHits + 1)
+        expect(entries()).toEqual([original])
+
+        removeOwnedTree(dir)
+        mkdirSync(dir)
+        writeFileSync(join(dir, 'payload'), Buffer.alloc(16_384), { mode: 0o444 })
+        chmodSync(dir, 0o555)
+        const changed = await census()
+        expect(changed.footprintWalks).toBe(cold.footprintWalks)
+        expect(entries()).toHaveLength(1)
+        expect(entries()).not.toEqual([original])
+      } finally {
+        await host.cleanup()
+      }
+    },
+  )
+
+  it('warms registered roots with the recount CLI before bounded admission', async () => {
+    const host = makeHost()
+    const restore: (() => void)[] = []
+    try {
+      const fixtures = [
+        host.fixture('warmup-first', 204, 64),
+        host.fixture('warmup-second', 205, 64),
+      ]
+      for (const fixture of fixtures) await host.publish(fixture)
+      for (const fixture of fixtures) {
+        const dir = join(fixture.editorRoot, '.aaa-unmanaged')
+        mkdirSync(dir)
+        writeFileSync(join(dir, 'payload'), Buffer.alloc(64), { mode: 0o444 })
+        chmodSync(dir, 0o555)
+      }
+      let now = 0
+      const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
+      restore.push(() => clock.mockRestore())
+      // Model a cold unmanaged walk consuming the entire publication enumeration budget.
+      const readDirectory = fsPromises.readdir
+      const directoryRead = vi.spyOn(fsPromises, 'readdir').mockImplementation((...args) => {
+        if (String(args[0]).endsWith('/.aaa-unmanaged') === true) now += 60_000
+        return readDirectory(...args)
+      })
+      restore.push(() => directoryRead.mockRestore())
+      const lines: string[] = []
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        const line = String(chunk)
+        lines.push(line)
+        return true
+      })
+      restore.push(() => stderr.mockRestore())
+      const incoming = fixtures[0]!
+      const reserve = () =>
+        reserveEditorViewBudget({
+          contentStore: host.contentStore,
+          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+          heldEditorRoot: incoming.editorRoot,
+          discoverRoots: () => [],
+          tryLockRoot: () => {
+            throw new Error('warmup must not require eviction')
+          },
+          reservationBytes: 1,
+          budgetBytes: setupBudgetBytes,
+          enumerationBudgetMs: 60_000,
+        })
+      const cold = await reserve()
+      expect(censusStages(lines.join(''))).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stage: 'generation-enumeration', exhausted: 1 }),
+        ]),
+      )
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: cold.token,
+      })
+      const result = spawnSync(
+        bun,
+        [new URL('./editor-view.ts', import.meta.url).pathname, 'budget', 'recount'],
+        { encoding: 'utf8', env: process.env },
+      )
+      expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 })
+      expect(JSON.parse(result.stdout).roots).toBe(2)
+      expect(
+        Object.values(readBudgetLedger(host).generations).filter(
+          (entry) =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            'name' in entry &&
+            entry.name === '.aaa-unmanaged',
+        ),
+      ).toHaveLength(2)
+      lines.length = 0
+      const warm = await reserve()
+      const stages = censusStages(lines.join(''))
+      expect(stages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stage: 'generation-enumeration', exhausted: 0 }),
+        ]),
+      )
+      const roots = stages.filter((stage) => stage.stage === 'root-enumeration')
+      expect(roots).toHaveLength(2)
+      for (const root of roots) expect(root.incomplete).toBe(0)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: warm.token,
+      })
+    } finally {
+      for (const reset of restore) reset()
+      await host.cleanup()
+    }
+  })
+
   it.each([false, true])('refreshes released usage (directory retired: %s)', async (retired) => {
     const host = makeHost()
     try {
@@ -2057,6 +2202,79 @@ describe('budget admission defers complete reader proof until eviction needs it'
     childProcessMocks.spawnSync.mock.calls.filter(([command]) => command === '/usr/sbin/lsof')
       .length
 
+  it.each([0, 100])(
+    'admits with unfinished roots protected at a %i ms enumeration budget',
+    async (enumerationBudgetMs) => {
+      const host = makeHost()
+      const restore: (() => void)[] = []
+      try {
+        const victim = host.fixture('budget-victim', 192, 64)
+        const incoming = host.fixture('budget-incoming', 193, 64)
+        const record = await host.publish(victim)
+        await host.publish(incoming)
+        // Force an unmanaged walk before generation enumeration, after root metadata.
+        mkdirSync(join(victim.editorRoot, 'node_modules'))
+        let now = 0
+        const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
+        restore.push(() => clock.mockRestore())
+        const lines: string[] = []
+        const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+          const line = String(chunk)
+          lines.push(line)
+          if (line.includes('"stage":"footprint-start"') === true) now = enumerationBudgetMs
+          return true
+        })
+        restore.push(() => stderr.mockRestore())
+        const tryLockRoot = vi.fn(() => {
+          throw new Error('an unfinished root must never become an eviction candidate')
+        })
+        const reservation = await host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            tryLockRoot,
+            reservationBytes: 1,
+            budgetBytes: 1,
+            enumerationBudgetMs,
+          }),
+        )
+        expect(tryLockRoot).not.toHaveBeenCalled()
+        expectCurrent(victim, record)
+        expect(readBudgetLedger(host).reservations).toEqual(
+          expect.arrayContaining([expect.objectContaining({ token: reservation.token, bytes: 1 })]),
+        )
+        const events = lines.flatMap((line) => {
+          const prefix = '[editor-view-budget] '
+          return line.startsWith(prefix) === true
+            ? [JSON.parse(line.slice(prefix.length))]
+            : [JSON.parse(line)]
+        })
+        expect(events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              stage: 'generation-enumeration',
+              exhausted: 1,
+              generations: 0,
+            }),
+            expect.objectContaining({
+              event: 'editor-view.host-budget.census-incomplete',
+              unaccounted: expect.arrayContaining([victim.editorRoot, incoming.editorRoot]),
+            }),
+          ]),
+        )
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: reservation.token,
+        })
+      } finally {
+        for (const reset of restore) reset()
+        await host.cleanup()
+      }
+    },
+  )
+
   it('reports aggregate census substage durations and counts', async () => {
     const host = makeHost()
     try {
@@ -2112,12 +2330,27 @@ describe('budget admission defers complete reader proof until eviction needs it'
         expect(matching[0].durationMs).toBeGreaterThanOrEqual(0)
         for (const key of keys) expect(matching[0][key]).toBeGreaterThanOrEqual(0)
       }
-      expect(stages).toHaveLength(9)
+      expect(stages.filter((entry) => entry.stage === 'root-enumeration')).toHaveLength(2)
+      const footprintStarts = stages.filter((entry) => entry.stage === 'footprint-start')
+      expect(footprintStarts.length).toBeGreaterThan(0)
+      expect(footprintStarts.length).toBeLessThan(4)
+      for (const entry of stages.filter((entry) => entry.stage === 'root-enumeration')) {
+        for (const key of ['sidecarHits', 'sidecarMisses', 'footprintWalks', 'footprintMs'])
+          expect(entry[key]).toBeGreaterThanOrEqual(0)
+        expect(entry.slowestRoots.length).toBeGreaterThan(0)
+        expect(entry.slowestRoots.length).toBeLessThanOrEqual(5)
+      }
       const stageCounts = Object.fromEntries(stages.map((entry) => [entry.stage, entry]))
       expect(stageCounts['root-discovery']).toMatchObject({ roots: 2 })
       // Two generations, the held publication lock, and two persistent lease directories.
       expect(stageCounts['generation-enumeration']).toMatchObject({ generations: 5 })
-      expect(stageCounts['sidecar-reads']).toMatchObject({ hits: 1, misses: 1 })
+      expect(stageCounts['sidecar-reads']).toMatchObject({ hits: 1, misses: 4 })
+      expect(stageCounts['generation-enumeration']).toMatchObject({
+        sidecarHits: 1,
+        sidecarMisses: 4,
+        footprintWalks: 4,
+        exhausted: 0,
+      })
       expect(stageCounts['sidecar-reads'].bytes).toBeGreaterThan(0)
       expect(stageCounts['footprint-walks']).toMatchObject({ walks: 4 })
       expect(stageCounts['footprint-walks'].linkedBytes).toBeGreaterThan(0)

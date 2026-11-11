@@ -309,6 +309,15 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+          editor-view-budget-smoke =
+            pkgs.runCommand "editor-view-budget-smoke" { nativeBuildInputs = [ pkgs.jq ]; }
+              ''
+                env -i HOME="$TMPDIR" PATH=/nonexistent \
+                  EDITOR_VIEW_HOST_BUDGET_STATE="$TMPDIR/state" \
+                  ${self.packages.${system}.editor-view-budget}/bin/editor-view-budget recount > result.json
+                jq -e '.roots == 0 and .epochBefore == 0 and .epochAfter == 1' result.json
+                touch "$out"
+              '';
           buck2-launcher-independence = import ./nix/buck2-products/launcher-independence.nix {
             inherit pkgs buck2 pnpmArchives;
             capabilities = buck2Capabilities;
@@ -336,6 +345,8 @@ rec {
           // buckCompiledProducts
           // capabilityPackages
           // {
+            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs; };
+            editor-view-budget = import ./nix/editor-view-budget.nix { inherit pkgs; };
             editor-view-lease = pkgs.callPackage ./nix/editor-view-lease { };
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;

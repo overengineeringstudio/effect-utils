@@ -362,9 +362,40 @@ Census completion records use `event: "completed"`, `stage`, and monotonic
 sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked
 bytes), sidecar staging, CAS accounting, linked-inode merge (entries and distinct
 entries), sidecar installation, and fenced admission. Enumeration time excludes
-the separately measured reads, walks, and staging; records are per census or
-admission attempt, never per generation. Installation and admission durations
-include waiting for the host ledger fence.
+the separately measured reads, walks, and staging. Per-root `root-enumeration`
+records report `sidecarHits`, `sidecarMisses`, `footprintWalks`, `footprintMs`, and
+the five slowest roots; `footprint-start` identifies the entry about to be walked,
+at most once every five seconds per census.
+Installation and admission durations include waiting for the host ledger fence.
+Admission enumeration has a cooperative 60 s budget, one fifth of the 300 s
+publication deadline, checked between directory reads and bounded stat batches.
+An in-flight filesystem request must still return. Unfinished roots are reported
+as `unaccounted`, and all their entries are excluded from eviction proofs.
+Any unreadable path discovered during enumeration also discards the whole root's
+entries from accounting and eviction proofs, even when the budget has not expired.
+On exhaustion, admission records the reservation without eviction or CAS collection,
+even above budget, and emits `census-incomplete`; reservations and pins remain protected.
+Warm cold sidecars **outside publication** with the packaged recount entrypoint:
+
+```sh
+nix run github:overengineeringstudio/effect-utils#editor-view-budget -- recount
+```
+
+The `editor-view-budget` flake package provides `editor-view-budget recount` for
+scheduled execution without a checkout or development shell. It includes the
+pinned Bun runtime, native lease library, and source modules; no npm installation or compiler is needed.
+From a checkout, the equivalent source command remains
+`bun packages/@overeng/buck2-tools/src/editor-view.ts budget recount`.
+
+Run this explicitly after registering large roots, or periodically from your existing
+scheduler with the same `EDITOR_VIEW_HOST_BUDGET_STATE` as publishers. Recount is
+unbounded, performs no admission or eviction, and prints one JSON accounting result.
+It fills sidecars for immutable generations and read-only unmanaged trees, including
+legacy imports; writable unmanaged trees are still walked on each census. Sidecar
+hits retain the existing sealed-directory identity validation (inode, mode, mtime,
+ctime; generation records also validate inode, size, and mtime). Changed identities
+are remeasured. This lets later bounded publication censuses account for roots whose
+cold walks exceed 60 s without using partial measurements for eviction.
 The structured `over-budget` event and `editor-view.host-budget` span record
 rejected admission with nonzero exit status, alongside the protected-share
 early warning at 80%. Budget, publication, phase, and
@@ -742,16 +773,30 @@ making that publication fail/retry rather than retaining its staging inode forev
 
 ### Retired worktree removal
 
-After closing editors and builds using a retired worktree, run
-`devenv tasks run worktree:teardown --mode single` from that worktree. It stops
-every Buck daemon isolation for the absolute checkout root, removes only its
-isolation state, deletes its Watchman watch when the service is reachable, removes only
-its root-keyed admission cache entries, invokes `buck2:editor:release` with final
-editor-root retirement enabled, and makes
+After closing editors and builds using a retired worktree, run the installed
+`worktree-teardown <worktree-path>` from outside it (exported by the effect-utils
+flake's `worktree-teardown` package). It does not realize the target's shell or
+execute its code by default. It stops every Buck daemon isolation for the absolute
+checkout root, removes only its isolation state, deletes its Watchman watch when
+the service is reachable, and removes only its root-keyed admission cache entries.
+Without `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`, any owned `.editor-view`, including
+lease-only state, refuses with exit 3 before mutation and reports the opt-in retry.
+Only editor-free checkouts skip release successfully. Opt-in permits the checkout's
+`buck2:editor:release` task with final retirement enabled; Nix builds/substitutions
+remain disabled. The command makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
+
+Bypassing this refusal is not shared-store reclamation. If ordinary
+`git worktree remove` nevertheless succeeds, it unlinks checkout-local editor snapshots but
+leaves their host-shared content-store blobs behind. Nix GC does not collect
+these blobs. Explicit `collect-content --content-store <store>` or subsequent
+publisher/release content-store maintenance reclaims validated blobs only when
+their link count is one; other snapshots' hardlinks keep shared content alive.
+Release before removal remains preferable: it performs lifecycle cleanup under
+the publication and lease fences instead of relying on later collection.
 
 If teardown fails, fix its reported error and rerun it; do not fall back to
 `chmod -R` or `rm -rf` on the worktree. Snapshot files are hardlinks to the
