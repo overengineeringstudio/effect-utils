@@ -60,9 +60,10 @@
 let
   # Swiss runtime linknames break with Go 1.27: https://github.com/cockroachdb/swiss/issues/51
   # Remove once nixpkgs updates the collector's Swiss dependency for Go 1.27.
-  otelCollector = (pkgs.opentelemetry-collector-releases.override {
-    buildGoModule = pkgs.buildGo126Module;
-  }).otelcol-contrib;
+  otelCollector =
+    (pkgs.opentelemetry-collector-releases.override {
+      buildGoModule = pkgs.buildGo126Module;
+    }).otelcol-contrib;
 
   # Data directory for Tempo and Grafana state
   dataDir = "${config.devenv.root}/.devenv/otel";
