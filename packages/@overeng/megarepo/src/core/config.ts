@@ -149,6 +149,25 @@ export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('Generators
 }) {}
 
 // =============================================================================
+// Source Policy Configuration
+// =============================================================================
+
+/** A member-scoped exception permitting explicit GitHub HTTPS Git transport. */
+export const GitTransportAllowance = Schema.TaggedStruct('GitHubHttps', {
+  /** Config member name, as used in members and lockSync.exclude. */
+  member: Schema.NonEmptyString.check(Schema.isTrimmed()),
+  /** Human-readable justification for retaining Git transport. */
+  reason: Schema.NonEmptyString.check(Schema.isTrimmed()),
+}).annotate({ identifier: 'Megarepo.GitTransportAllowance' })
+export type GitTransportAllowance = typeof GitTransportAllowance.Type
+
+/** Narrow exceptions to source-policy checks; omitted means no allowances. */
+export const SourcePolicyConfig = Schema.Struct({
+  gitTransportAllowances: Schema.optional(Schema.Array(GitTransportAllowance)),
+}).annotate({ identifier: 'Megarepo.SourcePolicyConfig' })
+export type SourcePolicyConfig = typeof SourcePolicyConfig.Type
+
+// =============================================================================
 // Megarepo Configuration
 // =============================================================================
 
@@ -177,6 +196,9 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
    * Auto-detected by default: enabled if devenv.lock or flake.lock exists in megarepo root.
    */
   lockSync: Schema.optional(LockSyncConfig),
+
+  /** Member-scoped source-policy exceptions, each with an explicit justification. */
+  sourcePolicy: Schema.optional(SourcePolicyConfig),
 }) {}
 
 // =============================================================================

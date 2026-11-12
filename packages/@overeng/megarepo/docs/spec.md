@@ -205,22 +205,64 @@ The KDL config maps to the following structure:
 interface MegarepoConfig {
   members: Record<string, string> // member name -> source string
   generators?: GeneratorsConfig
+  lockSync?: {
+    enabled?: boolean // default: auto-detected from root lock files
+    exclude?: string[] // config member names to exclude from lock sync
+    sharedInputSource?: string
+  }
+  sourcePolicy?: {
+    gitTransportAllowances?: {
+      _tag: 'GitHubHttps'
+      member: string // config member name, as in members / lockSync.exclude
+      reason: string // explicit justification
+    }[]
+  }
 }
 
 interface GeneratorsConfig {
-  nix?: {
-    enabled?: boolean // default: false (enables lock sync)
-    lockSync?: {
-      enabled?: boolean // default: true (when nix.enabled is true)
-      exclude?: string[] // members to exclude from lock sync
-    }
-  }
   vscode?: {
     enabled?: boolean // default: false
     exclude?: string[] // members to exclude from workspace
   }
 }
 ````
+
+### Source Policy Allowances
+
+`mr check` normally requires GitHub archive sources rather than explicit Git transport.
+For a member that needs GitHub HTTPS Git transport, declare a narrow, justified allowance:
+
+```kdl
+sourcePolicy {
+  gitTransportAllowances _tag="GitHubHttps" member="upstream" reason="Requires Git transport for upstream tooling"
+}
+```
+
+The equivalent JSON field is:
+
+```json
+{
+  "sourcePolicy": {
+    "gitTransportAllowances": [
+      {
+        "_tag": "GitHubHttps",
+        "member": "upstream",
+        "reason": "Requires Git transport for upstream tooling"
+      }
+    ]
+  }
+}
+```
+
+`member` is the config member name, not a URL or repository identity; it uses the same
+namespace as `members` and `lockSync.exclude`. Both `member` and `reason` must be
+non-empty strings without leading or trailing whitespace. Repeat the
+`gitTransportAllowances` KDL node for multiple entries. Omit `sourcePolicy` or its
+allowance list (or use an empty JSON array) when no exceptions are needed.
+
+Only the `GitHubHttps` tag is supported. This allowance is not a general source-policy
+exemption: it does not authorize SSH or other hosts, bypass source/lock provenance
+checks, or disable lock synchronization. `lockSync.exclude` remains a separate control.
 
 ---
 

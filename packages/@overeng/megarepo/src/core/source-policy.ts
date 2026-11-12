@@ -48,6 +48,15 @@ export type SourcePolicyViolation =
       readonly upstreamMember: string
       readonly missingFields: ReadonlyArray<string>
     }
+  | {
+      readonly _tag: 'GitTransportPinMismatch'
+      readonly file: SourcePolicyFile
+      readonly path: string
+      readonly inputName: string
+      readonly upstreamMember: string
+      readonly actual: string
+      readonly expected: string
+    }
 
 /** Result of checking source and lock files for canonical GitHub input shape. */
 export interface SourcePolicyCheckResult {
@@ -164,27 +173,96 @@ const checkConfigMemberSources = ({
   return violations
 }
 
+const allowsGitTransport = (config: MegarepoConfig, member: string): boolean =>
+  config.sourcePolicy?.gitTransportAllowances?.some((allowance) => allowance.member === member) ===
+  true
+
+/** Validate the complete URL, rather than the permissive discovery parser's projection. */
+const isAllowedGitUrl = (url: string, member: LockedMember): boolean => {
+  const repo = githubRepoFromUrl(member.url)
+  if (repo === undefined) return false
+  const match = url.match(
+    /^git\+https:\/\/github\.com\/([^/?#]+)\/([^/?#]+?)(?:\.git)?(?:\?([^#]*))?$/,
+  )
+  if (
+    match === null ||
+    match[1]?.toLowerCase() !== repo.owner.toLowerCase() ||
+    match[2]?.toLowerCase() !== repo.repo.toLowerCase()
+  )
+    return false
+  const params = new URLSearchParams(match[3])
+  const seen = new Set<string>()
+  for (const [key, value] of params) {
+    if (seen.has(key) || !['rev', 'shallow', 'dir'].includes(key)) return false
+    seen.add(key)
+    if (key === 'shallow' && value !== '1') return false
+    if (value === '') return false
+  }
+  return params.get('rev') === member.commit
+}
+
+const isAllowedGitLock = (
+  section: Record<string, unknown> | undefined,
+  member: LockedMember,
+): boolean => {
+  if (section?.['type'] !== 'git' || typeof section['url'] !== 'string') return false
+  if (
+    Object.keys(section).some(
+      (key) => !['type', 'url', 'rev', 'narHash', 'lastModified', 'shallow', 'dir'].includes(key),
+    )
+  )
+    return false
+  if (section['shallow'] !== undefined && section['shallow'] !== true) return false
+  const params = new URLSearchParams()
+  for (const key of ['rev', 'dir'] as const) {
+    const value = section[key]
+    if (value !== undefined) {
+      if (typeof value !== 'string' || value === '') return false
+      params.set(key, value)
+    }
+  }
+  if (section['shallow'] === true) params.set('shallow', '1')
+  const url = section['url']
+  // Lock files use plain HTTPS; the declaration carries the git+ prefix.
+  const base = url.startsWith('https://') ? `git+${url}` : url
+  const separator = base.includes('?') ? '&' : '?'
+  return isAllowedGitUrl(`${base}${separator}${params}`, member)
+}
+
 const checkSourceInputs = ({
   content,
   file,
   path,
   members,
+  config,
 }: {
   content: string
   file: 'flake.nix' | 'devenv.yaml'
   path: string
   members: Record<string, LockedMember>
+  config: MegarepoConfig
 }): ReadonlyArray<SourcePolicyViolation> => {
   const inputs =
     file === 'flake.nix' ? extractFlakeNixInputs(content) : extractDevenvYamlInputs(content)
   const violations: SourcePolicyViolation[] = []
 
   for (const input of inputs) {
-    const upstreamMember = matchUrlToMember({ url: input.url, members })
+    const upstreamMember =
+      matchUrlToMember({ url: input.url, members }) ??
+      (allowsGitTransport(config, input.inputName) && members[input.inputName] !== undefined
+        ? input.inputName
+        : undefined)
     if (upstreamMember === undefined) continue
 
     const parsed = parseNixFlakeUrl(input.url)
-    if (parsed === undefined || parsed._tag === 'github') continue
+    if (parsed?._tag === 'github') continue
+    if (
+      allowsGitTransport(config, upstreamMember) &&
+      isAllowedGitUrl(input.url, members[upstreamMember]!)
+    )
+      continue
+    const repo = githubRepoFromUrl(members[upstreamMember]!.url)
+    if (repo === undefined) continue
 
     violations.push({
       _tag: 'NonCanonicalNixInputSource',
@@ -194,10 +272,9 @@ const checkSourceInputs = ({
       upstreamMember,
       actual: input.url,
       expected: canonicalFlakeSource({
-        owner: parsed.owner,
-        repo: parsed.repo,
-        ref: getRef(parsed),
-        params: parsed.params,
+        ...repo,
+        ref: parsed === undefined ? undefined : getRef(parsed),
+        params: parsed?.params,
       }),
     })
   }
@@ -279,11 +356,13 @@ const checkLockFileInputs = ({
   file,
   path,
   members,
+  config,
 }: {
   content: string
   file: 'flake.lock' | 'devenv.lock'
   path: string
   members: Record<string, LockedMember>
+  config: MegarepoConfig
 }): ReadonlyArray<SourcePolicyViolation> => {
   let parsed: { root?: string; nodes?: Record<string, Record<string, unknown>> }
   try {
@@ -310,17 +389,25 @@ const checkLockFileInputs = ({
     const locked = node?.['locked'] as Record<string, unknown> | undefined
     if (locked === undefined) continue
 
+    const original = node?.['original'] as Record<string, unknown> | undefined
     const lockedRepo = lockSourceRepo(locked)
-    if (lockedRepo === undefined) continue
-
-    const normalized = normalizedGithubRepo(lockedRepo)
-    const upstream = membersByRepo.get(`${normalized.owner}/${normalized.repo}`)
+    const originalRepo = lockSourceRepo(original)
+    const upstream = [originalRepo, lockedRepo].flatMap((sourceRepo) => {
+      if (sourceRepo === undefined) return []
+      const normalized = normalizedGithubRepo(sourceRepo)
+      const member = membersByRepo.get(`${normalized.owner}/${normalized.repo}`)
+      return member === undefined ? [] : [member]
+    })[0]
     if (upstream === undefined) continue
 
-    const original = node?.['original'] as Record<string, unknown> | undefined
-    const originalRepo = lockSourceRepo(original)
+    const member = members[upstream.memberName]!
+    const gitAllowed =
+      allowsGitTransport(config, upstream.memberName) &&
+      locked['type'] === 'git' &&
+      isAllowedGitLock({ ...locked, rev: member.commit }, member) &&
+      isAllowedGitLock(original, member)
 
-    if (lockedRepo.type !== 'github' || originalRepo?.type === 'git') {
+    if ((lockedRepo?.type !== 'github' || originalRepo?.type === 'git') && gitAllowed === false) {
       violations.push({
         _tag: 'NonCanonicalNixInputSource',
         file,
@@ -331,15 +418,19 @@ const checkLockFileInputs = ({
         expected: canonicalFlakeSource({
           owner: upstream.owner,
           repo: upstream.repo,
-          ref: originalRepo?.ref ?? lockedRepo.ref,
-          params: originalRepo?.params ?? lockedRepo.params,
+          ref: originalRepo?.ref ?? lockedRepo?.ref,
+          params: originalRepo?.params ?? lockedRepo?.params,
         }),
       })
       continue
     }
 
-    const missingFields = ['rev', 'narHash', 'lastModified'].filter(
-      (field) => locked[field] === undefined,
+    const missingFields = ['rev', 'narHash', 'lastModified'].filter((field) =>
+      gitAllowed
+        ? field === 'lastModified'
+          ? typeof locked[field] !== 'number' || !Number.isFinite(locked[field])
+          : typeof locked[field] !== 'string' || locked[field] === ''
+        : locked[field] === undefined,
     )
     if (missingFields.length > 0) {
       violations.push({
@@ -349,6 +440,17 @@ const checkLockFileInputs = ({
         inputName,
         upstreamMember: upstream.memberName,
         missingFields,
+      })
+    }
+    if (gitAllowed && typeof locked['rev'] === 'string' && locked['rev'] !== member.commit) {
+      violations.push({
+        _tag: 'GitTransportPinMismatch',
+        file,
+        path,
+        inputName,
+        upstreamMember: upstream.memberName,
+        actual: locked['rev'],
+        expected: member.commit,
       })
     }
   }
@@ -367,10 +469,12 @@ const checkDirectoryFiles = ({
   dir,
   label,
   members,
+  config,
 }: {
   dir: AbsoluteDirPath
   label: string
   members: Record<string, LockedMember>
+  config: MegarepoConfig
 }) =>
   Effect.gen(function* () {
     const violations: SourcePolicyViolation[] = []
@@ -379,7 +483,9 @@ const checkDirectoryFiles = ({
       const path = EffectPath.ops.join(dir, EffectPath.unsafe.relativeFile(file))
       const content = yield* readIfExists(path)
       if (content !== undefined) {
-        violations.push(...checkSourceInputs({ content, file, path: `${label}/${file}`, members }))
+        violations.push(
+          ...checkSourceInputs({ content, file, path: `${label}/${file}`, members, config }),
+        )
       }
     }
 
@@ -388,7 +494,7 @@ const checkDirectoryFiles = ({
       const content = yield* readIfExists(path)
       if (content !== undefined) {
         violations.push(
-          ...checkLockFileInputs({ content, file, path: `${label}/${file}`, members }),
+          ...checkLockFileInputs({ content, file, path: `${label}/${file}`, members, config }),
         )
       }
     }
@@ -421,6 +527,7 @@ export const checkSourcePolicy = ({
         dir: megarepoRoot,
         label: '.',
         members: lockFile.members,
+        config,
       })),
     )
 
@@ -431,6 +538,7 @@ export const checkSourcePolicy = ({
             dir: getMemberPath({ megarepoRoot, name: memberName }),
             label: `repos/${memberName}`,
             members: lockFile.members,
+            config,
           })),
         )
       }
@@ -448,5 +556,7 @@ export const formatSourcePolicyViolation = (violation: SourcePolicyViolation): s
       return `${violation.path}: input ${violation.inputName} -> ${violation.upstreamMember} uses ${violation.actual}; expected ${violation.expected}`
     case 'IncompleteGitHubLockMetadata':
       return `${violation.path}: input ${violation.inputName} -> ${violation.upstreamMember} is missing GitHub lock metadata: ${violation.missingFields.join(', ')}`
+    case 'GitTransportPinMismatch':
+      return `${violation.path}: input ${violation.inputName} -> ${violation.upstreamMember} uses git revision ${violation.actual}; expected member pin ${violation.expected}`
   }
 }

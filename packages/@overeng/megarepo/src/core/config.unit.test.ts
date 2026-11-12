@@ -2,6 +2,7 @@ import { Cause, Effect, Exit, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
+import { parseKdl } from '@overeng/kdl-effect'
 
 import {
   buildSourceStringWithRef,
@@ -453,6 +454,86 @@ describe('config', () => {
       expect(result.generators?.vscode?.exclude).toEqual(['docs'])
     })
 
+    describe('sourcePolicy.gitTransportAllowances', () => {
+      const allowance = {
+        _tag: 'GitHubHttps',
+        member: 'upstream',
+        reason: 'Requires Git transport for upstream tooling',
+      } as const
+
+      it('keeps source policy optional without introducing defaults', () => {
+        expect(Schema.decodeSync(MegarepoConfig)({ members: {} }).sourcePolicy).toBeUndefined()
+        expect(
+          Schema.decodeSync(MegarepoConfig)({ members: {}, sourcePolicy: {} }).sourcePolicy,
+        ).toEqual({})
+        expect(
+          Schema.decodeSync(MegarepoConfig)({
+            members: {},
+            sourcePolicy: { gitTransportAllowances: [] },
+          }).sourcePolicy?.gitTransportAllowances,
+        ).toEqual([])
+      })
+
+      it('preserves tagged allowances through JSON encoding and decoding', () => {
+        const input = {
+          members: { upstream: 'https://github.com/example/upstream' },
+          sourcePolicy: { gitTransportAllowances: [allowance] },
+        }
+        const config = Schema.decodeUnknownSync(MegarepoConfig)(input)
+        const jsonSchema = Schema.fromJsonString(MegarepoConfig)
+        const encoded = Schema.encodeSync(jsonSchema)(config)
+        expect(Schema.decodeSync(jsonSchema)(encoded)).toEqual(config)
+        expect(config.sourcePolicy?.gitTransportAllowances).toEqual([allowance])
+      })
+
+      it.each([
+        { ...allowance, _tag: 'GitHubSsh' },
+        { member: allowance.member, reason: allowance.reason },
+        { _tag: allowance._tag, reason: allowance.reason },
+        { _tag: allowance._tag, member: allowance.member },
+        ...['', ' ', '\t', ' upstream', 'upstream '].flatMap((value) => [
+          { ...allowance, member: value },
+          { ...allowance, reason: value },
+        ]),
+        { ...allowance, member: 1 },
+        { ...allowance, reason: false },
+      ])('rejects malformed allowances: %j', (entry) => {
+        expect(() =>
+          Schema.decodeUnknownSync(MegarepoConfig)({
+            members: {},
+            sourcePolicy: { gitTransportAllowances: [entry] },
+          }),
+        ).toThrow()
+      })
+
+      it('rejects a non-array allowance in JSON config', () => {
+        expect(() =>
+          Schema.decodeUnknownSync(MegarepoConfig)({
+            members: {},
+            sourcePolicy: { gitTransportAllowances: allowance },
+          }),
+        ).toThrow()
+      })
+
+      it.each([1, 2])('decodes and round-trips %i KDL allowance nodes', (count) => {
+        const allowances = [allowance, { ...allowance, member: 'other-upstream' }].slice(0, count)
+        const content = [
+          'members {}',
+          'sourcePolicy {',
+          ...allowances.map(
+            (entry) =>
+              `  gitTransportAllowances _tag="${entry._tag}" member="${entry.member}" reason="${entry.reason}"`,
+          ),
+          '}',
+        ].join('\n')
+        const config = Effect.runSync(decodeMegarepoConfigContent({ format: 'kdl', content }))
+        expect(config.sourcePolicy?.gitTransportAllowances).toEqual(allowances)
+        const kdlSchema = parseKdl(MegarepoConfig)
+        const encoded = Schema.encodeSync(kdlSchema)(config)
+        expect(Schema.decodeSync(kdlSchema)(encoded)).toEqual(config)
+      })
+    })
+
     it('ignores a retired generators.composition block when decoding, but rejects it for the root', () => {
       const config = Effect.runSync(
         decodeMegarepoConfigContent({
@@ -527,6 +608,16 @@ describe('config', () => {
       const defs = schema['$defs'] as Record<string, Record<string, unknown>>
       expect(defs['MegarepoConfigEncoded']).toBeDefined()
       expect(defs['MegarepoConfigEncoded']?.['type']).toBe('object')
+      expect(defs['Megarepo.SourcePolicyConfig']).toBeDefined()
+      expect(defs['Megarepo.GitTransportAllowance']).toMatchObject({
+        type: 'object',
+        properties: {
+          _tag: { type: 'string', enum: ['GitHubHttps'] },
+          member: { type: 'string', minLength: 1 },
+          reason: { type: 'string', minLength: 1 },
+        },
+        required: ['_tag', 'member', 'reason'],
+      })
     })
   })
 

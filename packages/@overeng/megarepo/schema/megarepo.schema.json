@@ -129,6 +129,46 @@
       },
       "additionalProperties": false
     },
+    "Megarepo.GitTransportAllowance": {
+      "type": "object",
+      "properties": {
+        "_tag": {
+          "type": "string",
+          "enum": ["GitHubHttps"]
+        },
+        "member": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+        }
+      },
+      "required": ["_tag", "member", "reason"],
+      "additionalProperties": false
+    },
+    "Megarepo.SourcePolicyConfig": {
+      "type": "object",
+      "properties": {
+        "gitTransportAllowances": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Megarepo.GitTransportAllowance"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "MegarepoConfigEncoded": {
       "type": "object",
       "properties": {
@@ -162,6 +202,16 @@
           "anyOf": [
             {
               "$ref": "#/$defs/LockSyncConfigEncoded"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourcePolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Megarepo.SourcePolicyConfig"
             },
             {
               "type": "null"

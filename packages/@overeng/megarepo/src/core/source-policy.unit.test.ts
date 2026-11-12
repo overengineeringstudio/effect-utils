@@ -1,273 +1,244 @@
-import { NodeServices } from '@effect/platform-node'
-import { Effect, type Scope } from 'effect'
+import { describe, expect, it } from '@effect/vitest'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import { describe, expect, it } from 'vitest'
 
-import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+import { EffectPath } from '@overeng/effect-path'
 
 import { encodeJson } from '../test-utils/mod.ts'
-import type { MegarepoConfig } from './config.ts'
-import type { LockFile } from './lock.ts'
-import { checkSourcePolicy } from './source-policy.ts'
+import { MegarepoConfig } from './config.ts'
+import { LockFile } from './lock.ts'
+import { checkSourcePolicy, formatSourcePolicyViolation } from './source-policy.ts'
 
 const commit = '41e0ed18178ecef0afde18a932e24372d5d61b11'
+const repo = 'example-org/example-repo'
+const gitUrl = `git+https://github.com/${repo}?rev=${commit}&shallow=1`
+const member = {
+  url: `https://github.com/${repo}`,
+  ref: 'main',
+  commit,
+  pinned: false,
+  lockedAt: '2026-05-19T10:00:00Z',
+}
+const original = { type: 'git', url: member.url, rev: commit, shallow: true }
+const locked = { ...original, narHash: 'sha256-example', lastModified: 1779125469 }
 
-const makeConfig = (members: Record<string, string>): MegarepoConfig =>
-  ({ members }) as MegarepoConfig
-
-const makeLockFile = (): LockFile =>
-  ({
-    version: 1,
-    members: {
-      'private-member': {
-        url: 'https://github.com/overengineeringstudio/private-member',
-        ref: 'main',
-        commit,
-        pinned: false,
-        lockedAt: '2026-05-19T10:00:00Z',
-      },
-    },
-  }) as LockFile
-
-const runWithContext = <A, E>(
-  effect: Effect.Effect<A, E, NodeServices.NodeServices | Scope.Scope>,
-) => Effect.runPromise(effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer)))
-
-const writeFile = ({
-  root,
-  path,
-  content,
+const check = ({
+  files = {},
+  allowances = [],
+  members = { example: member },
+  configMembers = { example: repo },
 }: {
-  root: AbsoluteDirPath
-  path: string
-  content: string
+  files?: Record<string, string>
+  allowances?: ReadonlyArray<string>
+  members?: LockFile['members']
+  configMembers?: Record<string, string>
 }) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const fullPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeFile(path))
-    yield* fs.makeDirectory(EffectPath.ops.parent(fullPath), { recursive: true })
-    yield* fs.writeFileString(fullPath, content)
-  })
+  checkSourcePolicy({
+    megarepoRoot: EffectPath.unsafe.absoluteDir('/workspace/'),
+    config: new MegarepoConfig({
+      members: configMembers,
+      sourcePolicy: {
+        gitTransportAllowances: allowances.map((name) => ({
+          _tag: 'GitHubHttps',
+          member: name,
+          reason: 'GitHub tarball requests fail for this repository.',
+        })),
+      },
+    }),
+    lockFile: new LockFile({ version: 1, members }),
+    includeMembers: false,
+  }).pipe(
+    Effect.provide(
+      FileSystem.layerNoop({
+        exists: (path) => Effect.succeed(path.slice('/workspace/'.length) in files),
+        readFileString: (path) => Effect.succeed(files[path.slice('/workspace/'.length)]!),
+      }),
+    ),
+  )
 
-const withWorkspace = <A, E>(
-  use: (root: AbsoluteDirPath) => Effect.Effect<A, E, NodeServices.NodeServices>,
-) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const root = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-    return yield* use(root)
-  })
+const lockContent = (node: {
+  original: Record<string, unknown>
+  locked: Record<string, unknown>
+}) =>
+  encodeJson({ root: 'root', nodes: { root: { inputs: { example: 'example' } }, example: node } })
+
+const declarations = (url: string) => ({
+  'flake.nix': `{ inputs.example.url = "${url}"; }`,
+  'devenv.yaml': `inputs:\n  example:\n    url: ${url}\n`,
+})
 
 describe('checkSourcePolicy', () => {
-  it('allows canonical GitHub source shape and complete GitHub lock metadata', () =>
-    runWithContext(
-      withWorkspace((root) =>
-        Effect.gen(function* () {
-          yield* writeFile({
-            root,
-            path: 'flake.nix',
-            content: `{
-  inputs.private-member.url = "github:overengineeringstudio/private-member";
-}`,
-          })
-          yield* writeFile({
-            root,
-            path: 'flake.lock',
-            content: encodeJson({
-              root: 'root',
-              nodes: {
-                root: { inputs: { 'private-member': 'private-member' } },
-                'private-member': {
-                  original: {
-                    owner: 'overengineeringstudio',
-                    repo: 'private-member',
-                    type: 'github',
-                  },
-                  locked: {
-                    lastModified: 1779125469,
-                    narHash: 'sha256-9GjX7BCxjoimhsxW7zLHuzK+rZS1m3DtiMoo3B0xpxc=',
-                    owner: 'overengineeringstudio',
-                    repo: 'private-member',
-                    rev: commit,
-                    type: 'github',
-                  },
-                },
-              },
-            }),
-          })
+  it.effect('allows canonical GitHub sources with complete metadata', () =>
+    Effect.gen(function* () {
+      const github = { type: 'github', owner: 'example-org', repo: 'example-repo' }
+      const result = yield* check({
+        files: {
+          ...declarations(`github:${repo}`),
+          'flake.lock': lockContent({ original: github, locked: { ...locked, ...github } }),
+        },
+      })
+      expect(result.violations).toEqual([])
+    }),
+  )
 
-          const result = yield* checkSourcePolicy({
-            megarepoRoot: root,
-            config: makeConfig({ 'private-member': 'overengineeringstudio/private-member' }),
-            lockFile: makeLockFile(),
-            includeMembers: false,
-          })
+  it.effect('still requires complete metadata for canonical GitHub locks', () =>
+    Effect.gen(function* () {
+      const github = { type: 'github', owner: 'example-org', repo: 'example-repo' }
+      const result = yield* check({
+        files: {
+          'flake.lock': lockContent({ original: github, locked: { ...github, rev: commit } }),
+        },
+      })
+      expect(result.violations).toMatchObject([
+        {
+          _tag: 'IncompleteGitHubLockMetadata',
+          missingFields: ['narHash', 'lastModified'],
+        },
+      ])
+    }),
+  )
 
-          expect(result.violations).toEqual([])
-        }),
-      ),
-    ))
+  it.effect.prop(
+    'allows only declared pinned HTTPS git inputs, preserving dir',
+    [Schema.Boolean, Schema.Boolean, Schema.Boolean],
+    ([dotGit, shallow, dir]) =>
+      Effect.gen(function* () {
+        const url = `git+https://github.com/${repo}${dotGit ? '.git' : ''}?rev=${commit}${shallow ? '&shallow=1' : ''}${dir ? '&dir=nix/flake' : ''}`
+        const source = {
+          type: 'git',
+          url: `${member.url}${dotGit ? '.git' : ''}`,
+          rev: commit,
+          ...(shallow ? { shallow: true } : {}),
+          ...(dir ? { dir: 'nix/flake' } : {}),
+        }
+        const content = lockContent({ original: source, locked: { ...locked, ...source } })
+        const result = yield* check({
+          allowances: ['example'],
+          files: {
+            ...declarations(url),
+            'flake.lock': content,
+            'devenv.lock': content,
+          },
+        })
+        expect(result.violations).toEqual([])
+      }),
+  )
 
-  it('rejects GitHub SSH member sources and Nix git inputs for megarepo members', () =>
-    runWithContext(
-      withWorkspace((root) =>
-        Effect.gen(function* () {
-          yield* writeFile({
-            root,
-            path: 'flake.nix',
-            content: `{
-  inputs.private-member.url = "git+ssh://git@github.com/overengineeringstudio/private-member?ref=main";
-}`,
-          })
-          yield* writeFile({
-            root,
-            path: 'flake.lock',
-            content: encodeJson({
-              root: 'root',
-              nodes: {
-                root: { inputs: { 'private-member': 'private-member' } },
-                'private-member': {
-                  original: {
-                    ref: 'main',
-                    type: 'git',
-                    url: 'ssh://git@github.com/overengineeringstudio/private-member',
-                  },
-                  locked: {
-                    ref: 'main',
-                    rev: commit,
-                    type: 'git',
-                    url: 'ssh://git@github.com/overengineeringstudio/private-member',
-                  },
-                },
-              },
-            }),
-          })
+  it.effect('rejects git without an allowance in declarations and both locks', () =>
+    Effect.gen(function* () {
+      const content = lockContent({ original, locked })
+      const result = yield* check({
+        files: {
+          ...declarations(gitUrl),
+          'flake.lock': content,
+          'devenv.lock': content,
+        },
+      })
+      expect(result.violations.map((v) => v._tag)).toEqual(
+        Array(4).fill('NonCanonicalNixInputSource'),
+      )
+    }),
+  )
 
-          const result = yield* checkSourcePolicy({
-            megarepoRoot: root,
-            config: makeConfig({
-              'private-member': 'git@github.com:overengineeringstudio/private-member.git',
-            }),
-            lockFile: makeLockFile(),
-            includeMembers: false,
-          })
+  it.effect('does not extend member A allowance to member B', () =>
+    Effect.gen(function* () {
+      const result = yield* check({
+        allowances: ['other'],
+        members: {
+          example: member,
+          other: { ...member, url: 'https://github.com/example-org/other' },
+        },
+        configMembers: { example: repo, other: 'example-org/other' },
+        files: { ...declarations(gitUrl), 'flake.lock': lockContent({ original, locked }) },
+      })
+      expect(result.violations.map((v) => v._tag)).toEqual(
+        Array(3).fill('NonCanonicalNixInputSource'),
+      )
+    }),
+  )
 
-          expect(result.violations.map((violation) => violation._tag)).toEqual([
-            'NonCanonicalGitHubMemberSource',
-            'NonCanonicalNixInputSource',
-            'NonCanonicalNixInputSource',
-          ])
-        }),
-      ),
-    ))
+  it.effect.each(['narHash', 'rev', 'lastModified'])('requires git lock metadata: %s', (field) =>
+    Effect.gen(function* () {
+      const incomplete: Record<string, unknown> = { ...locked }
+      delete incomplete[field]
+      const result = yield* check({
+        allowances: ['example'],
+        files: { 'flake.lock': lockContent({ original, locked: incomplete }) },
+      })
+      expect(result.violations).toMatchObject([
+        { _tag: 'IncompleteGitHubLockMetadata', missingFields: [field] },
+      ])
+    }),
+  )
 
-  it('preserves flake dir query params in canonical source suggestions', () =>
-    runWithContext(
-      withWorkspace((root) =>
-        Effect.gen(function* () {
-          yield* writeFile({
-            root,
-            path: 'flake.nix',
-            content: `{
-  inputs.private-member.url = "git+ssh://git@github.com/overengineeringstudio/private-member?ref=main&dir=nix/flake";
-}`,
-          })
-          yield* writeFile({
-            root,
-            path: 'flake.lock',
-            content: encodeJson({
-              root: 'root',
-              nodes: {
-                root: { inputs: { 'private-member': 'private-member' } },
-                'private-member': {
-                  original: {
-                    dir: 'nix/flake',
-                    ref: 'main',
-                    type: 'git',
-                    url: 'ssh://git@github.com/overengineeringstudio/private-member',
-                  },
-                  locked: {
-                    dir: 'nix/flake',
-                    ref: 'main',
-                    rev: commit,
-                    type: 'git',
-                    url: 'ssh://git@github.com/overengineeringstudio/private-member',
-                  },
-                },
-              },
-            }),
-          })
+  it.effect('requires the git lock revision to equal the member pin', () =>
+    Effect.gen(function* () {
+      const result = yield* check({
+        allowances: ['example'],
+        files: {
+          'flake.lock': lockContent({ original, locked: { ...locked, rev: '0'.repeat(40) } }),
+        },
+      })
+      expect(result.violations).toMatchObject([
+        { _tag: 'GitTransportPinMismatch', expected: commit },
+      ])
+      expect(formatSourcePolicyViolation(result.violations[0]!)).toContain(
+        `expected member pin ${commit}`,
+      )
+    }),
+  )
 
-          const result = yield* checkSourcePolicy({
-            megarepoRoot: root,
-            config: makeConfig({ 'private-member': 'overengineeringstudio/private-member' }),
-            lockFile: makeLockFile(),
-            includeMembers: false,
-          })
+  it.effect.each([
+    `git+ssh://git@github.com/${repo}?rev=${commit}`,
+    `git+https://github.com/${repo}?ref=main&rev=${commit}`,
+    `git+https://github.com/${repo}?rev=${commit}&shallow=0`,
+    `git+https://github.com/${repo}?rev=${commit}&submodules=1`,
+    `git+https://github.com/${repo}?rev=${commit}&rev=${commit}`,
+    `git+https://github.com/${repo}/extra?rev=${commit}`,
+    `git+https://github.com/${repo}?rev=${commit}#fragment`,
+    `git+https://github.com/${repo}?rev=${'0'.repeat(40)}`,
+    `git+https://github.com/${repo}?shallow=1`,
+    `git+https://example.com/${repo}?rev=${commit}`,
+    `git+https://github.com/example-org/other?rev=${commit}`,
+  ])('rejects non-allowed declaration %s', (url) =>
+    Effect.gen(function* () {
+      const result = yield* check({ allowances: ['example'], files: declarations(url) })
+      expect(result.violations.map((v) => v._tag)).toEqual(
+        Array(2).fill('NonCanonicalNixInputSource'),
+      )
+    }),
+  )
 
-          expect(
-            result.violations
-              .filter((violation) => violation._tag === 'NonCanonicalNixInputSource')
-              .map((violation) => violation.expected),
-          ).toEqual([
-            'github:overengineeringstudio/private-member?dir=nix/flake',
-            'github:overengineeringstudio/private-member?dir=nix/flake',
-          ])
-        }),
-      ),
-    ))
+  it.effect.each([
+    { url: `ssh://git@github.com/${repo}` },
+    { url: `https://example.com/${repo}` },
+    { url: 'https://github.com/example-org/other' },
+    { submodules: true },
+    { ref: 'main' },
+    { shallow: false },
+  ])('rejects non-allowed git lock transport %j', (change) =>
+    Effect.gen(function* () {
+      const result = yield* check({
+        allowances: ['example'],
+        files: {
+          'flake.lock': lockContent({ original, locked: { ...locked, ...change } }),
+        },
+      })
+      expect(result.violations).toMatchObject([{ _tag: 'NonCanonicalNixInputSource' }])
+    }),
+  )
 
-  it('rejects GitHub lock nodes missing metadata required for stable Nix fetches', () =>
-    runWithContext(
-      withWorkspace((root) =>
-        Effect.gen(function* () {
-          yield* writeFile({
-            root,
-            path: 'flake.lock',
-            content: encodeJson({
-              root: 'root',
-              nodes: {
-                root: { inputs: { 'private-member': 'private-member' } },
-                'private-member': {
-                  original: {
-                    owner: 'overengineeringstudio',
-                    repo: 'private-member',
-                    type: 'github',
-                  },
-                  locked: {
-                    owner: 'overengineeringstudio',
-                    repo: 'private-member',
-                    rev: commit,
-                    type: 'github',
-                  },
-                },
-              },
-            }),
-          })
-
-          const result = yield* checkSourcePolicy({
-            megarepoRoot: root,
-            config: makeConfig({ 'private-member': 'overengineeringstudio/private-member' }),
-            lockFile: makeLockFile(),
-            includeMembers: false,
-          })
-
-          expect(result.violations).toMatchInlineSnapshot(`
-            [
-              {
-                "_tag": "IncompleteGitHubLockMetadata",
-                "file": "flake.lock",
-                "inputName": "private-member",
-                "missingFields": [
-                  "narHash",
-                  "lastModified",
-                ],
-                "path": "./flake.lock",
-                "upstreamMember": "private-member",
-              },
-            ]
-          `)
-        }),
-      ),
-    ))
+  it.effect('preserves dir in canonical suggestions and rejects SSH member sources', () =>
+    Effect.gen(function* () {
+      const result = yield* check({
+        configMembers: { example: `git@github.com:${repo}.git` },
+        files: declarations(`git+ssh://git@github.com/${repo}?ref=main&dir=nix/flake`),
+      })
+      expect(result.violations[0]?._tag).toBe('NonCanonicalGitHubMemberSource')
+      expect(result.violations.slice(1)).toMatchObject([
+        { expected: `github:${repo}?dir=nix/flake` },
+        { expected: `github:${repo}?dir=nix/flake` },
+      ])
+    }),
+  )
 })
