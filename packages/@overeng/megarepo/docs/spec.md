@@ -264,6 +264,16 @@ Only the `GitHubHttps` tag is supported. This allowance is not a general source-
 exemption: it does not authorize SSH or other hosts, bypass source/lock provenance
 checks, or disable lock synchronization. `lockSync.exclude` remains a separate control.
 
+Allowed declarations use `git+https://github.com/<owner>/<repo>?rev=<member-commit>`,
+with an optional `.git` suffix, `shallow=1`, and `dir` query parameter. No other or
+duplicate query parameters are accepted. Git lock nodes must contain `rev`,
+`narHash`, and `lastModified`; the revision must equal the member's locked commit.
+Nix-generated `revCount` metadata is accepted for non-shallow fetches.
+
+When members share a repository, an input named after a member uses that member's
+allowance and pin. Other input names are resolved by repository and revision. If
+multiple members still match, every matching member must declare the allowance.
+
 ---
 
 ## Lock File (`megarepo.lock`)

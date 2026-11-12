@@ -7,11 +7,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import { getMemberPath, type MegarepoConfig, parseSourceString } from './config.ts'
 import type { LockFile, LockedMember } from './lock.ts'
 import { getRef, parseNixFlakeUrl, serializeNixFlakeUrl } from './nix-lock/flake-url.ts'
-import {
-  extractDevenvYamlInputs,
-  extractFlakeNixInputs,
-  matchUrlToMember,
-} from './nix-lock/input-discovery.ts'
+import { extractDevenvYamlInputs, extractFlakeNixInputs } from './nix-lock/input-discovery.ts'
 
 /** Files inspected by the GitHub source policy check. */
 export type SourcePolicyFile =
@@ -131,17 +127,49 @@ const normalizedGithubRepo = (repo: {
   repo: normalizeRepoName(repo.repo).toLowerCase(),
 })
 
+interface GithubMember {
+  readonly memberName: string
+  readonly owner: string
+  readonly repo: string
+}
+
 const memberByGithubRepo = (members: Record<string, LockedMember>) => {
-  const result = new Map<string, { memberName: string; owner: string; repo: string }>()
+  const result = new Map<string, Array<GithubMember>>()
 
   for (const [memberName, member] of Object.entries(members)) {
     const repo = githubRepoFromUrl(member.url)
     if (repo === undefined) continue
     const normalized = normalizedGithubRepo(repo)
-    result.set(`${normalized.owner}/${normalized.repo}`, { memberName, ...repo })
+    const key = `${normalized.owner}/${normalized.repo}`
+    const entries = result.get(key) ?? []
+    entries.push({ memberName, ...repo })
+    result.set(key, entries)
   }
 
   return result
+}
+
+/** Prefer an identifiable member; aliases must not inherit an arbitrary same-repo allowance. */
+const resolveInputMembers = ({
+  inputName,
+  repo,
+  rev,
+  members,
+  membersByRepo,
+}: {
+  inputName: string
+  repo: { owner: string; repo: string } | undefined
+  rev: unknown
+  members: Record<string, LockedMember>
+  membersByRepo: ReadonlyMap<string, ReadonlyArray<GithubMember>>
+}) => {
+  if (repo === undefined) return []
+  const normalized = normalizedGithubRepo(repo)
+  const candidates = membersByRepo.get(`${normalized.owner}/${normalized.repo}`) ?? []
+  const named = candidates.find((candidate) => candidate.memberName === inputName)
+  if (named !== undefined) return [named]
+  const pinned = candidates.filter((candidate) => members[candidate.memberName]?.commit === rev)
+  return pinned.length > 0 ? pinned : candidates
 }
 
 const checkConfigMemberSources = ({
@@ -173,12 +201,18 @@ const checkConfigMemberSources = ({
   return violations
 }
 
-const allowsGitTransport = (config: MegarepoConfig, member: string): boolean =>
+const allowsGitTransport = ({
+  config,
+  member,
+}: {
+  config: MegarepoConfig
+  member: string
+}): boolean =>
   config.sourcePolicy?.gitTransportAllowances?.some((allowance) => allowance.member === member) ===
   true
 
 /** Validate the complete URL, rather than the permissive discovery parser's projection. */
-const isAllowedGitUrl = (url: string, member: LockedMember): boolean => {
+const isAllowedGitUrl = ({ url, member }: { url: string; member: LockedMember }): boolean => {
   const repo = githubRepoFromUrl(member.url)
   if (repo === undefined) return false
   const match = url.match(
@@ -193,7 +227,7 @@ const isAllowedGitUrl = (url: string, member: LockedMember): boolean => {
   const params = new URLSearchParams(match[3])
   const seen = new Set<string>()
   for (const [key, value] of params) {
-    if (seen.has(key) || !['rev', 'shallow', 'dir'].includes(key)) return false
+    if (seen.has(key) === true || ['rev', 'shallow', 'dir'].includes(key) === false) return false
     seen.add(key)
     if (key === 'shallow' && value !== '1') return false
     if (value === '') return false
@@ -201,18 +235,31 @@ const isAllowedGitUrl = (url: string, member: LockedMember): boolean => {
   return params.get('rev') === member.commit
 }
 
-const isAllowedGitLock = (
-  section: Record<string, unknown> | undefined,
-  member: LockedMember,
-): boolean => {
+const isAllowedGitLock = ({
+  section,
+  member,
+}: {
+  section: Record<string, unknown> | undefined
+  member: LockedMember
+}): boolean => {
   if (section?.['type'] !== 'git' || typeof section['url'] !== 'string') return false
   if (
     Object.keys(section).some(
-      (key) => !['type', 'url', 'rev', 'narHash', 'lastModified', 'shallow', 'dir'].includes(key),
-    )
+      (key) =>
+        ['type', 'url', 'rev', 'narHash', 'lastModified', 'revCount', 'shallow', 'dir'].includes(
+          key,
+        ) === false,
+    ) === true
   )
     return false
   if (section['shallow'] !== undefined && section['shallow'] !== true) return false
+  if (
+    section['revCount'] !== undefined &&
+    (typeof section['revCount'] !== 'number' ||
+      Number.isSafeInteger(section['revCount']) === false ||
+      section['revCount'] < 0)
+  )
+    return false
   const params = new URLSearchParams()
   for (const key of ['rev', 'dir'] as const) {
     const value = section[key]
@@ -224,9 +271,9 @@ const isAllowedGitLock = (
   if (section['shallow'] === true) params.set('shallow', '1')
   const url = section['url']
   // Lock files use plain HTTPS; the declaration carries the git+ prefix.
-  const base = url.startsWith('https://') ? `git+${url}` : url
-  const separator = base.includes('?') ? '&' : '?'
-  return isAllowedGitUrl(`${base}${separator}${params}`, member)
+  const base = url.startsWith('https://') === true ? `git+${url}` : url
+  const separator = base.includes('?') === true ? '&' : '?'
+  return isAllowedGitUrl({ url: `${base}${separator}${params}`, member })
 }
 
 const checkSourceInputs = ({
@@ -245,20 +292,32 @@ const checkSourceInputs = ({
   const inputs =
     file === 'flake.nix' ? extractFlakeNixInputs(content) : extractDevenvYamlInputs(content)
   const violations: SourcePolicyViolation[] = []
+  const membersByRepo = memberByGithubRepo(members)
 
   for (const input of inputs) {
+    const parsed = parseNixFlakeUrl(input.url)
+    const upstreams = resolveInputMembers({
+      inputName: input.inputName,
+      repo: parsed,
+      rev: parsed?.params.get('rev'),
+      members,
+      membersByRepo,
+    })
     const upstreamMember =
-      matchUrlToMember({ url: input.url, members }) ??
-      (allowsGitTransport(config, input.inputName) && members[input.inputName] !== undefined
+      upstreams[0]?.memberName ??
+      (allowsGitTransport({ config, member: input.inputName }) === true &&
+      members[input.inputName] !== undefined
         ? input.inputName
         : undefined)
     if (upstreamMember === undefined) continue
-
-    const parsed = parseNixFlakeUrl(input.url)
     if (parsed?._tag === 'github') continue
     if (
-      allowsGitTransport(config, upstreamMember) &&
-      isAllowedGitUrl(input.url, members[upstreamMember]!)
+      upstreams.length > 0 &&
+      upstreams.every(
+        ({ memberName }) =>
+          allowsGitTransport({ config, member: memberName }) === true &&
+          isAllowedGitUrl({ url: input.url, member: members[memberName]! }) === true,
+      ) === true
     )
       continue
     const repo = githubRepoFromUrl(members[upstreamMember]!.url)
@@ -274,7 +333,7 @@ const checkSourceInputs = ({
       expected: canonicalFlakeSource({
         ...repo,
         ref: parsed === undefined ? undefined : getRef(parsed),
-        params: parsed?.params,
+        params: parsed?.params ?? new Map(),
       }),
     })
   }
@@ -392,20 +451,32 @@ const checkLockFileInputs = ({
     const original = node?.['original'] as Record<string, unknown> | undefined
     const lockedRepo = lockSourceRepo(locked)
     const originalRepo = lockSourceRepo(original)
-    const upstream = [originalRepo, lockedRepo].flatMap((sourceRepo) => {
-      if (sourceRepo === undefined) return []
-      const normalized = normalizedGithubRepo(sourceRepo)
-      const member = membersByRepo.get(`${normalized.owner}/${normalized.repo}`)
-      return member === undefined ? [] : [member]
-    })[0]
+    const upstreams =
+      [originalRepo, lockedRepo]
+        .map((repo) =>
+          resolveInputMembers({
+            inputName,
+            repo,
+            rev: original?.['rev'] ?? locked['rev'],
+            members,
+            membersByRepo,
+          }),
+        )
+        .find((candidates) => candidates.length > 0) ?? []
+    const upstream = upstreams[0]
     if (upstream === undefined) continue
 
     const member = members[upstream.memberName]!
-    const gitAllowed =
-      allowsGitTransport(config, upstream.memberName) &&
-      locked['type'] === 'git' &&
-      isAllowedGitLock({ ...locked, rev: member.commit }, member) &&
-      isAllowedGitLock(original, member)
+    const gitAllowed = upstreams.every(({ memberName }) => {
+      const candidate = members[memberName]!
+      return (
+        allowsGitTransport({ config, member: memberName }) === true &&
+        locked['type'] === 'git' &&
+        isAllowedGitLock({ section: { ...locked, rev: candidate.commit }, member: candidate }) ===
+          true &&
+        isAllowedGitLock({ section: original, member: candidate }) === true
+      )
+    })
 
     if ((lockedRepo?.type !== 'github' || originalRepo?.type === 'git') && gitAllowed === false) {
       violations.push({
@@ -426,9 +497,9 @@ const checkLockFileInputs = ({
     }
 
     const missingFields = ['rev', 'narHash', 'lastModified'].filter((field) =>
-      gitAllowed
+      gitAllowed === true
         ? field === 'lastModified'
-          ? typeof locked[field] !== 'number' || !Number.isFinite(locked[field])
+          ? typeof locked[field] !== 'number' || Number.isFinite(locked[field]) === false
           : typeof locked[field] !== 'string' || locked[field] === ''
         : locked[field] === undefined,
     )
@@ -442,7 +513,11 @@ const checkLockFileInputs = ({
         missingFields,
       })
     }
-    if (gitAllowed && typeof locked['rev'] === 'string' && locked['rev'] !== member.commit) {
+    if (
+      gitAllowed === true &&
+      typeof locked['rev'] === 'string' &&
+      locked['rev'] !== member.commit
+    ) {
       violations.push({
         _tag: 'GitTransportPinMismatch',
         file,

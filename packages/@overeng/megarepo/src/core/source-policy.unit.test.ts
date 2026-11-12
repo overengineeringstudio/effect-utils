@@ -103,15 +103,23 @@ describe('checkSourcePolicy', () => {
     [Schema.Boolean, Schema.Boolean, Schema.Boolean],
     ([dotGit, shallow, dir]) =>
       Effect.gen(function* () {
-        const url = `git+https://github.com/${repo}${dotGit ? '.git' : ''}?rev=${commit}${shallow ? '&shallow=1' : ''}${dir ? '&dir=nix/flake' : ''}`
+        const url = `git+https://github.com/${repo}${dotGit === true ? '.git' : ''}?rev=${commit}${shallow === true ? '&shallow=1' : ''}${dir === true ? '&dir=nix/flake' : ''}`
         const source = {
           type: 'git',
-          url: `${member.url}${dotGit ? '.git' : ''}`,
+          url: `${member.url}${dotGit === true ? '.git' : ''}`,
           rev: commit,
-          ...(shallow ? { shallow: true } : {}),
-          ...(dir ? { dir: 'nix/flake' } : {}),
+          ...(shallow === true ? { shallow: true } : {}),
+          ...(dir === true ? { dir: 'nix/flake' } : {}),
         }
-        const content = lockContent({ original: source, locked: { ...locked, ...source } })
+        const content = lockContent({
+          original: source,
+          locked: {
+            ...source,
+            narHash: locked.narHash,
+            lastModified: locked.lastModified,
+            ...(shallow === false ? { revCount: 123 } : {}),
+          },
+        })
         const result = yield* check({
           allowances: ['example'],
           files: {
@@ -154,6 +162,45 @@ describe('checkSourcePolicy', () => {
       expect(result.violations.map((v) => v._tag)).toEqual(
         Array(3).fill('NonCanonicalNixInputSource'),
       )
+    }),
+  )
+
+  it.effect.each([
+    { inputName: 'stable', rev: commit, samePin: false, expected: 0 },
+    { inputName: 'next', rev: '0'.repeat(40), samePin: false, expected: 3 },
+    { inputName: 'alias', rev: commit, samePin: false, expected: 0 },
+    { inputName: 'alias', rev: '0'.repeat(40), samePin: false, expected: 3 },
+    { inputName: 'next', rev: commit, samePin: false, expected: 3 },
+    { inputName: 'stable', rev: commit, samePin: true, expected: 0 },
+    { inputName: 'next', rev: commit, samePin: true, expected: 3 },
+    { inputName: 'alias', rev: commit, samePin: true, expected: 3 },
+  ])('isolates shared-repository members: %j', ({ inputName, rev, samePin, expected }) =>
+    Effect.gen(function* () {
+      const url = `git+https://github.com/${repo}?rev=${rev}&shallow=1`
+      const result = yield* check({
+        allowances: ['stable'],
+        configMembers: { stable: repo, next: repo },
+        members: {
+          stable: member,
+          next: {
+            ...member,
+            commit: samePin === true ? commit : '0'.repeat(40),
+          },
+        },
+        files: {
+          'flake.nix': `{ inputs.${inputName}.url = "${url}"; }`,
+          'devenv.yaml': `inputs:\n  ${inputName}:\n    url: ${url}\n`,
+          'flake.lock': encodeJson({
+            root: 'root',
+            nodes: {
+              root: { inputs: { [inputName]: 'node' } },
+              node: { original: { ...original, rev }, locked: { ...locked, rev } },
+            },
+          }),
+        },
+      })
+      expect(result.violations).toHaveLength(expected)
+      expect(result.violations.every((v) => v._tag === 'NonCanonicalNixInputSource')).toBe(true)
     }),
   )
 
@@ -222,9 +269,13 @@ describe('checkSourcePolicy', () => {
         allowances: ['example'],
         files: {
           'flake.lock': lockContent({ original, locked: { ...locked, ...change } }),
+          'devenv.lock': lockContent({ original: { ...original, ...change }, locked }),
         },
       })
-      expect(result.violations).toMatchObject([{ _tag: 'NonCanonicalNixInputSource' }])
+      expect(result.violations).toMatchObject([
+        { _tag: 'NonCanonicalNixInputSource' },
+        { _tag: 'NonCanonicalNixInputSource' },
+      ])
     }),
   )
 
