@@ -490,7 +490,7 @@ const checkLockFileInputs = ({
           owner: upstream.owner,
           repo: upstream.repo,
           ref: originalRepo?.ref ?? lockedRepo?.ref,
-          params: originalRepo?.params ?? lockedRepo?.params,
+          params: originalRepo?.params ?? lockedRepo?.params ?? new Map(),
         }),
       })
       continue
