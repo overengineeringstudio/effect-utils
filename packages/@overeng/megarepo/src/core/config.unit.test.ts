@@ -479,7 +479,7 @@ describe('config', () => {
           members: { upstream: 'https://github.com/example/upstream' },
           sourcePolicy: { gitTransportAllowances: [allowance] },
         }
-        const config = Schema.decodeUnknownSync(MegarepoConfig)(input)
+        const config = Schema.decodeSync(MegarepoConfig)(input)
         const jsonSchema = Schema.fromJsonString(MegarepoConfig)
         const encoded = Schema.encodeSync(jsonSchema)(config)
         expect(Schema.decodeSync(jsonSchema)(encoded)).toEqual(config)
