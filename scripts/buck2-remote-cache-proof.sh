@@ -50,11 +50,11 @@ test_source_backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-s
 descriptor_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-product-descriptor-a.json"
 descriptor_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-product-descriptor-b.json"
 descriptor_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-descriptor-cache-events.jsonl"
-reader_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-reader-target-union.jsonl"
+writer_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-writer-target-union.jsonl"
 cleanup_proof() {
   if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi
   rm -f "$test_source_backup" "$descriptor_a" "$descriptor_b"
-  for file in "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$descriptor_evidence" "$reader_evidence"; do
+  for file in "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$descriptor_evidence" "$writer_evidence"; do
     rm -f "$file" "$file.json-lines" "$file.buck-trace-id"
   done
   if [ -d "$context_b" ]; then (cd "$context_b" && "$buck" kill); fi
@@ -77,13 +77,13 @@ run_proof_command() {
   fi
   : > "${evidence}.json-lines"
   local command=("$buck")
-  if [ "$context" = proof-reader-target-union ]; then command=(timeout 600 "$buck"); fi
+  if [ "$context" = proof-writer-target-union ]; then command=(timeout 600 "$buck"); fi
   BUCK_WRAPPER_UUID="$build_id" CI_BUCK2_CACHE_EVIDENCE_PATH="" \
     "${command[@]}" "$@" --event-log "${evidence}.json-lines" --write-build-id "$native_id" || status=$?
   mv "${evidence}.json-lines" "$evidence"
   if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
     local fresh=()
-    case "$context" in proof-a-build|proof-b-build|proof-reader-target-union) fresh=(--fresh-root);; esac
+    case "$context" in proof-a-build|proof-b-build|proof-writer-target-union) fresh=(--fresh-root);; esac
     if ! bun "$projector" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" \
       --write-shard "$evidence" --shard-build-id "$build_id" --native-exit-code "$status" \
       --context "$context" --root-id "$root_id" "${fresh[@]}" >/dev/null; then
@@ -94,43 +94,44 @@ run_proof_command() {
   return "$status"
 }
 
-# Readers render these workspace-sibling declarations into their editor views;
-# building the union observes unchanged source identities, not the run-unique
-# inputs used below. A remote hit is valid trusted presence, not a fresh upload.
-# --build-reader-targets exposes this exact added step for read-only measurement
-# without the protected writer credential or the rest of the mutation proof.
-build_reader_targets() {
-  local targets_file="$RUNNER_TEMP/buck2-reader-targets.txt" started elapsed status=0
-  local reader_targets=()
+# Prime the stable reader declaration and freshness roots before mutation proofs.
+# A remote hit is valid trusted presence, not a fresh upload. This Linux-only
+# writer also runs the network-isolated freshness action; it is not a declaration
+# dependency and does not belong in readerDeclarationTargets.
+# --build-writer-targets exposes this step without the mutation proof or requiring
+# the protected writer credential (existing reader posture remains unchanged).
+build_writer_targets() {
+  local targets_file="$RUNNER_TEMP/buck2-writer-targets.txt" started elapsed status=0
+  local writer_targets=()
   started="$(date +%s)"
-  bun -e 'import {readerDeclarationTargets} from "./genie/buck2/typescript-admissions.ts"; for (const target of readerDeclarationTargets) console.log(target.startsWith("//") ? `effect_utils${target}` : target)' > "$targets_file"
-  mapfile -t reader_targets < "$targets_file"
+  bun -e 'import {trustedWriterPrimingTargets} from "./genie/buck2/typescript-admissions.ts"; for (const target of trustedWriterPrimingTargets) console.log(target.startsWith("//") ? `effect_utils${target}` : target)' > "$targets_file"
+  mapfile -t writer_targets < "$targets_file"
   rm "$targets_file"
-  if [ "${#reader_targets[@]}" -eq 0 ]; then
-    echo '::error::Reader declaration composition produced no targets'
+  if [ "${#writer_targets[@]}" -eq 0 ]; then
+    echo '::error::Trusted writer composition produced no targets'
     return 1
   fi
   "$buck" kill
   rm -rf buck-out
   proof_root_id="$(bun -e 'import {createHash} from "node:crypto"; console.log(createHash("sha256").update(crypto.randomUUID()).digest("hex"))')"
-  run_proof_command "$reader_evidence" proof-reader-target-union build \
-    --target-platforms effect_utils//buck2/platforms:host_platform --local-only "${reader_targets[@]}" || status=$?
+  run_proof_command "$writer_evidence" proof-writer-target-union build \
+    --target-platforms effect_utils//buck2/platforms:host_platform --local-only "${writer_targets[@]}" || status=$?
   elapsed=$(( $(date +%s) - started ))
-  echo "::notice::[ci] reader declaration target union (${#reader_targets[@]} targets) completed in $elapsed s (status $status; native deadline 600 s)"
+  echo "::notice::[ci] trusted writer target union (${#writer_targets[@]} targets) completed in $elapsed s (status $status; native deadline 600 s)"
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-    printf '### Reader declaration target union\n- Targets: %s\n- Duration: %s s\n- Status: %s\n- Native deadline: 600 s\n' \
-      "${#reader_targets[@]}" "$elapsed" "$status" >> "$GITHUB_STEP_SUMMARY"
+    printf '### Trusted writer target union\n- Targets: %s\n- Duration: %s s\n- Status: %s\n- Native deadline: 600 s\n' \
+      "${#writer_targets[@]}" "$elapsed" "$status" >> "$GITHUB_STEP_SUMMARY"
   fi
   return "$status"
 }
 
 bun scripts/buck2-cache-posture.ts "$source_root"
-if [ "${1:-}" = --build-reader-targets ]; then
-  build_reader_targets
+if [ "${1:-}" = --build-writer-targets ]; then
+  build_writer_targets
   exit
 fi
 grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo '::error::publisher cache posture was not selected'; exit 1; }
-build_reader_targets
+build_writer_targets
 # Reuse the trusted writer admission to prime the tiny identity graph, then
 # require unchanged users to hit remotely after each cold local materializer.
 # Bound added runtime independently of the larger product/test cache proof.
