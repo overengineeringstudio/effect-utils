@@ -358,6 +358,119 @@ x86_64 and aarch64 under `elf-dynamic/v1`, plus Darwin aarch64 under
 Bun's embedded ad-hoc signature is part of the executable and macOS refuses
 the altered bytes.
 
+## Declared-Input Dependency Freshness
+
+```text
+declared source tree + committed BUCK/sidecar inputs + pinned tools
+  -> validate sidecar offline
+  -> execute consumer's real BUCK.genie.ts in check mode
+  -> regenerate expected BUCK and canonical sidecar into declared scratch
+  -> byte comparison -> freshness.ok + freshness.json
+```
+
+`declared_inputs_freshness_check`, loaded from
+`@rules//buck2:declared_inputs_freshness.bzl`, checks the lockfile-derived
+dependency projection. It uses `cache_guarded_rule(cache_eligible = True)`,
+`hermetic_action`, and `hermetic_bun_command`: the verdict action is cacheable,
+not `local_only`, and not `cacheable = False`. This realizes the bounded
+declared-input check contract under BUILD.BUCK.EXEC-R06–R09; it does not
+independently replace the source-side stage-zero authority in
+[decision 0035](../../.decisions/0035-source-side-generation-freshness-gate.md).
+
+The public attributes declare sources and their consumer-root-relative paths:
+
+| Attribute             | Type / default                                     | Input contract                                                                                                                                                                                                            |
+| --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lockfile`            | Required source                                    | The consumer's `pnpm-lock.yaml`.                                                                                                                                                                                          |
+| `workspace_manifests` | Required path-to-source dictionary                 | `pnpm-workspace.yaml` and every workspace `package.json`.                                                                                                                                                                 |
+| `patches`             | Path-to-source dictionary; `{}`                    | Every patch referenced by `patchedDependencies`.                                                                                                                                                                          |
+| `sidecar`             | Required source                                    | The committed `pnpm-lock.sha256.json`.                                                                                                                                                                                    |
+| `generator_sources`   | Required path-to-source dictionary                 | The consumer's `BUCK.genie.ts`, `generate.ts`, and `generate-sidecar.ts`; shared `buck2/dependencies/pnpm-lock.ts`, `pnpm-store.ts`, `pnpm-store-buck.ts`, and the runner; the complete transitive generator source tree. |
+| `runtime_sources`     | Path-to-source dictionary; `{}`                    | Complete declared runtime dependencies; `node_modules` paths may map to declared directory artifacts.                                                                                                                     |
+| `committed_outputs`   | Required path-to-source dictionary                 | The committed `BUCK` and sidecar, exposed through `export_materialization_inputs`. Must include the same sidecar path and artifact; these remain inputs only.                                                             |
+| `lockfile_path`       | String; `pnpm-lock.yaml`                           | Staged consumer-relative lockfile path.                                                                                                                                                                                   |
+| `sidecar_path`        | String; `buck2/dependencies/pnpm-lock.sha256.json` | Staged consumer-relative sidecar path.                                                                                                                                                                                    |
+| `generator`           | String; `buck2/dependencies/BUCK.genie.ts`         | Consumer generator path; must be a key in `generator_sources`.                                                                                                                                                            |
+| `generator_export`    | String; `declaredInputsFreshness`                  | Named async entry in `generator`, returning `{ buck: string, sidecar: string }` expected bytes.                                                                                                                           |
+| `repair_command`      | String; `devenv tasks run genie:run`               | Repair command reported on failure, not executed by the action; consumers may select `devenv tasks run buck2:refresh-dependencies`.                                                                                       |
+
+Before importing `generator`, the runner sets `EFFECT_UTILS_PNPM_OFFLINE=1`.
+It invokes `generator_export({ cwd, location, mode: 'check' })`; the consumer
+entry owns both output bytes, using its real offline load function and canonical
+sidecar renderer. In particular, consumer workspace projections occur before
+translation and sidecar validation. The runner never translates raw lock or
+workspace inputs itself; these remain declared inputs for hashing and the cache
+key. Missing/stale sidecar data must fail the consumer offline load, never fetch.
+
+Bun and effect-tsgo are execution dependencies from `//buck2/toolchains:bun`
+and `//buck2/toolchains:effect_tsgo`; their Nix capability identities enter the
+action key. Source staging preserves consumer-relative paths rather than
+flattening the generator imports. An undeclared read is a defect, not a
+cache-miss tolerance.
+
+Runtime trees must be self-contained within the staged source tree. For the
+runner, `runtime_sources = {"node_modules/effect": "//buck2/dependencies:declared_inputs_freshness_runtime"}`
+stages this repository's digest-pinned, dependency-free Effect package directly.
+The complete executable example is `buck2/tests/declared_inputs_freshness/BUCK`.
+An importer `node_modules`
+view alone is not a closed runtime: its links can point to separate store
+artifacts, which the sandbox intentionally does not expose.
+
+The packaged rules cell exposes the same closed runtime as
+`@rules//:declared_inputs_freshness_runtime`. Generator source mappings use
+`@rules//buck2/dependencies:<basename>` for shared dependency modules and
+`@rules//:<full-path>` for the Genie helpers and runtime sources. Their published
+inventory includes the full finite closure, not merely the rule and runner.
+`nix/buck2-rules/tests/declared-inputs-freshness-consumer.test.sh` builds a
+consumer target against the actual packaged rules output; source-checkout
+fixture success alone does not establish that distribution contract.
+
+The action requires Linux Bubblewrap containment with `--unshare-all`; there
+is no unsandboxed Darwin fallback. Network isolation applies to the generator
+and its descendants, not just the sidecar validation helper.
+
+The rule invokes the runner with `--source <tree> --manifest <json> --output
+<directory>`. Its manifest fields are `lockfile`, `workspaceManifests`,
+`patches`, `sidecar`, `generatorSources`, `committedOutputs`, `inputPaths`,
+`generator`, `generatorExport`, and `repairCommand`. Paths are relative to the staged source tree. The default
+output is the `freshness` directory containing the report, receipt, and
+expected-output scratch.
+
+The runner executes the real consumer generator, not an independent
+approximation of its BUCK renderer. Explicit offline mode
+(`EFFECT_UTILS_PNPM_OFFLINE=1`) validates the sidecar without refreshing it.
+Every lock entry must have a matching sidecar entry for integrity, package
+identity, URL, classification, size, SHA-256, and bins. Missing or stale
+metadata fails without network access or a fetch fallback. Expected sidecar
+bytes come from the existing sidecar generator using the validated metadata.
+The consumer entry renders its `BUCK.genie.ts` default export with
+`stringify({ cwd, location, mode: 'check' })` against the staged tree, and returns
+that BUCK text together with its canonical sidecar text.
+
+Expected text is written only under declared output scratch and byte-compared
+with the committed inputs. The action neither emits nor substitutes committed
+BUCK or sidecar files, and never repairs the checkout. Thus a cache hit proves
+the same equality verdict for exactly the keyed input digest set, rather than
+providing a replacement graph.
+
+The output directory contains `freshness.ok`, the successful equality
+receipt, and `freshness.json`, the versioned report:
+
+| JSON field | Meaning                                                                                                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema`   | Exactly `effect-utils/declared-inputs-freshness/v1`, the repository-owned report schema identifier.                                                                                                                   |
+| `inputs`   | Records `{ path, sha256 }` binding declared source-tree files to byte digests; symlink entries hash `symlink:` plus their link text without following dependency cycles.                                              |
+| `files`    | Records `{ path, verdict, firstDiff }`, where `verdict` is `fresh`, `stale`, or `unchecked`. `firstDiff` is a unified-diff excerpt or validation diagnostic for stale files, and `null` for fresh or unchecked files. |
+| `verdict`  | Overall `fresh` or `stale` equality verdict.                                                                                                                                                                          |
+
+If sidecar validation fails before generation, the BUCK verdict is `unchecked`
+and the overall verdict is `stale`; an unchecked file never counts as fresh.
+
+A mismatch fails the action with a unified-diff excerpt and the consumer's
+repair command (`genie:run` / `buck2:refresh-dependencies`). Reports do not
+turn a failing action into a successful cached receipt. Consumer check
+aggregates may depend on this verdict using `check_aggregate`.
+
 ## Action Lifecycle
 
 ```text
@@ -488,6 +601,7 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 | Cargo registry crate extraction (`cargo_extract`)                                                | Admitted: one checksum-verified archive artifact, the projected native archive tool and its capability manifest, declared strip prefix and output directory, and the scrubbed native launcher. Acquisition is a separate unadmitted target; Git archive extraction, Rust compilation and build scripts are not admitted by this rule.                                                                                                                          |
 | TypeScript check/emit                                                                            | Linux only: mandatory `linux-bwrap` boundary over declared source/dependency view, declarations, exact Bun/tsgo closure and arguments. Darwin is local-only, unsandboxed and explicitly excluded as `darwin-unsandboxed`; caller cache constraints cannot override this exclusion.                                                                                                                                                                             |
 | Static formatter/linter, Nix-source and Devenv trace-source checks                               | Admitted: declared source set, configuration, projected native tool and runner; scrubbed outer launcher. Trace-source audit reads only the declared source view; Nix-source mode invokes attested nixfmt/deadnix over explicit files.                                                                                                                                                                                                                          |
+| Declared-input dependency freshness (`declared_inputs_freshness_check`)                          | Cacheable verdict over the complete declared source/runtime tree, pinned Bun/effect-tsgo identities, committed BUCK/sidecar inputs, and real offline generator. No fetch fallback or committed-output emission; see [the contract](#declared-input-dependency-freshness).                                                                                                                                                                                      |
 | Weaver registry and version-pin checks                                                           | Admitted: declared registry/model and pin sources, attested Weaver/model locator, and scrubbed Bun launcher; registry copy/rewrite uses executor scratch and invokes only the pinned checker.                                                                                                                                                                                                                                                                  |
 | JavaScript collection runner                                                                     | Admitted only for deterministic `cacheable` lanes: complete runner-relative module closure, declared package/read roots, config/selection/runtime and fingerprint tool. The runner constructs the child's env/PATH from declared tools and scratch, checks input immutability, and normalizes collected paths. A false-cacheable lane uses the default deny platform and disables uploads while retaining env scrubbing. Inherited-env collection is rejected. |
 | Package command runner, portable bundle                                                          | Admitted bundle mode: runner plus declared parser closure, complete package/read-root map, platform-gated manifest and projected Bun. A label-named hardlink farm contains resolution, emitted module comments reject host paths, and the descriptor binds the bytes.                                                                                                                                                                                          |

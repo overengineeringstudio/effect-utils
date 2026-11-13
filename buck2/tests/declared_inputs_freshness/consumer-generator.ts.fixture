@@ -1,0 +1,23 @@
+// This consumer generator is staged at buck2/dependencies/BUCK.genie.ts.
+import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import { loadRealPnpmLockData } from './generate.ts'
+import { generatePnpmSha256Sidecar } from './pnpm-lock.ts'
+import { renderPnpmPackageTargets, renderPnpmPlatformGatedPackages, renderPnpmStoreBuck } from './pnpm-store-buck.ts'
+import { makePnpmStoreProjection } from './pnpm-store.ts'
+
+const { metadata, sidecar } = loadRealPnpmLockData()
+const store = makePnpmStoreProjection({ metadata, sidecar })
+
+const output = createGenieOutput({
+  data: store,
+  stringify: () => `${renderPnpmPlatformGatedPackages({ metadata })}\n${renderPnpmPackageTargets({ metadata, sidecar })}\n${renderPnpmStoreBuck(store)}`,
+})
+
+export default output
+export const declaredInputsFreshness = async (context: Parameters<typeof output.stringify>[0]) => {
+  const refuse = async (): Promise<never> => { throw new Error('offline sidecar cannot refresh archives') }
+  const canonical = await generatePnpmSha256Sidecar({
+    metadata, previous: sidecar, fetchArchive: refuse, readProductTarball: refuse,
+  })
+  return { buck: output.stringify(context), sidecar: `${JSON.stringify(canonical, null, 2)}\n` }
+}

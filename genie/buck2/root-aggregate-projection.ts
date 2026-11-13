@@ -118,6 +118,9 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         'load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")',
         'load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")',
         rootBuckBase,
+        ...['genie/buck2/mod.ts', 'genie/native-dependency-policy.ts'].map(
+          (source) => `export_file(name = "${source}", src = "${source}", visibility = ["PUBLIC"])`,
+        ),
         '# Native rust_test requires both conventional test toolchains for local receipts.',
         'noop_test_toolchain(name = "test", visibility = ["PUBLIC"])',
         'remote_test_execution_toolchain(name = "remote_test_execution", visibility = ["PUBLIC"])',

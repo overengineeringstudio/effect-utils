@@ -116304,3 +116304,10 @@ pnpm_store_view(
     },
     visibility = ["PUBLIC"],
 )
+
+
+alias(
+    name = "declared_inputs_freshness_runtime",
+    actual = ":package_effect_4_1_0_9161ac1d98a6",
+    visibility = ["PUBLIC"],
+)

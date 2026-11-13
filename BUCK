@@ -125,6 +125,8 @@ toolchain_alias(
     visibility = ["PUBLIC"],
 )
 
+export_file(name = "genie/buck2/mod.ts", src = "genie/buck2/mod.ts", visibility = ["PUBLIC"])
+export_file(name = "genie/native-dependency-policy.ts", src = "genie/native-dependency-policy.ts", visibility = ["PUBLIC"])
 # Native rust_test requires both conventional test toolchains for local receipts.
 noop_test_toolchain(name = "test", visibility = ["PUBLIC"])
 remote_test_execution_toolchain(name = "remote_test_execution", visibility = ["PUBLIC"])
