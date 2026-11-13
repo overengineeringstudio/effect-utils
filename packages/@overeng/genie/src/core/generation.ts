@@ -21,7 +21,6 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
-import { renderGeneratedContent } from '../runtime/node/render.ts'
 import {
   getInputRecording,
   inputFileSystem,
@@ -31,6 +30,7 @@ import {
   recordInput,
   recordInputReason,
 } from '../runtime/node/inputs.ts'
+import { renderGeneratedContent } from '../runtime/node/render.ts'
 import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'

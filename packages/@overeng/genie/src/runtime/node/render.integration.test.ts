@@ -26,9 +26,14 @@ Vitest.it.scopedLive.prop(
       const genieFilePath = path.join(cwd, location, `${target}.genie.ts`)
       const content = `${shebang ? '#!/usr/bin/env sh\n' : ''}${body}\n`
       // This real source is loaded by generateFile, not replaced with an injected output.
-      yield* fs.writeFileString(genieFilePath, `export default { data: {}, stringify: (ctx) => ${JSON.stringify(content)} + ctx.location + ':' + ctx.mode + '\\n' }`)
+      yield* fs.writeFileString(
+        genieFilePath,
+        `export default { data: {}, stringify: (ctx) => ${JSON.stringify(content)} + ctx.location + ':' + ctx.mode + '\\n' }`,
+      )
       const context = { cwd, location, mode: 'generate' as const }
-      const output = { stringify: (ctx: typeof context) => `${content}${ctx.location}:${ctx.mode}\n` }
+      const output = {
+        stringify: (ctx: typeof context) => `${content}${ctx.location}:${ctx.mode}\n`,
+      }
       yield* generateFile({ genieFilePath, cwd, readOnly: false, oxfmtConfigPath: Option.none() })
       expect(yield* fs.readFileString(genieFilePath.replace('.genie.ts', ''))).toBe(
         renderGenieOutput({ output, context, genieFilePath }),
