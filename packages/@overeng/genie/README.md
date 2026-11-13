@@ -93,6 +93,11 @@ keeps fresh config reads because it may generate the formatter configuration its
 Dependency-store projections likewise
 reuse ordered edges and binary entries only within a single projection computation.
 
+Bootstrap import-closure checks resolve repeated runtime specifiers only once per importer
+and static/dynamic import mode. Wide barrels therefore do not enqueue a compiler RPC for
+every duplicate re-export. Static and dynamic imports remain separate because CommonJS
+files can resolve them through different package export conditions.
+
 Or use the `genie` binary directly for additional options:
 
 ```bash

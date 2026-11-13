@@ -12,7 +12,8 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { Checker } from 'typescript/unstable/async'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   discoverGenieFiles,
@@ -129,9 +130,42 @@ export const value = Effect`,
       ).join('\n'),
     )
 
-    const { violations } = await checkBootstrapClosure({ genieFiles: [source] })
+    // Observe real checker RPCs without replacing the server or its resolution behavior.
+    const resolve = vi.spyOn(Checker.prototype, 'getSymbolAtLocation')
+    try {
+      const { violations } = await checkBootstrapClosure({ genieFiles: [source] })
 
-    expect(violations).toHaveLength(0)
+      expect(violations).toHaveLength(0)
+      expect(resolve).toHaveBeenCalledTimes(1)
+    } finally {
+      resolve.mockRestore()
+    }
+  })
+
+  it('resolves identical text separately per importer and static/dynamic import mode', async () => {
+    const dir = makeDir()
+    const sources = ['first', 'second'].map((directory) => {
+      write(dir, `${directory}/safe.ts`, 'export const helper = 1')
+      return write(
+        dir,
+        `${directory}/source.genie.cts`,
+        [
+          `export { helper } from './safe.ts'`,
+          `export { helper as alias } from './safe.ts'`,
+          `export const load = () => import('./safe.ts')`,
+          `export const loadAgain = () => import('./safe.ts')`,
+        ].join('\n'),
+      )
+    })
+    // Static imports in a .cts file use require conditions, dynamic imports use import conditions.
+    const resolve = vi.spyOn(Checker.prototype, 'getSymbolAtLocation')
+    try {
+      const { violations } = await checkBootstrapClosure({ genieFiles: sources })
+      expect(violations).toHaveLength(0)
+      expect(resolve).toHaveBeenCalledTimes(4)
+    } finally {
+      resolve.mockRestore()
+    }
   })
 
   it('follows a lock-pinned `#mr` member edge: FAILs when the member reaches a bare package, PASSes a safe member import', async () => {
