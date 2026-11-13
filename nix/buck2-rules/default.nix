@@ -16,9 +16,7 @@ let
     path: lib.hasPrefix "buck2/dependencies/" path && lib.hasSuffix ".ts" path
   ) files;
   generatorSources = builtins.filter (
-    path:
-    lib.hasPrefix "genie/" path
-    || lib.hasPrefix "packages/@overeng/genie/src/runtime/" path
+    path: lib.hasPrefix "genie/" path || lib.hasPrefix "packages/@overeng/genie/src/runtime/" path
   ) files;
   exportSource = path: ''
     export_file(

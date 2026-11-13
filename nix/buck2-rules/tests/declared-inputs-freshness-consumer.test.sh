@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Execution requires the Linux network-namespace sandbox; the packaging contract
+# still checks inventory and exports on Darwin without an unsandboxed fallback.
+if [[ "$(uname -s)" != Linux ]]; then
+  echo 'SKIP: packaged freshness execution requires Linux Bubblewrap'
+  exit 0
+fi
+
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
 export BUCK2_RULES_REPO="$repo_root"
 # An existing realized root may be supplied by the broader packaging contract.
