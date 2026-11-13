@@ -6,3 +6,27 @@ export_file(
     src = "compile.ts",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "info-plist",
+    src = "info-plist.ts",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "stamp",
+    src = "stamp.ts",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "test-main",
+    src = "test-main.ts",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "test-verdict",
+    src = "test-verdict.ts",
+    visibility = ["PUBLIC"],
+)
