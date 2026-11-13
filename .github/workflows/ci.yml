@@ -4165,7 +4165,7 @@ jobs:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
       ]
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
