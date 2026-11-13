@@ -162,7 +162,15 @@ fi
 # service has no watch we can release; leave other roots and services alone.
 if command -v watchman >/dev/null 2>&1; then
   watchman_args=(--no-spawn --no-local --output-encoding=json)
-  if [ -n "${WATCHMAN_SOCK:-}" ]; then watchman_args+=("--sockname=$WATCHMAN_SOCK"); fi
+  if [ -n "${WATCHMAN_SOCK:-}" ]; then
+    watchman_args+=("--sockname=$WATCHMAN_SOCK")
+  else
+    # Match the launcher's resolved-HOME namespace without creating state or a service.
+    home_hash="$(printf %s "$home" | sha256sum)"
+    home_hash="${home_hash%% *}"
+    managed_socket="/tmp/eu-wm-$(id -u)-${home_hash:0:12}/sock"
+    watchman_args+=("--sockname=$managed_socket")
+  fi
   if watch_list="$(watchman "${watchman_args[@]}" watch-list 2>/dev/null)"; then
     if ! command -v jq >/dev/null 2>&1; then
       echo "worktree:teardown: jq is required to check watched roots" >&2
