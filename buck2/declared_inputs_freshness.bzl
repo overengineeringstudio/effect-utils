@@ -36,7 +36,8 @@ def _declared_inputs_freshness_check_impl(ctx):
         fail("committed_outputs must include the sidecar at {}".format(ctx.attrs.sidecar_path))
 
     # External immutable-cell source artifacts can be absolute symlinks.
-    # Dereference each exact declared input, never mount its ambient parent.
+    # Follow only the declared artifact's root link (-H); preserve nested links
+    # so staging cannot consume unkeyed referents outside a runtime tree.
     tool = ctx.attrs._action_env[BuckSupportToolInfo]
     source_tree = ctx.actions.declare_output("source", dir = True)
     staging = ["set -euo pipefail"]
@@ -48,7 +49,7 @@ def _declared_inputs_freshness_check_impl(ctx):
             source_tree.project(parent) if parent else source_tree,
         ]], delimiter = " "))
         staging.append(cmd_args([cmd_args(arg, quote = "shell") for arg in [
-            tool.store_path, "--coreutils-prog=cp", "--recursive", "--dereference",
+            tool.store_path, "--coreutils-prog=cp", "--recursive", "-H",
             "--no-target-directory", "--", sources[path], destination,
         ]], delimiter = " "))
     stage_script = ctx.actions.write("stage-inputs.sh", staging, allow_args = True)
