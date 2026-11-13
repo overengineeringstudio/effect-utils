@@ -95,9 +95,24 @@ const allNamedBindingsAreTypeOnly = (
   return false
 }
 
-/** Extract the RUNTIME (value, non-type-only) module specifier literals a source file imports/re-exports/dynamically-imports. */
+/** Extract unique runtime specifiers per resolution mode, scoped to this importer. */
 const runtimeSpecifiersOf = (sourceFile: SourceFile): readonly StringLiteral[] => {
   const specifiers: StringLiteral[] = []
+  const seen = new Set<string>()
+  const addSpecifier = ({
+    specifier,
+    mode,
+  }: {
+    specifier: StringLiteral
+    mode: 'static' | 'dynamic'
+  }): void => {
+    // A static import/export in a CommonJS file can resolve using require conditions while a
+    // dynamic import uses import conditions. Deduplicate within a mode, never across the two.
+    const key = `${mode}:${specifier.text}`
+    if (seen.has(key) === true) return
+    seen.add(key)
+    specifiers.push(specifier)
+  }
 
   const visit = (node: Node): void => {
     // import ... from 'x'
@@ -115,7 +130,7 @@ const runtimeSpecifiersOf = (sourceFile: SourceFile): readonly StringLiteral[] =
         (hasValueDefault === false &&
           isNamespaceBinding === false &&
           allNamedBindingsAreTypeOnly(clause?.namedBindings) === true)
-      if (typeOnly === false) specifiers.push(node.moduleSpecifier)
+      if (typeOnly === false) addSpecifier({ specifier: node.moduleSpecifier, mode: 'static' })
     }
 
     // export ... from 'x'  (covers `export * from` and `export { ... } from`)
@@ -125,13 +140,14 @@ const runtimeSpecifiersOf = (sourceFile: SourceFile): readonly StringLiteral[] =
       isStringLiteral(node.moduleSpecifier) === true
     ) {
       const typeOnly = node.isTypeOnly === true || allNamedBindingsAreTypeOnly(node.exportClause)
-      if (typeOnly === false) specifiers.push(node.moduleSpecifier)
+      if (typeOnly === false) addSpecifier({ specifier: node.moduleSpecifier, mode: 'static' })
     }
 
     // dynamic import('x') with a string-literal argument
     if (isCallExpression(node) === true && node.expression.kind === SyntaxKind.ImportKeyword) {
       const [first] = node.arguments
-      if (first !== undefined && isStringLiteral(first) === true) specifiers.push(first)
+      if (first !== undefined && isStringLiteral(first) === true)
+        addSpecifier({ specifier: first, mode: 'dynamic' })
     }
 
     node.forEachChild((child) => {
@@ -357,6 +373,8 @@ export const checkBootstrapClosure = async ({
     const outcome = existsSync(file) === true ? await session.analyze(file) : undefined
     if (outcome?.kind === 'analyzed') {
       const { analysis } = outcome
+      // Deduplicate before starting RPCs: a wide barrel can repeat one target thousands of times.
+      // Every queued lookup has its own deadline, so duplicate fan-out can kill a healthy server.
       const resolutions = await Promise.all(
         runtimeSpecifiersOf(analysis.sourceFile).map(async (specifier) => ({
           specifier: specifier.text,
