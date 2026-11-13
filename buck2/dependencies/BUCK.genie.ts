@@ -1,5 +1,6 @@
 // @genie-bootstrap
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import { renderGenieOutput } from '../../packages/@overeng/genie/src/runtime/node/render.ts'
 import { loadRealPnpmLockData } from './generate.ts'
 import { generatePnpmSha256Sidecar, pnpmTargetName } from './pnpm-lock.ts'
 import {
@@ -71,5 +72,8 @@ export const declaredInputsFreshness = async (context: Parameters<typeof output.
     fetchArchive: refuse,
     readProductTarball: refuse,
   })
-  return { buck: output.stringify(context), sidecar: `${JSON.stringify(canonical, null, 2)}\n` }
+  return {
+    buck: renderGenieOutput({ output, context, genieFilePath: 'BUCK.genie.ts' }),
+    sidecar: `${JSON.stringify(canonical, null, 2)}\n`,
+  }
 }

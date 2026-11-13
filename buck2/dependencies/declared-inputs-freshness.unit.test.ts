@@ -21,6 +21,7 @@ const sources = [
   'packages/@overeng/genie/src/runtime/core.ts',
   'packages/@overeng/genie/src/runtime/node/inputs.ts',
   'packages/@overeng/genie/src/runtime/node/input-observations.ts',
+  'packages/@overeng/genie/src/runtime/node/render.ts',
   'packages/@overeng/genie/src/runtime/repo-context/mod.ts',
   ...[
     'BUCK.genie',
@@ -96,7 +97,8 @@ snapshots:
       '-e',
       `
     const generator = await import(${JSON.stringify(pathToFileURL(join(root, 'buck2/dependencies/BUCK.genie.ts')).href)});
-    process.stdout.write(generator.default.stringify({cwd: ${JSON.stringify(root)}, location: 'buck2/dependencies', mode: 'check'}));
+    const { renderGenieOutput } = await import(${JSON.stringify(pathToFileURL(join(root, 'packages/@overeng/genie/src/runtime/node/render.ts')).href)});
+    process.stdout.write(renderGenieOutput({output: generator.default, genieFilePath: 'BUCK.genie.ts', context: {cwd: ${JSON.stringify(root)}, location: 'buck2/dependencies', mode: 'check'}}));
   `,
     ],
     { stdout: 'pipe', stderr: 'inherit', env: process.env },

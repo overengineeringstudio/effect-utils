@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3f93ffcc3da7b2511d106bd9ce28428c145a67aef9d47335fd8cb4a4a6fe195d
+# Semantic fingerprint: sha256:186e129a8138e0c5f44e9e3c12799d565eec92c02b352e2af2f691c63a5819b2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -126,6 +126,9 @@ export_materialization_inputs([
     "src/runtime/node/inputs.ts",
     "src/runtime/node/io.ts",
     "src/runtime/node/mod.ts",
+    "src/runtime/node/render.integration.test.ts",
+    "src/runtime/node/render.ts",
+    "src/runtime/node/render.unit.test.ts",
     "src/runtime/node/ts-api.ts",
     "src/runtime/node/ts-api.unit.test.ts",
     "src/runtime/node/tsconfig-from-packages.ts",
@@ -303,6 +306,9 @@ package_view(
         "src/runtime/node/inputs.ts": "src/runtime/node/inputs.ts",
         "src/runtime/node/io.ts": "src/runtime/node/io.ts",
         "src/runtime/node/mod.ts": "src/runtime/node/mod.ts",
+        "src/runtime/node/render.integration.test.ts": "src/runtime/node/render.integration.test.ts",
+        "src/runtime/node/render.ts": "src/runtime/node/render.ts",
+        "src/runtime/node/render.unit.test.ts": "src/runtime/node/render.unit.test.ts",
         "src/runtime/node/ts-api.ts": "src/runtime/node/ts-api.ts",
         "src/runtime/node/ts-api.unit.test.ts": "src/runtime/node/ts-api.unit.test.ts",
         "src/runtime/node/tsconfig-from-packages.ts": "src/runtime/node/tsconfig-from-packages.ts",
@@ -470,6 +476,9 @@ package_view(
         "src/runtime/node/inputs.ts": "src/runtime/node/inputs.ts",
         "src/runtime/node/io.ts": "src/runtime/node/io.ts",
         "src/runtime/node/mod.ts": "src/runtime/node/mod.ts",
+        "src/runtime/node/render.integration.test.ts": "src/runtime/node/render.integration.test.ts",
+        "src/runtime/node/render.ts": "src/runtime/node/render.ts",
+        "src/runtime/node/render.unit.test.ts": "src/runtime/node/render.unit.test.ts",
         "src/runtime/node/ts-api.ts": "src/runtime/node/ts-api.ts",
         "src/runtime/node/ts-api.unit.test.ts": "src/runtime/node/ts-api.unit.test.ts",
         "src/runtime/node/tsconfig-from-packages.ts": "src/runtime/node/tsconfig-from-packages.ts",
@@ -634,6 +643,9 @@ package_view(
         "src/runtime/node/inputs.ts": "src/runtime/node/inputs.ts",
         "src/runtime/node/io.ts": "src/runtime/node/io.ts",
         "src/runtime/node/mod.ts": "src/runtime/node/mod.ts",
+        "src/runtime/node/render.integration.test.ts": "src/runtime/node/render.integration.test.ts",
+        "src/runtime/node/render.ts": "src/runtime/node/render.ts",
+        "src/runtime/node/render.unit.test.ts": "src/runtime/node/render.unit.test.ts",
         "src/runtime/node/ts-api.ts": "src/runtime/node/ts-api.ts",
         "src/runtime/node/ts-api.unit.test.ts": "src/runtime/node/ts-api.unit.test.ts",
         "src/runtime/node/tsconfig-from-packages.ts": "src/runtime/node/tsconfig-from-packages.ts",
