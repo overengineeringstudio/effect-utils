@@ -1,0 +1,116 @@
+"""Offline equality verdicts over a consumer's exact generator input tree."""
+
+load("//buck2:hermetic.bzl", "hermetic_bun_command", "hermetic_cacheable_sandboxed_action", "hermetic_execution_constraints", "ts_action_attrs")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
+load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
+load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
+
+_RUNNER_PATH = "buck2/dependencies/declared-inputs-freshness.ts"
+
+
+def _add_source(sources, path, source):
+    if not path or path.startswith("/") or "\\" in path or any([part in ["", ".", ".."] for part in path.split("/")]):
+        fail("declared input path must be a normalized tree-relative path: {}".format(path))
+    if path in sources and sources[path] != source:
+        fail("conflicting declared inputs at {}".format(path))
+    sources[path] = source
+
+
+def _declared_inputs_freshness_check_impl(ctx):
+    bun = ctx.attrs._bun[BunToolchainInfo]
+    tsgo = ctx.attrs._effect_tsgo[EffectTsgoToolchainInfo]
+    sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
+    sources = {}
+    _add_source(sources, ctx.attrs.lockfile_path, ctx.attrs.lockfile)
+    _add_source(sources, ctx.attrs.sidecar_path, ctx.attrs.sidecar)
+    for group in [ctx.attrs.workspace_manifests, ctx.attrs.patches, ctx.attrs.generator_sources, ctx.attrs.committed_outputs, ctx.attrs.runtime_sources]:
+        for path, source in group.items():
+            _add_source(sources, path, source)
+    _add_source(sources, _RUNNER_PATH, ctx.attrs._runner)
+    if ctx.attrs.generator not in ctx.attrs.generator_sources:
+        fail("generator must name an entry in generator_sources")
+    if ctx.attrs.generator.split("/")[-1] != "BUCK.genie.ts" or ctx.attrs.generator.removesuffix(".genie.ts") not in ctx.attrs.committed_outputs:
+        fail("generator must name a BUCK.genie.ts with its BUCK in committed_outputs")
+    if ctx.attrs.sidecar_path not in ctx.attrs.committed_outputs:
+        fail("committed_outputs must include the sidecar at {}".format(ctx.attrs.sidecar_path))
+
+    # copied_dir preserves imports and node_modules resolution without exposing
+    # the checkout. A directory-valued runtime source is a declared tree input.
+    source_tree = ctx.actions.copied_dir("source", sources)
+    manifest = ctx.actions.write_json("freshness-manifest.json", {
+        "lockfile": ctx.attrs.lockfile_path,
+        "workspaceManifests": sorted(ctx.attrs.workspace_manifests.keys()),
+        "patches": sorted(ctx.attrs.patches.keys()),
+        "sidecar": ctx.attrs.sidecar_path,
+        "generatorSources": sorted(ctx.attrs.generator_sources.keys()),
+        "committedOutputs": sorted(ctx.attrs.committed_outputs.keys()),
+        "generator": ctx.attrs.generator,
+        "repairCommand": ctx.attrs.repair_command,
+        "inputPaths": sorted(sources.keys()),
+    })
+    result = ctx.actions.declare_output("freshness", dir = True)
+    inputs = [source_tree, manifest]
+    command = cmd_args([
+        hermetic_bun_command(ctx, bun.executable, sandbox_inputs = inputs),
+        source_tree.project(_RUNNER_PATH),
+        "--source", source_tree,
+        "--manifest", manifest,
+        "--output", result.as_output(),
+    ])
+    hermetic_cacheable_sandboxed_action(
+        ctx,
+        sandbox,
+        {"bun": sandbox.closure_paths.get("bun", []), "effect-tsgo": tsgo.closure_paths},
+        command,
+        inputs,
+        [result],
+        tool_inputs = sandbox.bun_inputs + tsgo.inputs,
+        category = "declared_inputs_freshness",
+        identifier = ctx.attrs.name,
+    )
+    return [DefaultInfo(default_output = result)]
+
+
+_declared_inputs_freshness_check = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
+    impl = _declared_inputs_freshness_check_impl,
+    attrs = dict(ts_action_attrs(), **{
+        "lockfile": attrs.source(),
+        "lockfile_path": attrs.string(default = "pnpm-lock.yaml"),
+        "workspace_manifests": attrs.dict(attrs.string(), attrs.source()),
+        "patches": attrs.dict(attrs.string(), attrs.source(), default = {}),
+        "sidecar": attrs.source(),
+        "sidecar_path": attrs.string(default = "buck2/dependencies/pnpm-lock.sha256.json"),
+        "generator_sources": attrs.dict(attrs.string(), attrs.source()),
+        "committed_outputs": attrs.dict(attrs.string(), attrs.source()),
+        "runtime_sources": attrs.dict(attrs.string(), attrs.source(), default = {}),
+        "generator": attrs.string(default = "buck2/dependencies/BUCK.genie.ts"),
+        "repair_command": attrs.string(default = "devenv tasks run genie:run"),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "@rules//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+        "_effect_tsgo": attrs.default_only(attrs.exec_dep(
+            default = "@rules//buck2/toolchains:effect_tsgo",
+            providers = [EffectTsgoToolchainInfo],
+        )),
+        "_runner": attrs.default_only(attrs.source(
+            default = "@rules//buck2/dependencies:declared-inputs-freshness.ts",
+        )),
+    }),
+)
+
+
+def declared_inputs_freshness_check(name, exec_compatible_with = [], **kwargs):
+    """Checks committed outputs using only declared, network-isolated inputs.
+
+    Dictionary keys are consumer-root-relative destinations, not Buck package
+    paths. Include the actual BUCK.genie.ts, its transitive imports and repository
+    marker in generator_sources, and their installed dependencies in runtime_sources.
+    Committed outputs (including the sidecar) are inputs, never action products.
+    """
+    _declared_inputs_freshness_check(
+        name = name,
+        exec_compatible_with = hermetic_execution_constraints(exec_compatible_with),
+        **kwargs
+    )

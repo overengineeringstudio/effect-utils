@@ -1,0 +1,36 @@
+load("//buck2:declared_inputs_freshness.bzl", "declared_inputs_freshness_check")
+load("//buck2:materialization.bzl", "export_materialization_inputs")
+
+export_materialization_inputs(["expected.BUCK", "pnpm-lock.sha256.json"])
+
+declared_inputs_freshness_check(
+    name = "fresh",
+    lockfile = "pnpm-lock.yaml",
+    workspace_manifests = {
+        "pnpm-workspace.yaml": "pnpm-workspace.yaml",
+        "package.json": "package.json",
+    },
+    sidecar = "pnpm-lock.sha256.json",
+    generator_sources = {
+        "megarepo.json": "megarepo.json",
+        "buck2/dependencies/BUCK.genie.ts": "consumer-generator.ts.fixture",
+        "buck2/dependencies/generate.ts": "//buck2/dependencies:generate.ts",
+        "buck2/dependencies/generate-sidecar.ts": "//buck2/dependencies:generate-sidecar.ts",
+        "buck2/dependencies/pnpm-lock.ts": "//buck2/dependencies:pnpm-lock.ts",
+        "buck2/dependencies/pnpm-store.ts": "//buck2/dependencies:pnpm-store.ts",
+        "buck2/dependencies/pnpm-store-buck.ts": "//buck2/dependencies:pnpm-store-buck.ts",
+        "buck2/dependencies/public-archive-origin.ts": "//buck2/dependencies:public-archive-origin.ts",
+        "genie/buck2/mod.ts": "//:genie/buck2/mod.ts",
+        "genie/native-dependency-policy.ts": "//:genie/native-dependency-policy.ts",
+        "packages/@overeng/genie/src/runtime/core.ts": "//packages/@overeng/genie:src/runtime/core.ts",
+        "packages/@overeng/genie/src/runtime/node/inputs.ts": "//packages/@overeng/genie:src/runtime/node/inputs.ts",
+        "packages/@overeng/genie/src/runtime/node/input-observations.ts": "//packages/@overeng/genie:src/runtime/node/input-observations.ts",
+        "packages/@overeng/genie/src/runtime/repo-context/mod.ts": "//packages/@overeng/genie:src/runtime/repo-context/mod.ts",
+    },
+    committed_outputs = {
+        "buck2/dependencies/BUCK": "expected.BUCK",
+        "buck2/dependencies/pnpm-lock.sha256.json": "pnpm-lock.sha256.json",
+    },
+    runtime_sources = {"node_modules": "//packages/@overeng/genie:node_modules"},
+    visibility = ["PUBLIC"],
+)

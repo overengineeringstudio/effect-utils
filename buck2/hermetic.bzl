@@ -72,7 +72,7 @@ def _sandbox_absolute(artifact):
     return cmd_args(cmd_args(artifact, quote = "shell"), format = '"$PWD"/{}')
 
 
-def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs):
+def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs, fingerprint_locks = True):
     action_env = ctx.attrs._action_env[BuckSupportToolInfo]
     # Retain the artifact name so existing TS action digests remain unchanged.
     launcher = ctx.actions.declare_output("ts-sandbox.sh")
@@ -87,6 +87,7 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs):
             "--coreutils-prog=mkdir", "-p", "--",
             [_sandbox_absolute(output) for output in outputs],
         ], delimiter = " "),
+    ] + ([
         # Private /tmp must not turn the native fingerprint cap into a per-action
         # cap. Create persistent host inodes without truncation, then expose only
         # a read-only mount; payload commands cannot replace semaphore files.
@@ -99,6 +100,7 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs):
         # Shell redirection creates mode 0666; a scoped zero umask preserves it
         # for other host users. Existing inodes are never truncated or chmodded.
         '(umask 000; for slot in admission slot-0 slot-1 slot-2 slot-3; do if [[ ! -e "$fingerprint_locks/$slot" ]]; then (set -o noclobber; : > "$fingerprint_locks/$slot") || [[ -f "$fingerprint_locks/$slot" ]]; fi; done)',
+    ] if fingerprint_locks else []) + [
         command,
         "",
     ], allow_args = True)
@@ -120,7 +122,20 @@ def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs =
     )
 
 
-def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, inherit_nix_build_environment = False, **kwargs):
+def hermetic_cacheable_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, **kwargs):
+    """Strict Linux containment without the native TS lane's local-only policy.
+
+    Cache admission and remote execution are separate platform decisions. Existing
+    TS callers retain their local-only/Darwin policy; this boundary never falls
+    back to unsandboxed execution and does not impose local_only.
+    """
+    hermetic_sandboxed_action(
+        ctx, sandbox, tool_closures, arguments, inputs, outputs,
+        require_cacheable_sandbox = True, **kwargs
+    )
+
+
+def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, inherit_nix_build_environment = False, require_cacheable_sandbox = False, **kwargs):
     """Runs admitted directory-output actions with exactly the supplied closures.
 
     Each closure must be attested by the caller's toolchain dependencies; their
@@ -129,7 +144,11 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
     Callers use the existing action-policy attrs and platform admission.
     """
     status = ts_action_admission_status(ctx)
-    kwargs["local_only"] = True
+    if require_cacheable_sandbox:
+        if status != "linux-bwrap":
+            fail("Sandbox: cacheable execution requires Linux Bubblewrap containment")
+    else:
+        kwargs["local_only"] = True
     for tool_id in sorted(tool_closures.keys()):
         if not tool_closures[tool_id]:
             fail("Sandbox: {} capability closure missing; unsandboxed execution is forbidden".format(tool_id))
@@ -159,7 +178,7 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
         "--proc", "/proc", "--remount-ro", "/proc",
         "--dev", "/dev", "--remount-ro", "/dev",
         "--tmpfs", "/tmp",
-        "--ro-bind", '"$fingerprint_locks"', "/tmp/effect-utils-buck2-fingerprint-v1",
+        [] if require_cacheable_sandbox else ["--ro-bind", '"$fingerprint_locks"', "/tmp/effect-utils-buck2-fingerprint-v1"],
         "--bind", '"$scratch"', '"$scratch"',
         "--dir", '"$PWD"',
     ], delimiter = " ")
@@ -181,5 +200,8 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
     )
     # Tool capability artifacts stay hidden launcher inputs, as sandbox inputs are;
     # their store closures are the read-only binds above.
-    command = _sandbox_action_launcher(ctx, sandbox, bind_args, inputs + tool_inputs, outputs)
+    command = _sandbox_action_launcher(
+        ctx, sandbox, bind_args, inputs + tool_inputs, outputs,
+        fingerprint_locks = not require_cacheable_sandbox,
+    )
     hermetic_action(ctx, command, cacheable = cacheable, **kwargs)

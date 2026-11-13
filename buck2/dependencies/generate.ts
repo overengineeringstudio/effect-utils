@@ -21,6 +21,11 @@ import {
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 const sidecarPath = 'buck2/dependencies/pnpm-lock.sha256.json' as const
 
+/** Offline checks fail without reaching the archive-refresh subprocess. */
+export class OfflinePnpmSidecarError extends Error {
+  readonly _tag = 'OfflinePnpmSidecarError'
+}
+
 /** Real lock translation and its verified, freshness-gated archive sidecar. */
 export type RealPnpmLockData = {
   readonly metadata: PnpmLockMetadata
@@ -42,6 +47,22 @@ export const loadRealPnpmLockData = (): RealPnpmLockData => {
     lockfileText: repo.readText('pnpm-lock.yaml'),
     workspaceText: repo.readText('pnpm-workspace.yaml'),
   })
+  // The declared-input check never enters the refresh subprocess path below.
+  if (process.env.EFFECT_UTILS_PNPM_OFFLINE === '1') {
+    try {
+      const sidecar = decodePnpmSha256Sidecar(
+        JSON.parse(readFileSync(repo.resolve(sidecarPath), 'utf8')),
+      )
+      validatePnpmSha256Sidecar({ metadata, sidecar })
+      loaded = { metadata, sidecar }
+      return loaded
+    } catch (cause) {
+      throw new OfflinePnpmSidecarError(
+        `offline sha256 sidecar validation failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      )
+    }
+  }
   let sidecar: PnpmSha256Sidecar | undefined
   if (existsSync(repo.resolve(sidecarPath)) === true) {
     let value: unknown

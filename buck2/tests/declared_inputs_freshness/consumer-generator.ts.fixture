@@ -1,0 +1,13 @@
+// This consumer generator is staged at buck2/dependencies/BUCK.genie.ts.
+import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import { loadRealPnpmLockData } from './generate.ts'
+import { renderPnpmPackageTargets, renderPnpmPlatformGatedPackages, renderPnpmStoreBuck } from './pnpm-store-buck.ts'
+import { makePnpmStoreProjection } from './pnpm-store.ts'
+
+const { metadata, sidecar } = loadRealPnpmLockData()
+const store = makePnpmStoreProjection({ metadata, sidecar })
+
+export default createGenieOutput({
+  data: store,
+  stringify: () => `${renderPnpmPlatformGatedPackages({ metadata })}\n${renderPnpmPackageTargets({ metadata, sidecar })}\n${renderPnpmStoreBuck(store)}`,
+})

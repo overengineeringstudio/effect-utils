@@ -3,6 +3,8 @@ import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mo
 
 const files = [
   'buck2-member.json',
+  'buck2/declared_inputs_freshness.bzl',
+  'buck2/dependencies/declared-inputs-freshness.ts',
   'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/defs.bzl',
   'buck2/dependencies/nix-archive.ts',
