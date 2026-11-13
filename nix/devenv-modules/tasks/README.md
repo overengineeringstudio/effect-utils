@@ -94,6 +94,10 @@ explicitly to admission's Watchman CLI, along with the managed state/PID/log pat
 An explicit `WATCHMAN_SOCK` remains caller-owned. Oversized sockets or unsafe
 managed directories fail closed with an actionable socket admission error; there
 is no fallback to Watchman's potentially oversized HOME-derived path.
+Standalone Watchman CLI queries and watch cleanup must also pass `--sockname`;
+the CLI does not honor `WATCHMAN_SOCK` as native Buck does. The consumer-root and
+file-watcher contract fixtures resolve the production location through
+`prepareWatchmanEnvironment` and select it explicitly, including during cleanup.
 
 Import the sibling observability module once to capture native devenv spans
 and effect-utils task spans as one otelite trace:
