@@ -1,8 +1,9 @@
 """Offline equality verdicts over a consumer's exact generator input tree."""
 
-load("//buck2:hermetic.bzl", "hermetic_bun_command", "hermetic_cacheable_sandboxed_action", "hermetic_execution_constraints", "ts_action_attrs")
+load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_bun_command", "hermetic_cacheable_sandboxed_action", "hermetic_execution_constraints", "ts_action_attrs")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
+load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 
 _RUNNER_PATH = "buck2/dependencies/declared-inputs-freshness.ts"
@@ -34,9 +35,30 @@ def _declared_inputs_freshness_check_impl(ctx):
     if ctx.attrs.sidecar_path not in ctx.attrs.committed_outputs:
         fail("committed_outputs must include the sidecar at {}".format(ctx.attrs.sidecar_path))
 
-    # copied_dir preserves imports and node_modules resolution without exposing
-    # the checkout. A directory-valued runtime source is a declared tree input.
-    source_tree = ctx.actions.copied_dir("source", sources)
+    # External immutable-cell source artifacts can be absolute symlinks.
+    # Dereference each exact declared input, never mount its ambient parent.
+    tool = ctx.attrs._action_env[BuckSupportToolInfo]
+    source_tree = ctx.actions.declare_output("source", dir = True)
+    staging = ["set -euo pipefail"]
+    for path in sorted(sources.keys()):
+        destination = source_tree.project(path)
+        parent = "/".join(path.split("/")[:-1])
+        staging.append(cmd_args([cmd_args(arg, quote = "shell") for arg in [
+            tool.store_path, "--coreutils-prog=mkdir", "-p", "--",
+            source_tree.project(parent) if parent else source_tree,
+        ]], delimiter = " "))
+        staging.append(cmd_args([cmd_args(arg, quote = "shell") for arg in [
+            tool.store_path, "--coreutils-prog=cp", "--recursive", "--dereference",
+            "--no-target-directory", "--", sources[path], destination,
+        ]], delimiter = " "))
+    stage_script = ctx.actions.write("stage-inputs.sh", staging, allow_args = True)
+    hermetic_action(
+        ctx,
+        cmd_args([sandbox.shell, "--noprofile", "--norc", stage_script],
+                 hidden = sources.values() + sandbox.inputs + [tool.executable, tool.manifest, source_tree.as_output()]),
+        category = "declared_inputs_freshness_stage",
+        identifier = ctx.attrs.name,
+    )
     manifest = ctx.actions.write_json("freshness-manifest.json", {
         "lockfile": ctx.attrs.lockfile_path,
         "workspaceManifests": sorted(ctx.attrs.workspace_manifests.keys()),
