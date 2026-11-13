@@ -5,6 +5,7 @@ import {
   deriveReaderDeclarationTargets,
   readerCompositionPackagePaths,
   readerDeclarationTargets,
+  trustedWriterPrimingTargets,
 } from './typescript-admissions.ts'
 
 describe('reader declaration target union', () => {
@@ -57,5 +58,17 @@ describe('reader declaration target union', () => {
     expect(readerDeclarationTargets).toEqual([...new Set(separatelyDerived)].toSorted())
     expect(readerCompositionPackagePaths).toHaveLength(17)
     expect(readerDeclarationTargets).toHaveLength(24)
+  })
+
+  it('primes freshness alongside the unchanged reader declaration union', async () => {
+    expect(trustedWriterPrimingTargets).toEqual(
+      [...readerDeclarationTargets, '//buck2/tests/declared_inputs_freshness:fresh'].toSorted(),
+    )
+    const writer = await Bun.file(
+      new URL('../../scripts/buck2-remote-cache-proof.sh', import.meta.url),
+    ).text()
+    expect(writer).toContain('import {trustedWriterPrimingTargets}')
+    expect(writer).toContain('for (const target of trustedWriterPrimingTargets)')
+    expect(writer).toMatch(/publisher cache posture was not selected[\s\S]*build_writer_targets/)
   })
 })
