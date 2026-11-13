@@ -283,7 +283,7 @@ export const probeWatchman = async ({
                   env,
                   deadlineMs,
                   deadlineSignal: makeDeadlineSignal?.(),
-                })) === true)
+                })) === true) === true
           )
             reason = 'priority'
           reject(
