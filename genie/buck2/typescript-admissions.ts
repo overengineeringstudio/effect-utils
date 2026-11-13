@@ -252,6 +252,12 @@ export const readerDeclarationTargets = deriveReaderDeclarationTargets({
   roots: readerCompositionPackagePaths,
 })
 
+/** Stable Linux writer roots, distinct from the run-unique mutation proofs. */
+export const trustedWriterPrimingTargets = [
+  ...readerDeclarationTargets,
+  '//buck2/tests/declared_inputs_freshness:fresh',
+].toSorted(compareAuthorityStrings)
+
 /** Cell every generated bridge label is qualified with; Buck resolves nothing relative. */
 const buck2Cell = 'effect_utils'
 /** Target name of a package's default lane; it carries the unsuffixed task name. */

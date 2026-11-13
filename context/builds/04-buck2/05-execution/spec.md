@@ -377,6 +377,14 @@ declared-input check contract under BUILD.BUCK.EXEC-R06–R09; it does not
 independently replace the source-side stage-zero authority in
 [decision 0035](../../.decisions/0035-source-side-generation-freshness-gate.md).
 
+The Linux trusted cache writer primes
+`//buck2/tests/declared_inputs_freshness:fresh` through
+`trustedWriterPrimingTargets`, alongside the reader declaration closure.
+`scripts/buck2-remote-cache-proof.sh` builds that explicit writer union under its
+existing publisher admission; reader credentials and upload policy are unchanged.
+The fixture is not a repository-generation authority check, so it is not added to
+`//:all` or to the declaration-only `readerDeclarationTargets`.
+
 The public attributes declare sources and their consumer-root-relative paths:
 
 | Attribute             | Type / default                                     | Input contract                                                                                                                                                                                                            |
