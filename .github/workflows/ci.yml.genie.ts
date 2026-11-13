@@ -1205,7 +1205,8 @@ const extraJobs: Record<string, any> = {
       privileged: 'always',
       priority: deliveryJobPriority,
     }),
-    'timeout-minutes': jobTimeoutMinutes,
+    // Closure-changing merges need ~21 min of cold shell realization plus ~13 min of warm work.
+    'timeout-minutes': 45,
     defaults: bashShellDefaults,
     permissions: { contents: 'read' },
     env: {
