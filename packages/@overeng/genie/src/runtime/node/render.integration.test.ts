@@ -26,7 +26,7 @@ Vitest.it.live.prop(
       yield* fs.makeDirectory(path.join(cwd, '.git'))
       yield* fs.makeDirectory(path.join(cwd, location), { recursive: true })
       const genieFilePath = path.join(cwd, location, `${target}.genie.ts`)
-      const content = `${shebang ? '#!/usr/bin/env sh\n' : ''}${body}\n`
+      const content = `${shebang === true ? '#!/usr/bin/env sh\n' : ''}${body}\n`
       // This real source is loaded by generateFile, not replaced with an injected output.
       yield* fs.writeFileString(
         genieFilePath,
