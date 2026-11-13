@@ -82,6 +82,23 @@ the CLI as `watchman` through `PATH`; it does not support a
 Restart an existing Buck2 daemon (`buck2 kill`) after changing the selection;
 an already-running Watchman server retains its original executable/permissions.
 
+The pinned Buck entrypoint keeps Watchman socket, state, PID and log files in
+`/tmp/eu-wm-<uid>-<home-hash>`, a current-user-owned 0700 directory. The hash is
+the first 12 SHA-256 hex characters of the resolved HOME. The socket is `sock`
+inside that directory (at most 39 bytes for a 32-bit UID), independent of HOME
+depth. One HOME reuses one persistent service across commands/worktrees; different
+job HOMEs remain isolated so one runner job's process cleanup cannot stop another
+job's service. No per-invocation directories are allocated or services stopped.
+The launcher exports `WATCHMAN_SOCK` for native Buck and passes the same socket
+explicitly to admission's Watchman CLI, along with the managed state/PID/log paths.
+An explicit `WATCHMAN_SOCK` remains caller-owned. Oversized sockets or unsafe
+managed directories fail closed with an actionable socket admission error; there
+is no fallback to Watchman's potentially oversized HOME-derived path.
+Standalone Watchman CLI queries and watch cleanup must also pass `--sockname`;
+the CLI does not honor `WATCHMAN_SOCK` as native Buck does. The consumer-root and
+file-watcher contract fixtures resolve the production location through
+`prepareWatchmanEnvironment` and select it explicitly, including during cleanup.
+
 Import the sibling observability module once to capture native devenv spans
 and effect-utils task spans as one otelite trace:
 
