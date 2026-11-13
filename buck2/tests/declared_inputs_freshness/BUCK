@@ -25,6 +25,7 @@ declared_inputs_freshness_check(
         "packages/@overeng/genie/src/runtime/core.ts": "//packages/@overeng/genie:src/runtime/core.ts",
         "packages/@overeng/genie/src/runtime/node/inputs.ts": "//packages/@overeng/genie:src/runtime/node/inputs.ts",
         "packages/@overeng/genie/src/runtime/node/input-observations.ts": "//packages/@overeng/genie:src/runtime/node/input-observations.ts",
+        "packages/@overeng/genie/src/runtime/node/render.ts": "//packages/@overeng/genie:src/runtime/node/render.ts",
         "packages/@overeng/genie/src/runtime/repo-context/mod.ts": "//packages/@overeng/genie:src/runtime/repo-context/mod.ts",
     },
     committed_outputs = {

@@ -66,6 +66,7 @@
     "packages/@overeng/genie/src/runtime/core.ts",
     "packages/@overeng/genie/src/runtime/node/input-observations.ts",
     "packages/@overeng/genie/src/runtime/node/inputs.ts",
+    "packages/@overeng/genie/src/runtime/node/render.ts",
     "packages/@overeng/genie/src/runtime/repo-context/mod.ts",
     "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
     "packages/@overeng/megarepo/src/buck2-manifest.ts",

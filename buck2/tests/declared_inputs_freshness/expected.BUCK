@@ -1,3 +1,6 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
 pnpm_platform_gated_packages(
     name = "platform_gated_packages",
     capabilities = {

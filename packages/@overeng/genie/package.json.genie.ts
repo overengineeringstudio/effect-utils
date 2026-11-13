@@ -68,6 +68,10 @@ export default packageJson(
         { types: './dist/src/runtime/node/mod.d.ts', default: './src/runtime/node/mod.ts' },
         { environment: 'node' },
       ),
+      './render': exportEntry(
+        { types: './dist/src/runtime/node/render.d.ts', default: './src/runtime/node/render.ts' },
+        { environment: 'node' },
+      ),
       // Explicit reusable composition layer. Keep `.` focused on thin artifact builders; put cross-artifact
       // helpers that consume structured Genie metadata here.
       './composition': exportEntry(
@@ -100,6 +104,10 @@ export default packageJson(
         './node': {
           types: './dist/src/runtime/node/mod.d.ts',
           default: './dist/src/runtime/node/mod.js',
+        },
+        './render': {
+          types: './dist/src/runtime/node/render.d.ts',
+          default: './dist/src/runtime/node/render.js',
         },
         './composition': {
           types: './dist/src/runtime/composition/mod.d.ts',
