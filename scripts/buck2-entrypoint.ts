@@ -38,6 +38,7 @@ import {
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
 import {
+  prepareWatchmanEnvironment,
   probeWatchman,
   reconcileFileWatcher,
   reconcileWatcherDaemon,
@@ -350,6 +351,7 @@ export const directBuckArguments = async ({
   onCachePosture,
   onCacheAdmission,
   workflowCommands = false,
+  watchmanDirectory,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -365,6 +367,7 @@ export const directBuckArguments = async ({
   readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
   /** Only the executable launcher may emit workflow commands; imported probes are diagnostics only. */
   readonly workflowCommands?: boolean
+  readonly watchmanDirectory?: string
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -390,6 +393,7 @@ export const directBuckArguments = async ({
         env,
         repoRoot: root,
         deadlineMs,
+        managedDirectory: watchmanDirectory,
         makeDeadlineSignal:
           probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
       })
@@ -2070,6 +2074,16 @@ if (import.meta.main === true) {
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
     const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
     const root = findRoot(process.cwd())
+    const watchmanDirectory =
+      root !== undefined &&
+      skipsWatcherAdmission(requestedArgs) === false &&
+      (buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))[
+        'buck2.file_watcher'
+      ] ??
+        buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))['buck2.file_watcher']) ===
+        'watchman'
+        ? prepareWatchmanEnvironment(process.env)
+        : undefined
     let reader = false
     let admittedInvocation: CacheAdmissionInvocation | undefined
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
@@ -2078,6 +2092,7 @@ if (import.meta.main === true) {
         cwd: process.cwd(),
         env: process.env,
         workflowCommands: process.env['GITHUB_ACTIONS'] === 'true',
+        watchmanDirectory,
         beforeCachePosture,
         onCacheAdmission: (admission) => {
           admittedInvocation = admission

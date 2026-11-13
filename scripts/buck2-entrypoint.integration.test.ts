@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -31,6 +32,7 @@ import {
   runNativeWithEvidence,
 } from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
+import { prepareWatchmanEnvironment, WatchmanAdmissionError } from './buck2-file-watcher.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
 import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 
@@ -59,6 +61,112 @@ const options = (root: string) => ({
   env: {},
   cacheDirectory: join(root, 'probe-cache'),
   probeDeadlineSignal: fixtureProbeDeadlineSignal,
+})
+
+describe('short persistent Watchman location', () => {
+  it('reuses one owned location per resolved HOME and separates concurrent job HOMEs', () => {
+    const root = fixture()
+    const home = join(root, 'long-runner-work-directory-'.repeat(6), '_home')
+    const other = join(root, 'other-home')
+    mkdirSync(home, { recursive: true })
+    mkdirSync(other)
+    const first: Record<string, string | undefined> = { HOME: home }
+    const second: Record<string, string | undefined> = { HOME: other }
+    const again: Record<string, string | undefined> = { HOME: home }
+    const directories: string[] = []
+    try {
+      for (const env of [first, second, again]) {
+        const directory = prepareWatchmanEnvironment(env)
+        if (directory === undefined) throw new Error('managed directory expected')
+        directories.push(directory)
+        expect(lstatSync(directory).uid).toBe(process.getuid?.())
+        expect(lstatSync(directory).mode & 0o777).toBe(0o700)
+        expect(Buffer.byteLength(env['WATCHMAN_SOCK'] ?? '')).toBeLessThanOrEqual(45)
+      }
+      expect(first['WATCHMAN_SOCK']).toBe(again['WATCHMAN_SOCK'])
+      expect(first['WATCHMAN_SOCK']).not.toBe(second['WATCHMAN_SOCK'])
+      const explicit = { WATCHMAN_SOCK: '/tmp/explicit-watchman.sock' }
+      expect(prepareWatchmanEnvironment(explicit)).toBeUndefined()
+      expect(explicit.WATCHMAN_SOCK).toBe('/tmp/explicit-watchman.sock')
+      expect(() =>
+        prepareWatchmanEnvironment({ WATCHMAN_SOCK: `/tmp/${'x'.repeat(108)}` }),
+      ).toThrow(WatchmanAdmissionError)
+    } finally {
+      for (const directory of new Set(directories)) rmSync(directory, { recursive: true })
+    }
+    for (const directory of directories) expect(existsSync(directory)).toBe(false)
+  })
+
+  it.skipIf(Bun.which('watchman') === null)(
+    'bootstraps real Watchman with a long HOME and concurrent admission clients',
+    async () => {
+      const root = fixture()
+      writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
+      const home = join(root, 'neutral-runner-work-directory-'.repeat(6), '_home')
+      mkdirSync(home, { recursive: true })
+      expect(
+        Buffer.byteLength(join(home, '.local/state/watchman/runner-state/sock')),
+      ).toBeGreaterThan(108)
+      const config = join(root, 'watchman.config')
+      // Fixture-only allowance: production continues to refuse spawning from a niced gate.
+      writeFileSync(config, '{"min_acceptable_nice_value":19}')
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        HOME: home,
+        WATCHMAN_CONFIG_FILE: config,
+      }
+      delete env['WATCHMAN_SOCK']
+      const directory = prepareWatchmanEnvironment(env)
+      if (directory === undefined) throw new Error('managed directory expected')
+      const tuple = [
+        `--sockname=${env['WATCHMAN_SOCK']}`,
+        `--statefile=${join(directory, 'state')}`,
+        `--pidfile=${join(directory, 'pid')}`,
+        `--logfile=${join(directory, 'log')}`,
+      ]
+      const command = async (args: string[]) => {
+        const child = Bun.spawn(['watchman', ...tuple, '--output-encoding=json', ...args], {
+          env,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [status, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        expect(stderr).toBe('')
+        expect(status).toBe(0)
+        return JSON.parse(stdout)
+      }
+      try {
+        await command(['--no-site-spawner', '--no-local', 'version'])
+        const pid = await command(['--no-spawn', '--no-local', 'get-pid'])
+        expect(pid.pid).toBe(Number(readFileSync(join(directory, 'pid'), 'utf8').trim()))
+        await Promise.all(
+          [0, 1].map((client) =>
+            directBuckArguments({
+              ...options(root),
+              env,
+              cacheDirectory: join(root, `client-${client}`),
+              watchmanDirectory: directory,
+              args: ['targets', '//:'],
+            }),
+          ),
+        )
+        expect((await command(['--no-spawn', '--no-local', 'get-pid'])).pid).toBe(pid.pid)
+        expect(prepareWatchmanEnvironment({ HOME: home })).toBe(directory)
+      } finally {
+        try {
+          await command(['--no-spawn', '--no-local', 'shutdown-server'])
+        } finally {
+          rmSync(directory, { recursive: true })
+        }
+      }
+      expect(existsSync(directory)).toBe(false)
+    },
+    20000,
+  )
 })
 
 const watcherFixture = () => {
@@ -2108,7 +2216,14 @@ describe('direct pinned Buck watcher admission', () => {
     })
   }
 
-  for (const mode of ['legacy', 'notify', 'concurrent', 'failed-stop'] as const) {
+  for (const mode of [
+    'legacy',
+    'notify',
+    'old-watchman',
+    'socket',
+    'concurrent',
+    'failed-stop',
+  ] as const) {
     describe(`selected worktree isolation for ${mode} daemon state`, () => {
       type LaunchResult = { exitCode: number; stdout: string; stderr: string }
       let prepare: () => Promise<PreparedEntrypoint>
@@ -2155,15 +2270,17 @@ describe('direct pinned Buck watcher admission', () => {
         mkdirSync(otherWorktreeState, { recursive: true })
         writeFileSync(join(otherWorktreeState, 'buckd.pid'), '888888')
         const oldMarker = JSON.stringify({
-          schema: 'effect-utils/buck2-file-watcher-admission/v1',
-          provider: 'notify',
+          schema: `effect-utils/buck2-file-watcher-admission/${mode === 'socket' ? 'v2' : 'v1'}`,
+          provider: mode === 'socket' || mode === 'old-watchman' ? 'watchman' : 'notify',
+          ...(mode === 'socket' ? { socket: '/tmp/previous-watchman.sock' } : {}),
         })
         for (const directory of [selected, other]) {
           mkdirSync(directory, { recursive: true })
           writeFileSync(join(directory, 'buckd.pid'), '999999')
         }
         writeFileSync(otherMarker, oldMarker)
-        if (mode === 'notify') writeFileSync(selectedMarker, oldMarker)
+        if (mode === 'notify' || mode === 'old-watchman' || mode === 'socket')
+          writeFileSync(selectedMarker, oldMarker)
         const nativeCalls = join(root, 'native-calls')
         const native = join(root, 'native-buck')
         writeFileSync(
@@ -2247,6 +2364,9 @@ printf 'native build\\n'
             '--isolation-dir owned kill',
           ])
           expect(JSON.parse(readFileSync(selectedMarker, 'utf8')).provider).toBe('watchman')
+          expect(JSON.parse(readFileSync(selectedMarker, 'utf8')).socket).toBe(
+            setup.env['WATCHMAN_SOCK'],
+          )
         }
       })
     })

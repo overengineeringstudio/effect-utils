@@ -5,10 +5,18 @@ set -euo pipefail
 export BUCK2_GATE_WRAPPER_ACTIVE=1
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+# Buck's Rust client honors WATCHMAN_SOCK; the standalone CLI needs --sockname.
+# Resolve without exporting: Buck must still recognize and start its managed service.
+watchman_socket="$("${BUN_BIN:-bun}" -e '
+  const { prepareWatchmanEnvironment } = await import(process.argv[1])
+  prepareWatchmanEnvironment(process.env)
+  process.stdout.write(process.env.WATCHMAN_SOCK)
+' "$repo_root/scripts/buck2-file-watcher.ts")"
+watchman_args=(--no-spawn --no-local "--sockname=$watchman_socket")
 work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir file-watcher-contract kill >/dev/null 2>&1) || true
-  watchman watch-del "$work" >/dev/null 2>&1 || true
+  watchman "${watchman_args[@]}" watch-del "$work" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -31,7 +39,7 @@ daemon_pid="$(buck2 --isolation-dir file-watcher-contract status | jq -er '.proc
 # Verify OS-level pruning, not merely Buck's event filtering after registration.
 ignored="$(jq -cn --arg root "$work" \
   '["query",$root,{"fields":["name"],"expression":["anyof",["dirname","buck-out"],["dirname",".devenv"]]}]' \
-  | watchman --json-command --output-encoding=json)"
+  | watchman "${watchman_args[@]}" --json-command --output-encoding=json)"
 printf '%s\n' "$ignored" | jq -e 'has("error") | not' >/dev/null
 printf '%s\n' "$ignored" | jq -e '.files == []' >/dev/null
 

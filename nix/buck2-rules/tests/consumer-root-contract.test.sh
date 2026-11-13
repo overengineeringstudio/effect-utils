@@ -123,13 +123,24 @@ grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUCK" >/dev/null
 bash "$repo_root/nix/buck2-rules/tests/declared-inputs-freshness-consumer.test.sh" "$repo_root" "$immutable_root"
 
+watchman_args=(--no-spawn --no-local)
+if ! "$runtime_only"; then
+  # Match the launcher without exporting: managed startup must still belong to Buck.
+  watchman_socket="$("${BUN_BIN:-bun}" -e '
+    const { prepareWatchmanEnvironment } = await import(process.argv[1])
+    prepareWatchmanEnvironment(process.env)
+    process.stdout.write(process.env.WATCHMAN_SOCK)
+  ' "$repo_root/scripts/buck2-file-watcher.ts")"
+  watchman_args+=("--sockname=$watchman_socket")
+fi
+
 # Buck writes buck-out under the project root, so queries run in a writable copy.
 work="$(mktemp -d)"
 runtime_work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
   (cd "$runtime_work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
-  watchman watch-del "$work" >/dev/null 2>&1 || true
+  watchman "${watchman_args[@]}" watch-del "$work" >/dev/null 2>&1 || true
   chmod -R u+w "$work" "$runtime_work"
   rm -rf "$work" "$runtime_work"
 }
@@ -378,7 +389,7 @@ BUCK
   buck2 --isolation-dir consumer-root-contract uquery 'deps(fixture//unconfigured:lib)' >/dev/null
   ignored="$(jq -cn --arg root "$work" \
     '["query",$root,{"fields":["name"],"expression":["dirname","buck-out"]}]' \
-    | watchman --json-command --output-encoding=json)"
+    | watchman "${watchman_args[@]}" --json-command --output-encoding=json)"
   printf '%s\n' "$ignored" | jq -e 'has("error") | not' >/dev/null
   printf '%s\n' "$ignored" | jq -e '.files == []' >/dev/null
   vendor_output="$(buck2 --isolation-dir consumer-root-contract build fixture//vendor:consume --show-simple-output)"

@@ -1,6 +1,6 @@
 import { dlopen } from 'bun:ffi'
 import { execFile, spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   accessSync,
   closeSync,
@@ -78,7 +78,14 @@ export const reconcileFileWatcher = ({
 
 /** A failed service/root admission never selects an incremental fallback provider. */
 export class WatchmanAdmissionError extends Error {
-  readonly reason: 'timeout' | 'executable' | 'service' | 'priority' | 'response' | 'root'
+  readonly reason:
+    | 'timeout'
+    | 'executable'
+    | 'service'
+    | 'priority'
+    | 'response'
+    | 'root'
+    | 'socket'
 
   constructor({
     reason,
@@ -100,6 +107,56 @@ export class WatchmanAdmissionError extends Error {
 }
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`
+
+/** Linux needs a trailing NUL in sun_path[108]; Darwin has sun_path[104]. */
+export const assertWatchmanSocket = (socket: string): void => {
+  const limit = process.platform === 'darwin' ? 103 : 107
+  if (Buffer.byteLength(socket) <= limit && socket.includes('\0') === false) return
+  throw new WatchmanAdmissionError({
+    reason: 'socket',
+    command: 'watchman --sockname=<socket> watch-project <root>',
+    detail: `socket path must be at most ${limit} UTF-8 bytes without NUL (${Buffer.byteLength(socket)} bytes supplied)`,
+    fix: 'select a shorter absolute WATCHMAN_SOCK, or unset it to use the short HOME-keyed managed location',
+  })
+}
+
+/** One persistent service per user/HOME, not per invocation or checkout. */
+export const prepareWatchmanEnvironment = (
+  env: Record<string, string | undefined>,
+): string | undefined => {
+  if (env['WATCHMAN_SOCK'] !== undefined) {
+    assertWatchmanSocket(env['WATCHMAN_SOCK'])
+    return undefined
+  }
+  const uid = process.getuid?.()
+  if (uid === undefined) throw new Error('Watchman managed state requires a Unix UID')
+  const home = realpathSync(env['HOME'] ?? homedir())
+  const hash = createHash('sha256').update(home).digest('hex').slice(0, 12)
+  const directory = `/tmp/eu-wm-${uid}-${hash}`
+  const socket = join(directory, 'sock')
+  assertWatchmanSocket(socket)
+  try {
+    mkdirSync(directory, { mode: 0o700 })
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+  }
+  const owned = lstatSync(directory)
+  if (
+    owned.isDirectory() === false ||
+    owned.isSymbolicLink() === true ||
+    owned.uid !== uid ||
+    (owned.mode & 0o777) !== 0o700
+  )
+    throw new WatchmanAdmissionError({
+      reason: 'socket',
+      command: 'prepare Watchman state',
+      detail: `${directory} must be a current-user-owned directory with mode 0700`,
+      fix: 'repair or remove the unsafe directory after stopping its Watchman service; no default-path fallback is permitted',
+    })
+  // Native Buck's Rust connector reads this directly; CLI probes need --sockname.
+  env['WATCHMAN_SOCK'] = socket
+  return directory
+}
 
 /** The real Watchman client exits silently when --no-spawn finds no reachable
  * service. A client-local get-sockname never spawns or connects, so an absent
@@ -153,21 +210,34 @@ export const probeWatchman = async ({
   repoRoot,
   deadlineMs,
   makeDeadlineSignal,
+  managedDirectory,
 }: {
   readonly env: Readonly<Record<string, string | undefined>>
   readonly repoRoot: string
   readonly deadlineMs: number
   readonly makeDeadlineSignal?: () => AbortSignal | undefined
+  readonly managedDirectory?: string
 }): Promise<boolean> => {
   const root = realpathSync(repoRoot)
   const socket = env['WATCHMAN_SOCK']
+  if (socket !== undefined) assertWatchmanSocket(socket)
   const niceValue = getPriority()
   // A gate may use a running service, but must not create a permanently niced shared one.
-  const nicedDefault = socket === undefined && niceValue > 0
+  const nicedDefault = (socket === undefined || managedDirectory !== undefined) && niceValue > 0
   const args = [
-    ...(socket === undefined && nicedDefault === false ? [] : ['--no-spawn']),
+    ...(nicedDefault === true || (socket !== undefined && managedDirectory === undefined)
+      ? ['--no-spawn']
+      : []),
     '--no-local',
     ...(socket === undefined ? [] : [`--sockname=${socket}`]),
+    ...(managedDirectory === undefined
+      ? []
+      : [
+          '--no-site-spawner',
+          `--statefile=${join(managedDirectory, 'state')}`,
+          `--pidfile=${join(managedDirectory, 'pid')}`,
+          `--logfile=${join(managedDirectory, 'log')}`,
+        ]),
     '--output-encoding=json',
     'watch-project',
     root,
@@ -207,11 +277,13 @@ export const probeWatchman = async ({
             nicedDefault === true &&
             stdout.trim() === '' &&
             stderr.trim() === '' &&
-            (await defaultServiceMissing({
-              env,
-              deadlineMs,
-              deadlineSignal: makeDeadlineSignal?.(),
-            })) === true
+            (managedDirectory !== undefined
+              ? existsSync(socket ?? '') === false
+              : (await defaultServiceMissing({
+                  env,
+                  deadlineMs,
+                  deadlineSignal: makeDeadlineSignal?.(),
+                })) === true) === true
           )
             reason = 'priority'
           reject(
@@ -230,7 +302,9 @@ export const probeWatchman = async ({
                 reason === 'executable'
                   ? 'enter the repository development environment (`devenv shell`) so a runnable Watchman is on PATH, then rerun the probe'
                   : reason === 'priority'
-                    ? 'start the service un-niced (`watchman get-sockname` outside the gate) or provision the host service, then rerun the probe; do not relax the shared service priority limit'
+                    ? managedDirectory === undefined
+                      ? 'start the service un-niced (`watchman get-sockname` outside the gate) or provision the host service, then rerun the probe; do not relax the shared service priority limit'
+                      : `outside the gate, start the exact managed service un-niced: ${['watchman', ...args.filter((arg) => arg !== '--no-spawn')].map(shellQuote).join(' ')}; do not relax the shared service priority limit`
                     : socket === undefined
                       ? `restore the Watchman service, then run ${command}`
                       : `check WATCHMAN_SOCK=${shellQuote(socket)} selects the intended running service, then run ${command}`,
@@ -347,9 +421,11 @@ export const reconcileWatcherDaemon = ({
       typeof value === 'object' &&
       value !== null &&
       'schema' in value &&
-      value.schema === 'effect-utils/buck2-file-watcher-admission/v1' &&
+      value.schema === 'effect-utils/buck2-file-watcher-admission/v2' &&
       'provider' in value &&
-      value.provider === provider
+      value.provider === provider &&
+      'socket' in value &&
+      value.socket === (env['WATCHMAN_SOCK'] ?? null)
     )
   }
   if (admitted() === true) return
@@ -391,7 +467,11 @@ export const reconcileWatcherDaemon = ({
     try {
       writeFileSync(
         candidate,
-        JSON.stringify({ schema: 'effect-utils/buck2-file-watcher-admission/v1', provider }),
+        JSON.stringify({
+          schema: 'effect-utils/buck2-file-watcher-admission/v2',
+          provider,
+          socket: env['WATCHMAN_SOCK'] ?? null,
+        }),
         { flag: 'wx', mode: 0o600 },
       )
       renameSync(candidate, marker)
