@@ -8,6 +8,32 @@ Architecture and subsystem behavior are documented in the VRS set:
 - [docs/requirements.md](./docs/requirements.md)
 - [docs/spec.md](./docs/spec.md)
 
+## Rendering committed content
+
+`@overeng/genie/render` renders a generator output with the same generated-file
+header and shebang placement as the generation engine:
+
+```ts
+import { renderGenieOutput } from '@overeng/genie/render'
+
+const buck = renderGenieOutput({
+  output,
+  context: { cwd, location, mode: 'check' },
+  genieFilePath: 'BUCK.genie.ts',
+})
+```
+
+The result is UTF-8 file content, not an encoded buffer. Context is passed through
+unchanged. For targets that genie formats, provide `format: (content) => string`
+using the same formatter and configuration; BUCK does not require formatting.
+`renderGeneratedContent` assembles an already-formatted body and header directly.
+
+This dedicated entry avoids the SDK/generation engine import closure. Sandboxed
+freshness consumers importing the source directly declare only
+`packages/@overeng/genie/src/runtime/node/render.ts` in `generator_sources`;
+its sole transitive import is the `node:path` built-in. The module is included in
+the packaged Buck rules inventory.
+
 ## Installation (Nix)
 
 Genie is distributed as a native binary via Nix. **This is the only supported installation method** to avoid chicken-egg problems: since genie generates `package.json` files, it must be available before `pnpm install`.

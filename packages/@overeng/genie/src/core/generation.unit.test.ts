@@ -9,9 +9,8 @@ import { NodeServices } from '@effect/platform-node'
 import { Effect, Option, Result } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { addHeaderComment, getHeaderComment } from '../runtime/node/render.ts'
 import {
-  addHeaderComment,
-  getHeaderComment,
   formatWithOxfmt,
   loadGenieFile,
   OXFMT_TIMEOUT_MS,

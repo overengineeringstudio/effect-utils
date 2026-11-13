@@ -37,6 +37,10 @@
       "types": "./dist/src/runtime/node/mod.d.ts",
       "default": "./src/runtime/node/mod.ts"
     },
+    "./render": {
+      "types": "./dist/src/runtime/node/render.d.ts",
+      "default": "./src/runtime/node/render.ts"
+    },
     "./sdk": {
       "types": "./dist/src/sdk/mod.d.ts",
       "default": "./src/sdk/mod.ts"
@@ -104,6 +108,10 @@
       "./node": {
         "types": "./dist/src/runtime/node/mod.d.ts",
         "default": "./dist/src/runtime/node/mod.js"
+      },
+      "./render": {
+        "types": "./dist/src/runtime/node/render.d.ts",
+        "default": "./dist/src/runtime/node/render.js"
       },
       "./composition": {
         "types": "./dist/src/runtime/composition/mod.d.ts",
