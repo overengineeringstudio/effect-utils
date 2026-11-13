@@ -217,15 +217,19 @@ sources that need them do not build.
   module from the same sources.
 - `swift_binary` compiles an executable module (a `main.swift` holds
   top-level code, as in SwiftPM; otherwise `@main`) and links it with its
-  transitive module objects. It is a product executable payload for
-  `build_product` and for `swift_app_bundle`'s `executables`.
+  transitive module objects against the OS Swift runtime, without `LC_RPATH`
+  (`mach-o-dynamic/v1`). It is a product executable payload for
+  `build_product` and for `swift_app_bundle`'s `executables`. As in SwiftPM, a
+  test may `@testable import` it: its testable variant renames the entry point.
 - `swift_test` compiles an XCTest module against its dependencies' testable
   variants. The capability's XCTest needs an explicit entry point; the rule
   derives it from the compiler-emitted symbol graph (every transitive
   `XCTestCase` subclass and its zero-argument `test…` methods), never from
-  source text. The linked suite runs as a
+  source text, and compiles that generated glue in Swift 5 language mode
+  (`@MainActor` async tests). The linked suite runs as a
   [cacheable verdict action](../05-execution/spec.md#cacheable-unit-test-verdict-actions)
-  in a scrubbed environment; its output is `result.json` plus `report.json`.
+  in a scrubbed environment. Its default output is `result.json`, with
+  `report.json` beside it (the `[report]` subtarget).
 - `swift_app_bundle` packages named binaries, each compiled from an ordered
   source list or supplied by a `swift_binary`, with the
   [app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).

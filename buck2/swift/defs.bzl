@@ -111,7 +111,7 @@ def _sources(ctx, bun):
     sources[matches[0]] = stamped
     return sources
 
-def _compile(ctx, bun, swiftc, triple, module_name, sources, swiftmodules, testable, emit_module, parse_as_library, extra = []):
+def _compile(ctx, bun, swiftc, triple, module_name, sources, swiftmodules, testable, emit_module, parse_as_library, extra = [], swift_version = None):
     variant = "testable" if testable else "release"
     swiftmodule = ctx.actions.declare_output("{}/modules/{}.swiftmodule".format(variant, module_name)) if emit_module else None
     obj = ctx.actions.declare_output(variant, module_name + ".o")
@@ -122,7 +122,7 @@ def _compile(ctx, bun, swiftc, triple, module_name, sources, swiftmodules, testa
         "-target",
         triple,
         "-swift-version",
-        ctx.attrs.swift_version,
+        swift_version or ctx.attrs.swift_version,
         "-module-name",
         module_name,
         "-wmo",
@@ -171,6 +171,9 @@ def _link(ctx, bun, swiftc, triple, output_name, objects, frameworks, libraries,
         "-target",
         triple,
         "-emit-executable",
+        # The Swift runtime is the OS's /usr/lib/swift; product executables carry
+        # no LC_RPATH (mach-o-dynamic/v1).
+        "-no-stdlib-rpath",
         "-o",
         executable.as_output(),
     ])
@@ -228,7 +231,24 @@ def _swift_binary_impl(ctx):
     module_name = _module_name(ctx)
     sources = _sources(ctx, bun)
     merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
-    _, obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["swiftmodules"], False, False, not _is_script_module(sources))
+    parse_as_library = not _is_script_module(sources)
+    _, obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["swiftmodules"], False, False, parse_as_library)
+
+    # As SwiftPM: a test may `@testable import` an executable module. Its testable
+    # variant renames the entry point, so it links beside the test's own `main`.
+    testable_module, testable_obj = _compile(
+        ctx,
+        bun,
+        swiftc,
+        triple,
+        module_name,
+        sources,
+        merged["testable_swiftmodules"],
+        True,
+        True,
+        parse_as_library,
+        extra = ["-Xfrontend", "-entry-point-function-name", "-Xfrontend", module_name + "_main"],
+    )
     executable = _link(ctx, bun, swiftc, triple, ctx.attrs.executable_name or ctx.label.name, [obj] + merged["objects"], merged["frameworks"], merged["libraries"], ctx.label.name)
     product_executable = product_executable_info(
         ctx,
@@ -242,6 +262,15 @@ def _swift_binary_impl(ctx):
         RunInfo(args = cmd_args(executable)),
         product_executable,
         product_artifact_info("executable", product_executable, platform, product_executable.provenance),
+        SwiftModuleInfo(
+            module_name = module_name,
+            swiftmodules = merged["swiftmodules"],
+            objects = merged["objects"],
+            testable_swiftmodules = merged["testable_swiftmodules"] + [testable_module],
+            testable_objects = merged["testable_objects"] + [testable_obj],
+            frameworks = merged["frameworks"],
+            libraries = merged["libraries"],
+        ),
     ]
 
 def _swift_test_impl(ctx):
@@ -294,6 +323,9 @@ def _swift_test_impl(ctx):
         True,
         False,
         False,
+        # Generated glue: XCTest's synchronous registry takes `@MainActor` async
+        # tests, which Swift 6's region isolation rejects (as in SwiftPM's runner).
+        swift_version = "5",
     )
     executable = _link(
         ctx,
@@ -309,17 +341,22 @@ def _swift_test_impl(ctx):
 
     # The suite runs as a build action whose successful result is the reusable
     # verdict; a failing suite fails the action and is never uploaded.
-    verdict = ctx.actions.declare_output("verdict", dir = True)
+    result = ctx.actions.declare_output("verdict/result.json")
+    report = ctx.actions.declare_output("verdict/report.json")
     ctx.actions.run(
-        cmd_args([bun.executable, ctx.attrs._test_verdict_tool, executable, verdict.as_output(), str(ctx.label.raw_target())]),
+        cmd_args([bun.executable, ctx.attrs._test_verdict_tool, executable, result.as_output(), report.as_output(), str(ctx.label.raw_target())]),
         category = "swift_test_verdict",
         local_only = True,
         allow_cache_upload = _cache_upload(),
     )
     return [
         DefaultInfo(
-            default_output = verdict,
-            sub_targets = {"executable": [DefaultInfo(default_output = executable)]},
+            default_output = result,
+            other_outputs = [report],
+            sub_targets = {
+                "executable": [DefaultInfo(default_output = executable)],
+                "report": [DefaultInfo(default_output = report)],
+            },
         ),
     ]
 

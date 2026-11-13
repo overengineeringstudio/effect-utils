@@ -8,7 +8,7 @@
  * cases fails without a verdict.
  */
 import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 type TestStatus = 'passed' | 'failed' | 'skipped'
 type SuiteReport = {
@@ -60,9 +60,9 @@ export const testVerdict = ({ suites, status }: { readonly suites: readonly Suit
 }
 
 if (import.meta.main) {
-  const [executable, output, operation] = process.argv.slice(2)
-  if (executable === undefined || output === undefined || operation === undefined) {
-    throw new Error('usage: test-verdict.ts <test-executable> <verdict-dir> <operation>')
+  const [executable, resultPath, reportPath, operation] = process.argv.slice(2)
+  if (executable === undefined || resultPath === undefined || reportPath === undefined || operation === undefined) {
+    throw new Error('usage: test-verdict.ts <test-executable> <result.json> <report.json> <operation>')
   }
   const scratch = process.env.BUCK_SCRATCH_PATH
   if (scratch === undefined || scratch === '') throw new Error('swift test verdict: BUCK_SCRATCH_PATH is required')
@@ -80,11 +80,10 @@ if (import.meta.main) {
   process.stdout.write(console_)
   const suites = parseXCTestOutput(console_)
   const verdict = testVerdict({ suites, status: run.exitCode ?? -1 })
-  await mkdir(output, { recursive: true })
-  await Bun.write(join(output, 'report.json'), `${JSON.stringify({ verdict, suites })}\n`)
+  await Bun.write(reportPath, `${JSON.stringify({ verdict, suites })}\n`)
   await Bun.write(
-    join(output, 'result.json'),
-    `${JSON.stringify({ schemaVersion: 1, verdict, operation, report: 'report.json' })}\n`,
+    resultPath,
+    `${JSON.stringify({ schemaVersion: 1, verdict, operation, report: basename(reportPath) })}\n`,
   )
   process.exit(verdict === 'pass' ? 0 : 1)
 }
