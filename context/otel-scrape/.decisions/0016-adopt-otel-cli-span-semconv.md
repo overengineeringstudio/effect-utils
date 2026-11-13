@@ -72,7 +72,7 @@ alignment (PR #881, Weaver semantic-conventions VRS), pinned to semconv v1.37.0.
   `otel_scrape.span.origin`) rather than squatting on unprefixed keys.
 - **The evolution trail is preserved.** Every renamed key is retained in the
   registry as a deprecated entry carrying `deprecated: {reason: "renamed",
-renamed_to: <new>}`, following OTel semconv practice, rather than being
+  renamed_to: <new>}`, following OTel semconv practice, rather than being
   hard-deleted. Deprecated entries are never emitted.
 
 ## Options
@@ -175,7 +175,7 @@ renamed_to: <new>}`, following OTel semconv practice, rather than being
   4. **`status.message` on Error spans.** The Trace API reserves `Description`
      for the Error status, so a bounded, non-sensitive human message is attached
      there: `process exited with code <n>` or `process terminated by signal
-<NAME>`. Exit codes and signal names carry no private data, and the
+     <NAME>`. Exit codes and signal names carry no private data, and the
      signal-name set is finite.
   5. **High-resolution timing.** The pre-M25.1 code reconstructed the span end
      from a whole-millisecond duration (`Instant::elapsed().as_millis()`), so

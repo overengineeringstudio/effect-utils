@@ -24,8 +24,8 @@ Devbar
 Traces: DT.BAR-R01–R05, DT.BAR-R08–R09.
 
 ```ts
-import type * as React from 'react'
 import type { StyleXStyles, StyleXStylesWithout } from '@stylexjs/stylex'
+import type * as React from 'react'
 
 export interface DevbarPanel {
   readonly id: string
@@ -179,9 +179,10 @@ exports `BuildIdentitySegment`; the root entry does not re-export it or reach
 `@overeng/utils`. Hosts pass their canonical identity without formatting:
 
 ```ts
-import type * as React from 'react'
-import type { BuildIdentity } from '@overeng/utils/build-identity'
 import type { StyleXStyles } from '@stylexjs/stylex'
+import type * as React from 'react'
+
+import type { BuildIdentity } from '@overeng/utils/build-identity'
 
 interface BuildIdentitySegmentProps {
   readonly identity: BuildIdentity

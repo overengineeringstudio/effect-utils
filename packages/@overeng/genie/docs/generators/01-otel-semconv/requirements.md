@@ -115,7 +115,7 @@ role here rather than a separate vision.
 - **SC-R10 Check gate:** a devenv/CI task runs `weaver registry check --future` on the
   composed registry; failure blocks.
 - **SC-R11 Compatibility gate:** telemetry evolution is gated by `weaver registry diff
---baseline-registry` and the shipped schema-evolution policies, treating the registry
+  --baseline-registry` and the shipped schema-evolution policies, treating the registry
   as a versioned public API.
 - **SC-R12 Runtime conformance gate:** live emitted telemetry is validated against the
   registry via `weaver registry live-check` (OTLP), fed in tests by captured OTLP.

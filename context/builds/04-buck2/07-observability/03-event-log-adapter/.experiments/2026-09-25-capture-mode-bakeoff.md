@@ -15,7 +15,7 @@ shared-daemon correctness; operational risk; maintenance.
 ## Method
 
 - Successful-build shape: `buck2 build --event-log <out> --write-build-id
-<out> --console none <target>` with a concurrent `log snoop` follow after
+  <out> --console none <target>` with a concurrent `log snoop` follow after
   the first readable prefix, then post-hoc `log show` + adapter runs; n=5
   with per-run host load recorded.
 - Edge cases: a failing target (same flags); two simultaneous commands on

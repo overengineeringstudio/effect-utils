@@ -163,10 +163,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(peer.ssh_host_keys, ["ssh-ed25519 AAAA"]);
-        assert!(serde_json::from_str::<Peer>("{}")
-            .unwrap()
-            .ssh_host_keys
-            .is_empty());
+        assert_eq!(
+            serde_json::from_str::<Peer>("{}").unwrap().ssh_host_keys,
+            [] as [String; 0]
+        );
     }
 
     #[test]

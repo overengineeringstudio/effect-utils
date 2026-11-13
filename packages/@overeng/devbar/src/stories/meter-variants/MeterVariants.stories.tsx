@@ -1915,33 +1915,31 @@ const VariantDevbar = (
   }
   const segments: readonly DevbarSegment[] = [
     ...(variant === 'B' ? [] : [freezeSegment]),
-    ...meterRows.map(
-      (row): DevbarSegment => ({
-        // Devbar names hidden segments by ID in its +N trigger, so IDs are display names.
-        id: row.spec.label,
-        priority: row.priority,
-        render: () =>
-          variant === 'B' ? (
-            <TrendSegment meters={meters} row={row} theme={theme} onOpen={open(row.spec.id)} />
-          ) : (
-            <StripSegment
-              meters={meters}
-              row={row}
-              theme={stripTheme}
-              frozenAtMs={frozenAtMs}
-              expanded={expanded && selected === row.spec.id}
-              controls={expanded === true ? timelineId : undefined}
-              describedBy={inspection?.id === row.spec.id ? cardId : undefined}
-              tileRef={(element) => {
-                if (element !== null && row.spec.id === pinnedId) setPinnedTile(element)
-              }}
-              onOpen={open(row.spec.id)}
-              onInspect={({ trigger, tile }) => inspect({ id: row.spec.id, trigger, tile })}
-              onDismiss={dismiss}
-            />
-          ),
-      }),
-    ),
+    ...meterRows.map((row): DevbarSegment => ({
+      // Devbar names hidden segments by ID in its +N trigger, so IDs are display names.
+      id: row.spec.label,
+      priority: row.priority,
+      render: () =>
+        variant === 'B' ? (
+          <TrendSegment meters={meters} row={row} theme={theme} onOpen={open(row.spec.id)} />
+        ) : (
+          <StripSegment
+            meters={meters}
+            row={row}
+            theme={stripTheme}
+            frozenAtMs={frozenAtMs}
+            expanded={expanded && selected === row.spec.id}
+            controls={expanded === true ? timelineId : undefined}
+            describedBy={inspection?.id === row.spec.id ? cardId : undefined}
+            tileRef={(element) => {
+              if (element !== null && row.spec.id === pinnedId) setPinnedTile(element)
+            }}
+            onOpen={open(row.spec.id)}
+            onInspect={({ trigger, tile }) => inspect({ id: row.spec.id, trigger, tile })}
+            onDismiss={dismiss}
+          />
+        ),
+    })),
     {
       id: 'Live subscriptions',
       priority: 5,

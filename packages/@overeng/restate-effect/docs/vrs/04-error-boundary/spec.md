@@ -42,7 +42,7 @@ suspension (isSuspendedError)        → rethrow  → (not a failure)          r
   `RestateError` (`reason` discriminator) classified at the boundary as a DEFECT
   (transient infra → Restate retries; a terminally-failed step → fail, no retry),
   so it leaves the domain channel without a user-written `catchTag('RestateError',
-die)` (R13). The durable combinators thus have a CLEAN `E` (see
+  die)` (R13). The durable combinators thus have a CLEAN `E` (see
   [03-effect-runtime](../03-effect-runtime/spec.md#determinism-layer)). A durable
   `Restate.run` step carries NO catchable typed failure at all: its inner effect is
   `Effect<A, never, R>` and `run` returns `Effect<A, never, …>`. The inner runs via

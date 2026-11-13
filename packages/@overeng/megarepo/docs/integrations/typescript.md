@@ -78,8 +78,8 @@ Modern approach using package.json exports:
 Then import normally:
 
 ```typescript
-import { Effect } from 'effect'
 import { FileSystem } from '@effect/platform'
+import { Effect } from 'effect'
 ```
 
 ## Build Configuration

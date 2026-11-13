@@ -30,10 +30,10 @@ wired via `trace.instr { adapter = "oxlint" }` in
 - **stdout ownership:** needs-render. `--format=json` _replaces_ oxlint's human
   stdout (no side-channel), so the adapter owns re-presentation (R30): leaf runs
   `StdoutMode::CaptureSilent`, parses, and renders `oxlint: N diagnostic(s) over
-M file(s)` + one line per diagnostic. Non-JSON stdout → parse fails → captured
+  M file(s)` + one line per diagnostic. Non-JSON stdout → parse fails → captured
   bytes flushed (never swallowed).
 - **Schema (parsed subset):** top level `{ diagnostics[], number_of_files,
-number_of_rules, threads_count, start_time }`. Per diagnostic the adapter reads
+  number_of_rules, threads_count, start_time }`. Per diagnostic the adapter reads
   `{ message, severity ("warning"|"error"), filename, code, labels[].span.line }`.
   Ignored: `url`, `help`, `causes`, `column`, `offset`, `length`, top-level
   stats. No `fixable`/`fix` field exists. Alternative formats (checkstyle/junit

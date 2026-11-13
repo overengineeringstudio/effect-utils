@@ -55,7 +55,7 @@ invocation protocol, and the module documents it prominently:
   binding does not pretend to offer them on a server that lacks them (a follow-up
   when a newer server is the floor).
 - A WORKFLOW `run` blocked on a long durable wait reports `sys_invocation.status =
-'running'` (it does NOT flip to `suspended` like a stateless Service / Virtual
+  'running'` (it does NOT flip to `suspended` like a stateless Service / Virtual
   Object handler). So "surface stuck deliveries" is "non-terminal, ranked by
   `retry_count`", not a single `status` match — the recipe + its SQL reflect this.
 

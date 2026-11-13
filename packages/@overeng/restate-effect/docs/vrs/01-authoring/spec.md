@@ -292,7 +292,7 @@ stateDiagram-v2
   `onInterrupt` / `acquireRelease` finalizers and saga compensations run (see
   [04-error-boundary](../04-error-boundary/spec.md#cancellation--interruption) and
   its saga section). `CancelledError extends TerminalError`. `explicitCancellation:
-true` (R35) opts a service into manual propagation.
+  true` (R35) opts a service into manual propagation.
 - `killed`: a hard kill; compensations do NOT run.
 - `Request.attemptCompletedSignal` (AbortSignal) fires per attempt for
   attempt-scoped cleanup (idempotent, since a new attempt may follow).

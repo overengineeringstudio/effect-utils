@@ -25,8 +25,10 @@ const sourcePaths = [
   'packages/@overeng/effect-rust/src/mod.ts',
   'pnpm-lock.yaml',
   'flake.lock',
+  'nix/bun-compile-runtime.nix',
   'rust/Cargo.toml',
   'rust/Cargo.lock',
+  'rust/content-address-contract/generation-freshness.ts',
 ]
 
 const HashEntry = Schema.Struct({
@@ -43,7 +45,7 @@ const GenerationManifest = Schema.Struct({
       { description: 'canonical ISO generation timestamp' },
     ),
   ),
-  runtime: Schema.Struct({ name: Schema.Literal('bun'), version: Schema.Literal('1.4.2') }),
+  runtime: Schema.Struct({ name: Schema.Literal('bun'), version: Schema.NonEmptyString }),
   inputs: Schema.Array(HashEntry),
   artifacts: Schema.Array(HashEntry),
 })
@@ -106,10 +108,18 @@ NodeRuntime.runMain(
         paths: [],
       })
     const check = args.includes('--check')
-    const version = process.versions.bun
-    if (version !== '1.4.2')
+    const runtimePinPath = 'nix/bun-compile-runtime.nix'
+    const runtimePin = yield* fs.readFileString(`${repoRoot}${runtimePinPath}`)
+    const pinnedVersion = /^\s*version = "([^"]+)";$/m.exec(runtimePin)?.[1]
+    if (pinnedVersion === undefined)
       return yield* new ContractGenerationError({
-        message: `Contract generation requires Bun 1.4.2; found ${version ?? 'non-Bun runtime'}`,
+        message: 'Cannot read the pinned Bun compile runtime version',
+        paths: [runtimePinPath],
+      })
+    const version = process.versions.bun
+    if (version !== pinnedVersion)
+      return yield* new ContractGenerationError({
+        message: `Contract generation requires Bun ${pinnedVersion}; found ${version ?? 'non-Bun runtime'}`,
         paths: [],
       })
     // Record the actual runtime only after verifying the repository's pinned version.

@@ -71,10 +71,11 @@ const program = Effect.gen(function* () {
 ## Raw OTEL variant (secondary)
 
 ```ts
+import { trace } from '@opentelemetry/api'
+import { NodeSDK } from '@opentelemetry/sdk-node'
+
 import { sync } from '@overeng/notion-react'
 import { createOtelEventHandler } from '@overeng/notion-react/o11y/otel'
-import { NodeSDK } from '@opentelemetry/sdk-node'
-import { trace } from '@opentelemetry/api'
 
 const sdk = new NodeSDK(/* OTLP exporter + resource */)
 sdk.start()

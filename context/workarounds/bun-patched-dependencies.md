@@ -49,6 +49,7 @@ Instead of using bun's native `patchedDependencies` feature, we apply patches ou
 
    ```ts
    import { packageJson, type PatchesRegistry } from '@overeng/genie'
+
    import { patches } from '../../genie/repo.ts'
 
    export default packageJson({

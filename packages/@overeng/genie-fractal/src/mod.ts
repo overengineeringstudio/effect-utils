@@ -696,9 +696,7 @@ export const DependsOnSchema = Schema.Struct({
 })
 const DependencyItem = Schema.Union([LocalId, DependsOnSchema])
 const DependencyInput = Schema.Union([DependencyItem, Schema.NonEmptyArray(DependencyItem)])
-const normalizeDependency = (
-  dependency: typeof DependencyItem.Type,
-): typeof DependsOnSchema.Type =>
+const normalizeDependency = (dependency: typeof DependencyItem.Type): typeof DependsOnSchema.Type =>
   typeof dependency === 'string' ? { step: dependency, state: 'completed' } : dependency
 const Dependencies = DependencyInput.pipe(
   Schema.decodeTo(Schema.NonEmptyArray(Schema.toType(DependsOnSchema)), {

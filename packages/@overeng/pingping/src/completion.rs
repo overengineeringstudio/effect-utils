@@ -94,6 +94,9 @@ mod tests {
         };
         assert_eq!(names(""), ["local", "zzz", "aaa"]);
         assert_eq!(names("z"), ["zzz"]);
-        assert!(host_candidates(OsStr::new("--")).is_empty());
+        assert_eq!(
+            host_candidates(OsStr::new("--")),
+            [] as [clap_complete::CompletionCandidate; 0]
+        );
     }
 }

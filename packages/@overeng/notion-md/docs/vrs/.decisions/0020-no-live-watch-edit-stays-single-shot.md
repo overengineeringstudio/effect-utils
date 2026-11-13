@@ -19,7 +19,7 @@ driving a black-box `$EDITOR` that owns its buffer **and** the terminal:
 
 - **No live feedback (local→remote).** The editor is spawned with the real TTY
   inherited (`editor-commands.ts` `defaultRunEditor`, `stdin/stdout/stderr:
-'inherit'`) and the CLI blocks on its exit. Nothing can render to that terminal
+  'inherit'`) and the CLI blocks on its exit. Nothing can render to that terminal
   while the editor is up without corrupting its screen. So per-save sync status
   could only ever appear _after_ the editor exits — which defeats watch mode.
 - **No live reflection (remote→local).** Even if the CLI detects an upstream

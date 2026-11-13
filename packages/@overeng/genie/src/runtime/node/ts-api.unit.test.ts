@@ -343,14 +343,14 @@ describe('TypeScript API server death', () => {
     process.env.GENIE_TYPESCRIPT_API_SERVER = executable
     // Reject in the same turn that unblocks the server: Node cannot dispatch its exit first.
     // This deterministically covers the ordering that a real JSON-RPC write only sometimes hits.
-    const update = vi
-      .spyOn(API.prototype, 'updateSnapshot')
-      .mockImplementation(function (this: API) {
-        const child = (this as unknown as ClosableTsApi).client?.process
-        expect(child?.exitCode).toBeNull()
-        child?.stdin?.write('request\n')
-        return Promise.reject(transportError)
-      })
+    const update = vi.spyOn(API.prototype, 'updateSnapshot').mockImplementation(function (
+      this: API,
+    ) {
+      const child = (this as unknown as ClosableTsApi).client?.process
+      expect(child?.exitCode).toBeNull()
+      child?.stdin?.write('request\n')
+      return Promise.reject(transportError)
+    })
     try {
       const error = await runTsFileAnalysis({
         cwd: directory,

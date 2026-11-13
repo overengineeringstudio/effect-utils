@@ -3240,9 +3240,10 @@ const publishEditorViewCoordinated = async ({
         ['package.path', options.package],
         ['view.name', options.viewName],
         ['snapshot.created', created],
-        ...phaseTimings.map(
-          ([name, durationMs]): OtelSpanAttribute => [`phase.${name}.ms`, Math.round(durationMs)],
-        ),
+        ...phaseTimings.map(([name, durationMs]): OtelSpanAttribute => [
+          `phase.${name}.ms`,
+          Math.round(durationMs),
+        ]),
       ],
       endedAtMs: performance.timeOrigin + performance.now(),
       startedAtMs,

@@ -20,7 +20,7 @@ for leaks.
 
 1. **Capability matrix.** STRUCTURED-READY now: **oxlint** (`--format=json`,
    replaces stdout → needs re-render), **vitest** (`--reporter=json
---outputFile.json` → side-channel: pretty stays on stdout, JSON to file,
+   --outputFile.json` → side-channel: pretty stays on stdout, JSON to file,
    UX-neutral by construction), **cargo** (`--message-format=json`, NDJSON →
    needs re-render). oxfmt = `--list-different` (file-set/count only). tsc/tsgo,
    vite, pnpm, storybook = no per-diagnostic machine format (tsgo `--help` → 0

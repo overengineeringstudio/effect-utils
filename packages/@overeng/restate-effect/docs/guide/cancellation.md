@@ -13,6 +13,7 @@ the example is [`examples/10-cancellation.ts`](../../examples/10-cancellation.ts
 
 ```ts
 import { Effect } from 'effect'
+
 import { Restate } from '@overeng/restate-effect'
 
 const body = Effect.gen(function* () {

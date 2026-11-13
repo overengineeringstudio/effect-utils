@@ -20,9 +20,9 @@ Generate the repo-root `pnpm-workspace.yaml`.
 ### Root aggregate projection
 
 ```ts
+import { pnpmWorkspaceYaml } from './genie/internal.ts'
 import appPkg from './packages/app/package.json.genie.ts'
 import sharedPkg from './packages/shared/package.json.genie.ts'
-import { pnpmWorkspaceYaml } from './genie/internal.ts'
 
 export default pnpmWorkspaceYaml.root({
   packages: [appPkg, sharedPkg],

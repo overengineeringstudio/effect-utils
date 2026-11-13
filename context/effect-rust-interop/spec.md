@@ -224,7 +224,9 @@ The implemented generic API accepts a fresh lexical `{ api, release }` loader an
 
 ```ts
 import { Context, Effect } from 'effect'
+
 import { Interop } from '@overeng/effect-rust'
+
 import { load } from './generated/content-core/load.ts'
 
 interface Api {
@@ -300,6 +302,7 @@ Contracts use ordinary Effect Schema nodes and checks, not a parallel `Wire.*` a
 
 ```ts
 import { Schema } from 'effect'
+
 import { Borsh, ContractJson, EffectRust } from '@overeng/effect-rust'
 
 const Deployment = Schema.TaggedStruct('Deployment', {

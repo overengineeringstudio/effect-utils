@@ -1053,12 +1053,13 @@ process.stdin.on('data', (chunk) => {
       let client: ClosableTsApi['client']
       let timeout: unknown
       const updateSnapshot = API.prototype.updateSnapshot
-      const snapshotSpy = vi
-        .spyOn(API.prototype, 'updateSnapshot')
-        .mockImplementation(function (this: API, options) {
-          client = (this as unknown as ClosableTsApi).client
-          return updateSnapshot.call(this, options)
-        })
+      const snapshotSpy = vi.spyOn(API.prototype, 'updateSnapshot').mockImplementation(function (
+        this: API,
+        options,
+      ) {
+        client = (this as unknown as ClosableTsApi).client
+        return updateSnapshot.call(this, options)
+      })
       const reapServer = () => {
         if (pid === undefined && fs.existsSync(pidFile) === true) {
           pid = Number(fs.readFileSync(pidFile, 'utf8'))

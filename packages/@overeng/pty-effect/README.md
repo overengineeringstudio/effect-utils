@@ -28,6 +28,7 @@ pnpm add @overeng/pty-effect @myobie/pty effect
 
 ```ts
 import { Effect, Schedule } from 'effect'
+
 import { makePtySession, PtySpec_ } from '@overeng/pty-effect'
 
 const program = Effect.scoped(
@@ -128,6 +129,7 @@ For dependency-injected use:
 
 ```ts
 import { Effect, Layer } from 'effect'
+
 import { PtySpawner, layer as ptyLayer } from '@overeng/pty-effect'
 
 const program = Effect.gen(function* () {

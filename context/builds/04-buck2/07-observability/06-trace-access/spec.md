@@ -236,7 +236,7 @@ baseline jobs do not suppress the table. Forks keep the workflow's no-write guar
   candidates through the workflow-runs API, then select the latest seven
   admissible same-key Jobs API durations and report p50 and `n=7`.
 - A job absent from all 20 selected successful main runs reports `no main
-baseline`; a finalizer job never appears as a build row. The collector
+  baseline`; a finalizer job never appears as a build row. The collector
   makes no more than 20 baseline Jobs API run requests for this selection.
 - The same job facts and trace identity produce the exact same Grafana URL;
   malformed IDs produce no URL; an unindexed trace remains an Explore link.

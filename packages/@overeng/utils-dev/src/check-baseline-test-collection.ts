@@ -76,9 +76,7 @@ const discoverTestFiles = async ({
 }): Promise<readonly string[]> =>
   (
     await Promise.all(
-      (
-        await readdir(directory, { withFileTypes: true })
-      ).map(async (entry) => {
+      (await readdir(directory, { withFileTypes: true })).map(async (entry) => {
         const relativePath = `${prefix}/${entry.name}`
         if (entry.isDirectory() === true && isTestDiscoveryDirectory(entry.name) === true) {
           return discoverTestFiles({

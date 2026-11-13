@@ -153,6 +153,7 @@ export const observed = rewriteHelpSubcommand(['help', 'status'])
 
 ```ts
 import { expect, test } from 'bun:test'
+
 import { rewriteHelpSubcommand } from './utils.js'
 
 test('rewrites the help subcommand', () => {

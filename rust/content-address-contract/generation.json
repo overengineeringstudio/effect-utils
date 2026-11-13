@@ -1,19 +1,23 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:08e538b158018b0dffc72d6766ff4e65964e4a14d77e0916a7c8d0941b1afc51",
-  "generatedAt": "2026-11-06T13:14:35.350Z",
+  "inputFingerprint": "sha256:83947239e025ef291d21b9783d3ea70407f620c8cd96c44b166de833019b85b6",
+  "generatedAt": "2026-11-11T12:59:56.387Z",
   "runtime": {
     "name": "bun",
-    "version": "1.4.2"
+    "version": "1.4.4"
   },
   "inputs": [
     {
       "path": "flake.lock",
-      "sha256": "80638622b37c8c7349f3734af5cecac8ba036a0fb21a612d95e7f59463131382"
+      "sha256": "23ed0c0f7f5e384f92591f8d4a09ac75c84cdf527ee3418936a6153f5d0ce5c0"
+    },
+    {
+      "path": "nix/bun-compile-runtime.nix",
+      "sha256": "316f286e74592c4f4987c44001bcb79e70740a7ea574cf9ecf9f7111726c3808"
     },
     {
       "path": "packages/@overeng/content-address/src/generate-contract.ts",
-      "sha256": "a0dda3205a08781cf3d393b98ddd86da7ca70242b2f5d5ca53a06ab508e852af"
+      "sha256": "a63f3e32c01050bb8d66a47b34a8f833c3365cf646fad56bba333411ba8926db"
     },
     {
       "path": "packages/@overeng/content-address/src/schema.ts",
@@ -122,6 +126,10 @@
     {
       "path": "rust/Cargo.toml",
       "sha256": "bdbc29dcffc87354302345ce379b7b7c6cd27ac3ca06eb217c0bae830a0e24d0"
+    },
+    {
+      "path": "rust/content-address-contract/generation-freshness.ts",
+      "sha256": "5ac19c0a14eaa5da6fef838650e34ced70abc845f9e1b9f257d365b069b0d13d"
     }
   ],
   "artifacts": [

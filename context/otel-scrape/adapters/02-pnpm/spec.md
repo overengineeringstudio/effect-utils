@@ -41,7 +41,7 @@ _documented named reporter_, not `--loglevel debug` scraping.
   replacing pnpm's human progress; there is no side-channel flag. The adapter
   injects the reporter (gated by ADP.PNPM-R02), consumes it, and re-prints a
   compact line, e.g. `pnpm: resolved 2, reused 0, downloaded 2, +2 (resolve
-618ms · import 45ms)`.
+  618ms · import 45ms)`.
 - **detect (realizes ADP.PNPM-R05):** `process.executable.name == "pnpm"` and
   argv contains `install`/`i`/`add`/`update` (not `pnpm ls`/`run`).
 

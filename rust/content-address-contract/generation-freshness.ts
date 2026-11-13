@@ -25,7 +25,7 @@ const GenerationManifest = Schema.Struct({
       return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
     }),
   ),
-  runtime: Schema.Struct({ name: Schema.Literal('bun'), version: Schema.Literal('1.4.2') }),
+  runtime: Schema.Struct({ name: Schema.Literal('bun'), version: Schema.NonEmptyString }),
   inputs: Schema.Array(Entry),
   artifacts: Schema.Array(Entry),
 }).annotate({ identifier: 'ContentAddressContract.GenerationManifest' })
@@ -39,6 +39,14 @@ const fail = ({ message }: { readonly message: string }): never => {
     message: `Generated content-address contract is stale: ${message}. Regenerate with bun packages/@overeng/content-address/src/generate-contract.ts`,
   })
 }
+
+const readPinnedContractBunVersion = ({ root }: { readonly root: string }): string => {
+  const pin = readFileSync(path.join(root, 'nix/bun-compile-runtime.nix'), 'utf8')
+  const version = /^\s*version = "([^"]+)";$/m.exec(pin)?.[1]
+  if (version === undefined) return fail({ message: 'cannot read the pinned Bun runtime version' })
+  return version
+}
+
 const hash = ({ content }: { readonly content: string }): string =>
   createHash('sha256').update(content, 'utf8').digest('hex')
 
@@ -116,6 +124,8 @@ export const assertContractGenerationFreshness = ({
   const manifest = Schema.decodeUnknownSync(Schema.fromJsonString(GenerationManifest), {
     onExcessProperty: 'error',
   })(readFileSync(path.join(contractRoot, 'generation.json'), 'utf8'))
+  if (manifest.runtime.version !== readPinnedContractBunVersion({ root: repoRoot }))
+    fail({ message: 'runtime version differs from nix/bun-compile-runtime.nix' })
   const requiredInputs = [
     'packages/@overeng/content-address/src/generate-contract.ts',
     'packages/@overeng/content-address/src/schema.ts',
@@ -123,6 +133,8 @@ export const assertContractGenerationFreshness = ({
     'pnpm-lock.yaml',
     'rust/Cargo.toml',
     'rust/Cargo.lock',
+    'nix/bun-compile-runtime.nix',
+    'rust/content-address-contract/generation-freshness.ts',
     ...sourcePaths({ root: repoRoot, relative: 'packages/@overeng/effect-rust/src/compiler' }),
     ...sourcePaths({ root: repoRoot, relative: 'packages/@overeng/effect-rust/src/schema' }),
   ]

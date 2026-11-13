@@ -21,8 +21,9 @@ bun add @overeng/effect-react effect react
 ### Basic Setup
 
 ```tsx
-import { EffectProvider, useEffectRunner } from '@overeng/effect-react'
 import { Effect, Layer, Logger } from 'effect'
+
+import { EffectProvider, useEffectRunner } from '@overeng/effect-react'
 
 // Define your app layer
 const AppLayer = Layer.mergeAll(
@@ -115,6 +116,7 @@ const App = () => (
 
 ```tsx
 import { SubscriptionRef } from 'effect'
+
 import { useSubscriptionRef } from '@overeng/effect-react'
 
 const counterRef = yield * SubscriptionRef.make({ count: 0 })
@@ -130,8 +132,9 @@ This is useful when state lives outside React, for example in a long-lived Effec
 ### Accessing the Runtime Directly
 
 ```tsx
-import { useRuntime } from '@overeng/effect-react'
 import { Runtime } from 'effect'
+
+import { useRuntime } from '@overeng/effect-react'
 
 const MyComponent = () => {
   const runtime = useRuntime<MyServices>()

@@ -24,8 +24,8 @@ workspace metadata can be treated as normalized graph metadata for projection.
 ## Usage
 
 ```ts
-import utilsPkg from '../utils/package.json.genie.ts'
 import { catalog, packageJson } from '../../../genie/internal.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const deps = catalog.compose({
   workspace: {

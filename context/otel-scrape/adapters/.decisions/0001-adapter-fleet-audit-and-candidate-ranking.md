@@ -34,7 +34,7 @@ partitions the tools three ways:
      hashed filename + line, plus a count that only reaches OTLP via the
      span-attribute path. Materially thinner than oxlint, not a co-equal.
    - **nix (build) — worthwhile, out of `check:quick` scope.** `--log-format
-internal-json` gives real build/substitute spans, but only on the build
+     internal-json` gives real build/substitute spans, but only on the build
      lane (`nix:build` / `nix:flake:check`), and its schema stability is a DQ.
 
 3. **First-party tools self-instrument.** The asset-import guard and any bespoke
