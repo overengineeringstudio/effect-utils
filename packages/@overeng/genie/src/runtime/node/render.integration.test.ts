@@ -9,7 +9,9 @@ import { renderGenieOutput } from '@overeng/genie/render'
 
 import { generateFile } from '../../core/generation.ts'
 
-Vitest.it.scopedLive.prop(
+const encodeString = Schema.encodeSync(Schema.fromJsonString(Schema.String))
+
+Vitest.it.live.prop(
   'public rendering matches the bytes generation writes',
   [
     Schema.String,
@@ -28,15 +30,15 @@ Vitest.it.scopedLive.prop(
       // This real source is loaded by generateFile, not replaced with an injected output.
       yield* fs.writeFileString(
         genieFilePath,
-        `export default { data: {}, stringify: (ctx) => ${JSON.stringify(content)} + ctx.location + ':' + ctx.mode + '\\n' }`,
+        `export default { data: {}, stringify: (ctx) => ${encodeString(content)} + ctx.location + ':' + ctx.mode + '\\n' }`,
       )
       const context = { cwd, location, mode: 'generate' as const }
       const output = {
         stringify: (ctx: typeof context) => `${content}${ctx.location}:${ctx.mode}\n`,
       }
       yield* generateFile({ genieFilePath, cwd, readOnly: false, oxfmtConfigPath: Option.none() })
-      expect(yield* fs.readFileString(genieFilePath.replace('.genie.ts', ''))).toBe(
-        renderGenieOutput({ output, context, genieFilePath }),
+      expect(new Uint8Array(yield* fs.readFile(genieFilePath.replace('.genie.ts', '')))).toEqual(
+        new TextEncoder().encode(renderGenieOutput({ output, context, genieFilePath })),
       )
     }).pipe(Effect.provide(NodeServices.layer)),
   { arbitrary: { runs: 20 } },
