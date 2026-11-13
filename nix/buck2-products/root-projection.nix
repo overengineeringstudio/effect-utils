@@ -40,6 +40,8 @@ pkgs.lib.fileset.toSource {
       "megarepo.kdl"
       "megarepo.lock"
       "patches/@myobie__pty@0.10.0.patch"
+      "genie/buck2/mod.ts"
+      "genie/native-dependency-policy.ts"
       "genie/weaver-registry/attributes.yaml"
       "genie/weaver-registry/manifest.yaml"
       "genie/weaver-registry/signals.yaml"

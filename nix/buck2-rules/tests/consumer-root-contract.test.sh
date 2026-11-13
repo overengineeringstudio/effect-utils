@@ -76,7 +76,11 @@ generated = {
     *(f"{path.split('/patches/')[0]}/BUCK" for path in declared if "/patches/" in path),
 }
 # Vendored dependency trees have their own pinned archive boundaries.
-vendored = ("prelude/", "packages/@overeng/buck2-tools/node_modules/")
+vendored = (
+    "prelude/",
+    "packages/@overeng/buck2-tools/node_modules/",
+    "buck2/dependencies/runtime/effect/",
+)
 actual = {
     path.relative_to(product).as_posix()
     for path in product.rglob("*")
@@ -117,6 +121,7 @@ grep -F 'name = "typescript-runner.ts"' "$root/.buck2/rules/packages/@overeng/bu
 grep -F 'name = "package_tree_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUCK" >/dev/null
+bash "$repo_root/nix/buck2-rules/tests/declared-inputs-freshness-consumer.test.sh" "$repo_root" "$immutable_root"
 
 # Buck writes buck-out under the project root, so queries run in a writable copy.
 work="$(mktemp -d)"

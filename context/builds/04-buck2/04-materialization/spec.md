@@ -71,6 +71,15 @@ generation, so it cannot disagree with the lockfile except by staleness, which
 the freshness gate rejects. The lockfile's peer-suffixed snapshot keys map
 directly to virtual-store entries; peer resolution is not re-derived.
 
+The bounded dependency-projection verdict is
+`declared_inputs_freshness_check`; its
+[execution contract](../05-execution/spec.md#declared-input-dependency-freshness)
+declares the lockfile, workspace manifests, patches, sidecar, complete generator
+source/runtime tree, and committed outputs. It executes the consumer's real
+generator offline, validates rather than refreshes sidecar metadata, and
+compares expected BUCK/sidecar bytes in scratch. It never fetches archives or
+emits committed files as outputs; acquisition remains a separate action family.
+
 Invalidation is structural (BUILD.BUCK.MAT-R07): a changed package version re-runs its
 fetch and extract and the assemblies of importers whose closure contains it;
 unrelated importers are untouched. A change that leaves an importer's closure

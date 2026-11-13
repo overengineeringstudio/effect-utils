@@ -76,6 +76,14 @@ verification regenerates into memory or temporary storage, compares exact
 bytes, and reports the owning semantic source on mismatch. Generated files are
 read-only as a local guardrail; Git write bits are not freshness identity.
 
+For lockfile-derived dependency BUCK and sidecar bytes,
+[`declared_inputs_freshness_check`](../05-execution/spec.md#declared-input-dependency-freshness)
+provides a cacheable, bounded equality verdict by executing the real consumer
+generator offline over declared inputs. Committed projections are inputs only;
+scratch regeneration does not emit or substitute graph files. This verdict
+does not itself supersede the source-side entrypoint authority in
+[decision 0035](../../.decisions/0035-source-side-generation-freshness-gate.md).
+
 ### Cargo product selection
 
 Cargo package targets and product selections are separate facts. `buildProducts`
