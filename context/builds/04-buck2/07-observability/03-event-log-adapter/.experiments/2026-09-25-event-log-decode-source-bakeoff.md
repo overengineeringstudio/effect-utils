@@ -21,7 +21,7 @@ invocation-record)?
   one `CommandResult`.
 - Benchmark matrix on the largest CI log (711,142 B compressed / 7.29 MB /
   25,562 records / 12,622 spans) and the corpus median: zstd floor CLI, `log
-show`, the scratch Bun pipeline, a Rust direct decoder (prost + protox, no
+  show`, the scratch Bun pipeline, a Rust direct decoder (prost + protox, no
   protoc; zstd static; 2.5 MB binary), and `chrome-trace`.
 - Field-completeness audit against the converter's needed-field list, per
   source, with per-field corpus hit counts.
@@ -32,7 +32,7 @@ show`, the scratch Bun pipeline, a Rust direct decoder (prost + protox, no
 ## Result
 
 - Decode (largest log, median / peak RSS): direct 42.0 ms / 13.7 MB; `log
-show` 59.0 ms / 36.3 MB; scratch pipeline 190.8 ms / 96.0 MB (JSONL for
+  show` 59.0 ms / 36.3 MB; scratch pipeline 190.8 ms / 96.0 MB (JSONL for
   this log is 16.35 MB — 2.24× the uncompressed protobuf); chrome-trace
   94.3 ms / 45.7 MB; zstd floor 11.8 ms / 14.2 MB. Direct ≈ 165 MB/s warm;
   22 logs in 343 ms in one process (~138 MB/s).

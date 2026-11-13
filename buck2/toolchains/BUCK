@@ -108,7 +108,7 @@ support_tool(
 
 support_tool(
     name = "tool_wasm_opt",
-    protocol = "webassembly/binaryen/v132",
+    protocol = "webassembly/binaryen/v133",
     tool_id = "wasm-opt",
     visibility = ["PUBLIC"],
 )

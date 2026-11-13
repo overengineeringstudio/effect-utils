@@ -121,18 +121,27 @@ type DiscoveryObservation =
   | { kind: 'source-membership'; path: RepoPath; present: boolean; digest: Digest; by: By }
   | { kind: 'source-set' | 'tracked-files'; paths: RepoPath[]; digest: Digest; by: By }
 type EntryType =
-  'file' | 'directory' | 'symlink' | 'socket' | 'fifo' | 'character-device' | 'block-device'
+  | 'file'
+  | 'directory'
+  | 'symlink'
+  | 'socket'
+  | 'fifo'
+  | 'character-device'
+  | 'block-device'
 type Missing = { state: 'absent'; error: 'ENOENT' | 'ENOTDIR' }
 type CodeFile = { path: Path; digest: Digest }
 type Identity = { version: string; files: CodeFile[] }
 type FileObservation = { path: Path; by: By } & (
-  { state: 'present'; digest: Digest; byteLength: number } | Missing
+  | { state: 'present'; digest: Digest; byteLength: number }
+  | Missing
 )
 type DirectoryObservation = { path: Path; by: By } & (
-  { state: 'present'; entries: { name: string; type: EntryType }[]; digest: Digest } | Missing
+  | { state: 'present'; entries: { name: string; type: EntryType }[]; digest: Digest }
+  | Missing
 )
 type EnvObservation =
-  { name: string; present: false; by: By } | { name: string; present: true; digest: Digest; by: By }
+  | { name: string; present: false; by: By }
+  | { name: string; present: true; digest: Digest; by: By }
 type CwdObservation = { lexical: Path; physical: Path; by: By }
 type SymlinkObservation = { path: Path; by: By } & ({ state: 'present'; target: string } | Missing)
 type Ref = { kind: 'file' | 'directory'; path: Path }
@@ -172,7 +181,8 @@ type StatValues = {
   birthtimeNs: string
 }
 type StatObservation = { path: Path; followSymlinks: boolean; by: By } & (
-  { state: 'present'; type: EntryType; values: StatValues } | Missing
+  | { state: 'present'; type: EntryType; values: StatValues }
+  | Missing
 )
 type Reason = {
   code: ReasonCode

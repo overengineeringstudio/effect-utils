@@ -29,7 +29,7 @@ A generator (`generate.ts`) takes `{ newKey, was, context: 'datapoint'|'resource
   (the over-broad-rewrite risk is handled by the `where metric.name == …` guard derived from
   `scopeMetrics`).
 - **sunset / contract form:** a second statement `delete_key(datapoint.attributes, "service")
-where metric.name == "restate.invocations"` drops the old key → the scoped datapoint ends
+  where metric.name == "restate.invocations"` drops the old key → the scoped datapoint ends
   with ONLY `restate.service`; unscoped untouched. This is the copy→rename contraction.
 - **generation path proven:** every OTTL statement the collectors ran came from the generator;
   the scope guard (single → bare clause, multi → `(metric.name=="a" or "b")`) and the attribute

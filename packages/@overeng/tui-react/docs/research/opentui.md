@@ -179,8 +179,9 @@ export const Box: React.FC<BoxProps> = (props) => {
 ### Mode-Based Renderer Selection
 
 ```typescript
-import { createRoot as createTuiRoot } from '@overeng/tui-react'
 import { createRoot as createOpenTuiRoot, createCliRenderer } from '@opentui/react'
+
+import { createRoot as createTuiRoot } from '@overeng/tui-react'
 
 const createRenderer = async (config: OutputConfig) => {
   if (config.screen === 'alternate') {

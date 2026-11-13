@@ -58,6 +58,13 @@
   ...
 }:
 let
+  # Swiss runtime linknames break with Go 1.27: https://github.com/cockroachdb/swiss/issues/51
+  # Remove once nixpkgs updates the collector's Swiss dependency for Go 1.27.
+  otelCollector =
+    (pkgs.opentelemetry-collector-releases.override {
+      buildGoModule = pkgs.buildGo126Module;
+    }).otelcol-contrib;
+
   # Data directory for Tempo and Grafana state
   dataDir = "${config.devenv.root}/.devenv/otel";
   # Spool directory for otel-span file-based span delivery
@@ -533,7 +540,7 @@ in
     otelRun
   ]
   ++ lib.optionals needsLocalInfra [
-    pkgs.opentelemetry-collector-contrib
+    otelCollector
     pkgs.tempo
     pkgs.grafana
   ];
@@ -593,7 +600,7 @@ in
     "otel-collector-${toString otelCollectorPort}" = {
       exec = ''
         mkdir -p ${spoolDir} ${dataDir}/spool-offsets
-        exec ${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib \
+        exec ${otelCollector}/bin/otelcol-contrib \
           --config ${otelCollectorConfig} \
           --feature-gates=filelog.allowFileDeletion
       '';

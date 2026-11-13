@@ -25,7 +25,7 @@ own `.buckconfig`.
 - `buck2 targets effect_utils//...` evaluates 35 real targets from the
   composition root; tui-core's real target builds in every root shape.
 - tui-core action digest `d2a35da88164a0b14f05744d344dcaefc1bfc730a6e86e6f93
-26d796db16d680:142` is identical across single-member, two-member,
+  26d796db16d680:142` is identical across single-member, two-member,
   renamed-root, and real-dotfiles-root shapes: root cell name AND content are
   irrelevant to member identity. Hub platform config hashes byte-identical
   everywhere.

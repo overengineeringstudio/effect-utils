@@ -869,7 +869,7 @@ reconciliation and endpoint round-trip fidelity (R36). Terminology follows
   on cache load, the sync driver issues a single
   `NotionBlocks.retrieve(cache.rootId)` pre-flight. On 404/archived:
   invalidate cache + cold-rebuild with `fallbackReason =
-"page-id-drift"`. Adds ~1 API call per sync — negligible vs savings.
+  "page-id-drift"`. Adds ~1 API call per sync — negligible vs savings.
   Finer-grained `"block-missing"` detection during `applyDiff` deferred
   to v0.2.
 - **DQ6 Database-parented pages.** _Deferred._ `<ChildPage>` currently

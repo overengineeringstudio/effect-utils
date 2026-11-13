@@ -44,8 +44,9 @@ root.render(<App />)
 Use `createTuiApp` for mode-dependent rendering in Effect-based CLIs:
 
 ```tsx
-import { Effect, Schema } from 'effect'
 import * as Cli from '@effect/cli'
+import { Effect, Schema } from 'effect'
+
 import { createTuiApp, useTuiAppState, Box, Text } from '@overeng/tui-react'
 import { outputOption, resolveOutputOption, outputModeLayer } from '@overeng/tui-react/node'
 

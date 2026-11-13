@@ -38,7 +38,7 @@ rule/severity/kind field); this leaf is honest about that.
 - **Exit code:** 0 by default even with findings; `--fail` makes it exit 1 (the
   adapter injects neither `--fail` nor `--edit` — ADP.DEADNIX-R01).
 - **Schema (per-file object):** `{ file: string, results: [{ line, column,
-endColumn, message }] }`. There is **no** `severity`, `code`, `rule`, or
+  endColumn, message }] }`. There is **no** `severity`, `code`, `rule`, or
   `kind` field — all findings are conceptually warnings.
 
 ## Records (classification ladder)

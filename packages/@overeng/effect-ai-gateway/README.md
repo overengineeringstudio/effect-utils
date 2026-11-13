@@ -10,10 +10,11 @@ the [Rust realization](../../../context/ai-gateway/02-rust/spec.md) shares that
 contract without defining a second gateway protocol.
 
 ```ts
-import { AiGateway } from '@overeng/effect-ai-gateway'
 import { Effect, Layer } from 'effect'
 import { LanguageModel } from 'effect/ai'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+
+import { AiGateway } from '@overeng/effect-ai-gateway'
 
 const program = LanguageModel.generateText({ prompt: 'Say hello' })
 const ai = AiGateway.layerConfig({ model: 'anthropic/claude-haiku-4-5' }).pipe(
@@ -30,10 +31,11 @@ Model IDs pass through unchanged; use provider-prefixed IDs advertised by the ga
 ## Native decisions
 
 ```ts
-import { AiGateway } from '@overeng/effect-ai-gateway'
 import { Effect, Layer, Schema } from 'effect'
 import { Decision, DecisionModel } from 'effect/ai'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+
+import { AiGateway } from '@overeng/effect-ai-gateway'
 
 const triage = Decision.make({
   input: Schema.Struct({ ticket: Schema.String }),

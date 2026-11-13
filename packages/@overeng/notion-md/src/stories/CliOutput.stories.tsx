@@ -80,9 +80,10 @@ const displayLines = (fixture: CommandFixture): readonly DisplayLine[] => [
       ? []
       : [{ kind: 'dim' as const, text: `    ${problem.context}` }]),
     ...problem.fixes.map((fix): DisplayLine => ({ kind: 'fix', text: `    fix: ${fix}` })),
-    ...(problem.skips ?? []).map(
-      (skip): DisplayLine => ({ kind: 'dim', text: `    skip: ${skip}` }),
-    ),
+    ...(problem.skips ?? []).map((skip): DisplayLine => ({
+      kind: 'dim',
+      text: `    skip: ${skip}`,
+    })),
   ]),
   ...(fixture.problems.length === 0 || fixture.items.length === 0
     ? []

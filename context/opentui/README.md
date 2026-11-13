@@ -184,8 +184,8 @@ For complex state, use `@effect-atom/atom` with OpenTUI:
 
 ```tsx
 import { Registry } from '@effect-atom/atom'
-import { RegistryContext, useAtomValue } from '@effect-atom/atom-react'
 import { Atom } from '@effect-atom/atom'
+import { RegistryContext, useAtomValue } from '@effect-atom/atom-react'
 
 const countAtom = Atom.make(0)
 

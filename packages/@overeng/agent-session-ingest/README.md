@@ -102,6 +102,7 @@ Example using the Claude adapter and a file-backed checkpoint store:
 
 ```ts
 import { Effect } from 'effect'
+
 import { FileCheckpointStore, ingestSource, makeClaudeAdapter } from '@overeng/agent-session-ingest'
 
 const program = Effect.gen(function* () {

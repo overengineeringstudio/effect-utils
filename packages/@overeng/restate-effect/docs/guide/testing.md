@@ -46,6 +46,7 @@ the real backend with `kind === 'real' && !serverAvailable`. Verified by
 import { it } from '@effect/vitest'
 import { Effect, Layer } from 'effect'
 import { describe, expect } from 'vitest'
+
 import { RestateTestEnv, serverAvailable } from '@overeng/restate-effect/testing'
 
 const backends = [
@@ -124,6 +125,7 @@ replay coverage with the mock backend.
 import { it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { describe, expect } from 'vitest'
+
 import { RestateTestHarness, serverAvailable } from '@overeng/restate-effect/testing'
 
 const Harness = RestateTestHarness.layer({
@@ -188,7 +190,9 @@ by name (journaled-once), `ctx.date`/`ctx.rand` are deterministic (seeded), and
 ```ts
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
+
 import { makeTestContextLayer } from '@overeng/restate-effect/testing'
+
 import { CounterLive } from './counter.ts' // your RestateObject.implement(...)
 
 describe('counter handler logic', () => {

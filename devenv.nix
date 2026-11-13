@@ -852,11 +852,16 @@ let
     };
 in
 {
-  # Only this repository's shell/tasks receive the temporary Bun runtime fix.
-  # repoFlake/flakePkgs and all published package closures remain independent.
   overlays = [
     (_final: previous: {
-      bun = import ./nix/devenv-bun.nix { pkgs = previous; };
+      # Upstream failure: https://hydra.nixos.org/build/352528529
+      # Remove once nixpkgs Reindeer declares its required system libraries.
+      reindeer = previous.reindeer.overrideAttrs (old: {
+        buildInputs = (old.buildInputs or [ ]) ++ [
+          previous.libgit2
+          previous.sqlite
+        ];
+      });
     })
   ];
 

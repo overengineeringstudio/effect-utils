@@ -41,6 +41,7 @@ const makeFixture = (): string => {
     'megarepo.kdl',
     'pnpm-lock.yaml',
     'flake.lock',
+    'nix/bun-compile-runtime.nix',
     'genie/buck2/mod.ts',
     'packages/@overeng/genie/src/runtime',
     'packages/@overeng/effect-rust/src',

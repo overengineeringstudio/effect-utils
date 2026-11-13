@@ -23,8 +23,9 @@ how to aggregate.
 ## Minimal example
 
 ```ts
-import { sync } from '@overeng/notion-react'
 import { Effect } from 'effect'
+
+import { sync } from '@overeng/notion-react'
 
 const program = Effect.gen(function* () {
   yield* sync(element, {
@@ -40,8 +41,9 @@ const program = Effect.gen(function* () {
 Most consumers want per-sync counters:
 
 ```ts
-import { sync, type SyncEvent } from '@overeng/notion-react'
 import { Effect } from 'effect'
+
+import { sync, type SyncEvent } from '@overeng/notion-react'
 
 const tally = {
   httpOps: 0,

@@ -52,6 +52,7 @@ file is [`examples/02-virtual-object.ts`](../../examples/02-virtual-object.ts).
 
 ```ts
 import { Effect, Schema } from 'effect'
+
 import { RestateObject, State } from '@overeng/restate-effect'
 
 const CounterState = { count: Schema.Number } as const
@@ -133,6 +134,7 @@ full file is [`examples/03-workflow.ts`](../../examples/03-workflow.ts).
 
 ```ts
 import { Effect, Schema } from 'effect'
+
 import { DurablePromise, RestateWorkflow, State } from '@overeng/restate-effect'
 
 const Decision = Schema.Struct({ approved: Schema.Boolean })
@@ -189,6 +191,7 @@ directly callable (you submit it, you do not call it). See
 
 ```ts
 import { Effect } from 'effect'
+
 import { workflowAttach, workflowCall, workflowSubmit } from '@overeng/restate-effect'
 
 const run = Effect.gen(function* () {

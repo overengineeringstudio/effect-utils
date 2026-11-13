@@ -61,6 +61,7 @@ export const UserApi = RpcGroup.make(GetUser, ListUsers, CreateUser)
 ```typescript
 // src/rpc/server.ts
 import { Effect, Ref } from 'effect'
+
 import { User, UserApi, UserNotFoundError } from './api.ts'
 
 const usersRef = Ref.unsafeMake<User[]>([
@@ -98,7 +99,9 @@ export const UserHandlers = UserApi.toLayer(
 ```typescript
 // src/routes/api/rpc.ts
 import { createFileRoute } from '@tanstack/react-router'
+
 import { makeHandler } from '@overeng/effect-rpc-tanstack/server'
+
 import { UserApi } from '../../rpc/api.ts'
 import { UserHandlers } from '../../rpc/server.ts'
 
@@ -119,7 +122,9 @@ export const Route = createFileRoute('/api/rpc')({
 // src/rpc/client.ts
 import { RpcClient, type RpcClientError } from '@effect/rpc'
 import { Effect } from 'effect'
+
 import { layerClient } from '@overeng/effect-rpc-tanstack/client'
+
 import { UserApi, type User, type UserNotFoundError } from './api.ts'
 
 const ProtocolLive = layerClient({ url: '/api/rpc' })
@@ -157,6 +162,7 @@ and override only the fetch implementation:
 
 ```typescript
 import { requestHandler } from '@tanstack/react-start/server'
+
 import { fetchFromWebHandler, layerClient } from '@overeng/effect-rpc-tanstack/client'
 
 const serverFetch = fetchFromWebHandler((request) =>

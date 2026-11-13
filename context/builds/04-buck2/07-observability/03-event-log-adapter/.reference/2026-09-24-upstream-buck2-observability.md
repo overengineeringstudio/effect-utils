@@ -32,7 +32,7 @@ release. Cited by the adapter decisions
 - Wrapper contract: `BUCK_WRAPPER_UUID` supplies the caller-chosen trace id;
   otherwise a v4 UUID per command.
 - Offline analyzers: `log show/summary/critical-path/slowest-path/what-ran/
-what-failed/what-up/what-materialized/what-uploaded/diff`, the
+  what-failed/what-up/what-materialized/what-uploaded/diff`, the
   Perfetto-compatible chrome-trace converter, `log replay` (Superconsole
   re-render), `log snoop` (live tail), `log shed select-events`.
 

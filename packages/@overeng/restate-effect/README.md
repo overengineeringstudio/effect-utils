@@ -43,6 +43,7 @@ Effect, serve it, and call it through the typed ingress client. The full file is
 
 ```ts
 import { Context, Effect, Layer, Schema } from 'effect'
+
 import { Restate, RestateService } from '@overeng/restate-effect'
 
 class Greeting extends Context.Tag('example/Greeting')<Greeting, { readonly prefix: string }>() {
@@ -84,6 +85,7 @@ Serve it and call it (see [`examples/04-endpoint.ts`](./examples/04-endpoint.ts)
 ```ts
 import { NodeRuntime } from '@effect/platform-node'
 import { Effect } from 'effect'
+
 import { callTyped, RestateIngress, serve } from '@overeng/restate-effect'
 
 serve({ services: [GreeterLive], port: 9080 }).pipe(

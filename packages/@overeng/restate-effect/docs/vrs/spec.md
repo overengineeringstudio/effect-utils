@@ -185,7 +185,7 @@ given.
 - **DQ2 Pure-vs-durable concurrency guard — RESOLVED.** The descriptor type shape
   rejects an arbitrary `Effect[]` and recovers a precise tuple/union, confirmed
   against the real `RestatePromise.all`/`race`/`any` signatures (`readonly
-RestatePromise<unknown>[]`, leaf/descriptor model) and the `.then`-is-suspension
+  RestatePromise<unknown>[]`, leaf/descriptor model) and the `.then`-is-suspension
   /`.map`-the-result invariant. The typed descriptor is the primary guard; the lint
   rule against a fan-out handler stays the advisory backstop (see
   [03-effect-runtime](./03-effect-runtime/spec.md)).
@@ -200,7 +200,7 @@ RestatePromise<unknown>[]`, leaf/descriptor model) and the `.then`-is-suspension
   [01-authoring](./01-authoring/spec.md),
   [.decisions/0002](./.decisions/0002-typed-capability-contexts.md)).
 - **DQ4 Contract → client inference — RESOLVED.** The phantom `Contract<Name,
-HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
+  HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
   accessors recover the EXACT per-handler types (proven with `Equals<>`) without
   erasing to `Record<string, …>`; wrong-input / unknown-method / wrong-success all
   error. The Phase-1 gate (paired with DQ3) passes. (See
@@ -224,7 +224,7 @@ HandlerMap>` + `const` type params + `InputOf`/`SuccessOf`/`ErrorOf` indexed
   [03-effect-runtime](./03-effect-runtime/spec.md)). (See
   [.decisions/0004](./.decisions/0004-determinism-layer.md).)
 - **DQ7 h2c prior-knowledge handshake — RESOLVED.** `http2.createServer(
-createEndpointHandler({ services }))` with `bidirectional` UNSET serves h2c
+  createEndpointHandler({ services }))` with `bidirectional` UNSET serves h2c
   prior-knowledge correctly against native restate-server 1.6.2 discovery: full
   `BIDI_STREAM` is negotiated and a real `ctx.sleep` suspend → persist → resume
   worked over h2c (no TLS/ALPN). `true` is redundant; `false` degrades to

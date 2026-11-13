@@ -32,6 +32,7 @@ import {
 } from '@opentelemetry/sdk-metrics'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base'
 import { Effect } from 'effect'
+
 import { serve } from '@overeng/restate-effect'
 import { RestateOtel } from '@overeng/restate-effect/otel'
 
@@ -67,8 +68,8 @@ not pulled into the binding's closure, so you install only the exporter your
 collector needs:
 
 ```ts
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 
 const OtelLayer = RestateOtel.layerConfig({
   base: { resource: { serviceName: 'greeter' } }, // overridden by OTEL_SERVICE_NAME

@@ -405,24 +405,22 @@ export type RichTextArray = typeof RichTextArray.Type
 export const RichTextArrayAsString = RichTextArray.pipe(
   Schema.decodeTo(Schema.String, {
     decode: SchemaGetter.transform((richText) => richText.map((rt) => rt.plain_text).join('')),
-    encode: SchemaGetter.transform(
-      (str): RichTextArray => [
-        {
-          type: 'text',
-          text: { content: str, link: null },
-          annotations: {
-            bold: false,
-            italic: false,
-            strikethrough: false,
-            underline: false,
-            code: false,
-            color: 'default',
-          },
-          plain_text: str,
-          href: null,
+    encode: SchemaGetter.transform((str): RichTextArray => [
+      {
+        type: 'text',
+        text: { content: str, link: null },
+        annotations: {
+          bold: false,
+          italic: false,
+          strikethrough: false,
+          underline: false,
+          code: false,
+          color: 'default',
         },
-      ],
-    ),
+        plain_text: str,
+        href: null,
+      },
+    ]),
   }),
 ).annotate({
   identifier: 'Notion.RichTextArrayAsString',

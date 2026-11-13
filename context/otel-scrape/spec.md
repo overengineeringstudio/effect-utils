@@ -477,7 +477,7 @@ when the trace is wanted).
 **Two tiers.**
 
 - **Resolvable URL** — printed iff `root ∧ export acknowledged (2xx) ∧ template
-configured`. "Acknowledged" means the collector returned a 2xx to otel-scrape's
+  configured`. "Acknowledged" means the collector returned a 2xx to otel-scrape's
   own command-span POST. It does **not** prove downstream ingestion, retention
   under sampling, or that otel-aware children's sub-spans landed: an immediate
   click may transiently 404 under ingestion lag, or miss spans a downstream
@@ -567,7 +567,12 @@ Profile artifacts use the reusable [content-address VRS](../content-address/spec
 ```ts
 interface ProfileLink {
   readonly type:
-    'pprof' | 'cpuprofile' | 'rustc-self-profile' | 'tsc-trace' | 'cargo-timings' | string
+    | 'pprof'
+    | 'cpuprofile'
+    | 'rustc-self-profile'
+    | 'tsc-trace'
+    | 'cargo-timings'
+    | string
   readonly digest: `sha256:${string}`
   readonly uri: `cas:sha256/${string}/${string}`
   readonly ui?: string

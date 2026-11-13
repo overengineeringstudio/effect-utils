@@ -290,7 +290,7 @@ const manifestProjection = {
     },
     {
       toolId: 'wasm-opt',
-      protocol: 'webassembly/binaryen/v132',
+      protocol: 'webassembly/binaryen/v133',
       flakePackage: 'buck2-wasm-opt',
       executable: 'bin/wasm-opt',
     },

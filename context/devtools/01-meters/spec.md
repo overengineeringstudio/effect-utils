@@ -120,7 +120,13 @@ interface NumberValue {
 interface StatusValue {
   readonly _tag: 'Status'
   readonly state:
-    'Connecting' | 'Connected' | 'Disconnected' | 'Reconnecting' | 'Syncing' | 'Synced' | 'Error'
+    | 'Connecting'
+    | 'Connected'
+    | 'Disconnected'
+    | 'Reconnecting'
+    | 'Syncing'
+    | 'Synced'
+    | 'Error'
   readonly label: string
 }
 ```

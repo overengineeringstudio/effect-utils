@@ -95,6 +95,7 @@ projection.
 
 ```tsx
 import { Effect } from 'effect'
+
 import { Heading1, Paragraph, Toggle, renderToNotion, sync, FsCache } from '@overeng/notion-react'
 
 const Page = ({ phases }: { phases: { id: string; title: string; body: string }[] }) => (

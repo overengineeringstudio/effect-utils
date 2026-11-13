@@ -100,7 +100,7 @@ tests into false confidence.
 ## Success Criteria
 
 1. A CLI adds telemetry with one layer — `withTelemetry({ identity, shape: 'cli',
-endpoint })` — and gets traces, metrics, and logs with a validated identity on
+   endpoint })` — and gets traces, metrics, and logs with a validated identity on
    every signal, correct intervals, and a force-flushed final batch on exit,
    without setting any interval or timeout.
 2. A raw `service.name` string at a composition root is a `tsc` error;
