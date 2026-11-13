@@ -31,6 +31,6 @@ declared_inputs_freshness_check(
         "buck2/dependencies/BUCK": "expected.BUCK",
         "buck2/dependencies/pnpm-lock.sha256.json": "pnpm-lock.sha256.json",
     },
-    runtime_sources = {"node_modules": "//packages/@overeng/genie:node_modules"},
+    runtime_sources = {"node_modules/effect": "//buck2/dependencies:declared_inputs_freshness_runtime"},
     visibility = ["PUBLIC"],
 )

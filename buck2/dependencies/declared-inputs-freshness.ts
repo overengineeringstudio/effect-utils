@@ -13,7 +13,12 @@ import {
 } from './pnpm-lock.ts'
 
 const InputPath = Schema.NonEmptyString.check(
-  Schema.makeFilter((value) => !isAbsolute(value) && !value.includes('\\') && value.split('/').every((part) => part !== '..' && part !== '.' && part !== '')),
+  Schema.makeFilter(
+    (value) =>
+      !isAbsolute(value) &&
+      !value.includes('\\') &&
+      value.split('/').every((part) => part !== '..' && part !== '.' && part !== ''),
+  ),
 )
 export const FreshnessManifest = Schema.Struct({
   lockfile: InputPath,
@@ -50,7 +55,10 @@ const attempt = <T>(operation: () => Promise<T>) =>
   Effect.tryPromise({
     try: operation,
     catch: (cause) =>
-      new FreshnessError({ message: cause instanceof Error ? cause.message : String(cause), cause }),
+      new FreshnessError({
+        message: cause instanceof Error ? cause.message : String(cause),
+        cause,
+      }),
   })
 
 /** A bounded unified hunk around the first differing line, including EOF differences. */
@@ -91,52 +99,89 @@ export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(funct
   const digest = async (path: string): Promise<void> => {
     const stat = await lstat(input(path))
     if (stat.isSymbolicLink()) {
-      inputs.push({ path, sha256: createHash('sha256').update(`symlink:${await readlink(input(path))}`).digest('hex') })
+      inputs.push({
+        path,
+        sha256: createHash('sha256')
+          .update(`symlink:${await readlink(input(path))}`)
+          .digest('hex'),
+      })
     } else if (stat.isDirectory()) {
       const entries = await readdir(input(path), { withFileTypes: true })
-      for (const entry of entries.toSorted((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
+      for (const entry of entries.toSorted((a, b) =>
+        a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+      )) {
         await digest(join(path, entry.name))
       }
     } else {
-      inputs.push({ path, sha256: createHash('sha256').update(await readFile(input(path))).digest('hex') })
+      inputs.push({
+        path,
+        sha256: createHash('sha256')
+          .update(await readFile(input(path)))
+          .digest('hex'),
+      })
     }
   }
   yield* attempt(async () => {
     for (const path of [...new Set(manifest.inputPaths)].toSorted()) await digest(path)
     await mkdir(output, { recursive: true })
   })
-  const files: { path: string; verdict: 'fresh' | 'stale' | 'unchecked'; firstDiff: string | null }[] =
-    manifest.committedOutputs.map((path) => ({ path, verdict: 'unchecked', firstDiff: null }))
+  const files: {
+    path: string
+    verdict: 'fresh' | 'stale' | 'unchecked'
+    firstDiff: string | null
+  }[] = manifest.committedOutputs.map((path) => ({ path, verdict: 'unchecked', firstDiff: null }))
   const writeReport = (verdict: 'fresh' | 'stale') =>
     Schema.encodeEffect(Schema.fromJsonString(FreshnessReport))({
-      schema: 'effect-utils/declared-inputs-freshness/v1', inputs, files, verdict,
-    }).pipe(Effect.flatMap((json) => attempt(() => writeFile(join(output, 'freshness.json'), `${json}\n`))))
+      schema: 'effect-utils/declared-inputs-freshness/v1',
+      inputs,
+      files,
+      verdict,
+    }).pipe(
+      Effect.flatMap((json) =>
+        attempt(() => writeFile(join(output, 'freshness.json'), `${json}\n`)),
+      ),
+    )
 
   let failurePath = manifest.lockfile
   const generation = Effect.gen(function* () {
-    const workspace = manifest.workspaceManifests.find((path) => path.endsWith('pnpm-workspace.yaml'))
-    if (workspace === undefined) return yield* new FreshnessError({ message: 'workspace_manifests must declare pnpm-workspace.yaml' })
+    const workspace = manifest.workspaceManifests.find((path) =>
+      path.endsWith('pnpm-workspace.yaml'),
+    )
+    if (workspace === undefined)
+      return yield* new FreshnessError({
+        message: 'workspace_manifests must declare pnpm-workspace.yaml',
+      })
     const lockfileText = yield* read(manifest.lockfile)
     const workspaceText = yield* read(workspace)
     const patchBytes = new Map<string, Uint8Array>()
-    for (const patch of manifest.patches) patchBytes.set(patch, yield* attempt(() => readFile(input(patch))))
+    for (const patch of manifest.patches)
+      patchBytes.set(patch, yield* attempt(() => readFile(input(patch))))
     const sidecarText = yield* read(manifest.sidecar)
     const expectedSidecar = yield* attempt(async () => {
       const metadata = translatePnpmLock({
-        lockfileText, workspaceText,
+        lockfileText,
+        workspaceText,
         readPatch: (path) => {
           const bytes = patchBytes.get(path)
-          if (bytes === undefined) throw new FreshnessError({ message: `undeclared patch input: ${path}` })
+          if (bytes === undefined)
+            throw new FreshnessError({ message: `undeclared patch input: ${path}` })
           return bytes
         },
       })
       failurePath = manifest.sidecar
-      const sidecar = decodePnpmSha256Sidecar(Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(sidecarText))
+      const sidecar = decodePnpmSha256Sidecar(
+        Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(sidecarText),
+      )
       validatePnpmSha256Sidecar({ metadata, sidecar })
       const refuse = async (path: string): Promise<never> => {
         throw new FreshnessError({ message: `offline sidecar cannot refresh archive: ${path}` })
       }
-      return generatePnpmSha256Sidecar({ metadata, previous: sidecar, fetchArchive: refuse, readProductTarball: refuse })
+      return generatePnpmSha256Sidecar({
+        metadata,
+        previous: sidecar,
+        fetchArchive: refuse,
+        readProductTarball: refuse,
+      })
     })
     failurePath = manifest.generator.replace(/\.genie\.ts$/, '')
     process.env.EFFECT_UTILS_PNPM_OFFLINE = '1'
@@ -144,9 +189,15 @@ export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(funct
     const generated = yield* attempt(() => import(pathToFileURL(input(manifest.generator)).href))
     const generator = yield* Schema.decodeUnknownEffect(GeneratorOutput)(generated.default)
     const stringify = generator.stringify
-    if (typeof stringify !== 'function') return yield* new FreshnessError({ message: 'generator default must expose stringify(context)' })
+    if (typeof stringify !== 'function')
+      return yield* new FreshnessError({
+        message: 'generator default must expose stringify(context)',
+      })
     const buck = yield* Effect.try({
-      try: () => Schema.decodeUnknownSync(Schema.String)(stringify({ cwd: root, location: dirname(manifest.generator), mode: 'check' })),
+      try: () =>
+        Schema.decodeUnknownSync(Schema.String)(
+          stringify({ cwd: root, location: dirname(manifest.generator), mode: 'check' }),
+        ),
       catch: (cause) => new FreshnessError({ message: String(cause), cause }),
     })
     const expected = new Map([
@@ -156,7 +207,8 @@ export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(funct
     for (const file of files) {
       failurePath = file.path
       const text = expected.get(file.path)
-      if (text === undefined) return yield* new FreshnessError({ message: `unsupported committed output: ${file.path}` })
+      if (text === undefined)
+        return yield* new FreshnessError({ message: `unsupported committed output: ${file.path}` })
       const actual = yield* attempt(() => readFile(input(file.path)))
       yield* attempt(async () => {
         const scratch = join(output, 'expected', file.path)
@@ -176,11 +228,17 @@ export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(funct
       file.firstDiff = `--- committed/${failurePath}\n+++ expected/${failurePath}\n@@ validation @@\n-${generated.failure.message}\n+valid offline generated output required`
     }
     yield* writeReport('stale')
-    return yield* new FreshnessError({ message: `${file?.firstDiff ?? generated.failure.message}\nRepair: ${manifest.repairCommand}`, cause: generated.failure })
+    return yield* new FreshnessError({
+      message: `${file?.firstDiff ?? generated.failure.message}\nRepair: ${manifest.repairCommand}`,
+      cause: generated.failure,
+    })
   }
   const stale = files.filter((file) => file.verdict === 'stale')
   yield* writeReport(stale.length === 0 ? 'fresh' : 'stale')
-  if (stale.length > 0) return yield* new FreshnessError({ message: `${stale.map((file) => file.firstDiff).join('\n')}\nRepair: ${manifest.repairCommand}` })
+  if (stale.length > 0)
+    return yield* new FreshnessError({
+      message: `${stale.map((file) => file.firstDiff).join('\n')}\nRepair: ${manifest.repairCommand}`,
+    })
   yield* attempt(() => writeFile(join(output, 'freshness.ok'), 'fresh\n'))
 })
 
@@ -195,9 +253,14 @@ if (import.meta.main) {
     const source = argumentsByName.get('--source')
     const manifestPath = argumentsByName.get('--manifest')
     const output = argumentsByName.get('--output')
-    if (source === undefined || manifestPath === undefined || output === undefined) return yield* new FreshnessError({ message: 'required: --source TREE --manifest JSON --output DIRECTORY' })
+    if (source === undefined || manifestPath === undefined || output === undefined)
+      return yield* new FreshnessError({
+        message: 'required: --source TREE --manifest JSON --output DIRECTORY',
+      })
     const manifestText = yield* attempt(() => readFile(manifestPath, 'utf8'))
-    const manifest = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(FreshnessManifest))(manifestText)
+    const manifest = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(FreshnessManifest))(
+      manifestText,
+    )
     yield* checkFreshness({ source, manifest, output })
   })
   const result = await Effect.runPromiseExit(program)

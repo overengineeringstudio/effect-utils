@@ -1,6 +1,7 @@
 // @genie-bootstrap
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { loadRealPnpmLockData } from './generate.ts'
+import { pnpmTargetName } from './pnpm-lock.ts'
 import {
   renderPnpmPackageTargets,
   renderPnpmPlatformGatedPackages,
@@ -10,6 +11,19 @@ import { makePnpmStoreProjection } from './pnpm-store.ts'
 
 const { metadata, sidecar } = loadRealPnpmLockData()
 const store = makePnpmStoreProjection({ metadata, sidecar })
+const effect = metadata.importers['packages/@overeng/genie']?.dependencies.effect
+const effectPackage =
+  effect?.kind === 'package' ? metadata.snapshots[effect.snapshot]?.package : undefined
+const freshnessRuntime =
+  effectPackage === undefined
+    ? ''
+    : `
+alias(
+    name = "declared_inputs_freshness_runtime",
+    actual = ":${pnpmTargetName({ prefix: 'package', identity: effectPackage })}",
+    visibility = ["PUBLIC"],
+)
+`
 
 export default createGenieOutput({
   data: { store },
@@ -40,5 +54,6 @@ load("//buck2/dependencies:defs.bzl", "pnpm_package", "pnpm_platform_gated_packa
 
 ${renderPnpmPlatformGatedPackages({ metadata })}
 ${renderPnpmPackageTargets({ metadata, sidecar })}
-${renderPnpmStoreBuck(store)}`,
+${renderPnpmStoreBuck(store)}
+${freshnessRuntime}`,
 })

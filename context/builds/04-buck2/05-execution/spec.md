@@ -399,6 +399,14 @@ action key. Source staging preserves consumer-relative paths rather than
 flattening the generator imports. An undeclared read is a defect, not a
 cache-miss tolerance.
 
+Runtime trees must be self-contained within the staged source tree. For the
+runner, `runtime_sources = {"node_modules/effect": "//buck2/dependencies:declared_inputs_freshness_runtime"}`
+stages this repository's digest-pinned, dependency-free Effect package directly.
+The complete executable example is `buck2/tests/declared_inputs_freshness/BUCK`.
+An importer `node_modules`
+view alone is not a closed runtime: its links can point to separate store
+artifacts, which the sandbox intentionally does not expose.
+
 The action requires Linux Bubblewrap containment with `--unshare-all`; there
 is no unsandboxed Darwin fallback. Network isolation applies to the generator
 and its descendants, not just the sidecar validation helper.

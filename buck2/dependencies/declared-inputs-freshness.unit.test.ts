@@ -22,7 +22,15 @@ const sources = [
   'packages/@overeng/genie/src/runtime/node/inputs.ts',
   'packages/@overeng/genie/src/runtime/node/input-observations.ts',
   'packages/@overeng/genie/src/runtime/repo-context/mod.ts',
-  ...['BUCK.genie', 'generate', 'generate-sidecar', 'pnpm-lock', 'pnpm-store', 'pnpm-store-buck', 'public-archive-origin'].map((name) => `buck2/dependencies/${name}.ts`),
+  ...[
+    'BUCK.genie',
+    'generate',
+    'generate-sidecar',
+    'pnpm-lock',
+    'pnpm-store',
+    'pnpm-store-buck',
+    'public-archive-origin',
+  ].map((name) => `buck2/dependencies/${name}.ts`),
 ]
 
 const fixture = async () => {
@@ -68,7 +76,10 @@ snapshots:
   process.env.EFFECT_UTILS_PNPM_OFFLINE = '1'
   // Each case exercises loading the real generator from a separate declared tree.
   const generator = await import(pathToFileURL(join(root, 'buck2/dependencies/BUCK.genie.ts')).href)
-  await writeFile(join(root, 'buck2/dependencies/BUCK'), generator.default.stringify({ cwd: root, location: 'buck2/dependencies', mode: 'check' }))
+  await writeFile(
+    join(root, 'buck2/dependencies/BUCK'),
+    generator.default.stringify({ cwd: root, location: 'buck2/dependencies', mode: 'check' }),
+  )
   const manifest: FreshnessManifest = {
     lockfile: 'pnpm-lock.yaml',
     workspaceManifests: ['pnpm-workspace.yaml', 'package.json'],
@@ -97,7 +108,9 @@ describe('declared input freshness real-generator fixtures', () => {
   it('rejects stale BUCK with unified diff and repair command', async () => {
     const data = await fixture()
     await writeFile(join(data.root, 'buck2/dependencies/BUCK'), '# stale BUCK\n')
-    await expect(Effect.runPromise(checkFreshness({ source: data.root, ...data }))).rejects.toThrow(/--- committed\/buck2\/dependencies\/BUCK[\s\S]*Repair: devenv tasks run genie:run/)
+    await expect(Effect.runPromise(checkFreshness({ source: data.root, ...data }))).rejects.toThrow(
+      /--- committed\/buck2\/dependencies\/BUCK[\s\S]*Repair: devenv tasks run genie:run/,
+    )
     const report = await readFile(join(data.output, 'freshness.json'), 'utf8')
     expect(report).toContain('# stale BUCK')
     expect(report).toContain('stale')
@@ -105,13 +118,23 @@ describe('declared input freshness real-generator fixtures', () => {
 
   it('rejects stale sidecar fingerprint without refreshing', async () => {
     const data = await fixture()
-    await writeFile(join(data.root, data.manifest.sidecar), JSON.stringify({ ...data.sidecar, lockfileFingerprint: `sha256:${'0'.repeat(64)}` }))
-    await expect(Effect.runPromise(checkFreshness({ source: data.root, ...data }))).rejects.toThrow('stale sha256 sidecar lock fingerprint')
+    await writeFile(
+      join(data.root, data.manifest.sidecar),
+      JSON.stringify({ ...data.sidecar, lockfileFingerprint: `sha256:${'0'.repeat(64)}` }),
+    )
+    await expect(Effect.runPromise(checkFreshness({ source: data.root, ...data }))).rejects.toThrow(
+      'stale sha256 sidecar lock fingerprint',
+    )
   })
 
   it('rejects a missing sidecar entry without fetching', async () => {
     const data = await fixture()
-    await writeFile(join(data.root, data.manifest.sidecar), JSON.stringify({ ...data.sidecar, packages: {} }))
-    await expect(Effect.runPromise(checkFreshness({ source: data.root, ...data }))).rejects.toThrow('stale sha256 sidecar package identity set')
+    await writeFile(
+      join(data.root, data.manifest.sidecar),
+      JSON.stringify({ ...data.sidecar, packages: {} }),
+    )
+    await expect(Effect.runPromise(checkFreshness({ source: data.root, ...data }))).rejects.toThrow(
+      'stale sha256 sidecar package identity set',
+    )
   })
 })
