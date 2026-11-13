@@ -11,14 +11,18 @@ import { generateFile } from '../../core/generation.ts'
 
 Vitest.it.scopedLive.prop(
   'public rendering matches the bytes generation writes',
-  [Schema.String, Schema.Literals(['BUCK', 'defs.bzl', 'config.yaml', 'run.sh']), Schema.Boolean],
-  ([body, target, shebang]) =>
+  [
+    Schema.String,
+    Schema.Literals(['BUCK', 'defs.bzl', 'shell.nix', 'run.sh']),
+    Schema.Boolean,
+    Schema.Literals(['nested', 'deep/nested']),
+  ],
+  ([body, target, shebang, location]) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const cwd = yield* fs.makeTempDirectoryScoped()
       yield* fs.makeDirectory(path.join(cwd, '.git'))
-      const location = 'nested'
-      yield* fs.makeDirectory(path.join(cwd, location))
+      yield* fs.makeDirectory(path.join(cwd, location), { recursive: true })
       const genieFilePath = path.join(cwd, location, `${target}.genie.ts`)
       const content = `${shebang ? '#!/usr/bin/env sh\n' : ''}${body}\n`
       // This real source is loaded by generateFile, not replaced with an injected output.
