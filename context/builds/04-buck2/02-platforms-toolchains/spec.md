@@ -201,13 +201,44 @@ must not discover Xcode or `xcrun` from the host. This supplies the Darwin
 capability contract without placing a consumer/vendor selection in shared rules
 (BUILD.BUCK.PLAT-R05).
 
-`swift_app_bundle` admits `macos_aarch64`. Each named binary compiles its
-ordered Swift source list through one declared `BuckSupportToolInfo` compiler
-capability, with explicit deployment target, frameworks, and libraries.
-The Nix wrapper supplies the exact SDK, compiler, and linker; the action sets
-invalid host `DEVELOPER_DIR` and `SDKROOT` values so ambient Xcode discovery
-cannot replace the capability. Packaging uses the product tool and the
-[app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).
+Swift rules admit `macos_aarch64` and compile through one declared
+`BuckSupportToolInfo` compiler capability, with an explicit deployment target,
+frameworks, and libraries. The Nix wrapper supplies the exact SDK, compiler,
+and linker; actions set invalid host `DEVELOPER_DIR` and `SDKROOT` values so
+ambient Xcode discovery cannot replace the capability. A toolchain without
+Xcode has no Xcode-only macro plugins (SwiftUI's `@Entry`, `#Preview`);
+sources that need them do not build.
+
+- `swift_library` mirrors a SwiftPM library target: one whole-module compile
+  of its sources against its dependencies' modules, emitting a module and an
+  object file. Each module has a release variant (`-O`) and a lazily built
+  testable variant (`-Onone -enable-testing`). Module bytes serialize no
+  search paths or working directory, so every worktree produces the same
+  module from the same sources.
+- `swift_binary` compiles an executable module (a `main.swift` holds
+  top-level code, as in SwiftPM; otherwise `@main`) and links it with its
+  transitive module objects against the OS Swift runtime, without `LC_RPATH`
+  (`mach-o-dynamic/v1`). It is a product executable payload for
+  `build_product` and for `swift_app_bundle`'s `executables`. As in SwiftPM, a
+  test may `@testable import` it: its testable variant renames the entry point.
+- `swift_test` compiles an XCTest module against its dependencies' testable
+  variants. The capability's XCTest needs an explicit entry point; the rule
+  derives it from the compiler-emitted symbol graph (every transitive
+  `XCTestCase` subclass and its zero-argument `test…` methods), never from
+  source text, and compiles that generated glue in Swift 5 language mode
+  (`@MainActor` async tests). The linked suite runs as a
+  [cacheable verdict action](../05-execution/spec.md#cacheable-unit-test-verdict-actions)
+  in a scrubbed environment. Its default output is `result.json`, with
+  `report.json` beside it (the `[report]` subtarget).
+- `swift_app_bundle` packages named binaries, each compiled from an ordered
+  source list or supplied by a `swift_binary`, with the
+  [app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).
+  Consumer Info.plist keys extend, and never override, the rule's own keys.
+
+A module's `stamp_source` names the one source whose `"__CLI_BUILD_STAMP__"`
+literal receives `build_identity.cli_build_stamp` as a string literal, the
+[canonical stamp shape](../../01-identity/spec.md). Without a configured stamp
+the placeholder stays, and the product resolves its runtime stamp.
 
 The compiler runs at its immutable `BuckSupportToolInfo.store_path`; its
 executable and capability manifest remain action inputs. Generic support-tool

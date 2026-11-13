@@ -1659,7 +1659,7 @@ in
         cd rust
         cargo test --locked --package 'buck2-*'
       )
-      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts buck2/swift/tools.unit.test.ts
     '';
   };
 
