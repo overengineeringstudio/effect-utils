@@ -9,11 +9,17 @@ const repoRoot = new URL('../../', import.meta.url)
 
 const expectedFiles = [
   'buck2-member.json',
+  'buck2/check_aggregate.bzl',
   'buck2/declared_inputs_freshness.bzl',
   'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/declared-inputs-freshness.ts',
   'buck2/dependencies/defs.bzl',
+  'buck2/dependencies/generate-sidecar.ts',
+  'buck2/dependencies/generate.ts',
   'buck2/dependencies/nix-archive.ts',
+  'buck2/dependencies/pnpm-lock.ts',
+  'buck2/dependencies/pnpm-store-buck.ts',
+  'buck2/dependencies/pnpm-store.ts',
   'buck2/dependencies/public-archive-origin.ts',
   'buck2/dependencies/runtime-closure.ts',
   'buck2/editor_view.bzl',
@@ -50,6 +56,8 @@ const expectedFiles = [
   'buck2/toolchains/provider_identity_fixture.bzl',
   'buck2/toolchains/ts_sandbox.bzl',
   'buck2/typescript.bzl',
+  'genie/buck2/mod.ts',
+  'genie/native-dependency-policy.ts',
   'packages/@overeng/buck2-tools/src/bun-test-preload.ts',
   'packages/@overeng/buck2-tools/src/bun-test-runner.ts',
   'packages/@overeng/buck2-tools/src/bun-test-timeout.ts',
@@ -63,6 +71,10 @@ const expectedFiles = [
   'packages/@overeng/buck2-tools/src/static-check-runner.ts',
   'packages/@overeng/buck2-tools/src/test-verdict.ts',
   'packages/@overeng/buck2-tools/src/typescript-runner.ts',
+  'packages/@overeng/genie/src/runtime/core.ts',
+  'packages/@overeng/genie/src/runtime/node/input-observations.ts',
+  'packages/@overeng/genie/src/runtime/node/inputs.ts',
+  'packages/@overeng/genie/src/runtime/repo-context/mod.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
   'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
@@ -107,10 +119,39 @@ describe('Buck rules product inventory', () => {
         (path) =>
           path.startsWith('packages/@overeng/') &&
           path.startsWith('packages/@overeng/buck2-tools/') === false &&
+          path.startsWith('packages/@overeng/genie/src/runtime/') === false &&
           path !== 'packages/@overeng/megarepo/src/buck2-manifest.ts' &&
           path !== 'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
       ),
     ).toEqual(Object.values(pnpmPatchedDependencies()).toSorted())
+  })
+
+  it('publishes the generator closure and a pinned, standalone Effect runtime', () => {
+    const rulesCell = readFileSync(new URL('nix/buck2-rules/default.nix', repoRoot), 'utf8')
+    expect(rulesCell).toContain('pnpmArchives.passthru.archivesByIdentity."effect@4.1.0"')
+    expect(rulesCell).toContain('src = "runtime/effect"')
+    expect(rulesCell).toContain('name = "declared_inputs_freshness_runtime"')
+    expect(rulesCell).toContain('exportSource path')
+    const inventory = new Set<string>(buck2RulesInventory.files)
+    for (const path of buck2RulesInventory.files.filter(
+      (file) =>
+        file.endsWith('.ts') &&
+        (file.startsWith('buck2/dependencies/') ||
+          file.startsWith('genie/') ||
+          file.startsWith('packages/@overeng/genie/src/runtime/')),
+    )) {
+      const source = readFileSync(new URL(path, repoRoot), 'utf8').replace(
+        /import\s+type\b[\s\S]*?from\s+['"][^'"]+['"]/g,
+        '',
+      )
+      for (const match of source.matchAll(/(?:from\s+|import\s*)['"](\.[^'"]+)['"]/g)) {
+        const dependency = new URL(match[1]!, new URL(path, repoRoot))
+        expect(
+          inventory.has(dependency.pathname.slice(repoRoot.pathname.length)),
+          `${path} imports unpackaged ${match[1]}`,
+        ).toBe(true)
+      }
+    }
   })
 
   it('ships every local load and rule tool source referenced by shipped .bzl files', () => {
@@ -147,10 +188,15 @@ describe('Buck rules product inventory', () => {
             inventory.has(packageBuck) === true
               ? readFileSync(new URL(packageBuck, repoRoot), 'utf8')
               : rulesCell
-          expect(
-            targets,
-            `${path} references a tool without a rules-cell target: ${label}`,
-          ).toContain(`name = "${name}",`)
+          if (file.startsWith('buck2/dependencies/')) {
+            expect(rulesCell).toContain('dependencySources')
+            expect(rulesCell).toContain('exportSource (builtins.baseNameOf path)')
+          } else {
+            expect(
+              targets,
+              `${path} references a tool without a rules-cell target: ${label}`,
+            ).toContain(`name = "${name}",`)
+          }
         }
       }
     }

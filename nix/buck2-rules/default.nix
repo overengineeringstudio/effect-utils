@@ -12,6 +12,21 @@ let
   files = inventory.files;
   sortedFiles = builtins.sort builtins.lessThan files;
   patchFiles = builtins.filter (path: lib.hasSuffix ".patch" path) files;
+  dependencySources = builtins.filter (
+    path: lib.hasPrefix "buck2/dependencies/" path && lib.hasSuffix ".ts" path
+  ) files;
+  generatorSources = builtins.filter (
+    path:
+    lib.hasPrefix "genie/" path
+    || lib.hasPrefix "packages/@overeng/genie/src/runtime/" path
+  ) files;
+  exportSource = path: ''
+    export_file(
+        name = ${builtins.toJSON path},
+        src = ${builtins.toJSON path},
+        visibility = ["PUBLIC"],
+    )
+  '';
   # The generated inventory is the authority for this cell's checkout inputs.
   rulesSource = lib.fileset.toSource {
     root = sourceRoot;
@@ -58,6 +73,11 @@ pkgs.runCommand "buck2-rules"
       --strip-components=1 -C "$out/packages/@overeng/buck2-tools/node_modules/acorn"
     tar -xzf ${pnpmArchives.passthru.archivesByIdentity."acorn-walk@8.3.5"} \
       --strip-components=1 -C "$out/packages/@overeng/buck2-tools/node_modules/acorn-walk"
+    # Effect 4 has no runtime dependencies. Extract the exact pinned archive,
+    # never a checkout node_modules symlink or an importer/store projection.
+    mkdir -p "$out/buck2/dependencies/runtime/effect"
+    tar -xzf ${pnpmArchives.passthru.archivesByIdentity."effect@4.1.0"} \
+      --strip-components=1 -C "$out/buck2/dependencies/runtime/effect"
     cp ${./inventory.json} "$out/inventory.json"
     cat > "$out/BUCK" <<'BUCK'
     alias(
@@ -71,7 +91,18 @@ pkgs.runCommand "buck2-rules"
         actual = "//packages/@overeng/buck2-tools:package_command_runtime",
         visibility = ["PUBLIC"],
     )
+
+    alias(
+        name = "declared_inputs_freshness_runtime",
+        actual = "//buck2/dependencies:declared_inputs_freshness_runtime",
+        visibility = ["PUBLIC"],
+    )
     BUCK
+    ${lib.concatMapStringsSep "\n" (path: ''
+      cat >> "$out/BUCK" <<'GENERATOR_BUCK'
+      ${exportSource path}
+      GENERATOR_BUCK
+    '') generatorSources}
     # Publish only patch files, not their checkout's package BUCK declarations:
     # those declarations depend on the standalone cell and its toolchains.
     ${lib.concatMapStringsSep "\n" (
@@ -93,35 +124,16 @@ pkgs.runCommand "buck2-rules"
     ) patchFiles}
     cat > "$out/buck2/dependencies/BUCK" <<'BUCK'
     export_file(
-        name = "declared-inputs-freshness.ts",
-        src = "declared-inputs-freshness.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
-        name = "assemble-store.ts",
-        src = "assemble-store.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
-        name = "nix-archive.ts",
-        src = "nix-archive.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
-        name = "public-archive-origin.ts",
-        src = "public-archive-origin.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
-        name = "runtime-closure.ts",
-        src = "runtime-closure.ts",
+        name = "declared_inputs_freshness_runtime",
+        src = "runtime/effect",
         visibility = ["PUBLIC"],
     )
     BUCK
+    ${lib.concatMapStringsSep "\n" (path: ''
+      cat >> "$out/buck2/dependencies/BUCK" <<'DEPENDENCY_BUCK'
+      ${exportSource (builtins.baseNameOf path)}
+      DEPENDENCY_BUCK
+    '') dependencySources}
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
     load("//buck2/package_tools.bzl", "package_command_runtime")

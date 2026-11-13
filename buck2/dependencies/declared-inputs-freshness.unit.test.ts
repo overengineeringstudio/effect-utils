@@ -33,7 +33,7 @@ const sources = [
   ].map((name) => `buck2/dependencies/${name}.ts`),
 ]
 
-const fixture = async () => {
+const fixture = async (projectWorkspace = false) => {
   const repo = resolve(import.meta.dir, '../..')
   const temporary = join(repo, 'tmp/declared-inputs-freshness')
   await mkdir(temporary, { recursive: true })
@@ -61,25 +61,49 @@ packages:
 snapshots:
   fixture@1.0.0: {}
 `
-  const workspaceText = 'packages: []\nallowBuilds: {}\nignoreScripts: true\n'
+  const workspaceText = projectWorkspace
+    ? 'packages: []\nallowBuilds:\n  fixture: false\nignoreScripts: true\n'
+    : 'packages: []\nallowBuilds: {}\nignoreScripts: true\n'
+  if (projectWorkspace) {
+    const generatorPath = join(root, 'buck2/dependencies/generate.ts')
+    const generatorText = await readFile(generatorPath, 'utf8')
+    await writeFile(
+      generatorPath,
+      generatorText.replace(
+        /workspaceText: ([^,\n]+)/g,
+        "workspaceText: $1.replace(/fixture: true/g, 'fixture: false')",
+      ),
+    )
+  }
   const metadata = translatePnpmLock({ lockfileText, workspaceText })
   const sidecar = await generatePnpmSha256Sidecar({ metadata, fetchArchive: async () => archive })
   const files = {
     'megarepo.json': '{}\n',
     'pnpm-lock.yaml': lockfileText,
-    'pnpm-workspace.yaml': workspaceText,
+    'pnpm-workspace.yaml': projectWorkspace
+      ? workspaceText.replace('fixture: false', 'fixture: true')
+      : workspaceText,
     'package.json': '{"name":"freshness-fixture","private":true}\n',
     'buck2/dependencies/pnpm-lock.sha256.json': `${JSON.stringify(sidecar, null, 2)}\n`,
     'buck2/dependencies/BUCK': '',
   }
   for (const [path, text] of Object.entries(files)) await writeFile(join(root, path), text)
   process.env.EFFECT_UTILS_PNPM_OFFLINE = '1'
-  // Each case exercises loading the real generator from a separate declared tree.
-  const generator = await import(pathToFileURL(join(root, 'buck2/dependencies/BUCK.genie.ts')).href)
-  await writeFile(
-    join(root, 'buck2/dependencies/BUCK'),
-    generator.default.stringify({ cwd: root, location: 'buck2/dependencies', mode: 'check' }),
+  // Isolate initial generation so the checker cannot reuse a primed loader cache.
+  const generated = Bun.spawn(
+    [
+      process.execPath,
+      '-e',
+      `
+    const generator = await import(${JSON.stringify(pathToFileURL(join(root, 'buck2/dependencies/BUCK.genie.ts')).href)});
+    process.stdout.write(generator.default.stringify({cwd: ${JSON.stringify(root)}, location: 'buck2/dependencies', mode: 'check'}));
+  `,
+    ],
+    { stdout: 'pipe', stderr: 'inherit', env: process.env },
   )
+  const buck = await new Response(generated.stdout).text()
+  if ((await generated.exited) !== 0) throw new Error('fixture initial generation failed')
+  await writeFile(join(root, 'buck2/dependencies/BUCK'), buck)
   const manifest: FreshnessManifest = {
     lockfile: 'pnpm-lock.yaml',
     workspaceManifests: ['pnpm-workspace.yaml', 'package.json'],
@@ -89,6 +113,7 @@ snapshots:
     committedOutputs: ['buck2/dependencies/BUCK', 'buck2/dependencies/pnpm-lock.sha256.json'],
     inputPaths: [...sources, ...Object.keys(files)],
     generator: 'buck2/dependencies/BUCK.genie.ts',
+    generatorExport: 'declaredInputsFreshness',
     repairCommand: 'devenv tasks run genie:run / devenv tasks run buck2:refresh-dependencies',
   }
   return { root, manifest, sidecar, output: join(root, 'result') }
@@ -103,6 +128,12 @@ describe('declared input freshness real-generator fixtures', () => {
     expect(report.schema).toBe('effect-utils/declared-inputs-freshness/v1')
     expect(report.files.every((file: { verdict: string }) => file.verdict === 'fresh')).toBe(true)
     expect(report.inputs.length).toBeGreaterThan(10)
+  })
+
+  it('preserves a consumer-owned workspace projection before translating', async () => {
+    const data = await fixture(true)
+    await Effect.runPromise(checkFreshness({ source: data.root, ...data }))
+    expect(await readFile(join(data.output, 'freshness.ok'), 'utf8')).toBe('fresh\n')
   })
 
   it('rejects stale BUCK with unified diff and repair command', async () => {

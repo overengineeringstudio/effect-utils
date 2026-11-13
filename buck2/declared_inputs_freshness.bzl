@@ -45,6 +45,7 @@ def _declared_inputs_freshness_check_impl(ctx):
         "generatorSources": sorted(ctx.attrs.generator_sources.keys()),
         "committedOutputs": sorted(ctx.attrs.committed_outputs.keys()),
         "generator": ctx.attrs.generator,
+        "generatorExport": ctx.attrs.generator_export,
         "repairCommand": ctx.attrs.repair_command,
         "inputPaths": sorted(sources.keys()),
     })
@@ -85,6 +86,7 @@ _declared_inputs_freshness_check = cache_guarded_rule(
         "committed_outputs": attrs.dict(attrs.string(), attrs.source()),
         "runtime_sources": attrs.dict(attrs.string(), attrs.source(), default = {}),
         "generator": attrs.string(default = "buck2/dependencies/BUCK.genie.ts"),
+        "generator_export": attrs.string(default = "declaredInputsFreshness"),
         "repair_command": attrs.string(default = "devenv tasks run genie:run"),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "@rules//buck2/toolchains:bun",
@@ -108,6 +110,10 @@ def declared_inputs_freshness_check(name, exec_compatible_with = [], **kwargs):
     paths. Include the actual BUCK.genie.ts, its transitive imports and repository
     marker in generator_sources, and their installed dependencies in runtime_sources.
     Committed outputs (including the sidecar) are inputs, never action products.
+    generator selects the module; generator_export selects its async entry
+    (default declaredInputsFreshness), returning {buck: string, sidecar: string}.
+    EFFECT_UTILS_PNPM_OFFLINE=1 is set before import; the entry must use its
+    offline load path, including consumer workspace projection and validation.
     """
     _declared_inputs_freshness_check(
         name = name,

@@ -5,13 +5,6 @@ import { pathToFileURL } from 'node:url'
 
 import { Cause, Effect, Schema } from 'effect'
 
-import {
-  decodePnpmSha256Sidecar,
-  generatePnpmSha256Sidecar,
-  translatePnpmLock,
-  validatePnpmSha256Sidecar,
-} from './pnpm-lock.ts'
-
 const InputPath = Schema.NonEmptyString.check(
   Schema.makeFilter(
     (value) =>
@@ -29,6 +22,7 @@ export const FreshnessManifest = Schema.Struct({
   committedOutputs: Schema.Array(InputPath),
   inputPaths: Schema.Array(InputPath),
   generator: InputPath,
+  generatorExport: Schema.NonEmptyString,
   repairCommand: Schema.NonEmptyString,
 })
 export type FreshnessManifest = typeof FreshnessManifest.Type
@@ -80,8 +74,6 @@ export const firstDiff = (path: string, actual: string, expected: string): strin
   ].join('\n')
 }
 
-const GeneratorOutput = Schema.Struct({ stringify: Schema.Unknown })
-
 /** Runs only against the staged declared tree; the rule supplies an OS read/network boundary. */
 export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(function* ({
   source,
@@ -94,7 +86,6 @@ export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(funct
 }) {
   const root = resolve(source)
   const input = (path: string) => join(root, path)
-  const read = (path: string) => attempt(() => readFile(input(path), 'utf8'))
   const inputs: { path: string; sha256: string }[] = []
   const digest = async (path: string): Promise<void> => {
     const stat = await lstat(input(path))
@@ -144,65 +135,23 @@ export const checkFreshness = Effect.fn('declared-inputs-freshness.check')(funct
 
   let failurePath = manifest.lockfile
   const generation = Effect.gen(function* () {
-    const workspace = manifest.workspaceManifests.find((path) =>
-      path.endsWith('pnpm-workspace.yaml'),
-    )
-    if (workspace === undefined)
-      return yield* new FreshnessError({
-        message: 'workspace_manifests must declare pnpm-workspace.yaml',
-      })
-    const lockfileText = yield* read(manifest.lockfile)
-    const workspaceText = yield* read(workspace)
-    const patchBytes = new Map<string, Uint8Array>()
-    for (const patch of manifest.patches)
-      patchBytes.set(patch, yield* attempt(() => readFile(input(patch))))
-    const sidecarText = yield* read(manifest.sidecar)
-    const expectedSidecar = yield* attempt(async () => {
-      const metadata = translatePnpmLock({
-        lockfileText,
-        workspaceText,
-        readPatch: (path) => {
-          const bytes = patchBytes.get(path)
-          if (bytes === undefined)
-            throw new FreshnessError({ message: `undeclared patch input: ${path}` })
-          return bytes
-        },
-      })
-      failurePath = manifest.sidecar
-      const sidecar = decodePnpmSha256Sidecar(
-        Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(sidecarText),
-      )
-      validatePnpmSha256Sidecar({ metadata, sidecar })
-      const refuse = async (path: string): Promise<never> => {
-        throw new FreshnessError({ message: `offline sidecar cannot refresh archive: ${path}` })
-      }
-      return generatePnpmSha256Sidecar({
-        metadata,
-        previous: sidecar,
-        fetchArchive: refuse,
-        readProductTarball: refuse,
-      })
-    })
-    failurePath = manifest.generator.replace(/\.genie\.ts$/, '')
     process.env.EFFECT_UTILS_PNPM_OFFLINE = '1'
-    // The consumer-selected generator is a runtime module boundary, not a fixed import.
+    failurePath = manifest.sidecar
+    // Only the consumer knows how raw workspace inputs project into its lock model.
     const generated = yield* attempt(() => import(pathToFileURL(input(manifest.generator)).href))
-    const generator = yield* Schema.decodeUnknownEffect(GeneratorOutput)(generated.default)
-    const stringify = generator.stringify
-    if (typeof stringify !== 'function')
+    const entry = generated[manifest.generatorExport]
+    if (typeof entry !== 'function')
       return yield* new FreshnessError({
-        message: 'generator default must expose stringify(context)',
+        message: `generator must export ${manifest.generatorExport}(context)`,
       })
-    const buck = yield* Effect.try({
-      try: () =>
-        Schema.decodeUnknownSync(Schema.String)(
-          stringify({ cwd: root, location: dirname(manifest.generator), mode: 'check' }),
-        ),
-      catch: (cause) => new FreshnessError({ message: String(cause), cause }),
-    })
+    const expectedOutputs = yield* attempt(async () =>
+      Schema.decodeUnknownSync(Schema.Struct({ buck: Schema.String, sidecar: Schema.String }))(
+        await entry({ cwd: root, location: dirname(manifest.generator), mode: 'check' }),
+      ),
+    )
     const expected = new Map([
-      [manifest.generator.replace(/\.genie\.ts$/, ''), buck],
-      [manifest.sidecar, `${JSON.stringify(expectedSidecar, null, 2)}\n`],
+      [manifest.generator.replace(/\.genie\.ts$/, ''), expectedOutputs.buck],
+      [manifest.sidecar, expectedOutputs.sidecar],
     ])
     for (const file of files) {
       failurePath = file.path

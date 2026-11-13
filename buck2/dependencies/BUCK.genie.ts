@@ -1,7 +1,7 @@
 // @genie-bootstrap
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { loadRealPnpmLockData } from './generate.ts'
-import { pnpmTargetName } from './pnpm-lock.ts'
+import { generatePnpmSha256Sidecar, pnpmTargetName } from './pnpm-lock.ts'
 import {
   renderPnpmPackageTargets,
   renderPnpmPlatformGatedPackages,
@@ -25,7 +25,7 @@ alias(
 )
 `
 
-export default createGenieOutput({
+const output = createGenieOutput({
   data: { store },
   stringify: () =>
     `# Generated file - DO NOT EDIT
@@ -57,3 +57,19 @@ ${renderPnpmPackageTargets({ metadata, sidecar })}
 ${renderPnpmStoreBuck(store)}
 ${freshnessRuntime}`,
 })
+
+export default output
+
+/** Offline freshness entry; consumer-owned loading preserves workspace projections. */
+export const declaredInputsFreshness = async (context: Parameters<typeof output.stringify>[0]) => {
+  const refuse = async (): Promise<never> => {
+    throw new Error('offline sidecar cannot refresh archives')
+  }
+  const canonical = await generatePnpmSha256Sidecar({
+    metadata,
+    previous: sidecar,
+    fetchArchive: refuse,
+    readProductTarball: refuse,
+  })
+  return { buck: output.stringify(context), sidecar: `${JSON.stringify(canonical, null, 2)}\n` }
+}

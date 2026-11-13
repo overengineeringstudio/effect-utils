@@ -391,7 +391,16 @@ The public attributes declare sources and their consumer-root-relative paths:
 | `lockfile_path`       | String; `pnpm-lock.yaml`                           | Staged consumer-relative lockfile path.                                                                                                                                                                                   |
 | `sidecar_path`        | String; `buck2/dependencies/pnpm-lock.sha256.json` | Staged consumer-relative sidecar path.                                                                                                                                                                                    |
 | `generator`           | String; `buck2/dependencies/BUCK.genie.ts`         | Consumer generator path; must be a key in `generator_sources`.                                                                                                                                                            |
+| `generator_export`    | String; `declaredInputsFreshness`                  | Named async entry in `generator`, returning `{ buck: string, sidecar: string }` expected bytes.                                                                                                                           |
 | `repair_command`      | String; `devenv tasks run genie:run`               | Repair command reported on failure, not executed by the action; consumers may select `devenv tasks run buck2:refresh-dependencies`.                                                                                       |
+
+Before importing `generator`, the runner sets `EFFECT_UTILS_PNPM_OFFLINE=1`.
+It invokes `generator_export({ cwd, location, mode: 'check' })`; the consumer
+entry owns both output bytes, using its real offline load function and canonical
+sidecar renderer. In particular, consumer workspace projections occur before
+translation and sidecar validation. The runner never translates raw lock or
+workspace inputs itself; these remain declared inputs for hashing and the cache
+key. Missing/stale sidecar data must fail the consumer offline load, never fetch.
 
 Bun and effect-tsgo are execution dependencies from `//buck2/toolchains:bun`
 and `//buck2/toolchains:effect_tsgo`; their Nix capability identities enter the
@@ -407,6 +416,15 @@ An importer `node_modules`
 view alone is not a closed runtime: its links can point to separate store
 artifacts, which the sandbox intentionally does not expose.
 
+The packaged rules cell exposes the same closed runtime as
+`@rules//:declared_inputs_freshness_runtime`. Generator source mappings use
+`@rules//buck2/dependencies:<basename>` for shared dependency modules and
+`@rules//:<full-path>` for the Genie helpers and runtime sources. Their published
+inventory includes the full finite closure, not merely the rule and runner.
+`nix/buck2-rules/tests/declared-inputs-freshness-consumer.test.sh` builds a
+consumer target against the actual packaged rules output; source-checkout
+fixture success alone does not establish that distribution contract.
+
 The action requires Linux Bubblewrap containment with `--unshare-all`; there
 is no unsandboxed Darwin fallback. Network isolation applies to the generator
 and its descendants, not just the sidecar validation helper.
@@ -414,7 +432,7 @@ and its descendants, not just the sidecar validation helper.
 The rule invokes the runner with `--source <tree> --manifest <json> --output
 <directory>`. Its manifest fields are `lockfile`, `workspaceManifests`,
 `patches`, `sidecar`, `generatorSources`, `committedOutputs`, `inputPaths`,
-`generator`, and `repairCommand`. Paths are relative to the staged source tree. The default
+`generator`, `generatorExport`, and `repairCommand`. Paths are relative to the staged source tree. The default
 output is the `freshness` directory containing the report, receipt, and
 expected-output scratch.
 
@@ -425,8 +443,9 @@ Every lock entry must have a matching sidecar entry for integrity, package
 identity, URL, classification, size, SHA-256, and bins. Missing or stale
 metadata fails without network access or a fetch fallback. Expected sidecar
 bytes come from the existing sidecar generator using the validated metadata.
-The consumer's `BUCK.genie.ts` default export is rendered with
-`stringify({ cwd, location, mode: 'check' })` against the staged tree.
+The consumer entry renders its `BUCK.genie.ts` default export with
+`stringify({ cwd, location, mode: 'check' })` against the staged tree, and returns
+that BUCK text together with its canonical sidecar text.
 
 Expected text is written only under declared output scratch and byte-compared
 with the committed inputs. The action neither emits nor substitutes committed
