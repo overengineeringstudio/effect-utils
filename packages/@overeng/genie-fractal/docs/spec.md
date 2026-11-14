@@ -31,6 +31,16 @@ Reuse existing module-path SubjectRef/SubjectDefinition and scoped StepHandle, i
 
 Agent declarations accept an optional `principal: person('person/NAME')`. A principal is a `PersonReference`, never an agent reference. Lowering emits exactly one `principal "person/NAME"` child with no properties or body when set, and no child when omitted. Subject-tree module loading preserves and validates the same field through `AgentSchema`.
 
+OMP and Codex harnesses accept an optional `message: { text, id }`, including
+through `omp({ model, message })`. Lowering emits a `message "text" id="id"`
+child within the harness. Native delivery is a one-shot first-turn message keyed
+by agent subject and message id; changing the text or id restarts the agent.
+Text must contain a non-Unicode-`White_Space` character, contain no NUL, and fit
+within 65,536 UTF-8 bytes. The id must be nonempty and fit within 256 UTF-8 bytes.
+U+0085 alone is blank; U+FEFF alone is not. KDL strings escape control characters,
+Unicode newlines, BOM and directional controls using KDL v2 escapes; rendering
+rejects unpaired UTF-16 surrogates.
+
 Generic values and lowering live in this package. Graph/kit libraries own domain policy and choose values; loaders own discovery/resolution; publishers own publication; native Fractal owns admission and running behavior. Layer-style requirement/output composition is vocabulary for boundaries, not a second runtime scheduler.
 
 Agents and missions author declared admission metadata through `budget.scheduling`
