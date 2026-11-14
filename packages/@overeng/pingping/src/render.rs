@@ -194,6 +194,27 @@ pub fn frame(
     height: usize,
     footer: bool,
 ) -> Frame {
+    if hosts.is_empty() {
+        let mut lines = vec![vec![span(
+            Role::Dim,
+            if footer {
+                "  No targets — press a to add host(s)."
+            } else {
+                "  No targets."
+            },
+        )]];
+        if footer {
+            lines.push(key_hint(layout, layout, timeline.stats_scope, None, false));
+        }
+        lines.truncate(height.saturating_sub(1));
+        return Frame {
+            lines,
+            timeline: (0, 0),
+            timeline_lines: Vec::new(),
+            overviews: Vec::new(),
+            notes: Vec::new(),
+        };
+    }
     if layout == Layout::Stacked {
         if let Some(frame) = sidecar::frame(hosts, timeline, width, height, footer) {
             return frame;
@@ -951,6 +972,24 @@ mod tests {
         hover_now: None,
         overview_end: None,
     };
+
+    #[test]
+    fn empty_live_frame_advertises_add_without_stale_geometry() {
+        for layout in [Layout::Rows, Layout::Stacked] {
+            let live = frame(&[], layout, &LIVE, 80, 24, true);
+            assert!(live.lines[0]
+                .iter()
+                .any(|span| span.text.contains("press a")));
+            assert_eq!(live.timeline_lines.len(), 0);
+            assert_eq!(live.overviews.len(), 0);
+            assert_eq!(live.notes.len(), 0);
+            let final_frame = frame(&[], layout, &LIVE, 80, 24, false);
+            assert_eq!(final_frame.lines.len(), 1);
+            assert!(!final_frame.lines[0]
+                .iter()
+                .any(|span| span.text.contains("press a")));
+        }
+    }
 
     /// 2026-10-02 16:00:00 UTC.
     pub(super) fn t0() -> SystemTime {
