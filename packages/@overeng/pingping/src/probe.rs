@@ -130,6 +130,10 @@ impl Worker {
             let _ = interrupt.shutdown(std::net::Shutdown::Both);
         }
     }
+
+    pub fn finished(&self) -> bool {
+        self.thread.as_ref().is_none_or(JoinHandle::is_finished)
+    }
 }
 
 impl Drop for Worker {
@@ -226,8 +230,7 @@ pub fn step_interval(current: Duration, faster: bool) -> Duration {
 }
 
 pub fn spawn(
-    index: crate::target::TargetId,
-    host: String,
+    target: crate::target::Target,
     config: ProbeConfig,
     stop: Arc<AtomicBool>,
     events: Sender<(crate::target::TargetId, ProbeEvent)>,
@@ -239,7 +242,7 @@ pub fn spawn(
         schedule,
         move |interrupt, stop, local_stop, schedule| {
             let emit = |event| {
-                if events.send((index, event)).is_ok() {
+                if events.send((target.id, event)).is_ok() {
                     if let Some(wake) = &wake {
                         let mut notifier = wake.as_ref();
                         let _ = notifier.write_all(&[1]);
@@ -252,9 +255,7 @@ pub fn spawn(
                     kind: Failure::Socket,
                 })
                 .and_then(|interrupt| {
-                    run(
-                        &host, &config, stop, local_stop, &interrupt, schedule, &emit,
-                    )
+                    run(&target, &config, stop, local_stop, &interrupt, schedule, &emit)
                 });
             match result {
                 Ok(()) => emit(ProbeEvent::Finished),
@@ -265,7 +266,7 @@ pub fn spawn(
 }
 
 fn run(
-    host: &str,
+    target: &crate::target::Target,
     config: &ProbeConfig,
     stop: &AtomicBool,
     local_stop: &AtomicBool,
@@ -273,10 +274,13 @@ fn run(
     schedule: &Schedule,
     emit: &impl Fn(ProbeEvent),
 ) -> Result<(), ProbeEvent> {
-    let addr = resolve(host, config.family).map_err(|reason| ProbeEvent::Failed {
-        reason,
-        kind: Failure::Resolve,
-    })?;
+    let addr = target
+        .address
+        .map_or_else(|| resolve(&target.name, config.family), Ok)
+        .map_err(|reason| ProbeEvent::Failed {
+            reason,
+            kind: Failure::Resolve,
+        })?;
     emit(ProbeEvent::Resolved(addr));
 
     let token = RandomState::new().build_hasher().finish();
@@ -418,7 +422,11 @@ fn slot_time(config: &ProbeConfig, slot: u64) -> Instant {
     config.start + config.interval.mul_f64(slot as f64)
 }
 
-fn resolve(host: &str, family: Family) -> Result<IpAddr, String> {
+/// Resolve a name or literal under the selected address-family policy.
+///
+/// # Errors
+/// Returns a resolution error when no compatible address is available.
+pub fn resolve(host: &str, family: Family) -> Result<IpAddr, String> {
     if let Ok(ip) = host.parse::<IpAddr>() {
         return if matches!(
             (family, ip),
