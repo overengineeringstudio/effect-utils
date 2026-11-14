@@ -28,28 +28,33 @@ the repository Rust workspace policy.
 
 Source lives in `packages/@overeng/pingping/src/`:
 
-| Module          | Role                                                         | Requirements                 |
-| --------------- | ------------------------------------------------------------ | ---------------------------- |
-| `icmp.rs`       | Echo packet codec and unprivileged socket                    | R02                          |
-| `probe.rs`      | Per-host worker: resolve, send, match, expire                | R03, R09                     |
-| `stats.rs`      | Folds probe events into `HostState`                          | R05, R07                     |
-| `render.rs`     | Pure layout into role-tagged spans                           | R05, R10–R12, R18            |
-| `theme.rs`      | Role -> color, background detection                          | R08                          |
-| `timeline.rs`   | Zoom/pan view, bucketing, hover descriptions                 | R14, R15                     |
-| `live.rs`       | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15           |
-| `path.rs`       | Path note: Tailscale transport and local route               | R19                          |
-| `completion.rs` | Dynamic shell completion, tailnet host candidates            | R20                          |
-| `tailnet.rs`    | Bounded LocalAPI / CLI status source shared by both features | R19, R20                     |
-| `main.rs`       | CLI, plain output, exit status                               | R01, R04, R13                |
-| `uptime.rs`     | Tailnet-only background remote uptime                        | Live-view enrichment         |
-| `history.rs`    | Private session journal and startup restoration              | R07, R13, R21; decision 0006 |
+| Module            | Role                                                         | Requirements         |
+| ----------------- | ------------------------------------------------------------ | -------------------- |
+| `icmp.rs`         | Echo packet codec and unprivileged socket                    | R02                  |
+| `probe.rs`        | Per-host worker: resolve, send, match, expire                | R03, R09             |
+| `runtime.rs`      | Stable membership and runtime worker spawn/retire            | R09                  |
+| `target.rs`       | Target identity and resolved worker descriptor               | R09                  |
+| `prompt.rs`       | Focused inline prompt and token completion                   | R11, R20             |
+| `live/resolve.rs` | Bounded asynchronous batch resolution                        | R09, R11             |
+| `live/targets.rs` | Selection and target editing controller                      | R11, R14             |
+| `stats.rs`        | Folds probe events into `HostState`                          | R05, R07             |
+| `render.rs`       | Pure layout into role-tagged spans                           | R05, R10–R12, R18    |
+| `theme.rs`        | Role -> color, background detection                          | R08                  |
+| `timeline.rs`     | Zoom/pan view, bucketing, hover descriptions                 | R14, R15             |
+| `live.rs`         | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15   |
+| `path.rs`         | Path note: Tailscale transport and local route               | R19                  |
+| `completion.rs`   | Dynamic shell completion, tailnet host candidates            | R20                  |
+| `tailnet.rs`      | Bounded LocalAPI / CLI status source shared by both features | R19, R20             |
+| `main.rs`         | CLI, plain output, exit status                               | R01, R04, R13        |
+| `uptime.rs`       | Tailnet-only background remote uptime                        | Live-view enrichment |
+| `history.rs`      | Private session journal and startup restoration              | R07, R13, R21; decision 0006 |
 
 ## CLI
 
 ```
 pingping [OPTIONS] <HOST>...
 
-  -c, --count <N>        stop after N probes per host
+  -c, --count <N>        stop initial hosts after N probes each
   -i, --interval <SECS>  seconds between probes per host     [default: 1]
   -W, --timeout <SECS>   seconds until a probe counts as lost [default: 2]
   -4 / -6                IPv4 / IPv6 only
@@ -65,8 +70,10 @@ Interactive input:
 | `l`                                                     | toggle stacked / rows                                                                                                                      |
 | `s`                                                     | toggle statistics between visible window (default) and whole run                                                                           |
 | `[` / `]`                                               | slower / faster for all hosts: 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60 s; `-i` stays free-form until stepping                                   |
-| wheel up / `+` / `↑`                                    | zoom in (mouse: around the pointer; keys: window end)                                                                                      |
-| wheel down / `-` / `↓`                                  | zoom out                                                                                                                                   |
+| wheel up / `+`                                          | zoom in (mouse: around the pointer; keys: window end)                                                                                      |
+| wheel down / `-`                                        | zoom out                                                                                                                                   |
+| `↑` / `↓`, click a host                                 | select a target without changing zoom                                                                                                      |
+| `a` / `e` / `d`                                         | add targets / edit selected target / remove selected target                                                                                |
 | drag left button on chart, horizontal scroll, `←` / `→` | pan (chart drag right shows older samples)                                                                                                 |
 | pointer over a timeline or overview cell                | tooltip with relative + absolute time                                                                                                      |
 | click / drag on a host's overview                       | grab the highlighted window without recentering; outside click centers; drag right moves newer, newest end resumes live; release ends drag |
@@ -79,6 +86,38 @@ free of control characters (they are echoed into the terminal). `-4` / `-6`
 also reject IP literals of the other family.
 
 Exit status follows R04.
+
+### Live membership (R09–R12, R14, R20)
+
+`idle → inline add/edit prompt → resolving → atomic apply → idle`; `Esc`
+returns from either prompt state to idle without changing membership.
+The interaction choice is recorded in [decision 0007](./.decisions/0007-live-target-keys-and-inline-prompt.md).
+
+- `a` opens an empty prompt; `e` prefills the selected target; `d` opens an
+  inline confirmation (`y` removes, `n`/`Esc` cancels). Selection follows stable
+  identity, not its current row index. With no targets, the editable view
+  remains open and advertises `a`.
+- The prompt owns keyboard focus: ordinary live shortcuts insert text instead
+  of executing actions; `Esc` cancels rather than quits. Input accepts printable
+  ASCII (`0x21`–`0x7e`) and space only; IDNs use punycode. An invalid character
+  leaves the buffer unchanged and shows `hostnames must be ASCII (use punycode
+  for IDN)`. Bracketed paste validates the entire text before inserting anything;
+  a non-ASCII/control character rejects the whole paste. A non-ASCII CLI name
+  opens an empty edit draft with that error. Cursor movement, Home/End,
+  Backspace and Delete edit ASCII byte boundaries. `Tab` completes the current
+  token using canonical tailnet DNS names from the bounded shared source (R20).
+- `Enter` resolves the whitespace-separated add batch (one target for edit)
+  asynchronously using the normal address-family rules. ICMP and rendering
+  continue. Apply only when every address resolves; an error leaves membership
+  unchanged and the prompt editable. Cancellation invalidates its generation,
+  so late resolver results cannot apply an abandoned operation.
+- Remove retires its workers and drops its row, history and statistics from
+  the screen, run totals and final summary. Editing to a different resolved IP
+  retires the old target and inserts a fresh identity/history at the same list
+  position; editing to the same IP only renames it, preserving its history.
+- Initial `-c` workers retain their finite count. Added targets and changed-IP
+  replacements are unbounded; adding one keeps the session running until quit.
+  Removing the last target does not close the live view.
 
 ### Shell completion (R20)
 
@@ -147,7 +186,8 @@ hosts without an IPv6 route.
 
 All hosts share one mutable send schedule, initially
 `start + n · interval`, where `start` is taken once before the workers spawn.
-A host starts at the first deadline after it resolves.
+A host, including a runtime addition, starts at the first future deadline
+after resolution on this existing schedule; joining never resets its epoch.
 
 `[` / `]` select the next interval in the requested direction, without
 changing the CLI's free-form initial interval. The shared schedule restarts
@@ -168,6 +208,15 @@ outcomes.
 
 Each host has its own thread and socket; the main thread never blocks on
 the network. Late replies for expired probes are ignored.
+
+`target::TargetId = usize` is allocated monotonically and never reused.
+Ordered rows are separate from identity: probe events, worker ownership,
+uptime/path registrations and render hit geometry all carry `TargetId`.
+The runtime spawns and retires probe/enrichment workers as membership changes;
+retirement cancels their work and stale events for retired IDs are discarded.
+Run-global local-network/egress context is owned independently of any target.
+Deleting the first or last row does not erase its cached value; updates are
+routed through a reserved global identity, not a target that can be retired.
 
 ## State (`HostState`)
 
@@ -451,7 +500,7 @@ struct View {
 }
 ```
 
-- One zoom step (wheel tick, `+`/`-`, `↑`/`↓`) scales by 2^(1/4) ≈ 1.19.
+- One zoom step (wheel tick, `+`/`-`) scales by 2^(1/4) ≈ 1.19.
   Level 0 is one **run-start interval** per cell, fixed for the entire run;
   changing the rate never rescales old history. This keeps constant-rate
   runs' existing geometry. Zoom starts at 1/64 initial interval per cell;
@@ -491,7 +540,7 @@ struct View {
   wheel goes to pingping, not to the terminal scrollback, and text selection
   needs the terminal's selection modifier (often Shift).
 - Hint line under the summary, always while running:
-  `l layout · s stats: window · [ ] rate · scroll zoom · drag pan · 0 live · q quit`,
+  `a add · e edit · d remove · ↑↓ select · q quit · l layout · s stats: window · [ ] rate · +/- zoom · drag pan · 0 live`,
   or when zoomed/paused includes `1 cell = 4.8s · 2m10s ago`.
   Cell duration is the run-start interval × `2^(level/4)`; the summary rate
   is the current interval. Toggling `s` changes the scope label to
@@ -717,7 +766,7 @@ the wall deadline must not depend on a detached thread surviving application exi
   Rows omit it rather than displace the chart/statistics. Plain output prints
   it once per host after `resolved to`.
 - One shared background monitor owns tailnet and route deadlines, removing
-  finished hosts and waking the existing UI notification socket only when
+  finished or retired hosts and waking the existing UI notification socket only when
   a note or its hover details change. Plain output performs one lookup only.
 - `path_change` background: light `#f2e2c5`, dark `#4d402a`; a hovered
   timeline cell uses the existing hover tint while its tooltip names the
