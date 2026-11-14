@@ -96,8 +96,10 @@ pub fn spawn(
     wake: Arc<UnixStream>,
     stop: Arc<AtomicBool>,
 ) -> Worker {
-    let worker_stop = Arc::clone(&stop);
+    let worker_stop = Arc::new(AtomicBool::new(false));
+    let local_stop = Arc::clone(&worker_stop);
     let thread = std::thread::spawn(move || {
+        let stopped = || stop.load(Ordering::Relaxed) || local_stop.load(Ordering::Relaxed);
         let Some(status) = crate::tailnet::status() else {
             return;
         };
@@ -123,16 +125,16 @@ pub fn spawn(
         if !emit(index, State::Pending, &events, &wake) {
             return;
         }
-        let user_known_hosts = user_known_hosts(target, &stop);
-        while !stop.load(Ordering::Relaxed) {
+        let user_known_hosts = user_known_hosts(target, &stopped);
+        while !stopped() {
             let boot = read(
                 target,
                 &peer.ssh_host_keys,
                 user_known_hosts.as_deref(),
-                &stop,
+                &stopped,
             )
             .map_or_else(State::Failed, State::Boot);
-            if stop.load(Ordering::Relaxed) || !emit(index, boot, &events, &wake) {
+            if stopped() || !emit(index, boot, &events, &wake) {
                 return;
             }
             std::thread::park_timeout(REFRESH);
@@ -316,8 +318,8 @@ fn configured_identity() -> Result<Option<PathBuf>, Failure> {
     .map(Option::flatten)
 }
 
-fn user_known_hosts(host: &str, stop: &AtomicBool) -> Option<String> {
-    if stop.load(Ordering::Relaxed) {
+fn user_known_hosts(host: &str, stopped: &impl Fn() -> bool) -> Option<String> {
+    if stopped() {
         return None;
     }
     let identity = configured_identity().ok()?;
@@ -325,7 +327,7 @@ fn user_known_hosts(host: &str, stop: &AtomicBool) -> Option<String> {
         .spawn()
         .ok()?;
     // Effective SSH configuration is larger than the remote uptime response.
-    let output = child_output(child, stop, 64 * 1024).ok()?;
+    let output = child_output(child, stopped, 64 * 1024).ok()?;
     configured_hosts(std::str::from_utf8(&output).ok()?)
 }
 
@@ -403,9 +405,9 @@ fn read(
     host: &str,
     keys: &[String],
     paths: Option<&str>,
-    stop: &AtomicBool,
+    stopped: &impl Fn() -> bool,
 ) -> Result<SystemTime, Failure> {
-    if stop.load(Ordering::Relaxed) {
+    if stopped() {
         return Err(Failure::Failed);
     }
     let known_hosts = paths
@@ -422,7 +424,7 @@ fn read(
     let child = command(host, option.as_deref(), identity.as_deref(), false)
         .spawn()
         .map_err(|_| Failure::Failed)?;
-    read_child(child, stop)
+    read_child(child, stopped)
 }
 
 fn classify(status: std::process::ExitStatus, stderr: &[u8]) -> Failure {
@@ -476,8 +478,8 @@ fn drain(pipe: &mut impl Read, output: &mut Vec<u8>, limit: usize) -> Result<(),
     Ok(())
 }
 
-fn read_child(child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure> {
-    let output = child_output(child, stop, LIMIT)?;
+fn read_child(child: Child, stopped: &impl Fn() -> bool) -> Result<SystemTime, Failure> {
+    let output = child_output(child, stopped, LIMIT)?;
     parse(
         std::str::from_utf8(&output).map_err(|_| Failure::Unparseable)?,
         SystemTime::now(),
@@ -485,7 +487,11 @@ fn read_child(child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure> {
     .ok_or(Failure::Unparseable)
 }
 
-fn child_output(mut child: Child, stop: &AtomicBool, limit: usize) -> Result<Vec<u8>, Failure> {
+fn child_output(
+    mut child: Child,
+    stopped: &impl Fn() -> bool,
+    limit: usize,
+) -> Result<Vec<u8>, Failure> {
     let result = (|| {
         let mut stdout = child.stdout.take().ok_or(Failure::Failed)?;
         let mut stderr = child.stderr.take().ok_or(Failure::Failed)?;
@@ -495,7 +501,7 @@ fn child_output(mut child: Child, stop: &AtomicBool, limit: usize) -> Result<Vec
         let mut output = Vec::new();
         let mut errors = Vec::new();
         loop {
-            if stop.load(Ordering::Relaxed) {
+            if stopped() {
                 return Err(Failure::Failed);
             }
             if start.elapsed() >= DEADLINE {
@@ -621,7 +627,7 @@ mod tests {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
             Err(error) => panic!("ssh -G failed: {error}"),
         };
-        let output = child_output(child, &AtomicBool::new(false), 64 * 1024).unwrap();
+        let output = child_output(child, &|| false, 64 * 1024).unwrap();
         assert!(std::str::from_utf8(&output)
             .unwrap()
             .lines()
@@ -638,7 +644,7 @@ mod tests {
                 .spawn()
                 .unwrap();
             assert_eq!(
-                child_output(child, &AtomicBool::new(false), limit).map(|bytes| bytes.len()),
+                child_output(child, &|| false, limit).map(|bytes| bytes.len()),
                 expected
             );
         }
@@ -650,7 +656,7 @@ mod tests {
             .unwrap();
         let pid = child.id();
         assert_eq!(
-            child_output(child, &AtomicBool::new(false), 64 * 1024),
+            child_output(child, &|| false, 64 * 1024),
             Err(Failure::Timeout)
         );
         assert!(!Command::new("kill")
@@ -857,7 +863,7 @@ mod tests {
                 .stderr(Stdio::piped())
                 .spawn()
                 .unwrap();
-            assert_eq!(read_child(child, &AtomicBool::new(false)), expected);
+            assert_eq!(read_child(child, &|| false), expected);
         }
     }
 
@@ -871,6 +877,8 @@ mod tests {
         let child = command.spawn().unwrap();
         let pid = child.id();
         let stop = Arc::new(AtomicBool::new(false));
+        let run_stop = Arc::new(AtomicBool::new(false));
+        let reader_run_stop = Arc::clone(&run_stop);
         let reader_stop = Arc::clone(&stop);
         let (ready, started) = std::sync::mpsc::channel();
         let worker = Worker {
@@ -878,7 +886,14 @@ mod tests {
             thread: Some(std::thread::spawn(move || {
                 ready.send(()).unwrap();
                 assert_eq!(
-                    child_output(child, &reader_stop, 64 * 1024),
+                    child_output(
+                        child,
+                        &|| {
+                            reader_stop.load(Ordering::Relaxed)
+                                || reader_run_stop.load(Ordering::Relaxed)
+                        },
+                        64 * 1024,
+                    ),
                     Err(Failure::Failed)
                 );
             })),
@@ -887,6 +902,10 @@ mod tests {
         let start = Instant::now();
         drop(worker);
         assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(
+            !run_stop.load(Ordering::Relaxed),
+            "cancelling one uptime worker must not stop its peers"
+        );
         assert!(
             !Command::new("kill")
                 .args(["-0", &pid.to_string()])

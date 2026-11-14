@@ -210,13 +210,12 @@ pub fn spawn(
         Err(err) => (Err(err), None),
     };
     if let Some(writer) = &cancellation {
-        schedule
-            .wake
-            .lock()
-            .expect("schedule wake lock")
-            .push(Arc::downgrade(writer));
+        let mut wake = schedule.wake.lock().expect("schedule wake lock");
+        wake.retain(|stream| stream.strong_count() > 0);
+        wake.push(Arc::downgrade(writer));
     }
-    let worker_stop = Arc::clone(&stop);
+    let worker_stop = Arc::new(AtomicBool::new(false));
+    let local_stop = Arc::clone(&worker_stop);
     let thread = std::thread::spawn(move || {
         let emit = |event| {
             if events.send((index, event)).is_ok() {
@@ -231,7 +230,17 @@ pub fn spawn(
                 reason: err.to_string(),
                 kind: Failure::Socket,
             })
-            .and_then(|interrupt| run(&host, &config, &stop, &interrupt, &schedule, &emit));
+            .and_then(|interrupt| {
+                run(
+                    &host,
+                    &config,
+                    &stop,
+                    &local_stop,
+                    &interrupt,
+                    &schedule,
+                    &emit,
+                )
+            });
         match result {
             Ok(()) => emit(ProbeEvent::Finished),
             Err(event) => emit(event),
@@ -248,6 +257,7 @@ fn run(
     host: &str,
     config: &ProbeConfig,
     stop: &AtomicBool,
+    local_stop: &AtomicBool,
     interrupt: &UnixStream,
     schedule: &Schedule,
     emit: &impl Fn(ProbeEvent),
@@ -278,7 +288,7 @@ fn run(
     let mut slot = shared.first + slot_at(&shared.config, Instant::now(), true);
     let mut next_send = slot_time(&shared.config, slot - shared.first);
 
-    while !stop.load(Ordering::Relaxed) {
+    while !stop.load(Ordering::Relaxed) && !local_stop.load(Ordering::Relaxed) {
         let now = Instant::now();
         let updated = schedule.snapshot();
         if updated.config.start != shared.config.start
@@ -447,6 +457,65 @@ mod tests {
         assert_eq!(std::io::Read::read(&mut peer, &mut [0]).unwrap(), 0);
         release.send(()).unwrap();
         completion.recv_timeout(Duration::from_secs(2)).unwrap();
+    }
+
+    #[test]
+    fn canceling_one_worker_keeps_its_shared_run_peer_probing() {
+        let config = ProbeConfig {
+            interval: Duration::from_millis(10),
+            timeout: Duration::from_millis(100),
+            count: None,
+            family: Family::V4,
+            start: Instant::now(),
+        };
+        let schedule = Arc::new(Schedule::new(config.clone()));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (events, received) = std::sync::mpsc::channel();
+        let first = spawn(
+            41,
+            "127.0.0.1".into(),
+            config.clone(),
+            Arc::clone(&shutdown),
+            events.clone(),
+            None,
+            Arc::clone(&schedule),
+        );
+        let second = spawn(
+            73,
+            "127.0.0.1".into(),
+            config,
+            Arc::clone(&shutdown),
+            events,
+            None,
+            Arc::clone(&schedule),
+        );
+        let mut started = [false; 2];
+        while !started.iter().all(|started| *started) {
+            let (id, event) = received.recv_timeout(Duration::from_secs(2)).unwrap();
+            if matches!(event, ProbeEvent::Scheduled { .. }) {
+                started[usize::from(id == 73)] = true;
+            }
+            assert!(!matches!(event, ProbeEvent::Failed { .. }), "{event:?}");
+        }
+        first.cancel();
+        assert!(!shutdown.load(Ordering::Relaxed));
+        let canceled_at = schedule.slot(Instant::now());
+        loop {
+            let (id, event) = received.recv_timeout(Duration::from_secs(2)).unwrap();
+            if id == 73 && matches!(event, ProbeEvent::Scheduled { slot, .. } if slot > canceled_at)
+            {
+                break;
+            }
+        }
+        shutdown.store(true, Ordering::Relaxed);
+        schedule.change(Duration::from_millis(10), Instant::now());
+        loop {
+            let (id, event) = received.recv_timeout(Duration::from_secs(2)).unwrap();
+            if id == 73 && matches!(event, ProbeEvent::Finished) {
+                break;
+            }
+        }
+        drop(second);
     }
 
     #[test]
