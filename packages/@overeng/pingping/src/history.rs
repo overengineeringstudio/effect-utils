@@ -132,7 +132,7 @@ impl Store {
             hosts,
             interval,
             SystemTime::now(),
-            tailnet::status().as_ref(),
+            tailnet::status(),
         )
     }
 
@@ -141,7 +141,7 @@ impl Store {
         hosts: &[String],
         interval: Duration,
         now: SystemTime,
-        status: Option<&Status>,
+        status: Option<Status>,
     ) -> io::Result<(Self, Vec<Vec<HistoricalSession>>)> {
         let clock = Instant::now();
         private_directory(root)?;
@@ -150,7 +150,7 @@ impl Store {
         }
         let identities: Vec<_> = hosts
             .iter()
-            .map(|host| Identity::resolve(host, status))
+            .map(|host| Identity::resolve(host, status.as_ref()))
             .collect();
         let prior = load(root, &identities, now)?;
         let writers = identities
@@ -177,7 +177,7 @@ impl Store {
                 #[cfg(test)]
                 start: now,
                 #[cfg(test)]
-                status: status.cloned(),
+                status,
             },
             prior,
         ))
@@ -790,7 +790,7 @@ mod tests {
         store.clock = store.clock.checked_sub(registration_delay).unwrap();
         let initial_clock = store.clock;
         let interval = Duration::from_millis(500);
-        assert!(store.register(42, "host-a", interval).unwrap().is_empty());
+        assert_eq!(store.register(42, "host-a", interval).unwrap().len(), 0);
         assert_eq!(store.clock, initial_clock);
         let position = Duration::from_secs(120);
         store
@@ -904,7 +904,7 @@ mod tests {
             &names,
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status),
         )
         .unwrap();
         store
@@ -919,7 +919,6 @@ mod tests {
             .unwrap();
         set_fixture_journal_times(&directory.0);
         store.retire(0);
-        drop(status);
         let prior = store
             .register(42, "100.64.0.1", Duration::from_secs(1))
             .unwrap();
@@ -1192,7 +1191,7 @@ mod tests {
             &["HOST-A".into()],
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status.clone()),
         )
         .unwrap();
         store
@@ -1210,7 +1209,7 @@ mod tests {
             &["100.64.0.1".into()],
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status),
         )
         .unwrap();
         assert_eq!(previous[0].len(), 1);
