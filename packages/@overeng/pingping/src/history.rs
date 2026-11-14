@@ -965,9 +965,15 @@ mod tests {
         runtime.record(replacement, &outcome).unwrap();
         drop(runtime);
         let (_, prior) = open(&directory.0, now() + Duration::from_secs(2));
-        let samples: Vec<_> = prior[0].iter().flat_map(|session| &session.samples).collect();
+        let samples: Vec<_> = prior[0]
+            .iter()
+            .flat_map(|session| &session.samples)
+            .collect();
         assert_eq!(samples.len(), 2);
-        assert_eq!(samples.iter().filter(|sample| sample.sent == now()).count(), 1);
+        assert_eq!(
+            samples.iter().filter(|sample| sample.sent == now()).count(),
+            1
+        );
     }
 
     #[test]
@@ -981,9 +987,7 @@ mod tests {
         let file_count = fs::read_dir(&directory.0).unwrap().count();
         let link = directory.0.join("unsafe.jsonl");
         std::os::unix::fs::symlink(directory.0.join("missing"), &link).unwrap();
-        assert!(runtime
-            .add_resolved("host-a".into(), address)
-            .is_err());
+        assert!(runtime.add_resolved("host-a".into(), address).is_err());
         assert!(runtime
             .edit_resolved(id, "host-a".into(), "127.0.0.2".parse().unwrap())
             .is_err());
@@ -1011,7 +1015,13 @@ mod tests {
         drop(runtime);
         fs::remove_file(link).unwrap();
         let (_, prior) = open(&directory.0, now());
-        assert_eq!(prior[0].iter().map(|session| session.samples.len()).sum::<usize>(), 1);
+        assert_eq!(
+            prior[0]
+                .iter()
+                .map(|session| session.samples.len())
+                .sum::<usize>(),
+            1
+        );
     }
 
     #[test]
