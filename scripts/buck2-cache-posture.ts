@@ -593,7 +593,10 @@ export const probeRemoteCacheCapabilities = async ({
         responseTimer = setTimeout(
           onDeadline,
           Math.max(
-            Math.min(responseDeadlineMs, (attemptCeilingMs ?? Infinity) - (performance.now() - started)),
+            Math.min(
+              responseDeadlineMs,
+              (attemptCeilingMs ?? Infinity) - (performance.now() - started),
+            ),
             0,
           ),
         )

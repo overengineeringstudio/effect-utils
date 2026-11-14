@@ -499,7 +499,8 @@ export const directBuckArguments = async ({
   // Split probe budget: connect+TLS owns its deadline so slow ingress TLS
   // cannot eat the response budget; a response-phase deadline is a server-side
   // signal and never earns the single retry, which also requires remaining
-  // ceiling. An explicit flat `deadlineMs` preserves the former single budget.
+  // ceiling. An explicit `deadlineMs` sets both phase budgets and a total
+  // ceiling equal to their sum.
   const reapiBudget =
     deadlineMs === undefined
       ? reapiAdmissionProbeBudgetMs
@@ -524,8 +525,7 @@ export const directBuckArguments = async ({
     readonly firstFailurePhase: () => ReapiAdmissionFailure['phase'] | undefined
   }): Promise<boolean> => {
     const started = performance.now()
-    const remainingCeilingMs = () =>
-      reapiBudget.totalCeilingMs - (performance.now() - started)
+    const remainingCeilingMs = () => reapiBudget.totalCeilingMs - (performance.now() - started)
     const attempt = (attemptIndex: number) => ({
       attemptIndex,
       connectTlsDeadlineMs: reapiBudget.connectTlsDeadlineMs,
@@ -533,7 +533,10 @@ export const directBuckArguments = async ({
       totalCeilingMs: reapiBudget.totalCeilingMs,
       attemptCeilingMs: Math.min(
         reapiBudget.connectTlsDeadlineMs + reapiBudget.responseDeadlineMs,
-        Math.max(Math.ceil(attemptIndex === 1 ? reapiBudget.totalCeilingMs : remainingCeilingMs()), 0),
+        Math.max(
+          Math.ceil(attemptIndex === 1 ? reapiBudget.totalCeilingMs : remainingCeilingMs()),
+          0,
+        ),
       ),
     })
     if ((await probe(attempt(1))) === true) return true

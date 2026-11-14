@@ -1238,7 +1238,9 @@ Object.defineProperty(process, 'execve', {
           env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
           // Keep production's generous 5 s connect budget for the real timer
           // case; only the intentionally silent response should time out.
-          ...(scenario === 'healthy' || scenario === 'response-no-retry' ? {} : { deadlineMs: 100 }),
+          ...(scenario === 'healthy' || scenario === 'response-no-retry'
+            ? {}
+            : { deadlineMs: 100 }),
           // Connect-phase expiry (a stalled ingress TLS analogue) aborts before
           // the request and earns the retry; response-phase expiry does not.
           probeDeadlineSignal: (endpoint: AdmissionProbeEndpoint) => {
@@ -1465,7 +1467,8 @@ console.log(JSON.stringify(outcomes));`,
       secure.listen(0, '127.0.0.1')
       await listening.promise
       const secureAddress = secure.address()
-      if (secureAddress === null || typeof secureAddress === 'string') throw new Error('expected TLS listener')
+      if (secureAddress === null || typeof secureAddress === 'string')
+        throw new Error('expected TLS listener')
       const relay = createTcpServer((downstream) => {
         const upstream = connectTcp(secureAddress.port, '127.0.0.1')
         for (const socket of [downstream, upstream]) {
@@ -1483,10 +1486,14 @@ console.log(JSON.stringify(outcomes));`,
       relay.listen(0, '127.0.0.1')
       await relayListening.promise
       const relayAddress = relay.address()
-      if (relayAddress === null || typeof relayAddress === 'string') throw new Error('expected relay')
+      if (relayAddress === null || typeof relayAddress === 'string')
+        throw new Error('expected relay')
       try {
         const probe = Bun.spawn({
-          cmd: [process.execPath, '-e', `
+          cmd: [
+            process.execPath,
+            '-e',
+            `
 import { probeRemoteCacheCapabilities } from ${JSON.stringify(import.meta.dir + '/buck2-cache-posture.ts')};
 let attempt;
 const admitted = await probeRemoteCacheCapabilities({
@@ -1495,13 +1502,16 @@ const admitted = await probeRemoteCacheCapabilities({
   responseDeadlineMs: 1000, totalCeilingMs: 8000, attemptCeilingMs: 8000,
   onAttempt: (value) => { attempt = value; },
 });
-console.log(JSON.stringify({admitted, attempt}));`],
+console.log(JSON.stringify({admitted, attempt}));`,
+          ],
           env: { ...process.env, NODE_EXTRA_CA_CERTS: certificate },
           stdout: 'pipe',
           stderr: 'pipe',
         })
         const [output, diagnostic, code] = await Promise.all([
-          new Response(probe.stdout).text(), new Response(probe.stderr).text(), probe.exited,
+          new Response(probe.stdout).text(),
+          new Response(probe.stderr).text(),
+          probe.exited,
         ])
         expect(diagnostic).toBe('')
         expect(code).toBe(0)

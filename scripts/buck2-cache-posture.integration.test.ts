@@ -556,7 +556,12 @@ describe('REAPI probe diagnostics', () => {
         }),
       ).toBeFalse()
       expect(failures).toEqual([
-        { errorClass: 'deadline', phase: 'response', elapsedMs: expect.any(Number), deadlineMs: 200 },
+        {
+          errorClass: 'deadline',
+          phase: 'response',
+          elapsedMs: expect.any(Number),
+          deadlineMs: 200,
+        },
       ])
       expect(attempts[0]?.failure?.phase).toBe('response')
       expect(attempts[0]?.failure?.deadlineMs).toBe(200)

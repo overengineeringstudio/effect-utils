@@ -94,7 +94,5 @@ it('retries only connect/TLS-phase failures within the remaining total ceiling',
     ['tls', -1, false],
     [undefined, reapiAdmissionProbeBudgetMs.totalCeilingMs, false],
   ] as const)
-    expect(
-      shouldRetryReapiAdmission({ failurePhase, remainingCeilingMs }),
-    ).toBe(retried)
+    expect(shouldRetryReapiAdmission({ failurePhase, remainingCeilingMs })).toBe(retried)
 })
