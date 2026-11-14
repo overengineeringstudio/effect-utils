@@ -114,6 +114,12 @@ struct Writer {
 pub struct Store {
     writers: HashMap<TargetId, Writer>,
     clock: Instant,
+    #[cfg(test)]
+    root: PathBuf,
+    #[cfg(test)]
+    start: SystemTime,
+    #[cfg(test)]
+    status: Option<Status>,
 }
 
 impl Store {
@@ -126,7 +132,7 @@ impl Store {
             hosts,
             interval,
             SystemTime::now(),
-            tailnet::status().as_ref(),
+            tailnet::status(),
         )
     }
 
@@ -135,7 +141,7 @@ impl Store {
         hosts: &[String],
         interval: Duration,
         now: SystemTime,
-        status: Option<&Status>,
+        status: Option<Status>,
     ) -> io::Result<(Self, Vec<Vec<HistoricalSession>>)> {
         let clock = Instant::now();
         private_directory(root)?;
@@ -144,7 +150,7 @@ impl Store {
         }
         let identities: Vec<_> = hosts
             .iter()
-            .map(|host| Identity::resolve(host, status))
+            .map(|host| Identity::resolve(host, status.as_ref()))
             .collect();
         let prior = load(root, &identities, now)?;
         let writers = identities
@@ -162,7 +168,60 @@ impl Store {
                 ))
             })
             .collect::<io::Result<_>>()?;
-        Ok((Self { writers, clock }, prior))
+        Ok((
+            Self {
+                writers,
+                clock,
+                #[cfg(test)]
+                root: root.to_owned(),
+                #[cfg(test)]
+                start: now,
+                #[cfg(test)]
+                status,
+            },
+            prior,
+        ))
+    }
+
+    /// Starts a target journal on this run's original time axis.
+    /// Call only after resolving the entire target edit successfully. An existing
+    /// target's display-only rename must retain its writer rather than register again.
+    #[cfg(test)]
+    pub fn register(
+        &mut self,
+        id: TargetId,
+        name: &str,
+        interval: Duration,
+    ) -> io::Result<Vec<HistoricalSession>> {
+        if self.writers.contains_key(&id) {
+            return Err(invalid("history target ID is already registered"));
+        }
+        if interval.is_zero() {
+            return Err(invalid("history interval must be positive"));
+        }
+        private_directory(&self.root)?;
+        let identity = Identity::resolve(name, self.status.as_ref());
+        let now = self
+            .start
+            .checked_add(self.clock.elapsed())
+            .ok_or_else(|| invalid("history run time overflow"))?;
+        let mut prior = load(&self.root, std::slice::from_ref(&identity), now)?;
+        let (file, _) = create_session(&self.root, &identity, self.start, interval)?;
+        self.writers.insert(
+            id,
+            Writer {
+                file,
+                positions: HashMap::new(),
+                recorded: HashMap::new(),
+            },
+        );
+        Ok(prior.pop().expect("one history identity was requested"))
+    }
+
+    /// Closes the target's journal without changing any other target's identity.
+    #[cfg(test)]
+    pub fn retire(&mut self, id: TargetId) {
+        self.writers.remove(&id);
     }
 
     /// Records final outcomes once per schedule slot; metadata is not a sample.
@@ -681,13 +740,31 @@ mod tests {
         }
     }
 
+    fn set_fixture_journal_times(root: &Path) {
+        // Fixture UTC is ahead of real filesystem time. Once a writer unlocks,
+        // retention must see the fixture time rather than prune its fresh data.
+        for entry in fs::read_dir(root).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                OpenOptions::new()
+                    .read(true)
+                    .custom_flags(OFlag::O_NOFOLLOW.bits())
+                    .open(entry.path())
+                    .unwrap()
+                    .set_modified(now())
+                    .unwrap();
+            }
+        }
+    }
+
     #[test]
-    fn removing_a_writer_does_not_reassign_remaining_target_ids() {
+    fn retiring_a_writer_does_not_reassign_remaining_target_ids() {
         let directory = Directory::new();
         let names = vec!["host-a".into(), "host-a.example.test".into()];
         let (mut store, _) =
             Store::open_at(&directory.0, &names, Duration::from_secs(1), now(), None).unwrap();
-        drop(store.writers.remove(&0));
+        set_fixture_journal_times(&directory.0);
+        store.retire(0);
         let outcome = ProbeEvent::Lost {
             seq: 1,
             slot: 0,
@@ -696,12 +773,280 @@ mod tests {
         assert!(store.record(0, &outcome).is_err());
         assert!(store.record(2, &outcome).is_err());
         store.record(1, &outcome).unwrap();
+        set_fixture_journal_times(&directory.0);
         let (_, prior) =
             Store::open_at(&directory.0, &names, Duration::from_secs(1), now(), None).unwrap();
         assert!(prior[0].iter().all(|session| session.samples.is_empty()));
         assert_eq!(prior[1].len(), 1);
         assert_eq!(prior[1][0].samples.len(), 1);
         assert_eq!(prior[1][0].samples[0].sample, Sample::Lost);
+    }
+
+    #[test]
+    fn registered_targets_restore_history_and_preserve_the_run_time_axis() {
+        let directory = Directory::new();
+        let (mut store, _) = open(&directory.0, now());
+        let registration_delay = Duration::from_secs(60);
+        store.clock = store.clock.checked_sub(registration_delay).unwrap();
+        let initial_clock = store.clock;
+        let interval = Duration::from_millis(500);
+        assert_eq!(store.register(42, "host-a", interval).unwrap().len(), 0);
+        assert_eq!(store.clock, initial_clock);
+        let position = Duration::from_secs(120);
+        store
+            .record(
+                42,
+                &ProbeEvent::Scheduled {
+                    slot: 240,
+                    position,
+                    interval,
+                },
+            )
+            .unwrap();
+        store
+            .record(
+                42,
+                &ProbeEvent::Reply {
+                    seq: 240,
+                    slot: 240,
+                    sent: now() + position,
+                    rtt: Duration::from_millis(3),
+                },
+            )
+            .unwrap();
+        set_fixture_journal_times(&directory.0);
+        store.retire(42);
+        let restored = store.register(43, "host-a", interval).unwrap();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].start, now());
+        assert_eq!(restored[0].interval, interval);
+        assert_eq!(
+            restored[0].samples,
+            vec![HistoricalSample {
+                sent: now() + position,
+                offset: position,
+                sample: Sample::Reply(Duration::from_millis(3)),
+            }]
+        );
+        store
+            .record(
+                43,
+                &ProbeEvent::Lost {
+                    seq: 241,
+                    slot: 241,
+                    sent: now() + position + interval,
+                },
+            )
+            .unwrap();
+        let elapsed = store.clock.elapsed();
+        set_fixture_journal_times(&directory.0);
+        store.retire(43);
+        let names = vec!["host-a".into()];
+        let (_, prior) = Store::open_at(
+            &directory.0,
+            &names,
+            interval,
+            now() + position + interval,
+            None,
+        )
+        .unwrap();
+        assert_eq!(prior[0].len(), 2);
+        assert!(prior[0].iter().all(|session| session.start == now()));
+        let lost = prior[0]
+            .iter()
+            .flat_map(|session| &session.samples)
+            .find(|sample| sample.sample == Sample::Lost)
+            .unwrap();
+        assert!(lost.offset <= elapsed);
+        assert!(lost.offset >= registration_delay);
+    }
+
+    #[test]
+    fn failed_registration_keeps_existing_writer_and_rejects_unsafe_storage() {
+        let directory = Directory::new();
+        let (mut store, _) = open(&directory.0, now());
+        assert!(store.register(0, "host-a", Duration::from_secs(1)).is_err());
+        assert!(store.register(42, "host-a", Duration::ZERO).is_err());
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
+        let link = directory.0.join("unsafe.jsonl");
+        std::os::unix::fs::symlink(directory.0.join("missing"), &link).unwrap();
+        assert!(store
+            .register(42, "host-a", Duration::from_secs(1))
+            .is_err());
+        assert!(!store.writers.contains_key(&42));
+        store
+            .record(
+                0,
+                &ProbeEvent::Lost {
+                    seq: 0,
+                    slot: 0,
+                    sent: now(),
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn registration_reuses_cached_tailnet_identity_for_prior_history() {
+        let directory = Directory::new();
+        let mut status = Status::default();
+        status.peers.insert(
+            "peer".into(),
+            tailnet::Peer {
+                dns_name: "host-a.example.ts.net.".into(),
+                ips: vec!["100.64.0.1".parse().unwrap()],
+                ..tailnet::Peer::default()
+            },
+        );
+        let names = vec!["host-a".into()];
+        let (mut store, _) = Store::open_at(
+            &directory.0,
+            &names,
+            Duration::from_secs(1),
+            now(),
+            Some(status),
+        )
+        .unwrap();
+        store
+            .record(
+                0,
+                &ProbeEvent::Lost {
+                    seq: 0,
+                    slot: 0,
+                    sent: now(),
+                },
+            )
+            .unwrap();
+        set_fixture_journal_times(&directory.0);
+        store.retire(0);
+        let prior = store
+            .register(42, "100.64.0.1", Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(prior.len(), 1);
+        assert_eq!(prior[0].samples.len(), 1);
+        assert_eq!(prior[0].samples[0].sample, Sample::Lost);
+    }
+
+    fn runtime_with_history(root: &Path, names: Vec<String>) -> crate::runtime::Runtime {
+        let interval = Duration::from_secs(1);
+        let (store, prior) = Store::open_at(root, &names, interval, now(), None).unwrap();
+        let (events, _) = std::sync::mpsc::channel();
+        let mut runtime = crate::runtime::Runtime::new(
+            names,
+            crate::probe::ProbeConfig {
+                interval,
+                timeout: interval,
+                count: Some(1),
+                family: crate::probe::Family::Any,
+                start: Instant::now(),
+            },
+            events,
+            None,
+        );
+        runtime.enable_history(store, prior);
+        runtime
+    }
+
+    #[test]
+    fn runtime_restores_added_history_but_replacements_start_fresh() {
+        let directory = Directory::new();
+        let (mut seed, _) = open(&directory.0, now());
+        seed.record(
+            0,
+            &ProbeEvent::Lost {
+                seq: 0,
+                slot: 0,
+                sent: now(),
+            },
+        )
+        .unwrap();
+        set_fixture_journal_times(&directory.0);
+        drop(seed);
+        let mut runtime = runtime_with_history(&directory.0, hosts());
+        assert!(!runtime.hosts[0].prior_sessions.is_empty());
+        let initial = runtime.hosts[0].id;
+        let added = runtime
+            .add_resolved(hosts().remove(0), "127.0.0.1".parse().unwrap())
+            .unwrap();
+        assert!(!runtime.hosts[1].prior_sessions.is_empty());
+        set_fixture_journal_times(&directory.0);
+        let replacement = runtime
+            .edit_resolved(added, hosts().remove(0), "127.0.0.2".parse().unwrap())
+            .unwrap()
+            .unwrap();
+        assert!(runtime.hosts[1].prior_sessions.is_empty());
+        assert_eq!(runtime.hosts[0].id, initial);
+        let outcome = ProbeEvent::Lost {
+            seq: 1,
+            slot: 1,
+            sent: now() + Duration::from_secs(1),
+        };
+        runtime.record(added, &outcome).unwrap();
+        runtime.record(crate::target::GLOBAL_ID, &outcome).unwrap();
+        runtime.record(replacement, &outcome).unwrap();
+        set_fixture_journal_times(&directory.0);
+        runtime.retire(replacement);
+        runtime.record(replacement, &outcome).unwrap();
+        drop(runtime);
+        let (_, prior) = open(&directory.0, now() + Duration::from_secs(2));
+        let samples: Vec<_> = prior[0]
+            .iter()
+            .flat_map(|session| &session.samples)
+            .collect();
+        assert_eq!(samples.len(), 2);
+        assert_eq!(
+            samples.iter().filter(|sample| sample.sent == now()).count(),
+            1
+        );
+    }
+
+    #[test]
+    fn runtime_registration_failure_preserves_rows_and_same_address_rename() {
+        let directory = Directory::new();
+        let mut runtime = runtime_with_history(&directory.0, hosts());
+        let id = runtime.hosts[0].id;
+        let address = "127.0.0.1".parse().unwrap();
+        runtime.apply(id, ProbeEvent::Resolved(address));
+        runtime.apply(id, ProbeEvent::Finished);
+        let file_count = fs::read_dir(&directory.0).unwrap().count();
+        let link = directory.0.join("unsafe.jsonl");
+        std::os::unix::fs::symlink(directory.0.join("missing"), &link).unwrap();
+        assert!(runtime.add_resolved("host-a".into(), address).is_err());
+        assert!(runtime
+            .edit_resolved(id, "host-a".into(), "127.0.0.2".parse().unwrap())
+            .is_err());
+        assert_eq!(runtime.hosts.len(), 1);
+        assert_eq!(runtime.hosts[0].id, id);
+        assert_eq!(runtime.hosts[0].host, hosts()[0]);
+        assert!(runtime.hosts[0].finished);
+        assert_eq!(
+            runtime.edit_resolved(id, "host-a".into(), address).unwrap(),
+            Some(id)
+        );
+        assert_eq!(runtime.hosts[0].host, "host-a");
+        assert!(runtime.hosts[0].finished);
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), file_count + 1);
+        runtime
+            .record(
+                id,
+                &ProbeEvent::Lost {
+                    seq: 0,
+                    slot: 0,
+                    sent: now(),
+                },
+            )
+            .unwrap();
+        set_fixture_journal_times(&directory.0);
+        drop(runtime);
+        fs::remove_file(link).unwrap();
+        let (_, prior) = open(&directory.0, now());
+        assert_eq!(
+            prior[0]
+                .iter()
+                .map(|session| session.samples.len())
+                .sum::<usize>(),
+            1
+        );
     }
 
     #[test]
@@ -846,7 +1191,7 @@ mod tests {
             &["HOST-A".into()],
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status.clone()),
         )
         .unwrap();
         store
@@ -864,7 +1209,7 @@ mod tests {
             &["100.64.0.1".into()],
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status),
         )
         .unwrap();
         assert_eq!(previous[0].len(), 1);

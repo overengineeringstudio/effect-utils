@@ -77,6 +77,9 @@ run; the overview fits recent runs to the available width. Hover/zoom/pan still
 operate on the unchanged current-run chart, not the compressed overview.
 Journal writers follow stable target identities, not display positions; events
 for absent targets cannot be recorded against another row.
+The runtime registers new writers on the original run clock and closes writers
+when their targets retire. A same-address rename keeps its existing journal;
+a replacement starts fresh visible history without deleting earlier journals.
 
 ## Network Context And Uptime
 
@@ -113,6 +116,15 @@ shutdown; retiring one never stops its peers. The shared rate schedule weakly
 holds wake endpoints and prunes expired entries on registration or rate change.
 Uptime cancellation wakes pending reads immediately, and final shutdown waits
 for SSH child reaping.
+
+The live runtime owns stable target identities, shared scheduling and worker
+lifetimes. Retired identities cannot update replacement rows; retiring a target
+signals cancellation without waiting for SSH, while final runtime release reaps
+remaining SSH children. Runtime add/edit/retire operations are preparatory APIs,
+not interactive controls yet. Initial command-line targets honor `--count`;
+runtime-added or address-replaced targets run without a count limit. A same-address
+rename keeps its identity, history and existing count. Completion requires at least
+one active target and every active target to finish; an empty live set stays open.
 
 ### Uptime on macOS peers
 
