@@ -67,6 +67,8 @@ TTY sessions retain seven days of private per-host/session JSONL in
 `$XDG_STATE_HOME/pingping` (default `~/.local/state/pingping`). Known tailnet
 peers use canonical DNS identity; other targets use the exact typed name.
 `--no-history` disables reads and writes. Plain mode never accesses history.
+Startup restores at most the newest 86,400 outcomes per requested host within
+that seven-day window; faster probing therefore shortens the restored range.
 Restored history does not affect current-session statistics.
 
 ## Network Context And Uptime
