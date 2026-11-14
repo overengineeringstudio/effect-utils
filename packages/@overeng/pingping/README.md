@@ -85,9 +85,52 @@ paths contain unsafe SSH syntax, or a non-default configured file is missing,
 the read leaves SSH's own trust configuration unchanged.
 SSH cannot prompt for passwords, agent approval or host-key enrollment and never
 modifies the user's SSH files. Pending reads show `up –`; failed reads show dim
-`up ?`, with a hover explanation (host key unknown, auth refused, timed out,
-unreachable, or failed). ICMP and rendering never wait for SSH. Plain mode
+`up ?`, with a hover explanation (host key unknown, authentication denied, timed
+out, unreachable, remote command failed, unparseable output, unsafe identity,
+or another local failure). ICMP and rendering never wait for SSH. Plain mode
 performs no uptime SSH reads.
+
+### Uptime on macOS peers
+
+The Tailscale app on macOS can route SSH to the Mac's ordinary sshd rather than
+Tailscale SSH. Agent-only credentials cannot authenticate because pingping
+deliberately disables the SSH agent. For a read-only uptime credential:
+
+1. On the client, create a dedicated unencrypted key (protect it as a credential):
+   ```bash
+   case "${XDG_CONFIG_HOME:-}" in
+     /*) config="$XDG_CONFIG_HOME/pingping" ;;
+     *) config="$HOME/.config/pingping" ;;
+   esac
+   mkdir -p "$config"
+   chmod 700 "$config"
+   ssh-keygen -t ed25519 -N '' -f "$config/uptime_ed25519"
+   chmod 600 "$config/uptime_ed25519"
+   ```
+2. On each Mac, enable Remote Login and append the client's public key to the
+   login user's `~/.ssh/authorized_keys`, prefixed with:
+   ```text
+   restrict,command="sysctl -n kern.boottime" ssh-ed25519 AAAA... uptime-reader
+   ```
+   The forced command replaces the requested command; `restrict` disables
+   forwarding, PTY allocation and user startup scripts. Use SSH configuration
+   to select the login user for a generic peer such as `host-a.example.ts.net`.
+3. For peers advertising no SSH host keys, verify the Mac's sshd host-key
+   fingerprint out of band and add its canonical tailnet DNS name and verified
+   public host key to the client's configured `known_hosts`. Do not blindly
+   trust `ssh-keyscan` output or disable strict host-key checking.
+
+When `$XDG_CONFIG_HOME/pingping/uptime_ed25519` exists (fallback
+`~/.config/pingping/uptime_ed25519`), pingping adds `-i <path> -o IdentitiesOnly=yes`.
+An unset, empty or relative `XDG_CONFIG_HOME` uses the fallback. An absent key
+leaves existing noninteractive credentials unchanged. Key files must be regular,
+private files (mode `0600` or stricter); symlinks in the key path, unsafe SSH path
+syntax and any group/world-writable ancestor directories (including sticky
+directories) are refused. The key and every ancestor must belong to the current
+user or root.
+Invalid keys fail closed with a hover reason, not a fallback to other credentials.
+Rotate by replacing the client key and its server entries; revoke by removing
+the authorized-key entries. Never use this key for unrestricted remote access.
 
 ## Installation And Shell Completion
 
