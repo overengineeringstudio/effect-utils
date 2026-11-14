@@ -70,6 +70,11 @@ peers use canonical DNS identity; other targets use the exact typed name.
 Startup restores at most the newest 86,400 outcomes per requested host within
 that seven-day window; faster probing therefore shortens the restored range.
 Restored history does not affect current-session statistics.
+The history overview connects old runs to live probes. Observation gaps of at
+least five seconds use fixed-width dashed duration labels, not loss or pending
+markers. Shorter gaps and overlapping runs join seamlessly. Heights scale per
+run; the overview fits recent runs to the available width. Hover/zoom/pan still
+operate on the unchanged current-run chart, not the compressed overview.
 
 ## Network Context And Uptime
 
