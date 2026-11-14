@@ -971,8 +971,8 @@ mod tests {
     fn parses_macos_boot_time() {
         let now = UNIX_EPOCH + Duration::from_secs(2_000_000_000);
         assert_eq!(
-            parse("{ sec = 1794000000, usec = 0 } Fri Nov 6", now),
-            Some(UNIX_EPOCH + Duration::from_secs(1_794_000_000))
+            parse("{ sec = 1794000123, usec = 0 } Fri Nov 6", now),
+            Some(UNIX_EPOCH + Duration::from_secs(1_794_000_123))
         );
     }
 
