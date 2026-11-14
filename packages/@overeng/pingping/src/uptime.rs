@@ -8,14 +8,14 @@ use std::os::unix::{
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc::Sender,
+    Arc,
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::probe::ProbeEvent;
-use nix::fcntl::{FcntlArg, OFlag, fcntl};
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum State {
@@ -286,11 +286,24 @@ fn identity(path: &Path) -> Result<Option<PathBuf>, Failure> {
     Ok(Some(path.to_owned()))
 }
 
+fn configured_identity() -> Result<Option<PathBuf>, Failure> {
+    identity_path(
+        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
+        std::env::var_os("HOME").map(PathBuf::from),
+    )
+    .map(|path| identity(&path))
+    .transpose()
+    .map(Option::flatten)
+}
+
 fn user_known_hosts(host: &str, stop: &AtomicBool) -> Option<String> {
     if stop.load(Ordering::Relaxed) {
         return None;
     }
-    let child = command(host, None, None, true).spawn().ok()?;
+    let identity = configured_identity().ok()?;
+    let child = command(host, None, identity.as_deref(), true)
+        .spawn()
+        .ok()?;
     // Effective SSH configuration is larger than the remote uptime response.
     let output = child_output(child, stop, 64 * 1024).ok()?;
     configured_hosts(std::str::from_utf8(&output).ok()?)
@@ -385,13 +398,7 @@ fn read(
         .as_ref()
         .zip(paths)
         .and_then(|(known_hosts, paths)| known_hosts_option(known_hosts, paths));
-    let identity = identity_path(
-        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
-        std::env::var_os("HOME").map(PathBuf::from),
-    )
-    .map(|path| identity(&path))
-    .transpose()?
-    .flatten();
+    let identity = configured_identity()?;
     let child = command(host, option.as_deref(), identity.as_deref(), false)
         .spawn()
         .map_err(|_| Failure::Failed)?;
@@ -578,12 +585,10 @@ mod tests {
             Err(error) => panic!("ssh -G failed: {error}"),
         };
         let output = child_output(child, &AtomicBool::new(false), 64 * 1024).unwrap();
-        assert!(
-            std::str::from_utf8(&output)
-                .unwrap()
-                .lines()
-                .any(|line| line.starts_with("userknownhostsfile "))
-        );
+        assert!(std::str::from_utf8(&output)
+            .unwrap()
+            .lines()
+            .any(|line| line.starts_with("userknownhostsfile ")));
     }
 
     #[test]
@@ -611,14 +616,12 @@ mod tests {
             child_output(child, &AtomicBool::new(false), 64 * 1024),
             Err(Failure::Timeout)
         );
-        assert!(
-            !Command::new("kill")
-                .args(["-0", &pid.to_string()])
-                .output()
-                .unwrap()
-                .status
-                .success()
-        );
+        assert!(!Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .unwrap()
+            .status
+            .success());
     }
 
     #[test]
@@ -631,15 +634,13 @@ mod tests {
             "/tmp/single'/",
             "/tmp/with space/",
         ] {
-            assert!(
-                KnownHosts::create_in(
-                    "host-a.example.ts.net",
-                    &["ssh-ed25519 AAAA".into()],
-                    std::path::Path::new(path),
-                )
-                .unwrap()
-                .is_none()
-            );
+            assert!(KnownHosts::create_in(
+                "host-a.example.ts.net",
+                &["ssh-ed25519 AAAA".into()],
+                std::path::Path::new(path),
+            )
+            .unwrap()
+            .is_none());
             assert!(configured_hosts(&format!("userknownhostsfile {path}\n")).is_none());
         }
     }
@@ -707,13 +708,11 @@ mod tests {
         let missing =
             std::env::temp_dir().join(format!("pingping-missing-trust-{}", std::process::id()));
         assert!(!missing.exists());
-        assert!(
-            configured_hosts(&format!(
-                "userknownhostsfile {defaults} {}\n",
-                missing.display()
-            ))
-            .is_none()
-        );
+        assert!(configured_hosts(&format!(
+            "userknownhostsfile {defaults} {}\n",
+            missing.display()
+        ))
+        .is_none());
     }
 
     use super::*;
@@ -739,11 +738,9 @@ mod tests {
         );
         drop(file);
         assert!(!path.exists());
-        assert!(
-            KnownHosts::create("host-a.example.ts.net", &[])
-                .unwrap()
-                .is_none()
-        );
+        assert!(KnownHosts::create("host-a.example.ts.net", &[])
+            .unwrap()
+            .is_none());
     }
 
     #[test]
