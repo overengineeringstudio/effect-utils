@@ -262,6 +262,8 @@ pub enum DropAge {
 pub struct HostState {
     pub host: String,
     pub status: Status,
+    /// Restored sessions are presentation-only, never part of live statistics.
+    pub prior_sessions: Vec<crate::history::HistoricalSession>,
     /// Outcomes in scheduled order; unresolved probes retain their placement.
     history: VecDeque<Option<StoredEntry>>,
     rtt_baseline: RefCell<RttBaseline>,
@@ -295,6 +297,7 @@ impl HostState {
         Self {
             host,
             status: Status::Resolving,
+            prior_sessions: Vec::new(),
             history: VecDeque::new(),
             rtt_baseline: RefCell::default(),
             placements: VecDeque::new(),

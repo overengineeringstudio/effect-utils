@@ -1,5 +1,6 @@
 mod completion;
 mod egress;
+mod history;
 mod icmp;
 mod live;
 mod netinfo;
@@ -64,6 +65,10 @@ struct Cli {
     /// Color palette.
     #[arg(long, value_enum, default_value_t = ThemeChoice::Auto)]
     theme: ThemeChoice,
+
+    /// Disable reading and writing interactive session history.
+    #[arg(long)]
+    no_history: bool,
 }
 
 static VERSION: LazyLock<String> =
@@ -135,6 +140,22 @@ fn main() -> ExitCode {
         None
     };
     let mut hosts: Vec<HostState> = cli.hosts.iter().cloned().map(HostState::new).collect();
+    let mut history = if interactive && !cli.no_history {
+        match history::Store::open(&cli.hosts, config.interval) {
+            Ok((store, prior)) => {
+                for (host, sessions) in hosts.iter_mut().zip(prior) {
+                    host.prior_sessions = sessions;
+                }
+                Some(store)
+            }
+            Err(err) => {
+                eprintln!("pingping: history error: {err}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        None
+    };
     let schedule = Arc::new(probe::Schedule::new(config.clone()));
     let workers: Vec<_> = cli
         .hosts
@@ -192,6 +213,7 @@ fn main() -> ExitCode {
             config.interval,
             paths.as_ref().expect("interactive monitor"),
             &schedule,
+            history.as_mut(),
         )
     } else {
         print_plain(&mut hosts, &rx, &mut std::io::stdout().lock())
@@ -348,6 +370,23 @@ fn print_not_permitted(reason: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_is_enabled_by_default_and_can_be_disabled() {
+        assert!(
+            !Cli::try_parse_from(["pingping", "host-a"])
+                .unwrap()
+                .no_history
+        );
+        assert!(
+            Cli::try_parse_from(["pingping", "--no-history", "host-a"])
+                .unwrap()
+                .no_history
+        );
+        for removed in ["--history-view", "--history-seed-demo"] {
+            assert!(Cli::try_parse_from(["pingping", removed, "host-a"]).is_err());
+        }
+    }
 
     #[test]
     fn rejects_durations_that_cannot_be_scheduled() {
