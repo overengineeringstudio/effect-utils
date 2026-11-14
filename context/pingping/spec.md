@@ -181,7 +181,7 @@ the retained duration therefore shrinks at faster rates. Time coordinates
 survive trimming. Empty time cells where no probe was due remain blank,
 not loss/gap markers; due probes without an outcome retain gap rendering.
 
-## History (R07, R13, R21; decision 0006)
+## History (R26, R07, R13, R21; decision 0006)
 
 ```text
 TTY startup -> prune/load prior sessions -> create current journal -> probe workers

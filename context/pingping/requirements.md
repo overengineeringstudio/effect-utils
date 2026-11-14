@@ -140,6 +140,13 @@
   change it while running. History before and after a change stays on one
   time axis (the user, 2026-10-04).
 
+### Must survive restarts
+
+- **R26 Recent local history:** The live view restores each target's recent
+  history from earlier runs on the same machine, so a restart does not start
+  from an empty timeline. History stays local, is bounded in time and size,
+  and can be turned off per run.
+
 ### Must work in pipes
 
 - **R13 Plain output:** Without a TTY, pingping prints one line per probe
