@@ -1,18 +1,21 @@
 //! Noninteractive, bounded SSH uptime reads for known tailnet peers only.
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::os::unix::{fs::OpenOptionsExt, net::UnixStream};
-use std::path::PathBuf;
+use std::os::unix::{
+    fs::{MetadataExt, OpenOptionsExt},
+    net::UnixStream,
+};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{
+    Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc::Sender,
-    Arc,
 };
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::probe::ProbeEvent;
-use nix::fcntl::{fcntl, FcntlArg, OFlag};
+use nix::fcntl::{FcntlArg, OFlag, fcntl};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum State {
@@ -30,16 +33,28 @@ pub enum Failure {
     Timeout,
     Unreachable,
     Failed,
+    RemoteCommand,
+    Unparseable,
+    IdentityPermissions,
+    IdentityUnsafe,
 }
 
 impl Failure {
     pub fn reason(self) -> &'static str {
         match self {
             Self::HostKey => "host key unknown",
-            Self::Auth => "auth refused",
+            Self::Auth => "authentication denied",
             Self::Timeout => "timed out",
             Self::Unreachable => "unreachable",
             Self::Failed => "failed",
+            Self::RemoteCommand => "remote command failed",
+            Self::Unparseable => "unparseable output",
+            Self::IdentityPermissions => {
+                "identity key is group/world readable or writable; use chmod 600"
+            }
+            Self::IdentityUnsafe => {
+                "identity path is unsafe or unreadable (symlinks are not allowed)"
+            }
         }
     }
 }
@@ -223,11 +238,59 @@ fn safe_path(path: &str) -> bool {
             .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '%' | '$' | '\\'))
 }
 
+fn identity_path(config: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
+    config
+        .filter(|path| path.is_absolute())
+        .or_else(|| home.map(|home| home.join(".config")))
+        .map(|config| config.join("pingping/uptime_ed25519"))
+}
+
+/// Reject symlinks and mutable ancestors before handing the path to OpenSSH.
+/// The key is opened without following a final symlink, including on races.
+fn identity(path: &Path) -> Result<Option<PathBuf>, Failure> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_symlink() => return Err(Failure::IdentityUnsafe),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Failure::IdentityUnsafe),
+    }
+    for ancestor in path.ancestors().skip(1) {
+        match std::fs::symlink_metadata(ancestor) {
+            Ok(metadata)
+                if metadata.is_dir()
+                    && (metadata.mode() & 0o022 == 0 || metadata.mode() & 0o1000 != 0) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            _ => return Err(Failure::IdentityUnsafe),
+        }
+    }
+    let file = match OpenOptions::new()
+        .read(true)
+        .custom_flags((OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK).bits())
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Failure::IdentityUnsafe),
+    };
+    let metadata = file.metadata().map_err(|_| Failure::IdentityUnsafe)?;
+    if !metadata.is_file() {
+        return Err(Failure::IdentityUnsafe);
+    }
+    if metadata.mode() & 0o077 != 0 {
+        return Err(Failure::IdentityPermissions);
+    }
+    // -i still undergoes OpenSSH's percent/tilde expansion.
+    if !path.to_str().is_some_and(safe_path) {
+        return Err(Failure::IdentityUnsafe);
+    }
+    Ok(Some(path.to_owned()))
+}
+
 fn user_known_hosts(host: &str, stop: &AtomicBool) -> Option<String> {
     if stop.load(Ordering::Relaxed) {
         return None;
     }
-    let child = command(host, None, true).spawn().ok()?;
+    let child = command(host, None, None, true).spawn().ok()?;
     // Effective SSH configuration is larger than the remote uptime response.
     let output = child_output(child, stop, 64 * 1024).ok()?;
     configured_hosts(std::str::from_utf8(&output).ok()?)
@@ -260,7 +323,12 @@ fn known_hosts_option(known_hosts: &KnownHosts, paths: &str) -> Option<String> {
         .then(|| format!("UserKnownHostsFile={path} {paths}"))
 }
 
-fn command(host: &str, known_hosts: Option<&str>, config: bool) -> Command {
+fn command(
+    host: &str,
+    known_hosts: Option<&str>,
+    identity: Option<&Path>,
+    config: bool,
+) -> Command {
     let mut command = Command::new("ssh");
     if config {
         command.arg("-G");
@@ -283,6 +351,12 @@ fn command(host: &str, known_hosts: Option<&str>, config: bool) -> Command {
     ]);
     if let Some(known_hosts) = known_hosts {
         command.arg("-o").arg(known_hosts);
+    }
+    if let Some(identity) = identity {
+        command
+            .arg("-i")
+            .arg(identity)
+            .args(["-o", "IdentitiesOnly=yes"]);
     }
     command
         .args([host, REMOTE])
@@ -311,13 +385,24 @@ fn read(
         .as_ref()
         .zip(paths)
         .and_then(|(known_hosts, paths)| known_hosts_option(known_hosts, paths));
-    let child = command(host, option.as_deref(), false)
+    let identity = identity_path(
+        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
+        std::env::var_os("HOME").map(PathBuf::from),
+    )
+    .map(|path| identity(&path))
+    .transpose()?
+    .flatten();
+    let child = command(host, option.as_deref(), identity.as_deref(), false)
         .spawn()
         .map_err(|_| Failure::Failed)?;
     read_child(child, stop)
 }
 
-fn classify(stderr: &[u8]) -> Failure {
+fn classify(status: std::process::ExitStatus, stderr: &[u8]) -> Failure {
+    // SSH reserves 255 for transport/auth failures; other failures are remote.
+    if status.code().is_some_and(|code| code != 255) {
+        return Failure::RemoteCommand;
+    }
     let text = String::from_utf8_lossy(stderr).to_ascii_lowercase();
     if text.contains("host key verification failed")
         || text.contains("no ed25519 host key is known")
@@ -367,10 +452,10 @@ fn drain(pipe: &mut impl Read, output: &mut Vec<u8>, limit: usize) -> Result<(),
 fn read_child(child: Child, stop: &AtomicBool) -> Result<SystemTime, Failure> {
     let output = child_output(child, stop, LIMIT)?;
     parse(
-        std::str::from_utf8(&output).map_err(|_| Failure::Failed)?,
+        std::str::from_utf8(&output).map_err(|_| Failure::Unparseable)?,
         SystemTime::now(),
     )
-    .ok_or(Failure::Failed)
+    .ok_or(Failure::Unparseable)
 }
 
 fn child_output(mut child: Child, stop: &AtomicBool, limit: usize) -> Result<Vec<u8>, Failure> {
@@ -395,7 +480,7 @@ fn child_output(mut child: Child, stop: &AtomicBool, limit: usize) -> Result<Vec
                 drain(&mut stdout, &mut output, limit)?;
                 drain(&mut stderr, &mut errors, LIMIT)?;
                 if !status.success() {
-                    return Err(classify(&errors));
+                    return Err(classify(status, &errors));
                 }
                 return Ok(output);
             }
@@ -421,22 +506,84 @@ fn parse(text: &str, now: SystemTime) -> Option<SystemTime> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn dedicated_identity_path_and_arguments() {
+        let home = PathBuf::from("/home/example");
+        let fallback = home.join(".config/pingping/uptime_ed25519");
+        assert_eq!(
+            identity_path(None, Some(home.clone())),
+            Some(fallback.clone())
+        );
+        assert_eq!(
+            identity_path(Some(PathBuf::new()), Some(home)),
+            Some(fallback)
+        );
+        let path = identity_path(Some("/config".into()), None).unwrap();
+        assert_eq!(path, Path::new("/config/pingping/uptime_ed25519"));
+        let command = command("example.ts.net", None, Some(&path), false);
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect();
+        assert_eq!(
+            &args[14..18],
+            [
+                "-i",
+                "/config/pingping/uptime_ed25519",
+                "-o",
+                "IdentitiesOnly=yes"
+            ]
+        );
+        assert!(args.contains(&"IdentityAgent=none"));
+        assert!(args.contains(&"BatchMode=yes"));
+        assert!(args.contains(&"StrictHostKeyChecking=yes"));
+    }
+
+    #[test]
+    fn identity_refuses_permissions_and_symlinks() {
+        let file = KnownHosts::create("example.ts.net", &["ssh-ed25519 AAAA".into()])
+            .unwrap()
+            .unwrap();
+        let path = file.0.canonicalize().unwrap();
+        assert_eq!(identity(&path), Ok(Some(path.clone())));
+        for mode in [0o640, 0o604, 0o620] {
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            assert_eq!(identity(&path), Err(Failure::IdentityPermissions));
+        }
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let link = path.with_extension("symlink");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert_eq!(identity(&link), Err(Failure::IdentityUnsafe));
+        std::fs::remove_file(&link).unwrap();
+        let parent_link = path.with_extension("directory-symlink");
+        std::os::unix::fs::symlink(path.parent().unwrap(), &parent_link).unwrap();
+        assert_eq!(
+            identity(&parent_link.join(path.file_name().unwrap())),
+            Err(Failure::IdentityUnsafe)
+        );
+        std::fs::remove_file(&parent_link).unwrap();
+        drop(file);
+        assert_eq!(identity(&path), Ok(None));
+    }
+
+    #[test]
     fn discovery_uses_the_read_arguments_including_remote_command() {
-        let discovery = command("example.ts.net", None, true);
-        let read = command("example.ts.net", None, false);
+        let discovery = command("example.ts.net", None, None, true);
+        let read = command("example.ts.net", None, None, false);
         let args: Vec<_> = discovery.get_args().collect();
         assert_eq!(args[0], "-G");
         assert_eq!(args[1..], read.get_args().collect::<Vec<_>>());
-        let child = match command("example.ts.net", None, true).spawn() {
+        let child = match command("example.ts.net", None, None, true).spawn() {
             Ok(child) => child,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
             Err(error) => panic!("ssh -G failed: {error}"),
         };
         let output = child_output(child, &AtomicBool::new(false), 64 * 1024).unwrap();
-        assert!(std::str::from_utf8(&output)
-            .unwrap()
-            .lines()
-            .any(|line| line.starts_with("userknownhostsfile ")));
+        assert!(
+            std::str::from_utf8(&output)
+                .unwrap()
+                .lines()
+                .any(|line| line.starts_with("userknownhostsfile "))
+        );
     }
 
     #[test]
@@ -464,12 +611,14 @@ mod tests {
             child_output(child, &AtomicBool::new(false), 64 * 1024),
             Err(Failure::Timeout)
         );
-        assert!(!Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .output()
-            .unwrap()
-            .status
-            .success());
+        assert!(
+            !Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
     }
 
     #[test]
@@ -482,13 +631,15 @@ mod tests {
             "/tmp/single'/",
             "/tmp/with space/",
         ] {
-            assert!(KnownHosts::create_in(
-                "host-a.example.ts.net",
-                &["ssh-ed25519 AAAA".into()],
-                std::path::Path::new(path),
-            )
-            .unwrap()
-            .is_none());
+            assert!(
+                KnownHosts::create_in(
+                    "host-a.example.ts.net",
+                    &["ssh-ed25519 AAAA".into()],
+                    std::path::Path::new(path),
+                )
+                .unwrap()
+                .is_none()
+            );
             assert!(configured_hosts(&format!("userknownhostsfile {path}\n")).is_none());
         }
     }
@@ -556,11 +707,13 @@ mod tests {
         let missing =
             std::env::temp_dir().join(format!("pingping-missing-trust-{}", std::process::id()));
         assert!(!missing.exists());
-        assert!(configured_hosts(&format!(
-            "userknownhostsfile {defaults} {}\n",
-            missing.display()
-        ))
-        .is_none());
+        assert!(
+            configured_hosts(&format!(
+                "userknownhostsfile {defaults} {}\n",
+                missing.display()
+            ))
+            .is_none()
+        );
     }
 
     use super::*;
@@ -580,12 +733,17 @@ mod tests {
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600
         );
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "host-a.example.ts.net ssh-ed25519 AAAA==\nhost-a.example.ts.net ecdsa-sha2-nistp256 BBBB\n");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "host-a.example.ts.net ssh-ed25519 AAAA==\nhost-a.example.ts.net ecdsa-sha2-nistp256 BBBB\n"
+        );
         drop(file);
         assert!(!path.exists());
-        assert!(KnownHosts::create("host-a.example.ts.net", &[])
-            .unwrap()
-            .is_none());
+        assert!(
+            KnownHosts::create("host-a.example.ts.net", &[])
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -611,16 +769,41 @@ mod tests {
     #[test]
     fn classifies_ssh_failures() {
         for (message, reason) in [
-            ("No ED25519 host key is known for host-a.example.ts.net and you have requested strict checking.\r\nHost key verification failed.", Failure::HostKey),
-            ("WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!", Failure::HostKey),
-            ("user@host-a.example.ts.net: Permission denied (publickey).", Failure::Auth),
+            (
+                "No ED25519 host key is known for host-a.example.ts.net and you have requested strict checking.\r\nHost key verification failed.",
+                Failure::HostKey,
+            ),
+            (
+                "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!",
+                Failure::HostKey,
+            ),
+            (
+                "user@host-a.example.ts.net: Permission denied (publickey).",
+                Failure::Auth,
+            ),
             ("Authentication failed.", Failure::Auth),
-            ("ssh: connect to host host-a.example.ts.net port 22: Operation timed out", Failure::Timeout),
-            ("ssh: connect to host host-a.example.ts.net port 22: No route to host", Failure::Unreachable),
-            ("ssh: connect to host host-a.example.ts.net port 22: Connection refused", Failure::Unreachable),
+            (
+                "ssh: connect to host host-a.example.ts.net port 22: Operation timed out",
+                Failure::Timeout,
+            ),
+            (
+                "ssh: connect to host host-a.example.ts.net port 22: No route to host",
+                Failure::Unreachable,
+            ),
+            (
+                "ssh: connect to host host-a.example.ts.net port 22: Connection refused",
+                Failure::Unreachable,
+            ),
             ("remote command failed", Failure::Failed),
         ] {
-            assert_eq!(classify(message.as_bytes()), reason);
+            use std::os::unix::process::ExitStatusExt;
+            assert_eq!(
+                classify(
+                    std::process::ExitStatus::from_raw(255 << 8),
+                    message.as_bytes()
+                ),
+                reason
+            );
         }
     }
 
@@ -631,7 +814,8 @@ mod tests {
                 "printf 'Permission denied' >&2; exit 255",
                 Err(Failure::Auth),
             ),
-            ("printf invalid", Err(Failure::Failed)),
+            ("printf invalid", Err(Failure::Unparseable)),
+            ("exit 1", Err(Failure::RemoteCommand)),
         ] {
             let child = Command::new("sh")
                 .args(["-c", script])
@@ -711,7 +895,7 @@ mod tests {
 
     #[test]
     fn ssh_arguments_never_request_interactive_authentication() {
-        let command = command("host-a.example.ts.net", None, false);
+        let command = command("host-a.example.ts.net", None, None, false);
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
@@ -744,7 +928,7 @@ mod tests {
         let option =
             known_hosts_option(&file, "/tmp/configured-known-hosts /tmp/other-known-hosts")
                 .unwrap();
-        let command = super::command("host-a.example.ts.net", Some(&option), false);
+        let command = super::command("host-a.example.ts.net", Some(&option), None, false);
         let args: Vec<_> = command
             .get_args()
             .map(|arg| arg.to_str().unwrap())
@@ -762,8 +946,8 @@ mod tests {
     fn parses_macos_boot_time() {
         let now = UNIX_EPOCH + Duration::from_secs(2_000_000_000);
         assert_eq!(
-            parse("{ sec = 1790835536, usec = 727691 } Thu Oct 1", now),
-            Some(UNIX_EPOCH + Duration::from_secs(1_790_835_536))
+            parse("{ sec = 1794000000, usec = 0 } Fri Nov 6", now),
+            Some(UNIX_EPOCH + Duration::from_secs(1_794_000_000))
         );
     }
 

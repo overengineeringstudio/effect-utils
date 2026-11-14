@@ -564,13 +564,38 @@ LAN targets, and never blocks ICMP workers or rendering.
 
 SSH is noninteractive: stdin is closed, `BatchMode=yes`,
 `IdentityAgent=none`, a three-second connection timeout and an eight-second
-total child deadline. It uses existing noninteractive credentials and host
-trust, never prompts or automatically enrolls unknown host keys. Linux reads
-`/proc/uptime`; macOS reads `sysctl -n kern.boottime`. Output is bounded to
-4 KiB. Timed-out children are killed and reaped. Failed, unavailable or
+total child deadline. It uses existing noninteractive credentials unless an
+optional dedicated identity exists at `$XDG_CONFIG_HOME/pingping/uptime_ed25519`,
+falling back to `~/.config/pingping/uptime_ed25519` when `XDG_CONFIG_HOME` is
+unset, empty or relative. A present key adds `-i <path> -o IdentitiesOnly=yes`;
+`IdentityAgent=none`, `BatchMode=yes` and strict host-key checking remain enabled.
+An absent key preserves existing behavior. The key must be a regular file with
+no group/world permissions; unsafe SSH path syntax, symlinks in any path
+component and group/world-writable non-sticky ancestor directories are refused.
+Refusal fails closed and explains the reason in the hover detail.
+SSH uses existing host trust, never prompts or automatically enrolls unknown
+host keys. The remote command remains
+`cat /proc/uptime 2>/dev/null || sysctl -n kern.boottime`.
+Output is bounded to 4 KiB. Timed-out children are killed and reaped. Failed, unavailable or
 unreadable uptime uses an explicit unavailable placeholder, not a fabricated
 value; unknown tailnet classification is ineligible. Updates wake the existing
 UI notification mechanism.
+
+Failed reads retain the compact `up ?` label. Hover detail distinguishes unknown
+or changed host keys, authentication denied, timeout, unreachable transport,
+remote-command failure (non-255 SSH exit status), unparseable successful output,
+unsafe identity paths/permissions and other local failures. Classification uses
+exit status and at most 4 KiB stderr. Ineligible targets remain unlabeled.
+
+For a macOS peer running ordinary sshd rather than Tailscale SSH, provision a
+dedicated client key and add its public key to the server's authorized_keys as
+`restrict,command="sysctl -n kern.boottime" <public-key>`. This forced command
+replaces the requested command; its macOS boot-time output is parsed normally.
+For peers advertising no SSH host keys, add the peer's canonical tailnet DNS
+name and independently verified sshd host key to the client's configured
+known_hosts. Never disable strict checking or enroll unverified scan results.
+The client key is a credential: keep it private, rotate both ends, and revoke
+it by removing the server's authorized-key entry.
 
 The application retains ownership of every uptime worker. Quit and finite-count
 completion signal cancellation, interrupt the ten-minute refresh sleep, and join
