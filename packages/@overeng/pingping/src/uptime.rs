@@ -245,11 +245,22 @@ fn identity_path(config: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathB
         .map(|config| config.join("pingping/uptime_ed25519"))
 }
 
+fn trusted_owner(owner: u32, uid: u32) -> bool {
+    owner == uid || owner == 0
+}
+
+fn trusted_directory(owner: u32, mode: u32, uid: u32) -> bool {
+    trusted_owner(owner, uid) && mode & 0o022 == 0
+}
+
 /// Reject symlinks and mutable ancestors before handing the path to OpenSSH.
 /// The key is opened without following a final symlink, including on races.
 fn identity(path: &Path) -> Result<Option<PathBuf>, Failure> {
+    let uid = nix::unistd::Uid::current().as_raw();
     match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.is_symlink() => return Err(Failure::IdentityUnsafe),
+        Ok(metadata) if metadata.is_symlink() || !trusted_owner(metadata.uid(), uid) => {
+            return Err(Failure::IdentityUnsafe);
+        }
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(Failure::IdentityUnsafe),
@@ -257,8 +268,8 @@ fn identity(path: &Path) -> Result<Option<PathBuf>, Failure> {
     for ancestor in path.ancestors().skip(1) {
         match std::fs::symlink_metadata(ancestor) {
             Ok(metadata)
-                if metadata.is_dir()
-                    && (metadata.mode() & 0o022 == 0 || metadata.mode() & 0o1000 != 0) => {}
+                if metadata.is_dir() && trusted_directory(metadata.uid(), metadata.mode(), uid) => {
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             _ => return Err(Failure::IdentityUnsafe),
         }
@@ -273,7 +284,7 @@ fn identity(path: &Path) -> Result<Option<PathBuf>, Failure> {
         Err(_) => return Err(Failure::IdentityUnsafe),
     };
     let metadata = file.metadata().map_err(|_| Failure::IdentityUnsafe)?;
-    if !metadata.is_file() {
+    if !metadata.is_file() || !trusted_owner(metadata.uid(), uid) {
         return Err(Failure::IdentityUnsafe);
     }
     if metadata.mode() & 0o077 != 0 {
@@ -513,6 +524,20 @@ fn parse(text: &str, now: SystemTime) -> Option<SystemTime> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn identity_ancestors_require_trusted_ownership_and_no_shared_writes() {
+        let uid = 1000;
+        assert!(trusted_directory(uid, 0o755, uid));
+        assert!(trusted_directory(0, 0o755, uid));
+        assert!(!trusted_directory(1001, 0o755, uid));
+        assert!(!trusted_owner(1001, uid));
+        for owner in [0, uid, 1001] {
+            for mode in [0o1777, 0o1775, 0o775, 0o757] {
+                assert!(!trusted_directory(owner, mode, uid));
+            }
+        }
+    }
+
+    #[test]
     fn dedicated_identity_path_and_arguments() {
         let home = PathBuf::from("/home/example");
         let fallback = home.join(".config/pingping/uptime_ed25519");
@@ -547,7 +572,10 @@ mod tests {
 
     #[test]
     fn identity_refuses_permissions_and_symlinks() {
-        let file = KnownHosts::create("example.ts.net", &["ssh-ed25519 AAAA".into()])
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap())
+            .canonicalize()
+            .unwrap();
+        let file = KnownHosts::create_in("example.ts.net", &["ssh-ed25519 AAAA".into()], &home)
             .unwrap()
             .unwrap();
         let path = file.0.canonicalize().unwrap();

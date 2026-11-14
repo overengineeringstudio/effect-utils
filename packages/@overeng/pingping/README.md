@@ -98,7 +98,10 @@ deliberately disables the SSH agent. For a read-only uptime credential:
 
 1. On the client, create a dedicated unencrypted key (protect it as a credential):
    ```bash
-   config="${XDG_CONFIG_HOME:-$HOME/.config}/pingping"
+   case "${XDG_CONFIG_HOME:-}" in
+     /*) config="$XDG_CONFIG_HOME/pingping" ;;
+     *) config="$HOME/.config/pingping" ;;
+   esac
    mkdir -p "$config"
    chmod 700 "$config"
    ssh-keygen -t ed25519 -N '' -f "$config/uptime_ed25519"
@@ -122,7 +125,9 @@ When `$XDG_CONFIG_HOME/pingping/uptime_ed25519` exists (fallback
 An unset, empty or relative `XDG_CONFIG_HOME` uses the fallback. An absent key
 leaves existing noninteractive credentials unchanged. Key files must be regular,
 private files (mode `0600` or stricter); symlinks in the key path, unsafe SSH path
-syntax and group/world-writable non-sticky ancestor directories are refused.
+syntax and any group/world-writable ancestor directories (including sticky
+directories) are refused. The key and every ancestor must belong to the current
+user or root.
 Invalid keys fail closed with a hover reason, not a fallback to other credentials.
 Rotate by replacing the client key and its server entries; revoke by removing
 the authorized-key entries. Never use this key for unrestricted remote access.

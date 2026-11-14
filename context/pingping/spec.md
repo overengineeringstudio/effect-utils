@@ -571,7 +571,9 @@ unset, empty or relative. A present key adds `-i <path> -o IdentitiesOnly=yes`;
 `IdentityAgent=none`, `BatchMode=yes` and strict host-key checking remain enabled.
 An absent key preserves existing behavior. The key must be a regular file with
 no group/world permissions; unsafe SSH path syntax, symlinks in any path
-component and group/world-writable non-sticky ancestor directories are refused.
+component and all group/world-writable ancestor directories (including sticky
+directories) are refused. The key and every ancestor must be owned by the
+current user or root, matching OpenSSH's StrictModes trust model.
 Refusal fails closed and explains the reason in the hover detail.
 SSH uses existing host trust, never prompts or automatically enrolls unknown
 host keys. The remote command remains
