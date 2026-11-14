@@ -2,6 +2,8 @@
 //! frame in scrollback. Input and probes wake a blocked UI; dirty bursts render
 //! at most once per 16 ms, with no periodic redraws or idle input wakeups.
 mod resize;
+#[cfg(test)]
+mod resolve;
 
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
