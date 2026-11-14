@@ -26,7 +26,32 @@ pub fn host_candidates(current: &OsStr) -> Vec<CompletionCandidate> {
     crate::tailnet::status().map_or_else(Vec::new, |status| candidates(&status, prefix))
 }
 
+/// Canonical tailnet names in shell-completion order. Queries the local
+/// Tailscale daemon, so call on demand rather than per keystroke.
+#[cfg(test)]
+pub fn host_names(prefix: &str) -> Vec<String> {
+    crate::tailnet::status().map_or_else(Vec::new, |status| {
+        ranked_hosts(&status, prefix)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    })
+}
+
 fn candidates(status: &Status, prefix: &str) -> Vec<CompletionCandidate> {
+    ranked_hosts(status, prefix)
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, (_, help)))| {
+            CompletionCandidate::new(name)
+                .help(Some(help.into()))
+                .display_order(Some(index))
+        })
+        .collect()
+}
+
+/// Canonical names ordered by self, online, offline, and then by name.
+fn ranked_hosts(status: &Status, prefix: &str) -> Vec<(String, (u8, &'static str))> {
     let mut hosts = BTreeMap::<String, (u8, &'static str)>::new();
     let peers = status.peers.values();
     for (peer, is_self) in peers
@@ -64,14 +89,6 @@ fn candidates(status: &Status, prefix: &str) -> Vec<CompletionCandidate> {
     let mut hosts: Vec<_> = hosts.into_iter().collect();
     hosts.sort_by(|(left, a), (right, b)| a.0.cmp(&b.0).then_with(|| left.cmp(right)));
     hosts
-        .into_iter()
-        .enumerate()
-        .map(|(index, (name, (_, help)))| {
-            CompletionCandidate::new(name)
-                .help(Some(help.into()))
-                .display_order(Some(index))
-        })
-        .collect()
 }
 
 #[cfg(test)]
