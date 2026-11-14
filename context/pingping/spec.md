@@ -111,6 +111,10 @@ The interaction choice is recorded in [decision 0007](./.decisions/0007-live-tar
   continue. Apply only when every address resolves; an error leaves membership
   unchanged and the prompt editable. Cancellation invalidates its generation,
   so late resolver results cannot apply an abandoned operation.
+  Each generation has an independent lookup thread, capped at four active
+  threads. A cancelled lookup cannot block a newer generation; at capacity,
+  `resolver busy` stays inline until capacity returns. Closed or stale
+  generations cannot start the next host in their batch.
 - Remove retires its workers and drops its row, history and statistics from
   the screen, run totals and final summary. Editing to a different resolved IP
   retires the old target and inserts a fresh identity/history at the same list
