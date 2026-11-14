@@ -1525,7 +1525,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
       expect(await child.exited).toBe(0)
       const failures = Array.from(
         stderr.matchAll(
-          /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=2500)/gu,
+          /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=5000)/gu,
         ),
         (match) => match[1],
       )
