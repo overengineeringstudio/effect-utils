@@ -28,25 +28,25 @@ the repository Rust workspace policy.
 
 Source lives in `packages/@overeng/pingping/src/`:
 
-| Module            | Role                                                         | Requirements         |
-| ----------------- | ------------------------------------------------------------ | -------------------- |
-| `icmp.rs`         | Echo packet codec and unprivileged socket                    | R02                  |
-| `probe.rs`        | Per-host worker: resolve, send, match, expire                | R03, R09             |
-| `runtime.rs`      | Stable membership and runtime worker spawn/retire            | R09                  |
-| `target.rs`       | Target identity and resolved worker descriptor               | R09                  |
-| `prompt.rs`       | Focused inline prompt and token completion                   | R11, R20             |
-| `live/resolve.rs` | Bounded asynchronous batch resolution                        | R09, R11             |
-| `live/targets.rs` | Selection and target editing controller                      | R11, R14             |
-| `stats.rs`        | Folds probe events into `HostState`                          | R05, R07             |
-| `render.rs`       | Pure layout into role-tagged spans                           | R05, R10–R12, R18    |
-| `theme.rs`        | Role -> color, background detection                          | R08                  |
-| `timeline.rs`     | Zoom/pan view, bucketing, hover descriptions                 | R14, R15             |
-| `live.rs`         | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15   |
-| `path.rs`         | Path note: Tailscale transport and local route               | R19                  |
-| `completion.rs`   | Dynamic shell completion, tailnet host candidates            | R20                  |
-| `tailnet.rs`      | Bounded LocalAPI / CLI status source shared by both features | R19, R20             |
-| `main.rs`         | CLI, plain output, exit status                               | R01, R04, R13        |
-| `uptime.rs`       | Tailnet-only background remote uptime                        | Live-view enrichment |
+| Module            | Role                                                         | Requirements                 |
+| ----------------- | ------------------------------------------------------------ | ---------------------------- |
+| `icmp.rs`         | Echo packet codec and unprivileged socket                    | R02                          |
+| `probe.rs`        | Per-host worker: resolve, send, match, expire                | R03, R09                     |
+| `runtime.rs`      | Stable membership and runtime worker spawn/retire            | R09, R27                     |
+| `target.rs`       | Target identity and resolved worker descriptor               | R09, R27                     |
+| `prompt.rs`       | Focused inline prompt and token completion                   | R11, R20, R27                |
+| `live/resolve.rs` | Bounded asynchronous batch resolution                        | R09, R11, R27                |
+| `live/targets.rs` | Selection and target editing controller                      | R11, R14, R27                |
+| `stats.rs`        | Folds probe events into `HostState`                          | R05, R07                     |
+| `render.rs`       | Pure layout into role-tagged spans                           | R05, R10–R12, R18            |
+| `theme.rs`        | Role -> color, background detection                          | R08                          |
+| `timeline.rs`     | Zoom/pan view, bucketing, hover descriptions                 | R14, R15                     |
+| `live.rs`         | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15           |
+| `path.rs`         | Path note: Tailscale transport and local route               | R19                          |
+| `completion.rs`   | Dynamic shell completion, tailnet host candidates            | R20                          |
+| `tailnet.rs`      | Bounded LocalAPI / CLI status source shared by both features | R19, R20                     |
+| `main.rs`         | CLI, plain output, exit status                               | R01, R04, R13                |
+| `uptime.rs`       | Tailnet-only background remote uptime                        | Live-view enrichment         |
 | `history.rs`      | Private session journal and startup restoration              | R07, R13, R21; decision 0006 |
 
 ## CLI
@@ -87,11 +87,12 @@ also reject IP literals of the other family.
 
 Exit status follows R04.
 
-### Live membership (R09–R12, R14, R20)
+### Live membership (R27)
 
 `idle → inline add/edit prompt → resolving → atomic apply → idle`; `Esc`
 returns from either prompt state to idle without changing membership.
-The interaction choice is recorded in [decision 0007](./.decisions/0007-live-target-keys-and-inline-prompt.md).
+This implements [R27 Live target editing](./requirements.md#must-let-targets-change-while-running);
+the interaction choice is recorded in [decision 0007](./.decisions/0007-live-target-keys-and-inline-prompt.md).
 
 - `a` opens an empty prompt; `e` prefills the selected target; `d` opens an
   inline confirmation (`y` removes, `n`/`Esc` cancels). Selection follows stable
