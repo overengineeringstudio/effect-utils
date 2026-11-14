@@ -255,7 +255,11 @@ mod tests {
         let mut editor = Editor::new(&runtime).unwrap();
         let geometry = Geometry::default();
         editor.update(&key(KeyCode::Char('a')), &geometry, &mut runtime);
-        assert!(editor.update(&Event::Paste("host-a host-b".into()), &geometry, &mut runtime));
+        assert!(editor.update(
+            &Event::Paste("host-a host-b".into()),
+            &geometry,
+            &mut runtime
+        ));
         assert!(editor.footer().unwrap().contains("host-a host-b▏"));
         assert!(editor.update(&Event::Paste("cafe\u{301}".into()), &geometry, &mut runtime));
         let footer = editor.footer().unwrap();
