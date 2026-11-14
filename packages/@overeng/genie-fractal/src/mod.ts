@@ -134,15 +134,47 @@ export const node = ({
   return value
 }
 
+/** KDL v2 quoted strings, including its forbidden literals and non-JSON Unicode escapes. */
+const quotedString = (text: string): string =>
+  `"${text.replace(
+    // eslint-disable-next-line eslint/no-control-regex -- KDL quoted strings must escape ASCII controls rather than emit forbidden literals.
+    /["\\\u0000-\u001f\u007f\u0085\u200e-\u200f\u2028-\u202e\u2066-\u2069\ud800-\udfff\ufeff]/gu,
+    (character) => {
+      switch (character) {
+        case '"':
+          return '\\"'
+        case '\\':
+          return '\\\\'
+        case '\b':
+          return '\\b'
+        case '\f':
+          return '\\f'
+        case '\n':
+          return '\\n'
+        case '\r':
+          return '\\r'
+        case '\t':
+          return '\\t'
+        default: {
+          const codePoint = character.charCodeAt(0)
+          if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+            throw new RangeError('KDL strings must contain only Unicode scalar values')
+          }
+          return `\\u{${codePoint.toString(16)}}`
+        }
+      }
+    },
+  )}"`
+
 const renderValue = (value: Value): string => {
-  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'string') return quotedString(value)
   if (typeof value === 'boolean') return `#${value}`
   if (Number.isFinite(value) === false) throw new RangeError('KDL numbers must be finite')
   return String(value)
 }
 
 const identifier = (text: string): string =>
-  /^[A-Za-z_][\w-]*$/u.test(text) === true ? text : JSON.stringify(text)
+  /^[A-Za-z_][\w-]*$/u.test(text) === true ? text : quotedString(text)
 
 const render = ({
   node: current,
@@ -274,12 +306,27 @@ export const OmpResumeSchema = Schema.Union([
   Schema.Struct({ transcript: Text }),
 ]).annotate({ identifier: 'Fractal.OmpResume' })
 
+/** One-shot first-turn message, identified within the agent subject. */
+export const HarnessMessageSchema = Schema.Struct({
+  text: Text.pipe(
+    Schema.refine(
+      (text): text is string =>
+        /\P{White_Space}/u.test(text) &&
+        utf8ByteLength(text) <= 65536 &&
+        text.includes('\0') === false,
+      { message: 'message text must be nonblank, at most 65536 UTF-8 bytes and contain no NUL' },
+    ),
+  ),
+  id: Text.pipe(Schema.refine((id): id is string => utf8ByteLength(id) <= 256)),
+}).annotate({ identifier: 'Fractal.HarnessMessage' })
+
 /** OMP harness selection for a seat. */
 export const OmpSchema = Schema.Struct({
   kind: Schema.Literal('omp'),
   model: Text,
   effort: Schema.optionalKey(Schema.Literals(['low', 'medium', 'high', 'xhigh'])),
   resume: Schema.optionalKey(OmpResumeSchema),
+  message: Schema.optionalKey(HarnessMessageSchema),
 }).annotate({ identifier: 'Fractal.Omp' })
 
 /** Codex harness selection with explicit model and effort routing. */
@@ -289,6 +336,7 @@ export const CodexSchema = Schema.Struct({
   effort: Text,
   args: Schema.optionalKey(Schema.Array(Text)),
   resume: Schema.optionalKey(Schema.Struct({ session: Text })),
+  message: Schema.optionalKey(HarnessMessageSchema),
 }).annotate({ identifier: 'Fractal.Codex' })
 
 /**
@@ -1066,10 +1114,12 @@ export const omp = ({
   model,
   effort,
   resume,
+  message,
 }: {
   readonly model: string
   readonly effort?: (typeof OmpSchema.Encoded)['effort']
   readonly resume?: typeof OmpResumeSchema.Encoded
+  readonly message?: typeof HarnessMessageSchema.Encoded
 }): typeof OmpSchema.Type =>
   snapshotComposition(
     decode({
@@ -1079,6 +1129,7 @@ export const omp = ({
         model,
         ...(effort === undefined ? {} : { effort }),
         ...(resume === undefined ? {} : { resume }),
+        ...(message === undefined ? {} : { message }),
       },
     }),
   )
@@ -2616,6 +2667,15 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
                     a.harness.resume === 'latest'
                       ? ['--continue']
                       : ['--resume', a.harness.resume.transcript],
+                }),
+              ]),
+          ...(a.harness.message === undefined
+            ? []
+            : [
+                node({
+                  name: 'message',
+                  args: [a.harness.message.text],
+                  props: { id: a.harness.message.id },
                 }),
               ]),
         ],

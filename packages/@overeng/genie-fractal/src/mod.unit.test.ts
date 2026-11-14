@@ -1558,6 +1558,119 @@ describe('Fractal declarations', () => {
       } as never),
     ).toThrow()
   })
+  it.each(['omp', 'codex'] as const)(
+    'renders a %s first-turn message with escaped text and an id property',
+    (kind) => {
+      const message = { text: 'Start "here".\nRead C:\\notes\\plan.', id: 'startup-v1' }
+      const harness = { kind, model: 'example-model', effort: 'high' as const, message }
+      const expected =
+        `version 2\nagent "example/message" {\n  harness "${kind}" {\n` +
+        '    model "example-model"\n    effort "high"\n' +
+        '    message "Start \\"here\\".\\nRead C:\\\\notes\\\\plan." id="startup-v1"\n  }\n}\n'
+      expect(emit([agent({ id: 'example/message', harness })])).toBe(expected)
+      if (kind === 'omp') {
+        expect(emit([agent({ id: 'example/message', harness: omp(harness) })])).toBe(expected)
+      }
+    },
+  )
+  it.each(['omp', 'codex'] as const)(
+    'rejects invalid %s first-turn messages at schema and render boundaries',
+    (kind) => {
+      for (const message of [
+        { text: '', id: 'startup' },
+        { text: ' \n\t', id: 'startup' },
+        { text: '\u0085', id: 'startup' },
+        { text: 'Start.' },
+        { text: 'Start.', id: '' },
+        { text: 'Start.', id: 'a'.repeat(257) },
+        { text: 'Start.', id: 'é'.repeat(129) },
+        { text: 'a'.repeat(65537), id: 'startup' },
+        { text: 'é'.repeat(32769), id: 'startup' },
+        { text: 'Start.\0Stop.', id: 'startup' },
+      ]) {
+        const declaration = {
+          id: 'example/message',
+          harness: { kind, model: 'example-model', effort: 'high', message },
+        }
+        expect(() => Schema.decodeUnknownSync(AgentSchema)(declaration)).toThrow()
+        expect(() => agent(declaration as never)).toThrow()
+        if (kind === 'omp') {
+          expect(() => omp(declaration.harness as never)).toThrow()
+        }
+      }
+    },
+  )
+  it.each(['omp', 'codex'] as const)(
+    'uses native Unicode White_Space rather than JS trim for %s messages',
+    (kind) => {
+      const declaration = {
+        id: 'example/message',
+        harness: {
+          kind,
+          model: 'example-model',
+          effort: 'high' as const,
+          message: { text: '\ufeff', id: 'startup' },
+        },
+      }
+      expect(Schema.decodeSync(AgentSchema)(declaration)).toEqual(declaration)
+      expect(emit([agent(declaration)])).toContain('message "\\u{feff}" id="startup"')
+      if (kind === 'omp') {
+        expect(omp(declaration.harness).message).toEqual(declaration.harness.message)
+      }
+    },
+  )
+  it.each(['omp', 'codex'] as const)(
+    'accepts %s messages at the native UTF-8 byte limits',
+    (kind) => {
+      const declaration = {
+        id: 'example/message',
+        harness: {
+          kind,
+          model: 'example-model',
+          effort: 'high' as const,
+          message: { text: 'é'.repeat(32768), id: 'é'.repeat(128) },
+        },
+      }
+      expect(Schema.decodeSync(AgentSchema)(declaration)).toEqual(declaration)
+      expect(() => agent(declaration)).not.toThrow()
+    },
+  )
+  describe('KDL v2 string emission', () => {
+    it.each([
+      ['\u0000', '\\u{0}'],
+      ['\u0001', '\\u{1}'],
+      ['\u000b', '\\u{b}'],
+      ['\u001f', '\\u{1f}'],
+      ['\u007f', '\\u{7f}'],
+      ['\u0085', '\\u{85}'],
+      ['\u2028', '\\u{2028}'],
+      ['\u2029', '\\u{2029}'],
+      ['\ufeff', '\\u{feff}'],
+      ['\u200e', '\\u{200e}'],
+      ['\u200f', '\\u{200f}'],
+      ['\u202a', '\\u{202a}'],
+      ['\u202b', '\\u{202b}'],
+      ['\u202c', '\\u{202c}'],
+      ['\u202d', '\\u{202d}'],
+      ['\u202e', '\\u{202e}'],
+      ['\u2066', '\\u{2066}'],
+      ['\u2067', '\\u{2067}'],
+      ['\u2068', '\\u{2068}'],
+      ['\u2069', '\\u{2069}'],
+    ])('escapes %j in node names, arguments, property keys and values', (character, escaped) => {
+      expect(
+        emit([node({ name: character, args: [character], props: { [character]: character } })]),
+      ).toBe(`version 2\n"${escaped}" "${escaped}" "${escaped}"="${escaped}"\n`)
+    })
+    it('preserves ordinary Unicode, astral scalars and established short escapes', () => {
+      expect(emit([node({ name: 'text', args: ['é😀\b\f\n\r\t"\\'] })])).toBe(
+        'version 2\ntext "é😀\\b\\f\\n\\r\\t\\"\\\\"\n',
+      )
+    })
+    it.each(['\ud800', '\udfff'] as const)('rejects non-scalar UTF-16 %j', (text) => {
+      expect(() => emit([node({ name: 'text', args: [text] })])).toThrow(RangeError)
+    })
+  })
   it('requires model for OMP and both routing fields for Codex', () => {
     expectTypeOf<Omit<typeof OmpSchema.Encoded, 'model'>>().not.toMatchTypeOf<
       typeof OmpSchema.Encoded
