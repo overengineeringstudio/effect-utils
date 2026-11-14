@@ -1,7 +1,11 @@
 import { expect, it } from 'bun:test'
 
 import { decodeCacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
-import { decodeReapiAdmissionAttempts } from './buck2-cache-posture.ts'
+import {
+  decodeReapiAdmissionAttempts,
+  reapiAdmissionProbeBudgetMs,
+  shouldRetryReapiAdmission,
+} from './buck2-cache-posture.ts'
 
 it('preserves successful and TLS-timeout attempt milestones in admission evidence', () => {
   const reapiAttempts = [
@@ -44,4 +48,53 @@ it('preserves successful and TLS-timeout attempt milestones in admission evidenc
     null,
   ])
     expect(() => decodeReapiAdmissionAttempts(invalid)).toThrow()
+})
+
+it('retains the budget split alongside milestones and rejects malformed budgets', () => {
+  const reapiAttempts = [
+    {
+      attemptIndex: 1,
+      elapsedMs: 2105,
+      deadlineMs: 2500,
+      dnsResolvedMs: 5,
+      tcpConnectedMs: 110,
+      tlsReadyMs: 2105,
+      connectTlsDeadlineMs: reapiAdmissionProbeBudgetMs.connectTlsDeadlineMs,
+      responseDeadlineMs: reapiAdmissionProbeBudgetMs.responseDeadlineMs,
+      totalCeilingMs: reapiAdmissionProbeBudgetMs.totalCeilingMs,
+    },
+    {
+      attemptIndex: 2,
+      elapsedMs: 45,
+      deadlineMs: reapiAdmissionProbeBudgetMs.responseDeadlineMs,
+      connectTlsDeadlineMs: reapiAdmissionProbeBudgetMs.connectTlsDeadlineMs,
+      responseDeadlineMs: reapiAdmissionProbeBudgetMs.responseDeadlineMs,
+      totalCeilingMs: reapiAdmissionProbeBudgetMs.totalCeilingMs,
+    },
+  ]
+  expect(decodeReapiAdmissionAttempts(reapiAttempts)).toEqual(reapiAttempts)
+  const { totalCeilingMs: _omitted, ...withoutCeiling } = reapiAttempts[0]
+  expect(decodeReapiAdmissionAttempts([withoutCeiling])).toEqual([withoutCeiling])
+  for (const invalid of [
+    [{ ...reapiAttempts[0], connectTlsDeadlineMs: -1 }],
+    [{ ...reapiAttempts[0], responseDeadlineMs: 1.5 }],
+    [{ ...reapiAttempts[0], totalCeilingMs: Number.MAX_SAFE_INTEGER * 2 }],
+  ])
+    expect(() => decodeReapiAdmissionAttempts(invalid)).toThrow()
+})
+
+it('retries only connect/TLS-phase failures within the remaining total ceiling', () => {
+  for (const [failurePhase, remainingCeilingMs, retried] of [
+    ['dns', 1, true],
+    ['tcp', reapiAdmissionProbeBudgetMs.totalCeilingMs, true],
+    ['tls', 3000, true],
+    ['response', reapiAdmissionProbeBudgetMs.totalCeilingMs, false],
+    ['configuration', reapiAdmissionProbeBudgetMs.totalCeilingMs, false],
+    ['tls', 0, false],
+    ['tls', -1, false],
+    [undefined, reapiAdmissionProbeBudgetMs.totalCeilingMs, false],
+  ] as const)
+    expect(
+      shouldRetryReapiAdmission({ failurePhase, remainingCeilingMs }),
+    ).toBe(retried)
 })

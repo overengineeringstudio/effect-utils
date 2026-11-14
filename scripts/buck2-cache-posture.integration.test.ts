@@ -392,6 +392,8 @@ describe('REAPI probe diagnostics', () => {
             dnsResolvedMs: expect.any(Number),
             tcpConnectedMs: expect.any(Number),
             firstResponseMs: expect.any(Number),
+            connectTlsDeadlineMs: 1000,
+            responseDeadlineMs: 1000,
           })
         } else {
           expect(failures).toHaveLength(1)
@@ -449,6 +451,8 @@ describe('REAPI probe diagnostics', () => {
           elapsedMs: expect.any(Number),
           deadlineMs: 100,
           tcpConnectedMs: expect.any(Number),
+          connectTlsDeadlineMs: 100,
+          responseDeadlineMs: 100,
           failure: {
             class: 'deadline',
             phase: 'tls',
@@ -460,6 +464,139 @@ describe('REAPI probe diagnostics', () => {
       expect(connections.some(({ event }) => event === 'tcp-connected')).toBeTrue()
       expect(connections.some(({ event }) => event === 'tls-ready')).toBeFalse()
       expect(connections.every(({ address }) => address === 'redacted')).toBeTrue()
+    } finally {
+      for (const socket of sockets) socket.destroy()
+      tcp.close()
+    }
+  })
+
+  // Scaled equivalents of the production split (5000/2500/8000): a slow
+  // connect/TLS must not consume the response budget, and grpc-timeout carries
+  // only the response budget. The delayed server replies are real timers
+  // because the probe's platform deadline timers are the behavior under test.
+  it('admits a slow response under a fresh response budget with grpc-timeout carrying it', async () => {
+    const grpcTimeouts: string[] = []
+    const grpc = createServer()
+    grpc.on('stream', (stream: ServerHttp2Stream, headers) => {
+      grpcTimeouts.push(String(headers['grpc-timeout']))
+      stream.on('error', () => {})
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        setTimeout(() => {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        }, 300)
+      })
+    })
+    grpc.listen(0, '127.0.0.1')
+    await new Promise<void>((resolve) => grpc.once('listening', resolve))
+    const bound = grpc.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    const attempts: ReapiAdmissionAttempt[] = []
+    try {
+      expect(
+        await probeRemoteCacheCapabilities({
+          address: `grpc://127.0.0.1:${bound.port}`,
+          instanceName: 'fixture',
+          tls: false,
+          header: undefined,
+          env: {},
+          connectTlsDeadlineMs: 500,
+          responseDeadlineMs: 1500,
+          totalCeilingMs: 2000,
+          onAttempt: (attempt) => attempts.push(attempt),
+        }),
+      ).toBeTrue()
+      expect(grpcTimeouts).toEqual(['1500m'])
+      expect(attempts[0]?.deadlineMs).toBe(1500)
+      expect(attempts[0]?.connectTlsDeadlineMs).toBe(500)
+      expect(attempts[0]?.responseDeadlineMs).toBe(1500)
+      expect(attempts[0]?.totalCeilingMs).toBe(2000)
+      expect(attempts[0]?.failure).toBeUndefined()
+    } finally {
+      grpc.close()
+    }
+  })
+
+  it('stops a stalled response at the response budget, not the connect budget', async () => {
+    const streams = new Set<ServerHttp2Stream>()
+    const grpc = createServer()
+    grpc.on('stream', (stream: ServerHttp2Stream) => {
+      streams.add(stream)
+      stream.on('error', () => {})
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        setTimeout(() => {
+          if (stream.destroyed === true || stream.closed === true) return
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        }, 1000)
+      })
+      stream.on('close', () => streams.delete(stream))
+    })
+    grpc.listen(0, '127.0.0.1')
+    await new Promise<void>((resolve) => grpc.once('listening', resolve))
+    const bound = grpc.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    const failures: RemoteCacheProbeFailure[] = []
+    const attempts: ReapiAdmissionAttempt[] = []
+    try {
+      expect(
+        await probeRemoteCacheCapabilities({
+          address: `grpc://127.0.0.1:${bound.port}`,
+          instanceName: 'fixture',
+          tls: false,
+          header: undefined,
+          env: {},
+          connectTlsDeadlineMs: 400,
+          responseDeadlineMs: 200,
+          totalCeilingMs: 600,
+          onFailure: (failure) => failures.push(failure),
+          onAttempt: (attempt) => attempts.push(attempt),
+        }),
+      ).toBeFalse()
+      expect(failures).toEqual([
+        { errorClass: 'deadline', phase: 'response', elapsedMs: expect.any(Number), deadlineMs: 200 },
+      ])
+      expect(attempts[0]?.failure?.phase).toBe('response')
+      expect(attempts[0]?.failure?.deadlineMs).toBe(200)
+      expect(attempts[0]?.deadlineMs).toBe(200)
+    } finally {
+      for (const stream of streams) stream.close()
+      grpc.close()
+    }
+  })
+
+  it('enforces the attempt ceiling over both phase budgets during a TLS stall', async () => {
+    const sockets = new Set<Socket>()
+    const tcp = createTcpServer((socket) => {
+      sockets.add(socket)
+      socket.on('error', () => {})
+      socket.on('close', () => sockets.delete(socket))
+    })
+    tcp.listen(0, '127.0.0.1')
+    await new Promise<void>((resolve) => tcp.once('listening', resolve))
+    const bound = tcp.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    const failures: RemoteCacheProbeFailure[] = []
+    try {
+      expect(
+        await probeRemoteCacheCapabilities({
+          address: `grpc://127.0.0.1:${bound.port}`,
+          instanceName: 'fixture',
+          tls: true,
+          header: undefined,
+          env: {},
+          connectTlsDeadlineMs: 10000,
+          responseDeadlineMs: 10000,
+          totalCeilingMs: 10000,
+          attemptCeilingMs: 150,
+          onFailure: (failure) => failures.push(failure),
+        }),
+      ).toBeFalse()
+      expect(failures[0]?.errorClass).toBe('deadline')
+      expect(failures[0]?.phase).toBe('tls')
+      expect(failures[0]?.deadlineMs).toBe(10000)
     } finally {
       for (const socket of sockets) socket.destroy()
       tcp.close()

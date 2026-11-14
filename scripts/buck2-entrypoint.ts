@@ -33,8 +33,11 @@ import {
   canonicalCacheAdmissionInvocationId,
   decodeReapiAdmissionFailure,
   probeRemoteCacheCapabilities,
+  reapiAdmissionProbeBudgetMs,
   reconcileStandaloneCachePosture,
+  shouldRetryReapiAdmission,
   standaloneCachePostureConfig,
+  type ReapiAdmissionFailure,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
 import {
@@ -345,7 +348,7 @@ export const directBuckArguments = async ({
     'effect-utils',
     'buck2-posture-v2',
   ),
-  deadlineMs = 2500,
+  deadlineMs,
   probeDeadlineSignal,
   beforeCachePosture,
   onCachePosture,
@@ -392,7 +395,7 @@ export const directBuckArguments = async ({
       probeWatchman({
         env,
         repoRoot: root,
-        deadlineMs,
+        deadlineMs: deadlineMs ?? 2500,
         managedDirectory: watchmanDirectory,
         makeDeadlineSignal:
           probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
@@ -493,20 +496,60 @@ export const directBuckArguments = async ({
     admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
     admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
   }
-  // Two sequential, independently bounded attempts: at most 5000 ms.
+  // Split probe budget: connect+TLS owns its deadline so slow ingress TLS
+  // cannot eat the response budget; a response-phase deadline is a server-side
+  // signal and never earns the single retry, which also requires remaining
+  // ceiling. An explicit flat `deadlineMs` preserves the former single budget.
+  const reapiBudget =
+    deadlineMs === undefined
+      ? reapiAdmissionProbeBudgetMs
+      : {
+          connectTlsDeadlineMs: deadlineMs,
+          responseDeadlineMs: deadlineMs,
+          totalCeilingMs: deadlineMs * 2,
+        }
   const retryProbe = async ({
     endpoint,
     probe,
+    firstFailurePhase,
   }: {
     readonly endpoint: 'reapi'
-    readonly probe: (attemptIndex: number) => Promise<boolean>
+    readonly probe: (attempt: {
+      readonly attemptIndex: number
+      readonly connectTlsDeadlineMs: number
+      readonly responseDeadlineMs: number
+      readonly totalCeilingMs: number
+      readonly attemptCeilingMs: number
+    }) => Promise<boolean>
+    readonly firstFailurePhase: () => ReapiAdmissionFailure['phase'] | undefined
   }): Promise<boolean> => {
-    if ((await probe(1)) === true) return true
-    const available = await probe(2)
+    const started = performance.now()
+    const remainingCeilingMs = () =>
+      reapiBudget.totalCeilingMs - (performance.now() - started)
+    const attempt = (attemptIndex: number) => ({
+      attemptIndex,
+      connectTlsDeadlineMs: reapiBudget.connectTlsDeadlineMs,
+      responseDeadlineMs: reapiBudget.responseDeadlineMs,
+      totalCeilingMs: reapiBudget.totalCeilingMs,
+      attemptCeilingMs: Math.min(
+        reapiBudget.connectTlsDeadlineMs + reapiBudget.responseDeadlineMs,
+        Math.max(Math.ceil(attemptIndex === 1 ? reapiBudget.totalCeilingMs : remainingCeilingMs()), 0),
+      ),
+    })
+    if ((await probe(attempt(1))) === true) return true
+    if (
+      shouldRetryReapiAdmission({
+        failurePhase: firstFailurePhase(),
+        remainingCeilingMs: remainingCeilingMs(),
+      }) === false
+    )
+      return false
+    const available = await probe(attempt(2))
     if (available === true) admission.admissionRetrySuccesses[endpoint] = 1
     return available
   }
   const reapiDiagnostics: { failure?: string } = {}
+  const reapiFailurePhase: { phase?: ReapiAdmissionFailure['phase'] } = {}
   const reapiKey = JSON.stringify([
     'reapi',
     values['buck2_re_client.action_cache_address'],
@@ -532,16 +575,17 @@ export const directBuckArguments = async ({
               probe: () =>
                 retryProbe({
                   endpoint: 'reapi',
-                  probe: (attemptIndex) =>
+                  firstFailurePhase: () => reapiFailurePhase.phase,
+                  probe: ({ attemptIndex, ...budgets }) =>
                     probeRemoteCacheCapabilities({
                       address: values['buck2_re_client.action_cache_address'],
                       instanceName: values['buck2_re_client.instance_name'] ?? '',
                       tls: values['buck2_re_client.tls'] !== 'false',
                       header: values['buck2_re_client.http_headers'],
                       env,
-                      deadlineMs,
-                      deadlineSignal: probeDeadlineSignal?.('reapi'),
                       attemptIndex,
+                      ...budgets,
+                      deadlineSignal: probeDeadlineSignal?.('reapi'),
                       onAttempt: (attempt) => {
                         ;(admission.reapiAttempts ??= []).push(attempt)
                         writeSync(2, `Buck2 REAPI admission attempt: ${JSON.stringify(attempt)}\n`)
@@ -552,6 +596,7 @@ export const directBuckArguments = async ({
                         elapsedMs,
                         deadlineMs: probeDeadlineMs,
                       }) => {
+                        reapiFailurePhase.phase = phase
                         reapiDiagnostics.failure = `class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}`
                         writeSync(
                           2,

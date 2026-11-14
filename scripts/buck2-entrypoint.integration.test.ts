@@ -1193,7 +1193,7 @@ Object.defineProperty(process, 'execve', {
     }, 20000)
   }
 
-  for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
+  for (const scenario of ['healthy', 'retry-success', 'both-fail', 'response-no-retry'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
       let requests = 0
       let archiveRequests = 0
@@ -1206,7 +1206,9 @@ Object.defineProperty(process, 'execve', {
         stream.on('error', () => {})
         stream.on('data', () => {})
         stream.on('end', () => {
-          if (scenario === 'both-fail' || (scenario === 'retry-success' && requests === 1)) {
+          // Only the response-phase scenario expires a held attempt after the
+          // real request; a healthy retry must not race a wall-clock timer.
+          if (scenario === 'response-no-retry') {
             const deadline = probeDeadlines.reapi[requests - 1]
             if (deadline === undefined) throw new Error('expected REAPI attempt deadline')
             deadline.abort()
@@ -1239,12 +1241,17 @@ Object.defineProperty(process, 'execve', {
           args: ['build', '//:app'],
           env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
           ...(scenario === 'healthy' ? {} : { deadlineMs: 100 }),
-          // The fixture expires only deliberately held attempts, after receiving
-          // the real request. A healthy retry must not race a wall-clock timer.
+          // Connect-phase expiry (a stalled ingress TLS analogue) aborts before
+          // the request and earns the retry; response-phase expiry does not.
           probeDeadlineSignal: (endpoint: AdmissionProbeEndpoint) => {
             if (endpoint === 'watchman') return undefined
             const deadline = new AbortController()
             probeDeadlines[endpoint].push(deadline)
+            if (
+              (scenario === 'retry-success' && probeDeadlines[endpoint].length === 1) ||
+              scenario === 'both-fail'
+            )
+              deadline.abort()
             return deadline.signal
           },
         }
@@ -1253,23 +1260,31 @@ Object.defineProperty(process, 'execve', {
           ...admissionOptions,
           env: { ...admissionOptions.env, BUCK_WRAPPER_UUID: invocationId.replaceAll('-', '') },
         })
-        if (scenario === 'both-fail')
+        if (scenario === 'both-fail' || scenario === 'response-no-retry')
           expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
         else expect(effective(result)['buck2.remote_cache_enabled']).not.toBe('false')
         expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
-        expect(requests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(requests).toBe(scenario === 'both-fail' ? 0 : 1)
         expect(archiveRequests).toBe(0)
-        expect(deadlines).toEqual(scenario === 'healthy' ? ['2500m'] : ['100m', '100m'])
+        expect(deadlines).toEqual(
+          scenario === 'healthy'
+            ? ['2500m']
+            : scenario === 'both-fail'
+              ? []
+              : ['100m'],
+        )
         for (const attempts of Object.values(probeDeadlines)) {
           expect(attempts.map((deadline) => deadline.signal.aborted)).toEqual(
             scenario === 'healthy'
               ? [false]
               : scenario === 'retry-success'
                 ? [true, false]
-                : [true, true],
+                : scenario === 'both-fail'
+                  ? [true, true]
+                  : [true],
           )
         }
-        if (scenario === 'both-fail') {
+        if (scenario === 'both-fail' || scenario === 'response-no-retry') {
           await expect(
             directBuckArguments({
               ...admissionOptions,
@@ -1289,7 +1304,7 @@ Object.defineProperty(process, 'execve', {
         expect(rows[0]?.invocationId).toBe(invocationId)
         for (const [index, row] of rows.entries()) {
           expect(row.admissionFallbacks).toEqual({
-            reapi: scenario === 'both-fail' ? 1 : 0,
+            reapi: scenario === 'both-fail' || scenario === 'response-no-retry' ? 1 : 0,
             archiveOrigin: 0,
           })
           expect(row.admissionRetrySuccesses).toEqual({
