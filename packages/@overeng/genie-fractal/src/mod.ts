@@ -137,6 +137,7 @@ export const node = ({
 /** KDL v2 quoted strings, including its forbidden literals and non-JSON Unicode escapes. */
 const quotedString = (text: string): string =>
   `"${text.replace(
+    // eslint-disable-next-line eslint/no-control-regex -- KDL quoted strings must escape ASCII controls rather than emit forbidden literals.
     /["\\\u0000-\u001f\u007f\u0085\u200e-\u200f\u2028-\u202e\u2066-\u2069\ud800-\udfff\ufeff]/gu,
     (character) => {
       switch (character) {
