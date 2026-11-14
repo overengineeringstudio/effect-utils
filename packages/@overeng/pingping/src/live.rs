@@ -34,7 +34,12 @@ struct RawGuard;
 impl Drop for RawGuard {
     fn drop(&mut self) {
         let mut out = io::stdout();
-        let _ = queue!(out, DisableMouseCapture, DisableBracketedPaste, cursor::Show);
+        let _ = queue!(
+            out,
+            DisableMouseCapture,
+            DisableBracketedPaste,
+            cursor::Show
+        );
         let _ = out.flush();
         let _ = terminal::disable_raw_mode();
         let _ = out.flush();
