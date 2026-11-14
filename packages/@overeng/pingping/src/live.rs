@@ -46,7 +46,7 @@ impl Drop for RawGuard {
 )]
 pub fn run(
     hosts: &mut [HostState],
-    rx: &Receiver<(usize, ProbeEvent)>,
+    rx: &Receiver<(crate::target::TargetId, ProbeEvent)>,
     notification: &UnixStream,
     stop: &AtomicBool,
     mut layout: Layout,
@@ -131,7 +131,7 @@ pub fn run(
             // that reader is parked waiting for our post-draw acknowledgement.
             geometry.locate(drawn, previous, resized || input.is_none())?;
             resized = false;
-            geometry.set_frame(frame);
+            geometry.set_frame(frame, hosts);
             dirty = false;
             next_draw = Instant::now() + Duration::from_millis(16);
             marker_expiry = hosts
@@ -238,23 +238,35 @@ fn choose_theme(choice: ThemeChoice) -> Theme {
 /// Drains one ready probe burst; returns true once every worker has finished.
 fn receive_probes(
     hosts: &mut [HostState],
-    rx: &Receiver<(usize, ProbeEvent)>,
+    rx: &Receiver<(crate::target::TargetId, ProbeEvent)>,
     dirty: &mut bool,
     paths: &crate::path::Monitor,
     mut history: Option<&mut crate::history::Store>,
 ) -> io::Result<bool> {
     loop {
         match rx.try_recv() {
-            Ok((index, event)) => {
+            Ok((id, event)) => {
+                if id == crate::target::GLOBAL_ID {
+                    if matches!(&event, ProbeEvent::Network(_) | ProbeEvent::Egress { .. }) {
+                        for host in hosts.iter_mut() {
+                            host.apply(event.clone());
+                        }
+                        *dirty = true;
+                    }
+                    continue;
+                }
+                let Some(host) = hosts.iter_mut().find(|host| host.id == id) else {
+                    continue;
+                };
                 if let Some(store) = history.as_deref_mut() {
-                    store.record(index, &event)?;
+                    store.record(id, &event)?;
                 }
                 match &event {
-                    ProbeEvent::Resolved(address) => paths.resolved(index, *address),
-                    ProbeEvent::Finished | ProbeEvent::Failed { .. } => paths.finished(index),
+                    ProbeEvent::Resolved(address) => paths.resolved(id, *address),
+                    ProbeEvent::Finished | ProbeEvent::Failed { .. } => paths.finished(id),
                     _ => {}
                 }
-                hosts[index].apply(event);
+                host.apply(event);
                 *dirty = true;
             }
             Err(TryRecvError::Empty) => return Ok(hosts.iter().all(|host| host.finished)),
@@ -396,14 +408,25 @@ struct Geometry {
     /// Per host, the overview grid when its overview is drawn.
     overviews: Vec<Option<Grid>>,
     notes: Vec<(usize, usize, usize, usize)>,
+    /// Stable IDs corresponding to the stateless renderer's overview positions.
+    ids: Vec<crate::target::TargetId>,
 }
 
 impl Geometry {
-    fn set_frame(&mut self, frame: render::Frame) {
+    fn set_frame(&mut self, frame: render::Frame, hosts: &[HostState]) {
         self.timeline = frame.timeline;
-        self.lines = frame.timeline_lines;
+        self.lines = frame
+            .timeline_lines
+            .into_iter()
+            .filter_map(|(line, index, overview)| Some((line, hosts.get(index)?.id, overview)))
+            .collect();
         self.overviews = frame.overviews;
-        self.notes = frame.notes;
+        self.notes = frame
+            .notes
+            .into_iter()
+            .filter_map(|(line, index, start, end)| Some((line, hosts.get(index)?.id, start, end)))
+            .collect();
+        self.ids = hosts.iter().map(|host| host.id).collect();
     }
 
     fn locate(&mut self, drawn: usize, previous: usize, query: bool) -> io::Result<()> {
@@ -442,8 +465,11 @@ impl Geometry {
         })
     }
 
-    fn overview(&self, host: usize) -> Option<Grid> {
-        self.overviews.get(host).copied().flatten()
+    fn overview(&self, host: crate::target::TargetId) -> Option<Grid> {
+        self.overviews
+            .get(self.ids.iter().position(|id| *id == host)?)
+            .copied()
+            .flatten()
     }
 }
 
@@ -704,10 +730,21 @@ fn draw(
 ) -> io::Result<(usize, render::Frame)> {
     let (width, height) = terminal::size()?;
     let (width, height) = (usize::from(width), usize::from(height));
+    // Only the stateless renderer consumes indices. Resolve a stable hover ID
+    // against this exact row snapshot before formatting it.
+    let timeline = Timeline {
+        hover: timeline.hover.and_then(|hover| {
+            Some(Hover {
+                host: hosts.iter().position(|host| host.id == hover.host)?,
+                ..hover
+            })
+        }),
+        ..*timeline
+    };
     let frame = render::frame(
         hosts,
         layout,
-        timeline,
+        &timeline,
         width.saturating_sub(1),
         height,
         footer,
@@ -960,7 +997,44 @@ mod tests {
                 width: 100,
             })],
             notes: Vec::new(),
+            ids: vec![0],
         }
+    }
+
+    #[test]
+    fn hover_geometry_keeps_identity_when_an_earlier_row_is_removed() {
+        let mut first = HostState::new("first".into());
+        first.id = 41;
+        let mut second = HostState::new("second".into());
+        second.id = 73;
+        let timeline = Timeline {
+            view: View::default(),
+            interval: Duration::from_secs(1),
+            current_interval: Duration::from_secs(1),
+            stats_scope: StatsScope::Run,
+            hover: None,
+            now: SystemTime::now(),
+            hover_now: None,
+            overview_end: None,
+        };
+        let mut geometry = Geometry {
+            top: Some(0),
+            ..Geometry::default()
+        };
+        let mut hosts = vec![first, second];
+        geometry.set_frame(
+            render::frame(&hosts, Layout::Rows, &timeline, 180, 40, true),
+            &hosts,
+        );
+        let column = u16::try_from(geometry.timeline.0).unwrap();
+        assert_eq!(geometry.hover_at(column, 2).unwrap().host, 73);
+        hosts.remove(0);
+        geometry.set_frame(
+            render::frame(&hosts, Layout::Rows, &timeline, 180, 40, true),
+            &hosts,
+        );
+        let column = u16::try_from(geometry.timeline.0).unwrap();
+        assert_eq!(geometry.hover_at(column, 1).unwrap().host, 73);
     }
 
     fn mouse(kind: MouseEventKind, column: u16) -> Event {
@@ -1031,7 +1105,7 @@ mod tests {
             top: Some(10),
             ..Geometry::default()
         };
-        geometry.set_frame(frame);
+        geometry.set_frame(frame, std::slice::from_ref(&host));
         let chart_row = geometry
             .lines
             .iter()
@@ -1283,6 +1357,7 @@ mod tests {
             lines: vec![(2, 0, false), (12, 1, false), (13, 1, true)],
             overviews: vec![None, None],
             notes: Vec::new(),
+            ids: vec![0, 1],
         };
         assert_eq!(
             geometry.hover_at(7, 12),
@@ -1453,6 +1528,7 @@ mod tests {
         let mut changed = geometry();
         changed.timeline = (2, 80);
         changed.lines.push((5, 1, true));
+        changed.ids.push(1);
         changed.overviews = vec![
             Some(Grid {
                 start: 100.0,

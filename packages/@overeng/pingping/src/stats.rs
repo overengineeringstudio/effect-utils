@@ -260,6 +260,7 @@ pub enum DropAge {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HostState {
+    pub id: crate::target::TargetId,
     pub host: String,
     pub status: Status,
     /// Restored sessions are presentation-only, never part of live statistics.
@@ -287,7 +288,7 @@ pub struct HostState {
     pub finished: bool,
     pub path: crate::path::State,
     pub boot: crate::uptime::State,
-    /// Run-wide selected link, carried by the first host's network event.
+    /// Run-wide selected link, broadcast independently of target identity.
     pub network: Option<std::sync::Arc<crate::netinfo::NetInfo>>,
     pub egress: crate::egress::State,
 }
@@ -295,6 +296,7 @@ pub struct HostState {
 impl HostState {
     pub fn new(host: String) -> Self {
         Self {
+            id: 0,
             host,
             status: Status::Resolving,
             prior_sessions: crate::render::History::default(),

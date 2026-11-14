@@ -9,6 +9,7 @@ mod probe;
 mod render;
 mod stats;
 mod tailnet;
+mod target;
 mod theme;
 mod timeline;
 mod uptime;
@@ -27,6 +28,7 @@ use clap::Parser;
 use crate::probe::{Failure, Family, ProbeConfig, ProbeEvent};
 use crate::render::{fmt_ms, Layout};
 use crate::stats::{HostState, Status};
+use crate::target::{TargetId, GLOBAL_ID};
 use crate::theme::ThemeChoice;
 
 /// Ping one or more hosts with a live view of latency and loss.
@@ -139,7 +141,17 @@ fn main() -> ExitCode {
     } else {
         None
     };
-    let mut hosts: Vec<HostState> = cli.hosts.iter().cloned().map(HostState::new).collect();
+    let mut hosts: Vec<HostState> = cli
+        .hosts
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(id, name)| {
+            let mut host = HostState::new(name);
+            host.id = id;
+            host
+        })
+        .collect();
     let mut history = if interactive && !cli.no_history {
         match history::Store::open(&cli.hosts, config.interval) {
             Ok((store, prior)) => {
@@ -223,9 +235,7 @@ fn main() -> ExitCode {
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     drop(uptime_workers);
     drop(paths);
-    for worker in workers {
-        let _ = worker.join();
-    }
+    drop(workers);
     if pipe_closed {
         return ExitCode::SUCCESS;
     }
@@ -273,7 +283,7 @@ fn exit_status(hosts: &[HostState]) -> u8 {
 /// Non-TTY output: one line per probe outcome, then a summary per host.
 fn print_plain(
     hosts: &mut [HostState],
-    rx: &mpsc::Receiver<(usize, ProbeEvent)>,
+    rx: &mpsc::Receiver<(TargetId, ProbeEvent)>,
     out: &mut impl Write,
 ) -> std::io::Result<()> {
     let tailnet = tailnet::status();
@@ -281,30 +291,41 @@ fn print_plain(
     let _network_monitor = pingping_netinfo_macos::NetInfoMonitor::start(|| {});
     let mut network_printed = false;
     let mut egress_printed = false;
-    for (index, event) in rx {
-        let host = &mut hosts[index];
-        let name = host.host.as_str();
-        match &event {
-            ProbeEvent::Resolved(addr) => {
-                writeln!(out, "{name} resolved to {addr}")?;
-                if let Some(note) = path::initial(tailnet.as_ref(), *addr) {
-                    writeln!(out, "{name} {}", note.text)?;
-                    host.path.note = Some(note);
+    for (id, event) in rx {
+        if id == GLOBAL_ID {
+            if !matches!(&event, ProbeEvent::Network(_) | ProbeEvent::Egress { .. }) {
+                continue;
+            }
+            for host in hosts.iter_mut() {
+                host.apply_plain(event.clone());
+            }
+        } else {
+            let Some(host) = hosts.iter_mut().find(|host| host.id == id) else {
+                continue;
+            };
+            let name = host.host.as_str();
+            match &event {
+                ProbeEvent::Resolved(addr) => {
+                    writeln!(out, "{name} resolved to {addr}")?;
+                    if let Some(note) = path::initial(tailnet.as_ref(), *addr) {
+                        writeln!(out, "{name} {}", note.text)?;
+                        host.path.note = Some(note);
+                    }
                 }
+                ProbeEvent::Failed { reason, .. } => writeln!(out, "{name} failed: {reason}")?,
+                ProbeEvent::Reply { seq, rtt, .. } => {
+                    writeln!(out, "{name} seq={seq} time={}", fmt_ms(*rtt))?;
+                }
+                ProbeEvent::Lost { seq, .. } => writeln!(out, "{name} seq={seq} lost")?,
+                ProbeEvent::Finished
+                | ProbeEvent::Path { .. }
+                | ProbeEvent::Scheduled { .. }
+                | ProbeEvent::Network(_)
+                | ProbeEvent::Boot(_)
+                | ProbeEvent::Egress { .. } => {}
             }
-            ProbeEvent::Failed { reason, .. } => writeln!(out, "{name} failed: {reason}")?,
-            ProbeEvent::Reply { seq, rtt, .. } => {
-                writeln!(out, "{name} seq={seq} time={}", fmt_ms(*rtt))?;
-            }
-            ProbeEvent::Lost { seq, .. } => writeln!(out, "{name} seq={seq} lost")?,
-            ProbeEvent::Finished
-            | ProbeEvent::Path { .. }
-            | ProbeEvent::Scheduled { .. }
-            | ProbeEvent::Network(_)
-            | ProbeEvent::Boot(_)
-            | ProbeEvent::Egress { .. } => {}
+            host.apply_plain(event);
         }
-        host.apply_plain(event);
         if !egress_printed {
             if let Some(info) = &hosts[0].egress.info {
                 writeln!(out, "egress: {} (AS{})", info.label(), info.asn)?;
@@ -386,6 +407,31 @@ mod tests {
         for removed in ["--history-view", "--history-seed-demo"] {
             assert!(Cli::try_parse_from(["pingping", removed, "host-a"]).is_err());
         }
+    }
+
+    #[test]
+    fn plain_events_follow_ids_and_ignore_absent_targets() {
+        let (tx, rx) = mpsc::channel();
+        let reply = ProbeEvent::Reply {
+            seq: 1,
+            slot: 1,
+            rtt: Duration::from_millis(1),
+            sent: std::time::SystemTime::now(),
+        };
+        tx.send((0, reply.clone())).unwrap();
+        tx.send((73, reply)).unwrap();
+        tx.send((GLOBAL_ID, ProbeEvent::Network(None))).unwrap();
+        drop(tx);
+        let mut first = HostState::new("first".into());
+        first.id = 41;
+        let mut second = HostState::new("second".into());
+        second.id = 73;
+        let mut hosts = vec![first, second];
+        let mut output = Vec::new();
+        print_plain(&mut hosts, &rx, &mut output).unwrap();
+        assert_eq!(hosts[0].received, 0);
+        assert_eq!(hosts[1].received, 1);
+        assert!(String::from_utf8(output).unwrap().contains("second seq=1"));
     }
 
     #[test]

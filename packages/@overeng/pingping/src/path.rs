@@ -160,8 +160,8 @@ fn tailnet_note(status: &Status, address: IpAddr) -> Option<Note> {
 }
 
 enum Command {
-    Address(usize, IpAddr),
-    Remove(usize),
+    Address(crate::target::TargetId, IpAddr),
+    Remove(crate::target::TargetId),
     #[cfg(target_os = "macos")]
     NetworkChanged,
 }
@@ -176,7 +176,7 @@ pub struct Monitor {
 impl Monitor {
     pub fn spawn(
         schedule: Arc<Schedule>,
-        events: Sender<(usize, ProbeEvent)>,
+        events: Sender<(crate::target::TargetId, ProbeEvent)>,
         wake: Arc<UnixStream>,
     ) -> Self {
         let (commands, receiver) = mpsc::channel();
@@ -195,12 +195,12 @@ impl Monitor {
             native,
         }
     }
-    pub fn resolved(&self, index: usize, address: IpAddr) {
+    pub fn resolved(&self, index: crate::target::TargetId, address: IpAddr) {
         if let Some(commands) = &self.commands {
             let _ = commands.send(Command::Address(index, address));
         }
     }
-    pub fn finished(&self, index: usize) {
+    pub fn finished(&self, index: crate::target::TargetId) {
         if let Some(commands) = &self.commands {
             let _ = commands.send(Command::Remove(index));
         }
@@ -240,10 +240,10 @@ fn refresh_interval() -> Duration {
 fn monitor(
     commands: &Receiver<Command>,
     schedule: &Schedule,
-    events: &Sender<(usize, ProbeEvent)>,
+    events: &Sender<(crate::target::TargetId, ProbeEvent)>,
     wake: &UnixStream,
 ) {
-    let mut hosts = BTreeMap::<usize, Watched>::new();
+    let mut hosts = BTreeMap::<crate::target::TargetId, Watched>::new();
     let mut status = None;
     let mut loaded = false;
     let mut next_tailnet = Instant::now();
@@ -361,7 +361,7 @@ fn monitor(
                 if network_loaded {
                     egress_generation += 1;
                     let _ = events.send((
-                        0,
+                        crate::target::GLOBAL_ID,
                         ProbeEvent::Egress {
                             generation: egress_generation,
                             info: None,
@@ -374,7 +374,10 @@ fn monitor(
                     );
                 }
                 if events
-                    .send((0, ProbeEvent::Network(network.current.clone())))
+                    .send((
+                        crate::target::GLOBAL_ID,
+                        ProbeEvent::Network(network.current.clone()),
+                    ))
                     .is_err()
                 {
                     return;
