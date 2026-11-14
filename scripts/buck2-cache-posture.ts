@@ -12,7 +12,6 @@ import {
 import { connect, type ClientHttp2Stream } from 'node:http2'
 import { BlockList, isIP } from 'node:net'
 import { resolve } from 'node:path'
-import type { Timer } from 'node:timers'
 import process from 'node:process'
 
 const MANAGED_BEGIN = '# effect-utils standalone cache posture: begin'
@@ -585,8 +584,8 @@ export const probeRemoteCacheCapabilities = async ({
       // budget runs until TLS (or plaintext TCP) is ready, then the response
       // budget starts fresh, both clamped by the attempt ceiling.
       const usePlatformTimers = deadlineSignal === undefined
-      let connectTimer: Timer | undefined
-      let responseTimer: Timer | undefined
+      let connectTimer: NodeJS.Timeout | undefined
+      let responseTimer: NodeJS.Timeout | undefined
       const enterResponsePhase = () => {
         phase = 'response'
         if (responseTimer !== undefined || usePlatformTimers === false) return

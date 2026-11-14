@@ -16,7 +16,8 @@ import {
   watch,
   writeFileSync,
 } from 'node:fs'
-import { createServer, type ServerHttp2Stream } from 'node:http2'
+import { createServer, createSecureServer, type ServerHttp2Stream } from 'node:http2'
+import { connect as connectTcp, createServer as createTcpServer, type Socket } from 'node:net'
 import { getPriority, homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
@@ -1206,14 +1207,9 @@ Object.defineProperty(process, 'execve', {
         stream.on('error', () => {})
         stream.on('data', () => {})
         stream.on('end', () => {
-          // Only the response-phase scenario expires a held attempt after the
-          // real request; a healthy retry must not race a wall-clock timer.
-          if (scenario === 'response-no-retry') {
-            const deadline = probeDeadlines.reapi[requests - 1]
-            if (deadline === undefined) throw new Error('expected REAPI attempt deadline')
-            deadline.abort()
-            return
-          }
+          // A connected server that never answers expires the response budget
+          // without opening a retry connection.
+          if (scenario === 'response-no-retry') return
           stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
           stream.end(Buffer.from([0, 0, 0, 0, 0]))
         })
@@ -1244,7 +1240,7 @@ Object.defineProperty(process, 'execve', {
           // Connect-phase expiry (a stalled ingress TLS analogue) aborts before
           // the request and earns the retry; response-phase expiry does not.
           probeDeadlineSignal: (endpoint: AdmissionProbeEndpoint) => {
-            if (endpoint === 'watchman') return undefined
+            if (endpoint === 'watchman' || scenario === 'response-no-retry') return undefined
             const deadline = new AbortController()
             probeDeadlines[endpoint].push(deadline)
             if (
@@ -1281,7 +1277,7 @@ Object.defineProperty(process, 'execve', {
                 ? [true, false]
                 : scenario === 'both-fail'
                   ? [true, true]
-                  : [true],
+                  : [],
           )
         }
         if (scenario === 'both-fail' || scenario === 'response-no-retry') {
@@ -1445,6 +1441,73 @@ console.log(JSON.stringify(outcomes));`,
       expect(stderr.match(/warning: Buck2 REAPI probe failed:/gu)).toHaveLength(6)
       expect(stderr).not.toContain('ERR_HTTP2_SOCKET_UNBOUND')
       expect(stderr).not.toContain('fixture-secret')
+      // Hold ClientHello longer than the scaled response budget, then finish
+      // real TLS and answer immediately. Platform timers are under test.
+      const sockets = new Set<Socket>()
+      const secure = createSecureServer({ cert, key })
+      secure.on('stream', (stream) => {
+        stream.on('error', () => {})
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      const listening = Promise.withResolvers<void>()
+      secure.once('listening', listening.resolve)
+      secure.listen(0, '127.0.0.1')
+      await listening.promise
+      const secureAddress = secure.address()
+      if (secureAddress === null || typeof secureAddress === 'string') throw new Error('expected TLS listener')
+      const relay = createTcpServer((downstream) => {
+        const upstream = connectTcp(secureAddress.port, '127.0.0.1')
+        for (const socket of [downstream, upstream]) {
+          sockets.add(socket)
+          socket.on('error', () => {})
+          socket.on('close', () => sockets.delete(socket))
+        }
+        upstream.pipe(downstream)
+        setTimeout(() => {
+          if (downstream.destroyed === false) downstream.pipe(upstream)
+        }, 400)
+      })
+      const relayListening = Promise.withResolvers<void>()
+      relay.once('listening', relayListening.resolve)
+      relay.listen(0, '127.0.0.1')
+      await relayListening.promise
+      const relayAddress = relay.address()
+      if (relayAddress === null || typeof relayAddress === 'string') throw new Error('expected relay')
+      try {
+        const probe = Bun.spawn({
+          cmd: [process.execPath, '-e', `
+import { probeRemoteCacheCapabilities } from ${JSON.stringify(import.meta.dir + '/buck2-cache-posture.ts')};
+let attempt;
+const admitted = await probeRemoteCacheCapabilities({
+  address: 'grpcs://127.0.0.1:${relayAddress.port}', instanceName: '', tls: true,
+  header: undefined, env: {}, connectTlsDeadlineMs: 2000,
+  responseDeadlineMs: 200, totalCeilingMs: 2500, attemptCeilingMs: 2500,
+  onAttempt: (value) => { attempt = value; },
+});
+console.log(JSON.stringify({admitted, attempt}));`],
+          env: { ...process.env, NODE_EXTRA_CA_CERTS: certificate },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [output, diagnostic, code] = await Promise.all([
+          new Response(probe.stdout).text(), new Response(probe.stderr).text(), probe.exited,
+        ])
+        expect(diagnostic).toBe('')
+        expect(code).toBe(0)
+        const result = JSON.parse(output)
+        expect(result.admitted).toBe(true)
+        expect(result.attempt.tlsReadyMs).toBeGreaterThan(200)
+        expect(result.attempt.responseDeadlineMs).toBe(200)
+        expect(result.attempt.failure).toBeUndefined()
+      } finally {
+        for (const socket of sockets) socket.destroy()
+        relay.close()
+        secure.close()
+      }
     } finally {
       tls.close()
     }
