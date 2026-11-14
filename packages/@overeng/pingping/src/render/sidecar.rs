@@ -3,7 +3,7 @@ use super::{
     visible_stats,
 };
 use super::{
-    block, fmt_ms, key_hint, loss, span, sparkline, stacked_spark_width, summary, timeline,
+    block, fmt_ms, key_hint, loss, past, span, sparkline, stacked_spark_width, summary, timeline,
     Duration, Extent, Frame, Grid, HostState, Layout, Line, Role, Stats, Status, Timeline,
     UnicodeWidthStr, LABEL_WIDTH, RULE,
 };
@@ -212,6 +212,7 @@ fn plan(
         };
         let needed = hosts.len()
             * (usize::from(!merged) + 2 + chart_rows + if sidecar { 0 } else { stat_rows })
+            + hosts.iter().filter(|host| past::has_stream(host)).count()
             + hosts.len().saturating_sub(1)
             + footer_height
             + axis_height;
@@ -293,8 +294,9 @@ pub(super) fn frame(
             lines.push(vec![]);
         }
         if reference {
-            timeline_lines.extend((0..chart_rows).map(|row| (lines.len() + 2 + row, index, false)));
-            timeline_lines.push((lines.len() + 2 + chart_rows, index, true));
+            let chart = lines.len() + 2 + usize::from(past::has_stream(host));
+            timeline_lines.extend((0..chart_rows).map(|row| (chart + row, index, false)));
+            timeline_lines.push((chart + chart_rows, index, true));
             let block = block(
                 host,
                 timeline,
@@ -318,6 +320,7 @@ pub(super) fn frame(
             notes.push((lines.len() + address_line, index, start, end));
         }
         lines.extend(identity);
+        lines.extend(past::line(host, timeline.now, 0, spark_width));
         let hover = timeline.hover.filter(|hover| hover.host == index);
         let (spark, mut hovered) = sparkline(
             host,
