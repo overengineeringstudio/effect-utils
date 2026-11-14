@@ -114,11 +114,8 @@ struct Writer {
 pub struct Store {
     writers: HashMap<TargetId, Writer>,
     clock: Instant,
-    #[cfg(test)]
     root: PathBuf,
-    #[cfg(test)]
     start: SystemTime,
-    #[cfg(test)]
     status: Option<Status>,
 }
 
@@ -132,7 +129,7 @@ impl Store {
             hosts,
             interval,
             SystemTime::now(),
-            tailnet::status().as_ref(),
+            tailnet::status(),
         )
     }
 
@@ -141,7 +138,7 @@ impl Store {
         hosts: &[String],
         interval: Duration,
         now: SystemTime,
-        status: Option<&Status>,
+        status: Option<Status>,
     ) -> io::Result<(Self, Vec<Vec<HistoricalSession>>)> {
         let clock = Instant::now();
         private_directory(root)?;
@@ -150,7 +147,7 @@ impl Store {
         }
         let identities: Vec<_> = hosts
             .iter()
-            .map(|host| Identity::resolve(host, status))
+            .map(|host| Identity::resolve(host, status.as_ref()))
             .collect();
         let prior = load(root, &identities, now)?;
         let writers = identities
@@ -172,12 +169,9 @@ impl Store {
             Self {
                 writers,
                 clock,
-                #[cfg(test)]
                 root: root.to_owned(),
-                #[cfg(test)]
                 start: now,
-                #[cfg(test)]
-                status: status.cloned(),
+                status,
             },
             prior,
         ))
@@ -186,7 +180,6 @@ impl Store {
     /// Starts a target journal on this run's original time axis.
     /// Call only after resolving the entire target edit successfully. An existing
     /// target's display-only rename must retain its writer rather than register again.
-    #[cfg(test)]
     pub fn register(
         &mut self,
         id: TargetId,
@@ -219,7 +212,6 @@ impl Store {
     }
 
     /// Closes the target's journal without changing any other target's identity.
-    #[cfg(test)]
     pub fn retire(&mut self, id: TargetId) {
         self.writers.remove(&id);
     }
@@ -904,7 +896,7 @@ mod tests {
             &names,
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status),
         )
         .unwrap();
         store
@@ -1191,7 +1183,7 @@ mod tests {
             &["HOST-A".into()],
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status.clone()),
         )
         .unwrap();
         store
@@ -1209,7 +1201,7 @@ mod tests {
             &["100.64.0.1".into()],
             Duration::from_secs(1),
             now(),
-            Some(&status),
+            Some(status),
         )
         .unwrap();
         assert_eq!(previous[0].len(), 1);
