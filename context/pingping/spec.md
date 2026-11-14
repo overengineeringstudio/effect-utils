@@ -212,15 +212,24 @@ Each `(host, session)` owns one append-only JSONL file. Version 1 records are:
 The product owns this local schema; `host.kind` is `host` or `tailnet_dns`, and
 `outcome.kind` is `reply` or `lost`. UTC is RFC3339, offsets and durations are
 integer nanoseconds. `offset_ns` is the probe's scheduled monotonic run position.
+Restoration preserves this offset and orders each session by it, including across
+backward wall-clock steps. UTC remains the source for labels and retention.
 Only final outcomes are recorded, once per scheduled probe; pending is not loss.
 Unknown versions, invalid headers, and malformed complete records fail explicitly.
-A truncated final sample is ignored. Writes are not individually fsynced.
+A truncated final sample is ignored. Complete records are limited to 64 KiB,
+including the newline, for both reads and writes. Writes are not individually fsynced.
 
-Startup excludes samples older than seven days and prunes wholly expired sessions;
-an older session with recent samples remains readable. A complete header is
-published atomically from a private `.pending` file using a non-replacing hard
-link; readers ignore unpublished files. Concurrent instances own separate files
-and load snapshots, never append to one another's journals.
+Startup reads headers first and skips unrelated hosts without parsing their samples.
+Matching records are streamed through the UTC seven-day cutoff, retaining only the
+newest 86,400 outcomes per requested host, using the same cap as current-run retention.
+Expired-file pruning uses the last append time (file modification time), without
+materializing samples. A writer holds an exclusive advisory `flock` for its file's
+lifetime; a pruner takes a nonblocking exclusive lock, rechecks expiry after locking,
+and skips locked files. A live old journal is never removed by another startup.
+A complete header is published atomically from a private `.pending` file using a
+non-replacing hard link; readers ignore unpublished files and never follow journal
+symlinks. Concurrent instances own separate files and load snapshots, never append
+to one another's journals.
 
 The history overview connects retained sessions to the updating current run above
 the unchanged interactive live chart. Off periods occupy five dashed cells labeled
@@ -230,6 +239,11 @@ marker; exactly five seconds draws one. A fixed threshold avoids reinterpreting
 history when the live rate changes. Width limits select recent sessions; each run
 has its own RTT height scale. Hover, zoom, and pan apply to the current-run chart,
 not this compressed overview. See [decision 0006](./.decisions/0006-history-continuous-timeline.md).
+
+Restored runs are aggregated once into bounded time blocks; their width-dependent
+overview projection is cached and reused on hover and other unchanged-geometry
+redraws. The final off duration uses the current run's stable schedule origin,
+not its oldest retained sample, so ring eviction cannot create or enlarge a gap.
 
 ## Live view
 
