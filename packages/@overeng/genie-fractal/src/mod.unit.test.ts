@@ -1612,7 +1612,7 @@ describe('Fractal declarations', () => {
           message: { text: '\ufeff', id: 'startup' },
         },
       }
-      expect(Schema.decodeUnknownSync(AgentSchema)(declaration)).toEqual(declaration)
+      expect(Schema.decodeSync(AgentSchema)(declaration)).toEqual(declaration)
       expect(emit([agent(declaration)])).toContain('message "\\u{feff}" id="startup"')
       if (kind === 'omp') {
         expect(omp(declaration.harness).message).toEqual(declaration.harness.message)
@@ -1631,7 +1631,7 @@ describe('Fractal declarations', () => {
           message: { text: 'é'.repeat(32768), id: 'é'.repeat(128) },
         },
       }
-      expect(Schema.decodeUnknownSync(AgentSchema)(declaration)).toEqual(declaration)
+      expect(Schema.decodeSync(AgentSchema)(declaration)).toEqual(declaration)
       expect(() => agent(declaration)).not.toThrow()
     },
   )
