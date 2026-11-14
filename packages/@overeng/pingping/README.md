@@ -62,6 +62,9 @@ Resolution runs off the UI thread, and the whole batch applies only if every
 name resolves. Errors remain inline so the draft can be corrected. Escape
 cancels the prompt or pending resolution; ordinary live shortcuts are suspended
 while it is open (`q` types `q`, rather than quitting).
+Canceled libc lookups cannot be interrupted, but a new submission runs
+independently. At most four lookup threads may remain active; `resolver busy`
+means retry after one finishes.
 
 `d` asks for `y` to remove or `n`/Escape to cancel. Removing a target drops its
 row and statistics, including the final summary. A changed-address edit replaces
