@@ -1,17 +1,19 @@
 //! Private, append-only session history, separate from current-run statistics.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, SecondsFormat, Utc};
+use nix::errno::Errno;
+use nix::fcntl::{Flock, FlockArg, OFlag};
 use serde::{Deserialize, Serialize};
 
 use crate::probe::ProbeEvent;
-use crate::stats::{Entry, Sample};
+use crate::stats::{Sample, HISTORY_LEN};
 use crate::tailnet::{self, Status};
 
 const RETENTION: Duration = Duration::from_hours(168);
@@ -22,7 +24,14 @@ pub struct HistoricalSession {
     pub id: String,
     pub start: SystemTime,
     pub interval: Duration,
-    pub samples: Vec<Entry>,
+    pub samples: Vec<HistoricalSample>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HistoricalSample {
+    pub sent: SystemTime,
+    pub offset: Duration,
+    pub sample: Sample,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -94,7 +103,7 @@ enum Outcome {
 }
 
 struct Writer {
-    file: File,
+    file: Flock<File>,
     positions: HashMap<u64, Duration>,
     // One high-water slot per wire sequence, bounded at 65,536 entries.
     recorded: HashMap<u16, u64>,
@@ -232,7 +241,7 @@ fn create_session(
     host: &Identity,
     start: SystemTime,
     interval: Duration,
-) -> io::Result<(File, String)> {
+) -> io::Result<(Flock<File>, String)> {
     let timestamp = start
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_err(invalid)?
@@ -251,7 +260,9 @@ fn create_session(
             .mode(0o600)
             .open(&pending)
         {
-            Ok(mut file) => {
+            Ok(file) => {
+                let mut file = Flock::lock(file, FlockArg::LockExclusive)
+                    .map_err(|(_, error)| io::Error::from(error))?;
                 let published = append(
                     &mut file,
                     &Header {
@@ -279,7 +290,54 @@ fn create_session(
 fn append(file: &mut File, value: &impl Serialize) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(value).map_err(invalid)?;
     bytes.push(b'\n');
+    if bytes.len() > 65_536 {
+        return Err(invalid("oversized history record"));
+    }
     file.write_all(&bytes)
+}
+
+#[derive(Default)]
+struct RestoreBuffer {
+    sessions: BTreeMap<(SystemTime, String), SessionBuffer>,
+    samples: usize,
+}
+
+struct SessionBuffer {
+    interval: Duration,
+    samples: BTreeMap<(Duration, u64), HistoricalSample>,
+}
+
+impl RestoreBuffer {
+    fn trim(&mut self) {
+        while self.samples > HISTORY_LEN || self.sessions.len() > HISTORY_LEN {
+            let too_many_sessions = self.sessions.len() > HISTORY_LEN;
+            let mut first = self
+                .sessions
+                .first_entry()
+                .expect("nonempty restore buffer");
+            if too_many_sessions || first.get().samples.is_empty() {
+                self.samples -= first.remove().samples.len();
+            } else {
+                first.get_mut().samples.pop_first();
+                self.samples -= 1;
+            }
+        }
+    }
+
+    fn finish(self, cutoff: SystemTime) -> Vec<HistoricalSession> {
+        self.sessions
+            .into_iter()
+            // A competing pruner can hold the lock after we opened an old journal.
+            // Keep fresh empty sessions, but not expired sessions without retained samples.
+            .filter(|((start, _), session)| *start >= cutoff || !session.samples.is_empty())
+            .map(|((start, id), session)| HistoricalSession {
+                id,
+                start,
+                interval: session.interval,
+                samples: session.samples.into_values().collect(),
+            })
+            .collect()
+    }
 }
 
 fn load(
@@ -288,66 +346,123 @@ fn load(
     now: SystemTime,
 ) -> io::Result<Vec<Vec<HistoricalSession>>> {
     let cutoff = now.checked_sub(RETENTION).unwrap_or(SystemTime::UNIX_EPOCH);
-    let mut result = vec![Vec::new(); hosts.len()];
+    let mut buffers: HashMap<_, _> = hosts
+        .iter()
+        .map(|host| (host, RestoreBuffer::default()))
+        .collect();
     for entry in fs::read_dir(root)? {
         let entry = entry?;
-        if entry
-            .path()
+        let path = entry.path();
+        if path
             .extension()
             .is_none_or(|extension| extension != "jsonl")
         {
             continue;
         }
-        // Another startup can prune an expired journal after directory enumeration.
         match entry.file_type() {
+            Ok(kind) if kind.is_symlink() => {
+                return Err(invalid("history journal must not be a symlink"))
+            }
             Ok(kind) if kind.is_file() => {}
             Ok(_) => continue,
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => return Err(error),
         }
-        let (identity, mut session) = match read_session(&entry.path()) {
-            Ok(session) => session,
+        let file = match OpenOptions::new()
+            .read(true)
+            .custom_flags(OFlag::O_NOFOLLOW.bits())
+            .open(&path)
+        {
+            Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => return Err(error),
         };
-        let latest = session
-            .samples
-            .iter()
-            .map(|sample| sample.sent)
-            .max()
-            .unwrap_or(session.start);
-        if latest < cutoff {
-            match fs::remove_file(entry.path()) {
-                Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
-            }
+        if prune_expired(&file, &path, cutoff)? {
             continue;
         }
-        session.samples.retain(|sample| sample.sent >= cutoff);
-        session.samples.sort_by_key(|sample| sample.sent);
-        let mut matches = hosts
-            .iter()
-            .zip(&mut result)
-            .filter(|(host, _)| **host == identity);
-        if let Some((_, first)) = matches.next() {
-            for (_, other) in matches {
-                other.push(session.clone());
+        let mut reader = BufReader::new(file);
+        let header = read_header(&mut reader, &path)?;
+        let Some(buffer) = buffers.get_mut(&header.host) else {
+            continue;
+        };
+        let key = (parse_utc(&header.start_utc)?, header.session_id);
+        buffer
+            .sessions
+            .entry(key.clone())
+            .or_insert_with(|| SessionBuffer {
+                interval: Duration::from_nanos(header.interval_ns),
+                samples: BTreeMap::new(),
+            });
+        buffer.trim();
+        read_samples(&mut reader, &path, |ordinal, sample| {
+            if sample.sent >= cutoff {
+                if let Some(session) = buffer.sessions.get_mut(&key) {
+                    if session
+                        .samples
+                        .insert((sample.offset, ordinal), sample)
+                        .is_none()
+                    {
+                        buffer.samples += 1;
+                    }
+                    buffer.trim();
+                }
             }
-            first.push(session);
-        }
+        })?;
     }
-    for sessions in &mut result {
-        sessions.sort_by(|a, b| a.start.cmp(&b.start).then_with(|| a.id.cmp(&b.id)));
+    let mut restored: HashMap<_, _> = buffers
+        .into_iter()
+        .map(|(host, buffer)| (host, buffer.finish(cutoff)))
+        .collect();
+    let mut result = vec![Vec::new(); hosts.len()];
+    for (index, host) in hosts.iter().enumerate().rev() {
+        if let Some(sessions) = restored.remove(host) {
+            for earlier in 0..index {
+                if hosts[earlier] == *host {
+                    result[earlier].clone_from(&sessions);
+                }
+            }
+            result[index] = sessions;
+        }
     }
     Ok(result)
 }
 
-fn read_session(path: &Path) -> io::Result<(Identity, HistoricalSession)> {
-    let mut reader = BufReader::new(File::open(path)?);
+fn prune_expired(file: &File, path: &Path, cutoff: SystemTime) -> io::Result<bool> {
+    if file.metadata()?.modified()? >= cutoff {
+        return Ok(false);
+    }
+    let locked = match Flock::lock(file.try_clone()?, FlockArg::LockExclusiveNonblock) {
+        Ok(locked) => locked,
+        Err((_, Errno::EWOULDBLOCK)) => return Ok(false),
+        Err((_, error)) => return Err(error.into()),
+    };
+    // Recheck after locking: the previous writer may have appended and exited.
+    if locked.metadata()?.modified()? >= cutoff {
+        return Ok(false);
+    }
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_record(reader: &mut impl BufRead, line: &mut Vec<u8>, path: &Path) -> io::Result<bool> {
+    line.clear();
+    // Bound even malformed input; legitimate v1 records are much smaller.
+    reader.take(65_537).read_until(b'\n', line)?;
+    if line.len() > 65_536 {
+        return Err(invalid(format!(
+            "{}: oversized history record",
+            path.display()
+        )));
+    }
+    Ok(line.ends_with(b"\n"))
+}
+
+fn read_header(reader: &mut impl BufRead, path: &Path) -> io::Result<Header> {
     let mut line = Vec::new();
-    reader.read_until(b'\n', &mut line)?;
-    if !line.ends_with(b"\n") {
+    if !read_record(reader, &mut line, path)? {
         return Err(invalid(format!(
             "{}: incomplete history header",
             path.display()
@@ -361,29 +476,34 @@ fn read_session(path: &Path) -> io::Result<(Identity, HistoricalSession)> {
             path.display()
         )));
     }
-    let mut session = HistoricalSession {
-        id: header.session_id,
-        start: parse_utc(&header.start_utc)?,
-        interval: Duration::from_nanos(header.interval_ns),
-        samples: Vec::new(),
-    };
-    loop {
-        line.clear();
-        // A crash or concurrent append can leave an uncommitted final record.
-        if reader.read_until(b'\n', &mut line)? == 0 || !line.ends_with(b"\n") {
-            break;
-        }
+    Ok(header)
+}
+
+fn read_samples(
+    reader: &mut impl BufRead,
+    path: &Path,
+    mut record: impl FnMut(u64, HistoricalSample),
+) -> io::Result<()> {
+    let mut line = Vec::new();
+    let mut ordinal = 0;
+    // Ignore an uncommitted final record left by a crash or concurrent append.
+    while read_record(reader, &mut line, path)? {
         let sample: StoredSample = serde_json::from_slice(&line)
             .map_err(|error| invalid(format!("{}: {error}", path.display())))?;
-        session.samples.push(Entry {
-            sent: parse_utc(&sample.utc)?,
-            sample: match sample.outcome {
-                Outcome::Reply { rtt_ns } => Sample::Reply(Duration::from_nanos(rtt_ns)),
-                Outcome::Lost => Sample::Lost,
+        record(
+            ordinal,
+            HistoricalSample {
+                sent: parse_utc(&sample.utc)?,
+                offset: Duration::from_nanos(sample.offset_ns),
+                sample: match sample.outcome {
+                    Outcome::Reply { rtt_ns } => Sample::Reply(Duration::from_nanos(rtt_ns)),
+                    Outcome::Lost => Sample::Lost,
+                },
             },
-        });
+        );
+        ordinal += 1;
     }
-    Ok((header.host, session))
+    Ok(())
 }
 
 fn utc(time: SystemTime) -> String {
@@ -436,11 +556,36 @@ mod tests {
         Store::open_at(root, &hosts(), Duration::from_secs(1), at, None).unwrap()
     }
 
+    fn read_session(path: &Path) -> io::Result<(Identity, HistoricalSession)> {
+        let mut reader = BufReader::new(File::open(path)?);
+        let header = read_header(&mut reader, path)?;
+        let mut session = HistoricalSession {
+            id: header.session_id,
+            start: parse_utc(&header.start_utc)?,
+            interval: Duration::from_nanos(header.interval_ns),
+            samples: Vec::new(),
+        };
+        read_samples(&mut reader, path, |_, sample| session.samples.push(sample))?;
+        Ok((header.host, session))
+    }
+
     #[test]
     fn roundtrip_deduplicates_outcomes_and_preserves_loss() {
         let directory = Directory::new();
         let (mut store, prior) = open(&directory.0, now());
         assert_eq!(prior[0].len(), 0);
+        for slot in 0..2 {
+            store
+                .record(
+                    0,
+                    &ProbeEvent::Scheduled {
+                        slot,
+                        position: Duration::from_secs(slot),
+                        interval: Duration::from_secs(1),
+                    },
+                )
+                .unwrap();
+        }
         let reply = ProbeEvent::Reply {
             seq: 1,
             slot: 0,
@@ -465,11 +610,13 @@ mod tests {
         assert_eq!(
             prior[0][0].samples,
             vec![
-                Entry {
+                HistoricalSample {
+                    offset: Duration::ZERO,
                     sent: now(),
                     sample: Sample::Reply(Duration::from_micros(1234))
                 },
-                Entry {
+                HistoricalSample {
+                    offset: Duration::from_secs(1),
                     sent: now() + Duration::from_secs(1),
                     sample: Sample::Lost
                 },
@@ -583,7 +730,9 @@ mod tests {
                 },
             )
             .unwrap();
-        let (_expired, _) = open(&directory.0, old);
+        let (expired, _) = open(&directory.0, old);
+        expired.writers[0].file.set_modified(old).unwrap();
+        drop(expired);
         let (_, prior) = open(&directory.0, now());
         assert_eq!(prior[0].len(), 1);
         assert_eq!(prior[0][0].samples.len(), 1);
@@ -717,6 +866,10 @@ mod tests {
             "{\"utc\":\"2026-11-14T00:00:01.000000000Z\",\"offset_ns\":1000000000,\"outcome\":{\"kind\":\"reply\",\"rtt_ns\":1234000}}\n",
             "{\"utc\":\"2026-11-14T00:00:02.000000000Z\",\"offset_ns\":2000000000,\"outcome\":{\"kind\":\"lost\"}}\n",
         )).unwrap();
+        File::open(&path)
+            .unwrap()
+            .set_modified(parse_utc("2026-11-14T00:00:02Z").unwrap())
+            .unwrap();
         let (_, previous) = open(&directory.0, parse_utc("2026-11-14T00:00:03Z").unwrap());
         assert_eq!(previous[0][0].id, "existing");
         assert_eq!(previous[0][0].samples.len(), 2);
@@ -734,13 +887,15 @@ mod tests {
         let identity = Identity::Host("host-a.example.test".into());
         let now = SystemTime::UNIX_EPOCH + Duration::from_hours(500_000);
         for _ in 0..128 {
-            create_session(
+            let (file, _) = create_session(
                 root,
                 &identity,
                 now - RETENTION - Duration::from_secs(1),
                 Duration::from_secs(1),
             )
             .unwrap();
+            file.set_modified(now - RETENTION - Duration::from_secs(1))
+                .unwrap();
         }
         let barrier = std::sync::Barrier::new(4);
         std::thread::scope(|scope| {
@@ -756,5 +911,162 @@ mod tests {
             }
         });
         assert_eq!(fs::read_dir(root).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn backward_wall_clock_steps_preserve_monotonic_offsets() {
+        let directory = Directory::new();
+        let identity = Identity::resolve(&hosts()[0], None);
+        let (mut file, _) =
+            create_session(&directory.0, &identity, now(), Duration::from_secs(1)).unwrap();
+        for (offset, sent) in [(2, now() - Duration::from_secs(30)), (1, now())] {
+            append(
+                &mut file,
+                &StoredSample {
+                    utc: utc(sent),
+                    offset_ns: offset * 1_000_000_000,
+                    outcome: Outcome::Lost,
+                },
+            )
+            .unwrap();
+        }
+        let restored = load(&directory.0, &[identity], now()).unwrap();
+        assert_eq!(restored[0][0].samples[0].offset, Duration::from_secs(1));
+        assert_eq!(restored[0][0].samples[1].offset, Duration::from_secs(2));
+        assert!(restored[0][0].samples[0].sent > restored[0][0].samples[1].sent);
+    }
+
+    #[test]
+    fn expired_mtime_does_not_prune_a_live_writer() {
+        let directory = Directory::new();
+        let identity = Identity::resolve(&hosts()[0], None);
+        let (mut file, _) = create_session(
+            &directory.0,
+            &identity,
+            now() - RETENTION - Duration::from_secs(1),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        // An old, still-locked empty journal is not restored or unlinked.
+        file.set_modified(now() - RETENTION - Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(
+            load(&directory.0, std::slice::from_ref(&identity), now()).unwrap()[0].len(),
+            0
+        );
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
+        append(
+            &mut file,
+            &StoredSample {
+                utc: utc(now()),
+                offset_ns: 0,
+                outcome: Outcome::Lost,
+            },
+        )
+        .unwrap();
+        file.set_modified(now() - RETENTION - Duration::from_secs(1))
+            .unwrap();
+        let restored = load(&directory.0, std::slice::from_ref(&identity), now()).unwrap();
+        assert_eq!(restored[0][0].samples.len(), 1);
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
+        drop(file);
+        assert_eq!(load(&directory.0, &[identity], now()).unwrap()[0].len(), 0);
+        assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn skips_unrequested_records_and_bounds_restoration_across_sessions() {
+        let directory = Directory::new();
+        let identity = Identity::resolve(&hosts()[0], None);
+        let other = Identity::Host("unrequested.example.test".into());
+        let (mut unrelated, _) =
+            create_session(&directory.0, &other, now(), Duration::from_secs(1)).unwrap();
+        unrelated.write_all(b"not valid JSON\n").unwrap();
+        let per_session = HISTORY_LEN / 2 + 2;
+        for seconds in [2, 1] {
+            let (mut file, _) = create_session(
+                &directory.0,
+                &identity,
+                now() - Duration::from_secs(seconds),
+                Duration::from_secs(1),
+            )
+            .unwrap();
+            for ordinal in 0..u64::try_from(per_session).unwrap() {
+                append(
+                    &mut file,
+                    &StoredSample {
+                        utc: utc(now()),
+                        offset_ns: ordinal * 1_000_000_000,
+                        outcome: Outcome::Lost,
+                    },
+                )
+                .unwrap();
+            }
+            file.set_modified(now()).unwrap();
+        }
+        let restored = load(&directory.0, &[identity], now()).unwrap();
+        assert_eq!(
+            restored[0]
+                .iter()
+                .map(|session| session.samples.len())
+                .sum::<usize>(),
+            HISTORY_LEN
+        );
+        assert_eq!(restored[0].len(), 2);
+        assert_eq!(restored[0][0].samples[0].offset, Duration::from_secs(4));
+        assert_eq!(restored[0][1].samples.len(), per_session);
+    }
+
+    #[test]
+    fn rejects_symlinked_state_roots_and_journals() {
+        let directory = Directory::new();
+        let real = directory.0.join("real");
+        fs::create_dir(&real).unwrap();
+        let linked = directory.0.join("linked");
+        std::os::unix::fs::symlink(&real, &linked).unwrap();
+        assert!(Store::open_at(&linked, &hosts(), Duration::from_secs(1), now(), None).is_err());
+        let target = directory.0.join("outside");
+        fs::write(&target, b"private unrelated content").unwrap();
+        std::os::unix::fs::symlink(&target, real.join("linked.jsonl")).unwrap();
+        assert!(load(&real, &[Identity::resolve(&hosts()[0], None)], now()).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"private unrelated content");
+    }
+}
+
+#[cfg(test)]
+mod restore_regressions {
+    use super::*;
+
+    #[test]
+    fn restore_buffer_never_exceeds_the_host_sample_limit() {
+        let mut buffer = RestoreBuffer::default();
+        let key = (SystemTime::UNIX_EPOCH, "session".to_owned());
+        buffer.sessions.insert(
+            key.clone(),
+            SessionBuffer {
+                interval: Duration::from_secs(1),
+                samples: BTreeMap::new(),
+            },
+        );
+        for ordinal in (0..u64::try_from(HISTORY_LEN + 10).unwrap()).rev() {
+            let offset = Duration::from_secs(ordinal);
+            let sample = HistoricalSample {
+                offset,
+                sent: SystemTime::UNIX_EPOCH,
+                sample: Sample::Lost,
+            };
+            buffer
+                .sessions
+                .get_mut(&key)
+                .unwrap()
+                .samples
+                .insert((offset, ordinal), sample);
+            buffer.samples += 1;
+            buffer.trim();
+            assert!(buffer.samples <= HISTORY_LEN);
+        }
+        let sessions = buffer.finish(SystemTime::UNIX_EPOCH);
+        assert_eq!(sessions[0].samples.len(), HISTORY_LEN);
+        assert_eq!(sessions[0].samples[0].offset, Duration::from_secs(10));
     }
 }
