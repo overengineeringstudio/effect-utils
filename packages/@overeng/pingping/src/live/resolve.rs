@@ -1,9 +1,9 @@
-//! One lookup worker and one replaceable pending batch, independent of UI focus.
+//! Generation-isolated lookup batches with at most four active lookup threads.
 use std::io::{self, Write};
 use std::net::IpAddr;
 use std::os::unix::net::UnixStream;
-use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Mutex};
 
 use crate::probe::{self, Family};
 use crate::target::TargetId;
@@ -14,21 +14,48 @@ pub(super) struct Resolution {
     pub result: Result<Vec<(String, IpAddr)>, String>,
 }
 
-struct Request {
-    generation: u64,
-    edit: Option<TargetId>,
-    hosts: Vec<String>,
-}
+const MAX_ACTIVE: usize = 4;
+
+type Lookup = dyn Fn(&str) -> Result<IpAddr, String> + Send + Sync;
 
 #[derive(Default)]
 struct State {
     generation: u64,
-    pending: Option<Request>,
+    active: usize,
     closed: bool,
 }
 
+struct Shared {
+    state: Mutex<State>,
+    lookup: Box<Lookup>,
+    sender: Sender<Resolution>,
+    wake: UnixStream,
+    #[cfg(test)]
+    finished: std::sync::Condvar,
+}
+
+impl Shared {
+    fn publish(&self, resolution: Resolution) {
+        let state = self.state.lock().expect("resolver lock");
+        if !state.closed && state.generation == resolution.generation {
+            let _ = self.sender.send(resolution);
+            let _ = (&self.wake).write_all(&[1]);
+        }
+    }
+}
+
+struct Active(Arc<Shared>);
+
+impl Drop for Active {
+    fn drop(&mut self) {
+        self.0.state.lock().expect("resolver lock").active -= 1;
+        #[cfg(test)]
+        self.0.finished.notify_all();
+    }
+}
+
 pub(super) struct Resolver {
-    state: Arc<(Mutex<State>, Condvar)>,
+    shared: Arc<Shared>,
     results: Receiver<Resolution>,
     pub notification: UnixStream,
 }
@@ -38,35 +65,57 @@ impl Resolver {
         Self::spawn(move |host| probe::resolve(host, family))
     }
 
-    fn spawn(lookup: impl Fn(&str) -> Result<IpAddr, String> + Send + 'static) -> io::Result<Self> {
-        let state = Arc::new((Mutex::new(State::default()), Condvar::new()));
+    fn spawn(
+        lookup: impl Fn(&str) -> Result<IpAddr, String> + Send + Sync + 'static,
+    ) -> io::Result<Self> {
         let (sender, results) = mpsc::channel();
-        let (notification, mut wake) = UnixStream::pair()?;
+        let (notification, wake) = UnixStream::pair()?;
         notification.set_nonblocking(true)?;
         wake.set_nonblocking(true)?;
-        let worker_state = Arc::clone(&state);
+        Ok(Self {
+            shared: Arc::new(Shared {
+                state: Mutex::new(State::default()),
+                lookup: Box::new(lookup),
+                sender,
+                wake,
+                #[cfg(test)]
+                finished: std::sync::Condvar::new(),
+            }),
+            results,
+            notification,
+        })
+    }
+
+    pub fn submit(&self, edit: Option<TargetId>, hosts: Vec<String>) -> u64 {
+        let mut state = self.shared.state.lock().expect("resolver lock");
+        state.generation = state.generation.checked_add(1).expect("lookup generations exhausted");
+        let generation = state.generation;
+        if state.active == MAX_ACTIVE {
+            drop(state);
+            self.shared.publish(Resolution {
+                generation,
+                edit,
+                result: Err("resolver busy".into()),
+            });
+            return generation;
+        }
+        state.active += 1;
+        drop(state);
+        let active = Active(Arc::clone(&self.shared));
         let thread = std::thread::Builder::new()
             .name("target-resolver".into())
-            .spawn(move || loop {
-                let (state, changed) = &*worker_state;
-                let guard = changed
-                    .wait_while(state.lock().expect("resolver lock"), |state| {
-                        !state.closed && state.pending.is_none()
-                    })
-                    .expect("resolver wait");
-                if guard.closed {
-                    return;
-                }
-                let mut guard = guard;
-                let request = guard.pending.take().expect("queued lookup");
-                drop(guard);
-                let mut resolved = Vec::with_capacity(request.hosts.len());
+            .spawn(move || {
+                let active = active;
+                let shared = &active.0;
+                let mut resolved = Vec::with_capacity(hosts.len());
                 let mut error = None;
-                for name in request.hosts {
-                    if state.lock().expect("resolver lock").generation != request.generation {
-                        break;
+                for name in hosts {
+                    let state = shared.state.lock().expect("resolver lock");
+                    if state.closed || state.generation != generation {
+                        return;
                     }
-                    match lookup(&name) {
+                    drop(state);
+                    match (shared.lookup)(&name) {
                         Ok(address) => resolved.push((name, address)),
                         Err(reason) => {
                             error = Some(format!("Cannot resolve {name}: {reason}"));
@@ -74,57 +123,29 @@ impl Resolver {
                         }
                     }
                 }
-                let guard = state.lock().expect("resolver lock");
-                if guard.closed || guard.generation != request.generation {
-                    continue;
-                }
-                let result = error.map_or_else(|| Ok(resolved), Err);
-                if sender
-                    .send(Resolution {
-                        generation: request.generation,
-                        edit: request.edit,
-                        result,
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-                let _ = wake.write_all(&[1]);
-                drop(guard);
-            })?;
-        drop(thread); // Drop signals the shared state; a blocked libc lookup need not join.
-        Ok(Self {
-            state,
-            results,
-            notification,
-        })
-    }
-
-    pub fn submit(&self, edit: Option<TargetId>, hosts: Vec<String>) -> u64 {
-        let (state, changed) = &*self.state;
-        let mut state = state.lock().expect("resolver lock");
-        state.generation = state
-            .generation
-            .checked_add(1)
-            .expect("lookup generations exhausted");
-        let generation = state.generation;
-        state.pending = Some(Request {
-            generation,
-            edit,
-            hosts,
-        });
-        changed.notify_one();
+                shared.publish(Resolution {
+                    generation,
+                    edit,
+                    result: error.map_or_else(|| Ok(resolved), Err),
+                });
+            });
+        // A failed spawn drops its closure and active lease before returning.
+        if let Err(error) = thread {
+            self.shared.publish(Resolution {
+                generation,
+                edit,
+                result: Err(format!("Cannot start target resolver: {error}")),
+            });
+        }
         generation
     }
 
     pub fn cancel(&self) {
-        let (state, _) = &*self.state;
-        let mut state = state.lock().expect("resolver lock");
+        let mut state = self.shared.state.lock().expect("resolver lock");
         state.generation = state
             .generation
             .checked_add(1)
             .expect("lookup generations exhausted");
-        state.pending = None;
     }
 
     pub fn try_result(&self) -> io::Result<Option<Resolution>> {
@@ -132,8 +153,7 @@ impl Resolver {
             match self.results.try_recv() {
                 // Cancellation also invalidates results queued before it took the lock.
                 Ok(result) => {
-                    let (state, _) = &*self.state;
-                    if result.generation == state.lock().expect("resolver lock").generation {
+                    if result.generation == self.shared.state.lock().expect("resolver lock").generation {
                         return Ok(Some(result));
                     }
                 }
@@ -148,11 +168,9 @@ impl Resolver {
 
 impl Drop for Resolver {
     fn drop(&mut self) {
-        let (state, changed) = &*self.state;
-        let mut state = state.lock().expect("resolver lock");
+        let mut state = self.shared.state.lock().expect("resolver lock");
         state.closed = true;
-        state.pending = None;
-        changed.notify_one();
+        state.generation = state.generation.checked_add(1).expect("lookup generations exhausted");
     }
 }
 
@@ -164,36 +182,93 @@ mod tests {
     use std::os::fd::AsFd;
     use std::time::Duration;
 
+    fn wait_for_idle(shared: &Shared) {
+        let state = shared.state.lock().unwrap();
+        let (state, timeout) = shared.finished.wait_timeout_while(
+            state,
+            Duration::from_secs(2),
+            |state| state.active != 0,
+        ).unwrap();
+        assert!(!timeout.timed_out());
+        assert_eq!(state.active, 0);
+    }
+
     #[test]
-    fn canceled_batches_cannot_publish_and_only_latest_queued_batch_runs() {
+    fn canceled_hung_generation_does_not_block_a_new_batch() {
         let (started, reads) = mpsc::channel();
         let (release, wait) = mpsc::channel();
+        let wait = Mutex::new(wait);
         let resolver = Resolver::spawn(move |host| {
             started.send(host.to_owned()).unwrap();
             if host == "old" {
-                wait.recv().unwrap();
+                wait.lock().unwrap().recv().unwrap();
             }
             Ok("127.0.0.1".parse().unwrap())
-        })
-        .unwrap();
+        }).unwrap();
         resolver.submit(None, vec!["old".into(), "never".into()]);
         assert_eq!(reads.recv_timeout(Duration::from_secs(2)).unwrap(), "old");
         resolver.cancel();
-        resolver.submit(None, vec!["superseded".into()]);
         let generation = resolver.submit(Some(42), vec!["latest".into()]);
-        release.send(()).unwrap();
-        assert_eq!(
-            reads.recv_timeout(Duration::from_secs(2)).unwrap(),
-            "latest"
-        );
-        let result = resolver
-            .results
-            .recv_timeout(Duration::from_secs(2))
-            .unwrap();
+        assert_eq!(reads.recv_timeout(Duration::from_secs(2)).unwrap(), "latest");
+        let result = resolver.results.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(result.generation, generation);
         assert_eq!(result.edit, Some(42));
         assert_eq!(result.result.unwrap()[0].0, "latest");
+        release.send(()).unwrap();
+        wait_for_idle(&resolver.shared);
+        assert!(reads.try_recv().is_err());
         assert!(resolver.try_result().unwrap().is_none());
+    }
+
+    #[test]
+    fn four_hung_lookups_bound_admission_and_capacity_recovers() {
+        let (started, reads) = mpsc::channel();
+        let (release, wait) = mpsc::channel();
+        let wait = Mutex::new(wait);
+        let resolver = Resolver::spawn(move |host| {
+            started.send(()).unwrap();
+            if host == "held" {
+                wait.lock().unwrap().recv().unwrap();
+            }
+            Ok("127.0.0.1".parse().unwrap())
+        }).unwrap();
+        for _ in 0..MAX_ACTIVE {
+            resolver.submit(None, vec!["held".into()]);
+            reads.recv_timeout(Duration::from_secs(2)).unwrap();
+        }
+        let generation = resolver.submit(None, vec!["busy".into()]);
+        let result = resolver.try_result().unwrap().unwrap();
+        assert_eq!(result.generation, generation);
+        assert_eq!(result.result.unwrap_err(), "resolver busy");
+        assert_eq!(resolver.shared.state.lock().unwrap().active, MAX_ACTIVE);
+        assert!(reads.try_recv().is_err());
+        for _ in 0..MAX_ACTIVE {
+            release.send(()).unwrap();
+        }
+        wait_for_idle(&resolver.shared);
+        let generation = resolver.submit(None, vec!["recovered".into()]);
+        let result = resolver.results.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(result.generation, generation);
+        assert!(result.result.is_ok());
+    }
+
+    #[test]
+    fn dropping_during_a_lookup_aborts_the_remaining_hosts() {
+        let (started, reads) = mpsc::channel();
+        let (release, wait) = mpsc::channel();
+        let wait = Mutex::new(wait);
+        let resolver = Resolver::spawn(move |host| {
+            started.send(host.to_owned()).unwrap();
+            wait.lock().unwrap().recv().unwrap();
+            Ok("127.0.0.1".parse().unwrap())
+        }).unwrap();
+        let shared = Arc::clone(&resolver.shared);
+        resolver.submit(None, vec!["blocked".into(), "never".into()]);
+        assert_eq!(reads.recv_timeout(Duration::from_secs(2)).unwrap(), "blocked");
+        drop(resolver);
+        release.send(()).unwrap();
+        wait_for_idle(&shared);
+        assert!(reads.try_recv().is_err());
     }
 
     #[test]
