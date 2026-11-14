@@ -11,8 +11,10 @@ changed addresses (semantics approval `remove-row-edit-new`, step-run/ask
 d12c2db63dfa977d5669fde88d4ff59a). After trying the prototype, he approved it:
 “works. go ahead” (trial approval, step-run/ask
 cd3d7d45a9ae69bee0f8ac0c5d435b5c). These human approvals establish the
-interaction and lifecycle choices; the
-[spec](../spec.md#live-membership-r09r12-r14-r20) defines the contract.
+interaction and lifecycle choices. Johannes approved
+[R27 Live target editing](../requirements.md#must-let-targets-change-while-running)
+via ask `step-run/ask-bd40d4987d73a8ad203582bc10fcd2fa/ask` (answer `add`);
+the [spec](../spec.md#live-membership-r27) defines its implementation.
 
 ## Evidence and Argument
 
