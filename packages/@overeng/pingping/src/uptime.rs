@@ -78,6 +78,12 @@ impl Worker {
             thread.thread().unpark();
         }
     }
+
+    pub fn finished(&self) -> bool {
+        self.thread
+            .as_ref()
+            .is_none_or(std::thread::JoinHandle::is_finished)
+    }
 }
 
 impl Drop for Worker {
@@ -865,6 +871,24 @@ mod tests {
                 .unwrap();
             assert_eq!(read_child(child, &|| false), expected);
         }
+    }
+
+    #[test]
+    fn cancellation_does_not_wait_for_worker_release() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (release, wait) = std::sync::mpsc::channel();
+        let worker = Worker {
+            stop: Arc::clone(&stop),
+            thread: Some(std::thread::spawn(move || {
+                wait.recv().unwrap();
+            })),
+        };
+
+        worker.cancel();
+        assert!(stop.load(Ordering::Relaxed));
+        assert!(!worker.finished());
+        release.send(()).unwrap();
+        drop(worker);
     }
 
     #[test]
