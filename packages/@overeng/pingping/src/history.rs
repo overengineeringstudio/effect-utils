@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::probe::ProbeEvent;
 use crate::stats::{Sample, HISTORY_LEN};
 use crate::tailnet::{self, Status};
+use crate::target::TargetId;
 
 const RETENTION: Duration = Duration::from_hours(168);
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
@@ -109,8 +110,9 @@ struct Writer {
     // One high-water slot per wire sequence, bounded at 65,536 entries.
     recorded: HashMap<u16, u64>,
 }
+/// Journals are owned by stable target IDs, never by mutable display positions.
 pub struct Store {
-    writers: Vec<Writer>,
+    writers: HashMap<TargetId, Writer>,
     clock: Instant,
 }
 
@@ -147,24 +149,28 @@ impl Store {
         let prior = load(root, &identities, now)?;
         let writers = identities
             .iter()
-            .map(|identity| {
+            .enumerate()
+            .map(|(id, identity)| {
                 let (file, _) = create_session(root, identity, now, interval)?;
-                Ok(Writer {
-                    file,
-                    positions: HashMap::new(),
-                    recorded: HashMap::new(),
-                })
+                Ok((
+                    id,
+                    Writer {
+                        file,
+                        positions: HashMap::new(),
+                        recorded: HashMap::new(),
+                    },
+                ))
             })
             .collect::<io::Result<_>>()?;
         Ok((Self { writers, clock }, prior))
     }
 
     /// Records final outcomes once per schedule slot; metadata is not a sample.
-    pub fn record(&mut self, index: usize, event: &ProbeEvent) -> io::Result<()> {
+    pub fn record(&mut self, id: TargetId, event: &ProbeEvent) -> io::Result<()> {
         let writer = self
             .writers
-            .get_mut(index)
-            .ok_or_else(|| invalid("invalid history host index"))?;
+            .get_mut(&id)
+            .ok_or_else(|| invalid("unknown history target ID"))?;
         if let ProbeEvent::Scheduled { slot, position, .. } = event {
             writer.positions.insert(*slot, *position);
             return Ok(());
@@ -676,6 +682,29 @@ mod tests {
     }
 
     #[test]
+    fn removing_a_writer_does_not_reassign_remaining_target_ids() {
+        let directory = Directory::new();
+        let names = vec!["host-a".into(), "host-a.example.test".into()];
+        let (mut store, _) =
+            Store::open_at(&directory.0, &names, Duration::from_secs(1), now(), None).unwrap();
+        drop(store.writers.remove(&0));
+        let outcome = ProbeEvent::Lost {
+            seq: 1,
+            slot: 0,
+            sent: now(),
+        };
+        assert!(store.record(0, &outcome).is_err());
+        assert!(store.record(2, &outcome).is_err());
+        store.record(1, &outcome).unwrap();
+        let (_, prior) =
+            Store::open_at(&directory.0, &names, Duration::from_secs(1), now(), None).unwrap();
+        assert!(prior[0].iter().all(|session| session.samples.is_empty()));
+        assert_eq!(prior[1].len(), 1);
+        assert_eq!(prior[1][0].samples.len(), 1);
+        assert_eq!(prior[1][0].samples[0].sample, Sample::Lost);
+    }
+
+    #[test]
     fn out_of_order_outcomes_and_sequence_wrap_remain_distinct() {
         let directory = Directory::new();
         let (mut store, _) = open(&directory.0, now());
@@ -718,7 +747,7 @@ mod tests {
             previous[0][0].samples[1].sent,
             now() + Duration::from_secs(1)
         );
-        assert_eq!(store.writers[0].recorded.len(), 2);
+        assert_eq!(store.writers[&0].recorded.len(), 2);
         let path = fs::read_dir(&directory.0)
             .unwrap()
             .map(|entry| entry.unwrap().path())
@@ -772,7 +801,7 @@ mod tests {
             )
             .unwrap();
         let (expired, _) = open(&directory.0, old);
-        expired.writers[0].file.set_modified(old).unwrap();
+        expired.writers[&0].file.set_modified(old).unwrap();
         drop(expired);
         let (_, prior) = open(&directory.0, now());
         assert_eq!(prior[0].len(), 1);

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/pingping/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:edb97c2ad04b36107a3d66376666ef53375c82fdcb783e6ab44545f981415e44
+# Semantic fingerprint: sha256:ef8c30ed7039b98175cb4381df11e1ca9b0a408f1dce60a6753db49709724df8
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/BUCK.genie.ts, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, packages/@overeng/pingping/src/**/*.rs, packages/@overeng/pingping/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/Cargo.toml
 # Regenerate: devenv tasks run genie:run
 
@@ -43,6 +43,7 @@ static_source_set(
         "src/render/summary_tests.rs",
         "src/stats.rs",
         "src/tailnet.rs",
+        "src/target.rs",
         "src/theme.rs",
         "src/timeline.rs",
         "src/uptime.rs",
@@ -80,6 +81,7 @@ native.rust_binary(
         "src/render/summary_tests.rs",
         "src/stats.rs",
         "src/tailnet.rs",
+        "src/target.rs",
         "src/theme.rs",
         "src/timeline.rs",
         "src/uptime.rs",

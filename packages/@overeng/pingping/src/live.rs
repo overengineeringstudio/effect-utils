@@ -46,7 +46,7 @@ impl Drop for RawGuard {
 )]
 pub fn run(
     hosts: &mut [HostState],
-    rx: &Receiver<(usize, ProbeEvent)>,
+    rx: &Receiver<(crate::target::TargetId, ProbeEvent)>,
     notification: &UnixStream,
     stop: &AtomicBool,
     mut layout: Layout,
@@ -238,23 +238,35 @@ fn choose_theme(choice: ThemeChoice) -> Theme {
 /// Drains one ready probe burst; returns true once every worker has finished.
 fn receive_probes(
     hosts: &mut [HostState],
-    rx: &Receiver<(usize, ProbeEvent)>,
+    rx: &Receiver<(crate::target::TargetId, ProbeEvent)>,
     dirty: &mut bool,
     paths: &crate::path::Monitor,
     mut history: Option<&mut crate::history::Store>,
 ) -> io::Result<bool> {
     loop {
         match rx.try_recv() {
-            Ok((index, event)) => {
+            Ok((id, event)) => {
+                if id == crate::target::GLOBAL_ID {
+                    if matches!(&event, ProbeEvent::Network(_) | ProbeEvent::Egress { .. }) {
+                        for host in hosts.iter_mut() {
+                            host.apply(event.clone());
+                        }
+                        *dirty = true;
+                    }
+                    continue;
+                }
+                let Some(host) = hosts.iter_mut().find(|host| host.id == id) else {
+                    continue;
+                };
                 if let Some(store) = history.as_deref_mut() {
-                    store.record(index, &event)?;
+                    store.record(id, &event)?;
                 }
                 match &event {
-                    ProbeEvent::Resolved(address) => paths.resolved(index, *address),
-                    ProbeEvent::Finished | ProbeEvent::Failed { .. } => paths.finished(index),
+                    ProbeEvent::Resolved(address) => paths.resolved(id, *address),
+                    ProbeEvent::Finished | ProbeEvent::Failed { .. } => paths.finished(id),
                     _ => {}
                 }
-                hosts[index].apply(event);
+                host.apply(event);
                 *dirty = true;
             }
             Err(TryRecvError::Empty) => return Ok(hosts.iter().all(|host| host.finished)),

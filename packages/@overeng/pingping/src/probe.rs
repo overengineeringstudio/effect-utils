@@ -85,24 +85,33 @@ pub enum ProbeEvent {
 
 /// Owns the worker and its cancellation endpoint.
 pub struct Worker {
-    thread: JoinHandle<()>,
+    thread: Option<JoinHandle<()>>,
     interrupt: Option<Arc<UnixStream>>,
+    stop: Arc<AtomicBool>,
 }
 
 impl Worker {
-    /// Cancels a blocked receive before waiting for the worker to finish.
-    pub fn join(self) -> std::thread::Result<()> {
-        if let Some(interrupt) = self.interrupt {
+    /// Interrupt I/O and signal cancellation without waiting on name resolution.
+    pub fn cancel(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(interrupt) = &self.interrupt {
             let _ = interrupt.shutdown(std::net::Shutdown::Both);
         }
-        self.thread.join()
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.cancel();
+        // The worker owns socket cleanup; dropping its handle never blocks UI input.
+        self.thread.take();
     }
 }
 
 /// Mutable shared schedule. Changing the rate wakes blocked workers.
 pub struct Schedule {
     state: Mutex<ScheduleState>,
-    wake: Mutex<Vec<Arc<UnixStream>>>,
+    wake: Mutex<Vec<std::sync::Weak<UnixStream>>>,
 }
 
 #[derive(Clone)]
@@ -147,10 +156,17 @@ impl Schedule {
             state.config.start = deadline.min(now + interval);
             state.config.interval = interval;
         }
-        for stream in self.wake.lock().expect("schedule wake lock").iter() {
-            let mut stream = stream.as_ref();
-            let _ = stream.write_all(&[1]);
-        }
+        self.wake
+            .lock()
+            .expect("schedule wake lock")
+            .retain(|stream| {
+                let Some(stream) = stream.upgrade() else {
+                    return false;
+                };
+                let mut stream = stream.as_ref();
+                let _ = stream.write_all(&[1]);
+                true
+            });
     }
 
     fn snapshot(&self) -> ScheduleState {
@@ -178,11 +194,11 @@ pub fn step_interval(current: Duration, faster: bool) -> Duration {
 }
 
 pub fn spawn(
-    index: usize,
+    index: crate::target::TargetId,
     host: String,
     config: ProbeConfig,
     stop: Arc<AtomicBool>,
-    events: Sender<(usize, ProbeEvent)>,
+    events: Sender<(crate::target::TargetId, ProbeEvent)>,
     wake: Option<Arc<UnixStream>>,
     schedule: Arc<Schedule>,
 ) -> Worker {
@@ -198,8 +214,9 @@ pub fn spawn(
             .wake
             .lock()
             .expect("schedule wake lock")
-            .push(Arc::clone(writer));
+            .push(Arc::downgrade(writer));
     }
+    let worker_stop = Arc::clone(&stop);
     let thread = std::thread::spawn(move || {
         let emit = |event| {
             if events.send((index, event)).is_ok() {
@@ -221,8 +238,9 @@ pub fn spawn(
         }
     });
     Worker {
-        thread,
+        thread: Some(thread),
         interrupt: cancellation,
+        stop: worker_stop,
     }
 }
 
@@ -409,6 +427,45 @@ fn resolve(host: &str, family: Family) -> Result<IpAddr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropping_worker_cancels_without_waiting_for_its_thread() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (interrupt, mut peer) = UnixStream::pair().unwrap();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (finished, completion) = std::sync::mpsc::channel();
+        let worker = Worker {
+            stop: Arc::clone(&stop),
+            interrupt: Some(Arc::new(interrupt)),
+            thread: Some(std::thread::spawn(move || {
+                wait.recv().unwrap();
+                finished.send(()).unwrap();
+            })),
+        };
+        drop(worker);
+        assert!(stop.load(Ordering::Relaxed));
+        assert_eq!(std::io::Read::read(&mut peer, &mut [0]).unwrap(), 0);
+        release.send(()).unwrap();
+        completion.recv_timeout(Duration::from_secs(2)).unwrap();
+    }
+
+    #[test]
+    fn rate_changes_release_retired_worker_registrations() {
+        let config = ProbeConfig {
+            interval: Duration::from_secs(1),
+            timeout: Duration::from_secs(1),
+            count: None,
+            family: Family::Any,
+            start: Instant::now(),
+        };
+        let schedule = Schedule::new(config);
+        let (_, writer) = UnixStream::pair().unwrap();
+        let writer = Arc::new(writer);
+        schedule.wake.lock().unwrap().push(Arc::downgrade(&writer));
+        drop(writer);
+        schedule.change(Duration::from_millis(500), Instant::now());
+        assert!(schedule.wake.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn rate_steps_snap_directionally_and_stop_at_boundaries() {

@@ -64,26 +64,35 @@ const REFRESH: Duration = Duration::from_secs(600);
 const LIMIT: usize = 4096;
 const REMOTE: &str = "cat /proc/uptime 2>/dev/null || sysctl -n kern.boottime";
 
-/// Owns shutdown: interrupt refresh sleep, then cancel and reap an active SSH child.
+/// Owns cancellation and final shutdown of an active SSH child.
 pub struct Worker {
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
+impl Worker {
+    /// Signal cancellation immediately; final release waits for child reaping.
+    pub fn cancel(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = &self.thread {
+            thread.thread().unpark();
+        }
+    }
+}
+
 impl Drop for Worker {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        self.cancel();
         if let Some(thread) = self.thread.take() {
-            thread.thread().unpark();
             let _ = thread.join();
         }
     }
 }
 
 pub fn spawn(
-    index: usize,
+    index: crate::target::TargetId,
     host: String,
-    events: Sender<(usize, ProbeEvent)>,
+    events: Sender<(crate::target::TargetId, ProbeEvent)>,
     wake: Arc<UnixStream>,
     stop: Arc<AtomicBool>,
 ) -> Worker {
@@ -136,9 +145,9 @@ pub fn spawn(
 }
 
 fn emit(
-    index: usize,
+    index: crate::target::TargetId,
     state: State,
-    events: &Sender<(usize, ProbeEvent)>,
+    events: &Sender<(crate::target::TargetId, ProbeEvent)>,
     wake: &UnixStream,
 ) -> bool {
     if events.send((index, ProbeEvent::Boot(state))).is_err() {

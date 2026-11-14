@@ -75,6 +75,8 @@ least five seconds use fixed-width dashed duration labels, not loss or pending
 markers. Shorter gaps and overlapping runs join seamlessly. Heights scale per
 run; the overview fits recent runs to the available width. Hover/zoom/pan still
 operate on the unchanged current-run chart, not the compressed overview.
+Journal writers follow stable target identities, not display positions; events
+for absent targets cannot be recorded against another row.
 
 ## Network Context And Uptime
 
@@ -105,6 +107,9 @@ modifies the user's SSH files. Pending reads show `up –`; failed reads show di
 out, unreachable, remote command failed, unparseable output, unsafe identity,
 or another local failure). ICMP and rendering never wait for SSH. Plain mode
 performs no uptime SSH reads.
+ICMP worker release interrupts socket I/O without waiting for name resolution;
+the shared rate schedule weakly holds worker wake endpoints. Uptime cancellation
+wakes pending reads immediately, and final shutdown waits for SSH child reaping.
 
 ### Uptime on macOS peers
 
