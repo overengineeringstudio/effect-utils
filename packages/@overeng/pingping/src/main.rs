@@ -144,7 +144,7 @@ fn main() -> ExitCode {
         match history::Store::open(&cli.hosts, config.interval) {
             Ok((store, prior)) => {
                 for (host, sessions) in hosts.iter_mut().zip(prior) {
-                    host.prior_sessions = sessions;
+                    host.prior_sessions = render::restore_history(sessions);
                 }
                 Some(store)
             }
