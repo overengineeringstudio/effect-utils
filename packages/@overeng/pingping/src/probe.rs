@@ -255,7 +255,9 @@ pub fn spawn(
                     kind: Failure::Socket,
                 })
                 .and_then(|interrupt| {
-                    run(&target, &config, stop, local_stop, &interrupt, schedule, &emit)
+                    run(
+                        &target, &config, stop, local_stop, &interrupt, schedule, &emit,
+                    )
                 });
             match result {
                 Ok(()) => emit(ProbeEvent::Finished),

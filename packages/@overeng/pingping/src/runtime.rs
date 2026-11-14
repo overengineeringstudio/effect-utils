@@ -91,7 +91,11 @@ impl Runtime {
     /// Attaches the store opened for the initial targets without opening it again.
     pub fn enable_history(&mut self, store: Store, prior: Vec<Vec<HistoricalSession>>) {
         assert!(self.history.is_none(), "history is already enabled");
-        assert_eq!(prior.len(), self.hosts.len(), "initial history target count");
+        assert_eq!(
+            prior.len(),
+            self.hosts.len(),
+            "initial history target count"
+        );
         for (host, sessions) in self.hosts.iter_mut().zip(prior) {
             host.prior_sessions = render::restore_history(sessions);
         }
@@ -427,7 +431,9 @@ mod tests {
             },
         );
         assert_eq!(
-            runtime.edit_resolved(id, "renamed".into(), address).unwrap(),
+            runtime
+                .edit_resolved(id, "renamed".into(), address)
+                .unwrap(),
             Some(id)
         );
         assert_eq!(runtime.hosts[0].host, "renamed");
