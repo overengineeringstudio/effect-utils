@@ -159,12 +159,10 @@ impl Runtime {
         self.workers.insert(id, Workers { probe, uptime });
     }
 
-    #[cfg(test)]
     pub fn family(&self) -> probe::Family {
         self.config.family
     }
 
-    #[cfg(test)]
     pub fn add_resolved(&mut self, name: String, address: IpAddr) -> io::Result<TargetId> {
         let prior = self.register_history(&name)?;
         let id = self.insert(name);
@@ -174,7 +172,6 @@ impl Runtime {
         Ok(id)
     }
 
-    #[cfg(test)]
     fn register_history(&mut self, name: &str) -> io::Result<Vec<HistoricalSession>> {
         assert!(self.next_id < GLOBAL_ID, "target identity space exhausted");
         match &mut self.history {
@@ -185,7 +182,6 @@ impl Runtime {
 
     /// Same-address edits rename in place; replacements get a new identity and
     /// fresh history at the old row position. Neither path changes other rows.
-    #[cfg(test)]
     pub fn edit_resolved(
         &mut self,
         id: TargetId,
@@ -211,7 +207,6 @@ impl Runtime {
         Ok(Some(replacement))
     }
 
-    #[cfg(test)]
     pub fn retire(&mut self, id: TargetId) {
         let Some(position) = self.hosts.iter().position(|host| host.id == id) else {
             return;

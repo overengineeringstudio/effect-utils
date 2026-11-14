@@ -2,8 +2,8 @@
 //! frame in scrollback. Input and probes wake a blocked UI; dirty bursts render
 //! at most once per 16 ms, with no periodic redraws or idle input wakeups.
 mod resize;
-#[cfg(test)]
 mod resolve;
+mod targets;
 
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
@@ -12,8 +12,8 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant, SystemTime};
 
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-    KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::style::{PrintStyledContent, StyledContent};
 use crossterm::terminal::{self, BeginSynchronizedUpdate, ClearType, EndSynchronizedUpdate};
@@ -34,7 +34,12 @@ struct RawGuard;
 impl Drop for RawGuard {
     fn drop(&mut self) {
         let mut out = io::stdout();
-        let _ = queue!(out, DisableMouseCapture, cursor::Show);
+        let _ = queue!(
+            out,
+            DisableMouseCapture,
+            DisableBracketedPaste,
+            cursor::Show
+        );
         let _ = out.flush();
         let _ = terminal::disable_raw_mode();
         let _ = out.flush();
@@ -58,9 +63,10 @@ pub fn run(
     // Captured after the background query so mouse reports cannot interleave
     // with its reply. Capture routes the wheel to pingping instead of the
     // terminal scrollback while the view is live.
-    queue!(out, cursor::Hide, EnableMouseCapture)?;
+    queue!(out, cursor::Hide, EnableMouseCapture, EnableBracketedPaste)?;
 
     let mut controls = Controls::default();
+    let mut editor = targets::Editor::new(runtime)?;
     let mut geometry = Geometry::default();
     let mut hover = None;
     let mut resized = false;
@@ -117,6 +123,7 @@ pub fn run(
                 resized,
                 geometry.top,
                 &mut resize_damage,
+                Some(&editor),
             )?;
             // The initial query precedes the blocking input reader. On resize,
             // that reader is parked waiting for our post-draw acknowledgement.
@@ -152,11 +159,28 @@ pub fn run(
             wait_for_activity(
                 notification,
                 &input.notification,
+                editor.notification(),
                 dirty.then_some(next_draw).or(marker_expiry),
             )?;
             terminal_event = input.try_event()?;
         }
         if let Some(event) = terminal_event {
+            // Selection and the inline prompt see input before global and rate
+            // shortcuts. Resize bookkeeping below runs either way.
+            let selected = editor.selected();
+            let consumed = editor.update(&event, &geometry, runtime);
+            dirty |= consumed || editor.selected() != selected;
+            if consumed {
+                // A consumed key ends hover as the timeline controls would.
+                // Mouse input is consumed only by an open prompt, which also
+                // swallows the release that would have ended a drag.
+                hover = None;
+                controls.pointer = None;
+                controls.frozen = None;
+                if !matches!(event, Event::Key(_)) {
+                    controls.drag = None;
+                }
+            }
             if let Event::Key(KeyEvent {
                 code: KeyCode::Char(key @ ('[' | ']')),
                 kind: KeyEventKind::Press,
@@ -165,7 +189,7 @@ pub fn run(
             {
                 let interval =
                     crate::probe::step_interval(runtime.schedule.interval(), *key == ']');
-                if interval != runtime.schedule.interval() {
+                if !consumed && interval != runtime.schedule.interval() {
                     runtime.schedule.change(interval, Instant::now());
                     dirty = true;
                 }
@@ -178,19 +202,23 @@ pub fn run(
             if input_pending {
                 next_draw = Instant::now() + Duration::from_millis(16);
             }
-            let (redraw, quit) = controls.update(
-                &event,
-                &geometry,
-                Extent::of(&runtime.hosts),
-                &mut layout,
-                &mut hover,
-            );
-            dirty |= redraw;
-            done |= quit;
+            if !consumed {
+                let (redraw, quit) = controls.update(
+                    &event,
+                    &geometry,
+                    Extent::of(&runtime.hosts),
+                    &mut layout,
+                    &mut hover,
+                );
+                dirty |= redraw;
+                done |= quit;
+            }
             if !input_pending {
                 input.acknowledge();
             }
         }
+        // Resolutions first, so a finished count run sees newly added targets.
+        dirty |= editor.receive(runtime)?;
         done |= receive_probes(runtime, rx, &mut dirty)?;
     }
     runtime.stop();
@@ -215,6 +243,7 @@ pub fn run(
         false,
         geometry.top,
         &mut resize_damage,
+        None,
     )?;
     Ok(())
 }
@@ -249,11 +278,13 @@ fn receive_probes(
 fn wait_for_activity(
     notification: &UnixStream,
     input: &UnixStream,
+    resolver: &UnixStream,
     redraw: Option<Instant>,
 ) -> io::Result<()> {
     let mut descriptors = [
         PollFd::new(input.as_fd(), PollFlags::POLLIN),
         PollFd::new(notification.as_fd(), PollFlags::POLLIN),
+        PollFd::new(resolver.as_fd(), PollFlags::POLLIN),
     ];
     let timeout = redraw.map_or(PollTimeout::NONE, |deadline| {
         let wait = deadline.saturating_duration_since(Instant::now());
@@ -264,6 +295,7 @@ fn wait_for_activity(
         Err(err) => return Err(io::Error::from_raw_os_error(err as i32)),
     }
     drain_notification(notification)?;
+    drain_notification(resolver)?;
     drain_notification(input)
 }
 
@@ -341,7 +373,8 @@ enum Action {
 
 /// Maps terminal input to view changes. Wheel up/down zooms around the
 /// pointer, dragging or horizontal scrolling pans (dragging right reveals
-/// older samples), `+`/`-` zoom, arrows pan, `0` returns to the live view.
+/// older samples), `+`/`-` zoom, left/right arrows pan, `0` returns to the
+/// live view. Up/down belong to target selection.
 #[derive(Debug, Default)]
 struct Controls {
     view: View,
@@ -381,10 +414,36 @@ struct Geometry {
     notes: Vec<(usize, usize, usize, usize)>,
     /// Stable IDs corresponding to the stateless renderer's overview positions.
     ids: Vec<crate::target::TargetId>,
+    /// `(line, id)` of each host block's first line, its identity row.
+    blocks: Vec<(usize, crate::target::TargetId)>,
+    /// First line after the last host block: the summary's blank separator.
+    blocks_end: usize,
+}
+
+/// Identity rows carry the host name; every layout starts a block with one.
+fn identity_row(line: &Line) -> bool {
+    line.iter().any(|span| span.role == render::Role::Host)
 }
 
 impl Geometry {
     fn set_frame(&mut self, frame: render::Frame, hosts: &[HostState]) {
+        // Rendered identity rows follow this exact host snapshot.
+        self.blocks = frame
+            .lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| identity_row(line))
+            .zip(hosts)
+            .map(|((line, _), host)| (line, host.id))
+            .collect();
+        // Statistics belong to the block above them. A frame without the
+        // summary separator was truncated and ends with its overflow notice.
+        self.blocks_end = self.blocks.last().map_or(0, |&(start, _)| {
+            frame.lines[start + 1..]
+                .iter()
+                .position(Vec::is_empty)
+                .map_or(frame.lines.len() - 1, |offset| start + 1 + offset)
+        });
         self.timeline = frame.timeline;
         self.lines = frame
             .timeline_lines
@@ -414,6 +473,20 @@ impl Geometry {
                 .map(|top| top.min(height.saturating_sub(drawn + 1)));
         }
         Ok(())
+    }
+
+    /// The target whose block, from identity row through statistics, covers
+    /// `row`; never the header, summary or footer.
+    fn host_at(&self, row: u16) -> Option<crate::target::TargetId> {
+        let line = usize::from(row).checked_sub(self.top?)?;
+        if line >= self.blocks_end {
+            return None;
+        }
+        self.blocks
+            .iter()
+            .rev()
+            .find(|(start, _)| *start <= line)
+            .map(|&(_, id)| id)
     }
 
     fn hover_at(&self, column: u16, row: u16) -> Option<Hover> {
@@ -610,10 +683,8 @@ impl Controls {
                     self.stats_scope = self.stats_scope.toggled();
                     return Action::Redraw;
                 }
-                KeyCode::Char('+' | '=') | KeyCode::Up => self.view.zoom(true, None, width, extent),
-                KeyCode::Char('-' | '_') | KeyCode::Down => {
-                    self.view.zoom(false, None, width, extent);
-                }
+                KeyCode::Char('+' | '=') => self.view.zoom(true, None, width, extent),
+                KeyCode::Char('-' | '_') => self.view.zoom(false, None, width, extent),
                 KeyCode::Left => self.view.pan(step(width), width, extent),
                 KeyCode::Right => self.view.pan(-step(width), width, extent),
                 KeyCode::Char('0') | KeyCode::End => self.view.reset(),
@@ -698,6 +769,7 @@ fn draw(
     force: bool,
     previous_top: Option<usize>,
     resize_damage: &mut resize::Damage,
+    editor: Option<&targets::Editor>,
 ) -> io::Result<(usize, render::Frame)> {
     let (width, height) = terminal::size()?;
     let (width, height) = (usize::from(width), usize::from(height));
@@ -712,7 +784,7 @@ fn draw(
         }),
         ..*timeline
     };
-    let frame = render::frame(
+    let mut frame = render::frame(
         hosts,
         layout,
         &timeline,
@@ -720,6 +792,9 @@ fn draw(
         height,
         footer,
     );
+    if let Some(editor) = editor {
+        decorate(&mut frame.lines, hosts, editor.selected(), editor.footer());
+    }
     let lines: Vec<Line> = frame
         .lines
         .iter()
@@ -740,6 +815,42 @@ fn draw(
     let height = lines.len();
     *previous = lines;
     Ok((height, frame))
+}
+
+/// Marks the selected identity row with a same-width prefix, so no cell
+/// moves, and lets an open prompt replace the key hint.
+fn decorate(
+    lines: &mut [Line],
+    hosts: &[HostState],
+    selected: Option<crate::target::TargetId>,
+    prompt: Option<String>,
+) {
+    let identity = lines
+        .iter_mut()
+        .filter(|line| identity_row(line))
+        .zip(hosts)
+        .find_map(|(line, host)| (Some(host.id) == selected).then_some(line));
+    if let Some(rule) = identity
+        .and_then(|line| line.first_mut())
+        .filter(|span| span.role == render::Role::Rule)
+    {
+        rule.role = render::Role::Host;
+        rule.text = "\u{203a} ".into();
+    }
+    if let (Some(prompt), Some(hint)) = (prompt, lines.last_mut()) {
+        *hint = vec![
+            render::Span {
+                role: render::Role::Plain,
+                text: "  ".into(),
+                tint: render::Tint::None,
+            },
+            render::Span {
+                role: render::Role::Value,
+                text: prompt,
+                tint: render::Tint::None,
+            },
+        ];
+    }
 }
 
 /// The cursor always starts and ends directly below the frame. A height
@@ -969,6 +1080,7 @@ mod tests {
             })],
             notes: Vec::new(),
             ids: vec![0],
+            ..Geometry::default()
         }
     }
 
@@ -1006,6 +1118,87 @@ mod tests {
         );
         let column = u16::try_from(geometry.timeline.0).unwrap();
         assert_eq!(geometry.hover_at(column, 1).unwrap().host, 73);
+    }
+
+    fn selectable() -> (Vec<HostState>, Timeline) {
+        let hosts = [41, 73]
+            .into_iter()
+            .map(|id| {
+                let mut host = HostState::new(format!("host-{id}"));
+                host.id = id;
+                host
+            })
+            .collect();
+        let timeline = Timeline {
+            view: View::default(),
+            interval: Duration::from_secs(1),
+            current_interval: Duration::from_secs(1),
+            stats_scope: StatsScope::Run,
+            hover: None,
+            now: SystemTime::now(),
+            hover_now: None,
+            overview_end: None,
+        };
+        (hosts, timeline)
+    }
+
+    #[test]
+    fn host_blocks_select_through_statistics_but_not_summary_or_footer() {
+        let (hosts, timeline) = selectable();
+        let row = |line: usize| u16::try_from(line).unwrap();
+        let mut geometry = Geometry {
+            top: Some(0),
+            ..Geometry::default()
+        };
+        let frame = render::frame(&hosts, Layout::Stacked, &timeline, 80, 40, true);
+        let stats: Vec<_> = frame
+            .lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.iter().any(|span| span.text.starts_with("Received")))
+            .map(|(line, _)| line)
+            .collect();
+        let height = frame.lines.len();
+        geometry.set_frame(frame, &hosts);
+        assert_eq!(stats.len(), 2);
+        assert_eq!(geometry.host_at(row(stats[0])), Some(41));
+        assert_eq!(geometry.host_at(row(stats[1])), Some(73));
+        assert_eq!(geometry.blocks_end, height - 3, "blank, summary, hint");
+        for line in geometry.blocks_end..height {
+            assert_eq!(geometry.host_at(row(line)), None);
+        }
+        geometry.set_frame(
+            render::frame(&hosts, Layout::Rows, &timeline, 180, 40, true),
+            &hosts,
+        );
+        assert_eq!(geometry.host_at(0), None, "column header");
+        assert_eq!(geometry.host_at(1), Some(41));
+        assert_eq!(geometry.host_at(2), Some(73));
+        assert_eq!(geometry.host_at(row(geometry.blocks_end)), None);
+    }
+
+    #[test]
+    fn selection_marks_only_its_identity_row_and_prompt_replaces_hint() {
+        let (hosts, timeline) = selectable();
+        let text = |line: &Line| {
+            line.iter()
+                .map(|span| span.text.as_str())
+                .collect::<String>()
+        };
+        let before = render::frame(&hosts, Layout::Rows, &timeline, 180, 40, true).lines;
+        let mut lines = before.clone();
+        decorate(
+            &mut lines,
+            &hosts,
+            Some(73),
+            Some("Add hosts: \u{258f}".into()),
+        );
+        let marked = text(&lines[2]);
+        assert!(marked.starts_with('\u{203a}'));
+        assert_eq!(marked.chars().count(), text(&before[2]).chars().count());
+        assert_eq!(lines[..2], before[..2]);
+        assert_eq!(lines[3..lines.len() - 1], before[3..before.len() - 1]);
+        assert_eq!(text(&lines[lines.len() - 1]), "  Add hosts: \u{258f}");
     }
 
     fn mouse(kind: MouseEventKind, column: u16) -> Event {
@@ -1303,21 +1496,26 @@ mod tests {
     }
 
     #[test]
-    fn arrow_zoom_preserves_live_and_paused_keyboard_anchor() {
+    fn key_zoom_preserves_live_and_paused_keyboard_anchor() {
         let mut controls = Controls::default();
-        controls.handle(&key(KeyCode::Up), &geometry(), EXTENT);
+        controls.handle(&key(KeyCode::Char('+')), &geometry(), EXTENT);
         assert_eq!(controls.view.level, -1);
         assert_eq!(controls.view.end, None);
-        controls.handle(&key(KeyCode::Down), &geometry(), EXTENT);
+        controls.handle(&key(KeyCode::Char('-')), &geometry(), EXTENT);
         assert_eq!(controls.view.level, 0);
         controls.handle(&key(KeyCode::Left), &geometry(), EXTENT);
         let end = controls.view.end;
-        controls.handle(&key(KeyCode::Up), &geometry(), EXTENT);
+        controls.handle(&key(KeyCode::Char('+')), &geometry(), EXTENT);
         assert_eq!(controls.view.end, end);
-        controls.handle(&key(KeyCode::Down), &geometry(), EXTENT);
+        controls.handle(&key(KeyCode::Char('-')), &geometry(), EXTENT);
         assert_eq!(controls.view.end, end);
         controls.handle(&key(KeyCode::Right), &geometry(), EXTENT);
         assert_eq!(controls.view.end, None);
+        let level = controls.view.level;
+        for code in [KeyCode::Up, KeyCode::Down] {
+            controls.handle(&key(code), &geometry(), EXTENT);
+            assert_eq!(controls.view.level, level, "{code:?} selects, never zooms");
+        }
     }
 
     #[test]
@@ -1329,6 +1527,7 @@ mod tests {
             overviews: vec![None, None],
             notes: Vec::new(),
             ids: vec![0, 1],
+            ..Geometry::default()
         };
         assert_eq!(
             geometry.hover_at(7, 12),

@@ -140,6 +140,14 @@
   change it while running. History before and after a change stays on one
   time axis (the user, 2026-10-04).
 
+### Must let targets change while running
+
+- **R27 Live target editing:** While the live view runs, the user can add, edit
+  and remove targets without a restart. Removing a target drops its row and
+  statistics. Editing a target to a different address starts a fresh row in the
+  same position. Targets added at runtime run until quit, and an empty target
+  list does not end the session.
+
 ### Must survive restarts
 
 - **R26 Recent local history:** The live view restores each target's recent

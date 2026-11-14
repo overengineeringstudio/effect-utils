@@ -28,7 +28,6 @@ pub fn host_candidates(current: &OsStr) -> Vec<CompletionCandidate> {
 
 /// Canonical tailnet names in shell-completion order. Queries the local
 /// Tailscale daemon, so call on demand rather than per keystroke.
-#[cfg(test)]
 pub fn host_names(prefix: &str) -> Vec<String> {
     crate::tailnet::status().map_or_else(Vec::new, |status| {
         ranked_hosts(&status, prefix)

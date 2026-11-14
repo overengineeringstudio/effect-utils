@@ -42,12 +42,34 @@ fall back to a privileged implementation.
 | `l`                                      | Toggle stacked / rows layout.                               |
 | `s`                                      | Toggle visible-window / whole-run statistics.               |
 | `[` / `]`                                | Slow down / speed up probing without rescaling old history. |
-| Wheel, `+` / `-`, `↑` / `↓`              | Zoom the shared time window.                                |
+| Wheel, `+` / `-`                         | Zoom the shared time window.                                |
+| `↑` / `↓`, click a host                  | Select a target, including its statistics rows.             |
+| `a` / `e` / `d`                          | Add / edit selected / confirm removal.                      |
 | Chart drag, horizontal scroll, `←` / `→` | Pan history.                                                |
 | Overview click / drag                    | Navigate the retained history; newest end resumes live.     |
 | Pointer over a chart                     | Show send time and RTT/loss without obscuring stems.        |
 | `0` / `End`                              | Return to the live, unzoomed view.                          |
 | `q` / `Esc` / `Ctrl-C`                   | Quit.                                                       |
+
+`a` opens a footer prompt; type one or more space-separated hosts and press
+Enter. Tab completes the current token from canonical tailnet names; repeated
+Tab cycles candidates. `e` prefills the selected host and accepts one name.
+The prompt accepts printable ASCII and space; use punycode for IDNs. Non-ASCII
+characters or control characters show an inline error without changing the
+draft, and an invalid paste is rejected as a whole. Editing an existing non-ASCII
+CLI name starts an empty draft with that error.
+Resolution runs off the UI thread, and the whole batch applies only if every
+name resolves. Errors remain inline so the draft can be corrected. Escape
+cancels the prompt or pending resolution; ordinary live shortcuts are suspended
+while it is open (`q` types `q`, rather than quitting).
+Canceled libc lookups cannot be interrupted, but a new submission runs
+independently. At most four lookup threads may remain active; `resolver busy`
+means retry after one finishes.
+
+`d` asks for `y` to remove or `n`/Escape to cancel. Removing a target drops its
+row and statistics, including the final summary. A changed-address edit replaces
+the row with fresh history at the same position; a same-address edit only renames
+it. With no rows, the live view stays open and shows the `a` hint.
 
 Stacked blocks adapt to terminal width and height, shrinking charts before
 falling back to rows. Each stacked host has an always-present overview. The
@@ -120,8 +142,7 @@ for SSH child reaping.
 The live runtime owns stable target identities, shared scheduling and worker
 lifetimes. Retired identities cannot update replacement rows; retiring a target
 signals cancellation without waiting for SSH, while final runtime release reaps
-remaining SSH children. Runtime add/edit/retire operations are preparatory APIs,
-not interactive controls yet. Initial command-line targets honor `--count`;
+remaining SSH children. Initial command-line targets honor `--count`;
 runtime-added or address-replaced targets run without a count limit. A same-address
 rename keeps its identity, history and existing count. Completion requires at least
 one active target and every active target to finish; an empty live set stays open.
