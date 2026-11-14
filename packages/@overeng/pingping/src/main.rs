@@ -7,6 +7,7 @@ mod netinfo;
 mod path;
 mod probe;
 mod render;
+mod runtime;
 mod stats;
 mod tailnet;
 mod target;
@@ -18,7 +19,6 @@ mod version;
 use std::io::{IsTerminal, Write};
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
-use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
@@ -27,6 +27,7 @@ use clap::Parser;
 
 use crate::probe::{Failure, Family, ProbeConfig, ProbeEvent};
 use crate::render::{fmt_ms, Layout};
+use crate::runtime::Runtime;
 use crate::stats::{HostState, Status};
 use crate::target::{TargetId, GLOBAL_ID};
 use crate::theme::ThemeChoice;
@@ -123,7 +124,6 @@ fn main() -> ExitCode {
         start: Instant::now(),
     };
 
-    let stop = Arc::new(AtomicBool::new(false));
     let (tx, rx) = mpsc::channel();
     let interactive = std::io::stdout().is_terminal();
     let notification = if interactive {
@@ -141,25 +141,9 @@ fn main() -> ExitCode {
     } else {
         None
     };
-    let mut hosts: Vec<HostState> = cli
-        .hosts
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(id, name)| {
-            let mut host = HostState::new(name);
-            host.id = id;
-            host
-        })
-        .collect();
-    let mut history = if interactive && !cli.no_history {
+    let history = if interactive && !cli.no_history {
         match history::Store::open(&cli.hosts, config.interval) {
-            Ok((store, prior)) => {
-                for (host, sessions) in hosts.iter_mut().zip(prior) {
-                    host.prior_sessions = render::restore_history(sessions);
-                }
-                Some(store)
-            }
+            Ok(history) => Some(history),
             Err(err) => {
                 eprintln!("pingping: history error: {err}");
                 return ExitCode::from(2);
@@ -168,44 +152,15 @@ fn main() -> ExitCode {
     } else {
         None
     };
-    let schedule = Arc::new(probe::Schedule::new(config.clone()));
-    let workers: Vec<_> = cli
-        .hosts
-        .iter()
-        .enumerate()
-        .map(|(index, host)| {
-            probe::spawn(
-                index,
-                host.clone(),
-                config.clone(),
-                Arc::clone(&stop),
-                tx.clone(),
-                notification.as_ref().map(|(_, writer)| Arc::clone(writer)),
-                Arc::clone(&schedule),
-            )
-        })
-        .collect();
-    let uptime_workers: Vec<_> = notification
-        .as_ref()
-        .map(|(_, writer)| {
-            cli.hosts
-                .iter()
-                .enumerate()
-                .map(|(index, host)| {
-                    uptime::spawn(
-                        index,
-                        host.clone(),
-                        tx.clone(),
-                        Arc::clone(writer),
-                        Arc::clone(&stop),
-                    )
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let paths = notification.as_ref().map(|(_, writer)| {
-        path::Monitor::spawn(Arc::clone(&schedule), tx.clone(), Arc::clone(writer))
-    });
+    let mut runtime = Runtime::new(
+        cli.hosts,
+        config.clone(),
+        tx.clone(),
+        notification.as_ref().map(|(_, writer)| Arc::clone(writer)),
+    );
+    if let Some((store, prior)) = history {
+        runtime.enable_history(store, prior);
+    }
     egress::spawn(
         0,
         tx.clone(),
@@ -216,26 +171,19 @@ fn main() -> ExitCode {
     let notification_reader = notification.map(|(reader, _)| reader);
     let result = if let Some(notification_reader) = &notification_reader {
         live::run(
-            &mut hosts,
+            &mut runtime,
             &rx,
             notification_reader,
-            &stop,
             cli.layout,
             cli.theme,
             config.interval,
-            paths.as_ref().expect("interactive monitor"),
-            &schedule,
-            history.as_mut(),
         )
     } else {
-        print_plain(&mut hosts, &rx, &mut std::io::stdout().lock())
+        print_plain(&mut runtime.hosts, &rx, &mut std::io::stdout().lock())
     };
     // The reader went away (`pingping host | head`): stop quietly, like `ping`.
     let pipe_closed = matches!(&result, Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe);
-    stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    drop(uptime_workers);
-    drop(paths);
-    drop(workers);
+    runtime.stop();
     if pipe_closed {
         return ExitCode::SUCCESS;
     }
@@ -244,7 +192,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    for host in &hosts {
+    for host in &runtime.hosts {
         if let Status::Failed { reason, kind } = &host.status {
             match kind {
                 Failure::NotPermitted => print_not_permitted(reason),
@@ -258,7 +206,7 @@ fn main() -> ExitCode {
             }
         }
     }
-    ExitCode::from(exit_status(&hosts))
+    ExitCode::from(exit_status(&runtime.hosts))
 }
 
 /// R04: 2 on any setup error (ICMP socket not permitted or not available),

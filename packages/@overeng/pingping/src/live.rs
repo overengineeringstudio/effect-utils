@@ -6,7 +6,6 @@ mod resize;
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::net::UnixStream;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -20,6 +19,7 @@ use crossterm::{cursor, queue};
 
 use crate::probe::ProbeEvent;
 use crate::render::{self, Hover, Layout, Line, StatsScope, Timeline};
+use crate::runtime::Runtime;
 use crate::stats::HostState;
 use crate::theme::{self, Theme, ThemeChoice};
 use crate::timeline::{Extent, Grid, View};
@@ -39,27 +39,16 @@ impl Drop for RawGuard {
     }
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    clippy::too_many_lines,
-    reason = "shared path monitor uses the existing UI event channel"
-)]
+#[allow(clippy::too_many_lines, reason = "single inline terminal event loop")]
 pub fn run(
-    hosts: &mut [HostState],
+    runtime: &mut Runtime,
     rx: &Receiver<(crate::target::TargetId, ProbeEvent)>,
     notification: &UnixStream,
-    stop: &AtomicBool,
     mut layout: Layout,
     theme_choice: ThemeChoice,
     interval: Duration,
-    paths: &crate::path::Monitor,
-    schedule: &crate::probe::Schedule,
-    mut history: Option<&mut crate::history::Store>,
 ) -> io::Result<()> {
     terminal::enable_raw_mode()?;
-    for host in &mut *hosts {
-        host.set_interval(interval);
-    }
     let _guard = RawGuard;
     let theme = choose_theme(theme_choice);
     let stdout = io::stdout();
@@ -107,7 +96,7 @@ pub fn run(
                 view: controls.display_view(),
                 stats_scope: controls.stats_scope,
                 interval,
-                current_interval: schedule.interval(),
+                current_interval: runtime.schedule.interval(),
                 hover,
                 now: SystemTime::now(),
                 hover_now: controls.frozen.map(|frozen| frozen.now),
@@ -118,7 +107,7 @@ pub fn run(
             (drawn, frame) = draw(
                 &mut out,
                 &theme,
-                hosts,
+                &runtime.hosts,
                 layout,
                 &timeline,
                 &mut previous_lines,
@@ -131,10 +120,11 @@ pub fn run(
             // that reader is parked waiting for our post-draw acknowledgement.
             geometry.locate(drawn, previous, resized || input.is_none())?;
             resized = false;
-            geometry.set_frame(frame, hosts);
+            geometry.set_frame(frame, &runtime.hosts);
             dirty = false;
             next_draw = Instant::now() + Duration::from_millis(16);
-            marker_expiry = hosts
+            marker_expiry = runtime
+                .hosts
                 .iter()
                 .filter_map(|host| host.path.marker_remaining(timeline.now))
                 .min()
@@ -171,9 +161,10 @@ pub fn run(
                 ..
             }) = &event
             {
-                let interval = crate::probe::step_interval(schedule.interval(), *key == ']');
-                if interval != schedule.interval() {
-                    schedule.change(interval, Instant::now());
+                let interval =
+                    crate::probe::step_interval(runtime.schedule.interval(), *key == ']');
+                if interval != runtime.schedule.interval() {
+                    runtime.schedule.change(interval, Instant::now());
                     dirty = true;
                 }
             }
@@ -188,7 +179,7 @@ pub fn run(
             let (redraw, quit) = controls.update(
                 &event,
                 &geometry,
-                Extent::of(hosts),
+                Extent::of(&runtime.hosts),
                 &mut layout,
                 &mut hover,
             );
@@ -198,14 +189,14 @@ pub fn run(
                 input.acknowledge();
             }
         }
-        done |= receive_probes(hosts, rx, &mut dirty, paths, history.as_deref_mut())?;
+        done |= receive_probes(runtime, rx, &mut dirty)?;
     }
-    stop.store(true, Ordering::Relaxed);
+    runtime.stop();
     let timeline = Timeline {
         view: controls.view,
         stats_scope: StatsScope::Run,
         interval,
-        current_interval: schedule.interval(),
+        current_interval: runtime.schedule.interval(),
         hover: None,
         now: SystemTime::now(),
         hover_now: None,
@@ -214,7 +205,7 @@ pub fn run(
     draw(
         &mut out,
         &theme,
-        hosts,
+        &runtime.hosts,
         layout,
         &timeline,
         &mut previous_lines,
@@ -237,39 +228,17 @@ fn choose_theme(choice: ThemeChoice) -> Theme {
 
 /// Drains one ready probe burst; returns true once every worker has finished.
 fn receive_probes(
-    hosts: &mut [HostState],
+    runtime: &mut Runtime,
     rx: &Receiver<(crate::target::TargetId, ProbeEvent)>,
     dirty: &mut bool,
-    paths: &crate::path::Monitor,
-    mut history: Option<&mut crate::history::Store>,
 ) -> io::Result<bool> {
     loop {
         match rx.try_recv() {
             Ok((id, event)) => {
-                if id == crate::target::GLOBAL_ID {
-                    if matches!(&event, ProbeEvent::Network(_) | ProbeEvent::Egress { .. }) {
-                        for host in hosts.iter_mut() {
-                            host.apply(event.clone());
-                        }
-                        *dirty = true;
-                    }
-                    continue;
-                }
-                let Some(host) = hosts.iter_mut().find(|host| host.id == id) else {
-                    continue;
-                };
-                if let Some(store) = history.as_deref_mut() {
-                    store.record(id, &event)?;
-                }
-                match &event {
-                    ProbeEvent::Resolved(address) => paths.resolved(id, *address),
-                    ProbeEvent::Finished | ProbeEvent::Failed { .. } => paths.finished(id),
-                    _ => {}
-                }
-                host.apply(event);
-                *dirty = true;
+                runtime.record(id, &event)?;
+                *dirty |= runtime.apply(id, event);
             }
-            Err(TryRecvError::Empty) => return Ok(hosts.iter().all(|host| host.finished)),
+            Err(TryRecvError::Empty) => return Ok(runtime.finished()),
             Err(TryRecvError::Disconnected) => return Ok(true),
         }
     }
