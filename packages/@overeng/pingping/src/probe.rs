@@ -91,6 +91,38 @@ pub struct Worker {
 }
 
 impl Worker {
+    /// Keep cancellation ownership independent of the probe transport.
+    fn spawn(
+        stop: Arc<AtomicBool>,
+        schedule: Arc<Schedule>,
+        run: impl FnOnce(std::io::Result<UnixStream>, &AtomicBool, &AtomicBool, &Schedule)
+            + Send
+            + 'static,
+    ) -> Self {
+        let (interrupt, cancellation) = match UnixStream::pair() {
+            Ok((reader, writer)) => match writer.set_nonblocking(true) {
+                Ok(()) => (Ok(reader), Some(Arc::new(writer))),
+                Err(err) => (Err(err), None),
+            },
+            Err(err) => (Err(err), None),
+        };
+        if let Some(writer) = &cancellation {
+            let mut wake = schedule.wake.lock().expect("schedule wake lock");
+            wake.retain(|stream| stream.strong_count() > 0);
+            wake.push(Arc::downgrade(writer));
+        }
+        let worker_stop = Arc::new(AtomicBool::new(false));
+        let local_stop = Arc::clone(&worker_stop);
+        let thread = std::thread::spawn(move || {
+            run(interrupt, &stop, &local_stop, &schedule);
+        });
+        Self {
+            thread: Some(thread),
+            interrupt: cancellation,
+            stop: worker_stop,
+        }
+    }
+
     /// Interrupt I/O and signal cancellation without waiting on name resolution.
     pub fn cancel(&self) {
         self.stop.store(true, Ordering::Relaxed);
@@ -202,55 +234,34 @@ pub fn spawn(
     wake: Option<Arc<UnixStream>>,
     schedule: Arc<Schedule>,
 ) -> Worker {
-    let (interrupt, cancellation) = match UnixStream::pair() {
-        Ok((reader, writer)) => match writer.set_nonblocking(true) {
-            Ok(()) => (Ok(reader), Some(Arc::new(writer))),
-            Err(err) => (Err(err), None),
-        },
-        Err(err) => (Err(err), None),
-    };
-    if let Some(writer) = &cancellation {
-        let mut wake = schedule.wake.lock().expect("schedule wake lock");
-        wake.retain(|stream| stream.strong_count() > 0);
-        wake.push(Arc::downgrade(writer));
-    }
-    let worker_stop = Arc::new(AtomicBool::new(false));
-    let local_stop = Arc::clone(&worker_stop);
-    let thread = std::thread::spawn(move || {
-        let emit = |event| {
-            if events.send((index, event)).is_ok() {
-                if let Some(wake) = &wake {
-                    let mut notifier = wake.as_ref();
-                    let _ = notifier.write_all(&[1]);
+    Worker::spawn(
+        stop,
+        schedule,
+        move |interrupt, stop, local_stop, schedule| {
+            let emit = |event| {
+                if events.send((index, event)).is_ok() {
+                    if let Some(wake) = &wake {
+                        let mut notifier = wake.as_ref();
+                        let _ = notifier.write_all(&[1]);
+                    }
                 }
+            };
+            let result = interrupt
+                .map_err(|err| ProbeEvent::Failed {
+                    reason: err.to_string(),
+                    kind: Failure::Socket,
+                })
+                .and_then(|interrupt| {
+                    run(
+                        &host, &config, stop, local_stop, &interrupt, schedule, &emit,
+                    )
+                });
+            match result {
+                Ok(()) => emit(ProbeEvent::Finished),
+                Err(event) => emit(event),
             }
-        };
-        let result = interrupt
-            .map_err(|err| ProbeEvent::Failed {
-                reason: err.to_string(),
-                kind: Failure::Socket,
-            })
-            .and_then(|interrupt| {
-                run(
-                    &host,
-                    &config,
-                    &stop,
-                    &local_stop,
-                    &interrupt,
-                    &schedule,
-                    &emit,
-                )
-            });
-        match result {
-            Ok(()) => emit(ProbeEvent::Finished),
-            Err(event) => emit(event),
-        }
-    });
-    Worker {
-        thread: Some(thread),
-        interrupt: cancellation,
-        stop: worker_stop,
-    }
+        },
+    )
 }
 
 fn run(
@@ -468,53 +479,63 @@ mod tests {
             family: Family::V4,
             start: Instant::now(),
         };
-        let schedule = Arc::new(Schedule::new(config.clone()));
+        let schedule = Arc::new(Schedule::new(config));
         let shutdown = Arc::new(AtomicBool::new(false));
         let (events, received) = std::sync::mpsc::channel();
-        let first = spawn(
-            41,
-            "127.0.0.1".into(),
-            config.clone(),
-            Arc::clone(&shutdown),
-            events.clone(),
-            None,
-            Arc::clone(&schedule),
-        );
-        let second = spawn(
-            73,
-            "127.0.0.1".into(),
-            config,
-            Arc::clone(&shutdown),
-            events,
-            None,
-            Arc::clone(&schedule),
-        );
-        let mut started = [false; 2];
-        while !started.iter().all(|started| *started) {
-            let (id, event) = received.recv_timeout(Duration::from_secs(2)).unwrap();
-            if matches!(event, ProbeEvent::Scheduled { .. }) {
-                started[usize::from(id == 73)] = true;
-            }
-            assert!(!matches!(event, ProbeEvent::Failed { .. }), "{event:?}");
-        }
+        let start = |id| {
+            let (tick, ticks) = std::sync::mpsc::channel();
+            let events = events.clone();
+            let worker = Worker::spawn(
+                Arc::clone(&shutdown),
+                Arc::clone(&schedule),
+                move |interrupt, stop, local_stop, _| {
+                    let _interrupt = interrupt.unwrap();
+                    for slot in ticks {
+                        let event =
+                            if stop.load(Ordering::Relaxed) || local_stop.load(Ordering::Relaxed) {
+                                ProbeEvent::Finished
+                            } else {
+                                ProbeEvent::Scheduled {
+                                    slot,
+                                    position: Duration::from_millis(slot * 10),
+                                    interval: Duration::from_millis(10),
+                                }
+                            };
+                        let finished = event == ProbeEvent::Finished;
+                        events.send((id, event)).unwrap();
+                        if finished {
+                            break;
+                        }
+                    }
+                },
+            );
+            (worker, tick)
+        };
+        let (first, tick_first) = start(41);
+        let (second, tick_second) = start(73);
+        let next = || received.recv_timeout(Duration::from_secs(2)).unwrap();
+        tick_first.send(0).unwrap();
+        assert!(matches!(
+            next(),
+            (41, ProbeEvent::Scheduled { slot: 0, .. })
+        ));
+        tick_second.send(0).unwrap();
+        assert!(matches!(
+            next(),
+            (73, ProbeEvent::Scheduled { slot: 0, .. })
+        ));
         first.cancel();
         assert!(!shutdown.load(Ordering::Relaxed));
-        let canceled_at = schedule.slot(Instant::now());
-        loop {
-            let (id, event) = received.recv_timeout(Duration::from_secs(2)).unwrap();
-            if id == 73 && matches!(event, ProbeEvent::Scheduled { slot, .. } if slot > canceled_at)
-            {
-                break;
-            }
-        }
+        tick_first.send(1).unwrap();
+        assert_eq!(next(), (41, ProbeEvent::Finished));
+        tick_second.send(1).unwrap();
+        assert!(matches!(
+            next(),
+            (73, ProbeEvent::Scheduled { slot: 1, .. })
+        ));
         shutdown.store(true, Ordering::Relaxed);
-        schedule.change(Duration::from_millis(10), Instant::now());
-        loop {
-            let (id, event) = received.recv_timeout(Duration::from_secs(2)).unwrap();
-            if id == 73 && matches!(event, ProbeEvent::Finished) {
-                break;
-            }
-        }
+        tick_second.send(2).unwrap();
+        assert_eq!(next(), (73, ProbeEvent::Finished));
         drop(second);
     }
 

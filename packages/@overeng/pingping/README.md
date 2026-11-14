@@ -175,6 +175,12 @@ Shell configuration must enable its normal completion support.
 Registration and callback commands both use the invocation's basename, preserving
 adopter aliases without embedding absolute installation paths in shell scripts.
 
+## Testing
+
+Run the repository's Rust workspace gate with `devenv tasks run cargo:check`.
+Worker cancellation tests use deterministic probe bodies through the production
+worker lifetime boundary, so they do not require ICMP socket permissions.
+
 ## Package Boundary
 
 | Component                                                         | Responsibility                                                      |
