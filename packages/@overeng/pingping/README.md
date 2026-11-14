@@ -192,6 +192,9 @@ adopter aliases without embedding absolute installation paths in shell scripts.
 Run the repository's Rust workspace gate with `devenv tasks run cargo:check`.
 Worker cancellation tests use deterministic probe bodies through the production
 worker lifetime boundary, so they do not require ICMP socket permissions.
+For stacked changes, run package tests and all-target Clippy with
+`-D warnings -D clippy::pedantic` at every layer: test-only ownership can differ
+from the final integrated binary.
 
 ## Package Boundary
 

@@ -132,7 +132,7 @@ impl Store {
             hosts,
             interval,
             SystemTime::now(),
-            tailnet::status(),
+            tailnet::status().as_ref(),
         )
     }
 
@@ -141,7 +141,7 @@ impl Store {
         hosts: &[String],
         interval: Duration,
         now: SystemTime,
-        status: Option<Status>,
+        status: Option<&Status>,
     ) -> io::Result<(Self, Vec<Vec<HistoricalSession>>)> {
         let clock = Instant::now();
         private_directory(root)?;
@@ -150,7 +150,7 @@ impl Store {
         }
         let identities: Vec<_> = hosts
             .iter()
-            .map(|host| Identity::resolve(host, status.as_ref()))
+            .map(|host| Identity::resolve(host, status))
             .collect();
         let prior = load(root, &identities, now)?;
         let writers = identities
@@ -177,7 +177,7 @@ impl Store {
                 #[cfg(test)]
                 start: now,
                 #[cfg(test)]
-                status,
+                status: status.cloned(),
             },
             prior,
         ))
@@ -904,7 +904,7 @@ mod tests {
             &names,
             Duration::from_secs(1),
             now(),
-            Some(status),
+            Some(&status),
         )
         .unwrap();
         store
@@ -1191,7 +1191,7 @@ mod tests {
             &["HOST-A".into()],
             Duration::from_secs(1),
             now(),
-            Some(status.clone()),
+            Some(&status),
         )
         .unwrap();
         store
@@ -1209,7 +1209,7 @@ mod tests {
             &["100.64.0.1".into()],
             Duration::from_secs(1),
             now(),
-            Some(status),
+            Some(&status),
         )
         .unwrap();
         assert_eq!(previous[0].len(), 1);
