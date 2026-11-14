@@ -740,12 +740,30 @@ mod tests {
         }
     }
 
+    fn set_fixture_journal_times(root: &Path) {
+        // Fixture UTC is ahead of real filesystem time. Once a writer unlocks,
+        // retention must see the fixture time rather than prune its fresh data.
+        for entry in fs::read_dir(root).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                OpenOptions::new()
+                    .read(true)
+                    .custom_flags(OFlag::O_NOFOLLOW.bits())
+                    .open(entry.path())
+                    .unwrap()
+                    .set_modified(now())
+                    .unwrap();
+            }
+        }
+    }
+
     #[test]
     fn retiring_a_writer_does_not_reassign_remaining_target_ids() {
         let directory = Directory::new();
         let names = vec!["host-a".into(), "host-a.example.test".into()];
         let (mut store, _) =
             Store::open_at(&directory.0, &names, Duration::from_secs(1), now(), None).unwrap();
+        set_fixture_journal_times(&directory.0);
         store.retire(0);
         let outcome = ProbeEvent::Lost {
             seq: 1,
@@ -755,6 +773,7 @@ mod tests {
         assert!(store.record(0, &outcome).is_err());
         assert!(store.record(2, &outcome).is_err());
         store.record(1, &outcome).unwrap();
+        set_fixture_journal_times(&directory.0);
         let (_, prior) =
             Store::open_at(&directory.0, &names, Duration::from_secs(1), now(), None).unwrap();
         assert!(prior[0].iter().all(|session| session.samples.is_empty()));
@@ -795,6 +814,7 @@ mod tests {
                 },
             )
             .unwrap();
+        set_fixture_journal_times(&directory.0);
         store.retire(42);
         let restored = store.register(43, "host-a", interval).unwrap();
         assert_eq!(restored.len(), 1);
@@ -819,6 +839,7 @@ mod tests {
             )
             .unwrap();
         let elapsed = store.clock.elapsed();
+        set_fixture_journal_times(&directory.0);
         store.retire(43);
         let names = vec!["host-a".into()];
         let (_, prior) = Store::open_at(
@@ -896,6 +917,7 @@ mod tests {
                 },
             )
             .unwrap();
+        set_fixture_journal_times(&directory.0);
         store.retire(0);
         drop(status);
         let prior = store
@@ -939,6 +961,7 @@ mod tests {
             },
         )
         .unwrap();
+        set_fixture_journal_times(&directory.0);
         drop(seed);
         let mut runtime = runtime_with_history(&directory.0, hosts());
         assert!(!runtime.hosts[0].prior_sessions.is_empty());
@@ -947,6 +970,7 @@ mod tests {
             .add_resolved(hosts().remove(0), "127.0.0.1".parse().unwrap())
             .unwrap();
         assert!(!runtime.hosts[1].prior_sessions.is_empty());
+        set_fixture_journal_times(&directory.0);
         let replacement = runtime
             .edit_resolved(added, hosts().remove(0), "127.0.0.2".parse().unwrap())
             .unwrap()
@@ -961,6 +985,7 @@ mod tests {
         runtime.record(added, &outcome).unwrap();
         runtime.record(crate::target::GLOBAL_ID, &outcome).unwrap();
         runtime.record(replacement, &outcome).unwrap();
+        set_fixture_journal_times(&directory.0);
         runtime.retire(replacement);
         runtime.record(replacement, &outcome).unwrap();
         drop(runtime);
@@ -1012,6 +1037,7 @@ mod tests {
                 },
             )
             .unwrap();
+        set_fixture_journal_times(&directory.0);
         drop(runtime);
         fs::remove_file(link).unwrap();
         let (_, prior) = open(&directory.0, now());
