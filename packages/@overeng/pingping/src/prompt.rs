@@ -2,7 +2,7 @@
 //! until it accepts an action; resolution failures come back through
 //! `set_error` without losing the typed input.
 //!
-//! Preparatory, test-only state machine until the live UI consumes its actions.
+//! Printable ASCII and space only; IDNs must use punycode.
 //! Control/Alt shortcuts never edit or submit; removal needs an unmodified
 //! `y` (or Shift-Y), and Escape cancels without changing targets.
 
@@ -11,6 +11,8 @@ use std::borrow::Cow;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::{completion, target::TargetId};
+
+const ASCII_ERROR: &str = "hostnames must be ASCII (use punycode for IDN)";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PromptAction {
@@ -41,7 +43,7 @@ struct Completion {
 pub struct Prompt {
     mode: Mode,
     input: String,
-    /// Byte offset on a UTF-8 boundary, independent of display width.
+    /// Byte offset; accepted input is ASCII, so every byte is one character.
     cursor: usize,
     error: Option<Cow<'static, str>>,
     completion: Option<Completion>,
@@ -64,11 +66,13 @@ impl Prompt {
     }
 
     fn new(mode: Mode, input: String) -> Self {
+        let valid = input.bytes().all(|byte| (b' '..=b'~').contains(&byte));
+        let input = if valid { input } else { String::new() };
         Self {
             mode,
             cursor: input.len(),
             input,
-            error: None,
+            error: (!valid).then_some(Cow::Borrowed(ASCII_ERROR)),
             completion: None,
         }
     }
@@ -124,6 +128,20 @@ impl Prompt {
         self.handle_with(key, completion::host_names)
     }
 
+    /// A paste is one operation: never insert a valid prefix of invalid text.
+    pub fn paste(&mut self, text: &str) {
+        if !text.bytes().all(|byte| (b' '..=b'~').contains(&byte)) {
+            self.fail(ASCII_ERROR);
+        } else if matches!(self.mode, Mode::Remove(..)) {
+            self.fail("press y or n");
+        } else {
+            self.input.insert_str(self.cursor, text);
+            self.cursor += text.len();
+            self.error = None;
+            self.completion = None;
+        }
+    }
+
     fn handle_with(
         &mut self,
         key: &KeyEvent,
@@ -162,40 +180,30 @@ impl Prompt {
         self.completion = None;
         match key.code {
             KeyCode::Enter => return self.submit(edit),
-            KeyCode::Left => {
-                self.cursor = self.input[..self.cursor]
-                    .char_indices()
-                    .next_back()
-                    .map_or(0, |(index, _)| index);
-            }
-            KeyCode::Right => {
-                if let Some(c) = self.input[self.cursor..].chars().next() {
-                    self.cursor += c.len_utf8();
-                }
-            }
+            KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
+            KeyCode::Right => self.cursor = (self.cursor + 1).min(self.input.len()),
             KeyCode::Home => self.cursor = 0,
             KeyCode::End => self.cursor = self.input.len(),
             KeyCode::Backspace => {
-                if let Some((previous, _)) = self.input[..self.cursor].char_indices().next_back() {
-                    self.input.replace_range(previous..self.cursor, "");
-                    self.cursor = previous;
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                    self.input.remove(self.cursor);
                     self.error = None;
                 }
             }
             KeyCode::Delete => {
-                if let Some(c) = self.input[self.cursor..].chars().next() {
-                    self.input
-                        .replace_range(self.cursor..self.cursor + c.len_utf8(), "");
+                if self.cursor < self.input.len() {
+                    self.input.remove(self.cursor);
                     self.error = None;
                 }
             }
             KeyCode::Char(c) => {
-                if c.is_control() {
-                    self.fail("control characters are not allowed");
-                } else {
+                if (' '..='~').contains(&c) {
                     self.input.insert(self.cursor, c);
-                    self.cursor += c.len_utf8();
+                    self.cursor += 1;
                     self.error = None;
+                } else {
+                    self.fail(ASCII_ERROR);
                 }
             }
             _ => {}
@@ -204,10 +212,6 @@ impl Prompt {
     }
 
     fn submit(&mut self, edit: Option<TargetId>) -> PromptAction {
-        if self.input.chars().any(char::is_control) {
-            self.fail("control characters are not allowed");
-            return PromptAction::None;
-        }
         let count = self.input.split_whitespace().count();
         if count == 0 {
             self.fail("enter at least one host");
@@ -326,7 +330,7 @@ mod tests {
         assert_eq!(prompt.handle(&key(KeyCode::Enter)), PromptAction::None);
         assert!(prompt.line().contains("at least one"));
         prompt.handle(&key(KeyCode::Char('\n')));
-        assert!(prompt.line().contains("control characters"));
+        assert!(prompt.line().contains(ASCII_ERROR));
         assert!(!prompt.line().contains('\n'));
         let mut ctrl = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         assert_eq!(prompt.handle(&ctrl), PromptAction::None);
@@ -335,23 +339,55 @@ mod tests {
         assert_eq!(prompt.handle(&key(KeyCode::Enter)), PromptAction::None);
         let mut invalid = Prompt::edit(1, "host\u{7}");
         assert!(!invalid.line().contains('\u{7}'));
+        assert_eq!(invalid.input, "");
+        assert!(invalid.line().contains(ASCII_ERROR));
         assert_eq!(invalid.handle(&key(KeyCode::Enter)), PromptAction::None);
     }
 
     #[test]
-    fn unicode_cursor_edits_preserve_character_boundaries() {
+    fn non_ascii_keys_and_pastes_leave_the_buffer_unchanged() {
+        for character in ['é', '\u{301}', '猫'] {
+            let mut prompt = Prompt::edit(7, "cafe");
+            assert_eq!(
+                prompt.handle(&key(KeyCode::Char(character))),
+                PromptAction::None
+            );
+            assert_eq!(prompt.input, "cafe");
+            assert_eq!(prompt.cursor, 4);
+            assert!(prompt.line().contains(ASCII_ERROR));
+        }
+        for text in [
+            "café",
+            "cafe\u{301}",
+            "猫",
+            "host-a\nhost-b",
+            "host-a\thost-b",
+        ] {
+            let mut prompt = Prompt::edit(7, "original");
+            prompt.paste(text);
+            assert_eq!(prompt.input, "original");
+            assert_eq!(prompt.cursor, 8);
+            assert!(prompt.line().contains(ASCII_ERROR));
+        }
+        let invalid_prefill = Prompt::edit(7, "café");
+        assert_eq!(invalid_prefill.input, "");
+        assert!(invalid_prefill.line().contains(ASCII_ERROR));
+    }
+
+    #[test]
+    fn ascii_cursor_edits_and_paste_preserve_expected_boundaries() {
         let mut prompt = Prompt::add();
-        type_text(&mut prompt, "aé猫z");
+        prompt.paste("abcd");
         prompt.handle(&key(KeyCode::Left));
         prompt.handle(&key(KeyCode::Backspace));
         prompt.handle(&key(KeyCode::Left));
         prompt.handle(&key(KeyCode::Delete));
         prompt.handle(&key(KeyCode::Home));
         prompt.handle(&key(KeyCode::Right));
-        type_text(&mut prompt, "ø");
-        assert!(prompt.line().starts_with("Add hosts: aø▏z"));
+        type_text(&mut prompt, "x");
+        assert!(prompt.line().starts_with("Add hosts: ax▏d"));
         prompt.handle(&key(KeyCode::End));
-        assert_eq!(prompt.handle(&key(KeyCode::Enter)), submit(None, &["aøz"]));
+        assert_eq!(prompt.handle(&key(KeyCode::Enter)), submit(None, &["axd"]));
     }
 
     #[test]
