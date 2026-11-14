@@ -162,7 +162,7 @@ try {
     expect(new TextDecoder().decode((await pinned.stdout.getReader().read()).value)).toContain(
       'admitted',
     )
-    expect(requests).toBe(2)
+    expect(requests).toBe(1) // Response deadlines do not retry.
     healthy = true
     expect(
       await probeRemoteCacheCapabilities({
@@ -178,11 +178,11 @@ try {
     rmSync(join(separate, 'probe-cache'), { recursive: true, force: true })
     const recovered = launch(separate, 'reader', 'fallback', false, '2112-job-A')
     expect(await recovered.exited, await new Response(recovered.stderr).text()).toBe(0)
-    expect(requests).toBe(3) // The control succeeded; B did not select a new posture.
+    expect(requests).toBe(2) // The control succeeded; B did not select a new posture.
     const foreignJob = launch(separate, 'reader', 'online', false, '2112-job-B')
     expect(await foreignJob.exited).toBe(1)
     expect(await new Response(foreignJob.stderr).text()).toContain('concurrent launcher')
-    expect(requests).toBe(4) // A different job gets its own fresh successful probe.
+    expect(requests).toBe(3) // A different job gets its own fresh successful probe.
     pinned.stdin.write('finish\n')
     expect(await pinned.exited).toBe(0)
     const notice = await new Response(pinned.stderr).text()
@@ -207,16 +207,16 @@ try {
       expect(statSync(join(state, file)).mode & 0o777).toBe(0o600)
     const newJob = launch(separate, 'reader', 'online', false, '2112-job-B')
     expect(await newJob.exited, await new Response(newJob.stderr).text()).toBe(0)
-    expect(requests).toBe(4)
+    expect(requests).toBe(3)
     // A sequential matrix child on this same runner/root must probe independently,
     // although run, attempt and GITHUB_JOB are identical to both prior children.
     const sequentialChild = launch(separate, 'reader', 'online', false, '2112-job-C')
     expect(await sequentialChild.exited, await new Response(sequentialChild.stderr).text()).toBe(0)
-    expect(requests).toBe(5)
+    expect(requests).toBe(4)
     expect(readdirSync(state).filter((file) => file.startsWith('reapi-job-'))).toHaveLength(3)
     const unconfigured = launch(separate, 'reader', 'online', false, 'missing')
     expect(await unconfigured.exited, await new Response(unconfigured.stderr).text()).toBe(0)
-    expect(requests).toBe(5) // Missing identity preserves the short-lived probe cache.
+    expect(requests).toBe(4) // Missing identity preserves the short-lived probe cache.
     const lastAdmission = JSON.parse(
       readFileSync(join(separate, 'admission.admission.jsonl'), 'utf8').trim().split('\n').at(-1)!,
     )

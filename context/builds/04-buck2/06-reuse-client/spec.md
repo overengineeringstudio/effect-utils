@@ -552,9 +552,16 @@ invocation admission -> identical healthy invocation cache -> native Buck
 The flake's pinned executable owns admission for direct agent commands, devenv
 tasks and consumer roots. It resolves the nearest `.buckroot`, reads the tracked
 and local Buck configuration, applies the shared environment posture, and probes
-REAPI `GetCapabilities` and the trusted archive origin concurrently. Each endpoint
-gets 2500 ms per attempt including connection setup, with exactly one immediate
-retry after a failed first attempt and at most 5000 ms total probing per endpoint.
+REAPI `GetCapabilities` and the trusted archive origin concurrently. REAPI
+admission uses a split budget: connect+TLS (DNS, TCP, TLS) gets its own
+deadline of 5000 ms, the response gets a fresh 2500 ms budget once TLS is
+ready, and a hard per-endpoint ceiling of 8000 ms bounds both attempts; a
+caller-supplied flat deadline still sets both phase budgets. `grpc-timeout`
+carries the response budget only. Attempt 2 runs only when time remains under
+the ceiling and attempt 1 failed in a connect/TLS phase (`dns`, `tcp`, or
+`tls`); a response-phase deadline after TLS is ready is a server-side signal
+and is not retried. Slow ingress TLS (about 2 s on Funnel) therefore cannot
+turn an admission into a cache-less fallback by itself.
 Watchman admission is separate from these remote-endpoint outage policies.
 An uncached Watchman-configured invocation, including an explicit local Watchman
 override, runs `watchman --no-local [--sockname=...] --output-encoding=json
@@ -590,9 +597,10 @@ exemption is asserted regardless of the runner's own priority.
 The exemption never reaches a shared default service. Source authority:
 [`WatchmanConfig.cpp` global loading](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/WatchmanConfig.cpp#L27-L68)
 and [`main.cpp` priority refusal](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/main.cpp#L87-L107).
-Each attempt uses the caller's probe deadline (2500 ms by default), replacing
-the former 900 ms cap. Only a timeout gets one retry; total probing is bounded
-to two caller deadlines (5000 ms by default).
+Each Watchman attempt uses the caller's flat probe deadline (2500 ms by
+default), replacing the former 900 ms cap. Only a timeout gets one retry; total
+Watchman probing is bounded to two caller deadlines (5000 ms by default). REAPI
+probes use the split budget above instead of this flat deadline.
 
 Missing executable, unavailable service, exhausted timeout, malformed/error
 response or incorrect watched root fails closed with the root, attempted command,
@@ -784,7 +792,11 @@ existing admission sidecar row and collected `admissionInvocations`. Each attemp
 emits one sanitized JSON log line (`Buck2 REAPI admission attempt:`). Attempts have
 `attemptIndex` (1 or 2), `elapsedMs`, `deadlineMs`, and observed milestones
 `dnsResolvedMs`, `tcpConnectedMs`, `tlsReadyMs`, `firstResponseMs`: rounded monotonic
-milliseconds since attempt start, not individual phase durations. Unobserved
+milliseconds since attempt start, not individual phase durations. New attempts
+also name the budget split — `connectTlsDeadlineMs`, `responseDeadlineMs`, and
+`totalCeilingMs` — so a slow-TLS signal (for example p90 `tlsReadyMs` above
+1.5 s) can be derived later; `deadlineMs` is the budget of the phase that
+failed. Unobserved
 milestones are omitted (including DNS for IP literals and TLS for plaintext).
 Failures additionally carry the existing closed `failure` class/phase/timing
 shape. No endpoint paths, headers, credentials, or transport error text enter
@@ -851,7 +863,9 @@ An REAPI fallback may include `reapiFailure: { class, phase, elapsedMs, deadline
 including when admission reuses a cached negative probe. `class` is one of
 `configuration`, `dns`, `tcp`, `tls`, `transport`, `deadline`, `auth`, `http`,
 `grpc`, or `protocol`; `phase` is `configuration`, `dns`, `tcp`, `tls`, or
-`response`. Timings are nonnegative safe-integer milliseconds. Unknown categories
+`response`. Timings are nonnegative safe-integer milliseconds; `deadlineMs` is
+the budget of the phase that failed (response budget for `response`, connect
+budget otherwise). Unknown categories
 or invalid timings reject the row. No free error text, address, host, or credential
 is retained. Older rows without this optional field remain valid.
 The summary's `reapiFailures` array groups deduplicated diagnostic-bearing rows

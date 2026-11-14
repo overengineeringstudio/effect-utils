@@ -16,7 +16,8 @@ import {
   watch,
   writeFileSync,
 } from 'node:fs'
-import { createServer, type ServerHttp2Stream } from 'node:http2'
+import { createServer, createSecureServer, type ServerHttp2Stream } from 'node:http2'
+import { connect as connectTcp, createServer as createTcpServer, type Socket } from 'node:net'
 import { getPriority, homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
@@ -1193,7 +1194,7 @@ Object.defineProperty(process, 'execve', {
     }, 20000)
   }
 
-  for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
+  for (const scenario of ['healthy', 'retry-success', 'both-fail', 'response-no-retry'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
       let requests = 0
       let archiveRequests = 0
@@ -1206,12 +1207,9 @@ Object.defineProperty(process, 'execve', {
         stream.on('error', () => {})
         stream.on('data', () => {})
         stream.on('end', () => {
-          if (scenario === 'both-fail' || (scenario === 'retry-success' && requests === 1)) {
-            const deadline = probeDeadlines.reapi[requests - 1]
-            if (deadline === undefined) throw new Error('expected REAPI attempt deadline')
-            deadline.abort()
-            return
-          }
+          // A connected server that never answers expires the response budget
+          // without opening a retry connection.
+          if (scenario === 'response-no-retry') return
           stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
           stream.end(Buffer.from([0, 0, 0, 0, 0]))
         })
@@ -1238,13 +1236,22 @@ Object.defineProperty(process, 'execve', {
           ...options(root),
           args: ['build', '//:app'],
           env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
-          ...(scenario === 'healthy' ? {} : { deadlineMs: 100 }),
-          // The fixture expires only deliberately held attempts, after receiving
-          // the real request. A healthy retry must not race a wall-clock timer.
+          // Keep production's generous 5 s connect budget for the real timer
+          // case; only the intentionally silent response should time out.
+          ...(scenario === 'healthy' || scenario === 'response-no-retry'
+            ? {}
+            : { deadlineMs: 100 }),
+          // Connect-phase expiry (a stalled ingress TLS analogue) aborts before
+          // the request and earns the retry; response-phase expiry does not.
           probeDeadlineSignal: (endpoint: AdmissionProbeEndpoint) => {
-            if (endpoint === 'watchman') return undefined
+            if (endpoint === 'watchman' || scenario === 'response-no-retry') return undefined
             const deadline = new AbortController()
             probeDeadlines[endpoint].push(deadline)
+            if (
+              (scenario === 'retry-success' && probeDeadlines[endpoint].length === 1) ||
+              scenario === 'both-fail'
+            )
+              deadline.abort()
             return deadline.signal
           },
         }
@@ -1253,23 +1260,31 @@ Object.defineProperty(process, 'execve', {
           ...admissionOptions,
           env: { ...admissionOptions.env, BUCK_WRAPPER_UUID: invocationId.replaceAll('-', '') },
         })
-        if (scenario === 'both-fail')
+        if (scenario === 'both-fail' || scenario === 'response-no-retry')
           expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
         else expect(effective(result)['buck2.remote_cache_enabled']).not.toBe('false')
         expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
-        expect(requests).toBe(scenario === 'healthy' ? 1 : 2)
+        expect(requests).toBe(scenario === 'both-fail' ? 0 : 1)
         expect(archiveRequests).toBe(0)
-        expect(deadlines).toEqual(scenario === 'healthy' ? ['2500m'] : ['100m', '100m'])
+        expect(deadlines).toEqual(
+          scenario === 'healthy' || scenario === 'response-no-retry'
+            ? ['2500m']
+            : scenario === 'both-fail'
+              ? []
+              : ['100m'],
+        )
         for (const attempts of Object.values(probeDeadlines)) {
           expect(attempts.map((deadline) => deadline.signal.aborted)).toEqual(
             scenario === 'healthy'
               ? [false]
               : scenario === 'retry-success'
                 ? [true, false]
-                : [true, true],
+                : scenario === 'both-fail'
+                  ? [true, true]
+                  : [],
           )
         }
-        if (scenario === 'both-fail') {
+        if (scenario === 'both-fail' || scenario === 'response-no-retry') {
           await expect(
             directBuckArguments({
               ...admissionOptions,
@@ -1289,19 +1304,24 @@ Object.defineProperty(process, 'execve', {
         expect(rows[0]?.invocationId).toBe(invocationId)
         for (const [index, row] of rows.entries()) {
           expect(row.admissionFallbacks).toEqual({
-            reapi: scenario === 'both-fail' ? 1 : 0,
+            reapi: scenario === 'both-fail' || scenario === 'response-no-retry' ? 1 : 0,
             archiveOrigin: 0,
           })
           expect(row.admissionRetrySuccesses).toEqual({
             reapi: scenario === 'retry-success' && index === 0 ? 1 : 0,
             archiveOrigin: 0,
           })
+          if (scenario === 'response-no-retry') {
+            expect(row.reapiAttempts).toHaveLength(1)
+            expect(row.reapiAttempts?.[0]?.connectTlsDeadlineMs).toBe(5000)
+            expect(row.reapiAttempts?.[0]?.failure?.phase).toBe('response')
+          }
         }
       } finally {
         archive.stop(true)
         grpc.close()
       }
-    })
+    }, 15000)
   }
 
   it('preserves reader and writer admission when TLS succeeds without h2 ALPN', async () => {
@@ -1430,6 +1450,81 @@ console.log(JSON.stringify(outcomes));`,
       expect(stderr.match(/warning: Buck2 REAPI probe failed:/gu)).toHaveLength(6)
       expect(stderr).not.toContain('ERR_HTTP2_SOCKET_UNBOUND')
       expect(stderr).not.toContain('fixture-secret')
+      // Hold ClientHello longer than the scaled response budget, then finish
+      // real TLS and answer immediately. Platform timers are under test.
+      const sockets = new Set<Socket>()
+      const secure = createSecureServer({ cert, key })
+      secure.on('stream', (stream) => {
+        stream.on('error', () => {})
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      const listening = Promise.withResolvers<void>()
+      secure.once('listening', listening.resolve)
+      secure.listen(0, '127.0.0.1')
+      await listening.promise
+      const secureAddress = secure.address()
+      if (secureAddress === null || typeof secureAddress === 'string')
+        throw new Error('expected TLS listener')
+      const relay = createTcpServer((downstream) => {
+        const upstream = connectTcp(secureAddress.port, '127.0.0.1')
+        for (const socket of [downstream, upstream]) {
+          sockets.add(socket)
+          socket.on('error', () => {})
+          socket.on('close', () => sockets.delete(socket))
+        }
+        upstream.pipe(downstream)
+        setTimeout(() => {
+          if (downstream.destroyed === false) downstream.pipe(upstream)
+        }, 1500)
+      })
+      const relayListening = Promise.withResolvers<void>()
+      relay.once('listening', relayListening.resolve)
+      relay.listen(0, '127.0.0.1')
+      await relayListening.promise
+      const relayAddress = relay.address()
+      if (relayAddress === null || typeof relayAddress === 'string')
+        throw new Error('expected relay')
+      try {
+        const probe = Bun.spawn({
+          cmd: [
+            process.execPath,
+            '-e',
+            `
+import { probeRemoteCacheCapabilities } from ${JSON.stringify(import.meta.dir + '/buck2-cache-posture.ts')};
+let attempt;
+const admitted = await probeRemoteCacheCapabilities({
+  address: 'grpcs://127.0.0.1:${relayAddress.port}', instanceName: '', tls: true,
+  header: undefined, env: {}, connectTlsDeadlineMs: 5000,
+  responseDeadlineMs: 1000, totalCeilingMs: 8000, attemptCeilingMs: 8000,
+  onAttempt: (value) => { attempt = value; },
+});
+console.log(JSON.stringify({admitted, attempt}));`,
+          ],
+          env: { ...process.env, NODE_EXTRA_CA_CERTS: certificate },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [output, diagnostic, code] = await Promise.all([
+          new Response(probe.stdout).text(),
+          new Response(probe.stderr).text(),
+          probe.exited,
+        ])
+        expect(diagnostic).toBe('')
+        expect(code).toBe(0)
+        const result = JSON.parse(output)
+        expect(result.admitted).toBe(true)
+        expect(result.attempt.tlsReadyMs).toBeGreaterThan(1000)
+        expect(result.attempt.responseDeadlineMs).toBe(1000)
+        expect(result.attempt.failure).toBeUndefined()
+      } finally {
+        for (const socket of sockets) socket.destroy()
+        relay.close()
+        secure.close()
+      }
     } finally {
       tls.close()
     }
@@ -1510,7 +1605,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
       expect(await child.exited).toBe(0)
       const failures = Array.from(
         stderr.matchAll(
-          /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=2500)/gu,
+          /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=5000)/gu,
         ),
         (match) => match[1],
       )

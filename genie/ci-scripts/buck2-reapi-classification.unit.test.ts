@@ -151,7 +151,10 @@ const failedProbe: CacheAdmissionInvocation = {
       dnsResolvedMs: 2,
       tcpConnectedMs: 12,
       tlsReadyMs: 20,
-      failure: { class: 'deadline', phase: 'response', elapsedMs: 5000, deadlineMs: 5000 },
+      connectTlsDeadlineMs: 5000,
+      responseDeadlineMs: 2500,
+      totalCeilingMs: 8000,
+      failure: { class: 'deadline', phase: 'response', elapsedMs: 5000, deadlineMs: 2500 },
     },
     {
       attemptIndex: 2,
@@ -169,7 +172,7 @@ const failedProbe: CacheAdmissionInvocation = {
 describe('reader REAPI fallback diagnostics', () => {
   it('prints all attempt milestones and failure categories for the first failed probe', () => {
     expect(collectReapiClassifications(jsonl(failedProbe)).diagnostics).toMatchInlineSnapshot(`
-      "Buck2 REAPI admission fallback: {"phase":"admission","reason":"capabilities","reapiDecision":"first-probe-for-ci-job","failure":{"class":"deadline","phase":"response"},"attempts":[{"attemptIndex":1,"elapsedMs":5000,"deadlineMs":5000,"dnsResolvedMs":2,"tcpConnectedMs":12,"tlsReadyMs":20,"failure":{"class":"deadline","phase":"response"}},{"attemptIndex":2,"elapsedMs":5000,"deadlineMs":5000,"dnsResolvedMs":1,"tcpConnectedMs":10,"tlsReadyMs":18,"firstResponseMs":25,"failure":{"class":"deadline","phase":"response"}}]}
+      "Buck2 REAPI admission fallback: {"phase":"admission","reason":"capabilities","reapiDecision":"first-probe-for-ci-job","failure":{"class":"deadline","phase":"response"},"attempts":[{"attemptIndex":1,"elapsedMs":5000,"deadlineMs":5000,"dnsResolvedMs":2,"tcpConnectedMs":12,"tlsReadyMs":20,"connectTlsDeadlineMs":5000,"responseDeadlineMs":2500,"totalCeilingMs":8000,"failure":{"class":"deadline","phase":"response"}},{"attemptIndex":2,"elapsedMs":5000,"deadlineMs":5000,"dnsResolvedMs":1,"tcpConnectedMs":10,"tlsReadyMs":18,"firstResponseMs":25,"failure":{"class":"deadline","phase":"response"}}]}
       "
     `)
   })
