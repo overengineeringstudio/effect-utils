@@ -6,6 +6,8 @@ mod live;
 mod netinfo;
 mod path;
 mod probe;
+#[cfg(test)]
+mod prompt;
 mod render;
 mod runtime;
 mod stats;
