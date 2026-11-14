@@ -207,6 +207,29 @@ const remoteCacheProbeErrorClasses = [
 ] as const
 const remoteCacheProbePhases = ['configuration', 'dns', 'tcp', 'tls', 'response'] as const
 
+/**
+ * Split admission budget so slow TLS on cache ingress (about 2 s on Funnel)
+ * cannot consume the response budget: connect+TLS gets its own deadline, the
+ * response gets a fresh budget once TLS is ready, and a hard per-endpoint
+ * ceiling bounds both attempts. `grpc-timeout` carries the response budget only.
+ */
+export const reapiAdmissionProbeBudgetMs = {
+  connectTlsDeadlineMs: 5000,
+  responseDeadlineMs: 2500,
+  totalCeilingMs: 8000,
+} as const
+
+/** Attempt 2 runs only after a connect/TLS-phase failure and only within the ceiling. */
+export const shouldRetryReapiAdmission = ({
+  failurePhase,
+  remainingCeilingMs,
+}: {
+  readonly failurePhase: ReapiAdmissionFailure['phase'] | undefined
+  readonly remainingCeilingMs: number
+}): boolean =>
+  (failurePhase === 'dns' || failurePhase === 'tcp' || failurePhase === 'tls') &&
+  remainingCeilingMs > 0
+
 /** Fixed categories and timings only; never server text, addresses or credentials. */
 export type ReapiAdmissionFailure = {
   readonly class: (typeof remoteCacheProbeErrorClasses)[number]
@@ -252,6 +275,10 @@ export type ReapiAdmissionAttempt = {
   readonly tcpConnectedMs?: number
   readonly tlsReadyMs?: number
   readonly firstResponseMs?: number
+  /** Budget split naming: connect+TLS deadline, post-TLS response deadline, endpoint ceiling. */
+  readonly connectTlsDeadlineMs?: number
+  readonly responseDeadlineMs?: number
+  readonly totalCeilingMs?: number
   readonly failure?: ReapiAdmissionFailure
 }
 
@@ -275,9 +302,26 @@ export const decodeReapiAdmissionAttempts = (value: unknown): ReapiAdmissionAtte
     if (attemptIndex !== 1 && attemptIndex !== 2)
       throw new Error('Invalid REAPI admission attempt index')
     const milestones: Partial<
-      Record<'dnsResolvedMs' | 'tcpConnectedMs' | 'tlsReadyMs' | 'firstResponseMs', number>
+      Record<
+        | 'dnsResolvedMs'
+        | 'tcpConnectedMs'
+        | 'tlsReadyMs'
+        | 'firstResponseMs'
+        | 'connectTlsDeadlineMs'
+        | 'responseDeadlineMs'
+        | 'totalCeilingMs',
+        number
+      >
     > = {}
-    for (const key of ['dnsResolvedMs', 'tcpConnectedMs', 'tlsReadyMs', 'firstResponseMs'] as const)
+    for (const key of [
+      'dnsResolvedMs',
+      'tcpConnectedMs',
+      'tlsReadyMs',
+      'firstResponseMs',
+      'connectTlsDeadlineMs',
+      'responseDeadlineMs',
+      'totalCeilingMs',
+    ] as const)
       if (key in attempt) milestones[key] = timing(key)
     return {
       attemptIndex,
@@ -353,6 +397,10 @@ export const probeRemoteCacheCapabilities = async ({
   header,
   env,
   deadlineMs,
+  connectTlsDeadlineMs = deadlineMs ?? reapiAdmissionProbeBudgetMs.connectTlsDeadlineMs,
+  responseDeadlineMs = deadlineMs ?? reapiAdmissionProbeBudgetMs.responseDeadlineMs,
+  totalCeilingMs,
+  attemptCeilingMs,
   deadlineSignal,
   onFailure,
   onConnectionEvent,
@@ -364,7 +412,16 @@ export const probeRemoteCacheCapabilities = async ({
   readonly tls: boolean
   readonly header: string | undefined
   readonly env: Readonly<Record<string, string | undefined>>
-  readonly deadlineMs: number
+  /** Legacy flat deadline; sets both phase budgets when the split is omitted. */
+  readonly deadlineMs?: number
+  /** Budget covering DNS+TCP+TLS. */
+  readonly connectTlsDeadlineMs?: number
+  /** Fresh response budget once TLS is ready; also carried as grpc-timeout. */
+  readonly responseDeadlineMs?: number
+  /** Reported budget-split field for admission evidence. */
+  readonly totalCeilingMs?: number
+  /** Hard per-attempt clamp within the endpoint's total ceiling. */
+  readonly attemptCeilingMs?: number
   readonly deadlineSignal?: AbortSignal
   readonly onFailure?: (failure: RemoteCacheProbeFailure) => void
   readonly onConnectionEvent?: (event: RemoteCacheProbeConnectionEvent) => void
@@ -379,12 +436,17 @@ export const probeRemoteCacheCapabilities = async ({
     tlsReadyMs?: number
     firstResponseMs?: number
   } = {}
+  // Deadline evidence reports the budget of the phase that failed.
+  const phaseBudgetMs = () => (phase === 'response' ? responseDeadlineMs : connectTlsDeadlineMs)
   const reportAttempt = (failure?: ReapiAdmissionFailure) =>
     onAttempt?.({
       attemptIndex,
       elapsedMs: Math.round(performance.now() - started),
-      deadlineMs,
+      deadlineMs: phaseBudgetMs(),
       ...milestones,
+      connectTlsDeadlineMs,
+      responseDeadlineMs,
+      ...(totalCeilingMs === undefined ? {} : { totalCeilingMs }),
       ...(failure === undefined ? {} : { failure }),
     })
   const failProbe = (errorClass: RemoteCacheProbeFailure['errorClass']): false => {
@@ -392,9 +454,14 @@ export const probeRemoteCacheCapabilities = async ({
       class: errorClass,
       phase,
       elapsedMs: Math.round(performance.now() - started),
-      deadlineMs,
+      deadlineMs: phaseBudgetMs(),
     }
-    onFailure?.({ errorClass, phase, elapsedMs: failure.elapsedMs, deadlineMs })
+    onFailure?.({
+      errorClass,
+      phase,
+      elapsedMs: failure.elapsedMs,
+      deadlineMs: failure.deadlineMs,
+    })
     reportAttempt(failure)
     return false
   }
@@ -423,7 +490,7 @@ export const probeRemoteCacheCapabilities = async ({
       ':path': '/build.bazel.remote.execution.v2.Capabilities/GetCapabilities',
       'content-type': 'application/grpc',
       te: 'trailers',
-      'grpc-timeout': `${deadlineMs}m`,
+      'grpc-timeout': `${responseDeadlineMs}m`,
     }
     if (header !== undefined) {
       const colon = header.indexOf(':')
@@ -478,7 +545,8 @@ export const probeRemoteCacheCapabilities = async ({
       })
       socket.on('connect', () => {
         if (settled === true) return
-        phase = authority.startsWith('https:') === true ? 'tls' : 'response'
+        if (authority.startsWith('https:') === true) phase = 'tls'
+        else enterResponsePhase()
         connectionEvent({
           event: 'tcp-connected',
           address: socket.remoteAddress,
@@ -487,7 +555,7 @@ export const probeRemoteCacheCapabilities = async ({
       })
       socket.on('secureConnect', () => {
         if (settled === true) return
-        phase = 'response'
+        enterResponsePhase()
         connectionEvent({
           event: 'tls-ready',
           address: socket.remoteAddress,
@@ -503,7 +571,8 @@ export const probeRemoteCacheCapabilities = async ({
       }) => {
         if (settled === true) return
         settled = true
-        clearTimeout(timer)
+        clearTimeout(connectTimer)
+        clearTimeout(responseTimer)
         deadlineSignal?.removeEventListener('abort', onDeadline)
         client.destroy()
         if (result === false) failProbe(errorClass)
@@ -511,10 +580,36 @@ export const probeRemoteCacheCapabilities = async ({
         resolveProbe(result)
       }
       const onDeadline = () => finish({ result: false, errorClass: 'deadline' })
-      const timer = deadlineSignal === undefined ? setTimeout(onDeadline, deadlineMs) : undefined
+      // A caller-supplied signal remains the sole clock; otherwise the connect
+      // budget runs until TLS (or plaintext TCP) is ready, then the response
+      // budget starts fresh, both clamped by the attempt ceiling.
+      const usePlatformTimers = deadlineSignal === undefined
+      let connectTimer: NodeJS.Timeout | undefined
+      let responseTimer: NodeJS.Timeout | undefined
+      const enterResponsePhase = () => {
+        phase = 'response'
+        if (responseTimer !== undefined || usePlatformTimers === false) return
+        clearTimeout(connectTimer)
+        responseTimer = setTimeout(
+          onDeadline,
+          Math.max(
+            Math.min(
+              responseDeadlineMs,
+              (attemptCeilingMs ?? Infinity) - (performance.now() - started),
+            ),
+            0,
+          ),
+        )
+      }
+      if (usePlatformTimers === true)
+        connectTimer = setTimeout(
+          onDeadline,
+          Math.min(connectTlsDeadlineMs, attemptCeilingMs ?? Infinity),
+        )
       deadlineSignal?.addEventListener('abort', onDeadline, { once: true })
       client.on('connect', () => {
-        phase = 'response'
+        if (settled === true) return
+        enterResponsePhase()
       })
       client.on('error', (error) => finish({ result: false, errorClass: probeErrorClass(error) }))
       let stream: ClientHttp2Stream

@@ -50,6 +50,9 @@ export const collectReapiClassifications = (
             tcpConnectedMs: attempt.tcpConnectedMs,
             tlsReadyMs: attempt.tlsReadyMs,
             firstResponseMs: attempt.firstResponseMs,
+            connectTlsDeadlineMs: attempt.connectTlsDeadlineMs,
+            responseDeadlineMs: attempt.responseDeadlineMs,
+            totalCeilingMs: attempt.totalCeilingMs,
             failure:
               attempt.failure === undefined
                 ? undefined
