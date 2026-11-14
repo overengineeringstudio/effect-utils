@@ -1236,7 +1236,9 @@ Object.defineProperty(process, 'execve', {
           ...options(root),
           args: ['build', '//:app'],
           env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, GITHUB_ACTIONS: 'true' },
-          ...(scenario === 'healthy' ? {} : { deadlineMs: 100 }),
+          // Keep production's generous 5 s connect budget for the real timer
+          // case; only the intentionally silent response should time out.
+          ...(scenario === 'healthy' || scenario === 'response-no-retry' ? {} : { deadlineMs: 100 }),
           // Connect-phase expiry (a stalled ingress TLS analogue) aborts before
           // the request and earns the retry; response-phase expiry does not.
           probeDeadlineSignal: (endpoint: AdmissionProbeEndpoint) => {
@@ -1263,7 +1265,7 @@ Object.defineProperty(process, 'execve', {
         expect(requests).toBe(scenario === 'both-fail' ? 0 : 1)
         expect(archiveRequests).toBe(0)
         expect(deadlines).toEqual(
-          scenario === 'healthy'
+          scenario === 'healthy' || scenario === 'response-no-retry'
             ? ['2500m']
             : scenario === 'both-fail'
               ? []
@@ -1307,12 +1309,17 @@ Object.defineProperty(process, 'execve', {
             reapi: scenario === 'retry-success' && index === 0 ? 1 : 0,
             archiveOrigin: 0,
           })
+          if (scenario === 'response-no-retry') {
+            expect(row.reapiAttempts).toHaveLength(1)
+            expect(row.reapiAttempts?.[0]?.connectTlsDeadlineMs).toBe(5000)
+            expect(row.reapiAttempts?.[0]?.failure?.phase).toBe('response')
+          }
         }
       } finally {
         archive.stop(true)
         grpc.close()
       }
-    })
+    }, 15000)
   }
 
   it('preserves reader and writer admission when TLS succeeds without h2 ALPN', async () => {
@@ -1469,7 +1476,7 @@ console.log(JSON.stringify(outcomes));`,
         upstream.pipe(downstream)
         setTimeout(() => {
           if (downstream.destroyed === false) downstream.pipe(upstream)
-        }, 400)
+        }, 1500)
       })
       const relayListening = Promise.withResolvers<void>()
       relay.once('listening', relayListening.resolve)
@@ -1484,8 +1491,8 @@ import { probeRemoteCacheCapabilities } from ${JSON.stringify(import.meta.dir + 
 let attempt;
 const admitted = await probeRemoteCacheCapabilities({
   address: 'grpcs://127.0.0.1:${relayAddress.port}', instanceName: '', tls: true,
-  header: undefined, env: {}, connectTlsDeadlineMs: 2000,
-  responseDeadlineMs: 200, totalCeilingMs: 2500, attemptCeilingMs: 2500,
+  header: undefined, env: {}, connectTlsDeadlineMs: 5000,
+  responseDeadlineMs: 1000, totalCeilingMs: 8000, attemptCeilingMs: 8000,
   onAttempt: (value) => { attempt = value; },
 });
 console.log(JSON.stringify({admitted, attempt}));`],
@@ -1500,8 +1507,8 @@ console.log(JSON.stringify({admitted, attempt}));`],
         expect(code).toBe(0)
         const result = JSON.parse(output)
         expect(result.admitted).toBe(true)
-        expect(result.attempt.tlsReadyMs).toBeGreaterThan(200)
-        expect(result.attempt.responseDeadlineMs).toBe(200)
+        expect(result.attempt.tlsReadyMs).toBeGreaterThan(1000)
+        expect(result.attempt.responseDeadlineMs).toBe(1000)
         expect(result.attempt.failure).toBeUndefined()
       } finally {
         for (const socket of sockets) socket.destroy()
