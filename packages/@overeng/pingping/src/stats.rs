@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 use crate::probe::{Failure, ProbeEvent};
 
 /// Retain at most 86,400 actual scheduled probes per host, independent of rate.
-const HISTORY_LEN: usize = 86_400;
+pub(crate) const HISTORY_LEN: usize = 86_400;
 
 // Ten retained replies keep relative colouring from reacting to startup noise.
 const RTT_BASELINE_REPLIES: usize = 10;
@@ -262,6 +262,8 @@ pub enum DropAge {
 pub struct HostState {
     pub host: String,
     pub status: Status,
+    /// Restored sessions are presentation-only, never part of live statistics.
+    pub prior_sessions: Vec<crate::history::HistoricalSession>,
     /// Outcomes in scheduled order; unresolved probes retain their placement.
     history: VecDeque<Option<StoredEntry>>,
     rtt_baseline: RefCell<RttBaseline>,
@@ -295,6 +297,7 @@ impl HostState {
         Self {
             host,
             status: Status::Resolving,
+            prior_sessions: Vec::new(),
             history: VecDeque::new(),
             rtt_baseline: RefCell::default(),
             placements: VecDeque::new(),
