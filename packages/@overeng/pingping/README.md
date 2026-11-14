@@ -27,6 +27,7 @@ pingping [OPTIONS] <HOST>...
   -4 / -6                        IPv4 / IPv6 only
       --layout <stacked|rows>     [default: stacked]
       --theme <auto|light|dark>   [default: auto]
+      --no-history               disable history reads and writes
 ```
 
 Exit status is 0 when every host received at least one reply, 1 when any host
@@ -59,6 +60,16 @@ mixed cells. The overview stays muted: a glyph becomes muted red only when
 its two time halves combined contain completed samples and at least half are
 lost (`lost * 2 >= samples`). Tooltips and statistics retain all losses, even
 when a successful stem hides a loss dot.
+
+## Session History
+
+TTY sessions retain seven days of private per-host/session JSONL in
+`$XDG_STATE_HOME/pingping` (default `~/.local/state/pingping`). Known tailnet
+peers use canonical DNS identity; other targets use the exact typed name.
+`--no-history` disables reads and writes. Plain mode never accesses history.
+Startup restores at most the newest 86,400 outcomes per requested host within
+that seven-day window; faster probing therefore shortens the restored range.
+Restored history does not affect current-session statistics.
 
 ## Network Context And Uptime
 
