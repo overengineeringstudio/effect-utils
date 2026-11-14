@@ -35,17 +35,11 @@ pub(super) fn render_sparkline(
         }?;
         Some((cell, bucket))
     });
-    let (min, max) = cells
-        .iter()
-        .filter_map(|cell| cell.and_then(|bucket| bucket.slowest))
-        .map(|rtt| rtt.as_secs_f64())
-        .fold((f64::INFINITY, 0.0_f64), |(lo, hi), v| {
-            (lo.min(v), hi.max(v))
-        });
-    let scale = Scale {
-        base: min,
-        span: (max - min).max(min * 0.5),
-    };
+    let scale = Scale::of(
+        cells
+            .iter()
+            .filter_map(|cell| cell.and_then(|bucket| bucket.slowest)),
+    );
     let mut lines: Vec<Line> = vec![Vec::new(); height];
     let baseline = window.is_none().then(|| host.rtt_baseline()).flatten();
     for (column, pair) in cells.chunks(2).take(grid.width).enumerate() {
@@ -121,7 +115,11 @@ pub(super) fn render_sparkline(
 }
 
 /// A terminal glyph has one foreground, so its worst time half wins.
-fn main_reply_role(pair: &[Option<Bucket>], units: [usize; 2], baseline: Option<Duration>) -> Role {
+pub(super) fn main_reply_role(
+    pair: &[Option<Bucket>],
+    units: [usize; 2],
+    baseline: Option<Duration>,
+) -> Role {
     if units == [0, 0] {
         return Role::Plain;
     }
@@ -176,7 +174,7 @@ fn overview_role(inside: bool, majority_loss: bool) -> Role {
 }
 
 /// Bottom-up Braille dots for the left and right vertical stems.
-fn braille_stems(fill: [usize; 2]) -> char {
+pub(super) fn braille_stems(fill: [usize; 2]) -> char {
     const DOTS: [[u32; 4]; 2] = [[0x40, 0x04, 0x02, 0x01], [0x80, 0x20, 0x10, 0x08]];
     let mut mask = 0;
     for (side, dots) in DOTS.iter().enumerate() {
@@ -191,15 +189,29 @@ fn braille_stems(fill: [usize; 2]) -> char {
     }
 }
 
-struct Scale {
+pub(super) struct Scale {
     base: f64,
     span: f64,
 }
 
 impl Scale {
+    /// Floors at the fastest reply and spans to the slowest (at least half
+    /// the floor), so one shared rule scales live and prior-session charts.
+    pub(super) fn of(slowest: impl Iterator<Item = Duration>) -> Self {
+        let (min, max) = slowest
+            .map(|rtt| rtt.as_secs_f64())
+            .fold((f64::INFINITY, 0.0_f64), |(lo, hi), v| {
+                (lo.min(v), hi.max(v))
+            });
+        Self {
+            base: min,
+            span: (max - min).max(min * 0.5),
+        }
+    }
+
     /// A visible reply always has its bottom dot; higher dots are floored
     /// directly from the RTT ratio at the actual chart height.
-    fn units(&self, value: f64, dots: usize) -> usize {
+    pub(super) fn units(&self, value: f64, dots: usize) -> usize {
         if self.span <= 0.0 || dots == 0 {
             return usize::from(dots > 0);
         }

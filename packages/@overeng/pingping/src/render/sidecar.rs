@@ -3,7 +3,7 @@ use super::{
     visible_stats,
 };
 use super::{
-    block, fmt_ms, key_hint, loss, span, sparkline, stacked_spark_width, summary, timeline,
+    block, fmt_ms, key_hint, loss, past, span, sparkline, stacked_spark_width, summary, timeline,
     Duration, Extent, Frame, Grid, HostState, Layout, Line, Role, Stats, Status, Timeline,
     UnicodeWidthStr, LABEL_WIDTH, RULE,
 };
@@ -212,6 +212,7 @@ fn plan(
         };
         let needed = hosts.len()
             * (usize::from(!merged) + 2 + chart_rows + if sidecar { 0 } else { stat_rows })
+            + hosts.iter().filter(|host| past::has_stream(host)).count()
             + hosts.len().saturating_sub(1)
             + footer_height
             + axis_height;
@@ -293,8 +294,9 @@ pub(super) fn frame(
             lines.push(vec![]);
         }
         if reference {
-            timeline_lines.extend((0..chart_rows).map(|row| (lines.len() + 2 + row, index, false)));
-            timeline_lines.push((lines.len() + 2 + chart_rows, index, true));
+            let chart = lines.len() + 2 + usize::from(past::has_stream(host));
+            timeline_lines.extend((0..chart_rows).map(|row| (chart + row, index, false)));
+            timeline_lines.push((chart + chart_rows, index, true));
             let block = block(
                 host,
                 timeline,
@@ -313,11 +315,34 @@ pub(super) fn frame(
         let mut identity = identity(host, merged);
         let address_line = identity.len() - 1;
         let identity_line = lines.len() + address_line;
+        // C: the prior-runs summary follows the host name; in the merged
+        // line it leaves room for the right-aligned path note and uptime.
+        let reserve = if merged { 26 } else { 0 };
+        let used = line_width(&identity[0]) + 2;
+        if let Some(text) =
+            past::last_runs(host, timeline.now, width.saturating_sub(used + reserve))
+        {
+            identity[0].push(span(Role::Plain, "  "));
+            identity[0].push(text);
+        }
         append_note(&mut identity[address_line], host, timeline.now, width);
         if let Some((start, end)) = note_region(&identity[address_line]) {
             notes.push((lines.len() + address_line, index, start, end));
         }
         lines.extend(identity);
+        if past::has_stream(host) {
+            // Not a timeline line: the live chart below keeps all hit testing.
+            let mut line = vec![span(Role::Rule, RULE)];
+            if sidecar {
+                line.extend(past::stream(host, timeline.now, spark_width));
+                line.push(span(Role::Rule, " │ "));
+                let room = width.saturating_sub(line_width(&line));
+                line.push(span(Role::Dim, past::caption(host, room)));
+            } else {
+                line.extend(past::labelled(host, timeline.now, spark_width));
+            }
+            lines.push(line);
+        }
         let hover = timeline.hover.filter(|hover| hover.host == index);
         let (spark, mut hovered) = sparkline(
             host,

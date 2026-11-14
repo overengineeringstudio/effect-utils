@@ -20,6 +20,7 @@ mod bench;
 mod keys;
 use keys::key_hint;
 mod hover;
+mod past;
 mod raster;
 mod sidecar;
 use raster::render_sparkline;
@@ -134,7 +135,12 @@ pub enum Tint {
 }
 
 pub type Line = Vec<Span>;
-type RowsOutput = (Vec<Line>, (usize, usize), Option<(usize, String)>);
+type RowsOutput = (
+    Vec<Line>,
+    (usize, usize),
+    Option<(usize, String)>,
+    Vec<(usize, usize, bool)>,
+);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Layout {
@@ -192,10 +198,7 @@ pub fn frame(
         }
     }
     let hint = timeline.view.hint(Extent::of(hosts), timeline.interval);
-    let (mut lines, origin, tooltip) = rows(hosts, timeline, width, footer);
-    let timeline_lines = (0..hosts.len())
-        .map(|index| (index + 1, index, false))
-        .collect();
+    let (mut lines, origin, tooltip, timeline_lines) = rows(hosts, timeline, width, footer);
     if let Some(axis) = time_axis(hosts, timeline, origin) {
         lines.push(axis);
     }
@@ -290,7 +293,15 @@ fn block(
     };
 
     let mut lines = vec![
-        row("Host", vec![span(Role::Host, host.host.clone())]),
+        {
+            let mut line = row("Host", vec![span(Role::Host, host.host.clone())]);
+            let used: usize = line.iter().map(|span| span.text.width()).sum::<usize>() + 2;
+            if let Some(text) = past::last_runs(host, timeline.now, width.saturating_sub(used)) {
+                line.push(span(Role::Plain, "  "));
+                line.push(text);
+            }
+            line
+        },
         // The pill's leading pad sits in the label gutter so the address text
         // aligns with the other values.
         {
@@ -309,6 +320,11 @@ fn block(
             line
         },
     ];
+    if past::has_stream(host) {
+        let mut line = vec![span(Role::Rule, RULE)];
+        line.extend(past::labelled(host, timeline.now, spark_width));
+        lines.push(line);
+    }
     for bars in spark {
         let mut line = vec![span(Role::Rule, RULE)];
         line.extend(bars);
@@ -548,6 +564,10 @@ fn overview_sparkline(
     (lines.pop().unwrap_or_default(), hovered)
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "Assembly keeps shared column geometry, host rows and their history lines together"
+)]
 fn rows(hosts: &[HostState], timeline: &Timeline, width: usize, footer: bool) -> RowsOutput {
     let mut tooltip = None;
     let host_w = hosts
@@ -581,7 +601,14 @@ fn rows(hosts: &[HostState], timeline: &Timeline, width: usize, footer: bool) ->
         ),
     ];
     let mut lines = vec![header];
+    let mut timeline_lines = Vec::with_capacity(hosts.len());
+    let columns = past::RowColumns {
+        indent: host_w + 2,
+        chart: (host_w + 2 + addr_w + 2, spark_w),
+        stats: stats_w,
+    };
     for (index, host) in hosts.iter().enumerate() {
+        timeline_lines.push((lines.len(), index, false));
         let pad = host_w - host.host.width();
         let mut line = vec![
             span(Role::Rule, RULE),
@@ -592,6 +619,7 @@ fn rows(hosts: &[HostState], timeline: &Timeline, width: usize, footer: bool) ->
             Status::Failed { reason, .. } => {
                 line.push(span(Role::Bad, format!("\u{2717} {reason}")));
                 lines.push(line);
+                lines.extend(past::row_line(host, timeline.now, width, columns));
                 continue;
             }
             Status::Resolving => line.push(span(Role::Dim, format!("{:<addr_w$}", "\u{2026}"))),
@@ -641,11 +669,13 @@ fn rows(hosts: &[HostState], timeline: &Timeline, width: usize, footer: bool) ->
         }
         line.extend(loss_spans);
         lines.push(line);
+        lines.extend(past::row_line(host, timeline.now, width, columns));
     }
     (
         lines,
         (RULE.width() + host_w + 2 + addr_w + 2, spark_w),
         tooltip,
+        timeline_lines,
     )
 }
 

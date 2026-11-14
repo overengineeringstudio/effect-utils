@@ -27,6 +27,8 @@ pingping [OPTIONS] <HOST>...
   -4 / -6                        IPv4 / IPv6 only
       --layout <stacked|rows>     [default: stacked]
       --theme <auto|light|dark>   [default: auto]
+      --no-history               disable session history reads and writes
+      --history-view <a|b|c>      prototype presentation [default: a]
 ```
 
 Exit status is 0 when every host received at least one reply, 1 when any host
@@ -59,6 +61,30 @@ mixed cells. The overview stays muted: a glyph becomes muted red only when
 its two time halves combined contain completed samples and at least half are
 lost (`lost * 2 >= samples`). Tooltips and statistics retain all losses, even
 when a successful stem hides a loss dot.
+
+## History Bakeoff Prototype
+
+Interactive sessions retain seven days of append-only, per-host/per-session JSONL
+in `$XDG_STATE_HOME/pingping` (default `~/.local/state/pingping`, private directory
+mode `0700`). Known tailnet peers use canonical DNS identity; other targets use
+the typed name. Plain output never reads or writes history. `--no-history`
+disables both. Statistics always describe the current session, not prior runs.
+
+Compare `--history-view a` (compressed off gaps), `b` (dim prior sessions and a
+session marker), and `c` (last-runs summary without old chart samples). These are
+prototype presentations, not a stable storage or interaction contract.
+The A/B history overview is a connected past-to-live strip above the unchanged
+interactive live chart; only that detailed live chart supports hover/zoom/pan.
+The overview fits recent sessions to the available width and scales each run
+independently. History writes are not individually fsynced, so power loss can
+discard the most recent records. Incomplete trailing records are ignored; a
+malformed complete record produces an explicit startup error.
+
+The hidden `--history-seed-demo` switch creates realistic synthetic runs in the
+separate `pingping-demo` directory and uses that directory for the live session
+too. Point `XDG_STATE_HOME` at a task scratch directory to isolate the whole
+trial; for example, `XDG_STATE_HOME="$PWD/tmp/history-trial" pingping
+--history-seed-demo --history-view a 127.0.0.1 host-a host-b`.
 
 ## Network Context And Uptime
 

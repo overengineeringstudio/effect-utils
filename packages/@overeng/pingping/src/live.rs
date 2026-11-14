@@ -54,6 +54,7 @@ pub fn run(
     interval: Duration,
     paths: &crate::path::Monitor,
     schedule: &crate::probe::Schedule,
+    mut history: Option<&mut crate::history::Store>,
 ) -> io::Result<()> {
     terminal::enable_raw_mode()?;
     for host in &mut *hosts {
@@ -197,7 +198,7 @@ pub fn run(
                 input.acknowledge();
             }
         }
-        done |= receive_probes(hosts, rx, &mut dirty, paths);
+        done |= receive_probes(hosts, rx, &mut dirty, paths, history.as_deref_mut())?;
     }
     stop.store(true, Ordering::Relaxed);
     let timeline = Timeline {
@@ -240,10 +241,14 @@ fn receive_probes(
     rx: &Receiver<(usize, ProbeEvent)>,
     dirty: &mut bool,
     paths: &crate::path::Monitor,
-) -> bool {
+    mut history: Option<&mut crate::history::Store>,
+) -> io::Result<bool> {
     loop {
         match rx.try_recv() {
             Ok((index, event)) => {
+                if let Some(store) = history.as_deref_mut() {
+                    store.record(index, &event)?;
+                }
                 match &event {
                     ProbeEvent::Resolved(address) => paths.resolved(index, *address),
                     ProbeEvent::Finished | ProbeEvent::Failed { .. } => paths.finished(index),
@@ -252,8 +257,8 @@ fn receive_probes(
                 hosts[index].apply(event);
                 *dirty = true;
             }
-            Err(TryRecvError::Empty) => return hosts.iter().all(|host| host.finished),
-            Err(TryRecvError::Disconnected) => return true,
+            Err(TryRecvError::Empty) => return Ok(hosts.iter().all(|host| host.finished)),
+            Err(TryRecvError::Disconnected) => return Ok(true),
         }
     }
 }

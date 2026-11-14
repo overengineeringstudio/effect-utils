@@ -1,5 +1,6 @@
 mod completion;
 mod egress;
+mod history;
 mod icmp;
 mod live;
 mod netinfo;
@@ -31,6 +32,10 @@ use crate::theme::ThemeChoice;
 /// Ping one or more hosts with a live view of latency and loss.
 #[derive(Debug, Parser)]
 #[command(name = "pingping", version = version(), about)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent CLI switches are parsed directly by clap"
+)]
 struct Cli {
     /// Hosts to ping concurrently (names or IP addresses).
     #[arg(required = true, value_name = "HOST", value_parser = parse_host,
@@ -64,6 +69,18 @@ struct Cli {
     /// Color palette.
     #[arg(long, value_enum, default_value_t = ThemeChoice::Auto)]
     theme: ThemeChoice,
+
+    /// Disable reading and writing interactive session history.
+    #[arg(long)]
+    no_history: bool,
+
+    /// Prototype history presentation to compare.
+    #[arg(long, value_enum, default_value_t = history::HistoryView::A)]
+    history_view: history::HistoryView,
+
+    /// Seed isolated prototype history (never writes the normal history directory).
+    #[arg(long, hide = true, conflicts_with = "no_history")]
+    history_seed_demo: bool,
 }
 
 static VERSION: LazyLock<String> =
@@ -135,6 +152,23 @@ fn main() -> ExitCode {
         None
     };
     let mut hosts: Vec<HostState> = cli.hosts.iter().cloned().map(HostState::new).collect();
+    let mut history = if interactive && !cli.no_history {
+        match history::Store::open(&cli.hosts, config.interval, cli.history_seed_demo) {
+            Ok((store, prior)) => {
+                for (host, sessions) in hosts.iter_mut().zip(prior) {
+                    host.prior_sessions = sessions;
+                    host.history_view = cli.history_view;
+                }
+                Some(store)
+            }
+            Err(err) => {
+                eprintln!("pingping: history error: {err}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        None
+    };
     let schedule = Arc::new(probe::Schedule::new(config.clone()));
     let workers: Vec<_> = cli
         .hosts
@@ -192,6 +226,7 @@ fn main() -> ExitCode {
             config.interval,
             paths.as_ref().expect("interactive monitor"),
             &schedule,
+            history.as_mut(),
         )
     } else {
         print_plain(&mut hosts, &rx, &mut std::io::stdout().lock())
@@ -348,6 +383,26 @@ fn print_not_permitted(reason: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_cli_defaults_and_variants() {
+        let cli = Cli::try_parse_from(["pingping", "host-a"]).unwrap();
+        assert_eq!(cli.history_view, history::HistoryView::A);
+        assert!(!cli.no_history);
+        assert!(!cli.history_seed_demo);
+        for (value, expected) in [
+            ("a", history::HistoryView::A),
+            ("b", history::HistoryView::B),
+            ("c", history::HistoryView::C),
+        ] {
+            let cli = Cli::try_parse_from(["pingping", "--history-view", value, "host-a"]).unwrap();
+            assert_eq!(cli.history_view, expected);
+        }
+        assert!(
+            Cli::try_parse_from(["pingping", "--no-history", "--history-seed-demo", "host-a"])
+                .is_err()
+        );
+    }
 
     #[test]
     fn rejects_durations_that_cannot_be_scheduled() {
