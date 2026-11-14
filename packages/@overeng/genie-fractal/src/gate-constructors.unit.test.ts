@@ -25,8 +25,14 @@ const reporter = { id: 'example/coordinator' }
 describe('typed native gate constructors', () => {
   it('snapshots other constructor-owned records while retaining scoped identities', () => {
     const resume = { transcript: '/before.jsonl' }
-    const harness = omp({ model: 'example-model', effort: 'high', resume })
+    const message = { text: 'Before.', id: 'startup-v1' }
+    const harness = omp({ model: 'example-model', effort: 'high', resume, message })
     resume.transcript = '/after.jsonl'
+    message.text = 'After.'
+    message.id = 'startup-v2'
+    expect(harness.message).toEqual({ text: 'Before.', id: 'startup-v1' })
+    expect(Object.isFrozen(message)).toBe(false)
+    expect(Object.isFrozen(harness.message)).toBe(true)
     expect(harness.resume).toEqual({ transcript: '/before.jsonl' })
     expect(Object.isFrozen(resume)).toBe(false)
     expect(Object.isFrozen(harness)).toBe(true)
