@@ -22,8 +22,8 @@ pub(super) fn key_hint(
     });
     let view_hint = frozen_hint.as_deref().or(view_hint);
     let keys = view_hint.map_or_else(
-        || format!("l layout{mode} \u{b7} s stats: {scope} \u{b7} [ ] rate \u{b7} scroll zoom \u{b7} drag pan \u{b7} 0 live \u{b7} q quit"),
-        |hint| format!("l layout{mode} \u{b7} s stats: {scope} \u{b7} [ ] rate \u{b7} {hint} \u{b7} q quit"),
+        || format!("a add · e edit · d remove · ↑↓ select · q quit · l layout{mode} · s stats: {scope} · [ ] rate · +/- zoom · drag pan · 0 live"),
+        |hint| format!("a add · e edit · d remove · ↑↓ select · q quit · l layout{mode} · s stats: {scope} · [ ] rate · {hint}"),
     );
     vec![span(Role::Plain, "  "), span(Role::Dim, keys)]
 }

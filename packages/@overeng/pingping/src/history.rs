@@ -114,11 +114,8 @@ struct Writer {
 pub struct Store {
     writers: HashMap<TargetId, Writer>,
     clock: Instant,
-    #[cfg(test)]
     root: PathBuf,
-    #[cfg(test)]
     start: SystemTime,
-    #[cfg(test)]
     status: Option<Status>,
 }
 
@@ -172,11 +169,8 @@ impl Store {
             Self {
                 writers,
                 clock,
-                #[cfg(test)]
                 root: root.to_owned(),
-                #[cfg(test)]
                 start: now,
-                #[cfg(test)]
                 status,
             },
             prior,
@@ -186,7 +180,6 @@ impl Store {
     /// Starts a target journal on this run's original time axis.
     /// Call only after resolving the entire target edit successfully. An existing
     /// target's display-only rename must retain its writer rather than register again.
-    #[cfg(test)]
     pub fn register(
         &mut self,
         id: TargetId,
@@ -219,7 +212,6 @@ impl Store {
     }
 
     /// Closes the target's journal without changing any other target's identity.
-    #[cfg(test)]
     pub fn retire(&mut self, id: TargetId) {
         self.writers.remove(&id);
     }
