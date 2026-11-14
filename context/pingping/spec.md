@@ -9,7 +9,7 @@ Active.
 
 ## Scope
 
-Defines the CLI surface, the probe engine, the live view, and packaging.
+Defines the CLI surface, probe engine, retained session history, live view, and packaging.
 Does not define generic CLI styling rules (the inline CLI conventions described in the spec) or
 the repository Rust workspace policy.
 
@@ -28,20 +28,21 @@ the repository Rust workspace policy.
 
 Source lives in `packages/@overeng/pingping/src/`:
 
-| Module          | Role                                                         | Requirements         |
-| --------------- | ------------------------------------------------------------ | -------------------- |
-| `icmp.rs`       | Echo packet codec and unprivileged socket                    | R02                  |
-| `probe.rs`      | Per-host worker: resolve, send, match, expire                | R03, R09             |
-| `stats.rs`      | Folds probe events into `HostState`                          | R05, R07             |
-| `render.rs`     | Pure layout into role-tagged spans                           | R05, R10–R12, R18    |
-| `theme.rs`      | Role -> color, background detection                          | R08                  |
-| `timeline.rs`   | Zoom/pan view, bucketing, hover descriptions                 | R14, R15             |
-| `live.rs`       | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15   |
-| `path.rs`       | Path note: Tailscale transport and local route               | R19                  |
-| `completion.rs` | Dynamic shell completion, tailnet host candidates            | R20                  |
-| `tailnet.rs`    | Bounded LocalAPI / CLI status source shared by both features | R19, R20             |
-| `main.rs`       | CLI, plain output, exit status                               | R01, R04, R13        |
-| `uptime.rs`     | Tailnet-only background remote uptime                        | Live-view enrichment |
+| Module          | Role                                                         | Requirements                 |
+| --------------- | ------------------------------------------------------------ | ---------------------------- |
+| `icmp.rs`       | Echo packet codec and unprivileged socket                    | R02                          |
+| `probe.rs`      | Per-host worker: resolve, send, match, expire                | R03, R09                     |
+| `stats.rs`      | Folds probe events into `HostState`                          | R05, R07                     |
+| `render.rs`     | Pure layout into role-tagged spans                           | R05, R10–R12, R18            |
+| `theme.rs`      | Role -> color, background detection                          | R08                          |
+| `timeline.rs`   | Zoom/pan view, bucketing, hover descriptions                 | R14, R15                     |
+| `live.rs`       | Inline redraw loop, keys, mouse, hover hit-testing           | R06, R11, R14, R15           |
+| `path.rs`       | Path note: Tailscale transport and local route               | R19                          |
+| `completion.rs` | Dynamic shell completion, tailnet host candidates            | R20                          |
+| `tailnet.rs`    | Bounded LocalAPI / CLI status source shared by both features | R19, R20                     |
+| `main.rs`       | CLI, plain output, exit status                               | R01, R04, R13                |
+| `uptime.rs`     | Tailnet-only background remote uptime                        | Live-view enrichment         |
+| `history.rs`    | Private session journal and startup restoration              | R07, R13, R21; decision 0006 |
 
 ## CLI
 
@@ -54,6 +55,7 @@ pingping [OPTIONS] <HOST>...
   -4 / -6                IPv4 / IPv6 only
       --layout <stacked|rows>                                [default: stacked]
       --theme <auto|light|dark>                              [default: auto]
+      --no-history            disable session history reads and writes
 ```
 
 Interactive input:
@@ -178,6 +180,56 @@ last 86,400 actual probes per host are retained, including pending probes;
 the retained duration therefore shrinks at faster rates. Time coordinates
 survive trimming. Empty time cells where no probe was due remain blank,
 not loss/gap markers; due probes without an outcome retain gap rendering.
+
+## History (R07, R13, R21; decision 0006)
+
+```text
+TTY startup -> prune/load prior sessions -> create current journal -> probe workers
+prior sessions -> presentation only         final outcomes -> append current journal
+past samples ---[off duration]--- current run -> live
+```
+
+History is enabled only when stdout is a TTY. `--no-history` disables both reads
+and writes. Plain mode performs neither. Startup restores requested hosts before
+probes start. Restored samples never enter current-session counters, percentiles,
+RTT baselines, or visible-window statistics.
+
+Storage is `$XDG_STATE_HOME/pingping`, falling back to `~/.local/state/pingping`.
+Directories use mode `0700`, files `0600`. The key is a recognized tailnet peer's
+canonical lowercase DNS name without a trailing dot; otherwise it is the exact
+typed target string. Filename prefixes percent-encode unsafe bytes and are bounded;
+the complete typed identity lives in the header. Session IDs combine UTC epoch
+nanoseconds, process ID, and a process-local counter, with exclusive file creation.
+
+Each `(host, session)` owns one append-only JSONL file. Version 1 records are:
+
+```json
+{"version":1,"session_id":"…","host":{"kind":"host","name":"example.com"},"start_utc":"2026-11-14T12:00:00Z","interval_ns":1000000000}
+{"utc":"2026-11-14T12:00:01Z","offset_ns":1000000000,"outcome":{"kind":"reply","rtt_ns":10000000}}
+{"utc":"2026-11-14T12:00:02Z","offset_ns":2000000000,"outcome":{"kind":"lost"}}
+```
+
+The product owns this local schema; `host.kind` is `host` or `tailnet_dns`, and
+`outcome.kind` is `reply` or `lost`. UTC is RFC3339, offsets and durations are
+integer nanoseconds. `offset_ns` is the probe's scheduled monotonic run position.
+Only final outcomes are recorded, once per scheduled probe; pending is not loss.
+Unknown versions, invalid headers, and malformed complete records fail explicitly.
+A truncated final sample is ignored. Writes are not individually fsynced.
+
+Startup excludes samples older than seven days and prunes wholly expired sessions;
+an older session with recent samples remains readable. A complete header is
+published atomically from a private `.pending` file using a non-replacing hard
+link; readers ignore unpublished files. Concurrent instances own separate files
+and load snapshots, never append to one another's journals.
+
+The history overview connects retained sessions to the updating current run above
+the unchanged interactive live chart. Off periods occupy five dashed cells labeled
+with elapsed duration, distinct from red probe loss and unresolved pending probes.
+Gaps shorter than five seconds, including overlaps, join seamlessly without a
+marker; exactly five seconds draws one. A fixed threshold avoids reinterpreting
+history when the live rate changes. Width limits select recent sessions; each run
+has its own RTT height scale. Hover, zoom, and pan apply to the current-run chart,
+not this compressed overview. See [decision 0006](./.decisions/0006-history-continuous-timeline.md).
 
 ## Live view
 
