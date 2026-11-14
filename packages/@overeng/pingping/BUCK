@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/pingping/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:0bfd8c3d50589038015c1df7569211751afc3401ddc39e90a6445f9e94e35b55
+# Semantic fingerprint: sha256:744d41756a168a3be736c4b41f292e80977a49f6410af961e82fcc140be73a33
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/BUCK.genie.ts, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, packages/@overeng/pingping/src/**/*.rs, packages/@overeng/pingping/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/Cargo.toml
 # Regenerate: devenv tasks run genie:run
 
@@ -26,6 +26,7 @@ static_source_set(
         "src/icmp.rs",
         "src/live.rs",
         "src/live/resize.rs",
+        "src/live/resolve.rs",
         "src/main.rs",
         "src/netinfo.rs",
         "src/netinfo/linux.rs",
@@ -66,6 +67,7 @@ native.rust_binary(
         "src/icmp.rs",
         "src/live.rs",
         "src/live/resize.rs",
+        "src/live/resolve.rs",
         "src/main.rs",
         "src/netinfo.rs",
         "src/netinfo/linux.rs",
