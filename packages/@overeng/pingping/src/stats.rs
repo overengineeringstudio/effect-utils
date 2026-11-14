@@ -263,7 +263,7 @@ pub struct HostState {
     pub host: String,
     pub status: Status,
     /// Restored sessions are presentation-only, never part of live statistics.
-    pub prior_sessions: Vec<crate::history::HistoricalSession>,
+    pub prior_sessions: crate::render::History,
     /// Outcomes in scheduled order; unresolved probes retain their placement.
     history: VecDeque<Option<StoredEntry>>,
     rtt_baseline: RefCell<RttBaseline>,
@@ -297,7 +297,7 @@ impl HostState {
         Self {
             host,
             status: Status::Resolving,
-            prior_sessions: Vec::new(),
+            prior_sessions: crate::render::History::default(),
             history: VecDeque::new(),
             rtt_baseline: RefCell::default(),
             placements: VecDeque::new(),
@@ -804,6 +804,12 @@ impl HostState {
                     )
                 })
             })
+    }
+
+    /// Wall time of the run's first scheduled position; retention eviction
+    /// never moves it.
+    pub fn run_origin(&self) -> Option<SystemTime> {
+        self.origin
     }
 
     /// First retained outcome and its schedule slot, skipping unresolved slots.

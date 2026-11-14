@@ -6,11 +6,12 @@
 //! overview keep their geometry, hover, zoom and pan. Each old run and the
 //! current run scale their RTT stems independently.
 
+use std::cell::RefCell;
 use std::time::{Duration, SystemTime};
 
 use unicode_width::UnicodeWidthStr;
 
-use crate::history::HistoricalSession;
+use crate::history::{HistoricalSample, HistoricalSession};
 use crate::stats::{Bucket, HostState, Sample};
 use crate::timeline;
 
@@ -21,44 +22,213 @@ use super::{span, Line, Role, Tint, RULE};
 /// gap. Fixed rather than derived from the probe interval, so adjusting the
 /// rate never changes how recorded history reads.
 const JOIN_BELOW: Duration = Duration::from_secs(5);
+/// Each restored run is reduced once to at most this many time blocks; the
+/// row never draws more subcells per run.
+const BLOCKS: usize = 1024;
 /// Every off gap gets the same width, whatever its duration.
 const GAP_WIDTH: usize = 5;
 const MIN_SEGMENT: usize = 4;
 /// The current run always keeps at least this many cells of the row.
 const MIN_LIVE: usize = 8;
 
+/// Restored history prepared once at startup: joined runs reduced to fixed
+/// time blocks, plus the last drawn prior part of the row. History is
+/// immutable, so only a new width or current-run start redraws it.
+#[derive(Debug, Clone, Default)]
+pub struct History {
+    runs: Vec<Run>,
+    /// Median restored reply, so old-run colors never follow live data.
+    baseline: Option<Duration>,
+    cache: RefCell<Option<Prefix>>,
+    #[cfg(test)]
+    projections: std::cell::Cell<usize>,
+}
+
+impl PartialEq for History {
+    fn eq(&self, other: &Self) -> bool {
+        self.runs == other.runs && self.baseline == other.baseline
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Run {
+    start: SystemTime,
+    /// Monotonic time the run covers, from its first offset to one interval
+    /// after its last probe.
+    covered: Duration,
+    blocks: Box<[Option<Bucket>]>,
+}
+
+#[derive(Debug, Clone)]
+struct Prefix {
+    budget: usize,
+    final_gap: bool,
+    line: Line,
+    used: usize,
+}
+
+impl History {
+    pub fn is_empty(&self) -> bool {
+        self.runs.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.runs.len()
+    }
+
+    /// The prior runs and the off gaps between them within `budget` cells,
+    /// reserving room for a `final_gap` before the current run, and their
+    /// width. Independent of the clock, so it stays cached from startup on.
+    fn prefix(&self, budget: usize, final_gap: bool) -> (Line, usize) {
+        let mut cache = self.cache.borrow_mut();
+        if let Some(prefix) = cache
+            .as_ref()
+            .filter(|prefix| prefix.budget == budget && prefix.final_gap == final_gap)
+        {
+            return (prefix.line.clone(), prefix.used);
+        }
+        #[cfg(test)]
+        self.projections.set(self.projections.get() + 1);
+        let mut line = Vec::new();
+        let mut used = 0;
+        for piece in pieces(&self.runs, budget, final_gap) {
+            match piece {
+                Piece::Run(run, columns) => {
+                    draw_run(&mut line, &run.cells(columns), self.baseline);
+                    used += columns;
+                }
+                Piece::Off(off) => {
+                    push(&mut line, Role::Dim, &gap_label(off));
+                    used += GAP_WIDTH;
+                }
+            }
+        }
+        *cache = Some(Prefix {
+            budget,
+            final_gap,
+            line: line.clone(),
+            used,
+        });
+        (line, used)
+    }
+}
+
+impl Run {
+    /// Aggregates samples by monotonic offset; wall-clock `sent` only labels
+    /// them, so a clock step inside a run never reorders it.
+    fn of(session: &HistoricalSession) -> Self {
+        let covered = covered(session);
+        let count = session.samples.len().min(BLOCKS);
+        let mut blocks = vec![None; count];
+        let span = covered.as_secs_f64().max(1e-3);
+        for sample in &session.samples {
+            let index = cells_of(sample.offset.as_secs_f64() / span, count).min(count - 1);
+            include(&mut blocks[index], sample);
+        }
+        Self {
+            start: session.start,
+            covered,
+            blocks: blocks.into(),
+        }
+    }
+
+    fn end(&self) -> SystemTime {
+        self.start + self.covered
+    }
+
+    fn seconds(&self) -> f64 {
+        self.covered.as_secs_f64().max(1e-3)
+    }
+
+    /// Two time-ordered subcells per column; empty ones never read as loss.
+    fn cells(&self, columns: usize) -> Vec<Option<Bucket>> {
+        let count = columns * 2;
+        let mut cells = vec![None; count];
+        for (index, block) in self.blocks.iter().enumerate() {
+            if let Some(block) = block {
+                let cell = &mut cells[index * count / self.blocks.len()];
+                let merged = cell.get_or_insert(Bucket {
+                    samples: 0,
+                    lost: 0,
+                    ..*block
+                });
+                merged.samples += block.samples;
+                merged.lost += block.lost;
+                merged.slowest = merged.slowest.max(block.slowest);
+                merged.first = merged.first.min(block.first);
+            }
+        }
+        cells
+    }
+}
+
+fn include(bucket: &mut Option<Bucket>, sample: &HistoricalSample) {
+    let bucket = bucket.get_or_insert(Bucket {
+        slowest: None,
+        samples: 0,
+        lost: 0,
+        first: sample.sent,
+    });
+    bucket.samples += 1;
+    match sample.sample {
+        Sample::Lost => bucket.lost += 1,
+        Sample::Reply(rtt) => bucket.slowest = bucket.slowest.max(Some(rtt)),
+    }
+}
+
 pub(super) fn has_stream(host: &HostState) -> bool {
     !host.prior_sessions.is_empty()
 }
 
-/// Restored samples are ordered by send time, so a run ends one interval
-/// after its last probe.
-fn session_end(session: &HistoricalSession) -> SystemTime {
+/// Monotonic time a stored session covers: samples are ordered by offset,
+/// so it ends one interval after its last probe.
+fn covered(session: &HistoricalSession) -> Duration {
     session
         .samples
         .last()
-        .map_or(session.start, |last| last.sent + session.interval)
+        .map_or(Duration::ZERO, |last| last.offset + session.interval)
 }
 
-fn seconds(session: &HistoricalSession) -> f64 {
-    session_end(session)
-        .duration_since(session.start)
-        .unwrap_or_default()
-        .as_secs_f64()
-        .max(1e-3)
+fn session_end(session: &HistoricalSession) -> SystemTime {
+    session.start + covered(session)
 }
 
-/// Joins stored sessions (sorted by start) that overlap or are less than
-/// `JOIN_BELOW` apart into one run, once at restore rather than per frame.
-/// A run's end is the furthest end of any session it contains, so a short
-/// session nested in a longer one never ends the run early.
-pub(crate) fn restore(sessions: Vec<HistoricalSession>) -> Vec<HistoricalSession> {
+/// Prepares restored sessions (sorted by start) once for drawing.
+pub(crate) fn restore(sessions: Vec<HistoricalSession>) -> History {
+    let runs = join(sessions);
+    let mut replies: Vec<Duration> = runs
+        .iter()
+        .flat_map(|run| &run.samples)
+        .filter_map(|sample| match sample.sample {
+            Sample::Reply(rtt) => Some(rtt),
+            Sample::Lost => None,
+        })
+        .collect();
+    let middle = replies.len() / 2;
+    let baseline = (!replies.is_empty()).then(|| *replies.select_nth_unstable(middle).1);
+    History {
+        runs: runs.iter().map(Run::of).collect(),
+        baseline,
+        ..History::default()
+    }
+}
+
+/// Joins sessions that overlap or are less than `JOIN_BELOW` apart into one
+/// run. A run's end is the furthest end of any session it contains, so a
+/// short session nested in a longer one never ends the run early. Joined
+/// samples keep their offsets relative to the run's start.
+fn join(sessions: Vec<HistoricalSession>) -> Vec<HistoricalSession> {
     let mut runs: Vec<(HistoricalSession, SystemTime, bool)> = Vec::with_capacity(sessions.len());
     for session in sessions {
         let end = session_end(&session);
         match runs.last_mut() {
             Some((run, run_end, merged)) if off_gap(*run_end, session.start).is_none() => {
-                run.samples.extend(session.samples);
+                let shift = session.start.duration_since(run.start).unwrap_or_default();
+                run.samples
+                    .extend(session.samples.into_iter().map(|sample| HistoricalSample {
+                        offset: sample.offset + shift,
+                        ..sample
+                    }));
                 *run_end = (*run_end).max(end);
                 *merged = true;
             }
@@ -69,8 +239,11 @@ pub(crate) fn restore(sessions: Vec<HistoricalSession>) -> Vec<HistoricalSession
         .map(|(mut run, end, merged)| {
             if merged {
                 // Keep `session_end` at the furthest covered end.
-                run.samples.sort_by_key(|entry| entry.sent);
-                let last = run.samples.last().map_or(run.start, |entry| entry.sent);
+                run.samples.sort_by_key(|sample| sample.offset);
+                let last = run
+                    .samples
+                    .last()
+                    .map_or(run.start, |sample| run.start + sample.offset);
                 run.interval = end.duration_since(last).unwrap_or_default();
             }
             run
@@ -97,56 +270,35 @@ fn cells_of(fraction: f64, count: usize) -> usize {
 }
 
 enum Piece<'a> {
-    Run(&'a HistoricalSession, usize),
+    Run(&'a Run, usize),
     Off(Duration),
 }
 
 /// The most recent runs that fit `budget`, each sized by its duration but
-/// never wider than one Braille stem per sample. Runs come from `restore`,
-/// so neighbours never overlap and only the next start bounds an off gap.
-fn pieces(sessions: &[HistoricalSession], budget: usize, live: SystemTime) -> Vec<Piece<'_>> {
-    let shown = sessions.len().min(budget / (MIN_SEGMENT + GAP_WIDTH));
-    let sessions = &sessions[sessions.len() - shown..];
+/// never wider than one Braille stem per block, with off gaps between them.
+/// Runs never overlap after `join`, so only the next start bounds a gap.
+/// `final_gap` reserves the width of the gap before the current run.
+fn pieces(runs: &[Run], budget: usize, final_gap: bool) -> Vec<Piece<'_>> {
+    let shown = runs.len().min(budget / (MIN_SEGMENT + GAP_WIDTH));
+    let runs = &runs[runs.len() - shown..];
     let off = |index: usize| {
-        let next = sessions.get(index + 1).map_or(live, |next| next.start);
-        off_gap(session_end(&sessions[index]), next)
+        let next = runs.get(index + 1)?;
+        off_gap(runs[index].end(), next.start)
     };
-    let gaps = (0..shown).filter(|index| off(*index).is_some()).count();
+    let gaps = (0..shown).filter(|index| off(*index).is_some()).count()
+        + usize::from(final_gap && shown > 0);
     let extra = budget.saturating_sub(shown * MIN_SEGMENT + gaps * GAP_WIDTH);
-    let total: f64 = sessions.iter().map(seconds).sum();
+    let total: f64 = runs.iter().map(Run::seconds).sum();
     let mut pieces = Vec::with_capacity(shown + gaps);
-    for (index, session) in sessions.iter().enumerate() {
-        let share = cells_of(seconds(session) / total, extra);
-        let cap = session.samples.len().div_ceil(2).max(MIN_SEGMENT);
-        pieces.push(Piece::Run(session, (MIN_SEGMENT + share).min(cap)));
+    for (index, run) in runs.iter().enumerate() {
+        let share = cells_of(run.seconds() / total, extra);
+        let cap = run.blocks.len().div_ceil(2).max(MIN_SEGMENT);
+        pieces.push(Piece::Run(run, (MIN_SEGMENT + share).min(cap)));
         if let Some(off) = off(index) {
             pieces.push(Piece::Off(off));
         }
     }
     pieces
-}
-
-/// Two time-ordered subcells per column; slowest reply and loss per subcell.
-/// Subcells without samples stay empty rather than reading as loss.
-fn buckets(session: &HistoricalSession, columns: usize) -> Vec<Option<Bucket>> {
-    let mut cells = vec![None; columns * 2];
-    let span = seconds(session);
-    for entry in &session.samples {
-        let at = entry.sent.duration_since(session.start).unwrap_or_default();
-        let index = cells_of(at.as_secs_f64() / span, cells.len()).min(cells.len() - 1);
-        let bucket = cells[index].get_or_insert(Bucket {
-            slowest: None,
-            samples: 0,
-            lost: 0,
-            first: entry.sent,
-        });
-        bucket.samples += 1;
-        match entry.sample {
-            Sample::Lost => bucket.lost += 1,
-            Sample::Reply(rtt) => bucket.slowest = bucket.slowest.max(Some(rtt)),
-        }
-    }
-    cells
 }
 
 fn push(line: &mut Line, role: Role, text: &str) {
@@ -190,23 +342,18 @@ fn draw_run(line: &mut Line, cells: &[Option<Bucket>], baseline: Option<Duration
 /// Exactly `width` cells: prior runs and their off gaps, then the current
 /// run's whole overview up to now.
 fn stream(host: &HostState, now: SystemTime, width: usize) -> Line {
-    let current_start = host.first_sample().map_or(now, |(_, entry)| entry.sent);
+    // The run origin never moves when retention evicts early samples.
+    let current_start = host.run_origin().unwrap_or(now);
     let budget = (width / 2).min(width.saturating_sub(MIN_LIVE));
-    let pieces = pieces(&host.prior_sessions, budget, current_start);
-    let baseline = host.rtt_baseline();
-    let mut line = Vec::new();
-    let mut used = 0;
-    for piece in &pieces {
-        match piece {
-            Piece::Run(session, columns) => {
-                draw_run(&mut line, &buckets(session, *columns), baseline);
-                used += columns;
-            }
-            Piece::Off(off) => {
-                push(&mut line, Role::Dim, &gap_label(*off));
-                used += GAP_WIDTH;
-            }
-        }
+    let final_gap = host
+        .prior_sessions
+        .runs
+        .last()
+        .and_then(|run| off_gap(run.end(), current_start));
+    let (mut line, mut used) = host.prior_sessions.prefix(budget, final_gap.is_some());
+    if let Some(off) = final_gap.filter(|_| used > 0) {
+        push(&mut line, Role::Dim, &gap_label(off));
+        used += GAP_WIDTH;
     }
     let run_width = width.saturating_sub(used);
     if host.history_is_empty() {
@@ -288,7 +435,6 @@ mod tests {
     use super::super::{frame, plain, Layout, Timeline};
     use super::*;
     use crate::probe::ProbeEvent;
-    use crate::stats::Entry;
 
     fn session(start: SystemTime, rtts_ms: &[Option<u64>]) -> HistoricalSession {
         HistoricalSession {
@@ -298,8 +444,9 @@ mod tests {
             samples: rtts_ms
                 .iter()
                 .zip(0..)
-                .map(|(rtt, index)| Entry {
+                .map(|(rtt, index)| HistoricalSample {
                     sent: start + Duration::from_secs(index),
+                    offset: Duration::from_secs(index),
                     sample: rtt.map_or(Sample::Lost, |ms| Sample::Reply(Duration::from_millis(ms))),
                 })
                 .collect(),
@@ -403,7 +550,10 @@ mod tests {
     fn exactly_five_seconds_off_is_a_gap() {
         let end = t0() - Duration::from_secs(5);
         let mut host = HostState::new("host-a".into());
-        host.prior_sessions = vec![session(end - Duration::from_secs(20), &[Some(10); 20])];
+        host.prior_sessions = restore(vec![session(
+            end - Duration::from_secs(20),
+            &[Some(10); 20],
+        )]);
         let host = with_live(host, &[10]);
         let text = text(&stream(&host, t0() + Duration::from_secs(1), 40));
         assert!(text.contains("╌5s╌╌"), "{text}");
@@ -423,14 +573,17 @@ mod tests {
         let a = session(base, &[Some(10); 10]);
         let b = session(base + Duration::from_secs(1), &[Some(20)]);
         let c = session(base + Duration::from_secs(9), &[Some(30)]);
-        let runs = restore(vec![a, b, c]);
+        let runs = join(vec![a.clone(), b.clone(), c.clone()]);
         assert_eq!(runs.len(), 1);
-        let sent: Vec<_> = runs[0].samples.iter().map(|entry| entry.sent).collect();
-        assert!(sent.is_sorted(), "{sent:?}");
-        assert_eq!(sent.len(), 12);
+        let offsets: Vec<_> = runs[0]
+            .samples
+            .iter()
+            .map(|sample| sample.offset.as_secs())
+            .collect();
+        assert_eq!(offsets, [0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9]);
         assert_eq!(session_end(&runs[0]), base + Duration::from_secs(10));
         let mut host = HostState::new("host-a".into());
-        host.prior_sessions = runs;
+        host.prior_sessions = restore(vec![a, b, c]);
         let host = with_live(host, &[10]);
         let text = text(&stream(&host, t0() + Duration::from_secs(1), 60));
         assert!(text.contains("╌50s╌"), "{text}");
@@ -442,18 +595,50 @@ mod tests {
     }
 
     #[test]
+    fn positions_follow_offsets_through_a_backward_clock_step() {
+        let base = t0() - Duration::from_mins(5);
+        let mut stepped = session(base, &[Some(10); 10]);
+        // The wall clock jumps back an hour after the fifth probe; the last
+        // probe is lost.
+        for sample in &mut stepped.samples[5..] {
+            sample.sent -= Duration::from_hours(1);
+        }
+        stepped.samples[9].sample = Sample::Lost;
+        assert_eq!(session_end(&stepped), base + Duration::from_secs(10));
+        let cells = Run::of(&stepped).cells(5);
+        assert_eq!(cells[9].map(|bucket| bucket.lost), Some(1));
+        assert!(cells[..9].iter().flatten().all(|bucket| bucket.lost == 0));
+
+        // Joining keeps each sample's offset relative to the run start and
+        // leaves its wall-clock label untouched.
+        let mut later = session(base + Duration::from_secs(12), &[Some(20); 3]);
+        later.samples[0].sent -= Duration::from_hours(1);
+        let label = later.samples[0].sent;
+        let runs = join(vec![stepped, later]);
+        assert_eq!(runs.len(), 1);
+        let offsets: Vec<_> = runs[0]
+            .samples
+            .iter()
+            .map(|sample| sample.offset.as_secs())
+            .collect();
+        assert_eq!(offsets, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14]);
+        assert_eq!(runs[0].samples[10].sent, label);
+        assert_eq!(session_end(&runs[0]), base + Duration::from_secs(15));
+    }
+
+    #[test]
     fn touching_and_short_boundaries_join_but_five_seconds_splits() {
         let base = t0() - Duration::from_mins(5);
         let at = |secs| base + Duration::from_secs(secs);
         // A ends at 10s where B starts; B ends at 20s, C starts 4s later.
-        let joined = restore(vec![
+        let joined = join(vec![
             session(at(0), &[Some(10); 10]),
             session(at(10), &[Some(10); 10]),
             session(at(24), &[Some(10); 5]),
         ]);
         assert_eq!(joined.len(), 1);
         assert_eq!(session_end(&joined[0]), at(29));
-        let split = restore(vec![
+        let split = join(vec![
             session(at(0), &[Some(10); 10]),
             session(at(15), &[Some(10); 5]),
         ]);
@@ -492,6 +677,77 @@ mod tests {
     }
 
     #[test]
+    fn hover_and_new_samples_reuse_the_drawn_history() {
+        let mut hosts = vec![host("host-a", &[10, 12, 11])];
+        let mut timeline = timeline();
+        frame(&hosts, Layout::Stacked, &timeline, 140, 50, true);
+        assert_eq!(hosts[0].prior_sessions.projections.get(), 1);
+        timeline.hover = Some(super::super::Hover {
+            host: 0,
+            cell: 1,
+            overview: false,
+        });
+        frame(&hosts, Layout::Stacked, &timeline, 140, 50, true);
+        hosts[0].apply(ProbeEvent::Reply {
+            seq: 3,
+            slot: 3,
+            rtt: Duration::from_millis(40),
+            sent: t0() + Duration::from_secs(3),
+        });
+        frame(&hosts, Layout::Stacked, &timeline, 140, 50, true);
+        assert_eq!(
+            hosts[0].prior_sessions.projections.get(),
+            1,
+            "history drawn once"
+        );
+        frame(&hosts, Layout::Stacked, &timeline, 120, 50, true);
+        assert_eq!(
+            hosts[0].prior_sessions.projections.get(),
+            2,
+            "a resize redraws it"
+        );
+    }
+
+    #[test]
+    fn startup_ticks_reuse_the_drawn_history() {
+        let hosts = vec![host("host-a", &[])];
+        for secs in [0, 1, 2] {
+            let timeline = Timeline {
+                now: t0() + Duration::from_secs(secs),
+                ..LIVE
+            };
+            let frame = frame(&hosts, Layout::Stacked, &timeline, 140, 50, true);
+            assert!(plain(&frame.lines).contains("╌20m╌probing…"));
+        }
+        assert_eq!(hosts[0].prior_sessions.projections.get(), 1);
+    }
+
+    #[test]
+    fn retention_eviction_keeps_the_gap_to_the_current_run() {
+        let mut host = HostState::new("host-a".into());
+        host.prior_sessions = restore(vec![session(
+            t0() - Duration::from_secs(60),
+            &[Some(10); 10],
+        )]);
+        let mut host = with_live(host, &[10, 11, 12]);
+        assert!(text(&stream(&host, t0() + Duration::from_secs(3), 60)).contains("╌50s╌"));
+        let slot = u64::try_from(crate::stats::HISTORY_LEN).unwrap() + 9;
+        host.apply(ProbeEvent::Reply {
+            seq: 9,
+            slot,
+            rtt: Duration::from_millis(10),
+            sent: t0() + Duration::from_secs(slot),
+        });
+        assert!(
+            host.first_sample().is_some_and(|(first, _)| first > 2),
+            "early samples evicted"
+        );
+        let now = t0() + Duration::from_secs(slot + 1);
+        let text = text(&stream(&host, now, 60));
+        assert!(text.contains("╌50s╌"), "{text}");
+    }
+
+    #[test]
     fn startup_shows_the_off_gap_before_a_waiting_live_run() {
         let host = host("host-a", &[]);
         let text = text(&stream(&host, t0(), 60));
@@ -502,7 +758,7 @@ mod tests {
     fn statistics_cover_only_the_current_run() {
         let restored = host("host-a", &[50, 60]);
         let mut live = restored.clone();
-        live.prior_sessions.clear();
+        live.prior_sessions = History::default();
         assert_eq!(restored.run_stats(), live.run_stats());
         for layout in [Layout::Stacked, Layout::Rows] {
             for width in [50, 90, 140] {
@@ -555,7 +811,7 @@ mod tests {
             .iter()
             .cloned()
             .map(|mut host| {
-                host.prior_sessions.clear();
+                host.prior_sessions = History::default();
                 host
             })
             .collect();
