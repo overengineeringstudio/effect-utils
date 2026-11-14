@@ -21,7 +21,7 @@ mod keys;
 use keys::key_hint;
 mod hover;
 mod past;
-pub(crate) use past::restore as restore_history;
+pub(crate) use past::{restore as restore_history, History};
 mod raster;
 mod sidecar;
 use raster::render_sparkline;
