@@ -1,9 +1,10 @@
 //! Private, append-only session history, separate from current-run statistics.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -296,10 +297,15 @@ fn append(file: &mut File, value: &impl Serialize) -> io::Result<()> {
     file.write_all(&bytes)
 }
 
+// Shared session IDs avoid allocating a string for every eviction-index entry.
+type SessionKey = (SystemTime, Rc<str>);
+type SampleKey = (SystemTime, SessionKey, Duration, u64);
+
 #[derive(Default)]
 struct RestoreBuffer {
-    sessions: BTreeMap<(SystemTime, String), SessionBuffer>,
-    samples: usize,
+    sessions: BTreeMap<SessionKey, SessionBuffer>,
+    oldest: BTreeSet<SampleKey>,
+    empty: BTreeSet<SessionKey>,
 }
 
 struct SessionBuffer {
@@ -308,19 +314,62 @@ struct SessionBuffer {
 }
 
 impl RestoreBuffer {
+    fn register(&mut self, key: &SessionKey, interval: Duration) {
+        if let std::collections::btree_map::Entry::Vacant(entry) = self.sessions.entry(key.clone())
+        {
+            entry.insert(SessionBuffer {
+                interval,
+                samples: BTreeMap::new(),
+            });
+            self.empty.insert(key.clone());
+        }
+        self.trim();
+    }
+
+    fn insert(
+        &mut self,
+        key: &SessionKey,
+        interval: Duration,
+        ordinal: u64,
+        sample: HistoricalSample,
+    ) -> io::Result<()> {
+        let coordinate = key
+            .0
+            .checked_add(sample.offset)
+            .ok_or_else(|| invalid("history sample coordinate overflows system time"))?;
+        // Metadata may have been trimmed before this journal's later records arrive.
+        let session = self
+            .sessions
+            .entry(key.clone())
+            .or_insert_with(|| SessionBuffer {
+                interval,
+                samples: BTreeMap::new(),
+            });
+        self.empty.remove(key);
+        session.samples.insert((sample.offset, ordinal), sample);
+        self.oldest
+            .insert((coordinate, key.clone(), sample.offset, ordinal));
+        self.trim();
+        Ok(())
+    }
+
     fn trim(&mut self) {
-        while self.samples > HISTORY_LEN || self.sessions.len() > HISTORY_LEN {
-            let too_many_sessions = self.sessions.len() > HISTORY_LEN;
-            let mut first = self
-                .sessions
-                .first_entry()
-                .expect("nonempty restore buffer");
-            if too_many_sessions || first.get().samples.is_empty() {
-                self.samples -= first.remove().samples.len();
-            } else {
-                first.get_mut().samples.pop_first();
-                self.samples -= 1;
+        while self.oldest.len() > HISTORY_LEN {
+            let (_, key, offset, ordinal) = self.oldest.pop_first().expect("nonempty sample index");
+            let session = self.sessions.get_mut(&key).expect("indexed session exists");
+            session.samples.remove(&(offset, ordinal));
+            if session.samples.is_empty() {
+                self.empty.insert(key);
             }
+        }
+        // Nonempty sessions cannot outnumber the retained samples. Drop only empty
+        // metadata, never an old-start session whose late samples are still recent.
+        while self.sessions.len() > HISTORY_LEN {
+            let key = self
+                .empty
+                .pop_first()
+                .expect("excess session metadata is empty");
+            self.sessions.remove(&key);
         }
     }
 
@@ -331,7 +380,7 @@ impl RestoreBuffer {
             // Keep fresh empty sessions, but not expired sessions without retained samples.
             .filter(|((start, _), session)| *start >= cutoff || !session.samples.is_empty())
             .map(|((start, id), session)| HistoricalSession {
-                id,
+                id: id.to_string(),
                 start,
                 interval: session.interval,
                 samples: session.samples.into_values().collect(),
@@ -385,28 +434,17 @@ fn load(
         let Some(buffer) = buffers.get_mut(&header.host) else {
             continue;
         };
-        let key = (parse_utc(&header.start_utc)?, header.session_id);
-        buffer
-            .sessions
-            .entry(key.clone())
-            .or_insert_with(|| SessionBuffer {
-                interval: Duration::from_nanos(header.interval_ns),
-                samples: BTreeMap::new(),
-            });
-        buffer.trim();
+        let key = (
+            parse_utc(&header.start_utc)?,
+            Rc::<str>::from(header.session_id),
+        );
+        let interval = Duration::from_nanos(header.interval_ns);
+        buffer.register(&key, interval);
         read_samples(&mut reader, &path, |ordinal, sample| {
             if sample.sent >= cutoff {
-                if let Some(session) = buffer.sessions.get_mut(&key) {
-                    if session
-                        .samples
-                        .insert((sample.offset, ordinal), sample)
-                        .is_none()
-                    {
-                        buffer.samples += 1;
-                    }
-                    buffer.trim();
-                }
+                buffer.insert(&key, interval, ordinal, sample)?;
             }
+            Ok(())
         })?;
     }
     let mut restored: HashMap<_, _> = buffers
@@ -482,7 +520,7 @@ fn read_header(reader: &mut impl BufRead, path: &Path) -> io::Result<Header> {
 fn read_samples(
     reader: &mut impl BufRead,
     path: &Path,
-    mut record: impl FnMut(u64, HistoricalSample),
+    mut record: impl FnMut(u64, HistoricalSample) -> io::Result<()>,
 ) -> io::Result<()> {
     let mut line = Vec::new();
     let mut ordinal = 0;
@@ -500,7 +538,7 @@ fn read_samples(
                     Outcome::Lost => Sample::Lost,
                 },
             },
-        );
+        )?;
         ordinal += 1;
     }
     Ok(())
@@ -565,7 +603,10 @@ mod tests {
             interval: Duration::from_nanos(header.interval_ns),
             samples: Vec::new(),
         };
-        read_samples(&mut reader, path, |_, sample| session.samples.push(sample))?;
+        read_samples(&mut reader, path, |_, sample| {
+            session.samples.push(sample);
+            Ok(())
+        })?;
         Ok((header.host, session))
     }
 
@@ -1013,8 +1054,9 @@ mod tests {
             HISTORY_LEN
         );
         assert_eq!(restored[0].len(), 2);
-        assert_eq!(restored[0][0].samples[0].offset, Duration::from_secs(4));
-        assert_eq!(restored[0][1].samples.len(), per_session);
+        assert_eq!(restored[0][0].samples[0].offset, Duration::from_secs(3));
+        assert_eq!(restored[0][1].samples[0].offset, Duration::from_secs(1));
+        assert_eq!(restored[0][1].samples.len(), per_session - 1);
     }
 
     #[test]
@@ -1040,14 +1082,8 @@ mod restore_regressions {
     #[test]
     fn restore_buffer_never_exceeds_the_host_sample_limit() {
         let mut buffer = RestoreBuffer::default();
-        let key = (SystemTime::UNIX_EPOCH, "session".to_owned());
-        buffer.sessions.insert(
-            key.clone(),
-            SessionBuffer {
-                interval: Duration::from_secs(1),
-                samples: BTreeMap::new(),
-            },
-        );
+        let key = (SystemTime::UNIX_EPOCH, Rc::<str>::from("session"));
+        buffer.register(&key, Duration::from_secs(1));
         for ordinal in (0..u64::try_from(HISTORY_LEN + 10).unwrap()).rev() {
             let offset = Duration::from_secs(ordinal);
             let sample = HistoricalSample {
@@ -1056,17 +1092,105 @@ mod restore_regressions {
                 sample: Sample::Lost,
             };
             buffer
-                .sessions
-                .get_mut(&key)
-                .unwrap()
-                .samples
-                .insert((offset, ordinal), sample);
-            buffer.samples += 1;
-            buffer.trim();
-            assert!(buffer.samples <= HISTORY_LEN);
+                .insert(&key, Duration::from_secs(1), ordinal, sample)
+                .unwrap();
+            assert!(buffer.oldest.len() <= HISTORY_LEN);
         }
         let sessions = buffer.finish(SystemTime::UNIX_EPOCH);
         assert_eq!(sessions[0].samples.len(), HISTORY_LEN);
         assert_eq!(sessions[0].samples[0].offset, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn overlapping_sessions_keep_the_globally_newest_long_run_tail() {
+        let interval = Duration::from_secs(1);
+        let per_session = HISTORY_LEN / 2 + 2;
+        let old = (SystemTime::UNIX_EPOCH, Rc::<str>::from("long-running"));
+        let later = (
+            SystemTime::UNIX_EPOCH + Duration::from_secs(500),
+            Rc::<str>::from("finished"),
+        );
+        // Exercise both file traversal orders. The earlier-start session's tail is
+        // newer than every sample from the later-start, already finished session.
+        for order in [
+            [(&old, 100_000), (&later, 0)],
+            [(&later, 0), (&old, 100_000)],
+        ] {
+            let mut buffer = RestoreBuffer::default();
+            for (key, base) in order {
+                buffer.register(key, interval);
+                for ordinal in 0..u64::try_from(per_session).unwrap() {
+                    buffer
+                        .insert(
+                            key,
+                            interval,
+                            ordinal,
+                            HistoricalSample {
+                                sent: SystemTime::UNIX_EPOCH,
+                                offset: Duration::from_secs(base + ordinal),
+                                sample: Sample::Lost,
+                            },
+                        )
+                        .unwrap();
+                    assert!(buffer.oldest.len() <= HISTORY_LEN);
+                }
+            }
+            let sessions = buffer.finish(SystemTime::UNIX_EPOCH);
+            assert_eq!(sessions[0].samples.len(), per_session);
+            assert_eq!(
+                sessions[0].samples.last().unwrap().offset,
+                Duration::from_secs(100_000 + u64::try_from(per_session - 1).unwrap())
+            );
+            assert_eq!(sessions[1].samples[0].offset, Duration::from_secs(4));
+            assert_eq!(sessions[1].samples.len(), per_session - 4);
+        }
+    }
+
+    #[test]
+    fn metadata_pressure_preserves_nonempty_sessions_and_recreates_trimmed_headers() {
+        let interval = Duration::from_secs(1);
+        let mut buffer = RestoreBuffer::default();
+        let old = (SystemTime::UNIX_EPOCH, Rc::<str>::from("old-live"));
+        buffer
+            .insert(
+                &old,
+                interval,
+                0,
+                HistoricalSample {
+                    sent: SystemTime::UNIX_EPOCH,
+                    offset: Duration::from_secs(100_000),
+                    sample: Sample::Lost,
+                },
+            )
+            .unwrap();
+        for ordinal in 1..=u64::try_from(HISTORY_LEN).unwrap() {
+            let key = (
+                SystemTime::UNIX_EPOCH + Duration::from_secs(ordinal),
+                Rc::<str>::from("empty"),
+            );
+            buffer.register(&key, interval);
+            assert!(buffer.sessions.len() <= HISTORY_LEN);
+        }
+        assert_eq!(buffer.sessions.get(&old).unwrap().samples.len(), 1);
+        let trimmed = (
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1),
+            Rc::<str>::from("empty"),
+        );
+        assert!(!buffer.sessions.contains_key(&trimmed));
+        buffer
+            .insert(
+                &trimmed,
+                interval,
+                0,
+                HistoricalSample {
+                    sent: SystemTime::UNIX_EPOCH,
+                    offset: Duration::from_secs(200_000),
+                    sample: Sample::Lost,
+                },
+            )
+            .unwrap();
+        assert!(buffer.sessions.contains_key(&trimmed));
+        assert!(buffer.sessions.contains_key(&old));
+        assert!(buffer.sessions.len() <= HISTORY_LEN);
     }
 }
