@@ -85,24 +85,65 @@ pub enum ProbeEvent {
 
 /// Owns the worker and its cancellation endpoint.
 pub struct Worker {
-    thread: JoinHandle<()>,
+    thread: Option<JoinHandle<()>>,
     interrupt: Option<Arc<UnixStream>>,
+    stop: Arc<AtomicBool>,
 }
 
 impl Worker {
-    /// Cancels a blocked receive before waiting for the worker to finish.
-    pub fn join(self) -> std::thread::Result<()> {
-        if let Some(interrupt) = self.interrupt {
+    /// Keep cancellation ownership independent of the probe transport.
+    fn spawn(
+        stop: Arc<AtomicBool>,
+        schedule: Arc<Schedule>,
+        run: impl FnOnce(std::io::Result<UnixStream>, &AtomicBool, &AtomicBool, &Schedule)
+            + Send
+            + 'static,
+    ) -> Self {
+        let (interrupt, cancellation) = match UnixStream::pair() {
+            Ok((reader, writer)) => match writer.set_nonblocking(true) {
+                Ok(()) => (Ok(reader), Some(Arc::new(writer))),
+                Err(err) => (Err(err), None),
+            },
+            Err(err) => (Err(err), None),
+        };
+        if let Some(writer) = &cancellation {
+            let mut wake = schedule.wake.lock().expect("schedule wake lock");
+            wake.retain(|stream| stream.strong_count() > 0);
+            wake.push(Arc::downgrade(writer));
+        }
+        let worker_stop = Arc::new(AtomicBool::new(false));
+        let local_stop = Arc::clone(&worker_stop);
+        let thread = std::thread::spawn(move || {
+            run(interrupt, &stop, &local_stop, &schedule);
+        });
+        Self {
+            thread: Some(thread),
+            interrupt: cancellation,
+            stop: worker_stop,
+        }
+    }
+
+    /// Interrupt I/O and signal cancellation without waiting on name resolution.
+    pub fn cancel(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(interrupt) = &self.interrupt {
             let _ = interrupt.shutdown(std::net::Shutdown::Both);
         }
-        self.thread.join()
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.cancel();
+        // The worker owns socket cleanup; dropping its handle never blocks UI input.
+        self.thread.take();
     }
 }
 
 /// Mutable shared schedule. Changing the rate wakes blocked workers.
 pub struct Schedule {
     state: Mutex<ScheduleState>,
-    wake: Mutex<Vec<Arc<UnixStream>>>,
+    wake: Mutex<Vec<std::sync::Weak<UnixStream>>>,
 }
 
 #[derive(Clone)]
@@ -147,10 +188,17 @@ impl Schedule {
             state.config.start = deadline.min(now + interval);
             state.config.interval = interval;
         }
-        for stream in self.wake.lock().expect("schedule wake lock").iter() {
-            let mut stream = stream.as_ref();
-            let _ = stream.write_all(&[1]);
-        }
+        self.wake
+            .lock()
+            .expect("schedule wake lock")
+            .retain(|stream| {
+                let Some(stream) = stream.upgrade() else {
+                    return false;
+                };
+                let mut stream = stream.as_ref();
+                let _ = stream.write_all(&[1]);
+                true
+            });
     }
 
     fn snapshot(&self) -> ScheduleState {
@@ -178,58 +226,49 @@ pub fn step_interval(current: Duration, faster: bool) -> Duration {
 }
 
 pub fn spawn(
-    index: usize,
+    index: crate::target::TargetId,
     host: String,
     config: ProbeConfig,
     stop: Arc<AtomicBool>,
-    events: Sender<(usize, ProbeEvent)>,
+    events: Sender<(crate::target::TargetId, ProbeEvent)>,
     wake: Option<Arc<UnixStream>>,
     schedule: Arc<Schedule>,
 ) -> Worker {
-    let (interrupt, cancellation) = match UnixStream::pair() {
-        Ok((reader, writer)) => match writer.set_nonblocking(true) {
-            Ok(()) => (Ok(reader), Some(Arc::new(writer))),
-            Err(err) => (Err(err), None),
-        },
-        Err(err) => (Err(err), None),
-    };
-    if let Some(writer) = &cancellation {
-        schedule
-            .wake
-            .lock()
-            .expect("schedule wake lock")
-            .push(Arc::clone(writer));
-    }
-    let thread = std::thread::spawn(move || {
-        let emit = |event| {
-            if events.send((index, event)).is_ok() {
-                if let Some(wake) = &wake {
-                    let mut notifier = wake.as_ref();
-                    let _ = notifier.write_all(&[1]);
+    Worker::spawn(
+        stop,
+        schedule,
+        move |interrupt, stop, local_stop, schedule| {
+            let emit = |event| {
+                if events.send((index, event)).is_ok() {
+                    if let Some(wake) = &wake {
+                        let mut notifier = wake.as_ref();
+                        let _ = notifier.write_all(&[1]);
+                    }
                 }
+            };
+            let result = interrupt
+                .map_err(|err| ProbeEvent::Failed {
+                    reason: err.to_string(),
+                    kind: Failure::Socket,
+                })
+                .and_then(|interrupt| {
+                    run(
+                        &host, &config, stop, local_stop, &interrupt, schedule, &emit,
+                    )
+                });
+            match result {
+                Ok(()) => emit(ProbeEvent::Finished),
+                Err(event) => emit(event),
             }
-        };
-        let result = interrupt
-            .map_err(|err| ProbeEvent::Failed {
-                reason: err.to_string(),
-                kind: Failure::Socket,
-            })
-            .and_then(|interrupt| run(&host, &config, &stop, &interrupt, &schedule, &emit));
-        match result {
-            Ok(()) => emit(ProbeEvent::Finished),
-            Err(event) => emit(event),
-        }
-    });
-    Worker {
-        thread,
-        interrupt: cancellation,
-    }
+        },
+    )
 }
 
 fn run(
     host: &str,
     config: &ProbeConfig,
     stop: &AtomicBool,
+    local_stop: &AtomicBool,
     interrupt: &UnixStream,
     schedule: &Schedule,
     emit: &impl Fn(ProbeEvent),
@@ -260,7 +299,7 @@ fn run(
     let mut slot = shared.first + slot_at(&shared.config, Instant::now(), true);
     let mut next_send = slot_time(&shared.config, slot - shared.first);
 
-    while !stop.load(Ordering::Relaxed) {
+    while !stop.load(Ordering::Relaxed) && !local_stop.load(Ordering::Relaxed) {
         let now = Instant::now();
         let updated = schedule.snapshot();
         if updated.config.start != shared.config.start
@@ -409,6 +448,114 @@ fn resolve(host: &str, family: Family) -> Result<IpAddr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropping_worker_cancels_without_waiting_for_its_thread() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (interrupt, mut peer) = UnixStream::pair().unwrap();
+        let (release, wait) = std::sync::mpsc::channel();
+        let (finished, completion) = std::sync::mpsc::channel();
+        let worker = Worker {
+            stop: Arc::clone(&stop),
+            interrupt: Some(Arc::new(interrupt)),
+            thread: Some(std::thread::spawn(move || {
+                wait.recv().unwrap();
+                finished.send(()).unwrap();
+            })),
+        };
+        drop(worker);
+        assert!(stop.load(Ordering::Relaxed));
+        assert_eq!(std::io::Read::read(&mut peer, &mut [0]).unwrap(), 0);
+        release.send(()).unwrap();
+        completion.recv_timeout(Duration::from_secs(2)).unwrap();
+    }
+
+    #[test]
+    fn canceling_one_worker_keeps_its_shared_run_peer_probing() {
+        let config = ProbeConfig {
+            interval: Duration::from_millis(10),
+            timeout: Duration::from_millis(100),
+            count: None,
+            family: Family::V4,
+            start: Instant::now(),
+        };
+        let schedule = Arc::new(Schedule::new(config));
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (events, received) = std::sync::mpsc::channel();
+        let start = |id| {
+            let (tick, ticks) = std::sync::mpsc::channel();
+            let events = events.clone();
+            let worker = Worker::spawn(
+                Arc::clone(&shutdown),
+                Arc::clone(&schedule),
+                move |interrupt, stop, local_stop, _| {
+                    let _interrupt = interrupt.unwrap();
+                    for slot in ticks {
+                        let event =
+                            if stop.load(Ordering::Relaxed) || local_stop.load(Ordering::Relaxed) {
+                                ProbeEvent::Finished
+                            } else {
+                                ProbeEvent::Scheduled {
+                                    slot,
+                                    position: Duration::from_millis(slot * 10),
+                                    interval: Duration::from_millis(10),
+                                }
+                            };
+                        let finished = event == ProbeEvent::Finished;
+                        events.send((id, event)).unwrap();
+                        if finished {
+                            break;
+                        }
+                    }
+                },
+            );
+            (worker, tick)
+        };
+        let (first, tick_first) = start(41);
+        let (second, tick_second) = start(73);
+        let next = || received.recv_timeout(Duration::from_secs(2)).unwrap();
+        tick_first.send(0).unwrap();
+        assert!(matches!(
+            next(),
+            (41, ProbeEvent::Scheduled { slot: 0, .. })
+        ));
+        tick_second.send(0).unwrap();
+        assert!(matches!(
+            next(),
+            (73, ProbeEvent::Scheduled { slot: 0, .. })
+        ));
+        first.cancel();
+        assert!(!shutdown.load(Ordering::Relaxed));
+        tick_first.send(1).unwrap();
+        assert_eq!(next(), (41, ProbeEvent::Finished));
+        tick_second.send(1).unwrap();
+        assert!(matches!(
+            next(),
+            (73, ProbeEvent::Scheduled { slot: 1, .. })
+        ));
+        shutdown.store(true, Ordering::Relaxed);
+        tick_second.send(2).unwrap();
+        assert_eq!(next(), (73, ProbeEvent::Finished));
+        drop(second);
+    }
+
+    #[test]
+    fn rate_changes_release_retired_worker_registrations() {
+        let config = ProbeConfig {
+            interval: Duration::from_secs(1),
+            timeout: Duration::from_secs(1),
+            count: None,
+            family: Family::Any,
+            start: Instant::now(),
+        };
+        let schedule = Schedule::new(config);
+        let (_, writer) = UnixStream::pair().unwrap();
+        let writer = Arc::new(writer);
+        schedule.wake.lock().unwrap().push(Arc::downgrade(&writer));
+        drop(writer);
+        schedule.change(Duration::from_millis(500), Instant::now());
+        assert!(schedule.wake.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn rate_steps_snap_directionally_and_stop_at_boundaries() {

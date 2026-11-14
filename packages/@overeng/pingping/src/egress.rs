@@ -39,10 +39,17 @@ impl State {
     }
 }
 
-pub fn spawn(generation: u64, events: Sender<(usize, ProbeEvent)>, wake: Option<Arc<UnixStream>>) {
+pub fn spawn(
+    generation: u64,
+    events: Sender<(crate::target::TargetId, ProbeEvent)>,
+    wake: Option<Arc<UnixStream>>,
+) {
     std::thread::spawn(move || {
         let info = lookup();
-        let _ = events.send((0, ProbeEvent::Egress { generation, info }));
+        let _ = events.send((
+            crate::target::GLOBAL_ID,
+            ProbeEvent::Egress { generation, info },
+        ));
         if let Some(mut wake) = wake.as_deref() {
             let _ = wake.write_all(&[1]);
         }

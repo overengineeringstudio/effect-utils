@@ -28,6 +28,7 @@ use raster::render_sparkline;
 
 /// Shared timeline state for a frame: the zoom/pan view, run-start scale,
 /// and current probe rate.
+#[derive(Clone, Copy)]
 pub struct Timeline {
     pub view: View,
     /// Fixed run-start interval used for timeline coordinates and zoom labels.

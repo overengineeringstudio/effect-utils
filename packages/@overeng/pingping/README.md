@@ -75,6 +75,8 @@ least five seconds use fixed-width dashed duration labels, not loss or pending
 markers. Shorter gaps and overlapping runs join seamlessly. Heights scale per
 run; the overview fits recent runs to the available width. Hover/zoom/pan still
 operate on the unchanged current-run chart, not the compressed overview.
+Journal writers follow stable target identities, not display positions; events
+for absent targets cannot be recorded against another row.
 
 ## Network Context And Uptime
 
@@ -105,6 +107,12 @@ modifies the user's SSH files. Pending reads show `up –`; failed reads show di
 out, unreachable, remote command failed, unparseable output, unsafe identity,
 or another local failure). ICMP and rendering never wait for SSH. Plain mode
 performs no uptime SSH reads.
+ICMP worker release interrupts socket I/O without waiting for name resolution.
+Each ICMP and uptime worker observes both its own cancellation flag and run-wide
+shutdown; retiring one never stops its peers. The shared rate schedule weakly
+holds wake endpoints and prunes expired entries on registration or rate change.
+Uptime cancellation wakes pending reads immediately, and final shutdown waits
+for SSH child reaping.
 
 ### Uptime on macOS peers
 
@@ -166,6 +174,12 @@ about 100 ms and returns no host candidates when that source is unavailable.
 Shell configuration must enable its normal completion support.
 Registration and callback commands both use the invocation's basename, preserving
 adopter aliases without embedding absolute installation paths in shell scripts.
+
+## Testing
+
+Run the repository's Rust workspace gate with `devenv tasks run cargo:check`.
+Worker cancellation tests use deterministic probe bodies through the production
+worker lifetime boundary, so they do not require ICMP socket permissions.
 
 ## Package Boundary
 
