@@ -11,6 +11,8 @@ use parking_lot::Mutex;
 use std::time::Instant;
 pub mod documents;
 pub mod native;
+mod onboarding_state;
+mod onboarding;
 pub mod control;
 pub mod transport;
 pub mod children;
@@ -384,6 +386,7 @@ fn read_consent(config: &Config) -> bool {
     value["policyRevision"] == config.policy_revision && value["results"].as_array().is_some_and(|results| results.iter().any(|r| r["category"]=="full-disk-access" && r["status"]=="passed"))
 }
 pub fn onboard(config: Config) -> Result<Value, HostError> {
+    native::require_gui_session()?;
     let mut audit = Audit::open(&config)?;
     let id = opaque_id()?;
     audit.admit(&json!({"phase":"onboarding-admission","auditId":id,"utc":utc(),"policyRevision":config.policy_revision,"humanPresentExplicit":true}), 65536)?;

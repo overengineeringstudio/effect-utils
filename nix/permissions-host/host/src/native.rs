@@ -197,16 +197,18 @@ pub fn notify(product_label: &str, title: &str, body: &str, cancelled: &dyn Fn()
     }
     Ok(id)
 }
-fn onboard_notifications() -> Result<String, HostError> {
+fn onboard_notifications(prompt: bool) -> Result<String, HostError> {
     let center = notification_center()?;
-    let state = Completion::new();
-    let callback = Callback::new(&state, permission_callback as *const c_void);
-    unsafe { send2::<_, _, ()>(center, c"requestAuthorizationWithOptions:completionHandler:", 6usize, callback.0) };
-    match state.wait(WAIT)? {
-        1 => {},
-        0 => return Err(required("notifications", "Allow notifications for the installed host")),
-        _ => return Err(failed("Notification authorization request failed")),
-    }
+    if prompt {
+        let state = Completion::new();
+        let callback = Callback::new(&state, permission_callback as *const c_void);
+        unsafe { send2::<_, _, ()>(center, c"requestAuthorizationWithOptions:completionHandler:", 6usize, callback.0) };
+        match state.wait(WAIT)? {
+            1 => {},
+            0 => return Err(required("notifications", "Allow notifications for the installed host")),
+            _ => return Err(failed("Notification authorization request failed")),
+        }
+    } else { notification_settings(center)?; }
     notify("Permissions Host", "Onboarding check", "The host submitted this harmless permission check.", &|| false)?;
     Ok("OS accepted the host test notification; visible delivery is not established".into())
 }
@@ -245,9 +247,9 @@ unsafe extern "C" {
     fn CGContextDrawImage(context: Id, rect: Rect, image: Id);
     fn CGContextRelease(context: Id);
 }
-fn onboard_screen() -> Result<String, HostError> {
+fn onboard_screen(prompt: bool) -> Result<String, HostError> {
     unsafe {
-        if !CGPreflightScreenCaptureAccess() && !CGRequestScreenCaptureAccess() {
+        if !CGPreflightScreenCaptureAccess() && (!prompt || !CGRequestScreenCaptureAccess()) {
             return Err(required("screen-recording", "Approve Screen Recording for the host; restart it if macOS requires"));
         }
         let main_thread: i8 = send0(class(c"NSThread"), c"isMainThread");
@@ -311,12 +313,12 @@ unsafe extern "C" {
     fn AXUIElementCopyAttributeValue(element: Id, attribute: Id, value: *mut Id) -> i32;
     fn AXUIElementSetMessagingTimeout(element: Id, timeout: f32) -> i32;
 }
-fn onboard_accessibility() -> Result<String, HostError> {
+fn onboard_accessibility(prompt: bool) -> Result<String, HostError> {
     unsafe {
         let options = CFDictionaryCreate(null_mut(), &kAXTrustedCheckOptionPrompt, &kCFBooleanTrue, 1,
             std::ptr::addr_of!(kCFTypeDictionaryKeyCallBacks), std::ptr::addr_of!(kCFTypeDictionaryValueCallBacks));
         if options.is_null() { return Err(failed("Unable to construct AX onboarding options")); }
-        let trusted = AXIsProcessTrustedWithOptions(options);
+        let trusted = AXIsProcessTrustedWithOptions(if prompt { options } else { null_mut() });
         CFRelease(options);
         if !trusted { return Err(required("accessibility", "Approve Accessibility for the installed host and rerun human-present onboarding")); }
         let system = AXUIElementCreateSystemWide();
@@ -360,11 +362,11 @@ unsafe extern "C" fn input_callback(user: *mut c_void, _queue: AudioQueue, buffe
         unsafe { (*(user.cast::<Completion>())).finish(1) };
     }
 }
-fn onboard_microphone() -> Result<String, HostError> {
+fn onboard_microphone(prompt: bool) -> Result<String, HostError> {
     unsafe {
         let device = class(c"AVCaptureDevice");
         let status: i64 = send1(device, c"authorizationStatusForMediaType:", AVMediaTypeAudio);
-        if status == 0 {
+        if status == 0 && prompt {
             let state = Completion::new();
             let callback = Callback::new(&state, audio_permission_callback as *const c_void);
             send2::<_, _, ()>(device, c"requestAccessForMediaType:completionHandler:", AVMediaTypeAudio, callback.0);
@@ -601,27 +603,37 @@ fn onboard_system_audio() -> Result<String, HostError> {
 /// operation calls these prompt-capable checks. A successful probe is narrow
 /// evidence, not a global TCC authorization oracle or production-readiness claim.
 pub fn onboard(config: &Config) -> Vec<Value> {
+    crate::onboarding::run(config)
+}
+
+/// Retry only after nonprompting readiness inspection. Automation and process
+/// taps have no common safe change signal here and require another human click.
+pub(crate) fn check(config: &Config, category: &str, target: Option<&str>, prompt: bool) -> Option<Value> {
     let _pool = Pool::new();
-    let mut records = Vec::new();
-    for category in &config.enabled_grants {
-        if category == "automation" {
-            for target in &config.automation_targets {
-                records.push(record(category, Some(target), onboard_automation(target)));
+    if !prompt {
+        let ready = unsafe {
+            match category {
+                "full-disk-access" => true,
+                "screen-recording" => CGPreflightScreenCaptureAccess(),
+                "accessibility" => AXIsProcessTrustedWithOptions(null_mut()),
+                "microphone" => send1::<_, i64>(class(c"AVCaptureDevice"), c"authorizationStatusForMediaType:", AVMediaTypeAudio) == 3,
+                "notifications" => notification_center().and_then(notification_settings).is_ok(),
+                _ => false,
             }
-            continue;
-        }
-        let outcome = match category.as_str() {
-            "full-disk-access" => crate::documents::probe(&config.documents).map(|()| "Bounded configured protected sentinel read succeeded; not a global FDA authorization claim".into()),
-            "notifications" => onboard_notifications(),
-            "screen-recording" => onboard_screen(),
-            "accessibility" => onboard_accessibility(),
-            "microphone" => onboard_microphone(),
-            "system-audio" => onboard_system_audio(),
-            _ => Err(failed("Unknown enabled grant category")),
         };
-        records.push(record(category, None, outcome));
+        if !ready { return None; }
     }
-    records
+    let outcome = match category {
+        "full-disk-access" => crate::documents::probe(&config.documents).map(|()| "Bounded configured protected sentinel read succeeded; not a global FDA authorization claim".into()),
+        "notifications" => onboard_notifications(prompt),
+        "screen-recording" => onboard_screen(prompt),
+        "accessibility" => onboard_accessibility(prompt),
+        "microphone" => onboard_microphone(prompt),
+        "system-audio" => onboard_system_audio(),
+        "automation" => match target { Some(target) => onboard_automation(target), None => Err(failed("Automation requires an explicit target")) },
+        _ => Err(failed("Unknown enabled grant category")),
+    };
+    Some(record(category, target, outcome))
 }
 fn record(category: &str, target: Option<&str>, result: Result<String, HostError>) -> Value {
     let mut record = match result {
