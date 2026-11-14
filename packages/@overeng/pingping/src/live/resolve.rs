@@ -88,7 +88,10 @@ impl Resolver {
 
     pub fn submit(&self, edit: Option<TargetId>, hosts: Vec<String>) -> u64 {
         let mut state = self.shared.state.lock().expect("resolver lock");
-        state.generation = state.generation.checked_add(1).expect("lookup generations exhausted");
+        state.generation = state
+            .generation
+            .checked_add(1)
+            .expect("lookup generations exhausted");
         let generation = state.generation;
         if state.active == MAX_ACTIVE {
             drop(state);
@@ -105,8 +108,8 @@ impl Resolver {
         let thread = std::thread::Builder::new()
             .name("target-resolver".into())
             .spawn(move || {
-                let active = active;
-                let shared = &active.0;
+                let lease = active;
+                let shared = &lease.0;
                 let mut resolved = Vec::with_capacity(hosts.len());
                 let mut error = None;
                 for name in hosts {
@@ -153,7 +156,9 @@ impl Resolver {
             match self.results.try_recv() {
                 // Cancellation also invalidates results queued before it took the lock.
                 Ok(result) => {
-                    if result.generation == self.shared.state.lock().expect("resolver lock").generation {
+                    if result.generation
+                        == self.shared.state.lock().expect("resolver lock").generation
+                    {
                         return Ok(Some(result));
                     }
                 }
@@ -170,7 +175,10 @@ impl Drop for Resolver {
     fn drop(&mut self) {
         let mut state = self.shared.state.lock().expect("resolver lock");
         state.closed = true;
-        state.generation = state.generation.checked_add(1).expect("lookup generations exhausted");
+        state.generation = state
+            .generation
+            .checked_add(1)
+            .expect("lookup generations exhausted");
     }
 }
 
@@ -184,11 +192,10 @@ mod tests {
 
     fn wait_for_idle(shared: &Shared) {
         let state = shared.state.lock().unwrap();
-        let (state, timeout) = shared.finished.wait_timeout_while(
-            state,
-            Duration::from_secs(2),
-            |state| state.active != 0,
-        ).unwrap();
+        let (state, timeout) = shared
+            .finished
+            .wait_timeout_while(state, Duration::from_secs(2), |state| state.active != 0)
+            .unwrap();
         assert!(!timeout.timed_out());
         assert_eq!(state.active, 0);
     }
@@ -204,13 +211,20 @@ mod tests {
                 wait.lock().unwrap().recv().unwrap();
             }
             Ok("127.0.0.1".parse().unwrap())
-        }).unwrap();
+        })
+        .unwrap();
         resolver.submit(None, vec!["old".into(), "never".into()]);
         assert_eq!(reads.recv_timeout(Duration::from_secs(2)).unwrap(), "old");
         resolver.cancel();
         let generation = resolver.submit(Some(42), vec!["latest".into()]);
-        assert_eq!(reads.recv_timeout(Duration::from_secs(2)).unwrap(), "latest");
-        let result = resolver.results.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            reads.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "latest"
+        );
+        let result = resolver
+            .results
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap();
         assert_eq!(result.generation, generation);
         assert_eq!(result.edit, Some(42));
         assert_eq!(result.result.unwrap()[0].0, "latest");
@@ -231,7 +245,8 @@ mod tests {
                 wait.lock().unwrap().recv().unwrap();
             }
             Ok("127.0.0.1".parse().unwrap())
-        }).unwrap();
+        })
+        .unwrap();
         for _ in 0..MAX_ACTIVE {
             resolver.submit(None, vec!["held".into()]);
             reads.recv_timeout(Duration::from_secs(2)).unwrap();
@@ -247,7 +262,10 @@ mod tests {
         }
         wait_for_idle(&resolver.shared);
         let generation = resolver.submit(None, vec!["recovered".into()]);
-        let result = resolver.results.recv_timeout(Duration::from_secs(2)).unwrap();
+        let result = resolver
+            .results
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap();
         assert_eq!(result.generation, generation);
         assert!(result.result.is_ok());
     }
@@ -261,10 +279,14 @@ mod tests {
             started.send(host.to_owned()).unwrap();
             wait.lock().unwrap().recv().unwrap();
             Ok("127.0.0.1".parse().unwrap())
-        }).unwrap();
+        })
+        .unwrap();
         let shared = Arc::clone(&resolver.shared);
         resolver.submit(None, vec!["blocked".into(), "never".into()]);
-        assert_eq!(reads.recv_timeout(Duration::from_secs(2)).unwrap(), "blocked");
+        assert_eq!(
+            reads.recv_timeout(Duration::from_secs(2)).unwrap(),
+            "blocked"
+        );
         drop(resolver);
         release.send(()).unwrap();
         wait_for_idle(&shared);
