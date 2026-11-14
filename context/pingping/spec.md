@@ -222,6 +222,8 @@ including the newline, for both reads and writes. Writes are not individually fs
 Startup reads headers first and skips unrelated hosts without parsing their samples.
 Matching records are streamed through the UTC seven-day cutoff, retaining only the
 newest 86,400 outcomes per requested host, using the same cap as current-run retention.
+Across overlapping sessions, newest is compared by each session's start UTC plus
+its sample's monotonic offset, not by session start or sample arrival order.
 Expired-file pruning uses the last append time (file modification time), without
 materializing samples. A writer holds an exclusive advisory `flock` for its file's
 lifetime; a pruner takes a nonblocking exclusive lock, rechecks expiry after locking,
