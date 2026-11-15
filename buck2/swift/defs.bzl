@@ -1,9 +1,24 @@
-"""Minimal Darwin Swift app-bundle build product."""
+"""Darwin Swift modules, executables and app-bundle build products."""
 
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/products:defs.bzl", "BuildProductInfo")
+load("//buck2/provenance:defs.bzl", "ProductExecutableInfo", "product_artifact_info", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+
+# One compiled Swift module and everything a dependent compile or link needs.
+# Each module compiles twice, lazily: the release variant for products, and the
+# testable variant (-Onone -enable-testing) that `@testable import` requires.
+SwiftModuleInfo = provider(fields = {
+    "module_name": str,
+    # Transitive, dependencies before dependents' callers; deduplicated.
+    "swiftmodules": list[Artifact],
+    "objects": list[Artifact],
+    "testable_swiftmodules": list[Artifact],
+    "testable_objects": list[Artifact],
+    "frameworks": list[str],
+    "libraries": list[str],
+})
 
 def _validate_bundle_component(value, subject):
     if not value or value != value.strip():
@@ -19,9 +34,280 @@ def _validate_relative_path(value, subject):
         if component == "" or component == "." or component == "..":
             fail("{} must be a normalized relative path".format(subject))
 
+def _darwin_platform(ctx, rule_name):
+    platform = ctx.attrs.target_platform[ProductPlatformInfo]
+    if platform.os != "darwin" or platform.abi != "darwin" or platform.runtime_contract != "mach-o-dynamic/v1":
+        fail("{} admits only the Darwin Mach-O product platform".format(rule_name))
+    if platform.architecture != "aarch64":
+        fail("{} currently admits only aarch64 Darwin hosts".format(rule_name))
+    return platform
+
 def _swift_target_triple(platform):
     arch = "arm64" if platform.architecture == "aarch64" else "x86_64"
     return "{}-apple-macosx".format(arch)
+
+def _cache_upload():
+    return root_remote_cache_enabled() and root_allow_cache_uploads()
+
+def _toolchain_identity(swiftc):
+    return "swift={}:{}".format(swiftc.closure_identity, swiftc.content_digest)
+
+def _module_name(ctx):
+    name = ctx.attrs.module_name or ctx.label.name.replace("-", "_")
+    if not name or name[0] in "0123456789":
+        fail("Swift module name must be an identifier: {}".format(name))
+    for character in name.elems():
+        if character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_":
+            fail("Swift module name must be an identifier: {}".format(name))
+    return name
+
+def _append_unique(target, values):
+    for value in values:
+        if value not in target:
+            target.append(value)
+
+def _transitive(deps, own_frameworks = [], own_libraries = []):
+    merged = {
+        "frameworks": [],
+        "libraries": [],
+        "objects": [],
+        "swiftmodules": [],
+        "testable_objects": [],
+        "testable_swiftmodules": [],
+    }
+    for dep in deps:
+        info = dep[SwiftModuleInfo]
+        for field in merged:
+            _append_unique(merged[field], getattr(info, field))
+    _append_unique(merged["frameworks"], own_frameworks)
+    _append_unique(merged["libraries"], own_libraries)
+    return merged
+
+def _compile(ctx, bun, swiftc, triple, module_name, sources, swiftmodules, testable, emit_module, parse_as_library, extra = [], swift_version = None):
+    variant = "testable" if testable else "release"
+    swiftmodule = ctx.actions.declare_output("{}/modules/{}.swiftmodule".format(variant, module_name)) if emit_module else None
+    obj = ctx.actions.declare_output(variant, module_name + ".o")
+    args = cmd_args([
+        bun.executable,
+        ctx.attrs._compiler_runner,
+        swiftc.store_path,
+        "-target",
+        triple,
+        "-swift-version",
+        swift_version or ctx.attrs.swift_version,
+        "-module-name",
+        module_name,
+        "-wmo",
+        # Search paths and the working directory never enter module bytes: the
+        # same sources produce the same module in every worktree.
+        "-Xfrontend",
+        "-no-serialize-debugging-options",
+    ])
+    args.add(["-Onone", "-enable-testing"] if testable else ["-O"])
+    if parse_as_library:
+        args.add("-parse-as-library")
+    for feature in ctx.attrs.upcoming_features:
+        args.add(["-enable-upcoming-feature", feature])
+    for define in ctx.attrs.defines:
+        args.add("-D" + define)
+    for module in swiftmodules:
+        args.add(cmd_args(module, parent = 1, format = "-I{}"))
+    if emit_module:
+        args.add(["-emit-module-path", swiftmodule.as_output()])
+    args.add(extra)
+    args.add(["-emit-object", "-o", obj.as_output()])
+    args.add(sources)
+    args.add(cmd_args(hidden = [swiftc.executable, swiftc.manifest]))
+
+    # The declared Nix capability carries the SDK; hostile host values make
+    # any ambient Xcode discovery fail closed instead of falling back.
+    ctx.actions.run(
+        args,
+        category = "swift_compile",
+        identifier = "{}/{}".format(variant, module_name),
+        env = {
+            "DEVELOPER_DIR": "/var/empty",
+            "SDKROOT": "/var/empty",
+        },
+        local_only = True,
+        allow_cache_upload = _cache_upload(),
+    )
+    return swiftmodule, obj
+
+def _link(ctx, bun, swiftc, triple, output_name, objects, frameworks, libraries, identifier):
+    executable = ctx.actions.declare_output(output_name)
+    args = cmd_args([
+        bun.executable,
+        ctx.attrs._compiler_runner,
+        swiftc.store_path,
+        "-target",
+        triple,
+        "-emit-executable",
+        # The Swift runtime is the OS's /usr/lib/swift; product executables carry
+        # no LC_RPATH (mach-o-dynamic/v1).
+        "-no-stdlib-rpath",
+        "-o",
+        executable.as_output(),
+    ])
+    args.add(objects)
+    for framework in frameworks:
+        args.add(["-framework", framework])
+    for library in libraries:
+        args.add("-l{}".format(library))
+    args.add(cmd_args(hidden = [swiftc.executable, swiftc.manifest]))
+    ctx.actions.run(
+        args,
+        category = "swift_link",
+        identifier = identifier,
+        env = {
+            "DEVELOPER_DIR": "/var/empty",
+            "SDKROOT": "/var/empty",
+        },
+        local_only = True,
+        allow_cache_upload = _cache_upload(),
+    )
+    return executable
+
+def _is_script_module(sources):
+    # SwiftPM's rule: a `main.swift` holds top-level code; otherwise `@main`.
+    return any([source.basename == "main.swift" for source in sources])
+
+def _swift_library_impl(ctx):
+    platform = _darwin_platform(ctx, "swift_library")
+    bun = ctx.attrs._bun[BunToolchainInfo]
+    swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
+    triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
+    module_name = _module_name(ctx)
+    sources = list(ctx.attrs.srcs)
+    if not sources:
+        fail("Swift module {} declares no sources".format(ctx.label.name))
+    merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
+    swiftmodule, obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["swiftmodules"], False, True, True)
+    testable_module, testable_obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["testable_swiftmodules"], True, True, True)
+    return [
+        DefaultInfo(default_outputs = [swiftmodule, obj]),
+        SwiftModuleInfo(
+            module_name = module_name,
+            swiftmodules = merged["swiftmodules"] + [swiftmodule],
+            objects = merged["objects"] + [obj],
+            testable_swiftmodules = merged["testable_swiftmodules"] + [testable_module],
+            testable_objects = merged["testable_objects"] + [testable_obj],
+            frameworks = merged["frameworks"],
+            libraries = merged["libraries"],
+        ),
+    ]
+
+def _swift_binary_impl(ctx):
+    platform = _darwin_platform(ctx, "swift_binary")
+    bun = ctx.attrs._bun[BunToolchainInfo]
+    swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
+    triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
+    module_name = _module_name(ctx)
+    sources = list(ctx.attrs.srcs)
+    if not sources:
+        fail("Swift module {} declares no sources".format(ctx.label.name))
+    merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
+    parse_as_library = not _is_script_module(sources)
+    _, obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["swiftmodules"], False, False, parse_as_library)
+
+    # As SwiftPM: a test may `@testable import` an executable module. Its testable
+    # variant renames the entry point, so it links beside the test's own `main`.
+    testable_module, testable_obj = _compile(
+        ctx,
+        bun,
+        swiftc,
+        triple,
+        module_name,
+        sources,
+        merged["testable_swiftmodules"],
+        True,
+        True,
+        parse_as_library,
+        extra = ["-Xfrontend", "-entry-point-function-name", "-Xfrontend", module_name + "_main"],
+    )
+    executable = _link(ctx, bun, swiftc, triple, ctx.attrs.executable_name or ctx.label.name, [obj] + merged["objects"], merged["frameworks"], merged["libraries"], ctx.label.name)
+    product_executable = product_executable_info(
+        ctx,
+        executable = executable,
+        recipe = "swift-binary:{}".format(ctx.label.raw_target()),
+        toolchain = _toolchain_identity(swiftc),
+        target_platform = platform,
+    )
+    return [
+        DefaultInfo(default_output = executable),
+        RunInfo(args = cmd_args(executable)),
+        product_executable,
+        product_artifact_info("executable", product_executable, platform, product_executable.provenance),
+        SwiftModuleInfo(
+            module_name = module_name,
+            swiftmodules = merged["swiftmodules"],
+            objects = merged["objects"],
+            testable_swiftmodules = merged["testable_swiftmodules"] + [testable_module],
+            testable_objects = merged["testable_objects"] + [testable_obj],
+            frameworks = merged["frameworks"],
+            libraries = merged["libraries"],
+        ),
+    ]
+
+_COMPILE_ATTRS = {
+    "defines": attrs.list(attrs.string(), default = []),
+    "deps": attrs.list(attrs.dep(providers = [SwiftModuleInfo]), default = []),
+    "frameworks": attrs.list(attrs.string(), default = []),
+    "libraries": attrs.list(attrs.string(), default = []),
+    "minimum_os": attrs.string(default = "14.0"),
+    "module_name": attrs.string(default = ""),
+    "srcs": attrs.list(attrs.source()),
+    "swift_version": attrs.enum(["5", "6"], default = "6"),
+    "swiftc": attrs.exec_dep(providers = [BuckSupportToolInfo]),
+    "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
+    "upcoming_features": attrs.list(attrs.string(), default = []),
+    "_bun": attrs.default_only(attrs.exec_dep(
+        default = "//buck2/toolchains:bun",
+        providers = [BunToolchainInfo],
+    )),
+    "_compiler_runner": attrs.default_only(attrs.source(
+        default = "//buck2/swift:compile",
+    )),
+}
+
+_swift_library = cache_guarded_rule(
+    impl = _swift_library_impl,
+    attrs = _COMPILE_ATTRS,
+)
+
+_swift_binary = cache_guarded_rule(
+    impl = _swift_binary_impl,
+    attrs = _COMPILE_ATTRS | {
+        "executable_name": attrs.string(default = ""),
+    },
+)
+
+def _platform_kwargs(target_platform, kwargs):
+    if "target_compatible_with" in kwargs:
+        fail("Swift rules own target compatibility")
+    return dict(
+        kwargs,
+        default_target_platform = target_platform,
+        target_compatible_with = product_platform_constraints(target_platform),
+        exec_compatible_with = native_execution_constraints(target_platform),
+    )
+
+def swift_library(name, swiftc, target_platform, srcs, **kwargs):
+    """One Swift module compiled whole-module from `srcs` against `deps`' modules.
+
+    Mirrors a SwiftPM library target: `module_name` defaults to `name` with
+    dashes as underscores.
+    """
+    _swift_library(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
+
+def swift_binary(name, swiftc, target_platform, srcs, **kwargs):
+    """A Swift executable module linked with its transitive module objects.
+
+    A source named `main.swift` holds top-level code, as in SwiftPM; otherwise
+    the module's `@main` type is the entry point. The binary is a product
+    executable payload for `build_product`.
+    """
+    _swift_binary(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
 
 def _swift_app_bundle_impl(ctx):
     platform = ctx.attrs.target_platform[ProductPlatformInfo]
