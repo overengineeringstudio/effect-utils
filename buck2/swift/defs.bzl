@@ -1,4 +1,4 @@
-"""Darwin Swift modules, executables and app-bundle build products."""
+"""Darwin Swift modules, executables, XCTest verdicts and app-bundle build products."""
 
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "native_execution_constraints", "product_platform_constraints", "root_allow_cache_uploads", "root_remote_cache_enabled")
 load("//buck2/products:defs.bzl", "BuildProductInfo")
@@ -249,6 +249,95 @@ def _swift_binary_impl(ctx):
         ),
     ]
 
+def _swift_test_impl(ctx):
+    platform = _darwin_platform(ctx, "swift_test")
+    bun = ctx.attrs._bun[BunToolchainInfo]
+    swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
+    triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
+    module_name = _module_name(ctx)
+    sources = list(ctx.attrs.srcs)
+    if not sources:
+        fail("Swift module {} declares no sources".format(ctx.label.name))
+    merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
+
+    # XCTest discovery on Darwin goes through the Objective-C runtime; the
+    # toolchain capability's open-source XCTest needs an explicit test list,
+    # derived from the compiler's symbol graph rather than source text.
+    symbol_graph = ctx.actions.declare_output("symbol-graph", dir = True)
+    test_module, test_obj = _compile(
+        ctx,
+        bun,
+        swiftc,
+        triple,
+        module_name,
+        sources,
+        merged["testable_swiftmodules"],
+        True,
+        True,
+        True,
+        extra = [
+            "-emit-symbol-graph",
+            "-emit-symbol-graph-dir",
+            symbol_graph.as_output(),
+            "-symbol-graph-minimum-access-level",
+            "internal",
+        ],
+    )
+    main = ctx.actions.declare_output("entry", "main.swift")
+    ctx.actions.run(
+        cmd_args([bun.executable, ctx.attrs._test_main_tool, module_name, symbol_graph, main.as_output()]),
+        category = "swift_test_main",
+        local_only = True,
+        allow_cache_upload = _cache_upload(),
+    )
+    _, main_obj = _compile(
+        ctx,
+        bun,
+        swiftc,
+        triple,
+        module_name + "Main",
+        [main],
+        merged["testable_swiftmodules"] + [test_module],
+        True,
+        False,
+        False,
+        # Generated glue: XCTest's synchronous registry takes `@MainActor` async
+        # tests, which Swift 6's region isolation rejects (as in SwiftPM's runner).
+        swift_version = "5",
+    )
+    executable = _link(
+        ctx,
+        bun,
+        swiftc,
+        triple,
+        module_name,
+        [main_obj, test_obj] + merged["testable_objects"],
+        merged["frameworks"],
+        merged["libraries"] + ["XCTest"],
+        module_name,
+    )
+
+    # The suite runs as a build action whose successful result is the reusable
+    # verdict; a failing suite fails the action and is never uploaded.
+    result = ctx.actions.declare_output("verdict/result.json")
+    report = ctx.actions.declare_output("verdict/report.json")
+    ctx.actions.run(
+        cmd_args([bun.executable, ctx.attrs._test_verdict_tool, executable, result.as_output(), report.as_output(), str(ctx.label.raw_target())]),
+        category = "swift_test_verdict",
+        local_only = True,
+        allow_cache_upload = _cache_upload(),
+    )
+    return [
+        DefaultInfo(
+            default_output = result,
+            other_outputs = [report],
+            sub_targets = {
+                "executable": [DefaultInfo(default_output = executable)],
+                "report": [DefaultInfo(default_output = report)],
+            },
+        ),
+    ]
+
 _COMPILE_ATTRS = {
     "defines": attrs.list(attrs.string(), default = []),
     "deps": attrs.list(attrs.dep(providers = [SwiftModuleInfo]), default = []),
@@ -282,6 +371,18 @@ _swift_binary = cache_guarded_rule(
     },
 )
 
+_swift_test = cache_guarded_rule(
+    impl = _swift_test_impl,
+    attrs = _COMPILE_ATTRS | {
+        "_test_main_tool": attrs.default_only(attrs.source(
+            default = "//buck2/swift:test-main",
+        )),
+        "_test_verdict_tool": attrs.default_only(attrs.source(
+            default = "//buck2/swift:test-verdict",
+        )),
+    },
+)
+
 def _platform_kwargs(target_platform, kwargs):
     if "target_compatible_with" in kwargs:
         fail("Swift rules own target compatibility")
@@ -308,6 +409,15 @@ def swift_binary(name, swiftc, target_platform, srcs, **kwargs):
     executable payload for `build_product`.
     """
     _swift_binary(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
+
+def swift_test(name, swiftc, target_platform, srcs, **kwargs):
+    """An XCTest module run as a cacheable verdict action.
+
+    The suite links the testable variants of `deps`, so `@testable import`
+    works as under `swift test`. Its default output is the verdict directory
+    (`result.json`, `report.json`); `[executable]` is the linked runner.
+    """
+    _swift_test(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
 
 def _swift_app_bundle_impl(ctx):
     platform = ctx.attrs.target_platform[ProductPlatformInfo]
