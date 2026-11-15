@@ -26,6 +26,19 @@ describe('Swift build stamp', () => {
     expect(() => embedBuildStamp({ source, placeholder: '__CLI_BUILD_STAMP__', stamp: 'not json' })).toThrow()
     expect(() => embedBuildStamp({ source, placeholder: '__CLI_BUILD_STAMP__', stamp: '{}\n{}' })).toThrow()
   })
+
+  it.each(['{"version":\t"0.1.0"}', '{"version":"0.1.0\u0085"}'])(
+    'rejects raw control characters in %j',
+    (stamp) => {
+      expect(() =>
+        embedBuildStamp({
+          source: '"__CLI_BUILD_STAMP__"',
+          placeholder: '__CLI_BUILD_STAMP__',
+          stamp,
+        }),
+      ).toThrow('must not contain control characters')
+    },
+  )
 })
 
 describe('XCTest entry point from the symbol graph', () => {

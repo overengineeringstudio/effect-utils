@@ -3,7 +3,8 @@
  *
  * The product's `"__CLI_BUILD_STAMP__"` string literal becomes the stamp JSON
  * as a string literal: the shape Nix builds embed (context/builds/01-identity),
- * so a Buck-built product carries the same canonical identity.
+ * so a Buck-built product carries the same canonical identity. Raw control
+ * characters are refused because JSON and Swift string escapes differ.
  */
 export const embedBuildStamp = ({
   source,
@@ -17,10 +18,15 @@ export const embedBuildStamp = ({
   const literal = JSON.stringify(placeholder)
   const occurrences = source.split(literal).length - 1
   if (occurrences !== 1) {
-    throw new Error(`swift build stamp: expected exactly one ${literal} literal, found ${occurrences}`)
+    throw new Error(
+      `swift build stamp: expected exactly one ${literal} literal, found ${occurrences}`,
+    )
   }
   if (stamp === '' || /[\r\n]/.test(stamp)) {
     throw new Error('swift build stamp: the stamp must be a non-empty single line')
+  }
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(stamp)) {
+    throw new Error('swift build stamp: the stamp must not contain control characters')
   }
   JSON.parse(stamp)
   return source.replace(literal, JSON.stringify(stamp))
@@ -28,8 +34,16 @@ export const embedBuildStamp = ({
 
 if (import.meta.main) {
   const [input, output, placeholder, stamp] = process.argv.slice(2)
-  if (input === undefined || output === undefined || placeholder === undefined || stamp === undefined) {
+  if (
+    input === undefined ||
+    output === undefined ||
+    placeholder === undefined ||
+    stamp === undefined
+  ) {
     throw new Error('usage: stamp.ts <input.swift> <output.swift> <placeholder> <stamp-json>')
   }
-  await Bun.write(output, embedBuildStamp({ source: await Bun.file(input).text(), placeholder, stamp }))
+  await Bun.write(
+    output,
+    embedBuildStamp({ source: await Bun.file(input).text(), placeholder, stamp }),
+  )
 }

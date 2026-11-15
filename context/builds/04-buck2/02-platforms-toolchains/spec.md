@@ -240,7 +240,9 @@ sources that need them do not build.
 A module's `stamp_source` names the one source whose `"__CLI_BUILD_STAMP__"`
 literal receives `build_identity.cli_build_stamp` as a string literal, the
 [canonical stamp shape](../../01-identity/spec.md). Without a configured stamp
-the placeholder stays, and the product resolves its runtime stamp.
+the placeholder stays, and the product resolves its runtime stamp. Stamps with
+raw control characters are rejected before embedding because JSON and Swift
+string escapes differ.
 
 The compiler runs at its immutable `BuckSupportToolInfo.store_path`; its
 executable and capability manifest remain action inputs. Generic support-tool
