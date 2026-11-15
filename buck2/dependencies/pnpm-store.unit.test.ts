@@ -245,6 +245,34 @@ const requiredNativeFixture = async (options?: Parameters<typeof requiredNativeL
 const renderedRule = (rendered: string, target: string) =>
   rendered.split('\n\n').find((block) => block.includes(`    name = "${target}",`))!
 
+describe('pnpm store defs load label', () => {
+  it('preserves the default output byte-for-byte', async () => {
+    const { metadata, sidecar, projection } = await requiredNativeFixture()
+    const rendered = renderPnpmStoreBuck(projection)
+    expect(rendered.split('\n')[0]).toBe(
+      'load(":defs.bzl", "pnpm_directory_package", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")',
+    )
+    expect(
+      renderPnpmStoreBuck(
+        makePnpmStoreProjection({ metadata, sidecar, defsLoadLabel: ':defs.bzl' }),
+      ),
+    ).toBe(rendered)
+  })
+
+  it.each([
+    ['@other//buck2/pnpm:defs.bzl', '"@other//buck2/pnpm:defs.bzl"'],
+    ['@other//buck2/pnpm:defs"\\\n.bzl', '"@other//buck2/pnpm:defs\\"\\\\\\n.bzl"'],
+  ])('renders and escapes the configured label %j', async (defsLoadLabel, escapedLabel) => {
+    const { metadata, sidecar, projection } = await requiredNativeFixture()
+    const configured = makePnpmStoreProjection({ metadata, sidecar, defsLoadLabel })
+    expect(configured.defsLoadLabel).toBe(defsLoadLabel)
+    expect(configured.fingerprint).toBe(projection.fingerprint)
+    expect(renderPnpmStoreBuck(configured)).toBe(
+      renderPnpmStoreBuck(projection).replace('load(":defs.bzl",', `load(${escapedLabel},`),
+    )
+  })
+})
+
 describe('required-edge platform availability', () => {
   const linuxPlatforms = ['linux_aarch64', 'linux_x86_64']
 
