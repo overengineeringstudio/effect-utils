@@ -262,6 +262,8 @@ export type PnpmStoreView = {
 
 /** Complete normalized store projection derived from the verified lockfile. */
 export type PnpmStoreProjection = {
+  /** Starlark load label for the pnpm rules; defaults to ":defs.bzl" when rendered. */
+  readonly defsLoadLabel?: string
   readonly entries: readonly PnpmStoreEntry[]
   readonly fingerprint: `sha256:${string}`
   readonly sccs: readonly PnpmStoreScc[]
@@ -800,9 +802,12 @@ export const makePnpmStoreProjection = ({
   metadata,
   sidecar,
   workspaceTreeTargets = {},
+  defsLoadLabel,
 }: {
   metadata: PnpmLockMetadata
   sidecar: PnpmSha256Sidecar
+  /** Starlark load label for the pnpm rules; defaults to ":defs.bzl" when rendered. */
+  defsLoadLabel?: string
   /** Exact lockfile workspace paths mapped to declared trees of the same package bytes. */
   workspaceTreeTargets?: Readonly<Record<string, string>>
 }): PnpmStoreProjection => {
@@ -968,6 +973,7 @@ export const makePnpmStoreProjection = ({
     })
 
   return {
+    ...(defsLoadLabel === undefined ? {} : { defsLoadLabel }),
     entries,
     fingerprint: buck2SemanticFingerprint({
       generator: 'effect-utils/buck2/dependencies/pnpm-store',

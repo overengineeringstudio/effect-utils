@@ -367,7 +367,7 @@ export const renderPnpmStoreBuck = (projection: PnpmStoreProjection): string => 
   )
   const entryByStoreKey = new Map(projection.entries.map((entry) => [entry.storeKey, entry]))
   const lines = [
-    'load(":defs.bzl", "pnpm_directory_package", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")',
+    `load(${starlarkString(projection.defsLoadLabel ?? ':defs.bzl')}, "pnpm_directory_package", "pnpm_platform_configurations", "pnpm_store_entry", "pnpm_store_scc", "pnpm_store_view")`,
     '',
     'pnpm_platform_configurations()',
     '',
