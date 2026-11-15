@@ -201,13 +201,29 @@ must not discover Xcode or `xcrun` from the host. This supplies the Darwin
 capability contract without placing a consumer/vendor selection in shared rules
 (BUILD.BUCK.PLAT-R05).
 
-`swift_app_bundle` admits `macos_aarch64`. Each named binary compiles its
-ordered Swift source list through one declared `BuckSupportToolInfo` compiler
-capability, with explicit deployment target, frameworks, and libraries.
-The Nix wrapper supplies the exact SDK, compiler, and linker; the action sets
-invalid host `DEVELOPER_DIR` and `SDKROOT` values so ambient Xcode discovery
-cannot replace the capability. Packaging uses the product tool and the
-[app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).
+Swift rules admit `macos_aarch64` and compile through one declared
+`BuckSupportToolInfo` compiler capability, with an explicit deployment target,
+frameworks, and libraries. The Nix wrapper supplies the exact SDK, compiler,
+and linker; actions set invalid host `DEVELOPER_DIR` and `SDKROOT` values so
+ambient Xcode discovery cannot replace the capability. A toolchain without
+Xcode has no Xcode-only macro plugins (SwiftUI's `@Entry`, `#Preview`);
+sources that need them do not build.
+
+- `swift_library` mirrors a SwiftPM library target: one whole-module compile
+  of its sources against its dependencies' modules, emitting a module and an
+  object file. Each module has a release variant (`-O`) and a lazily built
+  testable variant (`-Onone -enable-testing`). Module bytes serialize no
+  search paths or working directory, so every worktree produces the same
+  module from the same sources.
+- `swift_binary` compiles an executable module (a `main.swift` holds
+  top-level code, as in SwiftPM; otherwise `@main`) and links it with its
+  transitive module objects against the OS Swift runtime, without `LC_RPATH`
+  (`mach-o-dynamic/v1`). It is a product executable payload for
+  `build_product`. As in SwiftPM, a
+  test may `@testable import` it: its testable variant renames the entry point.
+- `swift_app_bundle` compiles each named binary from its ordered Swift source
+  list and packages it with the product tool and the
+  [app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).
 
 The compiler runs at its immutable `BuckSupportToolInfo.store_path`; its
 executable and capability manifest remain action inputs. Generic support-tool
