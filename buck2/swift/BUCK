@@ -6,3 +6,15 @@ export_file(
     src = "compile.ts",
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "test-main",
+    src = "test-main.ts",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "test-verdict",
+    src = "test-verdict.ts",
+    visibility = ["PUBLIC"],
+)

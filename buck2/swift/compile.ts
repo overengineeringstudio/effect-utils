@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs'
+
 type SwiftCompileCommand = {
   readonly command: readonly string[]
   readonly environment: Readonly<Record<string, string | undefined>>
@@ -38,6 +40,9 @@ if (import.meta.main) {
   const [compiler, ...arguments_] = process.argv.slice(2)
   if (compiler === undefined) throw new Error('swift compile: compiler is required')
   const { command, environment } = swiftCompileCommand({ compiler, arguments: arguments_, environment: process.env })
+  // Buck declares directory outputs without creating them; swiftc writes into this one.
+  const symbolGraph = arguments_.indexOf('-emit-symbol-graph-dir')
+  if (symbolGraph !== -1) mkdirSync(arguments_[symbolGraph + 1]!, { recursive: true })
   const result = Bun.spawnSync([...command], { env: environment, stdout: 'inherit', stderr: 'inherit' })
   process.exit(result.exitCode)
 }
