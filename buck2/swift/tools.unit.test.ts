@@ -13,21 +13,9 @@ describe('XCTest entry point from the symbol graph', () => {
   const graph = {
     module: { name: 'CoreTests' },
     symbols: [
-      {
-        kind: { identifier: 'swift.class' },
-        identifier: { precise: 'B' },
-        names: { title: 'BaseTests' },
-      },
-      {
-        kind: { identifier: 'swift.class' },
-        identifier: { precise: 'Z' },
-        names: { title: 'ZTests' },
-      },
-      {
-        kind: { identifier: 'swift.class' },
-        identifier: { precise: 'H' },
-        names: { title: 'Helper' },
-      },
+      { kind: { identifier: 'swift.class' }, identifier: { precise: 'B' }, names: { title: 'BaseTests' } },
+      { kind: { identifier: 'swift.class' }, identifier: { precise: 'Z' }, names: { title: 'ZTests' } },
+      { kind: { identifier: 'swift.class' }, identifier: { precise: 'H' }, names: { title: 'Helper' } },
       method('B', 'testShared', ['func']),
       method('Z', 'testSync', ['func']),
       method('Z', 'testAsync', ['func', 'async', 'throws']),
@@ -134,9 +122,7 @@ describe('XCTest verdict', () => {
           {
             name: 'testFails',
             status: 'failed',
-            failures: [
-              'Tests/ZTests.swift:12: XCTAssertEqual failed: ("1") is not equal to ("2") - ',
-            ],
+            failures: ['Tests/ZTests.swift:12: XCTAssertEqual failed: ("1") is not equal to ("2") - '],
           },
           { name: 'testSync', status: 'passed', failures: [] },
         ],

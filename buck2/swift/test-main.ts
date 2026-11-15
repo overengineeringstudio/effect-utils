@@ -44,8 +44,7 @@ export const discoverTests = (graph: SymbolGraph): readonly TestCase[] => {
   const superclass = new Map<string, string>()
   const members = new Map<string, string[]>()
   for (const relationship of graph.relationships) {
-    if (relationship.kind === 'inheritsFrom')
-      superclass.set(relationship.source, relationship.target)
+    if (relationship.kind === 'inheritsFrom') superclass.set(relationship.source, relationship.target)
     if (relationship.kind === 'memberOf') {
       const list = members.get(relationship.target) ?? []
       list.push(relationship.source)
@@ -67,12 +66,8 @@ export const discoverTests = (graph: SymbolGraph): readonly TestCase[] => {
       if (symbol?.kind.identifier !== 'swift.method') return []
       const match = TEST_METHOD.exec(symbol.names.title)
       if (match === null) return []
-      const keywords = (symbol.declarationFragments ?? []).filter(
-        (fragment) => fragment.kind === 'keyword',
-      )
-      return [
-        { name: match[1]!, isAsync: keywords.some((fragment) => fragment.spelling === 'async') },
-      ]
+      const keywords = (symbol.declarationFragments ?? []).filter((fragment) => fragment.kind === 'keyword')
+      return [{ name: match[1]!, isAsync: keywords.some((fragment) => fragment.spelling === 'async') }]
     })
   return graph.symbols
     .filter((symbol) => {
@@ -102,15 +97,8 @@ export const discoverTests = (graph: SymbolGraph): readonly TestCase[] => {
     .sort((left, right) => byCodeUnits(left.className, right.className))
 }
 
-export const renderTestMain = ({
-  module,
-  cases,
-}: {
-  readonly module: string
-  readonly cases: readonly TestCase[]
-}) => {
-  if (cases.length === 0)
-    throw new Error(`swift test main: module ${module} declares no XCTestCase tests`)
+export const renderTestMain = ({ module, cases }: { readonly module: string; readonly cases: readonly TestCase[] }) => {
+  if (cases.length === 0) throw new Error(`swift test main: module ${module} declares no XCTestCase tests`)
   const entries = cases.map(({ className, methods }) => {
     const tests = methods.map(({ name, isAsync }) => {
       const reference = `${className}.${name}`
@@ -136,7 +124,6 @@ if (import.meta.main) {
     throw new Error('usage: test-main.ts <module> <symbol-graph-dir> <main.swift>')
   }
   const graph = (await Bun.file(`${graphPath}/${module}.symbols.json`).json()) as SymbolGraph
-  if (graph.module.name !== module)
-    throw new Error(`swift test main: symbol graph names module ${graph.module.name}`)
+  if (graph.module.name !== module) throw new Error(`swift test main: symbol graph names module ${graph.module.name}`)
   await Bun.write(output, renderTestMain({ module, cases: discoverTests(graph) }))
 }
