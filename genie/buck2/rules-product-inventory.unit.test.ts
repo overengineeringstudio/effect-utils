@@ -50,6 +50,8 @@ const expectedFiles = [
   'buck2/swift/BUCK',
   'buck2/swift/compile.ts',
   'buck2/swift/defs.bzl',
+  'buck2/swift/info-plist.ts',
+  'buck2/swift/stamp.ts',
   'buck2/swift/test-main.ts',
   'buck2/swift/test-verdict.ts',
   'buck2/toolchains/BUCK',

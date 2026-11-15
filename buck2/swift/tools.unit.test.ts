@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest'
 
+import { renderInfoPlist } from './info-plist.ts'
+import { embedBuildStamp } from './stamp.ts'
 import { discoverTests, renderTestMain } from './test-main.ts'
 import { parseXCTestOutput, testVerdict } from './test-verdict.ts'
+
+describe('Swift build stamp', () => {
+  const stamp = '{"type":"nix","version":"0.1.0","rev":"7d5211e","commitTs":1,"dirty":false}'
+
+  it('embeds the stamp JSON as the one placeholder string literal', () => {
+    const source = 'let baseVersion = "0.1.0"\nlet embeddedBuildStamp = "__CLI_BUILD_STAMP__"\n'
+    const stamped = embedBuildStamp({ source, placeholder: '__CLI_BUILD_STAMP__', stamp })
+    expect(stamped).toBe(`let baseVersion = "0.1.0"\nlet embeddedBuildStamp = ${JSON.stringify(stamp)}\n`)
+  })
+
+  it.each([
+    ['no placeholder', 'let x = 1\n'],
+    ['two placeholders', '"__CLI_BUILD_STAMP__" + "__CLI_BUILD_STAMP__"'],
+  ])('fails closed with %s', (_, source) => {
+    expect(() => embedBuildStamp({ source, placeholder: '__CLI_BUILD_STAMP__', stamp })).toThrow()
+  })
+
+  it('rejects a stamp that is not single-line JSON', () => {
+    const source = '"__CLI_BUILD_STAMP__"'
+    expect(() => embedBuildStamp({ source, placeholder: '__CLI_BUILD_STAMP__', stamp: 'not json' })).toThrow()
+    expect(() => embedBuildStamp({ source, placeholder: '__CLI_BUILD_STAMP__', stamp: '{}\n{}' })).toThrow()
+  })
+})
 
 describe('XCTest entry point from the symbol graph', () => {
   const method = (owner: string, name: string, keywords: string[]) => ({
@@ -138,5 +163,57 @@ describe('XCTest verdict', () => {
     expect(testVerdict({ suites: passing, status: 0 })).toBe('pass')
     expect(() => testVerdict({ suites: passing, status: 134 })).toThrow()
     expect(() => testVerdict({ suites: [], status: 0 })).toThrow()
+  })
+})
+
+describe('Info.plist', () => {
+  const entries = [
+    ['CFBundleExecutable', 'tray'],
+    ['CFBundleIdentifier', 'com.example.tray'],
+    ['LSUIElement', true],
+  ] as const
+
+  it('keeps the rule-owned keys in order with the established layout', () => {
+    expect(renderInfoPlist({ entries, extra: {} })).toBe(
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+        '<plist version="1.0">',
+        '<dict>',
+        '  <key>CFBundleExecutable</key>',
+        '  <string>tray</string>',
+        '  <key>CFBundleIdentifier</key>',
+        '  <string>com.example.tray</string>',
+        '  <key>LSUIElement</key>',
+        '  <true/>',
+        '</dict>',
+        '</plist>',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('appends sorted nested extra keys and refuses overrides', () => {
+    const plist = renderInfoPlist({
+      entries,
+      extra: { NSHighResolutionCapable: true, CFBundleDisplayName: 'A & B', Nested: { Items: ['x', 1] } },
+    })
+    expect(plist).toContain(
+      [
+        '  <key>CFBundleDisplayName</key>',
+        '  <string>A &amp; B</string>',
+        '  <key>NSHighResolutionCapable</key>',
+        '  <true/>',
+        '  <key>Nested</key>',
+        '  <dict>',
+        '    <key>Items</key>',
+        '    <array>',
+        '      <string>x</string>',
+        '      <integer>1</integer>',
+        '    </array>',
+        '  </dict>',
+      ].join('\n'),
+    )
+    expect(() => renderInfoPlist({ entries, extra: { CFBundleExecutable: 'other' } })).toThrow()
   })
 })
