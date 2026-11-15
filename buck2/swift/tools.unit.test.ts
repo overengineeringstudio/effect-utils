@@ -13,9 +13,21 @@ describe('XCTest entry point from the symbol graph', () => {
   const graph = {
     module: { name: 'CoreTests' },
     symbols: [
-      { kind: { identifier: 'swift.class' }, identifier: { precise: 'B' }, names: { title: 'BaseTests' } },
-      { kind: { identifier: 'swift.class' }, identifier: { precise: 'Z' }, names: { title: 'ZTests' } },
-      { kind: { identifier: 'swift.class' }, identifier: { precise: 'H' }, names: { title: 'Helper' } },
+      {
+        kind: { identifier: 'swift.class' },
+        identifier: { precise: 'B' },
+        names: { title: 'BaseTests' },
+      },
+      {
+        kind: { identifier: 'swift.class' },
+        identifier: { precise: 'Z' },
+        names: { title: 'ZTests' },
+      },
+      {
+        kind: { identifier: 'swift.class' },
+        identifier: { precise: 'H' },
+        names: { title: 'Helper' },
+      },
       method('B', 'testShared', ['func']),
       method('Z', 'testSync', ['func']),
       method('Z', 'testAsync', ['func', 'async', 'throws']),
@@ -47,6 +59,46 @@ describe('XCTest entry point from the symbol graph', () => {
         ],
       },
     ])
+  })
+
+  it('fails closed when a test class inherits from an unresolved dependency class', () => {
+    expect(() =>
+      discoverTests({
+        module: { name: 'CoreTests' },
+        symbols: [
+          {
+            kind: { identifier: 'swift.class' },
+            identifier: { precise: 'Local' },
+            names: { title: 'LocalTests' },
+          },
+          method('Local', 'testFoo', ['func']),
+        ],
+        relationships: [
+          { kind: 'inheritsFrom', source: 'Local', target: 's:3Dep4BaseC' },
+          { kind: 'memberOf', source: 'Local.testFoo', target: 'Local' },
+        ],
+      }),
+    ).toThrow('class LocalTests has unresolved superclass s:3Dep4BaseC')
+  })
+
+  it('discovers a direct XCTestCase subclass without an XCTestCase symbol definition', () => {
+    expect(
+      discoverTests({
+        module: { name: 'CoreTests' },
+        symbols: [
+          {
+            kind: { identifier: 'swift.class' },
+            identifier: { precise: 'Local' },
+            names: { title: 'LocalTests' },
+          },
+          method('Local', 'testFoo', ['func']),
+        ],
+        relationships: [
+          { kind: 'inheritsFrom', source: 'Local', target: 's:6XCTest0A4CaseC' },
+          { kind: 'memberOf', source: 'Local.testFoo', target: 'Local' },
+        ],
+      }),
+    ).toEqual([{ className: 'LocalTests', methods: [{ name: 'testFoo', isAsync: false }] }])
   })
 
   it('renders an XCTMain entry point that wraps async tests', () => {
@@ -82,7 +134,9 @@ describe('XCTest verdict', () => {
           {
             name: 'testFails',
             status: 'failed',
-            failures: ['Tests/ZTests.swift:12: XCTAssertEqual failed: ("1") is not equal to ("2") - '],
+            failures: [
+              'Tests/ZTests.swift:12: XCTAssertEqual failed: ("1") is not equal to ("2") - ',
+            ],
           },
           { name: 'testSync', status: 'passed', failures: [] },
         ],

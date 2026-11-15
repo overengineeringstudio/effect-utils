@@ -223,10 +223,12 @@ sources that need them do not build.
   test may `@testable import` it: its testable variant renames the entry point.
 - `swift_test` compiles an XCTest module against its dependencies' testable
   variants. The capability's XCTest needs an explicit entry point; the rule
-  derives it from the compiler-emitted symbol graph (every transitive
-  `XCTestCase` subclass and its zero-argument `test…` methods), never from
-  source text, and compiles that generated glue in Swift 5 language mode
-  (`@MainActor` async tests). The linked suite runs as a
+  derives it from the compiler-emitted symbol graph, never from source text.
+  It discovers only `XCTestCase` subclasses whose ancestry resolves in the
+  test module's symbol graph and their zero-argument `test…` methods. A class
+  declaring such methods with an unresolved external superclass fails the build
+  rather than being silently omitted. The generated glue compiles in Swift 5
+  language mode (`@MainActor` async tests). The linked suite runs as a
   [cacheable verdict action](../05-execution/spec.md#cacheable-unit-test-verdict-actions)
   in a scrubbed environment. Its default output is `result.json`, with
   `report.json` beside it (the `[report]` subtarget).
