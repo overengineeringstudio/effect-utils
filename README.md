@@ -625,6 +625,23 @@ The `buck2-rules` package exports the shared pnpm patch registry in its `rules`
 cell. Unmapped patch paths retain same-cell labels; mappings match complete path
 components, and the most specific checkout root wins.
 
+Consumer store generators can load the pnpm rules from another cell by setting
+`defsLoadLabel` in their projection config:
+
+```ts
+const store = makePnpmStoreProjection({
+  metadata,
+  sidecar,
+  defsLoadLabel: '@other//buck2/pnpm:defs.bzl',
+})
+renderPnpmStoreBuck(store)
+```
+
+`renderPnpmStoreBuck` renders the label as an escaped Starlark string. Omitting
+`defsLoadLabel` retains the local `load(":defs.bzl", ...)` and identical output.
+The label configures rendering only; it does not change the store's semantic
+fingerprint.
+
 Frozen source dependencies use an exact workspace-path-to-target mapping rather
 than resolving a label beneath an ignored runtime directory:
 
