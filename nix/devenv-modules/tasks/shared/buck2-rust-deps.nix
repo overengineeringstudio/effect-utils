@@ -32,6 +32,7 @@
 }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
+  reindeer = import ../../../reindeer.nix { inherit pkgs; };
   gate = ../../../../scripts/buck2-rust-deps.sh;
   supplyManifest = ../../../../scripts/buck2-rust-supply-manifest.ts;
   sourceArchive = import ../../../workspace-tools/lib/buck2-git-source-archive.nix;
@@ -75,7 +76,7 @@ let
       "$root" \
       ${lib.escapeShellArg workspaceRoot} \
       ${lib.escapeShellArg thirdPartyBuckPath} \
-      ${pkgs.reindeer}/bin/reindeer \
+      ${reindeer}/bin/reindeer \
       ${pkgs.cargo}/bin/cargo \
       ${pkgs.rustc}/bin/rustc \
       ${pkgs.bun}/bin/bun \
