@@ -29,6 +29,10 @@
       "types": "./src/build-identity-types.d.ts",
       "default": "./src/build-identity.js"
     },
+    "./cloudflare/access-gateway": {
+      "types": "./dist/src/cloudflare/access-gateway.d.ts",
+      "default": "./src/cloudflare/access-gateway.ts"
+    },
     "./cuid": {
       "types": "./dist/src/cuid/mod.d.ts",
       "browser": "./src/cuid/cuid.browser.ts",
@@ -50,6 +54,10 @@
     "./node/cli-version": {
       "types": "./dist/src/node/cli-version.d.ts",
       "default": "./src/node/cli-version.ts"
+    },
+    "./node/cloudflare-access-token": {
+      "types": "./dist/src/node/cloudflare-access-token.d.ts",
+      "default": "./src/node/cloudflare-access-token.ts"
     },
     "./node/github-app": {
       "types": "./dist/src/node/github-app.d.ts",
@@ -144,9 +152,17 @@
         "types": "./dist/src/isomorphic/mod.d.ts",
         "default": "./dist/src/isomorphic/mod.js"
       },
+      "./cloudflare/access-gateway": {
+        "types": "./dist/src/cloudflare/access-gateway.d.ts",
+        "default": "./dist/src/cloudflare/access-gateway.js"
+      },
       "./node": {
         "types": "./dist/src/node/mod.d.ts",
         "default": "./dist/src/node/mod.js"
+      },
+      "./node/cloudflare-access-token": {
+        "types": "./dist/src/node/cloudflare-access-token.d.ts",
+        "default": "./dist/src/node/cloudflare-access-token.js"
       },
       "./node/github-app": {
         "types": "./dist/src/node/github-app.d.ts",
