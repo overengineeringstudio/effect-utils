@@ -372,7 +372,7 @@ export const catalog = defineCatalog({
   // TypeScript 7 removed its classic in-process JSONC helper; this is VS Code's zero-dependency parser.
   'jsonc-parser': '3.3.1',
   '@playwright/test': '1.64.1',
-  vite: '8.2.2',
+  vite: '8.3.8',
   vitest: '5.0.3',
   // Same version `@vitest/browser` pins exactly, so the story gate and the
   // browser runner share one copy.
