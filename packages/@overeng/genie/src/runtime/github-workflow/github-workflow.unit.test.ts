@@ -9,6 +9,7 @@ import {
 import { pinnedAction } from './action-pins.ts'
 import { runActionlint } from './actionlint.ts'
 import { isFleetCacheRunner } from './cache-policy.ts'
+import { getGitHubRunExpressionLength } from './mod.ts'
 
 describe('isFleetCacheRunner', () => {
   it.each([
@@ -70,8 +71,18 @@ const hasActionlint = (() => {
 
 describe('githubWorkflow', () => {
   it.each([
-    ['at the expression limit', '${{ runner.temp }}'.padEnd(21_000, ' '), false],
-    ['over the expression limit', '${{ runner.temp }}'.padEnd(21_001, ' '), true],
+    ['at the converted expression limit', '${{ runner.temp }}'.padEnd(20_992, ' '), false],
+    [
+      'under the raw limit but over the converted limit',
+      '${{ runner.temp }}'.padEnd(20_993, ' '),
+      true,
+    ],
+    [
+      'at the raw limit but over the converted limit',
+      '${{ runner.temp }}'.padEnd(21_000, ' '),
+      true,
+    ],
+    ['escaped literals exceed the limit', "'{}".repeat(4_200) + '${{ runner.temp }}', true],
     ['oversized without interpolation', '$RUNNER_TEMP'.padEnd(80_000, ' '), false],
   ])('checks run scalar expression length: %s', async (_label, run, rejected) => {
     const issues = (
@@ -93,7 +104,28 @@ describe('githubWorkflow', () => {
         message: expect.stringContaining('Compare measurements'),
       })
       expect(issues[0]?.message).toContain('21000-character expression limit')
+      expect(issues[0]?.message).toContain(`${run.length} raw characters`)
+      expect(issues[0]?.message).toContain(`${getGitHubRunExpressionLength(run)}-character`)
     }
+  })
+
+  it.each([
+    ["echo '{{}}' ${{ runner.temp }}", "format('echo ''{{{{}}}}'' {0}', runner.temp)".length],
+    [
+      "${{ format('}}', runner.temp) }} tail",
+      "format('{0} tail', format('}}', runner.temp))".length,
+    ],
+    ['${{ runner.temp }}', 'runner.temp'.length],
+    ["${{ 'literal' }}", "'literal'".length],
+    ['echo $RUNNER_TEMP', undefined],
+    [
+      Array.from({ length: 11 }, () => '${{ runner.temp }}').join(' '),
+      "format('{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}'".length +
+        ', runner.temp'.length * 11 +
+        1,
+    ],
+  ])('measures the Actions-converted expression for %s', (run, expected) => {
+    expect(getGitHubRunExpressionLength(run)).toBe(expected)
   })
 
   it('renders release comments on SHA-pinned action steps', () => {

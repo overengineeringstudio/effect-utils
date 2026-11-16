@@ -57,9 +57,10 @@ This rejects invalid runner labels such as:
 
 This is mainly intended to catch CI helper API drift early. Without this validation, stale generated workflows can look superficially valid in the repo but only fail later when GitHub tries to load or schedule the workflow.
 
-Run scripts containing `${{` are limited to 21,000 characters: GitHub evaluates
-the entire scalar as one expression. Generation rejects oversized interpolated
-scripts and identifies the job and step. Use runtime environment variables such
+Run scripts containing `${{` are subject to GitHub's 21,000-character expression
+limit **after** conversion to a `format(...)` expression, including escaped literal
+quotes/braces and expression arguments. Generation checks this converted length,
+reports both raw and converted lengths, and identifies the job and step. Use runtime environment variables such
 as `$RUNNER_TEMP` (shell) or `process.env.RUNNER_TEMP` (embedded JavaScript) to
 keep large scripts free of Actions expressions.
 

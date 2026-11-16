@@ -523,6 +523,43 @@ const isGitHubHostedRunsOn = (runsOn: string | string[]) => {
   return labels.some((label) => githubHostedRunnerLabels.has(label))
 }
 
+/**
+ * Length of the expression produced by Actions' TemplateReader.ParseScalar.
+ * Literal segments escape quotes/braces; interpolations become format arguments.
+ * https://github.com/actions/runner/blob/main/src/Sdk/DTObjectTemplating/ObjectTemplating/TemplateReader.cs
+ */
+export const getGitHubRunExpressionLength = (run: string): number | undefined => {
+  let start = run.indexOf(githubExpressionStart)
+  if (start === -1) return undefined
+  let cursor = 0
+  let length = 10 // format('...')
+  let argumentIndex = 0
+  while (start !== -1) {
+    for (let index = cursor; index < start; index++) {
+      length += "'{}".includes(run[index]!) === true ? 2 : 1
+    }
+    let quoted = false
+    let end = start + githubExpressionStart.length
+    for (; end < run.length; end++) {
+      if (run[end] === "'") quoted = !quoted
+      else if (quoted === false && run[end] === '}' && run[end + 1] === '}') break
+    }
+    // An unclosed interpolation is diagnosed by expression syntax validation.
+    if (end === run.length) return undefined
+    const expression = run.slice(start + githubExpressionStart.length, end).trim()
+    // A sole expression is validated directly, even if it later becomes a string literal.
+    if (start === 0 && end + 2 === run.length) return expression.length
+    length += String(argumentIndex).length + 2 + 2 + expression.length
+    argumentIndex++
+    cursor = end + 2
+    start = run.indexOf(githubExpressionStart, cursor)
+  }
+  for (let index = cursor; index < run.length; index++) {
+    length += "'{}".includes(run[index]!) === true ? 2 : 1
+  }
+  return length
+}
+
 const validateDocumentedGitHubLimits = ({
   args,
   location,
@@ -535,17 +572,15 @@ const validateDocumentedGitHubLimits = ({
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
     for (const [index, step] of job.steps.entries()) {
-      if (
-        'run' in step &&
-        step.run.includes(githubExpressionStart) === true &&
-        step.run.length > 21_000
-      ) {
+      if (!('run' in step)) continue
+      const expressionLength = getGitHubRunExpressionLength(step.run)
+      if (expressionLength !== undefined && expressionLength > 21_000) {
         const dependency = `jobs.${jobName}.steps[${index}].run`
         issues.push({
           severity: 'error',
           packageName: location,
           dependency,
-          message: `${dependency}${step.name === undefined ? '' : ` (${step.name})`} contains a GitHub Actions expression and is ${step.run.length} characters long, exceeding the 21000-character expression limit. GitHub evaluates the entire run scalar as one expression; use runtime environment variables instead of Actions interpolations.`,
+          message: `${dependency}${step.name === undefined ? '' : ` (${step.name})`} is ${step.run.length} raw characters and converts to a ${expressionLength}-character GitHub Actions expression, exceeding the 21000-character expression limit. Use runtime environment variables instead of Actions interpolations.`,
           rule: 'github-workflow-run-expression-length',
         })
       }
