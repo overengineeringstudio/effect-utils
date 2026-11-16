@@ -73,16 +73,18 @@ describe('githubWorkflow', () => {
     ['at the expression limit', '${{ runner.temp }}'.padEnd(21_000, ' '), false],
     ['over the expression limit', '${{ runner.temp }}'.padEnd(21_001, ' '), true],
     ['oversized without interpolation', '$RUNNER_TEMP'.padEnd(80_000, ' '), false],
-  ])('checks run scalar expression length: %s', (_label, run, rejected) => {
-    const issues = getWorkflowValidationIssues({
-      on: 'push',
-      jobs: {
-        compare: {
-          'runs-on': 'ubuntu-latest',
-          steps: [{ name: 'Compare measurements', run }],
+  ])('checks run scalar expression length: %s', async (_label, run, rejected) => {
+    const issues = (
+      await getWorkflowValidationIssues({
+        on: 'push',
+        jobs: {
+          compare: {
+            'runs-on': 'ubuntu-latest',
+            steps: [{ name: 'Compare measurements', run }],
+          },
         },
-      },
-    }).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
+      })
+    ).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
     expect(issues).toHaveLength(rejected ? 1 : 0)
     if (rejected) {
       expect(issues[0]).toMatchObject({
