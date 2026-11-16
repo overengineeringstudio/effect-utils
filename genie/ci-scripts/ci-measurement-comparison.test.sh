@@ -7,6 +7,9 @@ cd "$ROOT"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+# Keep prepared-validator lookup inside this fixture, not the runner's real helper cache.
+export RUNNER_TEMP="$tmp_dir/runner-temp"
+
 run_bun_to_file() {
   local output_file="$1"
   local script_file="$2"

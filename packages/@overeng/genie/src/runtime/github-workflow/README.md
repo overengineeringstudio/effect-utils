@@ -57,6 +57,15 @@ This rejects invalid runner labels such as:
 
 This is mainly intended to catch CI helper API drift early. Without this validation, stale generated workflows can look superficially valid in the repo but only fail later when GitHub tries to load or schedule the workflow.
 
+Run scripts containing `${{` are subject to GitHub's 21,000-character expression
+limit **after** conversion to a `format(...)` expression, including escaped literal
+quotes/braces and expression arguments. The engine injects its YAML parser so
+validation measures the parsed scalar values from the emitted workflow document,
+including literal-block indentation and newline clipping. Diagnostics report raw
+and converted lengths and identify the job and step. Use runtime environment variables such
+as `$RUNNER_TEMP` (shell) or `process.env.RUNNER_TEMP` (embedded JavaScript) to
+keep large scripts free of Actions expressions.
+
 The Node actionlint runner passes workflow YAML on stdin. For custom self-hosted
 runner labels, it writes a private temporary config and removes the entire
 directory in `finally` after success or failure, including config-write failures.
