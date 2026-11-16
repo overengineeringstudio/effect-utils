@@ -29,7 +29,7 @@ export const decodeAlchemyAccessTokenState = (
   state: Redacted.Redacted<string>,
 ): Redacted.Redacted<string> => {
   const decoded = Schema.decodeOption(TokenState)(Redacted.value(state))
-  if (Option.isNone(decoded)) {
+  if (Option.isNone(decoded) === true) {
     throw new AlchemyAccessTokenError({
       operation: 'decode',
       message: 'Alchemy Access token state is missing or invalid',
