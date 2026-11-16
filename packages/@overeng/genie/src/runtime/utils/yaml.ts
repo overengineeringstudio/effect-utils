@@ -48,6 +48,21 @@ const needsQuoting = ({ str, flow = false }: { str: string; flow?: boolean }): b
 /** Quote a key if it needs quoting (e.g., starts with @) */
 const quoteKey = (key: string): string => (needsQuoting({ str: key }) === true ? `"${key}"` : key)
 
+/** The serializer uses clip-chomped literal blocks for multiline strings. */
+const blockScalar = (str: string) => {
+  if (str.includes('\n') === false) return undefined
+  const lines = str.split('\n')
+  return {
+    lines,
+    // YAML normalizes line endings and clips all trailing line breaks to one.
+    value: str.replace(/\r\n?/g, '\n').replace(/\n*$/, '\n'),
+  }
+}
+
+/** Mapping-value string as parsed from this serializer's emitted YAML. */
+export const parsedStringValue = (str: string): string =>
+  isPureExpression(str) === true ? str.trim() : (blockScalar(str)?.value ?? str)
+
 const quoteString = ({
   str,
   indent,
@@ -57,12 +72,10 @@ const quoteString = ({
   indent: number
   flow?: boolean
 }): string => {
-  if (str.includes('\n') === true) {
+  const block = blockScalar(str)
+  if (block !== undefined) {
     const linePrefix = INDENT.repeat(indent)
-    return `|\n${str
-      .split('\n')
-      .map((line) => (line === '' ? '' : linePrefix + line))
-      .join('\n')}`
+    return `|\n${block.lines.map((line) => (line === '' ? '' : linePrefix + line)).join('\n')}`
   }
   if (needsQuoting({ str, flow }) === true) {
     // Prefer single quotes, fall back to double quotes if string contains single quotes

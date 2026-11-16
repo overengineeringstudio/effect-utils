@@ -6,6 +6,7 @@ import {
   type GenieContext,
   type GitHubWorkflowArgs,
 } from '../mod.ts'
+import { parsedStringValue } from '../utils/yaml.ts'
 import { pinnedAction } from './action-pins.ts'
 import { runActionlint } from './actionlint.ts'
 import { isFleetCacheRunner } from './cache-policy.ts'
@@ -71,18 +72,28 @@ const hasActionlint = (() => {
 
 describe('githubWorkflow', () => {
   it.each([
-    ['at the converted expression limit', '${{ runner.temp }}'.padEnd(20_992, ' '), false],
+    ['at the converted expression limit', '${{ runner.temp }}'.padEnd(20_992, 'x'), false],
     [
       'under the raw limit but over the converted limit',
-      '${{ runner.temp }}'.padEnd(20_993, ' '),
+      '${{ runner.temp }}'.padEnd(20_993, 'x'),
       true,
     ],
     [
       'at the raw limit but over the converted limit',
-      '${{ runner.temp }}'.padEnd(21_000, ' '),
+      '${{ runner.temp }}'.padEnd(21_000, 'x'),
       true,
     ],
     ['escaped literals exceed the limit', "'{}".repeat(4_200) + '${{ runner.temp }}', true],
+    [
+      'multiline without final newline exceeds the limit after YAML clipping',
+      '${{ runner.temp }}\n'.padEnd(20_992, 'x'),
+      true,
+    ],
+    [
+      'multiline with final newline at the converted limit',
+      '${{ runner.temp }}\n'.padEnd(20_991, 'x') + '\n',
+      false,
+    ],
     ['oversized without interpolation', '$RUNNER_TEMP'.padEnd(80_000, ' '), false],
   ])('checks run scalar expression length: %s', async (_label, run, rejected) => {
     const issues = (
@@ -105,7 +116,9 @@ describe('githubWorkflow', () => {
       })
       expect(issues[0]?.message).toContain('21000-character expression limit')
       expect(issues[0]?.message).toContain(`${run.length} raw characters`)
-      expect(issues[0]?.message).toContain(`${getGitHubRunExpressionLength(run)}-character`)
+      expect(issues[0]?.message).toContain(
+        `${getGitHubRunExpressionLength(parsedStringValue(run))}-character`,
+      )
     }
   })
 
