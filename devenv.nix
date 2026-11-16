@@ -854,14 +854,7 @@ in
 {
   overlays = [
     (_final: previous: {
-      # Upstream failure: https://hydra.nixos.org/build/352528529
-      # Remove once nixpkgs Reindeer declares its required system libraries.
-      reindeer = previous.reindeer.overrideAttrs (old: {
-        buildInputs = (old.buildInputs or [ ]) ++ [
-          previous.libgit2
-          previous.sqlite
-        ];
-      });
+      reindeer = import ./nix/reindeer.nix { pkgs = previous; };
     })
   ];
 
