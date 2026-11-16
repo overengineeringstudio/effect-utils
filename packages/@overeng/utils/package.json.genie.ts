@@ -78,8 +78,22 @@ export default packageJson(
         { types: './dist/src/isomorphic/mod.d.ts', default: './src/isomorphic/mod.ts' },
         { environment: 'node' },
       ),
+      './cloudflare/access-gateway': exportEntry(
+        {
+          types: './dist/src/cloudflare/access-gateway.d.ts',
+          default: './src/cloudflare/access-gateway.ts',
+        },
+        { environment: 'workerd' },
+      ),
       './node': exportEntry(
         { types: './dist/src/node/mod.d.ts', default: './src/node/mod.ts' },
+        { environment: 'node' },
+      ),
+      './node/cloudflare-access-token': exportEntry(
+        {
+          types: './dist/src/node/cloudflare-access-token.d.ts',
+          default: './src/node/cloudflare-access-token.ts',
+        },
         { environment: 'node' },
       ),
       './node/github-app': exportEntry(
@@ -192,7 +206,15 @@ export default packageJson(
       access: 'public',
       exports: {
         '.': { types: './dist/src/isomorphic/mod.d.ts', default: './dist/src/isomorphic/mod.js' },
+        './cloudflare/access-gateway': {
+          types: './dist/src/cloudflare/access-gateway.d.ts',
+          default: './dist/src/cloudflare/access-gateway.js',
+        },
         './node': { types: './dist/src/node/mod.d.ts', default: './dist/src/node/mod.js' },
+        './node/cloudflare-access-token': {
+          types: './dist/src/node/cloudflare-access-token.d.ts',
+          default: './dist/src/node/cloudflare-access-token.js',
+        },
         './node/github-app': {
           types: './dist/src/node/github-app.d.ts',
           default: './dist/src/node/github-app.js',
