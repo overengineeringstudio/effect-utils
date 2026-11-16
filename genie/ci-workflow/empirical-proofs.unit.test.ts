@@ -524,11 +524,9 @@ it.each([
   ).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
   expect(issues).toHaveLength(rejected === true ? 1 : 0)
   if (rejected === true) {
-    expect(issues[0]).toMatchObject({
-      severity: 'error',
-      dependency: 'jobs.compare.steps[0].run',
-      message: expect.stringContaining('Compare measurements'),
-    })
+    expect(issues[0]?.severity).toBe('error')
+    expect(issues[0]?.dependency).toBe('jobs.compare.steps[0].run')
+    expect(issues[0]?.message).toContain('Compare measurements')
     expect(issues[0]?.message).toContain('21000-character expression limit')
     expect(issues[0]?.message).toContain('raw characters')
   }
