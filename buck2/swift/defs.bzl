@@ -20,6 +20,8 @@ SwiftModuleInfo = provider(fields = {
     "libraries": list[str],
 })
 
+_PLACEHOLDER = "__CLI_BUILD_STAMP__"
+
 def _validate_bundle_component(value, subject):
     if not value or value != value.strip():
         fail("{} must not be empty or padded".format(subject))
@@ -82,6 +84,32 @@ def _transitive(deps, own_frameworks = [], own_libraries = []):
     _append_unique(merged["frameworks"], own_frameworks)
     _append_unique(merged["libraries"], own_libraries)
     return merged
+
+def _sources(ctx, bun):
+    """The module's sources with the canonical build stamp embedded, when one is configured."""
+    sources = list(ctx.attrs.srcs)
+    if not sources:
+        fail("Swift module {} declares no sources".format(ctx.label.name))
+    if ctx.attrs.stamp_source == "":
+        return sources
+    matches = [index for index, source in enumerate(sources) if source.short_path == ctx.attrs.stamp_source]
+    if len(matches) != 1:
+        fail("stamp_source {} must name exactly one of the module's sources".format(ctx.attrs.stamp_source))
+    stamp = read_config("build_identity", "cli_build_stamp", "")
+    if stamp == "":
+        # Source builds keep the placeholder: the reader falls back to CLI_BUILD_STAMP.
+        return sources
+    original = sources[matches[0]]
+    stamped = ctx.actions.declare_output("stamped", original.basename)
+    ctx.actions.run(
+        cmd_args([bun.executable, ctx.attrs._stamp_tool, original, stamped.as_output(), _PLACEHOLDER, stamp]),
+        category = "swift_build_stamp",
+        identifier = original.short_path,
+        local_only = True,
+        allow_cache_upload = _cache_upload(),
+    )
+    sources[matches[0]] = stamped
+    return sources
 
 def _compile(ctx, bun, swiftc, triple, module_name, sources, swiftmodules, testable, emit_module, parse_as_library, extra = [], swift_version = None):
     variant = "testable" if testable else "release"
@@ -178,9 +206,7 @@ def _swift_library_impl(ctx):
     swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
     triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
     module_name = _module_name(ctx)
-    sources = list(ctx.attrs.srcs)
-    if not sources:
-        fail("Swift module {} declares no sources".format(ctx.label.name))
+    sources = _sources(ctx, bun)
     merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
     swiftmodule, obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["swiftmodules"], False, True, True)
     testable_module, testable_obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["testable_swiftmodules"], True, True, True)
@@ -203,9 +229,7 @@ def _swift_binary_impl(ctx):
     swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
     triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
     module_name = _module_name(ctx)
-    sources = list(ctx.attrs.srcs)
-    if not sources:
-        fail("Swift module {} declares no sources".format(ctx.label.name))
+    sources = _sources(ctx, bun)
     merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
     parse_as_library = not _is_script_module(sources)
     _, obj = _compile(ctx, bun, swiftc, triple, module_name, sources, merged["swiftmodules"], False, False, parse_as_library)
@@ -255,9 +279,7 @@ def _swift_test_impl(ctx):
     swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
     triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
     module_name = _module_name(ctx)
-    sources = list(ctx.attrs.srcs)
-    if not sources:
-        fail("Swift module {} declares no sources".format(ctx.label.name))
+    sources = _sources(ctx, bun)
     merged = _transitive(ctx.attrs.deps, ctx.attrs.frameworks, ctx.attrs.libraries)
 
     # XCTest discovery on Darwin goes through the Objective-C runtime; the
@@ -346,6 +368,7 @@ _COMPILE_ATTRS = {
     "minimum_os": attrs.string(default = "14.0"),
     "module_name": attrs.string(default = ""),
     "srcs": attrs.list(attrs.source()),
+    "stamp_source": attrs.string(default = ""),
     "swift_version": attrs.enum(["5", "6"], default = "6"),
     "swiftc": attrs.exec_dep(providers = [BuckSupportToolInfo]),
     "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
@@ -356,6 +379,9 @@ _COMPILE_ATTRS = {
     )),
     "_compiler_runner": attrs.default_only(attrs.source(
         default = "//buck2/swift:compile",
+    )),
+    "_stamp_tool": attrs.default_only(attrs.source(
+        default = "//buck2/swift:stamp",
     )),
 }
 
@@ -397,7 +423,8 @@ def swift_library(name, swiftc, target_platform, srcs, **kwargs):
     """One Swift module compiled whole-module from `srcs` against `deps`' modules.
 
     Mirrors a SwiftPM library target: `module_name` defaults to `name` with
-    dashes as underscores.
+    dashes as underscores. `stamp_source` names the one source whose
+    `"__CLI_BUILD_STAMP__"` literal receives `build_identity.cli_build_stamp`.
     """
     _swift_library(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
 
@@ -406,7 +433,7 @@ def swift_binary(name, swiftc, target_platform, srcs, **kwargs):
 
     A source named `main.swift` holds top-level code, as in SwiftPM; otherwise
     the module's `@main` type is the entry point. The binary is a product
-    executable payload for `build_product`.
+    executable payload for `build_product` and `swift_app_bundle`.
     """
     _swift_binary(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
 
@@ -420,11 +447,7 @@ def swift_test(name, swiftc, target_platform, srcs, **kwargs):
     _swift_test(name = name, swiftc = swiftc, target_platform = target_platform, srcs = srcs, **_platform_kwargs(target_platform, kwargs))
 
 def _swift_app_bundle_impl(ctx):
-    platform = ctx.attrs.target_platform[ProductPlatformInfo]
-    if platform.os != "darwin" or platform.abi != "darwin" or platform.runtime_contract != "mach-o-dynamic/v1":
-        fail("swift_app_bundle admits only the Darwin Mach-O product platform")
-    if platform.architecture != "aarch64":
-        fail("swift_app_bundle currently admits only aarch64 Darwin hosts")
+    platform = _darwin_platform(ctx, "swift_app_bundle")
     _validate_bundle_component(ctx.attrs.bundle_name, "swift_app_bundle bundle_name")
     _validate_bundle_component(ctx.attrs.bundle_id, "swift_app_bundle bundle_id")
     if ctx.attrs.icon_basename != "":
@@ -435,8 +458,13 @@ def _swift_app_bundle_impl(ctx):
         fail("swift_app_bundle must declare at least one binary")
     for name in ctx.attrs.binaries:
         _validate_bundle_component(name, "swift_app_bundle binary name")
-        if not ctx.attrs.sources.get(name):
+        if (name in ctx.attrs.sources) == (name in ctx.attrs.executables):
+            fail("swift_app_bundle binary {} needs exactly one of sources or executables".format(name))
+        if name in ctx.attrs.sources and not ctx.attrs.sources[name]:
             fail("swift_app_bundle binary {} declares no sources".format(name))
+    for name in list(ctx.attrs.sources) + list(ctx.attrs.executables):
+        if name not in ctx.attrs.binaries:
+            fail("swift_app_bundle declares an undeclared binary: {}".format(name))
     if ctx.attrs.main_executable not in ctx.attrs.binaries:
         fail("swift_app_bundle main_executable must name one of the binaries")
     bundle_root = "Applications/{}.app".format(ctx.attrs.bundle_name)
@@ -451,13 +479,19 @@ def _swift_app_bundle_impl(ctx):
     swiftc = ctx.attrs.swiftc[BuckSupportToolInfo]
     triple = _swift_target_triple(platform) + ctx.attrs.minimum_os
 
-    # Concatenate each binary's sources into one file: only a single-file
+    binaries = {}
+    for name, dep in ctx.attrs.executables.items():
+        executable = dep[ProductExecutableInfo]
+        actual = (executable.target_platform_os, executable.target_platform_architecture, executable.target_platform_abi, executable.target_platform_runtime_contract)
+        if actual != (platform.os, platform.architecture, platform.abi, platform.runtime_contract):
+            fail("swift_app_bundle executable {} targets {}, not the bundle platform".format(name, actual))
+        binaries[name] = executable.executable
+
+    # Concatenate each source binary's sources into one file: only a single-file
     # compile may hold top-level code, and consumer bundles compose their
     # daemon sources exactly this way.
-    binaries = {}
-    for name in ctx.attrs.binaries:
+    for name, sources in ctx.attrs.sources.items():
         combined = ctx.actions.declare_output("swift-{}.swift".format(name))
-        sources = ctx.attrs.sources[name]
         concat_args = cmd_args([
             bun.executable,
             "-e",
@@ -470,7 +504,7 @@ def _swift_app_bundle_impl(ctx):
             category = "swift_app_bundle_sources",
             identifier = name,
             local_only = True,
-            allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+            allow_cache_upload = _cache_upload(),
         )
         executable = ctx.actions.declare_output(name)
         compile_args = cmd_args([
@@ -501,40 +535,32 @@ def _swift_app_bundle_impl(ctx):
                 "SDKROOT": "/var/empty",
             },
             local_only = True,
-            allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+            allow_cache_upload = _cache_upload(),
         )
         binaries[name] = executable
 
-    icon_keys = []
+    plist_entries = {
+        "CFBundleExecutable": ctx.attrs.main_executable,
+        "CFBundleIdentifier": ctx.attrs.bundle_id,
+        "CFBundleName": ctx.attrs.bundle_name,
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": ctx.attrs.version,
+        "CFBundleVersion": ctx.attrs.version,
+    }
     if ctx.attrs.icon_basename != "":
-        icon_keys = ["  <key>CFBundleIconFile</key>", "  <string>{}</string>".format(ctx.attrs.icon_basename)]
+        plist_entries["CFBundleIconFile"] = ctx.attrs.icon_basename
+    plist_entries["LSUIElement"] = True
+    plist_input = ctx.actions.write_json("info-plist.json", {
+        # Ordered pairs: the rule's keys keep their declared order.
+        "entries": [[key, value] for key, value in plist_entries.items()],
+        "extra": json.decode(ctx.attrs.info_plist_extra) if ctx.attrs.info_plist_extra else {},
+    })
     plist = ctx.actions.declare_output("Info.plist")
-    ctx.actions.write(
-        plist,
-        "\n".join([
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-            '<plist version="1.0">',
-            "<dict>",
-            "  <key>CFBundleExecutable</key>",
-            "  <string>{}</string>".format(ctx.attrs.main_executable),
-            "  <key>CFBundleIdentifier</key>",
-            "  <string>{}</string>".format(ctx.attrs.bundle_id),
-            "  <key>CFBundleName</key>",
-            "  <string>{}</string>".format(ctx.attrs.bundle_name),
-            "  <key>CFBundlePackageType</key>",
-            "  <string>APPL</string>",
-            "  <key>CFBundleShortVersionString</key>",
-            "  <string>{}</string>".format(ctx.attrs.version),
-            "  <key>CFBundleVersion</key>",
-            "  <string>{}</string>".format(ctx.attrs.version),
-        ] + icon_keys + [
-            "  <key>LSUIElement</key>",
-            "  <true/>",
-            "</dict>",
-            "</plist>",
-            "",
-        ]),
+    ctx.actions.run(
+        cmd_args([bun.executable, ctx.attrs._info_plist_tool, plist_input, plist.as_output()]),
+        category = "swift_app_bundle_info_plist",
+        local_only = True,
+        allow_cache_upload = _cache_upload(),
     )
 
     stamp = read_config("build_identity", "cli_build_stamp", "")
@@ -549,7 +575,7 @@ def _swift_app_bundle_impl(ctx):
         {
             "recipe": "swift-app-bundle:{}".format(bundle_root),
             "schema": "buck-build-provenance/v1",
-            "toolchain": "swift={}:{}".format(swiftc.closure_identity, swiftc.content_digest),
+            "toolchain": _toolchain_identity(swiftc),
         },
         pretty = True,
     )
@@ -600,7 +626,7 @@ def _swift_app_bundle_impl(ctx):
         args,
         category = "swift_app_bundle_package",
         local_only = True,
-        allow_cache_upload = root_remote_cache_enabled() and root_allow_cache_uploads(),
+        allow_cache_upload = _cache_upload(),
     )
     return [
         DefaultInfo(
@@ -619,14 +645,16 @@ _swift_app_bundle = cache_guarded_rule(
         "binaries": attrs.list(attrs.string()),
         "bundle_id": attrs.string(),
         "bundle_name": attrs.string(),
+        "executables": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [ProductExecutableInfo]), default = {}),
         "frameworks": attrs.dict(key = attrs.string(), value = attrs.list(attrs.string()), default = {}),
         "icon_basename": attrs.string(default = ""),
+        "info_plist_extra": attrs.string(default = ""),
         "libraries": attrs.dict(key = attrs.string(), value = attrs.list(attrs.string()), default = {}),
         "main_executable": attrs.string(),
         "minimum_os": attrs.string(default = "14.0"),
         "product_name": attrs.string(),
         "resources": attrs.dict(key = attrs.string(), value = attrs.source(), default = {}),
-        "sources": attrs.dict(key = attrs.string(), value = attrs.list(attrs.source())),
+        "sources": attrs.dict(key = attrs.string(), value = attrs.list(attrs.source()), default = {}),
         "swiftc": attrs.exec_dep(providers = [BuckSupportToolInfo]),
         "target_platform": attrs.dep(providers = [ProductPlatformInfo]),
         "version": attrs.string(),
@@ -641,6 +669,9 @@ _swift_app_bundle = cache_guarded_rule(
             default = "//buck2/toolchains:product_tool",
             providers = [RunInfo],
         )),
+        "_info_plist_tool": attrs.default_only(attrs.source(
+            default = "//buck2/swift:info-plist",
+        )),
     },
 )
 
@@ -653,23 +684,26 @@ def swift_app_bundle(
         version,
         main_executable,
         binaries,
-        sources,
         product_name,
+        sources = {},
+        executables = {},
         frameworks = {},
         libraries = {},
         resources = {},
         icon_basename = "",
+        info_plist_extra = "",
         minimum_os = "14.0",
         **kwargs):
     """Builds one unsigned Darwin app bundle as a build_product artifact.
 
-    Each binary compiles from its concatenated Swift sources with the declared
-    Nix swiftc capability; the product tool assembles the bundle, archives it,
-    and emits the buck-build-product/v1 descriptor. The bundle lands under
-    Applications/<bundle_name>.app with the declared main executable.
+    Each binary either compiles from its concatenated Swift `sources` with the
+    declared Nix swiftc capability, or is a `swift_binary` named in
+    `executables`. `info_plist_extra` is a JSON object of further Info.plist
+    keys; it cannot override the rule's own keys. The product tool assembles
+    the bundle, archives it, and emits the buck-build-product/v1 descriptor.
+    The bundle lands under Applications/<bundle_name>.app with the declared
+    main executable.
     """
-    if "target_compatible_with" in kwargs:
-        fail("swift_app_bundle owns target compatibility")
     _swift_app_bundle(
         name = name,
         swiftc = swiftc,
@@ -680,14 +714,13 @@ def swift_app_bundle(
         main_executable = main_executable,
         binaries = binaries,
         sources = sources,
+        executables = executables,
         product_name = product_name,
         frameworks = frameworks,
         libraries = libraries,
         resources = resources,
         icon_basename = icon_basename,
+        info_plist_extra = info_plist_extra,
         minimum_os = minimum_os,
-        default_target_platform = target_platform,
-        target_compatible_with = product_platform_constraints(target_platform),
-        exec_compatible_with = native_execution_constraints(target_platform),
-        **kwargs
+        **_platform_kwargs(target_platform, kwargs)
     )

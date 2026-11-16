@@ -219,7 +219,7 @@ sources that need them do not build.
   top-level code, as in SwiftPM; otherwise `@main`) and links it with its
   transitive module objects against the OS Swift runtime, without `LC_RPATH`
   (`mach-o-dynamic/v1`). It is a product executable payload for
-  `build_product`. As in SwiftPM, a
+  `build_product` and for `swift_app_bundle`'s `executables`. As in SwiftPM, a
   test may `@testable import` it: its testable variant renames the entry point.
 - `swift_test` compiles an XCTest module against its dependencies' testable
   variants. The capability's XCTest needs an explicit entry point; the rule
@@ -232,9 +232,17 @@ sources that need them do not build.
   [cacheable verdict action](../05-execution/spec.md#cacheable-unit-test-verdict-actions)
   in a scrubbed environment. Its default output is `result.json`, with
   `report.json` beside it (the `[report]` subtarget).
-- `swift_app_bundle` compiles each named binary from its ordered Swift source
-  list and packages it with the product tool and the
+- `swift_app_bundle` packages named binaries, each compiled from an ordered
+  source list or supplied by a `swift_binary`, with the
   [app-bundle contract](../../05-product-distribution/01-product-contract/spec.md#darwin-app-bundles).
+  Consumer Info.plist keys extend, and never override, the rule's own keys.
+
+A module's `stamp_source` names the one source whose `"__CLI_BUILD_STAMP__"`
+literal receives `build_identity.cli_build_stamp` as a string literal, the
+[canonical stamp shape](../../01-identity/spec.md). Without a configured stamp
+the placeholder stays, and the product resolves its runtime stamp. Stamps with
+raw control characters are rejected before embedding because JSON and Swift
+string escapes differ.
 
 The compiler runs at its immutable `BuckSupportToolInfo.store_path`; its
 executable and capability manifest remain action inputs. Generic support-tool
