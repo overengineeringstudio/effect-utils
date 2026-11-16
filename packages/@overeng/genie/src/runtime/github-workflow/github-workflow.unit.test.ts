@@ -85,8 +85,8 @@ describe('githubWorkflow', () => {
         },
       })
     ).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
-    expect(issues).toHaveLength(rejected ? 1 : 0)
-    if (rejected) {
+    expect(issues).toHaveLength(rejected === true ? 1 : 0)
+    if (rejected === true) {
       expect(issues[0]).toMatchObject({
         severity: 'error',
         dependency: 'jobs.compare.steps[0].run',
