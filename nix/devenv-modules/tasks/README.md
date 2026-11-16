@@ -250,6 +250,23 @@ for outer tasks that must complete before the nested devenv process can evaluate
     never compared across files. The task reports every within-file duplicate
     group in deterministic order and fails for missing or invalid lockfiles;
     similar but non-identical identities are allowed.
+  - The root flake shares `tsgo`'s unstable Nixpkgs input with its canonical
+    `nixpkgs`. The standalone browser flake exposes `flake-utils` and forwards
+    it to `playwright-web-flake`. Consumers importing both flakes should share
+    that identity through a one-level override:
+
+    ```yaml
+    inputs:
+      effect-utils:
+        url: github:overengineeringstudio/effect-utils/published
+      playwright:
+        url: github:overengineeringstudio/effect-utils/published?dir=nix/playwright-flake
+        inputs:
+          nixpkgs:
+            follows: effect-utils/nixpkgs
+          flake-utils:
+            follows: effect-utils/flake-utils
+    ```
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
   - `lockfileMode = "frozen-in-ci";` allows local lockfile edits while passing

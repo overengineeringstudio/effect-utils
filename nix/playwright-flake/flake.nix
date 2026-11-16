@@ -3,8 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
     playwright-web-flake.url = "github:pietdevries94/playwright-web-flake";
     playwright-web-flake.inputs.nixpkgs.follows = "nixpkgs";
+    playwright-web-flake.inputs.flake-utils.follows = "flake-utils";
   };
 
   outputs =
