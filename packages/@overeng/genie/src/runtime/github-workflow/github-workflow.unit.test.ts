@@ -69,6 +69,31 @@ const hasActionlint = (() => {
 })()
 
 describe('githubWorkflow', () => {
+  it.each([
+    ['at the expression limit', '${{ runner.temp }}'.padEnd(21_000, ' '), false],
+    ['over the expression limit', '${{ runner.temp }}'.padEnd(21_001, ' '), true],
+    ['oversized without interpolation', '$RUNNER_TEMP'.padEnd(80_000, ' '), false],
+  ])('checks run scalar expression length: %s', (_label, run, rejected) => {
+    const issues = getWorkflowValidationIssues({
+      on: 'push',
+      jobs: {
+        compare: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ name: 'Compare measurements', run }],
+        },
+      },
+    }).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
+    expect(issues).toHaveLength(rejected ? 1 : 0)
+    if (rejected) {
+      expect(issues[0]).toMatchObject({
+        severity: 'error',
+        dependency: 'jobs.compare.steps[0].run',
+        message: expect.stringContaining('Compare measurements'),
+      })
+      expect(issues[0]?.message).toContain('21000-character expression limit')
+    }
+  })
+
   it('renders release comments on SHA-pinned action steps', () => {
     const workflow = githubWorkflow({
       on: 'push',

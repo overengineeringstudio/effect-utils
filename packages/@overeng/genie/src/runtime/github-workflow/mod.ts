@@ -534,6 +534,23 @@ const validateDocumentedGitHubLimits = ({
   let staticCheckRunCount = 0
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
+    for (const [index, step] of job.steps.entries()) {
+      if (
+        step.run !== undefined &&
+        step.run.includes(githubExpressionStart) &&
+        step.run.length > 21_000
+      ) {
+        const dependency = `jobs.${jobName}.steps[${index}].run`
+        issues.push({
+          severity: 'error',
+          packageName: location,
+          dependency,
+          message: `${dependency}${step.name === undefined ? '' : ` (${step.name})`} contains a GitHub Actions expression and is ${step.run.length} characters long, exceeding the 21000-character expression limit. GitHub evaluates the entire run scalar as one expression; use runtime environment variables instead of Actions interpolations.`,
+          rule: 'github-workflow-run-expression-length',
+        })
+      }
+    }
+
     const matrixJobCount = staticMatrixJobCount(job.strategy)
     if (matrixJobCount !== undefined) {
       staticCheckRunCount += matrixJobCount
