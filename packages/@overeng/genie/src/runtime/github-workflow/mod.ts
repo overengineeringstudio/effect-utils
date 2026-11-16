@@ -535,11 +535,7 @@ const validateDocumentedGitHubLimits = ({
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
     for (const [index, step] of job.steps.entries()) {
-      if (
-        'run' in step &&
-        step.run.includes(githubExpressionStart) &&
-        step.run.length > 21_000
-      ) {
+      if ('run' in step && step.run.includes(githubExpressionStart) && step.run.length > 21_000) {
         const dependency = `jobs.${jobName}.steps[${index}].run`
         issues.push({
           severity: 'error',
