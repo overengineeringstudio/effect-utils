@@ -536,7 +536,7 @@ const validateDocumentedGitHubLimits = ({
   for (const [jobName, job] of Object.entries(args.jobs)) {
     for (const [index, step] of job.steps.entries()) {
       if (
-        step.run !== undefined &&
+        'run' in step &&
         step.run.includes(githubExpressionStart) &&
         step.run.length > 21_000
       ) {
