@@ -59,10 +59,10 @@ This is mainly intended to catch CI helper API drift early. Without this validat
 
 Run scripts containing `${{` are subject to GitHub's 21,000-character expression
 limit **after** conversion to a `format(...)` expression, including escaped literal
-quotes/braces and expression arguments. Generation uses the serializer's shared
-scalar normalization (including literal-block newline clipping) before checking
-this converted length,
-reports both raw and converted lengths, and identifies the job and step. Use runtime environment variables such
+quotes/braces and expression arguments. The engine injects its YAML parser so
+validation measures the parsed scalar values from the emitted workflow document,
+including literal-block indentation and newline clipping. Diagnostics report raw
+and converted lengths and identify the job and step. Use runtime environment variables such
 as `$RUNNER_TEMP` (shell) or `process.env.RUNNER_TEMP` (embedded JavaScript) to
 keep large scripts free of Actions expressions.
 

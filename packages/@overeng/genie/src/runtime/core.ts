@@ -70,6 +70,8 @@ export type GenieContext = {
   actionlint?: GenieActionlintRunner
   /** JSONC parser — injected by the engine during validation, undefined during stringify (GenieJsoncParser). */
   parseJsonc?: GenieJsoncParser
+  /** YAML parser — injected by the engine to validate emitted workflow scalar values. */
+  parseYaml?: (text: string) => unknown
   /**
    * Optional domain-specific validation runtimes injected by the engine.
    *

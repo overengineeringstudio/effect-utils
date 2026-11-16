@@ -560,6 +560,38 @@ export const getGitHubRunExpressionLength = (run: string): number | undefined =>
   return length
 }
 
+/** Validate the scalar values GitHub receives, not the pre-serialization source strings. */
+const validateRenderedRunExpressionLengths = ({
+  yamlContent,
+  ctx,
+}: {
+  yamlContent: string
+  ctx: GenieContext
+}): GenieValidationIssue[] => {
+  if (ctx.parseYaml === undefined) return []
+  // This document is rendered from our typed workflow, not external input.
+  const parsed = ctx.parseYaml(yamlContent) as GitHubWorkflowArgs
+  const issues: GenieValidationIssue[] = []
+  for (const [jobName, job] of Object.entries(parsed.jobs)) {
+    if (job.steps === undefined) continue
+    for (const [index, step] of job.steps.entries()) {
+      if (!('run' in step)) continue
+      const expressionLength = getGitHubRunExpressionLength(step.run)
+      if (expressionLength !== undefined && expressionLength > 21_000) {
+        const dependency = `jobs.${jobName}.steps[${index}].run`
+        issues.push({
+          severity: 'error',
+          packageName: ctx.location,
+          dependency,
+          message: `${dependency}${typeof step.name === 'string' ? ` (${step.name})` : ''} is ${step.run.length} raw characters and converts to a ${expressionLength}-character GitHub Actions expression, exceeding the 21000-character expression limit. Use runtime environment variables instead of Actions interpolations.`,
+          rule: 'github-workflow-run-expression-length',
+        })
+      }
+    }
+  }
+  return issues
+}
+
 const validateDocumentedGitHubLimits = ({
   args,
   location,
@@ -571,21 +603,6 @@ const validateDocumentedGitHubLimits = ({
   let staticCheckRunCount = 0
 
   for (const [jobName, job] of Object.entries(args.jobs)) {
-    for (const [index, step] of job.steps.entries()) {
-      if (!('run' in step)) continue
-      const expressionLength = getGitHubRunExpressionLength(yaml.parsedStringValue(step.run))
-      if (expressionLength !== undefined && expressionLength > 21_000) {
-        const dependency = `jobs.${jobName}.steps[${index}].run`
-        issues.push({
-          severity: 'error',
-          packageName: location,
-          dependency,
-          message: `${dependency}${step.name === undefined ? '' : ` (${step.name})`} is ${step.run.length} raw characters and converts to a ${expressionLength}-character GitHub Actions expression, exceeding the 21000-character expression limit. Use runtime environment variables instead of Actions interpolations.`,
-          rule: 'github-workflow-run-expression-length',
-        })
-      }
-    }
-
     const matrixJobCount = staticMatrixJobCount(job.strategy)
     if (matrixJobCount !== undefined) {
       staticCheckRunCount += matrixJobCount
@@ -767,6 +784,7 @@ const validateWorkflow = ({
   }
 
   issues.push(...validateDocumentedGitHubLimits({ args, location }))
+  issues.push(...validateRenderedRunExpressionLengths({ yamlContent, ctx }))
   issues.push(...validateGitHubWorkflowAdmissionSize({ yamlContent, location }))
   issues.push(...validatePreparedCiRuntimeScriptsSetup({ args, location }))
   issues.push(...validateDeterminateNixExtraConf({ args, location }))

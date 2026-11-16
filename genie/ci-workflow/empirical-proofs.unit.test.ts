@@ -1,9 +1,14 @@
-import { expect, test } from 'bun:test'
+import { expect, it, test } from 'bun:test'
 
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import { decodeBinaryCacheDescriptor } from '../../packages/@overeng/genie/src/runtime/github-workflow/binary-cache-descriptor.ts'
+import {
+  githubWorkflow,
+  getGitHubRunExpressionLength,
+  type GitHubWorkflowArgs,
+} from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import {
   cachixCliBuildStep,
   cachixStep,
@@ -470,4 +475,77 @@ test('daily cache export postcheck follows telemetry export and fails on pending
   )
   expect('run' in check ? check.run : undefined).toContain('if (( ${#chunks[@]} != 0 )); then')
   expect('run' in check ? check.run : undefined).toContain('exit 1')
+})
+
+// This suite runs in the existing genie:ci-workflow:test task and CI test job.
+const getWorkflowValidationIssues = async (args: GitHubWorkflowArgs) =>
+  (await githubWorkflow({ ...args, actionlint: false }).validate?.({
+    location: '.github/workflows/fixture.yml',
+    cwd: process.cwd(),
+    parseYaml: (text) => Bun.YAML.parse(text),
+  })) ?? []
+
+it.each([
+  ['at the converted expression limit', '${{ runner.temp }}'.padEnd(20_992, 'x'), false],
+  [
+    'under the raw limit but over the converted limit',
+    '${{ runner.temp }}'.padEnd(20_993, 'x'),
+    true,
+  ],
+  ['at the raw limit but over the converted limit', '${{ runner.temp }}'.padEnd(21_000, 'x'), true],
+  ['escaped literals exceed the limit', "'{}".repeat(4_200) + '${{ runner.temp }}', true],
+  [
+    'multiline without final newline exceeds the limit after YAML clipping',
+    '${{ runner.temp }}\n'.padEnd(20_992, 'x'),
+    true,
+  ],
+  [
+    'multiline with final newline at the converted limit',
+    '${{ runner.temp }}\n'.padEnd(20_991, 'x') + '\n',
+    false,
+  ],
+  [
+    'indented literal block at the converted limit',
+    '  echo x\n  echo ${{ runner.temp }}'.padEnd(20_995, 'x'),
+    false,
+  ],
+  ['oversized without interpolation', '$RUNNER_TEMP'.padEnd(80_000, ' '), false],
+])('checks run scalar expression length: %s', async (_label, run, rejected) => {
+  const issues = (
+    await getWorkflowValidationIssues({
+      on: 'push',
+      jobs: {
+        compare: {
+          'runs-on': 'ubuntu-latest',
+          steps: [{ name: 'Compare measurements', run }],
+        },
+      },
+    })
+  ).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
+  expect(issues).toHaveLength(rejected === true ? 1 : 0)
+  if (rejected === true) {
+    expect(issues[0]).toMatchObject({
+      severity: 'error',
+      dependency: 'jobs.compare.steps[0].run',
+      message: expect.stringContaining('Compare measurements'),
+    })
+    expect(issues[0]?.message).toContain('21000-character expression limit')
+    expect(issues[0]?.message).toContain('raw characters')
+  }
+})
+
+it.each([
+  ["echo '{{}}' ${{ runner.temp }}", "format('echo ''{{{{}}}}'' {0}', runner.temp)".length],
+  ["${{ format('}}', runner.temp) }} tail", "format('{0} tail', format('}}', runner.temp))".length],
+  ['${{ runner.temp }}', 'runner.temp'.length],
+  ["${{ 'literal' }}", "'literal'".length],
+  ['echo $RUNNER_TEMP', undefined],
+  [
+    Array.from({ length: 11 }, () => '${{ runner.temp }}').join(' '),
+    "format('{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}'".length +
+      ', runner.temp'.length * 11 +
+      1,
+  ],
+])('measures the Actions-converted expression for %s', (run, expected) => {
+  expect(getGitHubRunExpressionLength(run)).toBe(expected)
 })

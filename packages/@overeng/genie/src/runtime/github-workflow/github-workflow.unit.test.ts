@@ -6,11 +6,9 @@ import {
   type GenieContext,
   type GitHubWorkflowArgs,
 } from '../mod.ts'
-import { parsedStringValue } from '../utils/yaml.ts'
 import { pinnedAction } from './action-pins.ts'
 import { runActionlint } from './actionlint.ts'
 import { isFleetCacheRunner } from './cache-policy.ts'
-import { getGitHubRunExpressionLength } from './mod.ts'
 
 describe('isFleetCacheRunner', () => {
   it.each([
@@ -71,76 +69,6 @@ const hasActionlint = (() => {
 })()
 
 describe('githubWorkflow', () => {
-  it.each([
-    ['at the converted expression limit', '${{ runner.temp }}'.padEnd(20_992, 'x'), false],
-    [
-      'under the raw limit but over the converted limit',
-      '${{ runner.temp }}'.padEnd(20_993, 'x'),
-      true,
-    ],
-    [
-      'at the raw limit but over the converted limit',
-      '${{ runner.temp }}'.padEnd(21_000, 'x'),
-      true,
-    ],
-    ['escaped literals exceed the limit', "'{}".repeat(4_200) + '${{ runner.temp }}', true],
-    [
-      'multiline without final newline exceeds the limit after YAML clipping',
-      '${{ runner.temp }}\n'.padEnd(20_992, 'x'),
-      true,
-    ],
-    [
-      'multiline with final newline at the converted limit',
-      '${{ runner.temp }}\n'.padEnd(20_991, 'x') + '\n',
-      false,
-    ],
-    ['oversized without interpolation', '$RUNNER_TEMP'.padEnd(80_000, ' '), false],
-  ])('checks run scalar expression length: %s', async (_label, run, rejected) => {
-    const issues = (
-      await getWorkflowValidationIssues({
-        on: 'push',
-        jobs: {
-          compare: {
-            'runs-on': 'ubuntu-latest',
-            steps: [{ name: 'Compare measurements', run }],
-          },
-        },
-      })
-    ).filter((issue) => issue.rule === 'github-workflow-run-expression-length')
-    expect(issues).toHaveLength(rejected === true ? 1 : 0)
-    if (rejected === true) {
-      expect(issues[0]).toMatchObject({
-        severity: 'error',
-        dependency: 'jobs.compare.steps[0].run',
-        message: expect.stringContaining('Compare measurements'),
-      })
-      expect(issues[0]?.message).toContain('21000-character expression limit')
-      expect(issues[0]?.message).toContain(`${run.length} raw characters`)
-      expect(issues[0]?.message).toContain(
-        `${getGitHubRunExpressionLength(parsedStringValue(run))}-character`,
-      )
-    }
-  })
-
-  it.each([
-    ["echo '{{}}' ${{ runner.temp }}", "format('echo ''{{{{}}}}'' {0}', runner.temp)".length],
-    [
-      "${{ format('}}', runner.temp) }} tail",
-      "format('{0} tail', format('}}', runner.temp))".length,
-    ],
-    ['${{ runner.temp }}', 'runner.temp'.length],
-    ["${{ 'literal' }}", "'literal'".length],
-    ['echo $RUNNER_TEMP', undefined],
-    [
-      Array.from({ length: 11 }, () => '${{ runner.temp }}').join(' '),
-      "format('{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}'".length +
-        ', runner.temp'.length * 11 +
-        1,
-    ],
-  ])('measures the Actions-converted expression for %s', (run, expected) => {
-    expect(getGitHubRunExpressionLength(run)).toBe(expected)
-  })
-
   it('renders release comments on SHA-pinned action steps', () => {
     const workflow = githubWorkflow({
       on: 'push',
