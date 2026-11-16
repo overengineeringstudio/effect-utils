@@ -103,6 +103,7 @@ export const runGenieValidation = ({
         io: nodeGenieIO,
         actionlint: runActionlint,
         parseJsonc: nodeJsoncParser,
+        parseYaml: (text) => Bun.YAML.parse(text),
         validation: {
           packageJson: nodePackageJsonValidationRuntime,
         },

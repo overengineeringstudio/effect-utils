@@ -523,6 +523,75 @@ const isGitHubHostedRunsOn = (runsOn: string | string[]) => {
   return labels.some((label) => githubHostedRunnerLabels.has(label))
 }
 
+/**
+ * Length of the expression produced by Actions' TemplateReader.ParseScalar.
+ * Literal segments escape quotes/braces; interpolations become format arguments.
+ * https://github.com/actions/runner/blob/main/src/Sdk/DTObjectTemplating/ObjectTemplating/TemplateReader.cs
+ */
+export const getGitHubRunExpressionLength = (run: string): number | undefined => {
+  let start = run.indexOf(githubExpressionStart)
+  if (start === -1) return undefined
+  let cursor = 0
+  let length = 10 // format('...')
+  let argumentIndex = 0
+  while (start !== -1) {
+    for (let index = cursor; index < start; index++) {
+      length += "'{}".includes(run[index]!) === true ? 2 : 1
+    }
+    let quoted = false
+    let end = start + githubExpressionStart.length
+    for (; end < run.length; end++) {
+      if (run[end] === "'") quoted = !quoted
+      else if (quoted === false && run[end] === '}' && run[end + 1] === '}') break
+    }
+    // An unclosed interpolation is diagnosed by expression syntax validation.
+    if (end === run.length) return undefined
+    const expression = run.slice(start + githubExpressionStart.length, end).trim()
+    // A sole expression is validated directly, even if it later becomes a string literal.
+    if (start === 0 && end + 2 === run.length) return expression.length
+    length += String(argumentIndex).length + 2 + 2 + expression.length
+    argumentIndex++
+    cursor = end + 2
+    start = run.indexOf(githubExpressionStart, cursor)
+  }
+  for (let index = cursor; index < run.length; index++) {
+    length += "'{}".includes(run[index]!) === true ? 2 : 1
+  }
+  return length
+}
+
+/** Validate the scalar values GitHub receives, not the pre-serialization source strings. */
+const validateRenderedRunExpressionLengths = ({
+  yamlContent,
+  ctx,
+}: {
+  yamlContent: string
+  ctx: GenieContext
+}): GenieValidationIssue[] => {
+  if (ctx.parseYaml === undefined) return []
+  // This document is rendered from our typed workflow, not external input.
+  const parsed = ctx.parseYaml(yamlContent) as GitHubWorkflowArgs
+  const issues: GenieValidationIssue[] = []
+  for (const [jobName, job] of Object.entries(parsed.jobs)) {
+    if (job.steps === undefined) continue
+    for (const [index, step] of job.steps.entries()) {
+      if (!('run' in step)) continue
+      const expressionLength = getGitHubRunExpressionLength(step.run)
+      if (expressionLength !== undefined && expressionLength > 21_000) {
+        const dependency = `jobs.${jobName}.steps[${index}].run`
+        issues.push({
+          severity: 'error',
+          packageName: ctx.location,
+          dependency,
+          message: `${dependency}${typeof step.name === 'string' ? ` (${step.name})` : ''} is ${step.run.length} raw characters and converts to a ${expressionLength}-character GitHub Actions expression, exceeding the 21000-character expression limit. Use runtime environment variables instead of Actions interpolations.`,
+          rule: 'github-workflow-run-expression-length',
+        })
+      }
+    }
+  }
+  return issues
+}
+
 const validateDocumentedGitHubLimits = ({
   args,
   location,
@@ -715,6 +784,7 @@ const validateWorkflow = ({
   }
 
   issues.push(...validateDocumentedGitHubLimits({ args, location }))
+  issues.push(...validateRenderedRunExpressionLengths({ yamlContent, ctx }))
   issues.push(...validateGitHubWorkflowAdmissionSize({ yamlContent, location }))
   issues.push(...validatePreparedCiRuntimeScriptsSetup({ args, location }))
   issues.push(...validateDeterminateNixExtraConf({ args, location }))

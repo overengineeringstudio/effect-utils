@@ -34,7 +34,7 @@ const ciMeasurementValidatorImports = `
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-const preparedValidators = '${preparedCiRuntimeScriptsDir}/ci-measurement-validators.cjs'
+const preparedValidators = resolve(process.env.RUNNER_TEMP, 'composition-state/ci-runtime/ci-measurement-validators.cjs')
 const { isCiMeasurementArtifact, isCiMeasurementComparison, isCiMeasurementCommentState } =
   createRequire(import.meta.url)(resolve(existsSync(preparedValidators)
     ? preparedValidators : '${ciWorkflowMeasurementValidatorsPath}'))
