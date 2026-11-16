@@ -66,6 +66,16 @@ Operations are grouped by semantic namespace. Meaningful transformations may hav
 
 Named exec policies are imported typed values with closed schema-validated definitions. The package exposes only semantics admitted by the selected native revision. One immutable plan reference is supplied to document declaration, review and executor input. Until native bounded grants are implemented and admitted, current attributed fresh approvals remain required; library metadata is not reusable consent. Native admission and the executor own enforcement, atomic consumption, revocation, expiry and exact-byte verification.
 
+Missions and steps accept optional `revisions: 'human-only'` and
+`revisionReviewer: person('person/NAME')`. A reviewer requires explicit human-only
+protection on the same declaration; an agent reference is not a reviewer.
+Lowering emits the native `revisions="human-only"` and
+`revision-reviewer="person/NAME"` properties. Missions additionally accept
+`revisionCutover: 'restart-active' | 'when-idle'`, emitted as `revision-cutover`.
+Steps do not accept cutover policy. Omitted fields emit no properties and do not
+materialize native defaults. Native Fractal owns revision authorization and
+cutover behavior; these fields do not themselves grant approval.
+
 ## Decided input contracts
 
 ### DQ1 — Duration inputs
