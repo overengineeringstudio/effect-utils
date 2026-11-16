@@ -10,44 +10,35 @@ bun add @overeng/utils
 
 ## Cloudflare Access gateway
 
-`@overeng/utils/cloudflare/access-gateway` exports `cloudflareAccessGateway`,
-a Worker handler for a private `ORIGIN` service binding:
+`@overeng/utils/cloudflare/access-gateway` exports a Worker handler for a
+private `ORIGIN` service binding:
 
 ```ts
 export { cloudflareAccessGateway as default } from '@overeng/utils/cloudflare/access-gateway'
 ```
 
-Enroll the gateway's production **and preview** URLs in Cloudflare Access.
-The gateway must have **no Static Assets**: Cloudflare's internal asset router
-does not propagate native `ctx.access` to the user Worker. A separate origin
-Worker may own static assets or SSR, but must disable workers.dev and version
-preview URLs and have no public routes or custom domains. Bind that private
-Worker to the gateway as `ORIGIN`. See the platform's
-[Access limitations](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#ctxaccess-limitations).
+Enroll production **and preview** URLs in Access. The gateway must have **no
+Static Assets**: their internal router does not propagate native `ctx.access`.
+Bind a separate origin Worker as `ORIGIN`; it must disable workers.dev/version
+previews and have no public routes or custom domains.
+[Platform limitations](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#ctxaccess-limitations).
 
-The handler rejects absent native Access context with 403 before calling the
-origin, including enrollment gaps or removed policies. It does not authenticate
-from request headers or propagate identity through the service binding.
-Authenticated requests/responses are forwarded unchanged, without buffering.
-This is not an IaC resource or JWT verifier: callers own policy/audience setup,
-service-token inventory and verification that the origin has no public URLs.
+Absent native context returns 403 before origin access; request headers never
+authenticate. Requests/responses pass unchanged without buffering or forwarding
+identity. `withCloudflareAccess(handler)` applies the same gate once at module
+initialization for custom redirects/headers, preserving the environment type.
+Callers own Access policy/audience setup and private-origin verification.
 
-For gateways with additional redirect/header behavior, wrap their native fetch
-handler once at module initialization with `withCloudflareAccess(handler)`.
-It applies the same gate before the handler runs and preserves its environment
-type; the assets-free gateway and private-origin requirements still apply.
-
-`@overeng/utils/node/cloudflare-access-token` provides
-`publishAlchemyAccessToken({ statePath, config, profile, inventoryId, reason })`
-for Node operator entrypoints. It reads an Alchemy-owned
-`Cloudflare.Access.ServiceToken` using the public state CLI, captures encoded
-state only in memory, and sends `{ clientId, clientSecret }` solely to
-`op-proxy refs write` on stdin after broker review. It never prints credentials;
-read/decode/publish failures exclude subprocess output and parse causes.
-Callers own the broker inventory declaration and may not use this to bypass
-review. `decodeAlchemyAccessTokenState` accepts and returns redacted strings
-for consumers that need only the strict encoded-state boundary. This adapter
-does not create, rotate, retry, or revoke tokens.
+Node operators use `@overeng/utils/node/cloudflare-access-token`:
+`publishAlchemyAccessToken({ statePath, backend, profile, inventoryId, reason })`.
+Use a fully qualified path such as `application/prod/agent-service-token` and
+`backend: 'cloudflare'`; no deployment config/default stage is evaluated.
+Optional `inventoryPath` selects the caller's reviewed broker inventory.
+Encoded state stays in memory; `{ clientId, clientSecret }` goes only to
+`op-proxy refs write` stdin after review. Failures omit captured output/causes.
+`decodeAlchemyAccessTokenState` accepts/returns redacted strings and handles
+credential-refresh progress before the JSON record. Callers own token lifecycle
+and inventory; the helper neither bypasses review nor creates, retries, or revokes tokens.
 
 ## GitHub App authentication (Node)
 

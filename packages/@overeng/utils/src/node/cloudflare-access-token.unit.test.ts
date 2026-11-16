@@ -26,6 +26,18 @@ describe('decodeAlchemyAccessTokenState', () => {
     expect(decoded).toEqual({ clientId: 'fixture-client', clientSecret: 'fixture-secret' })
   })
 
+  it('decodes the state record after credential-refresh progress without evaluating a stack', () => {
+    const state = stateJson({
+      resourceType: 'Cloudflare.Access.ServiceToken',
+      attr: { clientId: 'fixture-client', clientSecret: { __redacted__: 'fixture-secret' } },
+    })
+    expect(Redacted.value(decodeAlchemyAccessTokenState(Redacted.make(state)))).toEqual(
+      Redacted.value(
+        decodeAlchemyAccessTokenState(Redacted.make(`Refreshing credentials\n${state}`)),
+      ),
+    )
+  })
+
   it.each([
     'fixture-secret invalid JSON',
     stateJson({ resourceType: 'Other.Resource', attr: { clientSecret: 'fixture-secret' } }),

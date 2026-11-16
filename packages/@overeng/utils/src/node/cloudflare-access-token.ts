@@ -24,11 +24,15 @@ const Credentials = Schema.fromJsonString(
   Schema.Struct({ clientId: Schema.NonEmptyString, clientSecret: Schema.NonEmptyString }),
 )
 
-/** Decode Alchemy's encoded service-token state without exposing secrets through parse errors. */
+/** Decode the state CLI's JSON record after credential-refresh progress, without leaking parse causes. */
 export const decodeAlchemyAccessTokenState = (
   state: Redacted.Redacted<string>,
 ): Redacted.Redacted<string> => {
-  const decoded = Schema.decodeOption(TokenState)(Redacted.value(state))
+  const output = Redacted.value(state)
+  const recordStart = output.indexOf('{')
+  const decoded = Schema.decodeOption(TokenState)(
+    recordStart === -1 ? '' : output.slice(recordStart),
+  )
   if (Option.isNone(decoded) === true) {
     throw new AlchemyAccessTokenError({
       operation: 'decode',
@@ -47,9 +51,10 @@ export const decodeAlchemyAccessTokenState = (
 /** Publish an Alchemy-owned Access token only through the reviewed credential broker's stdin. */
 export const publishAlchemyAccessToken = (options: {
   readonly statePath: string
-  readonly config: string
+  readonly backend: string
   readonly profile: string
   readonly inventoryId: string
+  readonly inventoryPath?: string
   readonly reason: string
 }): void => {
   let state: Redacted.Redacted<string>
@@ -64,8 +69,8 @@ export const publishAlchemyAccessToken = (options: {
           'state',
           'read',
           options.statePath,
-          '--config',
-          options.config,
+          '--backend',
+          options.backend,
           '--profile',
           options.profile,
         ],
@@ -79,8 +84,12 @@ export const publishAlchemyAccessToken = (options: {
     })
   }
   const credential = decodeAlchemyAccessTokenState(state)
+  const publishArguments = ['refs', 'write', options.inventoryId, '--reason', options.reason]
+  if (options.inventoryPath !== undefined) {
+    publishArguments.push('--inventory', options.inventoryPath)
+  }
   try {
-    execFileSync('op-proxy', ['refs', 'write', options.inventoryId, '--reason', options.reason], {
+    execFileSync('op-proxy', publishArguments, {
       input: Redacted.value(credential),
       stdio: ['pipe', 'pipe', 'pipe'],
     })

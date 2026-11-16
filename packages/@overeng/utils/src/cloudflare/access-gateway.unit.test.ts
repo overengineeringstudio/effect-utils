@@ -2,17 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { cloudflareAccessGateway } from './access-gateway.ts'
 
+const unreachableOrigin = {
+  fetch: async (): Promise<Response> => {
+    throw new Error('Unauthenticated request reached the private origin')
+  },
+}
+
 describe('cloudflareAccessGateway', () => {
   it('denies unauthenticated page, RPC and static asset requests before reaching the origin', async () => {
-    let originCalls = 0
-    const environment = {
-      ORIGIN: {
-        fetch: async () => {
-          originCalls += 1
-          return new Response('private')
-        },
-      },
-    }
+    const environment = { ORIGIN: unreachableOrigin }
     for (const path of ['/', '/_serverFn/private', '/index.json', '/assets/private.js']) {
       const response = await cloudflareAccessGateway.fetch(
         new Request(`https://gateway.example${path}`),
@@ -21,11 +19,9 @@ describe('cloudflareAccessGateway', () => {
       )
       expect(response.status).toBe(403)
     }
-    expect(originCalls).toBe(0)
   })
 
   it('does not mistake client-supplied identity headers for native Access context', async () => {
-    let originCalls = 0
     const response = await cloudflareAccessGateway.fetch(
       new Request('https://gateway.example/', {
         headers: {
@@ -35,18 +31,10 @@ describe('cloudflareAccessGateway', () => {
           'CF-Access-Client-Secret': 'unverified',
         },
       }),
-      {
-        ORIGIN: {
-          fetch: async () => {
-            originCalls += 1
-            return new Response('private')
-          },
-        },
-      },
+      { ORIGIN: unreachableOrigin },
       {},
     )
     expect(response.status).toBe(403)
-    expect(originCalls).toBe(0)
   })
 
   it('forwards the original request and response without buffering or rewriting', async () => {
