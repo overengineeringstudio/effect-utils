@@ -3,8 +3,11 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Preserve the existing browser utility revision while exposing its alias.
+    flake-utils.url = "github:numtide/flake-utils/11707dc2f618dd54ca8739b309ec4fc024de578b";
     playwright-web-flake.url = "github:pietdevries94/playwright-web-flake";
     playwright-web-flake.inputs.nixpkgs.follows = "nixpkgs";
+    playwright-web-flake.inputs.flake-utils.follows = "flake-utils";
   };
 
   outputs =

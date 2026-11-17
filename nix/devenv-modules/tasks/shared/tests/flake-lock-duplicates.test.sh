@@ -189,4 +189,9 @@ exported="$(nix-instantiate --eval --strict --json --expr "
 " | jq -r .)"
 assert_equals "true" "$exported" "flake module export"
 
+echo "Test 9: committed root and browser lock identities remain unique"
+run_check "$ROOT/flake.lock" "$ROOT/devenv.lock" "$ROOT/nix/playwright-flake/flake.lock"
+assert_status 0 "$status" "committed root and browser lockfiles"
+assert_contains "$output" "No exact duplicate flake lock nodes found." "committed locks pass"
+
 echo "flake lock duplicate task module tests passed"

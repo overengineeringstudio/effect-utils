@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:c402bfd7f87b4c1ee4897c3f7306eb45cb31b9d7d0d73aaedc5eff53f611b8fb",
-  "generatedAt": "2026-11-16T13:58:58.177Z",
+  "inputFingerprint": "sha256:089b06fd1258c94ec2fd81e490b28ace6f3d4cedb8a5318e3397ed60328159df",
+  "generatedAt": "2026-11-17T02:11:53.744Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.4"
@@ -9,7 +9,7 @@
   "inputs": [
     {
       "path": "flake.lock",
-      "sha256": "23ed0c0f7f5e384f92591f8d4a09ac75c84cdf527ee3418936a6153f5d0ce5c0"
+      "sha256": "0a69c58ad779fce5df4c3ad29b2434920e0cfb0604d3fb20a935470aa5bc99bd"
     },
     {
       "path": "nix/bun-compile-runtime.nix",
