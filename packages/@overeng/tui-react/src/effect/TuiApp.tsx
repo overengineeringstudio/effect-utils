@@ -611,7 +611,10 @@ const setupProgressiveVisualWithView = ({
     // `run`). `runResult` overrides this to stderr to keep stdout clean for the
     // result payload.
     const viewStream = yield* ViewOutputStreamTag
-    const root = createRoot({ terminalOrStream: viewStream })
+    const root = createRoot({
+      terminalOrStream: viewStream,
+      options: { interactive: renderConfig.animation },
+    })
 
     // Wrapper that provides Registry via our own context (avoids multiple React instance issues)
     const TuiAppWrapper = (): ReactNode => {

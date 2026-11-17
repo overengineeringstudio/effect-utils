@@ -8,11 +8,114 @@ import { describe, it, expect } from 'vitest'
 import { Box } from '../../src/components/Box.tsx'
 import { Static } from '../../src/components/Static.tsx'
 import { Text } from '../../src/components/Text.tsx'
+import { useViewport } from '../../src/hooks/useViewport.tsx'
 import { createRoot } from '../../src/root.tsx'
 import { createMockTerminal } from '../helpers/mock-terminal.ts'
 
 describe('createRoot options', () => {
+  it('preserves trailing errors on a non-TTY stream with default dimensions', () => {
+    const writes: string[] = []
+    const root = createRoot({
+      terminalOrStream: {
+        write: (data) => {
+          writes.push(data)
+        },
+      },
+      options: { throttleMs: 0 },
+    })
+    root.render(
+      <Box flexDirection="column">
+        {Array.from({ length: 120 }, (_, i) => (
+          <Text key={i}>member-{i}</Text>
+        ))}
+        <Text>Error: sync failed</Text>
+        <Text>1 error</Text>
+      </Box>,
+    )
+    root.flush()
+    root.unmount()
+
+    const output = writes.join('')
+    expect(output).toContain('member-119')
+    expect(output).toContain('Error: sync failed\r\n1 error\r\n')
+    expect(output).not.toContain('more lines')
+  })
+
+  it('persists the full final frame after keeping live TTY frames within budget', () => {
+    const terminal = createMockTerminal({ rows: 24 })
+    const root = createRoot({
+      terminalOrStream: terminal,
+      options: { throttleMs: 0 },
+    })
+    const items = Array.from({ length: 120 }, (_, i) => `member-${i}`)
+    const AdaptiveView = () => {
+      const viewport = useViewport()
+      const visible = viewport._tag === 'bounded' ? items.slice(0, viewport.rows) : items
+      return (
+        <Box flexDirection="column">
+          {visible.map((item) => (
+            <Text key={item}>{item}</Text>
+          ))}
+          <Text>Error: sync failed</Text>
+          <Text>1 error</Text>
+        </Box>
+      )
+    }
+    root.render(<AdaptiveView />)
+    root.flush()
+    expect(terminal.getPlainOutput()).not.toContain('Error: sync failed')
+    expect(terminal.getPlainOutput()).toContain('... more lines')
+    terminal.clear()
+
+    root.unmount()
+    expect(terminal.getPlainOutput()).toContain('member-119')
+    expect(terminal.getPlainOutput()).toContain('Error: sync failed')
+    expect(terminal.getPlainOutput()).toContain('1 error')
+  })
+
   describe('maxDynamicLines', () => {
+    it.each(['column', 'row'] as const)(
+      'keeps an exactly full %s frame when trailing children produce no lines',
+      (flexDirection) => {
+        const terminal = createMockTerminal()
+        const root = createRoot({
+          terminalOrStream: terminal,
+          options: { maxDynamicLines: 1, throttleMs: 0 },
+        })
+        root.render(
+          <Box flexDirection={flexDirection}>
+            <Text>Last real line</Text>
+            {null}
+            <Box />
+            <Box>
+              <Static items={[]}>{(item: string) => <Text key={item}>{item}</Text>}</Static>
+              <Box />
+            </Box>
+          </Box>,
+        )
+        root.flush()
+
+        expect(terminal.getPlainOutput()).toContain('Last real line')
+        expect(terminal.getPlainOutput()).not.toContain('more lines')
+        terminal.clear()
+
+        root.render(
+          <Box flexDirection={flexDirection}>
+            <Text>Last real line</Text>
+            <Box />
+            <Box>
+              <Text>Dropped real line</Text>
+            </Box>
+          </Box>,
+        )
+        root.flush()
+
+        expect(terminal.getPlainOutput()).toContain('... more lines')
+        expect(terminal.getPlainOutput()).not.toContain('Dropped real line')
+        root.unmount()
+      },
+    )
+
     it('truncates output when exceeding limit', async () => {
       const terminal = createMockTerminal()
       const root = createRoot({
@@ -211,7 +314,7 @@ describe('createRoot options', () => {
       const terminal = createMockTerminal({ cols: 120, rows: 40 })
       const root = createRoot({ terminalOrStream: terminal })
 
-      expect(root.viewport).toEqual({ columns: 120, rows: 40 })
+      expect(root.viewport).toEqual({ _tag: 'bounded', columns: 120, rows: 40 })
 
       root.unmount()
     })
@@ -220,7 +323,7 @@ describe('createRoot options', () => {
       const terminal = createMockTerminal()
       const root = createRoot({ terminalOrStream: terminal })
 
-      expect(root.viewport).toEqual({ columns: 80, rows: 24 })
+      expect(root.viewport).toEqual({ _tag: 'bounded', columns: 80, rows: 24 })
 
       root.unmount()
     })

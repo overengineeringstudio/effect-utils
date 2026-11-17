@@ -11,13 +11,10 @@ import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'r
 // Types
 // =============================================================================
 
-/** Viewport information for components */
-export interface Viewport {
-  /** Terminal width in columns */
-  readonly columns: number
-  /** Terminal height in rows */
-  readonly rows: number
-}
+/** Available rendering space: log output has width but no vertical viewport. */
+export type Viewport =
+  | { readonly _tag: 'bounded'; readonly columns: number; readonly rows: number }
+  | { readonly _tag: 'unbounded'; readonly columns: number }
 
 /** Internal context value with update capability */
 interface ViewportContextValue {
@@ -29,6 +26,7 @@ interface ViewportContextValue {
 // =============================================================================
 
 const defaultViewport: Viewport = {
+  _tag: 'bounded',
   columns: 80,
   rows: 24,
 }
@@ -70,6 +68,7 @@ export const ViewportProvider = ({
 
     const handleResize = () => {
       const newViewport: Viewport = {
+        _tag: 'bounded',
         columns: process.stdout.columns ?? 80,
         rows: process.stdout.rows ?? 24,
       }
@@ -98,10 +97,10 @@ export const ViewportProvider = ({
  * @example
  * ```tsx
  * const MyComponent = () => {
- *   const { columns, rows } = useViewport()
+ *   const viewport = useViewport()
  *
- *   // Adapt to available space
- *   const maxItems = Math.max(1, rows - 4)  // Leave room for header/footer
+ *   // Only interactive frames have a vertical limit.
+ *   const maxItems = viewport._tag === 'bounded' ? Math.max(1, viewport.rows - 4) : items.length
  *
  *   return (
  *     <Box>

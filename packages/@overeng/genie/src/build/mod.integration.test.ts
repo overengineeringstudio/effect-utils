@@ -6,6 +6,7 @@ import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
 import * as Command from 'effect/process/ChildProcess'
 import { expect } from 'vitest'
 
+import { stripAnsi } from '@overeng/tui-react'
 import { makeTempGitEnvironment, Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { GenieApp } from './app.ts'
@@ -641,6 +642,36 @@ export default {
       Effect.scoped,
     ),
   )
+
+  for (const outputMode of ['ci-plain', 'log']) {
+    Vitest.it.effect(
+      `${outputMode} includes every error when the file list exceeds a terminal viewport`,
+      Effect.fnUntraced(
+        function* () {
+          yield* withTestEnv((env) =>
+            Effect.gen(function* () {
+              for (let i = 0; i < 30; i++) {
+                yield* env.writeFile({
+                  path: `broken-${i}.json.genie.ts`,
+                  content: `throw new Error('generation-failure-${i}')
+export default { data: {}, stringify: () => '{}' }`,
+                })
+              }
+              const { stdout, stderr, exitCode } = yield* runGenie(env, ['--output', outputMode])
+              expect(exitCode).not.toBe(0)
+              const output = stripAnsi(`${stdout}\n${stderr}`)
+              expect(output).not.toContain('more files (')
+              for (let i = 0; i < 30; i++) {
+                expect(output).toContain(`broken-${i}.json error:`)
+              }
+            }),
+          )
+        },
+        Effect.provide(TestLayer),
+        Effect.scoped,
+      ),
+    )
+  }
 
   Vitest.it.effect(
     'Issue #135: --output json includes files array and cwd on failure',
