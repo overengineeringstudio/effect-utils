@@ -22,5 +22,5 @@ Effect.gen(function* () {
       shutdownTimeout: Number(process.argv[3]),
     }),
   ),
-  NodeRuntime.runMain,
+  NodeRuntime.runMain({ disableErrorReporting: true }),
 )
