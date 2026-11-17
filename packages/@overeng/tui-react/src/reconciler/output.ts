@@ -354,6 +354,17 @@ const applyBoxStyle = ({
   return result
 }
 
+// Match the renderer's line-producing nodes without allocating a scratch frame.
+const producesLines = (node: TuiNode): boolean => {
+  if (isTextElement(node) === true) return true
+  if (isBoxElement(node) === false) return false
+  for (const child of node.children) {
+    if (node.props.flexDirection === 'row' && isTextNode(child) === true) return true
+    if (producesLines(child) === true) return true
+  }
+  return false
+}
+
 /**
  * Squash consecutive text nodes and text elements into single lines.
  *
@@ -368,8 +379,9 @@ export const renderTreeSimple = ({
   root: TuiElement
   width: number
   maxLines?: number
-}): string[] => {
+}): { lines: string[]; truncated: boolean } => {
   const lines: string[] = []
+  let truncated = false
 
   const render = ({
     node,
@@ -390,7 +402,10 @@ export const renderTreeSimple = ({
       return // Static handled separately
     }
 
-    if (maxLines !== undefined && lines.length >= maxLines) return
+    if (maxLines !== undefined && lines.length >= maxLines) {
+      truncated ||= producesLines(node)
+      return
+    }
 
     if (isTextElement(node) === true) {
       const mergedStyle = { ...style, ...node.props }
@@ -407,9 +422,9 @@ export const renderTreeSimple = ({
       const paddingLeft = node.props.paddingLeft ?? node.props.padding ?? 0
       const newIndent = indent + paddingLeft
 
-      // Yoga height clipping: track lines produced by this box and stop
-      // when the box exceeds its yoga-computed height.
-      const computedHeight = Math.ceil(getLayout(node.yogaNode).height)
+      // Only enforce Yoga heights for a bounded live frame. Natural layout
+      // heights are not output limits for logs or the persisted final frame.
+      const computedHeight = maxLines === undefined ? 0 : Math.ceil(getLayout(node.yogaNode).height)
       const startLineCount = lines.length
       const boxFull = (): boolean =>
         computedHeight > 0 && lines.length - startLineCount >= computedHeight
@@ -440,17 +455,27 @@ export const renderTreeSimple = ({
         }
         // Also render any nested boxes
         for (const child of node.children) {
-          if (maxLines !== undefined && lines.length >= maxLines) break
-          if (boxFull() === true) break
           if (isBoxElement(child) === true) {
+            if ((maxLines !== undefined && lines.length >= maxLines) || boxFull() === true) {
+              if (producesLines(child) === true) {
+                truncated = true
+                break
+              }
+              continue
+            }
             render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
           }
         }
       } else {
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
-          if (maxLines !== undefined && lines.length >= maxLines) break
-          if (boxFull() === true) break
+          if ((maxLines !== undefined && lines.length >= maxLines) || boxFull() === true) {
+            if (producesLines(child) === true) {
+              truncated = true
+              break
+            }
+            continue
+          }
           render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
         }
       }
@@ -458,11 +483,12 @@ export const renderTreeSimple = ({
       // Hard clip: if a child produced more lines than yoga allocated
       // eslint-disable-next-line no-unmodified-loop-condition -- computedHeight is const; loop terminates via lines.pop()
       while (computedHeight > 0 && lines.length - startLineCount > computedHeight) {
+        truncated = true
         lines.pop()
       }
     }
   }
 
   render({ node: root, style: {}, indent: 0, boxStyle: {} })
-  return lines
+  return { lines, truncated }
 }

@@ -386,13 +386,14 @@ const FileList = ({ files, hasWatchCycle, hasSummary, expanded = false }: FileLi
   const viewport = useViewport()
 
   const { visibleFiles, hiddenFiles } = useMemo(() => {
+    const sorted = sortFilesByPriority(files)
+    if (viewport._tag === 'unbounded') {
+      return { visibleFiles: sorted, hiddenFiles: [] as GenieFile[] }
+    }
     // Reserve lines for everything outside the file list:
     // Header (1) + watch cycle? (1) + blank (1) + [files] + blank? (1) + separator? (1) + summary? (1)
     const reservedLines = 1 + (hasWatchCycle ? 1 : 0) + 1 + (hasSummary ? 3 : 0) + 1 // +1 for overflow line
     const availableLines = Math.max(1, viewport.rows - reservedLines)
-
-    // Sort by priority (errors first, etc.)
-    const sorted = sortFilesByPriority(files)
 
     // Calculate total lines needed, accounting for multi-line expanded items
     let totalLinesNeeded = 0
@@ -425,7 +426,7 @@ const FileList = ({ files, hasWatchCycle, hasSummary, expanded = false }: FileLi
       visibleFiles: sorted.slice(0, visibleCount),
       hiddenFiles: sorted.slice(visibleCount),
     }
-  }, [files, viewport.rows, hasWatchCycle, hasSummary, expanded])
+  }, [files, viewport, hasWatchCycle, hasSummary, expanded])
 
   return (
     <Box flexShrink={1}>
