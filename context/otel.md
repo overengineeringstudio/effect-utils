@@ -28,6 +28,34 @@ manually. The hermetic `semconv-model` capability includes a `registry-paths.jso
 map by dependency name; check, diff, and live-check resolve each dependency to its
 own local model, including the GenAI registry's transitive core dependency.
 
+## CLI delivery outcomes
+
+`makeOtelCliLayer` keeps export failures separate from the command's domain result.
+Terminal batch failures (after transport retries) and actual shutdown timeouts
+write sanitized warnings to stderr, never stdout. The optional synchronous
+`onDeliveryEvent` callback receives `OtelDeliveryEvent`: batch success, classified
+batch loss, and per-signal shutdown `{ timedOut, disabled }`. HTTP status codes
+are safe metadata; endpoints, headers, bodies, and raw causes are not exposed.
+Observer exceptions cannot replace the command's exit.
+
+Shutdown still awaits the existing exporter's scoped flush up to
+`shutdownTimeout`; the timeout is a ceiling, not a delay. A shutdown without a
+timeout is not proof that earlier batches arrived: a terminal export failure
+clears that batch and temporarily disables the upstream exporter. Observe batch
+outcomes as well as shutdown.
+
+Explicit `resourceAttributes` override ambient `OTEL_RESOURCE_ATTRIBUTES`;
+decoded service identity always wins for `service.name`, `service.namespace`,
+and `service.version`. Callers need not mutate process environment to attach
+run-specific resource metadata.
+
+The lifecycle hook is carried as the version-pinned `effect@4.1.0` patch,
+including source, JavaScript, and declarations. Its source authority is
+[Effect PR 10707](https://github.com/Effect-TS/effect/pull/10707);
+[issue 2567](https://github.com/overengineeringstudio/effect-utils/issues/2567)
+tracks retirement once an upstream release contains the hook. Both workspace
+and downstream patch projections include it.
+
 ## System Stack Assumptions
 
 The devenv module auto-detects a system-level OTEL stack by checking for the `OTEL_STATE_DIR` session variable. When set, the devenv module trusts the system-provided env vars (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_GRAFANA_URL`, etc.) instead of starting its own services.
