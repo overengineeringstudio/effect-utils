@@ -411,9 +411,9 @@ export const renderTreeSimple = ({
       const paddingLeft = node.props.paddingLeft ?? node.props.padding ?? 0
       const newIndent = indent + paddingLeft
 
-      // Yoga height clipping: track lines produced by this box and stop
-      // when the box exceeds its yoga-computed height.
-      const computedHeight = Math.ceil(getLayout(node.yogaNode).height)
+      // Only enforce Yoga heights for a bounded live frame. Natural layout
+      // heights are not output limits for logs or the persisted final frame.
+      const computedHeight = maxLines === undefined ? 0 : Math.ceil(getLayout(node.yogaNode).height)
       const startLineCount = lines.length
       const boxFull = (): boolean =>
         computedHeight > 0 && lines.length - startLineCount >= computedHeight
