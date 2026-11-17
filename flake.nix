@@ -26,6 +26,7 @@ rec {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     tsgo.url = "github:Effect-TS/tsgo";
+    tsgo.inputs.nixpkgsUnstable.follows = "nixpkgs";
   };
 
   outputs =
