@@ -361,7 +361,11 @@ export const createRoot = ({
       viewport._tag === 'bounded'
         ? Math.min(maxDynamicLines, Math.max(1, viewport.rows - 1 - staticLineCount))
         : undefined
-    calculateLayout({ node: container.root.yogaNode, width, height: effectiveMaxLines })
+    calculateLayout({
+      node: container.root.yogaNode,
+      width,
+      ...(effectiveMaxLines !== undefined ? { height: effectiveMaxLines } : {}),
+    })
     const rendered = renderTreeSimple({
       root: container.root,
       width,
