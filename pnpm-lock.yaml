@@ -14,6 +14,7 @@ patchedDependencies:
   '@myobie/pty@0.10.0': e6d9b2f6990efbb98235e6e4018e3e9bb5ac94bc54ea6764364857206b6b95a5
   '@storybook/builder-vite@10.6.0': 3ea63b6347343243dbebc21be698afb9635d47f3fd2a5c2bb7b10c002250dad5
   '@stylexjs/babel-plugin@0.19.0': f6a2b5a89698e9f14621ed294e9914bf5a007eefdd95c7b162d88f8264d41cca
+  '@stylexjs/unplugin@0.19.0': 070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc
 
 importers:
 
@@ -2508,7 +2509,7 @@ importers:
         version: link:../otel-contract
       '@stylexjs/unplugin':
         specifier: 0.19.0
-        version: 0.19.0(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
+        version: 0.19.0(patch_hash=070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
       effect:
         specifier: 4.1.0
         version: 4.1.0
@@ -7510,7 +7511,7 @@ snapshots:
       '@overeng/effect-distributed-lock': file:packages/@overeng/effect-distributed-lock(effect@4.1.0)
       '@overeng/otel-contract': file:packages/@overeng/otel-contract(effect@4.1.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@playwright/test': 1.64.1
-      '@stylexjs/unplugin': 0.19.0(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
+      '@stylexjs/unplugin': 0.19.0(patch_hash=070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
       effect: 4.1.0
       postcss: 8.5.26
       unplugin: 3.3.0(esbuild@0.28.2)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -8009,7 +8010,7 @@ snapshots:
       invariant: 2.2.4
       styleq: 0.2.1
 
-  '@stylexjs/unplugin@0.19.0(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))':
+  '@stylexjs/unplugin@0.19.0(patch_hash=070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-syntax-flow': 7.29.7(@babel/core@7.29.7)
@@ -8022,7 +8023,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@stylexjs/unplugin@0.19.0(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))':
+  '@stylexjs/unplugin@0.19.0(patch_hash=070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-syntax-flow': 7.29.7(@babel/core@7.29.7)
