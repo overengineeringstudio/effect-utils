@@ -168,6 +168,137 @@ describe('short persistent Watchman location', () => {
     },
     20000,
   )
+
+  it.skipIf(Bun.which('watchman') === null)(
+    'recovers a stale managed endpoint without admission deleting its files',
+    async () => {
+      const root = fixture()
+      const home = join(root, 'home')
+      mkdirSync(home)
+      const config = join(root, 'watchman.config')
+      // Test-only: permit the explicit restart even when the test runner is niced.
+      writeFileSync(config, '{"min_acceptable_nice_value":19}')
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        HOME: home,
+        WATCHMAN_CONFIG_FILE: config,
+      }
+      delete env['WATCHMAN_SOCK']
+      const directory = prepareWatchmanEnvironment(env)
+      if (directory === undefined) throw new Error('managed directory expected')
+      const socket = join(directory, 'sock')
+      const pidfile = join(directory, 'pid')
+      const dead = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `import { createServer } from 'node:net';
+           createServer().listen(${JSON.stringify(socket)}, () => console.log('ready'));`,
+        ],
+        { stdout: 'pipe', stderr: 'pipe' },
+      )
+      const ready = dead.stdout.getReader()
+      try {
+        expect(new TextDecoder().decode((await ready.read()).value)).toContain('ready')
+      } finally {
+        ready.releaseLock()
+        dead.kill('SIGKILL')
+        await dead.exited
+      }
+      // A real orphaned Unix socket and a dead PID are not a running service.
+      expect(lstatSync(socket).isSocket()).toBe(true)
+      writeFileSync(pidfile, `${dead.pid}\n`)
+      const inode = lstatSync(socket).ino
+      const tuple = [
+        '--no-local',
+        `--sockname=${socket}`,
+        '--no-site-spawner',
+        `--statefile=${join(directory, 'state')}`,
+        `--pidfile=${pidfile}`,
+        `--logfile=${join(directory, 'log')}`,
+        '--output-encoding=json',
+        'watch-project',
+        realpathSync(root),
+      ]
+      const start = ['watchman', ...tuple]
+        .map((arg) => `'${arg.replaceAll("'", "'\\''")}'`)
+        .join(' ')
+      const nicedProbe = async (managed: boolean) => {
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            '-e',
+            `import { setPriority } from 'node:os';
+             import { probeWatchman } from ${JSON.stringify(join(import.meta.dir, 'buck2-file-watcher.ts'))};
+             setPriority(19);
+             try {
+               await probeWatchman({
+                 env: process.env, repoRoot: ${JSON.stringify(root)}, deadlineMs: 2500,
+                 managedDirectory: ${managed === true ? JSON.stringify(directory) : 'undefined'}
+               });
+               console.log(JSON.stringify({ running: true }));
+             } catch (error) { console.log(JSON.stringify({ reason: error.reason, message: error.message })); }`,
+          ],
+          { env, stdout: 'pipe', stderr: 'pipe' },
+        )
+        const [exit, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        expect(stderr).toBe('')
+        expect(exit).toBe(0)
+        return JSON.parse(stdout)
+      }
+      try {
+        const callerOwned = await nicedProbe(false)
+        expect(callerOwned.reason).toBe('service')
+        expect(callerOwned.message).toContain('selects the intended running service')
+        if (process.platform === 'linux') {
+          const mode = lstatSync(socket).mode & 0o777
+          chmodSync(socket, 0)
+          try {
+            expect((await nicedProbe(true)).reason).toBe('service')
+          } finally {
+            chmodSync(socket, mode)
+          }
+        }
+        const stopped = await nicedProbe(true)
+        expect(stopped.reason).toBe('priority')
+        expect(stopped.message).toContain('no managed Watchman service is running')
+        expect(stopped.message).toContain(
+          `outside the gate, start the exact managed service un-niced: ${start};`,
+        )
+        expect(lstatSync(socket).ino).toBe(inode)
+        expect(readFileSync(pidfile, 'utf8')).toBe(`${dead.pid}\n`)
+        // Watchman, not admission, replaces the stale endpoint under its pidfile lock.
+        const restart = Bun.spawn(['watchman', ...tuple], { env, stdout: 'pipe', stderr: 'pipe' })
+        const [status, stdout, stderr] = await Promise.all([
+          restart.exited,
+          new Response(restart.stdout).text(),
+          new Response(restart.stderr).text(),
+        ])
+        expect(stderr).toBe('')
+        expect(status).toBe(0)
+        expect(JSON.parse(stdout).watch).toBe(realpathSync(root))
+        expect(lstatSync(socket).isSocket()).toBe(true)
+        expect(Number(readFileSync(pidfile, 'utf8').trim())).not.toBe(dead.pid)
+        expect(await nicedProbe(true)).toEqual({ running: true })
+      } finally {
+        const shutdown = Bun.spawn(
+          ['watchman', ...tuple.slice(0, -2), '--no-spawn', 'shutdown-server'],
+          { env, stdout: 'pipe', stderr: 'pipe' },
+        )
+        await Promise.all([
+          shutdown.exited,
+          new Response(shutdown.stdout).text(),
+          new Response(shutdown.stderr).text(),
+        ])
+        rmSync(directory, { recursive: true })
+      }
+    },
+    20000,
+  )
 })
 
 const watcherFixture = () => {

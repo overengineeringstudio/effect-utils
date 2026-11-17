@@ -91,9 +91,20 @@ job HOMEs remain isolated so one runner job's process cleanup cannot stop anothe
 job's service. No per-invocation directories are allocated or services stopped.
 The launcher exports `WATCHMAN_SOCK` for native Buck and passes the same socket
 explicitly to admission's Watchman CLI, along with the managed state/PID/log paths.
-An explicit `WATCHMAN_SOCK` remains caller-owned. Oversized sockets or unsafe
-managed directories fail closed with an actionable socket admission error; there
-is no fallback to Watchman's potentially oversized HOME-derived path.
+An explicit `WATCHMAN_SOCK` remains caller-owned: hosts with their own managed
+Watchman service may set it to that service's socket. Admission connects without
+spawning or managing the host service. Oversized sockets or unsafe managed
+directories fail closed with an actionable socket admission error; there is no
+fallback to Watchman's potentially oversized HOME-derived path.
+
+A niced gate may connect to a running managed service, but never spawn one.
+Leftover `sock` or `pid` files do not establish that the service is running.
+If the managed service has died, run the exact managed start command printed by
+the priority admission error once **outside the gate, un-niced**, then rerun the
+gate. That command selects the same socket/state/PID/log paths; Watchman acquires
+its pidfile lock and replaces the stale socket itself. Do not manually delete
+the socket or PID file or relax the shared service priority limit.
+
 Standalone Watchman CLI queries and watch cleanup must also pass `--sockname`;
 the CLI does not honor `WATCHMAN_SOCK` as native Buck does. The consumer-root and
 file-watcher contract fixtures resolve the production location through
