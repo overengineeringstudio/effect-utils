@@ -99,7 +99,9 @@ const getCssPostTransformHandler = (cssPostPlugin) => {
  * every rule in a lazily-loaded chunk while the build succeeds. Its two
  * asset-picking hooks are therefore dropped here and replaced.
  *
- * Upstream's dev path already uses a virtual module and is left untouched.
+ * Upstream's dev path already uses a virtual module. Its private poller is
+ * disposed by the maintained @stylexjs/unplugin patch in the shared workspace
+ * patch registry; configureServer cannot expose that timer to a wrapper here.
  *
  * @param {StylexVitePluginsOptions} [options]
  * @returns {StylexVitePlugin[]}
