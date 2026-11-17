@@ -68,6 +68,107 @@ const humanReviewGate = {
   reviewer: operator,
 } satisfies typeof HumanGateSchema.Encoded
 
+describe('native revision policy', () => {
+  const base = {
+    id: 'example/revisions',
+    state: 'ready',
+    reportTo: owner,
+    goal: 'Review revisions.',
+    steps: [{ id: 'work', agentless: true }],
+  } as const
+
+  it('keeps absent policy fields byte-identical without adding defaults', () => {
+    expect(emit([mission(base)])).toBe(`version 2
+mission "example/revisions" report-to="agent/example/owner" state="ready" {
+  goal "Review revisions."
+  step "work" {
+    agentless
+  }
+}
+`)
+    expect(missionWire(base)).not.toHaveProperty('revisions')
+    expect(missionWire(base)).not.toHaveProperty('revisionReviewer')
+    expect(missionWire(base)).not.toHaveProperty('revisionCutover')
+  })
+
+  it.each(['restart-active', 'when-idle'] as const)(
+    'emits mission cutover %s',
+    (revisionCutover) => {
+      expect(emit([mission({ ...base, revisionCutover })])).toBe(`version 2
+mission "example/revisions" report-to="agent/example/owner" revision-cutover="${revisionCutover}" state="ready" {
+  goal "Review revisions."
+  step "work" {
+    agentless
+  }
+}
+`)
+      expect(missionWire({ ...base, revisionCutover }).revisionCutover).toBe(revisionCutover)
+    },
+  )
+
+  it.each([undefined, person('person/reviewer')])(
+    'emits explicit human-only protection with optional reviewer %s at both levels',
+    (revisionReviewer) => {
+      const policy = {
+        revisions: 'human-only',
+        ...(revisionReviewer === undefined ? {} : { revisionReviewer }),
+      } as const
+      const reviewer = revisionReviewer === undefined ? '' : ' revision-reviewer="person/reviewer"'
+      const input = { ...base, ...policy, steps: [{ ...base.steps[0], ...policy }] }
+      expect(emit([mission(input)])).toBe(`version 2
+mission "example/revisions" report-to="agent/example/owner"${reviewer} revisions="human-only" state="ready" {
+  goal "Review revisions."
+  step "work"${reviewer} revisions="human-only" {
+    agentless
+  }
+}
+`)
+      expect(missionWire(input)).toMatchObject({ ...policy, steps: [policy] })
+    },
+  )
+
+  it('preserves protection on authored and finally steps', () => {
+    const work = step({
+      id: 'work',
+      agentless: true,
+      revisions: 'human-only',
+      revisionReviewer: operator,
+    })
+    const wire = missionWire({
+      ...base,
+      steps: [work],
+      finally: [
+        { id: 'cleanup', agentless: true, revisions: 'human-only', revisionReviewer: operator },
+      ],
+    })
+    expect(wire.steps[0]).toMatchObject({ revisions: 'human-only', revisionReviewer: operator })
+    expect(wire.finally?.[0]).toMatchObject({ revisions: 'human-only', revisionReviewer: operator })
+    expect(emit([mission(wire)])).toContain(
+      'step "cleanup" revision-reviewer="person/schickling" revisions="human-only"',
+    )
+  })
+
+  it.each([
+    { revisions: 'agent-only' },
+    { revisionsHumanOnly: true },
+    { revisionCutover: 'manual' },
+    { revisionReviewer: operator },
+    { revisions: 'human-only', revisionReviewer: worker },
+  ])('rejects invalid mission policy %j', (policy) => {
+    expect(() => mission({ ...base, ...policy } as never)).toThrow()
+  })
+
+  it.each([
+    { revisions: 'agent-only' },
+    { revisionsHumanOnly: true },
+    { revisionCutover: 'when-idle' },
+    { revisionReviewer: operator },
+    { revisions: 'human-only', revisionReviewer: worker },
+  ])('rejects invalid step policy %j', (policy) => {
+    expect(() => mission({ ...base, steps: [{ ...base.steps[0], ...policy }] } as never)).toThrow()
+  })
+})
+
 describe('canonical budget authoring', () => {
   const base = {
     id: 'example/admission',

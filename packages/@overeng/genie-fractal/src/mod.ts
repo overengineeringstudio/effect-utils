@@ -856,10 +856,17 @@ const UsedMissionSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('output'), outputOf: LocalId }),
 ]).annotate({ identifier: 'Fractal.UsedMission' })
 
+/** Native revision protection shared by missions and steps. */
+const RevisionProtectionFields = {
+  revisions: Schema.optionalKey(Schema.Literal('human-only')),
+  revisionReviewer: Schema.optionalKey(PersonReferenceSchema),
+}
+
 /** One mission step. */
 export const StepSchema = Schema.Struct({
   id: LocalId,
   ...OwnedDeclarationFields,
+  ...RevisionProtectionFields,
   documents: Schema.optionalKey(Schema.Array(PinnedDocumentReferenceSchema)),
   timeout: Schema.optionalKey(Duration),
   budget: Schema.optionalKey(Schema.Never.annotate({ identifier: 'Steps have no budget' })),
@@ -887,6 +894,10 @@ export const StepSchema = Schema.Struct({
   producesMission: Schema.optionalKey(MissionId),
   usesMission: Schema.optionalKey(UsedMissionSchema),
 }).pipe(
+  Schema.refine(
+    (s): s is typeof s => s.revisionReviewer === undefined || s.revisions === 'human-only',
+    { message: 'revision-reviewer requires revisions="human-only"' },
+  ),
   Schema.refine(
     (s): s is typeof s => (s.agentless === true && s.assignedTo !== undefined) === false,
     {
@@ -1036,6 +1047,8 @@ export const MissionSchema = Schema.Struct({
   id: MissionId,
   budget: Schema.optionalKey(MissionBudget),
   ...RetiredAdmissionFields,
+  ...RevisionProtectionFields,
+  revisionCutover: Schema.optionalKey(Schema.Literals(['restart-active', 'when-idle'])),
   inputs: Schema.optionalKey(
     Schema.Array(MissionInputSchema).pipe(
       Schema.refine(
@@ -1094,6 +1107,10 @@ export const MissionSchema = Schema.Struct({
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
   schedule: Schema.optionalKey(ScheduleSchema),
 }).pipe(
+  Schema.refine(
+    (m): m is typeof m => m.revisionReviewer === undefined || m.revisions === 'human-only',
+    { message: 'revision-reviewer requires revisions="human-only"' },
+  ),
   Schema.refine((m): m is typeof m => validGraph(m), {
     message:
       'mission needs unique graph nodes, existing dependencies and a normal completion frontier',
@@ -1794,7 +1811,13 @@ const lowerStep = (input: typeof StepSchema.Encoded): Node => {
   return node({
     name: 'step',
     args: [s.id],
-    props: s.timeout === undefined ? {} : { timeout: lowerDuration(s.timeout) },
+    props: {
+      ...(s.timeout === undefined ? {} : { timeout: lowerDuration(s.timeout) }),
+      ...(s.revisions === undefined ? {} : { revisions: s.revisions }),
+      ...(s.revisionReviewer === undefined
+        ? {}
+        : { 'revision-reviewer': s.revisionReviewer.subject }),
+    },
     children,
   })
 }
@@ -2508,6 +2531,11 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
       state: m.state,
       'report-to': `agent/${m.reportTo.id}`,
       ...(m.timeout === undefined ? {} : { timeout: lowerDuration(m.timeout) }),
+      ...(m.revisions === undefined ? {} : { revisions: m.revisions }),
+      ...(m.revisionReviewer === undefined
+        ? {}
+        : { 'revision-reviewer': m.revisionReviewer.subject }),
+      ...(m.revisionCutover === undefined ? {} : { 'revision-cutover': m.revisionCutover }),
       ...(m.stalledAfter === undefined ? {} : { 'stalled-after': lowerDuration(m.stalledAfter) }),
       ...(m.reportStalls === undefined ? {} : { 'report-stalls': m.reportStalls }),
       ...(m.reportCompleted === undefined ? {} : { 'report-completed': m.reportCompleted }),
