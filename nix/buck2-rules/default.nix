@@ -76,6 +76,7 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out/buck2/dependencies/runtime/effect"
     tar -xzf ${pnpmArchives.passthru.archivesByIdentity."effect@4.1.0"} \
       --strip-components=1 -C "$out/buck2/dependencies/runtime/effect"
+    patch -p1 -d "$out/buck2/dependencies/runtime/effect" < "$out/patches/effect@4.1.0.patch"
     cp ${./inventory.json} "$out/inventory.json"
     cat > "$out/BUCK" <<'BUCK'
     alias(
