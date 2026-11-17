@@ -372,6 +372,17 @@ export const renderTreeSimple = ({
   const lines: string[] = []
   let truncated = false
 
+  // Match the renderer's line-producing nodes without allocating a scratch frame.
+  const producesLines = (node: TuiNode): boolean => {
+    if (isTextElement(node) === true) return true
+    if (isBoxElement(node) === false) return false
+    for (const child of node.children) {
+      if (node.props.flexDirection === 'row' && isTextNode(child) === true) return true
+      if (producesLines(child) === true) return true
+    }
+    return false
+  }
+
   const render = ({
     node,
     style,
@@ -392,7 +403,7 @@ export const renderTreeSimple = ({
     }
 
     if (maxLines !== undefined && lines.length >= maxLines) {
-      truncated = true
+      truncated ||= producesLines(node)
       return
     }
 
@@ -446,8 +457,11 @@ export const renderTreeSimple = ({
         for (const child of node.children) {
           if (isBoxElement(child) === true) {
             if ((maxLines !== undefined && lines.length >= maxLines) || boxFull() === true) {
-              truncated = true
-              break
+              if (producesLines(child) === true) {
+                truncated = true
+                break
+              }
+              continue
             }
             render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
           }
@@ -456,8 +470,11 @@ export const renderTreeSimple = ({
         // Column layout - render each child on its own line(s)
         for (const child of node.children) {
           if ((maxLines !== undefined && lines.length >= maxLines) || boxFull() === true) {
-            truncated = true
-            break
+            if (producesLines(child) === true) {
+              truncated = true
+              break
+            }
+            continue
           }
           render({ node: child, style, indent: newIndent, boxStyle: newBoxStyle })
         }

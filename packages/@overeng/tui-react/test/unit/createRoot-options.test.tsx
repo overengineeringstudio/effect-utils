@@ -74,6 +74,48 @@ describe('createRoot options', () => {
   })
 
   describe('maxDynamicLines', () => {
+    it.each(['column', 'row'] as const)(
+      'keeps an exactly full %s frame when trailing children produce no lines',
+      (flexDirection) => {
+        const terminal = createMockTerminal()
+        const root = createRoot({
+          terminalOrStream: terminal,
+          options: { maxDynamicLines: 1, throttleMs: 0 },
+        })
+        root.render(
+          <Box flexDirection={flexDirection}>
+            <Text>Last real line</Text>
+            {null}
+            <Box />
+            <Box>
+              <Static items={[]}>{(item: string) => <Text key={item}>{item}</Text>}</Static>
+              <Box />
+            </Box>
+          </Box>,
+        )
+        root.flush()
+
+        expect(terminal.getPlainOutput()).toContain('Last real line')
+        expect(terminal.getPlainOutput()).not.toContain('more lines')
+        terminal.clear()
+
+        root.render(
+          <Box flexDirection={flexDirection}>
+            <Text>Last real line</Text>
+            <Box />
+            <Box>
+              <Text>Dropped real line</Text>
+            </Box>
+          </Box>,
+        )
+        root.flush()
+
+        expect(terminal.getPlainOutput()).toContain('... more lines')
+        expect(terminal.getPlainOutput()).not.toContain('Dropped real line')
+        root.unmount()
+      },
+    )
+
     it('truncates output when exceeding limit', async () => {
       const terminal = createMockTerminal()
       const root = createRoot({
