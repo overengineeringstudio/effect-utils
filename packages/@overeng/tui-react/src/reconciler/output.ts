@@ -354,6 +354,17 @@ const applyBoxStyle = ({
   return result
 }
 
+// Match the renderer's line-producing nodes without allocating a scratch frame.
+const producesLines = (node: TuiNode): boolean => {
+  if (isTextElement(node) === true) return true
+  if (isBoxElement(node) === false) return false
+  for (const child of node.children) {
+    if (node.props.flexDirection === 'row' && isTextNode(child) === true) return true
+    if (producesLines(child) === true) return true
+  }
+  return false
+}
+
 /**
  * Squash consecutive text nodes and text elements into single lines.
  *
@@ -371,17 +382,6 @@ export const renderTreeSimple = ({
 }): { lines: string[]; truncated: boolean } => {
   const lines: string[] = []
   let truncated = false
-
-  // Match the renderer's line-producing nodes without allocating a scratch frame.
-  const producesLines = (node: TuiNode): boolean => {
-    if (isTextElement(node) === true) return true
-    if (isBoxElement(node) === false) return false
-    for (const child of node.children) {
-      if (node.props.flexDirection === 'row' && isTextNode(child) === true) return true
-      if (producesLines(child) === true) return true
-    }
-    return false
-  }
 
   const render = ({
     node,
