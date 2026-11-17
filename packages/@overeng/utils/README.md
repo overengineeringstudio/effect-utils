@@ -8,6 +8,38 @@ Shared Effect utilities for the overeng ecosystem.
 bun add @overeng/utils
 ```
 
+## Cloudflare Access gateway
+
+`@overeng/utils/cloudflare/access-gateway` exports a Worker handler for a
+private `ORIGIN` service binding:
+
+```ts
+export { cloudflareAccessGateway as default } from '@overeng/utils/cloudflare/access-gateway'
+```
+
+Enroll production **and preview** URLs in Access. The gateway must have **no
+Static Assets**: their internal router does not propagate native `ctx.access`.
+Bind a separate origin Worker as `ORIGIN`; it must disable workers.dev/version
+previews and have no public routes or custom domains.
+[Platform limitations](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#ctxaccess-limitations).
+
+Absent native context returns 403 before origin access; request headers never
+authenticate. Requests/responses pass unchanged without buffering or forwarding
+identity. `withCloudflareAccess(handler)` applies the same gate once at module
+initialization for custom redirects/headers, preserving the environment type.
+Callers own Access policy/audience setup and private-origin verification.
+
+Node operators use `@overeng/utils/node/cloudflare-access-token`:
+`publishAlchemyAccessToken({ statePath, backend, profile, inventoryId, reason })`.
+Use a fully qualified path such as `application/prod/agent-service-token` and
+`backend: 'cloudflare'`; no deployment config/default stage is evaluated.
+Optional `inventoryPath` selects the caller's reviewed broker inventory.
+Encoded state stays in memory; `{ clientId, clientSecret }` goes only to
+`op-proxy refs write` stdin after review. Failures omit captured output/causes.
+`decodeAlchemyAccessTokenState` accepts/returns redacted strings and handles
+credential-refresh progress before the JSON record. Callers own token lifecycle
+and inventory; the helper neither bypasses review nor creates, retries, or revokes tokens.
+
 ## GitHub App authentication (Node)
 
 `@overeng/utils/node/github-app` provides `makeGitHubApp`, `GitHubApp.layer`,

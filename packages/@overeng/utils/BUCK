@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:58f1fca15a2a18e465730550f9eb5eb7ba689555614c5b4e6f9650efbb54f006
+# Semantic fingerprint: sha256:f56a82829f168977fef697f3fa9ca8b84197bdad07b457237897c5f3f6179004
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -42,6 +42,8 @@ export_materialization_inputs([
     "src/build-identity-types.d.ts",
     "src/build-identity.js",
     "src/build-identity.unit.test.ts",
+    "src/cloudflare/access-gateway.ts",
+    "src/cloudflare/access-gateway.unit.test.ts",
     "src/cuid/cuid.browser.ts",
     "src/cuid/cuid.node.ts",
     "src/cuid/mod.ts",
@@ -79,6 +81,8 @@ export_materialization_inputs([
     "src/node/cli-help-rewrite.unit.test.ts",
     "src/node/cli-version.ts",
     "src/node/cli-version.unit.test.ts",
+    "src/node/cloudflare-access-token.ts",
+    "src/node/cloudflare-access-token.unit.test.ts",
     "src/node/cmd-log.ts",
     "src/node/cmd.contract.ts",
     "src/node/cmd.ts",
@@ -187,6 +191,8 @@ package_view(
         "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
         "src/build-identity.js": "src/build-identity.js",
         "src/build-identity.unit.test.ts": "src/build-identity.unit.test.ts",
+        "src/cloudflare/access-gateway.ts": "src/cloudflare/access-gateway.ts",
+        "src/cloudflare/access-gateway.unit.test.ts": "src/cloudflare/access-gateway.unit.test.ts",
         "src/cuid/cuid.browser.ts": "src/cuid/cuid.browser.ts",
         "src/cuid/cuid.node.ts": "src/cuid/cuid.node.ts",
         "src/cuid/mod.ts": "src/cuid/mod.ts",
@@ -224,6 +230,8 @@ package_view(
         "src/node/cli-help-rewrite.unit.test.ts": "src/node/cli-help-rewrite.unit.test.ts",
         "src/node/cli-version.ts": "src/node/cli-version.ts",
         "src/node/cli-version.unit.test.ts": "src/node/cli-version.unit.test.ts",
+        "src/node/cloudflare-access-token.ts": "src/node/cloudflare-access-token.ts",
+        "src/node/cloudflare-access-token.unit.test.ts": "src/node/cloudflare-access-token.unit.test.ts",
         "src/node/cmd-log.ts": "src/node/cmd-log.ts",
         "src/node/cmd.contract.ts": "src/node/cmd.contract.ts",
         "src/node/cmd.ts": "src/node/cmd.ts",
@@ -319,6 +327,8 @@ package_view(
         "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
         "src/build-identity.js": "src/build-identity.js",
         "src/build-identity.unit.test.ts": "src/build-identity.unit.test.ts",
+        "src/cloudflare/access-gateway.ts": "src/cloudflare/access-gateway.ts",
+        "src/cloudflare/access-gateway.unit.test.ts": "src/cloudflare/access-gateway.unit.test.ts",
         "src/cuid/cuid.browser.ts": "src/cuid/cuid.browser.ts",
         "src/cuid/cuid.node.ts": "src/cuid/cuid.node.ts",
         "src/cuid/mod.ts": "src/cuid/mod.ts",
@@ -356,6 +366,8 @@ package_view(
         "src/node/cli-help-rewrite.unit.test.ts": "src/node/cli-help-rewrite.unit.test.ts",
         "src/node/cli-version.ts": "src/node/cli-version.ts",
         "src/node/cli-version.unit.test.ts": "src/node/cli-version.unit.test.ts",
+        "src/node/cloudflare-access-token.ts": "src/node/cloudflare-access-token.ts",
+        "src/node/cloudflare-access-token.unit.test.ts": "src/node/cloudflare-access-token.unit.test.ts",
         "src/node/cmd-log.ts": "src/node/cmd-log.ts",
         "src/node/cmd.contract.ts": "src/node/cmd.contract.ts",
         "src/node/cmd.ts": "src/node/cmd.ts",
@@ -449,6 +461,8 @@ package_view(
         "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
         "src/build-identity.js": "src/build-identity.js",
         "src/build-identity.unit.test.ts": "src/build-identity.unit.test.ts",
+        "src/cloudflare/access-gateway.ts": "src/cloudflare/access-gateway.ts",
+        "src/cloudflare/access-gateway.unit.test.ts": "src/cloudflare/access-gateway.unit.test.ts",
         "src/cuid/cuid.browser.ts": "src/cuid/cuid.browser.ts",
         "src/cuid/cuid.node.ts": "src/cuid/cuid.node.ts",
         "src/cuid/mod.ts": "src/cuid/mod.ts",
@@ -486,6 +500,8 @@ package_view(
         "src/node/cli-help-rewrite.unit.test.ts": "src/node/cli-help-rewrite.unit.test.ts",
         "src/node/cli-version.ts": "src/node/cli-version.ts",
         "src/node/cli-version.unit.test.ts": "src/node/cli-version.unit.test.ts",
+        "src/node/cloudflare-access-token.ts": "src/node/cloudflare-access-token.ts",
+        "src/node/cloudflare-access-token.unit.test.ts": "src/node/cloudflare-access-token.unit.test.ts",
         "src/node/cmd-log.ts": "src/node/cmd-log.ts",
         "src/node/cmd.contract.ts": "src/node/cmd.contract.ts",
         "src/node/cmd.ts": "src/node/cmd.ts",
