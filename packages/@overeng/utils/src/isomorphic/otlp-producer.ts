@@ -1,6 +1,6 @@
 import { Layer, Redacted } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { OtlpLogger, OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
+import { FetchHttpClient } from 'effect/http'
+import { OtlpLogger, OtlpSerialization, OtlpTracer } from 'effect/observability'
 
 import type { CliBuildIdentity } from '../node/cli-version.ts'
 
