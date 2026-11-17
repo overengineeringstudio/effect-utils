@@ -35,7 +35,6 @@ const runPromotion = (manifestChanged: boolean, script = advanceStep.run) =>
         'git add candidate.txt',
         'export GITHUB_SHA="$(git commit-tree "$(git write-tree)" -p "$previous" -m Candidate)"',
         'git update-ref HEAD "$GITHUB_SHA"',
-        'git push origin "$previous:refs/heads/published" HEAD:refs/heads/main >&2',
         'if [ "$MANIFEST_CHANGED" = true ]; then',
         '  printf \'{"version":2}\\n\' > nix/buck2-products/manifest.json',
         'fi',
@@ -68,6 +67,8 @@ const runPromotion = (manifestChanged: boolean, script = advanceStep.run) =>
         // The local remote shares the same object database used by the API adapter.
         'rm -rf "$fixture/remote.git/objects"',
         'ln -s "$fixture/work/.git/objects" "$fixture/remote.git/objects"',
+        'git --git-dir="$fixture/remote.git" update-ref refs/heads/published "$previous"',
+        'git --git-dir="$fixture/remote.git" update-ref refs/heads/main "$GITHUB_SHA"',
         'export -f gh',
         'bash -euo pipefail -c "$ADVANCE_SCRIPT"',
         'published="$(git ls-remote origin refs/heads/published | cut -f1)"',
