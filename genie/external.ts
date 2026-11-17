@@ -695,6 +695,13 @@ const stylexBabelPluginPatch = {
     'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
 } satisfies PatchesRegistry
 
+// Terminal OTLP batch/shutdown outcomes, identical to the hook proposed in
+// https://github.com/Effect-TS/effect/pull/10707 (commit 1b9ffc0079).
+// Retire with an upstream release: https://github.com/overengineeringstudio/effect-utils/issues/2567.
+const effectExporterObserverPatch = {
+  'effect@4.1.0': 'patches/effect@4.1.0.patch',
+} satisfies PatchesRegistry
+
 /** Repo-local patches that should not be projected into downstream consumers. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: '.',
@@ -708,6 +715,7 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
     '@myobie/pty@0.10.0': 'patches/@myobie__pty@0.10.0.patch',
     ...storybookBuilderVitePatch,
     ...stylexBabelPluginPatch,
+    ...effectExporterObserverPatch,
   },
 })
 
@@ -715,7 +723,11 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
  * Repo-root-relative registry used by downstream projection helpers
  * (patchPostinstall / pnpmPatchedDependencies / createPnpmPatchedDependencies).
  */
-const patches: PatchesRegistry = { ...storybookBuilderVitePatch, ...stylexBabelPluginPatch }
+const patches: PatchesRegistry = {
+  ...storybookBuilderVitePatch,
+  ...stylexBabelPluginPatch,
+  ...effectExporterObserverPatch,
+}
 
 /**
  * Parse a patch specifier into package name and version.

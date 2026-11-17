@@ -13,18 +13,20 @@
  */
 
 import {
+  Cause,
   Config,
   Context,
   Duration,
   Effect,
+  Exit,
   Layer,
   Metric,
   Option,
   type Scope,
   Tracer,
 } from 'effect'
-import { FetchHttpClient } from 'effect/http'
-import { Otlp } from 'effect/observability'
+import { FetchHttpClient, HttpClientError } from 'effect/http'
+import { Otlp, OtlpExporter } from 'effect/observability'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
 
@@ -124,6 +126,23 @@ const getParentSpanFromTraceparent = (): Tracer.ExternalSpan | undefined => {
 export const parentSpanFromTraceparent: Effect.Effect<Tracer.ExternalSpan | undefined> =
   Effect.sync(getParentSpanFromTraceparent)
 
+/** Sanitized delivery outcomes: never contain endpoints, headers, bodies, or causes. */
+export type OtelDeliveryEvent =
+  | { readonly _tag: 'BatchSucceeded'; readonly signal: 'traces' | 'metrics' | 'logs' }
+  | {
+      readonly _tag: 'BatchFailed'
+      readonly signal: 'traces' | 'metrics' | 'logs'
+      readonly failure:
+        | { readonly _tag: 'HttpStatus'; readonly status: number }
+        | { readonly _tag: 'Transport' | 'Interrupted' | 'Export' }
+    }
+  | {
+      readonly _tag: 'Shutdown'
+      readonly signal: 'traces' | 'metrics' | 'logs'
+      readonly timedOut: boolean
+      readonly disabled: boolean
+    }
+
 /** Configuration options for the CLI OTEL tracing layer. */
 export interface OtelCliLayerConfig {
   /**
@@ -171,6 +190,15 @@ export interface OtelCliLayerConfig {
    * @default 30_000 (non-interactive) / 10_000 (interactive TTY)
    */
   shutdownTimeout?: number
+  /**
+   * Optional synchronous, non-blocking delivery observer. Batch failures are
+   * terminal (after retries); shutdown reports the exporter's actual timeout
+   * result. Observer exceptions cannot change the application's exit.
+   * Sanitized loss warnings are always written to stderr, never stdout.
+   */
+  onDeliveryEvent?: (event: OtelDeliveryEvent) => void
+  /** Ambient resource attributes < these attributes < explicit service identity. */
+  resourceAttributes?: Readonly<Record<string, string | number | boolean>>
 }
 
 /**
@@ -215,11 +243,10 @@ const parseOtelResourceAttributes = (raw: string | undefined): Record<string, st
  *   {@link OtelConfig} marker is provided so command code can gate on it)
  * - Config-free shutdown flush: the exporter's flush is a scope finalizer Effect
  *   awaits to completion, so natural exit is as fast as the flush. `shutdownTimeout`
- *   is a safety ceiling only (see its docs) — the final batch is delivered by the
- *   scope-close finalizer regardless of the export intervals, so do NOT tune
- *   intervals or the cap to make a metric "land". Known residual: a transient
- *   mid-run export failure trips the exporter's 60s self-disable, after which the
- *   final flush short-circuits (not solvable via `shutdownTimeout`).
+ *   is a safety ceiling only (see its docs). Terminal batch failures and actual
+ *   shutdown timeouts produce sanitized stderr warnings without changing the
+ *   command's output or domain result; {@link OtelCliLayerConfig.onDeliveryEvent}
+ *   exposes the same outcomes programmatically.
  *
  * @example
  * ```typescript
@@ -259,6 +286,9 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
       serviceVersion: identity.version,
       attributes: {
         ...parseOtelResourceAttributes(process.env.OTEL_RESOURCE_ATTRIBUTES),
+        ...config.resourceAttributes,
+        'service.name': identity.name,
+        'service.version': identity.version,
         'service.namespace': identity.namespace,
       },
     }
@@ -288,13 +318,52 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     // a SIBLING provider layer that calls `provider.register()`, NOT this layer —
     // serving them here would double-export + drag `@opentelemetry/sdk-*` and a
     // process-global onto every CLI (restate-effect decision 0007).
+    const observer = (event: OtlpExporter.Event): void => {
+      const signal =
+        event.label === 'OtlpTracer'
+          ? 'traces'
+          : event.label === 'OtlpMetrics'
+            ? 'metrics'
+            : 'logs'
+      let delivery: OtelDeliveryEvent
+      if (event._tag === 'Shutdown') {
+        delivery = {
+          _tag: 'Shutdown',
+          signal,
+          timedOut: event.timedOut,
+          disabled: event.disabled,
+        }
+        if (event.timedOut === true) {
+          process.stderr.write(`OTEL warning: ${signal} shutdown timed out; telemetry may be lost.\n`)
+        }
+      } else if (Exit.isSuccess(event.exit) === true) {
+        delivery = { _tag: 'BatchSucceeded', signal }
+      } else {
+        const error = event.exit.cause.reasons.find((reason) => reason._tag === 'Fail')
+        const failure: Extract<OtelDeliveryEvent, { _tag: 'BatchFailed' }>['failure'] =
+          error?._tag === 'Fail' && HttpClientError.isHttpClientError(error.error)
+            ? error.error.reason._tag === 'StatusCodeError'
+              ? { _tag: 'HttpStatus', status: error.error.reason.response.status }
+              : { _tag: 'Transport' }
+            : Cause.hasInterrupts(event.exit.cause) === true
+              ? { _tag: 'Interrupted' }
+              : { _tag: 'Export' }
+        delivery = { _tag: 'BatchFailed', signal, failure }
+        const detail = failure._tag === 'HttpStatus' ? `HTTP ${failure.status}` : failure._tag
+        process.stderr.write(`OTEL warning: ${signal} batch lost (${detail}).\n`)
+      }
+      config.onDeliveryEvent?.(delivery)
+    }
     const exporterLive = Otlp.layerJson({
       baseUrl,
       resource,
       tracerExportInterval: exportInterval,
       ...(metricsExportInterval === undefined ? {} : { metricsExportInterval }),
       shutdownTimeout,
-    }).pipe(Layer.provide(FetchHttpClient.layer))
+    }).pipe(
+      Layer.provide(FetchHttpClient.layer),
+      Layer.provide(Layer.succeed(OtlpExporter.Observer, observer)),
+    )
 
     return Layer.mergeAll(configLive, parentLive.pipe(Layer.provideMerge(exporterLive)))
   })
@@ -351,7 +420,8 @@ const shapeDefaults = (shape: Shape): ShapeOverrides => {
 }
 
 /** Inputs to {@link withTelemetry}: the validated identity, process {@link Shape}, resolved endpoint, and rare per-call knob overrides. */
-export interface TelemetryLayerOptions {
+export interface TelemetryLayerOptions
+  extends Pick<OtelCliLayerConfig, 'onDeliveryEvent' | 'resourceAttributes'> {
   /**
    * Typed, decoded service identity stamped onto `service.{name,namespace,version}`
    * of EVERY signal's resource. Construct it via `Schema.decode(ServiceIdentity)`
@@ -406,6 +476,8 @@ export const withTelemetry = (options: TelemetryLayerOptions): Layer.Layer<OtelC
   return makeOtelCliLayer({
     identity,
     endpoint,
+    ...(options.onDeliveryEvent === undefined ? {} : { onDeliveryEvent: options.onDeliveryEvent }),
+    ...(options.resourceAttributes === undefined ? {} : { resourceAttributes: options.resourceAttributes }),
     ...(knobs.exportInterval === undefined ? {} : { exportInterval: knobs.exportInterval }),
     ...(knobs.metricsExportInterval === undefined
       ? {}
