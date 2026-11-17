@@ -530,10 +530,10 @@ React Tree → TuiReconciler → Yoga Layout → Lines → InlineRenderer → Te
 Components access terminal dimensions via hook:
 
 ```typescript
-const { columns, rows } = useViewport()
+const viewport = useViewport()
 ```
 
-Viewport updates automatically on terminal resize.
+Interactive viewports have `{ _tag: 'bounded', columns, rows }` and update on terminal resize. Non-interactive output and persisted final frames have `{ _tag: 'unbounded', columns }`. Consumers must narrow on `_tag` before using `rows`, and render all items for unbounded output.
 
 ### Viewport Constraints
 
@@ -549,7 +549,7 @@ When a line exceeds terminal width, the terminal wraps it to the next row. This 
 
 When content exceeds terminal height, the terminal scrolls—pushing content above the visible area. The cursor cannot reach scrolled-off content, so differential updates fail (the renderer tries to move up N lines, but the cursor can only reach row 1).
 
-**Protection:** Dynamic content is automatically limited to `viewport.rows - 1` lines. Excess content is truncated with a "... N more lines" indicator.
+**Protection:** Interactive TTY frames are limited to `viewport.rows - 1` lines, minus committed static lines and capped by `maxDynamicLines`. Clipped frames include a "... more lines" indicator. Non-TTY streams, CI/plain modes, and the persisted final frame are not limited by viewport height or `maxDynamicLines`, so trailing errors and summaries remain visible.
 
 #### Viewport-Aware Components
 
@@ -557,10 +557,10 @@ For better UX, components should handle overflow gracefully rather than relying 
 
 ```typescript
 const FileList = ({ files }: { files: readonly File[] }) => {
-  const { rows } = useViewport()
+  const viewport = useViewport()
 
-  // Calculate available lines (reserve space for header, footer, etc.)
-  const availableLines = Math.max(1, rows - 4)
+  // Only live interactive output needs to reserve terminal rows.
+  const availableLines = viewport._tag === 'bounded' ? Math.max(1, viewport.rows - 4) : files.length
 
   if (files.length <= availableLines) {
     return <>{files.map(f => <FileItem key={f.path} file={f} />)}</>
@@ -945,7 +945,9 @@ Creates a root for rendering React elements to the terminal.
 interface CreateRootOptions {
   /** Min ms between renders. Default: 16 (~60fps) */
   throttleMs?: number
-  /** Max lines for dynamic region. Default: 100 */
+  /** Use cursor-based viewport rendering. Default: terminal.isTTY */
+  interactive?: boolean
+  /** Max lines for interactive dynamic frames. Default: 100 */
   maxDynamicLines?: number
   /** Max static lines to buffer. Default: Infinity */
   maxStaticLines?: number
@@ -961,7 +963,7 @@ interface Root {
   /** Notify of terminal resize */
   resize: () => void
   /** Current viewport dimensions */
-  readonly viewport: { columns: number; rows: number }
+  readonly viewport: Viewport
 }
 
 const root = createRoot({ terminalOrStream: process.stdout, options: { throttleMs: 16 } })
@@ -1124,15 +1126,13 @@ interface TuiLogEntry {
 
 ### useViewport
 
-Hook for accessing terminal dimensions.
+Hook for accessing available rendering space.
 
 ```typescript
-interface Viewport {
-  columns: number
-  rows: number
-}
+type Viewport =
+  { _tag: 'bounded'; columns: number; rows: number } | { _tag: 'unbounded'; columns: number }
 
-const { columns, rows } = useViewport()
+const viewport = useViewport()
 ```
 
 ### Types
@@ -1228,7 +1228,7 @@ const DeployApp = createTuiApp({
 // View receives stateAtom, subscribes internally
 function DeployView({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
   const state = useTuiAtomValue(stateAtom)
-  const { rows } = useViewport()
+  const viewport = useViewport()
 
   if (state._tag === 'Idle') return null
   if (state._tag === 'Interrupted') return <Text color="yellow">⚠ Operation cancelled</Text>
@@ -1244,7 +1244,7 @@ function DeployView({ stateAtom }: { stateAtom: Atom.Atom<DeployState> }) {
       {state._tag === 'Progress' && (
         <Box flexDirection="column">
           <Text>Deploying {state.services.filter(s => s.status === 'healthy').length}/{state.services.length}</Text>
-          <ServiceList services={state.services} maxRows={rows - 4} />
+          <ServiceList services={state.services} maxRows={viewport._tag === 'bounded' ? viewport.rows - 4 : state.services.length} />
         </Box>
       )}
 

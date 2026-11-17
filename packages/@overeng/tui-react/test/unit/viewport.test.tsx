@@ -5,11 +5,18 @@
 import React from 'react'
 import { describe, it, expect } from 'vitest'
 
-import { Box, Text, useViewport, ViewportProvider, renderToLines } from '../../src/mod.tsx'
+import {
+  Box,
+  Text,
+  useViewport,
+  ViewportProvider,
+  renderToLines,
+  type Viewport,
+} from '../../src/mod.tsx'
 
 describe('useViewport', () => {
-  it('provides default viewport when no provider', async () => {
-    let capturedViewport: { columns: number; rows: number } | null = null
+  it('provides an unbounded viewport for string rendering', async () => {
+    let capturedViewport: Viewport | null = null
 
     const TestComponent = () => {
       capturedViewport = useViewport()
@@ -18,11 +25,11 @@ describe('useViewport', () => {
 
     await renderToLines({ element: <TestComponent />, options: { width: 80 } })
 
-    expect(capturedViewport).toEqual({ columns: 80, rows: 24 })
+    expect(capturedViewport).toEqual({ _tag: 'unbounded', columns: 80 })
   })
 
   it('provides viewport from provider', async () => {
-    let capturedViewport: { columns: number; rows: number } | null = null
+    let capturedViewport: Viewport | null = null
 
     const TestComponent = () => {
       capturedViewport = useViewport()
@@ -31,20 +38,20 @@ describe('useViewport', () => {
 
     await renderToLines({
       element: (
-        <ViewportProvider viewport={{ columns: 120, rows: 40 }}>
+        <ViewportProvider viewport={{ _tag: 'bounded', columns: 120, rows: 40 }}>
           <TestComponent />
         </ViewportProvider>
       ),
       options: { width: 80 },
     })
 
-    expect(capturedViewport).toEqual({ columns: 120, rows: 40 })
+    expect(capturedViewport).toEqual({ _tag: 'bounded', columns: 120, rows: 40 })
   })
 
   it('allows components to adapt to viewport', async () => {
     const AdaptiveList = ({ items }: { items: string[] }) => {
-      const { rows } = useViewport()
-      const maxItems = Math.max(1, rows - 2) // Leave room for header/footer
+      const viewport = useViewport()
+      const maxItems = viewport._tag === 'bounded' ? Math.max(1, viewport.rows - 2) : items.length
       const visible = items.slice(0, maxItems)
       const hidden = items.length - visible.length
 
@@ -63,7 +70,7 @@ describe('useViewport', () => {
     // With small viewport, should truncate
     const smallLines = await renderToLines({
       element: (
-        <ViewportProvider viewport={{ columns: 80, rows: 5 }}>
+        <ViewportProvider viewport={{ _tag: 'bounded', columns: 80, rows: 5 }}>
           <AdaptiveList items={items} />
         </ViewportProvider>
       ),
@@ -76,7 +83,7 @@ describe('useViewport', () => {
     // With large viewport, should show all
     const largeLines = await renderToLines({
       element: (
-        <ViewportProvider viewport={{ columns: 80, rows: 20 }}>
+        <ViewportProvider viewport={{ _tag: 'bounded', columns: 80, rows: 20 }}>
           <AdaptiveList items={items} />
         </ViewportProvider>
       ),
@@ -84,5 +91,9 @@ describe('useViewport', () => {
     })
 
     expect(largeLines.some((l: string) => l.includes('more'))).toBe(false)
+
+    const allItems = Array.from({ length: 120 }, (_, i) => `item-${i}`)
+    const unboundedLines = await renderToLines({ element: <AdaptiveList items={allItems} /> })
+    expect(unboundedLines).toEqual(allItems)
   })
 })

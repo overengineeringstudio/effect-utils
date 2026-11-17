@@ -5,8 +5,9 @@
 import { it } from '@effect/vitest'
 import { Cause, Console, Effect, Exit, pipe, Result, Schema } from 'effect'
 import React from 'react'
-import { describe, expect, beforeEach, afterEach, test } from 'vitest'
+import { describe, expect, beforeEach, afterEach, test, vi } from 'vitest'
 
+import { ci, ciPlain, log, OutputModeTag } from '../../src/effect/OutputMode.tsx'
 import { testModeLayer } from '../../src/effect/testing.tsx'
 import { createTuiApp, run, runResult, useTuiAtomValue, Box, Text } from '../../src/mod.tsx'
 import { captureStdoutRaw, type RestoreStdoutCapture } from '../helpers/stdout-capture.ts'
@@ -93,6 +94,48 @@ describe('createTuiApp', () => {
   afterEach(() => {
     console.log = originalLog
   })
+  for (const [name, mode] of [
+    ['ci', ci],
+    ['ci-plain', ciPlain],
+    ['log', log],
+  ] as const) {
+    it.effect(`${name} preserves errors after a tall tree even on a TTY`, () =>
+      Effect.gen(function* () {
+        const output: string[] = []
+        const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+          output.push(String(chunk))
+          return true
+        })
+        const ttyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+        Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true })
+        yield* CounterApp.run(
+          <Box flexDirection="column">
+            {Array.from({ length: 120 }, (_, i) => (
+              <Text key={i}>member-{i}</Text>
+            ))}
+            <Text>Error: sync failed</Text>
+            <Text>1 error</Text>
+          </Box>,
+        ).pipe(
+          Effect.scoped,
+          Effect.provideService(OutputModeTag, mode),
+          Effect.ensuring(
+            Effect.sync(() => {
+              stdoutSpy.mockRestore()
+              if (ttyDescriptor === undefined) {
+                Reflect.deleteProperty(process.stdout, 'isTTY')
+              } else {
+                Object.defineProperty(process.stdout, 'isTTY', ttyDescriptor)
+              }
+            }),
+          ),
+        )
+        expect(output.join('')).toContain('member-119')
+        expect(output.join('')).toContain('Error: sync failed')
+        expect(output.join('')).toContain('1 error')
+      }),
+    )
+  }
 
   describe('headless (no view)', () => {
     it.effect('initializes with initial state', () =>

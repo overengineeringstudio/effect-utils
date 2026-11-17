@@ -13,8 +13,9 @@
  * ```
  */
 
-import type { ReactElement } from 'react'
+import React, { type ReactElement } from 'react'
 
+import { ViewportProvider } from './hooks/useViewport.tsx'
 import { renderTreeSimple, extractStaticContent } from './reconciler/output.ts'
 import type { TuiContainer } from './reconciler/reconciler.ts'
 import { TuiReconciler, flushPendingMicrotasks } from './reconciler/reconciler.ts'
@@ -101,7 +102,7 @@ export const renderToString = async ({
       calculateLayout({ node: container.root.yogaNode, width })
 
       // Render to lines
-      const dynamicLines = renderTreeSimple({ root: container.root, width })
+      const { lines: dynamicLines } = renderTreeSimple({ root: container.root, width })
 
       // Combine static and dynamic lines, then truncate
       const allLines = [...staticResult.lines, ...dynamicLines]
@@ -132,7 +133,16 @@ export const renderToString = async ({
 
   // Render synchronously using updateContainerSync (same as root.tsx)
   // This ensures the initial render commits immediately.
-  reconciler.updateContainerSync(element, fiberRoot, null, () => {})
+  reconciler.updateContainerSync(
+    React.createElement(
+      ViewportProvider,
+      { viewport: { _tag: 'unbounded', columns: width } },
+      element,
+    ),
+    fiberRoot,
+    null,
+    () => {},
+  )
 
   // Flush any pending microtasks (e.g., useSyncExternalStore subscriptions)
   // that React scheduled during the commit phase.
