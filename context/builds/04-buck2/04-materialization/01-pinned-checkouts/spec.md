@@ -17,13 +17,13 @@ available, fail with a readiness request rather than mutate the checkout.
 
 ## Scope and existing mechanisms
 
-| Mechanism                        | Implemented today                                                                                                                       | Boundary                                                                                                                      |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Commit-addressed store checkout  | `mr` resolves pinned members to `refs/commits/<sha>` when a reusable branch checkout is unsuitable                                      | Commit identity is not an install lock or readiness guarantee; this protocol requires the commit checkout, not `refs/heads/*` |
-| Managed pnpm mutation            | Shared `pnpm.nix` serializes mutation by PNPM_HOME using `flock`, with a shared store-cache lease                                       | Optional materialization mode; raw pnpm bypasses these guards, and different PNPM_HOME values do not serialize one checkout   |
-| Current dependency setup         | Root `devenv.nix` sets `materialize = false`; README documents `buck2:editor:materialize` and scoped publication                        | pnpm is lockfile-authoring only; there is no current supported root `pnpm:install`                                            |
-| Atomic publication and retention | Editor snapshots, `.publish.lock`, generation reader leases/pins; `buck2:typescript:materialize-dist` publishes declarations atomically | Atomic pointer publication does not prove aggregate readiness or retain an external consumer's entire checkout                |
-| Teardown                         | `worktree-teardown` and editor release refuse unsafe removal                                                                            | External custody leases must also be integrated before automatic retirement can honor this protocol                           |
+| Mechanism                        | Implemented today                                                                                                                                              | Boundary                                                                                                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Commit-addressed store checkout  | `mr` resolves pinned members to `refs/commits/<sha>` when a reusable branch checkout is unsuitable                                                             | Commit identity is not an install lock or readiness guarantee; this protocol requires the commit checkout, not `refs/heads/*`                                                  |
+| Managed pnpm mutation            | `acquire_pnpm_materialization_root_lock` takes a per-materialization-root exclusive flock, then the PNPM_HOME lock and shared `acquire_pnpm_store_cache_lease` | Managed mutations of one root remain serialized even with different PNPM_HOME values; raw pnpm bypasses these guards, and consumer readiness/lifetime admission is not covered |
+| Current dependency setup         | Root `devenv.nix` sets `materialize = false`; README documents `buck2:editor:materialize` and scoped publication                                               | pnpm is lockfile-authoring only; there is no current supported root `pnpm:install`                                                                                             |
+| Atomic publication and retention | Editor snapshots, `.publish.lock`, generation reader leases/pins; `buck2:typescript:materialize-dist` publishes declarations atomically                        | Atomic pointer publication does not prove aggregate readiness or retain an external consumer's entire checkout                                                                 |
+| Teardown                         | `worktree-teardown` and editor release refuse unsafe removal                                                                                                   | External custody leases must also be integrated before automatic retirement can honor this protocol                                                                            |
 
 Implementation references: [pnpm tasks](../../../../../../nix/devenv-modules/tasks/shared/pnpm.nix),
 [root task policy](../../../../../../devenv.nix),
@@ -62,8 +62,15 @@ invocations opening persistent links. A symlink alone holds no lease. Descriptor
 inheritance and close-only release reuse the native generation-lease launcher
 pattern; no explicit unlock may release a descendant's protection. Every setup,
 repair, cleanup, GC, and teardown entry point must honor this outer lock.
-Acquire custody before existing publication/store/generation locks, preserving
-their internal ordering; never request custody while holding an inner lock.
+Acquire custody before existing materialization-root/publication/store/generation
+locks, preserving their internal ordering; never request custody while holding
+an inner lock. Managed pnpm backends retain the existing root → PNPM_HOME → store
+lease order: `pnpm-storage.nix` supplies `<cacheRoot>/pnpm-install.lock` with a
+600-second wait to `acquire_pnpm_materialization_root_lock`. Build on that root
+mutation exclusion rather than replace it with another pnpm install lock.
+The outer persistent custody control adds consumer lifetime/readiness and
+retirement admission across backends; the existing cache-root control alone
+does not supply those guarantees.
 Native editor generation leases or pins remain required for exported snapshots,
 including protection against host-budget collection outside this checkout.
 
@@ -150,8 +157,9 @@ Consumers must never:
 
 - Run install/bootstrap, regenerate files, repair, clean, or publish into the
   shared checkout without assigned custody and exclusive admission.
-- Race a custodian, bypass a guard with another PNPM_HOME, or infer permission
-  from `refs/commits`, successful prior setup, a stale receipt, or lock age.
+- Race a custodian, bypass managed mutation guards with raw package-manager
+  commands, or infer permission from PNPM_HOME selection, `refs/commits`,
+  successful prior setup, a stale receipt, or lock age.
 - Delete lock files, kill another holder, run `rm -rf` or `chmod -R` on a shared
   checkout, or change modes through hardlinks into the shared content store.
 - Keep reading a linked payload without custody and applicable generation
