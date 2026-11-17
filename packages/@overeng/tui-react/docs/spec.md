@@ -1130,7 +1130,8 @@ Hook for accessing available rendering space.
 
 ```typescript
 type Viewport =
-  { _tag: 'bounded'; columns: number; rows: number } | { _tag: 'unbounded'; columns: number }
+  | { _tag: 'bounded'; columns: number; rows: number }
+  | { _tag: 'unbounded'; columns: number }
 
 const viewport = useViewport()
 ```

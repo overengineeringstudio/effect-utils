@@ -6,6 +6,7 @@ import { Effect, FileSystem, Path, Schema, Stream } from 'effect'
 import * as Command from 'effect/process/ChildProcess'
 import { expect } from 'vitest'
 
+import { stripAnsi } from '@overeng/tui-react'
 import { makeTempGitEnvironment, Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { GenieApp } from './app.ts'
@@ -658,10 +659,10 @@ export default { data: {}, stringify: () => '{}' }`,
               }
               const { stdout, stderr, exitCode } = yield* runGenie(env, ['--output', outputMode])
               expect(exitCode).not.toBe(0)
-              const output = `${stdout}\n${stderr}`
+              const output = stripAnsi(`${stdout}\n${stderr}`)
               expect(output).not.toContain('more files (')
               for (let i = 0; i < 30; i++) {
-                expect(output).toContain(`generation-failure-${i}`)
+                expect(output).toContain(`broken-${i}.json error:`)
               }
             }),
           )
