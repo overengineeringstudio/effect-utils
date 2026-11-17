@@ -42,7 +42,6 @@ const runPromotion = (manifestChanged: boolean, script = advanceStep.run) =>
         'export MANIFEST_BASE64_1= MANIFEST_BASE64_2= MANIFEST_BASE64_3=',
         'git add nix/buck2-products/manifest.json',
         'export SMOKED_TREE="$(git write-tree)"',
-        'git reset --hard HEAD >&2',
         'export RUNNER_TEMP="$fixture" GITHUB_STEP_SUMMARY="$fixture/summary"',
         'export GITHUB_REPOSITORY=example/repo',
         'gh() {',
