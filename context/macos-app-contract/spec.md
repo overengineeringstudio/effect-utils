@@ -715,6 +715,15 @@ than creating notification identities. An already separately allowed notifier
 may retain its identity temporarily; further unification while preserving each
 app's UI and behavior is a later migration, not a prerequisite for the host.
 
+The supervisor checks the notification grant, title/body byte bounds and configured
+product ID before forwarding to the GUI agent. The GUI agent repeats the same
+admission checks before native submission. An oversized request returns
+`invalid-request`, and an unknown product returns `policy-denied`, even when the
+GUI agent is unavailable; valid requests still return `session-unavailable` in
+that case. Rejected requests retain admission/outcome audit records without
+title/body content. Notification text is OS-visible content, not a private review
+surface: clients must not include secrets or treat submission as human approval.
+
 ## Grants and human consent
 
 Release one covers all six permission families below, with two distinct audio
