@@ -29,6 +29,7 @@ const blackHole = Effect.acquireRelease(
     const server = createServer((socket) => {
       sockets.add(socket)
       socket.on('close', () => sockets.delete(socket))
+      socket.on('error', () => socket.destroy())
       socket.resume()
     })
     server.once('error', reject)
@@ -116,7 +117,9 @@ Vitest.describe('makeOtelCliLayer delivery outcomes', () => {
   Vitest.it.effect('reports a real shutdown timeout without changing stdout or successful exit', () =>
     Effect.gen(function* () {
       const server = yield* blackHole
-      const result = yield* runCli(`${server.endpoint}/private-token`, 100)
+      const result = yield* runCli(`${server.endpoint}/private-token`, 100).pipe(
+        Effect.timeout('10 seconds'),
+      )
       expect(result.stdout).toBe('{"ok":true}\n')
       expect(result.code).toBe(0)
       expect(result.stderr).toContain('OTEL warning: traces shutdown timed out; telemetry may be lost.')
