@@ -12,6 +12,8 @@
 export * from '../mod.ts'
 
 export * from '../../build/ci-measurements/schema.ts'
+// The compiler consumes Effect schema types, so it belongs to the installed, design-time surface.
+export * from '../json-schema-validation/mod.ts'
 
 export { nodeGenieIO } from './io.ts'
 

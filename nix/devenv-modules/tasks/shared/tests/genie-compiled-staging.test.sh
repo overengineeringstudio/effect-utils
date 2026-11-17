@@ -176,5 +176,31 @@ grep -q "\"spacedSource\": \"$identity_repo/generators/identity.json.genie.ts\""
   "$identity_repo/generators/identity.json"
 grep -q '"emittedLiteral": "import.meta.url"' "$identity_repo/generators/identity.json"
 
+echo "Test 5: the real isomorphic entry typechecks without installed dependencies"
+# Runtime-only closure checks erase import type edges. The strict export proof must also
+# work cold, so copy the actual sources outside the dependency view and use the real compiler.
+cold_workspace="$tmpdir/cold-isomorphic"
+mkdir -p "$cold_workspace"
+cp -R "$ROOT/packages/@overeng/genie/src" "$cold_workspace/src"
+cat > "$cold_workspace/package.json" <<'EOF'
+{ "type": "module" }
+EOF
+cat > "$cold_workspace/tsconfig.json" <<'EOF'
+{
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "files": ["src/runtime/mod.ts"]
+}
+EOF
+"$typescript_api_server" --project "$cold_workspace/tsconfig.json" --pretty false
+
 echo ""
 echo "Genie compiled import staging cleanup tests passed."
