@@ -107,8 +107,8 @@ pkgs.runCommand "buck2-rules"
     ${lib.concatMapStringsSep "\n" (
       path:
       let
-        parts = lib.splitString "/patches/" path;
-        package = builtins.head parts;
+        parts = lib.splitString "/patches/" "/${path}";
+        package = ".${builtins.head parts}";
         source = "patches/${lib.concatStringsSep "/patches/" (builtins.tail parts)}";
       in
       ''
