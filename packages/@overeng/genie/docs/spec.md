@@ -407,6 +407,14 @@ set covers `isomorphic-es2024`, `node`, `bun`, `browser`, `webworker`,
 `workerd`, and `react-native`. Profiles define export-condition preference,
 forbidden imports/globals, and optional TypeScript proof settings.
 
+Genie's `.` export additionally remains typecheckable before dependency installation:
+bootstrap package generators validate its strict `isomorphic-es2024` contract with
+only the ES2024 standard library and no ambient type packages. Type-only imports
+still participate in that proof. The Effect-schema validator compiler
+(`renderJsonSchemaValidator`) is available from `@overeng/genie/node`, not `.`.
+The `devenv-modules:test` compiled-staging regression checks the real `.` sources
+in an isolated dependency-free tree on the `pr/buck2-tools` PR gate.
+
 ## Generation Pipeline
 
 The non-watch pipeline is:
