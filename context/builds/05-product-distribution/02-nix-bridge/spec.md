@@ -441,6 +441,69 @@ fails closed. The smoke runner, setup, token permissions, and harness are unchan
 This ref guarantees manifest eligibility and consumer smoke admission, not
 success of unrelated CI checks.
 
+#### Published-commit contract for consumers
+
+```text
+previous published tip T -- first parent --> P (consumer pin)
+main candidate X -------- second parent --> P
+                        Published-From: X
+```
+
+A consumer verifies the pinned commit P's own contract, not unrelated checks
+on X. P is reachable from `refs/heads/published`; each advancement preserves T
+as first parent and uses an exact T lease. P has exactly two parents `[T, X]`,
+subject `Publish products for X`, and exactly one `Published-From: X` trailer
+equal to parent 2. X is on main. The diff from X to P is empty or only
+`nix/buck2-products/manifest.json`; an empty diff is valid. The producer checks
+that P's full tree equals the tree admitted by `consumer-smoke`.
+
+The `published/current` status belongs to X, not P. Success means publication,
+consumer smoke, and promotion succeeded, or a later candidate already advanced
+published and this run was a successful no-op. It does not prove that X is the
+current published candidate; resolve and verify P independently.
+
+`buck2-products/manifest-current` on X compares X's **committed** manifest with
+the fresh proposal and is red only for bootstrap rows (`genie`). P already
+carries the fresh proposal. This status does not gate promotion and **must not
+gate published pins**, even when it is red on `Published-From`
+(see [#2345](https://github.com/overengineeringstudio/effect-utils/issues/2345)
+and [#2359](https://github.com/overengineeringstudio/effect-utils/issues/2359)).
+
+##### Consumer verification
+
+Run in a full-history clone of this repository, setting P to the exact proposed
+pin (not implicitly to a moving branch tip):
+
+```bash
+set -euo pipefail
+P="$(git rev-parse "${P:?Set P to the proposed published pin}^{commit}")"
+git fetch --no-tags origin \
+  +refs/heads/main:refs/remotes/origin/main \
+  +refs/heads/published:refs/remotes/origin/published
+git merge-base --is-ancestor "$P" refs/remotes/origin/published
+read -r -a parents <<< "$(git show -s --format=%P "$P")"
+test "${#parents[@]}" -eq 2
+X="${parents[1]}"
+test "$(git show -s --format=%s "$P")" = "Publish products for $X"
+test "$(git show -s --format='%(trailers:key=Published-From,valueonly)' "$P")" = "$X"
+git merge-base --is-ancestor "$X" refs/remotes/origin/main
+changed="$(git diff --name-only "$X" "$P")"
+test -z "$changed" || test "$changed" = nix/buck2-products/manifest.json
+gh api "repos/overengineeringstudio/effect-utils/commits/$X/status" \
+  --jq '.statuses | map(select(.context == "published/current")) | .[0].state' \
+  | (read -r state; test "$state" = success)
+```
+
+The first-parent identity and exact lease are producer-side advancement
+guarantees; consumers can additionally compare parent 1 with their previously
+observed tip when verifying a single advancement. Consumer-smoked tree equality
+is also producer-checked, not reconstructed from the status API. A missing or
+non-successful `published/current` status is not verification success.
+
+`genie/ci-workflow/published-ref.integration.test.ts` executes the real
+promotion shell against local Git objects for both changed and unchanged
+manifests. The existing `genie:ci-workflow:test` gate runs these contract tests.
+
 ### Consumer smoke fixture
 
 ```text
