@@ -40,8 +40,15 @@ export interface CreateRootOptions {
   readonly throttleMs?: number
 
   /**
-   * Maximum lines for the dynamic region.
-   * Content exceeding this will be truncated with a "... N more lines" indicator.
+   * Enable cursor-based viewport rendering on TTY streams.
+   * Disable for CI/plain modes even when the output stream is a TTY.
+   * @default terminal.isTTY
+   */
+  readonly interactive?: boolean
+
+  /**
+   * Maximum lines for interactive dynamic frames.
+   * Clipped content is indicated by "... more lines". Ignored for final/log output.
    * @default 100
    */
   readonly maxDynamicLines?: number
@@ -141,13 +148,25 @@ export const createRoot = ({
 
   // Resolve terminal interface once, share with renderer
   const terminal = resolveTerminal(terminalOrStream)
-  const renderer = new InlineRenderer({ terminal })
+  const interactive = terminal.isTTY === true && options.interactive !== false
+  const renderer = new InlineRenderer({
+    terminal: {
+      write: (data) => terminal.write(data),
+      get columns() {
+        return terminal.columns
+      },
+      get rows() {
+        return terminal.rows
+      },
+      isTTY: interactive,
+    },
+  })
 
-  // Viewport state
-  let viewport: Viewport = {
-    columns: terminal.columns,
-    rows: terminal.rows,
-  }
+  const getViewport = (final = false): Viewport =>
+    interactive === true && final === false
+      ? { _tag: 'bounded', columns: terminal.columns, rows: terminal.rows }
+      : { _tag: 'unbounded', columns: terminal.columns }
+  let viewport = getViewport()
 
   // Throttling state
   let lastRenderTime = 0
@@ -287,17 +306,13 @@ export const createRoot = ({
   }
 
   /** Perform the actual render */
-  const doRender = (): void => {
+  const doRender = (final = false): void => {
     if (container.root === null) {
       renderer.render([])
       return
     }
 
-    // Update viewport (terminal might have resized)
-    viewport = {
-      columns: terminal.columns,
-      rows: terminal.rows,
-    }
+    viewport = getViewport(final)
 
     const width = viewport.columns
 
@@ -341,26 +356,28 @@ export const createRoot = ({
       }
     }
 
-    // Compute hard budget: rows - 1 (for trailing cursor line) - static lines consumed.
-    // This is the superconsole pattern (saturating_sub).
-    const effectiveMaxLines = Math.min(
-      maxDynamicLines,
-      Math.max(1, viewport.rows - 1 - staticLineCount),
-    )
+    // Only live interactive frames must fit on screen for differential updates.
+    const effectiveMaxLines =
+      viewport._tag === 'bounded'
+        ? Math.min(maxDynamicLines, Math.max(1, viewport.rows - 1 - staticLineCount))
+        : undefined
+    calculateLayout({
+      node: container.root.yogaNode,
+      width,
+      ...(effectiveMaxLines !== undefined ? { height: effectiveMaxLines } : {}),
+    })
+    const rendered = renderTreeSimple({
+      root: container.root,
+      width,
+      ...(effectiveMaxLines !== undefined ? { maxLines: effectiveMaxLines } : {}),
+    })
+    let lines = rendered.lines
 
-    // Calculate layout with height constraint so yoga can distribute space
-    // via flexShrink (large sections shrink, fixed elements keep their lines).
-    calculateLayout({ node: container.root.yogaNode, width, height: effectiveMaxLines })
-
-    // Render to lines. Both maxLines and yoga height clipping enforce the budget.
-    let lines = renderTreeSimple({ root: container.root, width, maxLines: effectiveMaxLines })
-
-    // Safety net: hard-truncate if lines still exceed budget (should rarely trigger
-    // with yoga constraint + render clipping, but catches edge cases).
-    if (lines.length > effectiveMaxLines) {
-      const hiddenCount = lines.length - effectiveMaxLines + 1
+    // Clipping happens inside the tree renderer, before the old length-only safety
+    // net could detect it. Reserve the final budgeted line for an honest notice.
+    if (effectiveMaxLines !== undefined && rendered.truncated === true) {
       lines = lines.slice(0, effectiveMaxLines - 1)
-      lines.push(`... ${hiddenCount} more line${hiddenCount > 1 ? 's' : ''}`)
+      lines.push('... more lines')
     }
 
     // Truncate lines horizontally to prevent soft wrapping.
@@ -376,7 +393,7 @@ export const createRoot = ({
       {
         viewport,
         onResize: (newViewport: Viewport) => {
-          viewport = newViewport
+          if (viewport._tag === 'bounded') viewport = newViewport
         },
       },
       element,
@@ -394,8 +411,9 @@ export const createRoot = ({
    * 3. Re-render to pick up any state changes triggered by effects
    * 4. Render to terminal
    */
-  const doFlush = (): void => {
+  const doFlush = (final = false): void => {
     if (disposed === true) return
+    viewport = getViewport(final)
 
     // Flush React work repeatedly. React's reconciler can schedule work across
     // multiple phases (sync work, passive effects, microtasks). We need to keep
@@ -409,6 +427,7 @@ export const createRoot = ({
     // Re-render to pick up state changes from effects (e.g., useSyncExternalStore
     // subscriptions or useEffect callbacks that called setState).
     if (lastRenderedElement !== null) {
+      viewport = getViewport(final)
       reconciler.updateContainerSync(
         wrapWithProviders(lastRenderedElement),
         fiberRoot,
@@ -428,7 +447,7 @@ export const createRoot = ({
     microtaskScheduled = false
 
     // Render the React tree to terminal output
-    doRender()
+    doRender(final)
     lastRenderTime = Date.now()
   }
 
@@ -445,7 +464,7 @@ export const createRoot = ({
     unmount: (unmountOptions?: UnmountOptions) => {
       // Flush pending React work and render final state before unmounting
       // This ensures all dispatched state updates are visible in the output
-      doFlush()
+      doFlush((unmountOptions?.mode ?? 'persist') === 'persist')
 
       // Mark as disposed to prevent any more renders
       disposed = true

@@ -110,7 +110,8 @@ const FileList = ({ files }: { files: readonly { name: string; status: string }[
   const viewport = useViewport()
 
   const reservedLines = 1 + 1 + 1 + 1 + 1 // header + blank + overflow + separator + footer
-  const availableLines = Math.max(1, viewport.rows - reservedLines)
+  const availableLines =
+    viewport._tag === 'bounded' ? Math.max(1, viewport.rows - reservedLines) : files.length
 
   const { visibleFiles, hiddenCount } = useMemo(() => {
     if (files.length <= availableLines) {
@@ -162,7 +163,8 @@ const StressView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
           <Text> Complete</Text>
           <Text dim>
             {' '}
-            (viewport: {viewport.columns}x{viewport.rows})
+            (viewport: {viewport.columns}x
+            {viewport._tag === 'bounded' ? viewport.rows : 'unbounded'})
           </Text>
         </Box>
         <Text> </Text>
@@ -190,7 +192,8 @@ const StressView = ({ stateAtom }: { stateAtom: Atom.Atom<AppState> }) => {
         </Text>
         <Text dim>
           {' '}
-          · /some/workspace/path (viewport: {viewport.columns}x{viewport.rows})
+          · /some/workspace/path (viewport: {viewport.columns}x
+          {viewport._tag === 'bounded' ? viewport.rows : 'unbounded'})
         </Text>
       </Box>
       <Text> </Text>
@@ -233,7 +236,8 @@ const VerticalView = ({ stateAtom }: { stateAtom: Atom.Atom<typeof VerticalState
   return (
     <Box flexDirection="column">
       <Text bold>
-        Vertical Overflow Test ({state.count} items, viewport: {viewport.columns}x{viewport.rows})
+        Vertical Overflow Test ({state.count} items, viewport: {viewport.columns}x
+        {viewport._tag === 'bounded' ? viewport.rows : 'unbounded'})
       </Text>
       <Text> </Text>
       {Array.from({ length: state.count }, (_, i) => (
@@ -253,7 +257,8 @@ const CombinedView = ({ stateAtom }: { stateAtom: Atom.Atom<typeof VerticalState
   return (
     <Box flexDirection="column">
       <Text bold>
-        Combined Overflow Test ({state.count} items, viewport: {viewport.columns}x{viewport.rows})
+        Combined Overflow Test ({state.count} items, viewport: {viewport.columns}x
+        {viewport._tag === 'bounded' ? viewport.rows : 'unbounded'})
       </Text>
       <Text> </Text>
       {Array.from({ length: state.count }, (_, i) => (
