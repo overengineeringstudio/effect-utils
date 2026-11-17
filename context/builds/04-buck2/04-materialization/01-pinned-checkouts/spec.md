@@ -45,6 +45,76 @@ retirement. A consumer may act as custodian only through an explicit assignment,
 not because it found a missing directory. A **consumer** requests a commit and
 exports, waits, verifies, and writes links only inside its own checkout.
 
+### Installed adapter and discovery (required, not shipped)
+
+The store owner installs a dependency-free native adapter and configures one
+custodian service before enabling downstream admission. The adapter must not
+import JavaScript, load an Effect tree, or evaluate the target checkout to
+discover readiness. Its executable and runtime closure live outside the checkout
+in a trusted immutable installation. Installation is an operator action, never
+an automatic consumer bootstrap.
+
+Consumers discover it only through `EFFECT_UTILS_PINNED_SETUP_CONFIG`, an absolute
+path to an owner-controlled regular JSON file outside the target checkout:
+
+```json
+{
+  "version": 1,
+  "adapter": "/opt/effect-utils/bin/pinned-setup",
+  "custodian": "local-default",
+  "endpoint": "/run/user/1000/effect-utils/pinned-setup.sock",
+  "storeRoot": "/srv/checkouts"
+}
+```
+
+The absolute adapter path, local Unix socket, store root, and opaque custodian
+identifier are configured by the store owner; the service socket authenticates
+the same user. Consumers check ownership, refuse symlinks and group/world-writable
+config or executable ancestors, and reject unknown versions. Missing config,
+adapter, or service yields `custodian-unavailable`; never search the unready
+checkout or fall back to install. A fresh checkout needs only this installed
+adapter, not checkout dependencies. The following JSON/CLI boundary is required
+design, not an announcement that these commands exist.
+
+The adapter accepts `request --json <request>`,
+`wait --json <handle> --timeout-ms <positive-integer>`, and
+`run --json <request> -- <argv...>`; each emits one terminal JSON result.
+`request` enqueues/coalesces and returns immediately; `wait` observes a request;
+`run` requests, waits, then validates and launches under retained leases.
+The request shape is:
+
+```text
+{version:1, requestId:string, repository:string, commit:40-lowercase-hex,
+ exports:[{name:string, version:exact-semver}], platform:{os:string,cpu:string,abi:string},
+ timeoutMs:positive-integer}
+handle = {version:1, requestId:string, custodian:string}
+result = {version:1, requestId:string, custodian:string, outcome:string, state:string,
+ reason:string, root?:absolute-path, exports?:[{name:string,version:string,target:absolute-path}]}
+```
+
+`repository` is a canonical Git remote identity admitted by the configured store,
+not a path or consumer-supplied command; the custodian resolves its commit root
+even when absent. `requestId` is an opaque consumer-generated unique string;
+reusing it with different inputs is `invalid-request`. Timeout is monotonic from
+adapter invocation. Logical export names below are repository-local, lowercase,
+case-sensitive identifiers; unknown names are `unsupported-export`.
+
+| Outcome                                                      | State / action                                                                                                                |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `accepted`                                                   | `absent`, `installing`, or `stale`; includes handle identity; absent checkout materialization is delegated to the store owner |
+| `ready`                                                      | `ready`; verified exports returned, but only `run` retains a process-lifetime admission                                       |
+| `stale`                                                      | `stale`; status reports failed evidence and requires a new custodian request, not consumer repair                             |
+| `unsupported-export`                                         | Observed state; exact name/version/platform closure cannot be supplied by this pin; terminal, no fallback                     |
+| `cancelled`                                                  | Last observed state; caller signal cancels only its wait, not coalesced custody work                                          |
+| `deadline-exceeded`                                          | Last observed state; no child launched and shared custody work is not killed                                                  |
+| `custodian-unavailable` / `invalid-request` / `setup-failed` | Observed state or `absent` if unresolved; actionable reason, no permission to mutate                                          |
+
+`request` and `wait` return 0 only for `accepted`/`ready`, otherwise 1.
+`run` returns the child's exit status after admission, or 1 without launch on
+admission failure; distinguish these through the terminal result's `reason`.
+Reject unknown protocol versions/outcomes. Configuration and request field names
+are owned by effect-utils; additive unknown fields are ignored.
+
 Required coordination uses the existing native `flock` primitive, not a new
 PID-file lock. One persistent control is keyed by canonical checkout root:
 `<canonical-git-common-dir>/effect-utils-pinned-setup/<root-key>/custody.lock`,
@@ -55,6 +125,13 @@ user, and must be validated without following symlinks. Never unlink or replace
 a control: a second inode would split exclusion. This is a same-user,
 single-host, known-local Linux/macOS filesystem contract; network filesystems,
 foreign ownership, ambiguous identity, and unsafe controls fail closed.
+
+First control creation is exclusively a custodian/store-owner operation after
+root registration, using exclusive no-follow creation and durable parent
+publication. Read-only consumer admission opens an existing validated control
+without create, truncate, unlink, or repair; a missing control requests custodian
+readiness. Before first creation, the custodian proves no unmanaged readers or
+mutators use that root; a new lock cannot retroactively protect legacy users.
 
 Only the custodian holds `LOCK_EX` for mutations. Consumers hold `LOCK_SH` from
 final validation through all reads, including descendant processes and later
@@ -124,9 +201,12 @@ Custodian setup sequence:
 5. Atomically rename a complete readiness record beside the persistent control,
    then release exclusivity. Ready evidence covers only its declared exports;
    extending that set requires another exclusive, verified operation.
-6. Consumer acquires a shared lease and revalidates the record and exports before
-   use. Do not assume exclusive-to-shared conversion is atomic: any reacquisition
-   gap requires full revalidation. Keep the shared lease through runtime exit.
+6. On every tool/child invocation, the installed adapter acquires a shared
+   custody lease, validates the record and all exports, and acquires applicable
+   generation retention **before any dependency import or executable load**.
+   Only then launch the child; retain leases through its entire descendant/tool
+   lifetime, not merely setup or link creation. Do not assume exclusive-to-shared
+   conversion is atomic: any reacquisition gap requires full revalidation.
 
 The repository-local readiness format is owned by effect-utils. Version 1 uses
 integer `version: 1`, `root`, `commit` (40 lowercase hex), `inputDigest` (SHA-256,
@@ -142,6 +222,17 @@ store roots. JSON is UTF-8; no timestamps substitute for input/content proof.
 Invalid examples include an abbreviated commit, an unknown backend, or an
 export escaping through an undeclared symlink. No public URI namespace is added.
 
+Readiness also records the current kernel boot identity as `bootId`. A reboot or
+unknown boot identity makes all prior ready evidence stale; the custodian must
+reverify under exclusive custody before issuing a current-boot record. Kernel
+locks do not survive reboot. Before mutation, durably remove/invalidate ready
+evidence and fsync its parent; failure aborts mutation. For publication, fsync
+the complete temporary record, rename it, then fsync the containing directory
+before reporting ready. Backends retain their existing atomic publication
+guarantees; this spec does not claim every payload byte is power-loss durable.
+After reboot, full backend integrity/export verification, not record existence,
+establishes readiness. Partial writes or malformed records are stale.
+
 ## Export compatibility and consumer prohibitions (R06)
 
 A legacy target such as
@@ -152,6 +243,23 @@ link-target and runtime verification. Current Buck publication does not promise
 a root `.pnpm` tree. Unsupported layout requests fail explicitly; consumers must
 request an admitted package export rather than synthesize a guessed store path.
 This draft adds no dependency or version absent from the pinned revision.
+
+Required logical exports decouple downstream requests from physical layout:
+
+| Name                      | Exact request | Required verified closure                                                                                                                                          |
+| ------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `node-package/oxc-parser` | `0.127.0`     | Parser package, its platform/CPU native binding and runtime transitive closure; import and parse a valid TypeScript probe with zero errors under the requested ABI |
+| `tool/oxlint`             | `1.82.0`      | Executable plus native/platform runtime closure; version must match and a valid-source lint probe must succeed                                                     |
+
+These two exact pins are **unsupported through a shipped readiness adapter
+today**: this PR adds no adapter or backend export admission. A downstream
+consumer must request those names/versions from the configured custodian and,
+until it can return verified ready admission, remain blocked with
+`unsupported-export` rather than self-install. Required implementation may admit
+them only when the pinned revision's supported backend supplies the complete
+closure; absent lockfile/tool-pin support remains `unsupported-export`, never a
+repin or download fallback. Ready results return verified concrete targets;
+consumers never reconstruct `.pnpm` paths from these names.
 
 Consumers must never:
 
@@ -178,14 +286,17 @@ Consumers must never:
 
 Required implementation steps (not delivered by this spec-only change):
 
-1. Add the native custody wrapper and record codec using the existing flock and
-   descriptor-inheritance pattern; canonical identity and safe-open checks are
-   mandatory before exposing consumer admission.
+1. Install the native adapter, owner configuration, and authenticated custodian
+   endpoint outside checkout dependencies; implement the defined request/result
+   boundary, custody wrapper, safe control creation/read-only admission, record
+   codec and durability/boot validation using existing native primitives.
 2. Add request coalescing, bounded waiting/status, backend selection, complete
-   readiness verification, and atomic record publication. Define the exact
-   public CLI spelling with its implementation, without advertising stubs.
-3. Integrate all mutation, store retirement, and teardown paths; adapt consumers
-   to request exports, create only local links, and launch under retained leases.
+   readiness and logical-export closure verification, and atomic durable record
+   publication; the adapter must launch without importing an unready Effect tree.
+3. Integrate every mutator (including direct publication and managed install),
+   cross-root host-budget GC, store retirement, and teardown path before enabling
+   admission; adapt consumers to create only local links and validate/retain
+   leases on every import/tool invocation.
 4. Add concurrency, interrupted setup, inherited-child lifetime, stale evidence,
    unsafe control, unsupported-layout, native import, and retirement-race tests.
 
@@ -193,6 +304,6 @@ Required implementation steps (not delivered by this spec-only change):
 managed materialization task? Resolve by inspecting each requested revision;
 this specification does not grandfather arbitrary frozen-lockfile installs.
 
-**DQ2 Public adapter placement:** Select the existing native tooling package that
-owns request transport and its installed launcher. Resolve with the implementation
-review; custody semantics and fail-closed behavior do not depend on its CLI name.
+**DQ2 Native package ownership:** Select the existing native tooling package that
+ships the configured adapter and custodian service. This packaging decision
+cannot weaken dependency-free discovery or the request/result contract above.
