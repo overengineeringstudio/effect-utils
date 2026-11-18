@@ -80,9 +80,9 @@ export const verifyInteraction = Effect.fn('scg.discord.verifyInteraction')(func
     try: () => new TextDecoder('utf-8', { fatal: true }).decode(input.body),
     catch: () => new InteractionError({ reason: 'body' }),
   })
-  const interaction = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Interaction))(
-    text,
-  ).pipe(Effect.mapError(() => new InteractionError({ reason: 'body' })))
+  const interaction = yield* Schema.decodeEffect(Schema.fromJsonString(Interaction))(text).pipe(
+    Effect.mapError(() => new InteractionError({ reason: 'body' })),
+  )
   if (interaction.application_id !== input.applicationId)
     return yield* new InteractionError({ reason: 'application' })
   if (interaction.type !== 1) {

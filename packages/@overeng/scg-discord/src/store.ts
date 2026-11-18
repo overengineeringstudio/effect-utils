@@ -71,7 +71,7 @@ export class DiscordStore {
     return this.#db
       .query<{ json: string }, []>('SELECT json FROM cards WHERE closed=0')
       .all()
-      .map(({ json }) => Schema.decodeUnknownSync(Schema.fromJsonString(Card))(json))
+      .map(({ json }) => Schema.decodeSync(Schema.fromJsonString(Card))(json))
   }
   find({
     messageId,
@@ -108,7 +108,7 @@ export class DiscordStore {
     return this.#db
       .query<{ json: string }, []>('SELECT json FROM jobs WHERE acknowledged=1 ORDER BY rowid')
       .all()
-      .map(({ json }) => Schema.decodeUnknownSync(Schema.fromJsonString(Job))(json))
+      .map(({ json }) => Schema.decodeSync(Schema.fromJsonString(Job))(json))
   }
   acknowledged(interactionId: string): void {
     this.#db.query('UPDATE jobs SET acknowledged=1 WHERE id=?').run(interactionId)
