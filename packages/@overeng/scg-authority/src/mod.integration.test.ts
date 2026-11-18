@@ -298,7 +298,10 @@ describe('durable exact-grant authority', () => {
       'succeeded',
     ])
     expect(authority.sync(signer, cursor).terminal).toEqual([])
-    await authority.decide(signed)
+    const replayedDecision = await authority.decide(signed)
+    expect(replayedDecision.result).toBeUndefined()
+    expect(replayedDecision.resultDigest).toBe(Protocol.digest('private-calendar-result'))
+    expect(authority.status(owner, execution.executionId).result).toBe('private-calendar-result')
     await authority.drain()
     const losingClick = Protocol.signPayload(
       'decision',

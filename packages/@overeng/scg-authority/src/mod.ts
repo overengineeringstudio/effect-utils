@@ -440,7 +440,8 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
       tasks.add(task)
       void task.finally(() => tasks.delete(task))
     }
-    return outcome.status
+    const { result: _result, ...receipt } = outcome.status
+    return receipt
   }
   const sync = (signer: Signer, cursor: number): Protocol.Sync => {
     authorizeSigner(signer)
