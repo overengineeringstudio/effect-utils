@@ -9,7 +9,7 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     types: ['node', 'bun'],
-    lib: ['ES2024'],
+    lib: ['ES2024', 'DOM', 'DOM.Iterable'],
     noEmit: true,
   },
   include: ['src/**/*'],

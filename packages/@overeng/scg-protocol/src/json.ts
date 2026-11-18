@@ -3,7 +3,9 @@ import { Schema } from 'effect'
 /** Reject duplicate properties before native JSON parsing can erase them. */
 const checkProperties = (text: string): void => {
   let index = 0
-  const space = (): void => { while (/\s/.test(text[index] ?? '') && index < text.length) index++ }
+  const space = (): void => {
+    while (/\s/.test(text[index] ?? '') && index < text.length) index++
+  }
   const string = (): string => {
     const start = index++
     while (index < text.length) {
@@ -19,7 +21,10 @@ const checkProperties = (text: string): void => {
       index++
       space()
       const keys = new Set<string>()
-      if (text[index] === '}') { index++; return }
+      if (text[index] === '}') {
+        index++
+        return
+      }
       while (index < text.length) {
         space()
         if (text[index] !== '"') throw new SyntaxError('Expected JSON property')
@@ -39,7 +44,10 @@ const checkProperties = (text: string): void => {
     if (text[index] === '[') {
       index++
       space()
-      if (text[index] === ']') { index++; return }
+      if (text[index] === ']') {
+        index++
+        return
+      }
       while (index < text.length) {
         value()
         space()
@@ -49,7 +57,10 @@ const checkProperties = (text: string): void => {
       }
       throw new SyntaxError('Unterminated JSON array')
     }
-    if (text[index] === '"') { string(); return }
+    if (text[index] === '"') {
+      string()
+      return
+    }
     const start = index
     while (index < text.length && !/[\s,\]}]/.test(text[index] ?? '')) index++
     if (start === index) throw new SyntaxError('Expected JSON value')
@@ -60,7 +71,10 @@ const checkProperties = (text: string): void => {
 }
 
 /** Wire decoder rejects duplicate, unknown and malformed fields, never silently strips them. */
-export const decodeJson = <TSchema extends Schema.Top>(schema: TSchema, text: string): TSchema['Type'] => {
+export const decodeJson = <TSchema extends Schema.ConstraintDecoder<unknown>>(
+  schema: TSchema,
+  text: string,
+): TSchema['Type'] => {
   checkProperties(text)
   return Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })(JSON.parse(text))
 }
