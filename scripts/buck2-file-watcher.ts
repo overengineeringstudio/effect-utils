@@ -15,6 +15,7 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs'
+import { createConnection } from 'node:net'
 import { getPriority, homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -204,6 +205,32 @@ const defaultServiceMissing = async ({
     return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
   }
 }
+
+/** A stale socket can outlive its server. Only connection refusal or absence
+ * proves the managed service is stopped; permissions and other errors do not. */
+const managedServiceMissing = ({
+  socket,
+  deadlineMs,
+  deadlineSignal,
+}: {
+  readonly socket: string
+  readonly deadlineMs: number
+  readonly deadlineSignal?: AbortSignal
+}): Promise<boolean> => {
+  const { promise, resolve } = Promise.withResolvers<boolean>()
+  const connection = createConnection({ path: socket, signal: deadlineSignal })
+  const finish = (missing: boolean) => {
+    connection.destroy()
+    resolve(missing)
+  }
+  connection.once('connect', () => finish(false))
+  connection.once('error', (error: NodeJS.ErrnoException) =>
+    finish(error.code === 'ECONNREFUSED' || error.code === 'ENOENT'),
+  )
+  connection.setTimeout(deadlineMs, () => finish(false))
+  return promise
+}
+
 /** Probe the actual service and root; a local version response proves neither. */
 export const probeWatchman = async ({
   env,
@@ -267,8 +294,8 @@ export const probeWatchman = async ({
           )
           // Priority is diagnosed only from evidence: Watchman's own startup
           // refusal, or a niced --no-spawn probe whose silent failure is
-          // proven to mean "no default service". Every other failure keeps
-          // its genuine class (executable, service or timeout).
+          // proven to mean "no service". A leftover managed socket proves
+          // nothing; connect without spawning to distinguish it from a live listener.
           let reason: 'timeout' | 'executable' | 'priority' | 'service' = 'service'
           if (error.killed === true || deadlineSignal?.aborted === true) reason = 'timeout'
           else if (error.code === 'ENOENT' || error.code === 'EACCES') reason = 'executable'
@@ -278,7 +305,12 @@ export const probeWatchman = async ({
             stdout.trim() === '' &&
             stderr.trim() === '' &&
             (managedDirectory !== undefined
-              ? existsSync(socket ?? '') === false
+              ? socket !== undefined &&
+                (await managedServiceMissing({
+                  socket,
+                  deadlineMs,
+                  deadlineSignal: makeDeadlineSignal?.(),
+                }))
               : (await defaultServiceMissing({
                   env,
                   deadlineMs,
@@ -296,7 +328,7 @@ export const probeWatchman = async ({
                   : reason === 'priority'
                     ? priorityRefusal !== null
                       ? `Watchman refuses to start at nice ${priorityRefusal[1] ?? niceValue}; this client may only connect to an already-running service. ${stderr.trim() || error.message}`
-                      : `no default Watchman service is running and this client at nice ${niceValue} will not spawn one; ${error.message}`
+                      : `no ${managedDirectory === undefined ? 'default' : 'managed'} Watchman service is running and this client at nice ${niceValue} will not spawn one; ${error.message}`
                     : stderr.trim() || error.message,
               fix:
                 reason === 'executable'
