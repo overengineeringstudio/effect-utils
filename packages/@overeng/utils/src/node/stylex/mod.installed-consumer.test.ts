@@ -177,7 +177,7 @@ it.each(['serve', 'build'] as const)(
       for (const [name, target] of [
         ['@overeng/stylex-tokens', externalPackage],
         ['@stylexjs/stylex', join(packageRoot, 'node_modules', '@stylexjs/stylex')],
-      ]) {
+      ] as const) {
         const link = join(consumerRoot, 'node_modules', name)
         mkdirSync(join(link, '..'), { recursive: true })
         symlinkSync(target, link, 'dir')
