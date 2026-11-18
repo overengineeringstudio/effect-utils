@@ -205,6 +205,7 @@
         "packages/@overeng/effect-rust",
         "packages/@overeng/genie",
         "packages/@overeng/otel-contract",
+        "packages/@overeng/stylex-tokens",
         "packages/@overeng/tui-core",
         "packages/@overeng/tui-react",
         "packages/@overeng/utils",

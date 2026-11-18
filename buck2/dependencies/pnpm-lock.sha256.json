@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:746b60d9d60fdb9d5a4728446d5ceea771269ead1cf80bda205eb573dbd80471",
+  "lockfileFingerprint": "sha256:a656defa659abb5a98fcf5c27b73a1e78bd1199fbf72d4237ed43dbad277b449",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -7051,5 +7051,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:954a1f7da1ec30e0308e651cf242ecc565d44d08a0c1fab84acb3d1e43cf5625"
+  "fingerprint": "sha256:df2bd592c495f4015fd558f592d396431ac0f5983bdef8d7b9559be9d40cd435"
 }

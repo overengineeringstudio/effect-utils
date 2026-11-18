@@ -768,6 +768,18 @@ secret is absent, Cachix publication succeeds and the manifest PR is skipped
 with a notice; `GITHUB_TOKEN` is never used to push/create a PR. App-authored
 manifest commits trigger the normal PR CI.
 
+In effect-utils, the repository owner approved the publisher app enqueueing its
+own manifest-only proposals. `publish-manifest-pr` rechecks the app author,
+non-draft/open state, same-repository `main` base, exact pushed head SHA, and
+complete diff containing only `nix/buck2-products/manifest.json`, then runs
+`gh pr merge --auto --match-head-commit` with the publisher installation token.
+GitHub queues ready PRs immediately and enables auto-merge for pending required
+checks so they enter the required merge queue when ready; no admin bypass or
+direct-merge strategy is used. Refusals and API failures fail the job with a
+log/summary reason. The existing app registration's `contents:write` and
+`pull_requests:write` permissions suffice; no separate merge-queue permission
+or app permission change is required.
+
 Rotate the non-expiring private key by generating a new key in App settings,
 replacing its 1Password item and both repositories' Actions secrets, verifying
 token minting from both protected jobs, then revoking the old key. On suspected

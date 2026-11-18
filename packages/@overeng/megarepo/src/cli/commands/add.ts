@@ -19,7 +19,8 @@ import {
   writeMegarepoConfig,
 } from '../../core/config.ts'
 import * as Git from '../../core/git.ts'
-import { StoreLayer } from '../../store/store.ts'
+import { assertStoreAcquisitionHealthy } from '../../store/store-hygiene.ts'
+import { Store, StoreLayer } from '../../store/store.ts'
 import { syncMember } from '../../sync/mod.ts'
 import {
   Cwd,
@@ -134,6 +135,13 @@ export const addCommand = Cli.Command.make(
                   message: `Member '${memberName}' already exists`,
                 })
                 return yield* new AddCommandError({ message: 'Member already exists' })
+              }
+
+              if (sync === true) {
+                yield* assertStoreAcquisitionHealthy({
+                  sourceStrings: [parsed.sourceString],
+                  store: yield* Store,
+                })
               }
 
               // Add the new member
