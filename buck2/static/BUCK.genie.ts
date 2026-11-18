@@ -43,6 +43,8 @@ export default createGenieOutput({
 # Source: TypeScript admission package boundaries and root static source ownership
 
 load("//buck2:static_checks.bzl", "repository_static_checks", "static_source_set")
+load("//buck2:quick_contracts.bzl", "quick_contracts")
+load("//buck2:byte_parity.bzl", "byte_parity")
 
 static_source_set(
     name = "repository_validation_sources",
@@ -57,6 +59,27 @@ repository_static_checks(
     source_sets = ${JSON.stringify(sourceSets, null, 4)},
     nix_source_sets = ${JSON.stringify(nixSourceSets, null, 4)},
     repository_source_sets = ${JSON.stringify(repositorySourceSets, null, 4)},
+    visibility = ["PUBLIC"],
+)
+
+byte_parity(
+    name = "work_storage_resources_check",
+    pairs = {
+        "packages/@overeng/work-storage/protocol.schema.json": "rust/work-storage/resources/protocol.schema.json",
+        "packages/@overeng/work-storage/fixtures/conformance.json": "rust/work-storage/resources/conformance.json",
+    },
+    source_sets = [
+        "//packages/@overeng/work-storage:static_sources",
+        "//rust/work-storage:static_sources",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+quick_contracts(
+    name = "check_quick",
+    quick = "//:quick",
+    runtime = "//buck2/toolchains:quick_contracts",
+    source_sets = ${JSON.stringify([...new Set([...sourceSets, ...nixSourceSets, ...repositorySourceSets])].toSorted(), null, 4)},
     visibility = ["PUBLIC"],
 )
 `,

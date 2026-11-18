@@ -568,6 +568,34 @@ as parameter properties, enums, and runtime namespaces, before merge-group
 consumer tests. Source exports can therefore use Node's strip-only mode without
 TypeScript lowering; unrelated runtime requirements and JSX transforms still apply.
 
+#### Full quick contracts without a task-runner invocation
+
+`buck2 build //:quick` checks deterministic declared inputs, including exact
+work-storage resource parity. Full quick parity additionally needs the bounded
+checkout contracts exposed by `buck2 test //:check-quick`. Those tests are local,
+uncached observations of Git inventories, capability publication, daemon
+lifecycle, Nix imports, generated bindings, hook isolation, and interruption.
+They are not hermetic build actions or remote-execution candidates.
+
+While devenv remains the evaluated task authority, prepare its immutable
+execution projection explicitly with
+`devenv build effectUtils.quickContracts.capabilities`. Publish that returned
+store profile as `WORKTREE_CAPABILITIES_PROFILE` through the normal capability
+publisher. The profile's stable `quick-contracts` symlink exposes the same declared
+capability. Invoke its `bin/quick-contracts-prepare ROOT GENERATION` **before**
+running Buck; `GENERATION/profile` must root the selected profile.
+Preparation uses the pinned retained task graph to publish the
+source-generator and standalone-staging views; the Buck test never calls devenv
+or performs that setup itself.
+
+Preparation and execution preserve `WORKTREE_POLICY_PATH` guard directories
+(empty for standalone users) ahead of the declared Nix runtime closure. A receipt
+binds prepared views to the evaluated task authority and selected capability
+profile. Tracked-source changes invalidate the immutable projection: stage new
+source files, rebuild the profile, republish it, and prepare again. All existing
+devenv tasks remain available; removing their evaluated authority requires a
+separate contract replacement, not deleting these guards.
+
 Audit cross-cell Buck provider identity separately:
 
 ```bash
