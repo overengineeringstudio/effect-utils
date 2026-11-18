@@ -180,6 +180,9 @@ repeats globally across hosts/roots/CI; hits and explicit coalescing are separat
 Missing native identity/root/host/time/digest/outcome/completeness or metadata,
 unlinked remote/coalesced worker attempts, conflicts, sampling, loss or overflow mean unknown.
 Valid rows survive; unavailable costs are null with explicit unavailable counts.
+`renderOccurrenceOtlp` emits host-only `buck2.cache.execute_once` window-end gauges
+in the join's OTLP resource/scope; unlabelled `proof_known` gates exactness.
+Unknown proof retains observed points; unavailable cost totals omit their points.
 
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
