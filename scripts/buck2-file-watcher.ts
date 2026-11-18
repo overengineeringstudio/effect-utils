@@ -261,22 +261,20 @@ export const probeWatchman = async ({
       ? []
       : [
           '--no-site-spawner',
-          `--statefile=${join(managedDirectory, 'state')}`,
+          '--no-save-state',
           `--pidfile=${join(managedDirectory, 'pid')}`,
           `--logfile=${join(managedDirectory, 'log')}`,
         ]),
     '--output-encoding=json',
-    'watch-project',
-    root,
   ]
-  const command = ['watchman', ...args].map(shellQuote).join(' ')
-  const query = (): Promise<unknown> => {
+  const command = ['watchman', ...args, 'watch-project', root].map(shellQuote).join(' ')
+  const query = (request: readonly string[]): Promise<unknown> => {
     const deadlineSignal = makeDeadlineSignal?.()
     let closed: Promise<void> | undefined
     const { promise, resolve, reject } = Promise.withResolvers<unknown>()
     const child = execFile(
       'watchman',
-      args,
+      [...args, ...request],
       {
         env,
         timeout: deadlineSignal === undefined ? deadlineMs : undefined,
@@ -336,7 +334,7 @@ export const probeWatchman = async ({
                   : reason === 'priority'
                     ? managedDirectory === undefined
                       ? 'start the service un-niced (`watchman get-sockname` outside the gate) or provision the host service, then rerun the probe; do not relax the shared service priority limit'
-                      : `outside the gate, start the exact managed service un-niced: ${['watchman', ...args.filter((arg) => arg !== '--no-spawn')].map(shellQuote).join(' ')}; do not relax the shared service priority limit`
+                      : `outside the gate, start the exact managed service un-niced: ${['watchman', ...args.filter((arg) => arg !== '--no-spawn'), 'watch-project', root].map(shellQuote).join(' ')}; do not relax the shared service priority limit`
                     : socket === undefined
                       ? `restore the Watchman service, then run ${command}`
                       : `check WATCHMAN_SOCK=${shellQuote(socket)} selects the intended running service, then run ${command}`,
@@ -363,14 +361,57 @@ export const probeWatchman = async ({
     return promise
   }
   // A delayed process/socket response is retried once without a sleep or a new deadline knob.
-  let response: unknown
-  try {
-    response = await query()
-  } catch (error) {
-    if (error instanceof WatchmanAdmissionError && error.reason === 'timeout')
-      response = await query()
-    else throw error
+  const request = async (requestArgs: readonly string[]): Promise<unknown> => {
+    try {
+      return await query(requestArgs)
+    } catch (error) {
+      if (error instanceof WatchmanAdmissionError && error.reason === 'timeout')
+        return query(requestArgs)
+      throw error
+    }
   }
+  const listed = await request(['watch-list'])
+  if (
+    typeof listed !== 'object' ||
+    listed === null ||
+    'roots' in listed === false ||
+    Array.isArray(listed.roots) === false ||
+    listed.roots.some((watched: unknown) => typeof watched !== 'string') ||
+    'error' in listed
+  )
+    throw new WatchmanAdmissionError({
+      reason: 'response',
+      command,
+      detail: 'watch-list response must contain watched roots without an error',
+      fix: 'restore the Watchman service before retrying root admission',
+    })
+  for (const watched of listed.roots) {
+    try {
+      accessSync(watched)
+    } catch (error) {
+      // Permission and I/O errors do not prove a root was removed.
+      if (
+        !(error instanceof Error && 'code' in error) ||
+        (error.code !== 'ENOENT' && error.code !== 'ENOTDIR')
+      )
+        throw error
+      const deleted = await request(['watch-del', watched])
+      if (
+        typeof deleted !== 'object' ||
+        deleted === null ||
+        'error' in deleted ||
+        'watch-del' in deleted === false ||
+        typeof deleted['watch-del'] !== 'boolean'
+      )
+        throw new WatchmanAdmissionError({
+          reason: 'response',
+          command,
+          detail: `watch-del failed for missing root: ${watched}`,
+          fix: 'restore the Watchman service before retrying root admission',
+        })
+    }
+  }
+  const response = await request(['watch-project', root])
   if (
     typeof response !== 'object' ||
     response === null ||
