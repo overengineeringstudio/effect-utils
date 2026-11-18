@@ -37,6 +37,7 @@ tracked `.buckconfig` has this shape:
   config = prelude
   ovr_config = prelude
   fbsource = prelude
+  fbcode = prelude
   toolchains = <canonical-cell>
 [external_cells]
   prelude = bundled

@@ -42,18 +42,19 @@ def _declared_inputs_freshness_check_impl(ctx):
     source_tree = ctx.actions.declare_output("source", dir = True)
     staging = ["set -euo pipefail"]
     for path in sorted(sources.keys()):
-        destination = source_tree.project(path)
+        destination = cmd_args(source_tree.as_output(), format = "{}/" + path)
         parent = "/".join(path.split("/")[:-1])
         staging.append(cmd_args([cmd_args(arg, quote = "shell") for arg in [
             tool.store_path, "--coreutils-prog=mkdir", "-p", "--",
-            source_tree.project(parent) if parent else source_tree,
+            cmd_args(source_tree.as_output(), format = "{}/" + parent) if parent else source_tree.as_output(),
         ]], delimiter = " "))
         staging.append(cmd_args([cmd_args(arg, quote = "shell") for arg in [
             tool.store_path, "--coreutils-prog=cp", "--recursive", "-H",
             "--no-target-directory", "--", sources[path], destination,
         ]], delimiter = " "))
     stage_script = ctx.actions.declare_output("stage-inputs.sh")
-    ctx.actions.write(stage_script, staging, allow_args = True)
+    # Render paths only; the staging run owns source dependencies and its tree.
+    ctx.actions.write(stage_script, cmd_args(staging, delimiter = "\n", ignore_artifacts = True), allow_args = True)
     hermetic_action(
         ctx,
         cmd_args([sandbox.shell, "--noprofile", "--norc", stage_script],

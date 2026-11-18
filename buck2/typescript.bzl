@@ -47,11 +47,10 @@ def _tsgo_typecheck_impl(ctx):
         toolchain.executable,
         package_tree.tree,
         ctx.attrs.project,
-        verdict,
+        cmd_args(verdict_directory.as_output(), format = "{}/typecheck.ok"),
     ])
     fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
     args.add("--fingerprint-tool", fingerprint.store_path)
-    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
     ts_action(
@@ -120,11 +119,10 @@ def _tsgo_emit_impl(ctx):
         ctx.attrs.project,
         ctx.attrs.out_dir,
         ctx.attrs.declaration_entrypoint,
-        directory,
+        directory.as_output(),
     ])
     fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
     args.add("--fingerprint-tool", fingerprint.store_path)
-    args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
     isolation = ctx.attrs._darwin_emit_isolation
     if isolation not in ["sandbox-exec", "nix-build-sandbox"]:
         fail("Unknown Darwin emit isolation mode: {}".format(isolation))
@@ -134,7 +132,6 @@ def _tsgo_emit_impl(ctx):
     for declaration_path in sorted(ctx.attrs.declaration_sources.keys()):
         _require_relative_path(declaration_path, "declaration source")
         args.add("--copy-declaration", declaration_path)
-    args.add(cmd_args(hidden = ctx.attrs.declaration_sources.values()))
     ts_action(
         ctx,
         args,

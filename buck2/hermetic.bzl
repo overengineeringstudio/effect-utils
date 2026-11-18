@@ -76,7 +76,10 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs, fingerprint
     action_env = ctx.attrs._action_env[BuckSupportToolInfo]
     # Retain the artifact name so existing TS action digests remain unchanged.
     launcher = ctx.actions.declare_output("ts-sandbox.sh")
-    ctx.actions.write(launcher, [
+    # This file renders paths, not artifact contents. The run below owns every
+    # input and output; binding them to the write action creates a dependency
+    # cycle now that Buck validates write-action arguments eagerly.
+    ctx.actions.write(launcher, cmd_args([
         "set -euo pipefail",
         # Both executors own directory outputs before the child can write a receipt.
         # Shell startup is scrubbed first; its builtin owns the physical cwd.
@@ -85,7 +88,7 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs, fingerprint
         cmd_args([
             cmd_args(action_env.store_path, quote = "shell"),
             "--coreutils-prog=mkdir", "-p", "--",
-            [_sandbox_absolute(output) for output in outputs],
+            [_sandbox_absolute(output.as_output()) for output in outputs],
         ], delimiter = " "),
     ] + ([
         # Private /tmp must not turn the native fingerprint cap into a per-action
@@ -103,7 +106,7 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs, fingerprint
     ] if fingerprint_locks else []) + [
         command,
         "",
-    ], allow_args = True)
+    ], delimiter = "\n", ignore_artifacts = True), allow_args = True)
     return cmd_args([
         sandbox.shell, "--noprofile", "--norc", launcher,
     ], hidden = inputs + sandbox.inputs + [output.as_output() for output in outputs])
@@ -183,7 +186,7 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
         "--dir", '"$PWD"',
     ], delimiter = " ")
     for output in outputs:
-        bind_args.add("--bind", _sandbox_absolute(output), _sandbox_absolute(output))
+        bind_args.add("--bind", _sandbox_absolute(output.as_output()), _sandbox_absolute(output.as_output()))
     unique_inputs = {}
     for artifact in inputs:
         unique_inputs[artifact] = None

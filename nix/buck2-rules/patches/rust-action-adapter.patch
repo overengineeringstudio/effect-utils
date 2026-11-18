@@ -1,6 +1,6 @@
 Subject: [PATCH] prelude: default-off declared Rust action adapter (Q43 option A)
 Upstream: https://github.com/facebook/buck2/pull/1580
-Base: buck2-prelude 1f8c24e0b1f85e645011f93a4073b0c6c762d7b1 (nix/buck2.nix)
+Base: buck2-prelude a377c4e4eb69b4bbea2e1309283ec7a699c2fb88 (nix/buck2.nix)
 Removal: drop this patch and its applicator when the upstream change lands and
   the pinned Prelude includes it; retain the default-off posture regression.
 Policy: rust.action_adapter_enabled defaults to false; no lane is enabled.
@@ -54,18 +54,17 @@ index 0000000000..82138183e0
 +        "metadata_path": prefix + "-sandbox-inputs.json",
 +    }
 diff --git a/prelude/rust/build.bzl b/prelude/rust/build.bzl
-index 96a4ab9737..f2bc521452 100644
 --- a/prelude/rust/build.bzl
 +++ b/prelude/rust/build.bzl
-@@ -149,6 +149,7 @@ load(
- load(":outputs.bzl", "RustcCompileOutput", "RustcLinkOutput", "RustcOutput")
+@@ -153,6 +153,7 @@ load(
+ )
  load(":resources.bzl", "rust_attr_resources")
  load(":rust_toolchain.bzl", "PanicRuntime", "RustToolchainInfo")
 +load(":action_adapter.bzl", "adapt_rustc_action")
  load(
      ":sources.bzl",
      "RustSources",
-@@ -2088,6 +2089,13 @@ def _rustc_invoke(
+@@ -2284,6 +2285,13 @@ def _rustc_invoke(
          # Libraries (check, metadata, rlib) have no preference.
          action_allow_cache_upload = None
  
@@ -79,7 +78,7 @@ index 96a4ab9737..f2bc521452 100644
      ctx.actions.run(
          compile_cmd,
          local_only = local_only,
-@@ -2098,6 +2106,7 @@ def _rustc_invoke(
+@@ -2294,6 +2302,7 @@ def _rustc_invoke(
          no_outputs_cleanup = incremental_enabled,
          allow_cache_upload = action_allow_cache_upload,
          error_handler = toolchain_info.rust_error_handler,
@@ -88,10 +87,9 @@ index 96a4ab9737..f2bc521452 100644
  
      return Invoke(
 diff --git a/prelude/rust/rust_toolchain.bzl b/prelude/rust/rust_toolchain.bzl
-index b4314afb86..5ed9008cd8 100644
 --- a/prelude/rust/rust_toolchain.bzl
 +++ b/prelude/rust/rust_toolchain.bzl
-@@ -45,6 +45,11 @@ rust_toolchain_attrs = {
+@@ -90,6 +90,11 @@ rust_toolchain_attrs = {
      "rustc_target_triple": provider_field(str | None, default = None),
      # Extra env variables that should be made available to the rustc executable.
      "rustc_env": provider_field(dict[str, typing.Any], default = {}),
@@ -102,4 +100,4 @@ index b4314afb86..5ed9008cd8 100644
 +
      # Baseline compiler config
      "rustc_flags": provider_field(list[typing.Any], default = []),
-     # Rustc flags, except that they are applied on the command line after the
+     # Extra rustc flags applied only while compiling a proc-macro crate.

@@ -60,6 +60,7 @@ let
       config = prelude
       ovr_config = prelude
       fbsource = prelude
+      fbcode = prelude
       toolchains = ${cellName}
 
     [parser]

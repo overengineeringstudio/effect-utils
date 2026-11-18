@@ -52,6 +52,7 @@ cat > "$work/.buckconfig" <<'CONFIG'
   config = prelude
   ovr_config = prelude
   fbsource = prelude
+  fbcode = prelude
 [external_cells]
   prelude = bundled
 [parser]

@@ -57,6 +57,15 @@ executor-local projected tools are explicitly local-only. Toolchain
 executables referenced in action command lines are `/nix/store` paths
 (BUILD.BUCK.PLAT-R02).
 
+`nix/buck2.nix` selects the Buck binary release and matching Prelude revision
+together. Bootstrap providers are loaded from Prelude's
+`go_bootstrap:toolchain.bzl` and `python_bootstrap:toolchain.bzl`; the binary-rule
+modules are not provider-export contracts. A toolchain update carries these
+consumer migrations alongside the selected capability projection.
+Qualify each matched binary/Prelude/capability closure in a separate derived-state
+namespace. Daemon and materializer state from another pin is not compatibility
+evidence; a rollback restores the complete matched closure, not the binary alone.
+
 `local-only` constrains execution placement; it does not disable shared action
 cache reads or writes. For an admitted local action, the canonical
 `/nix/store` realization path participates in the action key and binds the

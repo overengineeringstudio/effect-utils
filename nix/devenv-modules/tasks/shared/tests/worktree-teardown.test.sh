@@ -97,6 +97,7 @@ cat >"$main/.buckconfig" <<'CONFIG'
   config = prelude
   ovr_config = prelude
   fbsource = prelude
+  fbcode = prelude
   toolchains = root
 [external_cells]
   prelude = bundled

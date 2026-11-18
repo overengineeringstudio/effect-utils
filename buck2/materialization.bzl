@@ -98,7 +98,7 @@ def _package_tree_impl(ctx):
         hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
         cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
         "--output",
-        out,
+        out.as_output(),
     ])
 
     # A dependency view owns no dependency bytes: the package view links it as
@@ -109,7 +109,6 @@ def _package_tree_impl(ctx):
     elif ctx.attrs.dependency_view != None:
         dependency_view = ctx.attrs.dependency_view[PnpmDeclaredClosureInfo]
         args.add("--dependency-view", dependency_view.node_modules)
-        args.add(cmd_args(hidden = dependency_view.read_roots))
         read_roots = _unique_artifacts([out] + dependency_view.read_roots)
         inputs.extend(dependency_view.read_roots)
     else:
@@ -128,7 +127,6 @@ def _package_tree_impl(ctx):
         _require_relative_path(destination, "workspace dependency view")
         package_tree = ctx.attrs.workspace_dependency_views[destination][PackageTreeInfo]
         args.add("--workspace-dependency-view", destination, package_tree.tree)
-        args.add(cmd_args(hidden = package_tree.read_roots))
         read_roots = _unique_artifacts(read_roots + package_tree.read_roots)
         inputs.extend(package_tree.read_roots)
     for package_name in sorted(ctx.attrs.generated_dependencies.keys()):
@@ -137,7 +135,6 @@ def _package_tree_impl(ctx):
         if product.package_name != package_name:
             fail("generated dependency name does not match product: {}".format(package_name))
         args.add("--workspace-file", "node_modules/" + package_name, product.package)
-        args.add(cmd_args(hidden = product.read_roots))
         read_roots = _unique_artifacts(read_roots + product.read_roots)
         inputs.extend(product.read_roots)
     for link_path in sorted(ctx.attrs.workspace_links.keys()):

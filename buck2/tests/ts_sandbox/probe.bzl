@@ -21,7 +21,7 @@ def _ts_sandbox_probe_impl(ctx):
             ctx,
             sandbox,
             {"rust-shell": sandbox.closure_paths["rust-shell"]},
-            cmd_args([sandbox.shell, "--noprofile", "--norc", ctx.attrs.probe, ctx.attrs.probe, summary]),
+            cmd_args([sandbox.shell, "--noprofile", "--norc", ctx.attrs.probe, ctx.attrs.probe, cmd_args(receipt.as_output(), format = "{}/summary.json")]),
             inputs = [ctx.attrs.probe],
             outputs = [receipt],
             cacheable = False,
@@ -38,7 +38,7 @@ def _ts_sandbox_probe_impl(ctx):
         ctx.attrs.probe,
         "--input", ctx.attrs.probe,
         "--closure", closure,
-        "--output", summary,
+        "--output", cmd_args(receipt.as_output(), format = "{}/summary.json"),
     ])
     ts_action(
         ctx,
