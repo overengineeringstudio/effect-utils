@@ -1037,7 +1037,14 @@ fn metric_resource_reuses_writer_host_without_build_identity() {
         &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
     );
     let out = dir.path().join("out");
-    ingest(&[log], None, Some(&out), &dir.path().join("pending"), &dir.path().join("records")).unwrap();
+    ingest(
+        &[log],
+        None,
+        Some(&out),
+        &dir.path().join("pending"),
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let metrics: Value =
         serde_json::from_slice(&fs::read(out.join("0-metrics.json")).unwrap()).unwrap();
     let traces: Value =
@@ -1096,7 +1103,14 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     );
     let spool = dir.path().join("pending");
     let out = dir.path().join("dump");
-    ingest(&[log], None, Some(&out), &spool, &dir.path().join("records")).unwrap();
+    ingest(
+        &[log],
+        None,
+        Some(&out),
+        &spool,
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let pending: Vec<_> = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1123,7 +1137,14 @@ fn ingest_reports_spool_failure(signal: &str) {
         &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
     );
     let spool = dir.path().join("pending");
-    ingest(std::slice::from_ref(&log), None, None, &spool, &dir.path().join("records")).unwrap();
+    ingest(
+        std::slice::from_ref(&log),
+        None,
+        None,
+        &spool,
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let target = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1473,17 +1494,33 @@ fn command_success_uses_final_response_not_deprecated_span_flag() {
 #[test]
 fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
     let dir = tempfile::tempdir().unwrap();
-    let log = write_log(&dir, "compact.pb.zst", &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest));
+    let log = write_log(
+        &dir,
+        "compact.pb.zst",
+        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+    );
     let mut model = decode(&log).unwrap();
     model.resource_attrs.push(attr("host.name", "fixture-host"));
-    model.spans.iter_mut().find(|span| span.action).unwrap().attrs.push(attr("buck2.path", "/private/raw"));
+    model
+        .spans
+        .iter_mut()
+        .find(|span| span.action)
+        .unwrap()
+        .attrs
+        .push(attr("buck2.path", "/private/raw"));
     let records = dir.path().join("new-parent/nested/records");
     retained::capture(&model, &records).unwrap();
     retained::capture(&model, &records).unwrap();
     assert_eq!(fs::read_dir(&records).unwrap().count(), 4);
     assert!(records.join(".directory-synced").is_file());
-    let bodies: Vec<_> = fs::read_dir(&records).unwrap().map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap()).collect();
-    let body = bodies.iter().find(|body| body.contains("\"conversion\"")).unwrap();
+    let bodies: Vec<_> = fs::read_dir(&records)
+        .unwrap()
+        .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    let body = bodies
+        .iter()
+        .find(|body| body.contains("\"conversion\""))
+        .unwrap();
     assert!(!body.contains("/private/raw"));
     assert!(body.contains("\"occurrence\""));
     assert!(body.contains("buck2.occurrence_id"));
@@ -1496,14 +1533,37 @@ fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
 fn census_survives_without_native_log_or_otlp_export() {
     let dir = tempfile::tempdir().unwrap();
     for phase in ["open", "terminal"] {
-        run(Cli::parse_from(["buck2-events", "census", "--invocation-id", "fixture-invocation",
-            "--phase", phase, "--host", "fixture-host", "--records-dir", dir.path().to_str().unwrap()])).unwrap();
+        run(Cli::parse_from([
+            "buck2-events",
+            "census",
+            "--invocation-id",
+            "fixture-invocation",
+            "--phase",
+            phase,
+            "--host",
+            "fixture-host",
+            "--records-dir",
+            dir.path().to_str().unwrap(),
+        ]))
+        .unwrap();
     }
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
-    let path = fs::read_dir(dir.path()).unwrap().map(|entry| entry.unwrap().path())
-        .find(|path| fs::read_to_string(path).unwrap().contains("\"phase\":\"open\"")).unwrap();
+    let path = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            fs::read_to_string(path)
+                .unwrap()
+                .contains("\"phase\":\"open\"")
+        })
+        .unwrap();
     let old = UNIX_EPOCH + Duration::from_secs(1);
-    File::options().write(true).open(path).unwrap().set_modified(old).unwrap();
+    File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
     // A daily scan, not every census, expires only records older than 30 days.
     // Clear this test-owned claim to exercise the next scan without sleeping.
     for entry in fs::read_dir(dir.path()).unwrap() {
@@ -1512,7 +1572,18 @@ fn census_survives_without_native_log_or_otlp_export() {
             fs::remove_file(entry.path()).unwrap();
         }
     }
-    run(Cli::parse_from(["buck2-events", "census", "--invocation-id", "next",
-        "--phase", "open", "--host", "fixture-host", "--records-dir", dir.path().to_str().unwrap()])).unwrap();
+    run(Cli::parse_from([
+        "buck2-events",
+        "census",
+        "--invocation-id",
+        "next",
+        "--phase",
+        "open",
+        "--host",
+        "fixture-host",
+        "--records-dir",
+        dir.path().to_str().unwrap(),
+    ]))
+    .unwrap();
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
 }
