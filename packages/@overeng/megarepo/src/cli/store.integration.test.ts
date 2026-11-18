@@ -32,7 +32,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { parseSourceString, isRemoteSource } from '../core/config.ts'
 import * as Git from '../core/git.ts'
-import { LOCK_FILE_NAME, readLockFile } from '../core/lock.ts'
+import { LOCK_FILE_NAME, LockFile, readLockFile, writeLockFile } from '../core/lock.ts'
 import { loadBuildOutputBudgetPolicyReceipt } from '../store/store-build-budgets.ts'
 import {
   acquireDeletionLease,
@@ -239,7 +239,13 @@ describe('mr store status bare repository health', () => {
         ])
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {},
-          lockEntries: {},
+        })
+        yield* writeLockFile({
+          lockPath: EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          ),
+          lockFile: new LockFile({ version: 1, members: {} }),
         })
         for (const attempt of [0, 1]) {
           const fixed = yield* runMrCommand({
