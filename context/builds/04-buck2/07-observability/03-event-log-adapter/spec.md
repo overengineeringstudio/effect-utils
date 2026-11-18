@@ -64,33 +64,15 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
   Neither cache reuse nor
   deferred execution proves coalescing, so this writer emits no `coalesced`
   outcome.
-- **Occurrence evidence:** `buck2.occurrence_id` is
-  `occurrence-sha256-v1:<lowercase SHA-256 hex of "<log-uuid>:<native-span-id>">`,
-  independent of OTLP view or caller context.
-  `buck2.action_digest` takes the last available nonempty native digest from
-  command attempts (local, omitted-local, worker or remote); it is never
-  synthesized from a label or action key. A native action-end hostname supplies
-  `buck2.action_host`, not the converter's hostname. `buck2.duration_ns` is
-  native action wall time; `buck2.execution_ns` and `buck2.queue_ns` expose the
-  same timing observations as the producer metrics below (execution prefers
-  command execution time, then action wall time). `buck2.total_bytes` is native
-  total output size, alongside `buck2.output_size` and optional
-  `buck2.input_files_bytes`; it does not estimate traffic or input-plus-output
-  size. Missing optional evidence remains absent, while explicit zero is
-  retained. An unfinished action has an occurrence identity but no invented
-  end evidence.
-- **Opaque checkout identity:** a nonempty invocation-header `working_dir`
-  supplies resource `buck2.root_id = lowercase-hex(SHA-256(UTF-8(working_dir)))`.
-  The native working directory and command argv are not exported for identity;
-  an absent directory leaves root identity absent. This identifies the native
-  invocation directory, not a separately discovered repository root.
-- **View evidence boundary:** command summaries and producer metrics are
-  computed from the decoded model before critical-view pruning. Both views
-  retain identical native evidence on a retained action, and the full view
-  retains every decoded span. Critical pruning, truncated logs, decoder limits,
-  and mandatory-span overflow remain explicit evidence limitations; neither a
-  retained occurrence nor these summaries establish an unsampled, gap-free
-  cross-invocation history.
+- **Occurrence evidence:** `buck2.occurrence_id` is `occurrence-sha256-v1:<lowercase SHA-256 hex of "<log-uuid>:<native-span-id>">`, independent of view/context.
+  `buck2.action_digest` is the last nonempty native command-attempt digest (local, omitted-local, worker or remote), never derived from a label/action key.
+  Native end evidence supplies writer `buck2.action_host`, wall `buck2.duration_ns`, execution/queue timings and logical output `buck2.total_bytes`.
+  Execution prefers native execution time, then action wall time; bytes mirror `output_size`, never network traffic or input-plus-output size.
+  Missing optional evidence stays absent (explicit zero survives); unfinished actions get identity, not invented end evidence.
+- **Opaque checkout identity:** nonempty native `working_dir` supplies resource `buck2.root_id = lowercase-hex(SHA-256(UTF-8(working_dir)))`.
+  Paths/argv are not exported; missing directory means missing identity. This is the native invocation directory, not an independently discovered repository root.
+- **View evidence boundary:** summaries/producer metrics precede critical pruning; retained actions have identical evidence across views, and full retains every decoded span.
+  Critical pruning, truncation, decoder limits and mandatory overflow remain explicit gaps; none certify gap-free cross-invocation history.
 - **Command outcome:** `buck2.is_success` comes from the final `CommandResult`,
   not the deprecated `CommandEnd.is_success` (unset by current writers).
   Top-level errors fail; build/BXL responses succeed only with no errors;
