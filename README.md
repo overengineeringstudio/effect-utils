@@ -515,6 +515,11 @@ Editor publication follows the selected source suites and module fixtures rather
 than publishing neutral-only package views. macOS still builds and smokes the native
 and compiled products to cover Darwin artifacts.
 
+The platform registry is hand-authored, not a generated projection: classify each
+new bounded task there alongside its package-local Buck lane declaration. Bun
+Vitest lanes that exercise real on-disk SQLite persistence belong in the
+Darwin-sensitive subset; pure protocol-vector and schema lanes are platform-neutral.
+
 Infrastructure Bun suites outside package source roots run through source tasks
 rather than `buck2-test-authority.json`: `genie:buck2:test` covers the Buck projection
 suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, including
