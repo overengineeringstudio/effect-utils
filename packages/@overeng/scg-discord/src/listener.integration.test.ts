@@ -1,4 +1,13 @@
-import { chmodSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { request } from 'node:http'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
@@ -7,9 +16,11 @@ import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
 
 const fixture = fileURLToPath(new URL('./listener-process.fixture.ts', import.meta.url))
-const launch = (socketPath: string) => Bun.spawn([process.execPath, fixture, socketPath], {
-  stdout: 'pipe', stderr: 'pipe',
-})
+const launch = (socketPath: string) =>
+  Bun.spawn([process.execPath, fixture, socketPath], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
 const ready = async (child: ReturnType<typeof launch>) => {
   const reader = child.stdout.getReader()
   try {
@@ -19,14 +30,15 @@ const ready = async (child: ReturnType<typeof launch>) => {
     reader.releaseLock()
   }
 }
-const probe = (socketPath: string) => new Promise<number>((resolve, reject) => {
-  const call = request({ socketPath, path: '/missing', method: 'GET' }, (response) => {
-    response.resume()
-    response.once('end', () => resolve(response.statusCode!))
+const probe = (socketPath: string) =>
+  new Promise<number>((resolve, reject) => {
+    const call = request({ socketPath, path: '/missing', method: 'GET' }, (response) => {
+      response.resume()
+      response.once('end', () => resolve(response.statusCode!))
+    })
+    call.once('error', reject)
+    call.end()
   })
-  call.once('error', reject)
-  call.end()
-})
 
 it('reclaims only its stale owned socket after SIGKILL and refuses a second live owner', async () => {
   // Unix sockaddr paths are bounded; a short private temp root is required even in long worktrees.
