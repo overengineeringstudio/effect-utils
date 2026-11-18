@@ -21,7 +21,7 @@ process.env.GIT_CONFIG_SYSTEM = '/dev/null'
 
 const fixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
-  const root = yield* fs.makeTempDirectoryScoped()
+  const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
   const source = `${root}/source`
   const store = EffectPath.unsafe.absoluteDir(`${root}/store/`)
   const bare = `${store}example.com/owner/repo/.bare`
