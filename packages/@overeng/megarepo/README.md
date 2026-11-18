@@ -387,6 +387,11 @@ creating a fixed-path detached root with an atomic native Git lock. It publishes
 readiness only after installation and source/process proofs; failed preparation
 retains the locked root and reconciles partial growth into its charged bytes.
 
+Claims atomically fence one exact generation and adopt its persistent ownership
+without removing the deletion barrier. A provider records successful completion
+before exiting; inspection quarantines abandoned or uncertain providers instead
+of returning their roots to readiness.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
