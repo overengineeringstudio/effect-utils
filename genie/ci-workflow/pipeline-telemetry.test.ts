@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { withPipelineTelemetry } from './pipeline-telemetry.ts'
 
 test('each task step in a job shares the pipeline run prefix', () => {
@@ -70,7 +71,7 @@ test('Playwright jobs capture network events only during tests and upload failur
     expect(steps[testStepIndex + 1]).toMatchObject({
       name: 'Upload Playwright failure evidence',
       if: 'failure()',
-      uses: 'actions/upload-artifact@v4',
+      uses: pinnedAction({ name: 'uploadArtifact' }).uses,
       with: {
         name: `playwright-test-results-${packageName}-run-\${{ github.run_id }}-attempt-\${{ github.run_attempt }}`,
         path: `packages/@overeng/${packageName}/test-results/`,
