@@ -134,7 +134,8 @@ export const createStylexVitePlugins = ({
     ...compiler
   } = upstream
   /**
-   * Keeps StyleX runtime pre-bundling inside dev-server start-up.
+   * Resolves source-package peers from the consuming app in serve and build,
+   * while keeping runtime pre-bundling inside dev-server start-up.
    *
    * The dev scanner only schedules pre-bundling for what it can see up
    * front, and the StyleX-carrying source packages are deliberately
@@ -145,23 +146,28 @@ export const createStylexVitePlugins = ({
    * whichever story or browser test is running. Including the runtime by
    * name moves that work into server start-up.
    *
-   * The hook returns only the missing name, never the whole entry list:
-   * Vite merges `config` hook results by array concatenation, so echoing
-   * existing entries back would duplicate them. And the include composes
-   * with the upstream excludes by construction — those only ever name
-   * source packages that *depend on* the runtime, never the runtime itself.
+   * Return only missing names: Vite concatenates config-hook arrays. Dedupe
+   * also matters in production, where a real-path external token package has
+   * no runtime installation of its own and must use the consumer's peer.
    */
   /** @type {Plugin} */
-  const prebundleRuntime = {
-    name: 'overeng:stylex:prebundle-runtime',
-    apply: 'serve',
-    config: (/** @type {UserConfig | undefined} */ config) => ({
-      optimizeDeps: {
-        include:
-          config?.optimizeDeps?.include?.includes(stylexRuntimePackage) === true
-            ? []
-            : [stylexRuntimePackage],
+  const configureRuntime = {
+    name: 'overeng:stylex:runtime',
+    config: (/** @type {UserConfig | undefined} */ config, env) => ({
+      resolve: {
+        dedupe: config?.resolve?.dedupe?.includes(stylexRuntimePackage)
+          ? []
+          : [stylexRuntimePackage],
       },
+      ...(env.command === 'serve'
+        ? {
+            optimizeDeps: {
+              include: config?.optimizeDeps?.include?.includes(stylexRuntimePackage)
+                ? []
+                : [stylexRuntimePackage],
+            },
+          }
+        : {}),
     }),
   }
 
@@ -238,7 +244,7 @@ export const createStylexVitePlugins = ({
 
   return [
     /** @type {Plugin} */ (compiler),
-    prebundleRuntime,
+    configureRuntime,
     injectEntryImport,
     lateSwapCompiledCss,
   ]

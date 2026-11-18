@@ -192,6 +192,15 @@ before browser modules execute. It identifies the serving package's real Nix
 store path or the deployment manifest handle; it is not a build-time static asset
 path or a guessed Home Manager symlink. Report it as `deployment.id`.
 
+## Vite composed StyleX runtime
+
+`createStylexVitePlugins` deduplicates `@stylexjs/stylex` to the consuming app
+in both serve and build. A linked external token package therefore uses the
+app's runtime peer even when its real source path is outside the app and has
+no local runtime installation. Consumers must declare the runtime; they do
+not need `preserveSymlinks`, an alias, or a second adapter. Development also
+pre-bundles that runtime during startup, before the first source-token import.
+
 ## Vite StyleX shutdown
 
 `createStylexVitePlugins` preserves the compiler's development/HMR hooks.

@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:6cac564771f5c5d382520b379c161cebf6a3e1d632f2d0e10a5d243b35d26705
+# Store fingerprint: sha256:6b6e8b760b5f5cacf0306f3fed3a437daa12b6922b9785b62703c3da2c2175f8
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -110114,11 +110114,13 @@ pnpm_store_view(
     workspace_trees = {
         "workspace_packages_overeng_effect_distributed_lock_ad315f132217": "//packages/@overeng/effect-distributed-lock:package_tree",
         "workspace_packages_overeng_otel_contract_9f5fb18bc9a6": "//packages/@overeng/otel-contract:package_tree",
+        "workspace_packages_overeng_stylex_tokens_ebde2d51c1ac": "//packages/@overeng/stylex-tokens:package_tree",
         "workspace_packages_overeng_utils_dev_dcbd9b04b5cc": "//packages/@overeng/utils-dev:package_tree",
     },
     workspace_dependencies = {
         "@overeng/effect-distributed-lock": "workspace_packages_overeng_effect_distributed_lock_ad315f132217",
         "@overeng/otel-contract": "workspace_packages_overeng_otel_contract_9f5fb18bc9a6",
+        "@overeng/stylex-tokens": "workspace_packages_overeng_stylex_tokens_ebde2d51c1ac",
         "@overeng/utils-dev": "workspace_packages_overeng_utils_dev_dcbd9b04b5cc",
     },
     visibility = ["PUBLIC"],
@@ -110977,11 +110979,13 @@ pnpm_store_view(
     workspace_trees = {
         "workspace_packages_overeng_effect_distributed_lock_ad315f132217": "//packages/@overeng/effect-distributed-lock:product_package_tree",
         "workspace_packages_overeng_otel_contract_9f5fb18bc9a6": "//packages/@overeng/otel-contract:product_package_tree",
+        "workspace_packages_overeng_stylex_tokens_ebde2d51c1ac": "//packages/@overeng/stylex-tokens:product_package_tree",
         "workspace_packages_overeng_utils_dev_dcbd9b04b5cc": "//packages/@overeng/utils-dev:product_package_tree",
     },
     workspace_dependencies = {
         "@overeng/effect-distributed-lock": "workspace_packages_overeng_effect_distributed_lock_ad315f132217",
         "@overeng/otel-contract": "workspace_packages_overeng_otel_contract_9f5fb18bc9a6",
+        "@overeng/stylex-tokens": "workspace_packages_overeng_stylex_tokens_ebde2d51c1ac",
         "@overeng/utils-dev": "workspace_packages_overeng_utils_dev_dcbd9b04b5cc",
     },
     visibility = ["PUBLIC"],

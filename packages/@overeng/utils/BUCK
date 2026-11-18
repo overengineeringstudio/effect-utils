@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ace2d896d6e282bae27affc0d07b3e3c6ee401f5a3fab3742c2579ca87deb1a4
+# Semantic fingerprint: sha256:e88e8f1de1cf7385ab75e08b186e743dadf0412f85f1c415c67dfb96abe86824
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -619,6 +619,7 @@ npm_package_archive(
     workspace_manifests = [
         "//packages/@overeng/effect-distributed-lock:package.json",
         "//packages/@overeng/otel-contract:package.json",
+        "//packages/@overeng/stylex-tokens:package.json",
         "//packages/@overeng/utils-dev:package.json",
     ],
     output = "overeng-utils.tgz",

@@ -2507,6 +2507,9 @@ importers:
       '@overeng/otel-contract':
         specifier: workspace:^
         version: link:../otel-contract
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@stylexjs/unplugin':
         specifier: 0.19.0
         version: 0.19.0(patch_hash=070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
@@ -2547,6 +2550,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: 1.43.0
         version: 1.43.0
+      '@overeng/stylex-tokens':
+        specifier: workspace:^
+        version: link:../stylex-tokens
       '@overeng/utils-dev':
         specifier: workspace:^
         version: link:../utils-dev
@@ -2557,9 +2563,6 @@ importers:
         specifier: 0.19.0
         version: 0.19.0(patch_hash=f6a2b5a89698e9f14621ed294e9914bf5a007eefdd95c7b162d88f8264d41cca)
       '@stylexjs/postcss-plugin':
-        specifier: 0.19.0
-        version: 0.19.0
-      '@stylexjs/stylex':
         specifier: 0.19.0
         version: 0.19.0
       '@types/node':
@@ -7511,6 +7514,7 @@ snapshots:
       '@overeng/effect-distributed-lock': file:packages/@overeng/effect-distributed-lock(effect@4.1.0)
       '@overeng/otel-contract': file:packages/@overeng/otel-contract(effect@4.1.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@playwright/test': 1.64.1
+      '@stylexjs/stylex': 0.19.0
       '@stylexjs/unplugin': 0.19.0(patch_hash=070fbc1769cc7d6b22f37d545cf0292550a93f5dc3771e5eb3e4c69ac05f1cfc)(unplugin@3.3.0(esbuild@0.28.2)(rolldown@1.2.19)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))
       effect: 4.1.0
       postcss: 8.5.26

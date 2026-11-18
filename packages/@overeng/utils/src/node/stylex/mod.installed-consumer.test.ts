@@ -1,8 +1,16 @@
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, it } from 'vitest'
@@ -146,6 +154,113 @@ it.each(['shared factory', 'upstream ESM', 'upstream CJS'])(
       })
     } finally {
       rmSync(cacheDir, { recursive: true, force: true })
+    }
+  },
+)
+
+it.each(['serve', 'build'] as const)(
+  'compiles real composed token sources against the consumer runtime during %s',
+  (command) => {
+    const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'overeng-stylex-composed-tokens-')))
+    const consumerRoot = join(fixtureRoot, 'consumer')
+    const externalPackage = join(fixtureRoot, 'member', 'packages', 'stylex-tokens')
+    const packageRoot = fileURLToPath(new URL('../../..', import.meta.url))
+    const tokenPackageRoot = dirname(
+      dirname(fileURLToPath(import.meta.resolve('@overeng/stylex-tokens/tokens.stylex'))),
+    )
+    const entryPath = join(consumerRoot, 'entry.js')
+    try {
+      mkdirSync(join(externalPackage, 'src'), { recursive: true })
+      for (const path of ['package.json', 'src/tokens.stylex.ts']) {
+        cpSync(join(tokenPackageRoot, path), join(externalPackage, path))
+      }
+      for (const [name, target] of [
+        ['@overeng/stylex-tokens', externalPackage],
+        ['@stylexjs/stylex', join(packageRoot, 'node_modules', '@stylexjs/stylex')],
+      ]) {
+        const link = join(consumerRoot, 'node_modules', name)
+        mkdirSync(join(link, '..'), { recursive: true })
+        symlinkSync(target, link, 'dir')
+      }
+      writeFileSync(
+        join(consumerRoot, 'package.json'),
+        JSON.stringify({ type: 'module', dependencies: { '@stylexjs/stylex': '0.19.0' } }),
+      )
+      writeFileSync(
+        join(consumerRoot, 'index.html'),
+        '<div id="app"></div><script type="module" src="/entry.js"></script>',
+      )
+      writeFileSync(
+        entryPath,
+        [
+          "import * as stylex from '@stylexjs/stylex'",
+          "import { spacing } from '@overeng/stylex-tokens/tokens.stylex'",
+          "const styles = stylex.create({ root: { padding: spacing['4'] } })",
+          "document.querySelector('#app').className = stylex.props(styles.root).className",
+        ].join('\n'),
+      )
+      const result = spawnSync(
+        nodeExecutable,
+        [
+          '--input-type=module',
+          '-e',
+          `
+        import assert from 'node:assert/strict'
+        import { build, createServer } from ${JSON.stringify(import.meta.resolve('vite'))}
+        import { createStylexVitePlugins } from ${JSON.stringify(new URL('./mod.js', import.meta.url).href)}
+        const config = {
+          root: ${JSON.stringify(consumerRoot)},
+          configFile: false,
+          logLevel: 'silent',
+          plugins: createStylexVitePlugins({ entries: [${JSON.stringify(entryPath)}] }),
+        }
+        if (${JSON.stringify(command)} === 'build') {
+          const result = await build({ ...config, build: { write: false, minify: false } })
+          const outputs = (Array.isArray(result) ? result : [result]).flatMap(bundle => bundle.output)
+          assert(outputs.some(output => output.type === 'asset' && output.fileName.endsWith('.css') && String(output.source).includes('padding')))
+          console.log('built')
+        } else {
+          const server = await createServer({ ...config, server: { host: '127.0.0.1', port: 0, watch: null } })
+          try {
+            await server.listen()
+            // This programmatic client has no browser crawl to publish the initial prebundle.
+            await server.environments.client.waitForRequestsIdle()
+            console.log('listening')
+            const origin = server.resolvedUrls.local[0]
+            assert((await fetch(origin)).ok)
+            const entry = await fetch(new URL('/entry.js', origin))
+            assert(entry.ok)
+            assert((await entry.text()).includes('className'))
+            console.log('entry')
+            const tokens = await fetch(new URL(${JSON.stringify(`/@fs/${join(externalPackage, 'src/tokens.stylex.ts')}`)}, origin))
+            assert(tokens.ok)
+            assert((await tokens.text()).length > 0)
+            assert.equal(server.config.resolve.dedupe.filter(name => name === '@stylexjs/stylex').length, 1)
+            console.log('tokens')
+          } finally {
+            await server.close()
+            console.log('closed')
+          }
+        }
+      `,
+        ],
+        { cwd: consumerRoot, encoding: 'utf8', timeout: 20_000 },
+      )
+      expect({
+        status: result.status,
+        signal: result.signal,
+        error: result.error?.message,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }).toEqual({
+        status: 0,
+        signal: null,
+        error: undefined,
+        stdout: command === 'build' ? 'built\n' : 'listening\nentry\ntokens\nclosed\n',
+        stderr: '',
+      })
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
     }
   },
 )
