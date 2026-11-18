@@ -3,6 +3,7 @@
 
 #[cfg(all(target_os = "linux", not(pnpm_gc_unsupported_test)))]
 mod linux {
+    mod process_evidence { include!("pnpm-store-evidence.rs"); }
     use std::collections::BTreeMap;
     use std::env;
     use std::fs;
@@ -350,6 +351,7 @@ mod linux {
         pid_dir: &Path,
         inodes: &BTreeMap<(u64, u64), InodeFootprint>,
         native_mounts: &mut BTreeMap<u64, fs::File>,
+        active: &mut bool,
     ) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
         let held = match fs::OpenOptions::new()
@@ -368,6 +370,7 @@ mod linux {
         };
         let metadata = held.metadata().map_err(|error| error.to_string())?;
         if inodes.contains_key(&(metadata.dev(), metadata.ino())) {
+            *active = true;
             return Err(format!(
                 "live process inode reference: {}",
                 reference.display()
@@ -548,17 +551,19 @@ mod linux {
         ignored_directory: Option<i32>,
         inodes: &BTreeMap<(u64, u64), InodeFootprint>,
         native_mounts: &mut BTreeMap<u64, fs::File>,
+        active: &mut bool,
     ) -> Result<bool> {
         let cwd = directory.join("cwd");
         match fs::read_link(&cwd) {
             Ok(target) if reference_under(&target, root) => {
+                *active = true;
                 return Err(format!(
                     "live process reference: {} -> {}",
                     cwd.display(),
                     target.display()
                 ));
             }
-            Ok(_) => reference_inode_proof(&cwd, pid_dir, inodes, native_mounts)?,
+            Ok(_) => reference_inode_proof(&cwd, pid_dir, inodes, native_mounts, active)?,
             Err(error) if process_gone(pid_dir, &error) => return Ok(true),
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(error)
@@ -616,13 +621,14 @@ mod linux {
                         continue;
                     }
                     if reference_under(&target, root) {
+                        *active = true;
                         return Err(format!(
                             "live process reference: {} -> {}",
                             path.display(),
                             target.display()
                         ));
                     }
-                    reference_inode_proof(&path, pid_dir, inodes, native_mounts)?;
+                    reference_inode_proof(&path, pid_dir, inodes, native_mounts, active)?;
                 }
                 Err(error) if process_gone(pid_dir, &error) => return Ok(true),
                 // A descriptor can close while its process remains live.
@@ -647,7 +653,7 @@ mod linux {
     #[cfg(test)]
     fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
         let footprint = footprint(root)?;
-        process_proof_ignoring_directory(proc_root, root, None, &footprint.inodes)
+        process_proof_ignoring_directory(proc_root, root, None, &footprint.inodes, &mut false)
     }
 
     fn process_proof_ignoring_directory(
@@ -655,6 +661,7 @@ mod linux {
         root: &Path,
         admitted_directory: Option<i32>,
         inodes: &BTreeMap<(u64, u64), InodeFootprint>,
+        active: &mut bool,
     ) -> Result<()> {
         let entries: Vec<_> = fs::read_dir(proc_root)
             .map_err(|e| format!("cannot inventory processes: {e}"))?
@@ -702,7 +709,7 @@ mod linux {
             } else {
                 None
             };
-            if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored, inodes, &mut native_mounts)? {
+            if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored, inodes, &mut native_mounts, active)? {
                 continue;
             }
             // A leader can exit while worker threads retain cwd and open files.
@@ -720,7 +727,7 @@ mod linux {
             let mut observed = false;
             for task in tasks {
                 let task = task.map_err(|error| error.to_string())?;
-                if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored, inodes, &mut native_mounts)? {
+                if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored, inodes, &mut native_mounts, active)? {
                     observed = true;
                 } else if task.try_exists().map_err(|error| error.to_string())? {
                     return Err(format!(
@@ -739,17 +746,26 @@ mod linux {
         Ok(())
     }
 
-    fn liveness(root: &Path, admitted_directory: &fs::File, footprint: &Footprint) -> Result<()> {
+    fn liveness(root: &Path, admitted_directory: &fs::File, footprint: &Footprint, lease: Option<&fs::File>) -> Result<()> {
         use std::os::fd::AsRawFd;
         let ignored = Some(admitted_directory.as_raw_fd());
         // Only the explicitly test-compiled CLI accepts this fixture. Production
         // packages contain no environment/argument bypass of the real census.
         #[cfg(pnpm_gc_test)]
         if let Some(proc_root) = env::var_os("PNPM_GC_TEST_PROC_ROOT") {
-            return process_proof_ignoring_directory(Path::new(&proc_root), root, ignored, &footprint.inodes);
+            return process_proof_ignoring_directory(Path::new(&proc_root), root, ignored, &footprint.inodes, &mut false);
         }
         native_mount_proof(mount_id(admitted_directory)?, Path::new("/proc/self"), root)?;
-        process_proof_ignoring_directory(Path::new("/proc"), root, ignored, &footprint.inodes)
+        let mut active = false;
+        let census = process_proof_ignoring_directory(Path::new("/proc"), root, ignored, &footprint.inodes, &mut active);
+        match process_evidence::classify(census, active) {
+            Ok(()) => Ok(()),
+            Err(process_evidence::Failure::Active(error)) => Err(error),
+            Err(process_evidence::Failure::Incomplete(error)) => {
+                process_evidence::prove(root, admitted_directory, lease)
+                    .map_err(|evidence| format!("{error}; {evidence}"))
+            }
+        }
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -985,13 +1001,13 @@ mod linux {
             Ok(Some(lease))
         }
 
-        fn prove(&self, git_dir: &Path, root: &Path) -> Result<(String, Footprint)> {
+        fn prove(&self, git_dir: &Path, root: &Path, lease: Option<&fs::File>) -> Result<(String, Footprint)> {
             self.assert_identity()?;
             reject_shared_store(&self.path)?;
             reject_mounts(&self.path)?;
             let ownership = checkout_ownership_proof(git_dir, root)?;
             let footprint = footprint_held(self)?;
-            liveness(&self.path, &self.directory, &footprint)?;
+            liveness(&self.path, &self.directory, &footprint, lease)?;
             self.assert_identity()?;
             Ok((
                 format!("{}\n{ownership}\n{}", root.display(), footprint.fingerprint),
@@ -1168,7 +1184,7 @@ mod linux {
             "{}-{}.observation",
             admitted.identity.0, admitted.identity.1
         ));
-        let proof = admitted.prove(&options.git_dir, root);
+        let proof = admitted.prove(&options.git_dir, root, _lease.as_ref());
         let (proof, footprint) = match proof {
             Ok(value) => value,
             Err(error) => {
@@ -1212,7 +1228,7 @@ mod linux {
             // repeat both proofs immediately before unlinking. The lock inode/root
             // stay in place so late cooperating installs cannot acquire a new inode.
             let recheck = (|| {
-                let (current, _) = admitted.prove(&options.git_dir, root)?;
+                let (current, _) = admitted.prove(&options.git_dir, root, _lease.as_ref())?;
                 if current != proof {
                     return Err("eligibility changed before retirement".into());
                 }
