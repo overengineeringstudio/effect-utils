@@ -368,6 +368,14 @@ agent activations wrap their builds in `mr store lease --owner-path <worktree>`,
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
 
+### Durable pool ownership primitives
+
+Persistent pool ownership uses version-2 store deletion barriers, which do not expire
+when their provider exits. Unknown records remain protected; ordinary version-1
+lease recovery is unchanged. Detached worktree creation can acquire its native Git
+lock atomically. Durable pool records serialize host-store capacity and generation
+claims, and retain unknown accounting rather than allocating around uncertainty.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

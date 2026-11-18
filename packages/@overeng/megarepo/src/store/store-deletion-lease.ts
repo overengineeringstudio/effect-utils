@@ -353,18 +353,25 @@ export const acquireDeletionLease = ({
       })
     }
 
-    if (persistent) yield* Effect.tryPromise({
-      try: async () => {
-        for (const path of [leasePath, dirname(leasePath)]) {
-          const handle = await open(path, 'r')
-          try { await handle.sync() } finally { await handle.close() }
-        }
-      },
-      catch: (cause) => new DeletionLeaseUnavailableError({
-        ownerPath: canonicalOwnerPath, leasePath,
-        message: `Persistent deletion barrier could not be synced: ${cause}`,
-      }),
-    })
+    if (persistent)
+      yield* Effect.tryPromise({
+        try: async () => {
+          for (const path of [leasePath, dirname(leasePath)]) {
+            const handle = await open(path, 'r')
+            try {
+              await handle.sync()
+            } finally {
+              await handle.close()
+            }
+          }
+        },
+        catch: (cause) =>
+          new DeletionLeaseUnavailableError({
+            ownerPath: canonicalOwnerPath,
+            leasePath,
+            message: `Persistent deletion barrier could not be synced: ${cause}`,
+          }),
+      })
     return { leasePath, ownerPath: canonicalOwnerPath, token }
   })
 
@@ -375,16 +382,22 @@ export const adoptPersistentDeletionLease = (lease: DeletionLease) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
-    if (record?.version !== 2 || record.token !== lease.token ||
-        record.ownerPath !== lease.ownerPath)
+    if (
+      record?.version !== 2 ||
+      record.token !== lease.token ||
+      record.ownerPath !== lease.ownerPath
+    )
       return yield* new DeletionLeaseUnavailableError({
-        ownerPath: lease.ownerPath, leasePath: lease.leasePath,
+        ownerPath: lease.ownerPath,
+        leasePath: lease.leasePath,
         message: 'Persistent pool deletion barrier no longer matches',
       })
     yield* writeFileAtomic({
       path: EffectPath.unsafe.absoluteFile(lease.leasePath),
       content: encodeLeaseRecord({
-        ...record, pid: process.pid, host: hostname(),
+        ...record,
+        pid: process.pid,
+        host: hostname(),
         processStartTime: (yield* readProcessIdentity({ fs, pid: process.pid }))?.startTime,
       }),
     })
@@ -395,9 +408,14 @@ export const persistentDeletionLeaseOwnerAlive = (lease: DeletionLease) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
-    if (record?.version !== 2 || record.token !== lease.token ||
-        record.ownerPath !== lease.ownerPath || record.host !== hostname() ||
-        record.processStartTime === undefined) return false
+    if (
+      record?.version !== 2 ||
+      record.token !== lease.token ||
+      record.ownerPath !== lease.ownerPath ||
+      record.host !== hostname() ||
+      record.processStartTime === undefined
+    )
+      return false
     const identity = yield* readProcessIdentity({ fs, pid: record.pid })
     return identity?.startTime === record.processStartTime
   })
