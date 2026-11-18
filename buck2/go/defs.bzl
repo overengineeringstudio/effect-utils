@@ -29,7 +29,7 @@ every Go product and `"embedded"` compiles the zone database in.
 """
 
 load("@prelude//:paths.bzl", "paths")
-load("@prelude//go_bootstrap:go_bootstrap.bzl", "GoBootstrapToolchainInfo")
+load("@prelude//go_bootstrap:toolchain.bzl", "GoBootstrapToolchainInfo")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 
 def go_module_archives(pins, input_digest, visibility = ["PUBLIC"]):

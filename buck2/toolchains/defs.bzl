@@ -1,7 +1,7 @@
 """Configured Rust and TypeScript toolchains realized by pinned Nix inputs."""
 
-load("@prelude//go_bootstrap:go_bootstrap.bzl", "GoBootstrapToolchainInfo")
-load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapToolchainInfo")
+load("@prelude//go_bootstrap:toolchain.bzl", "GoBootstrapToolchainInfo")
+load("@prelude//python_bootstrap:toolchain.bzl", "PythonBootstrapToolchainInfo")
 load(
     "//buck2/platforms:defs.bzl",
     "ProductPlatformInfo",

@@ -23,34 +23,34 @@
 }:
 let
   release = rec {
-    version = "2026-09-01";
+    version = "2026-11-15";
     releaseBaseUrl = "https://github.com/facebook/buck2/releases/download/${version}";
     prelude = rec {
-      revision = "1f8c24e0b1f85e645011f93a4073b0c6c762d7b1";
+      revision = "a377c4e4eb69b4bbea2e1309283ec7a699c2fb88";
       url = "https://github.com/facebook/buck2-prelude/archive/${revision}.tar.gz";
-      hash = "sha256-iwXAuHXXfw/FsR0N2CMR0GXHg1I2BHlhZ2orM7z9qas=";
+      hash = "sha256-zdYh3T0k1hNrgWNjVzWhNPiVgK5m1xfA4TdCAYX4za0=";
     };
     platforms = {
       x86_64-linux = {
         executionPlatform = "x86_64-linux";
         suffix = "x86_64-unknown-linux-gnu";
-        buck2Hash = "sha256-3JRHvS4Thg/BVwAaGAPFGMCFRE3MbGVGDZ0fVRVLMqM=";
-        rustProjectHash = "sha256-jNF1qQNhFmy6o0RAXODgjrCwxV8IX3LERUAzFdtuELM=";
-        starlarkFmtHash = "sha256-jUQXVSDoS44JDAjcSBXwwwVQfoOIzFwWWoTZuEtKen8=";
+        buck2Hash = "sha256-UdIJ+DTDUJvIMCS/Tt5izZBxNeeyibKe1p12Pc3mewQ=";
+        rustProjectHash = "sha256-e5tR+jJmXE/n5IWySgbn+M56sYEdN8JJHdmU0teGT+M=";
+        starlarkFmtHash = "sha256-VRiuSEoFUV8FP4DxVG4dZEFO43T/e6foOXJZqCzgxEw=";
       };
       aarch64-linux = {
         executionPlatform = "aarch64-linux";
         suffix = "aarch64-unknown-linux-gnu";
-        buck2Hash = "sha256-287nXbAMVX3y27OCxrW+FkPAhrh9kkqrcGCZinptWAE=";
-        rustProjectHash = "sha256-Mk5hgW6OhODKHI/urBnXUZSjR2lrIlDDzrZBUgUUsmw=";
-        starlarkFmtHash = "sha256-gkqGiT8Qr+jRN3uEtNxZWvdBQw9I/gjs3FMtB2GrFxI=";
+        buck2Hash = "sha256-xB+ZJuXi3Vi1IOvj6B7/H/jp2Y1JPHG2N4Ik6usWX74=";
+        rustProjectHash = "sha256-7pDgUAFdlWtPIAYE9ocP7eFddoUTTmLCa1n27v9+22k=";
+        starlarkFmtHash = "sha256-95Fn0AZRVI4uA2GpXqJkMuQCHS8qsn+R/XZcnvMIZNY=";
       };
       aarch64-darwin = {
         executionPlatform = "aarch64-macos";
         suffix = "aarch64-apple-darwin";
-        buck2Hash = "sha256-CWLKffGnawcHxro/8SFtMUMdSTrjfvAB6ptC9KdBCck=";
-        rustProjectHash = "sha256-t0D+YOjlFSQR+eKaQ97Zb4jbor0IkthqZgPtpLymG4E=";
-        starlarkFmtHash = "sha256-CIJ6XFRuW2AKZJYjSNOu5fGzJfkRnkTsUaWfCrmbBBY=";
+        buck2Hash = "sha256-NGTbDEUU+z/3o/NwUMc3vV3RAKLiEIhlMOlax2fToQk=";
+        rustProjectHash = "sha256-2YmE5BwuvJ/X7Tub2nX0tT6NjNs/WIHSJH4y0XrPwGU=";
+        starlarkFmtHash = "sha256-wHASgCZxEWrr8BD0Nm/ne+beG153e26+59ddvDnEVz4=";
       };
     };
   };

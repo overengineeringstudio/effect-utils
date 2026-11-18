@@ -154,7 +154,7 @@ scan_python_surface "$ROOT" "${buck_sources[@]}" "${projections[@]}" ||
 # everything is as wrong as one that rejects nothing.
 admitted="$TEMP_ROOT/admitted.bzl"
 cat >"$admitted" <<'ADMITTED'
-load("@prelude//python_bootstrap:python_bootstrap.bzl", "PythonBootstrapToolchainInfo")
+load("@prelude//python_bootstrap:toolchain.bzl", "PythonBootstrapToolchainInfo")
 
 def _nix_python_bootstrap_toolchain_impl(ctx):
     _require_nix_store_binary(ctx.attrs.interpreter, "python3", "Python bootstrap")
