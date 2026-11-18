@@ -166,7 +166,7 @@ describe('short persistent Watchman location', () => {
         // Query only: no launcher admission or watch-del participates in cancellation.
         const cancellationDeadline = performance.now() + 2500
         let listed = await command(['--no-spawn', '--no-local', 'watch-list'])
-        while (listed.roots.includes(deleted) && performance.now() < cancellationDeadline)
+        while (listed.roots.includes(deleted) === true && performance.now() < cancellationDeadline)
           listed = await command(['--no-spawn', '--no-local', 'watch-list'])
         expect(listed.roots).not.toContain(deleted)
         expect(listed.roots).toContain(kept)
