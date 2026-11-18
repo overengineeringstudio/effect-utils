@@ -79,16 +79,29 @@ it('requires an explicit declared argument to select Nix Darwin isolation', () =
   expect(() => parseEmitOptions([...args, '--darwin-isolation', 'auto'])).toThrow(
     'unknown Darwin emit isolation mode',
   )
-  expect(() =>
-    parseTypecheckOptions([
-      '/nix/store/toolchain/bin/tsgo',
-      '/package-tree',
-      'tsconfig.json',
-      '/output',
-      '--darwin-isolation',
-      'nix-build-sandbox',
-    ]),
-  ).toThrow('unexpected typecheck argument')
+  const typecheckArgs = [
+    '/nix/store/toolchain/bin/tsgo',
+    '/package-tree',
+    'tsconfig.check.json',
+    '/output',
+  ]
+  expect(parseTypecheckOptions(typecheckArgs).darwinIsolation).toBeUndefined()
+  const strict = parseTypecheckOptions([
+    ...typecheckArgs,
+    '--darwin-isolation',
+    'nix-build-sandbox',
+    '--read-root',
+    '/declared',
+  ])
+  expect(strict.darwinIsolation).toBe('nix-build-sandbox')
+  expect(strict.readRoots).toEqual(['/declared'])
+  expect(strict.project).toBe('tsconfig.check.json')
+  expect(() => parseTypecheckOptions([...typecheckArgs, '--darwin-isolation', 'auto'])).toThrow(
+    'unknown Darwin emit isolation mode',
+  )
+  expect(() => parseTypecheckOptions([...typecheckArgs, '--unknown-option', 'value'])).toThrow(
+    'unexpected typecheck argument',
+  )
 })
 
 type FingerprintTestChild = EventEmitter & FingerprintChild
