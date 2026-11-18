@@ -60,7 +60,7 @@ in
     # host identity, daemon socket, or auto-enrollment is part of the image.
     nix.enable = false;
     documentation.enable = false;
-    boot.initrd.systemd.enable = true;
+    # The pinned nixpkgs exclusively uses systemd stage 1; no opt-in is needed.
     microvm = {
       hypervisor = "cloud-hypervisor";
       optimize.enable = true;
