@@ -32,6 +32,15 @@ test('each task step in a job shares the pipeline run prefix', () => {
   })
 })
 
+test('Buck quick contracts retain the existing pipeline trace boundary', () => {
+  const step = ciWorkflow.data.jobs.quality!.steps.find(
+    (candidate) => 'name' in candidate && candidate.name === 'Quick contracts (Buck)',
+  )
+  expect(step).toBeDefined()
+  expect('run' in step! && step.run).toContain('buck2 test //:check-quick')
+  expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
+})
+
 test('GitBucket adds OIDC authority only to the same-repo PR reporter override', () => {
   const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
   const reporterJob = workflow.match(/\n  pipeline-traces:\n([\s\S]*?)(?=\n  [^\s]|$)/)?.[1]
