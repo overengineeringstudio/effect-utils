@@ -146,5 +146,43 @@ class BuckIdentity(unittest.TestCase):
         self.assertFalse(self.sidecar.exists())
 
 
+class BridgeIdentity(unittest.TestCase):
+    def test_real_native_help_consumes_only_explicit_caller_identity(self):
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit), tempfile.TemporaryDirectory(
+                dir=os.environ["TMPDIR"]
+            ) as directory:
+                root = Path(directory)
+                environment = dict(os.environ)
+                environment.pop("PIPELINE_SPOOL_DIR", None)
+                environment.pop("BUCK2_CALLER_UUID", None)
+                environment.update({
+                    "WORKSPACE_ROOT": directory,
+                    "BUCK_WRAPPER_UUID": BuckIdentity.caller_uuid,
+                    "TRACEPARENT": BuckIdentity.context,
+                    "OTEL_TASK_TRACEPARENT": BuckIdentity.context,
+                    "OTEL_SPAN_SPOOL_DIR": str(root / "spans"),
+                    "OTEL_EXPORTER_OTLP_ENDPOINT": "",
+                    "OTELITE_HTTP_ENDPOINT": "",
+                    "XDG_STATE_HOME": str(root / "state"),
+                })
+                if explicit:
+                    environment["BUCK2_CALLER_UUID"] = BuckIdentity.caller_uuid
+                result = subprocess.run(
+                    [os.environ["WORKTREE_TEST_BRIDGE"], "--isolation-dir",
+                     "wrapper-identity", "build", "--help"],
+                    env=environment, text=True, capture_output=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                sidecars = list((root / ".worktree-tools/otel/buck2").glob("*.sidecar"))
+                self.assertEqual(len(sidecars), 1)
+                invocation = sidecars[0].read_text().split(" ", 1)[0]
+                if explicit:
+                    self.assertEqual(invocation, BuckIdentity.caller_uuid)
+                else:
+                    self.assertNotEqual(invocation, BuckIdentity.caller_uuid)
+                    self.assertEqual(str(uuid.UUID(invocation)), invocation)
+
+
 if __name__ == "__main__":
     unittest.main()
