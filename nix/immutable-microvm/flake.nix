@@ -11,15 +11,18 @@
       pkgs = import nixpkgs { inherit system; };
       catalogDigest = "sha256:${builtins.hashString "sha256" "reference-catalog"}";
       epoch = "reference-v1";
-      fixture = pkgs.runCommand "authority-reference" {
-        nativeBuildInputs = [
-          pkgs.rustc
-          pkgs.stdenv.cc
-        ];
-      } ''
-        mkdir -p $out/bin
-        rustc --edition=2024 -D warnings -O ${./reference.rs} -o $out/bin/authority
-      '';
+      fixture =
+        pkgs.runCommand "authority-reference"
+          {
+            nativeBuildInputs = [
+              pkgs.rustc
+              pkgs.stdenv.cc
+            ];
+          }
+          ''
+            mkdir -p $out/bin
+            rustc --edition=2024 -D warnings -O ${./reference.rs} -o $out/bin/authority
+          '';
       mkGuest =
         release:
         nixpkgs.lib.nixosSystem {
