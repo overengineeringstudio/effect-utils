@@ -153,18 +153,21 @@ export const createStylexVitePlugins = ({
   /** @type {Plugin} */
   const configureRuntime = {
     name: 'overeng:stylex:runtime',
+    // oxlint-disable-next-line overeng/named-args -- Vite's Plugin.config hook requires positional config and environment arguments.
     config: (/** @type {UserConfig | undefined} */ config, env) => ({
       resolve: {
-        dedupe: config?.resolve?.dedupe?.includes(stylexRuntimePackage)
-          ? []
-          : [stylexRuntimePackage],
+        dedupe:
+          config?.resolve?.dedupe?.includes(stylexRuntimePackage) === true
+            ? []
+            : [stylexRuntimePackage],
       },
       ...(env.command === 'serve'
         ? {
             optimizeDeps: {
-              include: config?.optimizeDeps?.include?.includes(stylexRuntimePackage)
-                ? []
-                : [stylexRuntimePackage],
+              include:
+                config?.optimizeDeps?.include?.includes(stylexRuntimePackage) === true
+                  ? []
+                  : [stylexRuntimePackage],
             },
           }
         : {}),
