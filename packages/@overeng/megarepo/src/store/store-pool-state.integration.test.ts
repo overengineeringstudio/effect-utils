@@ -7,12 +7,28 @@ import { expect } from 'vitest'
 import { EffectPath } from '@overeng/effect-path'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
-import { claimPoolGeneration, type PoolSlot, requirePoolLease, reservePoolSlot, withPoolState } from './store-pool-state.ts'
+import {
+  claimPoolGeneration,
+  type PoolSlot,
+  requirePoolLease,
+  reservePoolSlot,
+  withPoolState,
+} from './store-pool-state.ts'
 
 const slot: PoolSlot = {
-  id: 'slot', path: '/source/pool/slot', bare: '/source/.bare', commit: 'a'.repeat(40),
-  identity: 'installed', charge: 64, generation: 1, state: 'leased', token: 'claim',
-  barrierToken: 'barrier', owner: 'task', reason: '', chargeKnown: true,
+  id: 'slot',
+  path: '/source/pool/slot',
+  bare: '/source/.bare',
+  commit: 'a'.repeat(40),
+  identity: 'installed',
+  charge: 64,
+  generation: 1,
+  state: 'leased',
+  token: 'claim',
+  barrierToken: 'barrier',
+  owner: 'task',
+  reason: '',
+  chargeKnown: true,
 }
 
 describe('pool authoritative lifecycle', () => {
@@ -20,16 +36,23 @@ describe('pool authoritative lifecycle', () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-      yield* withPoolState(base, (state, save) => save({ ...state, slots: [{ ...slot, state: 'ready' }] }),
-        { maxSlots: 1, maxBytes: 64 })
-      const claim = withPoolState(base, (state, save) => Effect.gen(function* () {
-        const next = yield* claimPoolGeneration(state.slots[0]!, 'installed', 'task')
-        yield* save({ ...state, slots: [next] })
-        return next
-      })).pipe(Effect.exit)
+      yield* withPoolState(
+        base,
+        (state, save) => save({ ...state, slots: [{ ...slot, state: 'ready' }] }),
+        { maxSlots: 1, maxBytes: 64 },
+      )
+      const claim = withPoolState(base, (state, save) =>
+        Effect.gen(function* () {
+          const next = yield* claimPoolGeneration(state.slots[0]!, 'installed', 'task')
+          yield* save({ ...state, slots: [next] })
+          return next
+        }),
+      ).pipe(Effect.exit)
       const results = yield* Effect.all([claim, claim], { concurrency: 2 })
       expect(results.filter(Exit.isSuccess)).toHaveLength(1)
-      expect((yield* withPoolState(base, (state) => Effect.succeed(state.slots[0])))?.generation).toBe(2)
+      expect(
+        (yield* withPoolState(base, (state) => Effect.succeed(state.slots[0])))?.generation,
+      ).toBe(2)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
@@ -37,10 +60,17 @@ describe('pool authoritative lifecycle', () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-      yield* withPoolState(base, (state, save) => Effect.gen(function* () {
-        yield* save(yield* reservePoolSlot(state, { ...slot, state: 'quarantined' }))
-      }), { maxSlots: 1, maxBytes: 128 })
-      const rejected = yield* withPoolState(base, (state) => reservePoolSlot(state, { ...slot, id: 'other' })).pipe(Effect.flip)
+      yield* withPoolState(
+        base,
+        (state, save) =>
+          Effect.gen(function* () {
+            yield* save(yield* reservePoolSlot(state, { ...slot, state: 'quarantined' }))
+          }),
+        { maxSlots: 1, maxBytes: 128 },
+      )
+      const rejected = yield* withPoolState(base, (state) =>
+        reservePoolSlot(state, { ...slot, id: 'other' }),
+      ).pipe(Effect.flip)
       expect(rejected.message).toContain('capacity')
       const loaded = yield* withPoolState(base, (state) => Effect.succeed(state))
       expect(loaded.slots[0]?.state).toBe('quarantined')
@@ -50,12 +80,24 @@ describe('pool authoritative lifecycle', () => {
   it.effect('charges bytes across repositories, not per seat or source revision', () =>
     Effect.gen(function* () {
       const state = { version: 1 as const, maxSlots: 10, maxBytes: 100, slots: [slot] }
-      const failure = yield* reservePoolSlot(state, { ...slot, id: 'next', bare: '/other/.bare' }).pipe(Effect.flip)
+      const failure = yield* reservePoolSlot(state, {
+        ...slot,
+        id: 'next',
+        bare: '/other/.bare',
+      }).pipe(Effect.flip)
       expect(failure.message).toContain('capacity')
-      expect((yield* reservePoolSlot(state, { ...slot, id: 'next', charge: 36 })).slots).toHaveLength(2)
-      const unknown = yield* reservePoolSlot({ ...state, slots: [{ ...slot, chargeKnown: false }] }, slot).pipe(Effect.flip)
+      expect(
+        (yield* reservePoolSlot(state, { ...slot, id: 'next', charge: 36 })).slots,
+      ).toHaveLength(2)
+      const unknown = yield* reservePoolSlot(
+        { ...state, slots: [{ ...slot, chargeKnown: false }] },
+        slot,
+      ).pipe(Effect.flip)
       expect(unknown.message).toContain('unknown')
-      const historical = yield* reservePoolSlot({ ...state, slots: [{ ...slot, chargeKnown: undefined }] }, slot).pipe(Effect.flip)
+      const historical = yield* reservePoolSlot(
+        { ...state, slots: [{ ...slot, chargeKnown: undefined }] },
+        slot,
+      ).pipe(Effect.flip)
       expect(historical.message).toContain('unknown')
     }),
   )
@@ -68,8 +110,13 @@ describe('pool authoritative lifecycle', () => {
         { token: 'other', generation: 1, state: 'leased' as const },
         { token: 'claim', generation: 1, state: 'quarantined' as const },
       ]) {
-        expect(yield* requirePoolLease({ ...slot, state: candidate.state }, candidate.token, candidate.generation).pipe(Effect.exit))
-          .toSatisfy(Exit.isFailure)
+        expect(
+          yield* requirePoolLease(
+            { ...slot, state: candidate.state },
+            candidate.token,
+            candidate.generation,
+          ).pipe(Effect.exit),
+        ).toSatisfy(Exit.isFailure)
       }
     }),
   )
@@ -79,16 +126,28 @@ describe('pool authoritative lifecycle', () => {
       const fs = yield* FileSystem.FileSystem
       const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
       const owner = `${base}pool-root`
-      const lease = yield* acquireDeletionLease({ storeBasePath: base, ownerPath: owner, now: 1, persistent: true })
+      const lease = yield* acquireDeletionLease({
+        storeBasePath: base,
+        ownerPath: owner,
+        now: 1,
+        persistent: true,
+      })
       const record = yield* fs.readFileString(lease.leasePath)
       // Rewrite just the lifetime in real authoritative bytes, emulating provider loss.
-      yield* fs.writeFileString(lease.leasePath, record.replace(`"pid":${process.pid}`, '"pid":2147483647'))
-      expect(yield* acquireDeletionLease({ storeBasePath: base, ownerPath: owner, now: 2 }).pipe(Effect.exit))
-        .toSatisfy(Exit.isFailure)
+      yield* fs.writeFileString(
+        lease.leasePath,
+        record.replace(`"pid":${process.pid}`, '"pid":2147483647'),
+      )
+      expect(
+        yield* acquireDeletionLease({ storeBasePath: base, ownerPath: owner, now: 2 }).pipe(
+          Effect.exit,
+        ),
+      ).toSatisfy(Exit.isFailure)
       yield* adoptPersistentDeletionLease(lease)
       expect(yield* fs.readFileString(lease.leasePath)).toContain(`"pid":${process.pid}`)
-      expect(yield* adoptPersistentDeletionLease({ ...lease, token: 'wrong' }).pipe(Effect.exit))
-        .toSatisfy(Exit.isFailure)
+      expect(
+        yield* adoptPersistentDeletionLease({ ...lease, token: 'wrong' }).pipe(Effect.exit),
+      ).toSatisfy(Exit.isFailure)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
@@ -98,8 +157,11 @@ describe('pool authoritative lifecycle', () => {
       const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
       yield* fs.makeDirectory(`${base}.state/pool`, { recursive: true })
       yield* fs.writeFileString(`${base}.state/pool/state.json`, '{"version":99}')
-      expect(yield* withPoolState(base, () => Effect.void, { maxSlots: 1, maxBytes: 1 }).pipe(Effect.exit))
-        .toSatisfy(Exit.isFailure)
+      expect(
+        yield* withPoolState(base, () => Effect.void, { maxSlots: 1, maxBytes: 1 }).pipe(
+          Effect.exit,
+        ),
+      ).toSatisfy(Exit.isFailure)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

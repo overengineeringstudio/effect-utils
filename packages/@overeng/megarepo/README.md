@@ -93,7 +93,6 @@ retain the root; no automatic dirty cleanup, expiry, removal or force-unlock exi
 Removal remains the existing hygiene owner's operation with full consumer proof.
 Per-root qualification and provisioning-caller adoption are separate from this API.
 
-
 ## Typical Flow
 
 ```bash

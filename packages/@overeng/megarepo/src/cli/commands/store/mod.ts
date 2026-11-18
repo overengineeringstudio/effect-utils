@@ -35,7 +35,6 @@ import {
   sourceCredentialError,
 } from '../../../core/config.ts'
 import * as Git from '../../../core/git.ts'
-import { storePoolCommand } from './pool.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../core/lock.ts'
 import * as LibObservability from '../../../core/observability.ts'
 import { classifyRef, isCommitSha } from '../../../core/ref.ts'
@@ -156,6 +155,7 @@ import type {
 } from '../../renderers/StoreOutput/mod.ts'
 import { storeBuckMaintainCommand } from './buck-maintain.ts'
 import { storeLockCommand } from './lock.ts'
+import { storePoolCommand } from './pool.ts'
 
 /**
  * Entry returned by collectStoreWorktrees — `broken` indicates a directory that looks like a

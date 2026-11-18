@@ -1439,9 +1439,14 @@ export const createWorktreeDetached = (args: {
   Effect.gen(function* () {
     yield* assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath })
     yield* runGitCommand({
-      args: ['worktree', 'add', '--detach',
+      args: [
+        'worktree',
+        'add',
+        '--detach',
         ...(args.lockReason === undefined ? [] : ['--lock', '--reason', args.lockReason]),
-        args.worktreePath, args.commit],
+        args.worktreePath,
+        args.commit,
+      ],
       cwd: args.repoPath,
     })
   }).pipe(
