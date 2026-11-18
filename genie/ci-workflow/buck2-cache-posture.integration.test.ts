@@ -567,6 +567,22 @@ describe('generated CI cache trust behavior', () => {
     expect(flake).toContain('reindeer = import ./nix/reindeer.nix { inherit pkgs; };')
     const devenv = await Bun.file(new URL('../../devenv.nix', import.meta.url)).text()
     expect(devenv).toContain('reindeer = import ./nix/reindeer.nix { pkgs = previous; };')
+    const bootstrap = publisher.steps.find(
+      (step) => step.name === 'Realize source generator bootstrap shell',
+    )!
+    const shellPublication = publisher.steps.find(
+      (step) => step.name === 'Publish realized bootstrap shell closure',
+    )!
+    expect(bootstrap.run).toContain('buck2:editor:bootstrap')
+    expect(bootstrap.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+    expect(shellPublication.run).toContain('shell=$(readlink .devenv/gc/shell)')
+    expect(shellPublication.run).toContain('nix-store --check-validity "$shell"')
+    expect(shellPublication.run).toContain('cachix push overeng-effect-utils "$shell"')
+    expect(shellPublication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
+    expect(evaluate(shellPublication.if!, 'push', 'refs/heads/main')).toBe(true)
+    for (const event of ['pull_request', 'merge_group', 'workflow_dispatch']) {
+      expect(evaluate(shellPublication.if!, event, 'refs/heads/main')).toBe(false)
+    }
   })
 
   it('roundtrips libraries during preparation, then smokes outputs and publishes only on request', () => {

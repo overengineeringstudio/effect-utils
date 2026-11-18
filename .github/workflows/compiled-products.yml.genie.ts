@@ -9,7 +9,11 @@ import {
   githubTokenEnv,
   installNixStep,
   namespaceRunner,
+  prepareCiScriptsStep,
+  preparePinnedDevenvStep,
   readBinaryCacheDescriptors,
+  runDevenvTasksBefore,
+  validateNixStoreStep,
   withCiSourceRoot,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
@@ -73,6 +77,35 @@ export default ciWorkflow({
         checkoutStep(),
         installNixStep({ binaryCaches: [binaryCache] }),
         cachixCliBuildStep,
+        prepareCiScriptsStep,
+        preparePinnedDevenvStep,
+        validateNixStoreStep,
+        {
+          name: 'Realize source generator bootstrap shell',
+          if: "github.event_name == 'push'",
+          run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+        },
+        cachixPushStep({
+          jobIf: protectedMainIf,
+          triggers: ['push'],
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+          step: {
+            name: 'Publish realized bootstrap shell closure',
+            if: "github.event_name == 'push'",
+            run: withCiSourceRoot(
+              [
+                'set -euo pipefail',
+                'shell=$(readlink .devenv/gc/shell)',
+                'case "$shell" in',
+                '  /nix/store/*-devenv-shell) ;;',
+                '  *) echo "::error::Missing realized bootstrap shell GC root" >&2; exit 1 ;;',
+                'esac',
+                'nix-store --check-validity "$shell"',
+                'cachix push overeng-effect-utils "$shell"',
+              ].join('\n'),
+            ),
+          },
+        }),
         cachixPushStep({
           jobIf: protectedMainIf,
           triggers: ['push', 'workflow_dispatch'],

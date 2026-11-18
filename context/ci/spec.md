@@ -226,6 +226,11 @@ pinned tools rather than repository HEAD; see the
 The inventory retains the same `nix/reindeer.nix` override used by the devenv
 overlay, so bootstrap can substitute the patched generator instead of rebuilding
 it on every fresh runner.
+On main pushes the same job resolves lock-pinned devenv, runs
+`buck2:editor:bootstrap`, and pushes the realized `.devenv/gc/shell` store root
+and its entire closure. Bootstrap receives no cache write token; only the
+subsequent main-push-only shell publication step receives it. Dispatch, PR, and
+merge-group runs never publish a bootstrap shell.
 Closure-size claims require measured shell outputs and their dependency paths,
 not package-list changes or task scheduling alone. Execution latency is measured
 from job `startedAt` to `completedAt`; runner queue wait is reported separately
