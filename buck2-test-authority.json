@@ -2335,6 +2335,7 @@
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
+        "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/vite-build-identity.build.test.ts",
@@ -2424,6 +2425,7 @@
       "unboundedFiles": [
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
+        "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/vite-build-identity.build.test.ts",
