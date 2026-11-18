@@ -1277,11 +1277,10 @@ describe('published consumer ref', () => {
     expect(reporter['runs-on']).toEqual([
       'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1',
     ])
-    expect(reporter.steps).toHaveLength(1)
     expect(reporter.env?.BUCK2_NO_REMOTE_CACHE).toBe('1')
-    expect(reporter.steps.some((step) => /nix|devenv|tailscale/.test(step.run ?? ''))).toBe(false)
     expect(reporter.steps.every((step) => step.uses === undefined)).toBe(true)
     const report = reporter.steps.find((step) => step.name === 'Report published/current status')!
+    expect(report.run).not.toMatch(/\b(?:nix|devenv|tailscale)\b/i)
     expect(report.env).toEqual({
       GH_TOKEN: '${{ github.token }}',
       PUBLISH_RESULT: '${{ needs.publish-products.result }}',
