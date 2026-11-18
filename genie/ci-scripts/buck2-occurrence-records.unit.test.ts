@@ -176,6 +176,23 @@ describe('retained occurrence v1 reconciliation', () => {
     expect(result.evidenceGaps).toContain('build-a:1:conflicting-capture')
   })
 
+  it('excludes conflicting duplicate spans inside one capture even if a later duplicate matches', () => {
+    for (const finalMatch of [false, true]) {
+      const rows = [
+        occurrence(),
+        occurrence({ bytes: '999', outcome: 'cache-hit' }),
+        ...(finalMatch === true ? [occurrence()] : []),
+        occurrence({ span: '2' }),
+      ]
+      const result = reconcile({
+        files: [...filesFor(), conversion({ rows })],
+      })
+      expect(result.records.map((row) => row.id)).toEqual(['build-a-2'])
+      expect(result.evidenceGaps).toContain('build-a:duplicate-span')
+      expect(result.evidenceGaps).toContain('build-a:1:conflicting-capture')
+    }
+  })
+
   it('does not repair unknown native fields without a clean capture', () => {
     const result = reconcile({ files: [manifest(), conversion({ unknown: 1 })] })
     expect(result.records).toHaveLength(1)

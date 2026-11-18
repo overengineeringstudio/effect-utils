@@ -22,6 +22,7 @@ export type Capture = {
   attrs: Attributes
   rows: Map<string, string>
   values: Map<string, unknown>
+  conflicts: Set<string>
   incomplete: boolean
 }
 const resourceKeys = [
@@ -242,6 +243,7 @@ export const decodeOccurrenceFiles = ({
               attrs: attributes({ value: read('resource_attributes'), keys: resourceKeys }),
               rows: new Map(),
               values: new Map(),
+              conflicts: new Set(),
               incomplete:
                 truncated === true ||
                 stop !== null ||
@@ -269,7 +271,15 @@ export const decodeOccurrenceFiles = ({
               boolean(read('ended')),
               Array.from(attrs).toSorted(([a], [b]) => a.localeCompare(b)),
             ])
-            if (capture.rows.has(span) === true) gaps.add(`${capture.build}:duplicate-span`)
+            const previous = capture.rows.get(span)
+            if (previous !== undefined) {
+              gaps.add(`${capture.build}:duplicate-span`)
+              if (previous !== canonical) {
+                gaps.add(`${capture.build}:${span}:conflicting-capture`)
+                capture.conflicts.add(span)
+                capture.incomplete = true
+              }
+            }
             capture.rows.set(span, canonical)
             capture.values.set(span, value)
             break

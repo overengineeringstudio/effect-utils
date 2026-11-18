@@ -95,6 +95,7 @@ export const reconcileOccurrenceRecords = ({
     const merged = new Map<string, { value: unknown; capture: Capture; canonical: string }>()
     const complete = versions.filter((version) => version.incomplete === false)
     for (const capture of versions) {
+      for (const span of capture.conflicts) conflicted.add(JSON.stringify([build, span]))
       if (
         versions.some(
           (other) =>
