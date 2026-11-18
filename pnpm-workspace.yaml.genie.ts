@@ -16,6 +16,13 @@ export default pnpmWorkspaceYaml.root({
       issue: '#1952',
     },
     {
+      package: 'oxc-parser',
+      versions: ['0.159.0', '0.127.0'],
+      reason:
+        'the root evaluates oxc-parser@0.159.0 independently while storybook@10.6.0 requires its 0.127.x parser; do not override the upstream parser during downstream validation',
+      issue: '#2595',
+    },
+    {
       package: 'typescript',
       // Two cohorts, both intentional and both present in the lock at this
       // commit: production compiles with the catalog's TypeScript 7, and
