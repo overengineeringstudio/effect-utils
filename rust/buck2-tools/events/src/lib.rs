@@ -1074,14 +1074,19 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                     "buck2.execution_outcome",
                                     action_outcome(a.execution_kind, a.failed),
                                 ));
-                                if let Some(digest) = a.commands.iter().rev().find_map(command_digest) {
+                                if let Some(digest) =
+                                    a.commands.iter().rev().find_map(command_digest)
+                                {
                                     span.attrs.push(attr("buck2.action_digest", digest));
                                 }
-                                if let Some(host) = a.hostname.as_deref().filter(|host| !host.is_empty()) {
+                                if let Some(host) =
+                                    a.hostname.as_deref().filter(|host| !host.is_empty())
+                                {
                                     span.attrs.push(attr("buck2.action_host", host));
                                 }
                                 if let Some(duration) = &a.wall_time {
-                                    span.attrs.push(int_attr("buck2.duration_ns", duration_ns(duration)));
+                                    span.attrs
+                                        .push(int_attr("buck2.duration_ns", duration_ns(duration)));
                                 }
                                 span.execution_ns = a
                                     .commands
@@ -1117,7 +1122,8 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                 span.queue_ns = queue;
                                 span.attrs
                                     .push(int_attr("buck2.output_size", a.output_size));
-                                span.attrs.push(int_attr("buck2.total_bytes", a.output_size));
+                                span.attrs
+                                    .push(int_attr("buck2.total_bytes", a.output_size));
                                 if let Some(bytes) = a.input_files_bytes {
                                     span.attrs.push(int_attr("buck2.input_files_bytes", bytes));
                                 }

@@ -131,8 +131,13 @@ fn direct_decode_truncation_and_trace_views() {
     assert!(model.spans[1].critical);
     assert!(model.resource_attrs.is_empty());
     for key in [
-        "buck2.action_digest", "buck2.execution_outcome", "buck2.duration_ns",
-        "buck2.execution_ns", "buck2.queue_ns", "buck2.total_bytes", "buck2.action_host",
+        "buck2.action_digest",
+        "buck2.execution_outcome",
+        "buck2.duration_ns",
+        "buck2.execution_ns",
+        "buck2.queue_ns",
+        "buck2.total_bytes",
+        "buck2.action_host",
     ] {
         assert!(!model.spans[1].attrs.iter().any(|a| a["key"] == key));
     }
@@ -409,7 +414,10 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
                         data::ActionExecutionEnd {
                             execution_kind: 1,
                             hostname: Some("synthetic-worker".into()),
-                            wall_time: Some(prost_types::Duration { seconds: 2, nanos: 3 }),
+                            wall_time: Some(prost_types::Duration {
+                                seconds: 2,
+                                nanos: 3,
+                            }),
                             output_size: 123,
                             input_files_bytes: Some(456),
                             commands: vec![data::CommandExecution {
@@ -455,9 +463,17 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
         vec![attr("buck2.root_id", sha256_hex(working_dir.as_bytes()))]
     );
     let value = |index: usize, key: &str| {
-        model.spans[index].attrs.iter().find(|a| a["key"] == key).unwrap()["value"].clone()
+        model.spans[index]
+            .attrs
+            .iter()
+            .find(|a| a["key"] == key)
+            .unwrap()["value"]
+            .clone()
     };
-    assert_ne!(value(1, "buck2.occurrence_id"), value(2, "buck2.occurrence_id"));
+    assert_ne!(
+        value(1, "buck2.occurrence_id"),
+        value(2, "buck2.occurrence_id")
+    );
     assert_eq!(
         value(1, "buck2.occurrence_id")["stringValue"],
         format!(
@@ -466,9 +482,18 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
         )
     );
     for index in 1..=2 {
-        assert_eq!(value(index, "buck2.action_digest")["stringValue"], "native-digest:123");
-        assert_eq!(value(index, "buck2.execution_outcome")["stringValue"], "local-exec");
-        assert_eq!(value(index, "buck2.action_host")["stringValue"], "synthetic-worker");
+        assert_eq!(
+            value(index, "buck2.action_digest")["stringValue"],
+            "native-digest:123"
+        );
+        assert_eq!(
+            value(index, "buck2.execution_outcome")["stringValue"],
+            "local-exec"
+        );
+        assert_eq!(
+            value(index, "buck2.action_host")["stringValue"],
+            "synthetic-worker"
+        );
         assert_eq!(value(index, "buck2.duration_ns")["intValue"], "2000000003");
         assert_eq!(value(index, "buck2.execution_ns")["intValue"], "1000000004");
         assert_eq!(value(index, "buck2.queue_ns")["intValue"], "0");
@@ -478,9 +503,16 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
     model.spans[1].critical = true;
     let views = make_views(&model, None);
     let action = |view: usize| {
-        views[view].2.iter().find(|span| {
-            span["attributes"].as_array().unwrap().contains(&int_attr("buck2.span_id", 2))
-        }).unwrap()
+        views[view]
+            .2
+            .iter()
+            .find(|span| {
+                span["attributes"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&int_attr("buck2.span_id", 2))
+            })
+            .unwrap()
     };
     assert_eq!(action(0)["attributes"], action(1)["attributes"]);
     let exported = serde_json::to_string(&model.resource_attrs).unwrap()
@@ -493,10 +525,17 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
 fn action_outcomes_and_digest_sources_remain_native() {
     use data::command_execution_kind::Command;
     for (kind, expected) in [
-        (1, "local-exec"), (8, "local-exec"),
-        (2, "remote-exec"), (11, "remote-exec"),
-        (3, "cache-hit"), (7, "cache-hit"), (9, "cache-hit"), (10, "cache-hit"),
-        (0, "unknown"), (4, "unknown"), (6, "unknown"),
+        (1, "local-exec"),
+        (8, "local-exec"),
+        (2, "remote-exec"),
+        (11, "remote-exec"),
+        (3, "cache-hit"),
+        (7, "cache-hit"),
+        (9, "cache-hit"),
+        (10, "cache-hit"),
+        (0, "unknown"),
+        (4, "unknown"),
+        (6, "unknown"),
         (999, "unknown"),
     ] {
         assert_eq!(action_outcome(kind, false), expected);
@@ -523,13 +562,18 @@ fn action_outcomes_and_digest_sources_remain_native() {
             Command::WorkerCommand(_) => Some("worker-digest"),
             _ => None,
         };
-        assert_eq!(command_digest(&data::CommandExecution {
-            details: Some(data::CommandExecutionDetails {
-                command_kind: Some(data::CommandExecutionKind { command: Some(command) }),
+        assert_eq!(
+            command_digest(&data::CommandExecution {
+                details: Some(data::CommandExecutionDetails {
+                    command_kind: Some(data::CommandExecutionKind {
+                        command: Some(command)
+                    }),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
-            ..Default::default()
-        }), expected);
+            expected
+        );
     }
     assert_eq!(command_digest(&data::CommandExecution::default()), None);
 }
