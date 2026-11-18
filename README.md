@@ -861,6 +861,8 @@ private CAS and verified seeder remain optional infrastructure; there is no
 runtime archive-origin selection or automatic fallback. A future mirror or CAS
 read path needs a separate decision. Nix's per-digest fixed-output archives and
 copy-and-verify projection are unchanged.
+The optional seeder's tracked trusted prefix selects this repository's private
+store, not the legacy cross-repository store; it does not enable CAS downloads.
 
 Public read-only jobs set
 `BUCK2_PUBLIC_CACHE_READ_ONLY=1`; protected public publishers provide
