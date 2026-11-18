@@ -29,6 +29,70 @@ mr lock
 | `mr lock`          | Record the current synced workspace state into `megarepo.lock`            |
 | `mr apply`         | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI |
 
+### Native execution pool and lazy editing
+
+`mr store pool` is an explicit API, not automatic workspace provisioning.
+Read-only source access runs no install/build and allocates no branch:
+
+```sh
+mr store pool read owner/repo --commit <full-sha> path/to/source.ts
+mr store pool promote owner/repo --commit <full-sha> --branch topic/change
+```
+
+Promotion delegates to `mr store worktree new --ref … --base … --no-fetch`,
+then runs the owned root's normal `devenv tasks run pnpm:install`. It never
+renames a slot or changes a canonical branch path's identity.
+
+Pool setup and execution use the existing admission mechanism; these commands
+do not grant execution admission or create admission records:
+
+```sh
+mr store pool prewarm owner/repo --commit <full-sha> \
+  --max-slots <host-count> --max-bytes <host-byte-budget> --charge-bytes <slot-reservation>
+mr store pool claim --identity <prewarm-receipt-identity> --owner <task-id> -- command arg
+mr store pool release --slot <id> --token <claim-token> --generation <generation>
+mr store pool status
+```
+
+Run release **outside** the slot after the owner command exits. Claim emits a
+JSON receipt and passes `MR_POOL_SLOT`, `MR_POOL_TOKEN`, `MR_POOL_GENERATION`
+to its child. Release is explicit; task failure quarantines instead of resetting.
+Success publishes a fenced `completed` state before provider exit; status cannot
+mistake normal completion for abandonment. Status reconciles abandoned/unknown
+providers toward quarantine only.
+
+Host-store-wide count and charged-byte limits include preparing, leased and
+quarantined roots, across repositories. Reservations are accounting, not filesystem
+quotas; ordinary admitted execution remains responsible for runtime containment.
+Every failed preparation reconciles retained logical bytes, including partial
+install growth. Unknown retained accounting or holders block further allocation.
+Limits cannot be changed while authoritative records exist.
+
+Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
+and persistent deletion barriers remain through ready, leased and uncertain states.
+The barrier's v2 record is deliberately not PID-death-recoverable; older readers
+reject it and retain the root. Ordinary v1 lease recovery is unchanged.
+Readiness consumes the root-owned `pnpm:doctor` installation/projection/storage
+receipts and full link-health proof across all declared package node_modules,
+including `.bin`. It additionally binds exact source/tool/platform identity,
+actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
+The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
+store-state directory. Pool validation reads that file after the single-task
+runner exits; it never parses devenv console output or relies on log flags.
+No adapter, copied Buck state or scripts-disabled preparation is used.
+
+Release invokes the packaged absolute `WORKTREE_TEARDOWN_BIN` provider, not an
+ambient PATH command. It uses the existing store-owner `gc-owner` process policy:
+readable foreign references veto, unreadable foreign processes are counted, and
+own-UID completeness requires native or bounded lsof evidence. Unknown owner
+processes retain the root. After unchanged clean source/history proof, it validates the
+installed dependency view, then cleans only its own detached root preserving
+validated `node_modules`, and reruns normal installation. Missing teardown,
+unknown processes, dirty/untracked source, changed commits or failed preparation
+retain the root; no automatic dirty cleanup, expiry, removal or force-unlock exists.
+Removal remains the existing hygiene owner's operation with full consumer proof.
+Per-root qualification and provisioning-caller adoption are separate from this API.
+
 ## Typical Flow
 
 ```bash
@@ -367,35 +431,6 @@ Builds that have not written yet are invisible to the mtime and activity checks.
 agent activations wrap their builds in `mr store lease --owner-path <worktree>`, such a build is
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
-
-### Durable pool ownership primitives
-
-Persistent pool ownership uses version-2 store deletion barriers, which do not expire
-when their provider exits. Unknown records remain protected; ordinary version-1
-lease recovery is unchanged. Detached worktree creation can acquire its native Git
-lock atomically. Durable pool records serialize host-store capacity and generation
-claims, and retain unknown accounting rather than allocating around uncertainty.
-
-Pool preparation uses the normal root-owned `pnpm:install` and validates its
-machine-readable doctor report, installed shared GVS paths, exact source and
-resolved tool/platform identity. Logical root bytes are charged conservatively.
-The `mr` product supplies its existing teardown helper through the explicit
-`WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
-
-Preparation reserves host-store-wide count and logical-byte capacity before
-creating a fixed-path detached root with an atomic native Git lock. It publishes
-readiness only after installation and source/process proofs; failed preparation
-retains the locked root and reconciles partial growth into its charged bytes.
-
-Claims atomically fence one exact generation and adopt its persistent ownership
-without removing the deletion barrier. A provider records successful completion
-before exiting; inspection quarantines abandoned or uncertain providers instead
-of returning their roots to readiness.
-
-Release first fences its owner and persists quarantine, then invokes the packaged
-teardown and existing process-visibility proofs. Only clean, unpublished source
-with unchanged installed identity may be cleaned and normally reinstalled.
-Failed proof or teardown retains protection; no slot is automatically removed.
 
 ### Process activity snapshot
 
