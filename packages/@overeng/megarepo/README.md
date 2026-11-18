@@ -130,8 +130,11 @@ foreign entries are never removed. Existing symlink handling is unchanged.
 `mr store status` reports a `common_bare_worktree_config` warning when a repository's
 common config enables `extensions.worktreeConfig` and contains `core.bare`. Git then
 shares that setting with linked worktrees; `core.bare=true` prevents ordinary worktree
-operations. Worktree acquisition and creation refuse this configuration before mutation
-and name the affected repository and `mr store fix` command. The fix removes only
+operations. Acquisition callers (`mr add` with sync, `mr fetch`, `mr apply`, `mr lock`,
+`mr config pin`, and store add/new/lease) preflight selected existing repositories before
+manifest/lock writes, fetches, preparation markers, or directory creation. Low-level creation
+and rehome paths also refuse before mutation. Errors name the affected repository and
+`mr store fix` command. The fix removes only
 `core.bare` from the common config under the repository writer lock, preserving
 `extensions.worktreeConfig`, `core.logAllRefUpdates`, and other settings. Repeating the
 fix is safe.

@@ -11,6 +11,7 @@ import {
   createStoreWorktreeDetached,
   withStoreWorktreeLease,
 } from '../store/store-deletion-lease.ts'
+import { rehomeCommitWorktree } from '../store/store-rehome.ts'
 import { makeStoreLayer } from '../store/store.ts'
 import { syncMember } from '../sync/member.ts'
 import * as Git from './git.ts'
@@ -172,6 +173,7 @@ describe('common bare config with worktree config', () => {
     'store-branch',
     'store-detached',
     'lease',
+    'rehome',
   ] as const) {
     it.effect(
       `refuses ${operation} before directory, writer lock, container lock or lease mutation`,
@@ -205,11 +207,16 @@ describe('common bare config with worktree config', () => {
                       ? createStoreWorktreeDetached({ ...detachedArgs, storeBasePath: store }).pipe(
                           Effect.flip,
                         )
-                      : withStoreWorktreeLease({
-                          storeBasePath: store,
-                          ownerPath: worktree,
-                          bareRepoPath: bare,
-                        })(fs.makeDirectory(worktree, { recursive: true })).pipe(Effect.flip)
+                      : operation === 'rehome'
+                        ? rehomeCommitWorktree({
+                            worktreePath: worktree,
+                            bareRepoPath: bare,
+                          }).pipe(Effect.asVoid, Effect.flip)
+                        : withStoreWorktreeLease({
+                            storeBasePath: store,
+                            ownerPath: worktree,
+                            bareRepoPath: bare,
+                          })(fs.makeDirectory(worktree, { recursive: true })).pipe(Effect.flip)
           const error = yield* rejection
           expect(error).toBeInstanceOf(Git.CommonBareWorktreeConfigError)
           if (error instanceof Git.CommonBareWorktreeConfigError) {

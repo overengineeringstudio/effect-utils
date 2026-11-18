@@ -101,6 +101,29 @@ export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
   },
 ) {}
 
+/** Check every selected existing repository before an acquisition caller mutates anything. */
+export const assertStoreAcquisitionHealthy = Effect.fn('store.assertAcquisitionHealthy')(
+  function* ({
+    sourceStrings,
+    store,
+  }: {
+    readonly sourceStrings: readonly string[]
+    readonly store: MegarepoStore
+  }) {
+    const checked = new Set<string>()
+    for (const sourceString of sourceStrings) {
+      const source = parseSourceString(sourceString)
+      if (source === undefined || isRemoteSource(source) === false) continue
+      const repoPath = store.getBareRepoPath(source)
+      if (checked.has(repoPath) === true) continue
+      checked.add(repoPath)
+      if ((yield* store.hasBareRepo(source)) === true) {
+        yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath })
+      }
+    }
+  },
+)
+
 // =============================================================================
 // Validation
 // =============================================================================

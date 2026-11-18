@@ -201,6 +201,10 @@ describe('mr store status bare repository health', () => {
     'store-add-existing',
     'pin-checkout',
     'pin-current',
+    'add',
+    'engine-apply',
+    'engine-lock',
+    'engine-fetch',
   ] as const) {
     it.effect(`refuses unhealthy CLI acquisition before mutation: ${acquisition}`, () =>
       Effect.gen(function* () {
@@ -226,9 +230,14 @@ describe('mr store status bare repository health', () => {
             member: { url: 'https://github.com/test/acquire', ref: 'main', commit },
           },
         })
-        yield* fs.makeDirectory(`${workspacePath}repos`, { recursive: true })
         const mount = `${workspacePath}repos/member`
-        yield* fs.symlink(worktree, mount)
+        const hasMount = acquisition.startsWith('engine-') === false
+        if (hasMount === true) {
+          yield* fs.makeDirectory(`${workspacePath}repos`, { recursive: true })
+          yield* fs.symlink(worktree, mount)
+        } else {
+          expect(yield* fs.exists(`${workspacePath}repos`)).toBe(false)
+        }
         yield* Git.runCommand({
           cwd: bare,
           args: [
@@ -244,10 +253,12 @@ describe('mr store status bare repository health', () => {
         const lock = yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)
         const commonConfig = yield* fs.readFileString(`${bare}config`)
         const storeEntries = (yield* fs.readDirectory(storePath, { recursive: true })).toSorted()
-        const workspaceEntries = (yield* fs.readDirectory(workspacePath, {
+        // Include sibling preparation markers/locks, not just workspace contents.
+        const workspaceParent = EffectPath.ops.parent(workspacePath)!
+        const workspaceEntries = (yield* fs.readDirectory(workspaceParent, {
           recursive: true,
         })).toSorted()
-        const link = yield* fs.readLink(mount)
+        const link = hasMount === true ? yield* fs.readLink(mount) : undefined
         expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
         const command =
           acquisition === 'store-new'
@@ -256,7 +267,11 @@ describe('mr store status bare repository health', () => {
               ? ['store', 'add', 'test/acquire#main']
               : acquisition === 'pin-checkout'
                 ? ['config', 'pin', 'member', '--checkout', 'topic/new']
-                : ['config', 'pin', 'member']
+                : acquisition === 'pin-current'
+                  ? ['config', 'pin', 'member']
+                  : acquisition === 'add'
+                    ? ['add', 'test/acquire#main', '--name', 'added']
+                    : [acquisition.slice('engine-'.length)]
         const result = yield* runMrCommand({
           cwd: workspacePath,
           command: [...command, '--output', 'json'],
@@ -269,11 +284,15 @@ describe('mr store status bare repository health', () => {
         expect(yield* fs.readFileString(`${workspacePath}megarepo.json`)).toBe(manifest)
         expect(yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)).toBe(lock)
         expect(yield* fs.readFileString(`${bare}config`)).toBe(commonConfig)
-        expect(yield* fs.readLink(mount)).toBe(link)
+        if (hasMount === true) {
+          expect(yield* fs.readLink(mount)).toBe(link)
+        } else {
+          expect(yield* fs.exists(`${workspacePath}repos`)).toBe(false)
+        }
         expect((yield* fs.readDirectory(storePath, { recursive: true })).toSorted()).toEqual(
           storeEntries,
         )
-        expect((yield* fs.readDirectory(workspacePath, { recursive: true })).toSorted()).toEqual(
+        expect((yield* fs.readDirectory(workspaceParent, { recursive: true })).toSorted()).toEqual(
           workspaceEntries,
         )
         expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
