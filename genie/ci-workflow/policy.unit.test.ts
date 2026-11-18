@@ -114,6 +114,8 @@ describe('public Namespace nested-KVM admission', () => {
     { concurrency: { ...publicNamespaceKvmConcurrency, group: '${{ github.run_id }}' } },
     { permissions: { contents: 'write' } },
     { env: { KEY: '${{ secrets.CACHE_WRITE_KEY }}' } },
+    { env: { KEY: '${{\nsecrets.CACHE_WRITE_KEY\n}}' } },
+    { env: { KEY: '${{ toJSON(secrets) }}' } },
     { env: { CACHE_TOKEN: 'credential' } },
     { strategy: { matrix: { variant: ['a', 'b'] } } },
     { 'runs-on': [publicNamespaceKvmRunner, 'nix'] },

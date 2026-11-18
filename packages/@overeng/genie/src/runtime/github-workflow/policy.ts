@@ -727,7 +727,7 @@ export const collectWorkflowPolicyViolations = ({
         config.concurrency.group !== bounded.concurrencyGroup ||
         config.concurrency['cancel-in-progress'] !== false ||
         JSON.stringify(permissions) !== JSON.stringify({ contents: 'read' }) ||
-        /\bsecrets\b/i.test(credentials) ||
+        /secrets/i.test(credentials) ||
         /(?:ACTIONS_ID_TOKEN_REQUEST|ACTIONS_RUNTIME_TOKEN|(?:CACHE|CACHIX|ATTIC|NIX)[A-Z0-9_]*(?:TOKEN|KEY)|(?:TOKEN|KEY)[A-Z0-9_]*CACHE)/i.test(
           credentials,
         ) ||
