@@ -196,6 +196,88 @@ describe('mr store JSON subprocess output', () => {
 })
 
 describe('mr store status bare repository health', () => {
+  for (const acquisition of [
+    'store-new',
+    'store-add-existing',
+    'pin-checkout',
+    'pin-current',
+  ] as const) {
+    it.effect(`refuses unhealthy CLI acquisition before mutation: ${acquisition}`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'github.com',
+            owner: 'test',
+            repo: 'acquire',
+            branches: ['main'],
+            withRemote: true,
+          },
+        ])
+        const bare = bareRepoPaths['github.com/test/acquire']!
+        const worktree = worktreePaths['github.com/test/acquire#main']!
+        const commit = yield* getWorktreeCommit(worktree)
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { member: 'test/acquire#main' },
+          lockEntries: {
+            member: { url: 'https://github.com/test/acquire', ref: 'main', commit },
+          },
+        })
+        yield* fs.makeDirectory(`${workspacePath}repos`, { recursive: true })
+        const mount = `${workspacePath}repos/member`
+        yield* fs.symlink(worktree, mount)
+        yield* Git.runCommand({
+          cwd: bare,
+          args: [
+            'config',
+            '-f',
+            `${bare}config`,
+            '--no-includes',
+            'extensions.worktreeConfig',
+            'true',
+          ],
+        })
+        const manifest = yield* fs.readFileString(`${workspacePath}megarepo.json`)
+        const lock = yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)
+        const commonConfig = yield* fs.readFileString(`${bare}config`)
+        const storeEntries = (yield* fs.readDirectory(storePath, { recursive: true })).toSorted()
+        const workspaceEntries = (yield* fs.readDirectory(workspacePath, {
+          recursive: true,
+        })).toSorted()
+        const link = yield* fs.readLink(mount)
+        expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
+        const command =
+          acquisition === 'store-new'
+            ? ['store', 'worktree', 'new', 'test/acquire', '--ref', 'topic/new', '--base', 'main']
+            : acquisition === 'store-add-existing'
+              ? ['store', 'add', 'test/acquire#main']
+              : acquisition === 'pin-checkout'
+                ? ['config', 'pin', 'member', '--checkout', 'topic/new']
+                : ['config', 'pin', 'member']
+        const result = yield* runMrCommand({
+          cwd: workspacePath,
+          command: [...command, '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        expect(result.exitCode).toBe(1)
+        expect(result.failure).toContain('CommonBareWorktreeConfigError')
+        expect(result.failure).toContain(bare.replace(/\/$/, ''))
+        expect(result.failure).toContain('mr store fix')
+        expect(yield* fs.readFileString(`${workspacePath}megarepo.json`)).toBe(manifest)
+        expect(yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)).toBe(lock)
+        expect(yield* fs.readFileString(`${bare}config`)).toBe(commonConfig)
+        expect(yield* fs.readLink(mount)).toBe(link)
+        expect((yield* fs.readDirectory(storePath, { recursive: true })).toSorted()).toEqual(
+          storeEntries,
+        )
+        expect((yield* fs.readDirectory(workspacePath, { recursive: true })).toSorted()).toEqual(
+          workspaceEntries,
+        )
+        expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+
   it.effect(
     'reports and repairs common core.bare with worktreeConfig without changing other keys',
     () =>

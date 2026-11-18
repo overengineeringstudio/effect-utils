@@ -4289,6 +4289,9 @@ const storeAddCommand = Cli.Command.make(
 
       const bareRepoPath = store.getBareRepoPath(source)
       const bareExists = yield* store.hasBareRepo(source)
+      if (bareExists === true) {
+        yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })
+      }
 
       // Clone if needed (show progress for non-JSON modes)
       if (bareExists === false) {
@@ -4757,6 +4760,9 @@ const storeWorktreeNewCommand = Cli.Command.make(
       // Auto-bootstrap: clone bare repo if not in store
       const bareRepoPath = store.getBareRepoPath(source)
       const bareExists = yield* store.hasBareRepo(source)
+      if (bareExists === true) {
+        yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })
+      }
       const autoBootstrap = bareExists === false
       if (noFetch === true) {
         if (bareExists === false) {
