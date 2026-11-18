@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:6a6543d89b2b6fbe6671e98488e4927ff2bc6c441e2a029f069507bed6aace93
+# Store fingerprint: sha256:27fdc224821b415bf290921d83d87f41d85726cc3f58a46a60fb03d707eb9357
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -1982,11 +1982,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_android_arm_eabi_0_159_0_6e888eaa7c17",
+    package_name = "@oxc-parser/binding-android-arm-eabi",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-android-arm-eabi/-/binding-android-arm-eabi-0.159.0.tgz",
+    sha256 = "7efbb069b6216de5a394a533d11844d4165755566fc57b443e727e2bbc2ff53e",
+    size_bytes = 794377,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_android_arm64_0_127_0_39d742cc0aa5",
     package_name = "@oxc-parser/binding-android-arm64",
     url = "https://registry.npmjs.org/@oxc-parser/binding-android-arm64/-/binding-android-arm64-0.127.0.tgz",
     sha256 = "f8bc226fcba3ce539b15b96a073dfe63a9b5be271a699193d007e047e759d8e5",
     size_bytes = 949529,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_android_arm64_0_159_0_f4a6ee605751",
+    package_name = "@oxc-parser/binding-android-arm64",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-android-arm64/-/binding-android-arm64-0.159.0.tgz",
+    sha256 = "d3410c3c2dae2e703ee7ba1fb3768130297f7fd25eeece59f377428cc78351d8",
+    size_bytes = 950290,
     bins = {
     },
 )
@@ -2002,11 +2022,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+    package_name = "@oxc-parser/binding-darwin-arm64",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-darwin-arm64/-/binding-darwin-arm64-0.159.0.tgz",
+    sha256 = "85a994abe160bcf7c5c64d36ac28206b86a4d1e2f2e757fcf16af7ba068d1340",
+    size_bytes = 1264382,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_darwin_x64_0_127_0_d830e615e791",
     package_name = "@oxc-parser/binding-darwin-x64",
     url = "https://registry.npmjs.org/@oxc-parser/binding-darwin-x64/-/binding-darwin-x64-0.127.0.tgz",
     sha256 = "c8b98a2b19963992f99e77dee011c7aa7657eaffc7acf98884292e7189b9cd47",
     size_bytes = 941937,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_darwin_x64_0_159_0_7ac3fc78b505",
+    package_name = "@oxc-parser/binding-darwin-x64",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-darwin-x64/-/binding-darwin-x64-0.159.0.tgz",
+    sha256 = "54202d65af6aad54bd20d081c64493c18c480c627bf0177478b5e50fa17fd86d",
+    size_bytes = 1352743,
     bins = {
     },
 )
@@ -2022,11 +2062,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_freebsd_x64_0_159_0_e96293e211f0",
+    package_name = "@oxc-parser/binding-freebsd-x64",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-freebsd-x64/-/binding-freebsd-x64-0.159.0.tgz",
+    sha256 = "aaa4d20b8ac3c17629fcc6cca7466f4752ec0073c555076fb9dd9bf5d7ff2c25",
+    size_bytes = 936416,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_linux_arm_gnueabihf_0_127_0_08973ed3a91b",
     package_name = "@oxc-parser/binding-linux-arm-gnueabihf",
     url = "https://registry.npmjs.org/@oxc-parser/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-0.127.0.tgz",
     sha256 = "264a56288edf2c5a0981858f1fa24b4c5ea9b1b4906ee9ae6b358f09b7c837cb",
     size_bytes = 918641,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_linux_arm_gnueabihf_0_159_0_3d5467261f25",
+    package_name = "@oxc-parser/binding-linux-arm-gnueabihf",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-0.159.0.tgz",
+    sha256 = "5c48dc8fa70e933e25a842eac35db504ac5fa4fe081758d358cec64ec1a00d37",
+    size_bytes = 887057,
     bins = {
     },
 )
@@ -2042,11 +2102,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_linux_arm_musleabihf_0_159_0_7fee4cffcd19",
+    package_name = "@oxc-parser/binding-linux-arm-musleabihf",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-0.159.0.tgz",
+    sha256 = "8892829f348cdf316345f3949b41518f5a28c32f47949830cfdf8bc791a273ea",
+    size_bytes = 881259,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_linux_arm64_gnu_0_127_0_339d8e222bd1",
     package_name = "@oxc-parser/binding-linux-arm64-gnu",
     url = "https://registry.npmjs.org/@oxc-parser/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-0.127.0.tgz",
     sha256 = "f16cd9e11b1c16b73b3a61d5d8f9cb9e396f2f4e1a71f4eeca2b4b31dfa3fa51",
     size_bytes = 1000019,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+    package_name = "@oxc-parser/binding-linux-arm64-gnu",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-0.159.0.tgz",
+    sha256 = "ff74a3e61dee390c806f082f627fc1cfa38a2c0a6409096437e143229eb5bd33",
+    size_bytes = 1376147,
     bins = {
     },
 )
@@ -2062,11 +2142,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_linux_arm64_musl_0_159_0_aff4de824e1f",
+    package_name = "@oxc-parser/binding-linux-arm64-musl",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-arm64-musl/-/binding-linux-arm64-musl-0.159.0.tgz",
+    sha256 = "056adaa4ddfe18d1f45a1854fa4a1a162c61917f91c92f1e52303a6bd5ca89c0",
+    size_bytes = 993520,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_linux_ppc64_gnu_0_127_0_1517531f6297",
     package_name = "@oxc-parser/binding-linux-ppc64-gnu",
     url = "https://registry.npmjs.org/@oxc-parser/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-0.127.0.tgz",
     sha256 = "7f9cd2e36248a1ce83e5f3cdb9fdbc7ab74f432474c382128a7a76987234d159",
     size_bytes = 1221785,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_linux_ppc64_gnu_0_159_0_3f85e7322514",
+    package_name = "@oxc-parser/binding-linux-ppc64-gnu",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-0.159.0.tgz",
+    sha256 = "ac7cf26aab77b8d872cf3a1f400c30abcbd413a88d389f117dace5ca16a1bd71",
+    size_bytes = 1183351,
     bins = {
     },
 )
@@ -2082,11 +2182,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_linux_riscv64_gnu_0_159_0_124f4b5de68a",
+    package_name = "@oxc-parser/binding-linux-riscv64-gnu",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-0.159.0.tgz",
+    sha256 = "96bb9ccf6b17255c09237188ccc5ae5f1cde776639275b7c04a3b75800bda210",
+    size_bytes = 1052638,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_linux_riscv64_musl_0_127_0_32376f45b17f",
     package_name = "@oxc-parser/binding-linux-riscv64-musl",
     url = "https://registry.npmjs.org/@oxc-parser/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-0.127.0.tgz",
     sha256 = "a0a1c17a86b6f6582e7ad8090a4254c036866d6130d14d2577c302ef3111a66d",
     size_bytes = 1087191,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_linux_riscv64_musl_0_159_0_2fe99798a4b2",
+    package_name = "@oxc-parser/binding-linux-riscv64-musl",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-0.159.0.tgz",
+    sha256 = "127ecce91447dfe2d23393dc0e546ec1231e41188a2d71da554ff80128e470aa",
+    size_bytes = 1056343,
     bins = {
     },
 )
@@ -2102,11 +2222,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_linux_s390x_gnu_0_159_0_8e582252384f",
+    package_name = "@oxc-parser/binding-linux-s390x-gnu",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-0.159.0.tgz",
+    sha256 = "8f0c0ce278dbcceb3ebb8a611320586d5d5c489f7691bee76237d7d5a0c53421",
+    size_bytes = 1057601,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_linux_x64_gnu_0_127_0_1c216b7b5e59",
     package_name = "@oxc-parser/binding-linux-x64-gnu",
     url = "https://registry.npmjs.org/@oxc-parser/binding-linux-x64-gnu/-/binding-linux-x64-gnu-0.127.0.tgz",
     sha256 = "2874538b47e5f37fe6cee8d5ad73931aaa8ca7ce0c8661f7070d1c6ba80cdfa3",
     size_bytes = 1046830,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+    package_name = "@oxc-parser/binding-linux-x64-gnu",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-x64-gnu/-/binding-linux-x64-gnu-0.159.0.tgz",
+    sha256 = "1a4a742b999183622bd9852ae6e9c443c7b6ffaccdfb8fefb9462a66763b2ee5",
+    size_bytes = 1413330,
     bins = {
     },
 )
@@ -2122,11 +2262,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_linux_x64_musl_0_159_0_b8721ab6212f",
+    package_name = "@oxc-parser/binding-linux-x64-musl",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-linux-x64-musl/-/binding-linux-x64-musl-0.159.0.tgz",
+    sha256 = "cb8861ac0f7b4042e9b2d28057d7db911a6382125899937273df3e641b77b250",
+    size_bytes = 1009258,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_openharmony_arm64_0_127_0_de2f66328880",
     package_name = "@oxc-parser/binding-openharmony-arm64",
     url = "https://registry.npmjs.org/@oxc-parser/binding-openharmony-arm64/-/binding-openharmony-arm64-0.127.0.tgz",
     sha256 = "7abd34e09b56c1c580f740b89a1704c831baaaaffc07f8d1d59182f513bb0735",
     size_bytes = 1002089,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_openharmony_arm64_0_159_0_2d9f0ef322df",
+    package_name = "@oxc-parser/binding-openharmony-arm64",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-openharmony-arm64/-/binding-openharmony-arm64-0.159.0.tgz",
+    sha256 = "9e9c717cd74c5dad5e6f51cdd4e858f3ed3945f7cca8db2b04625a74cfbdd688",
+    size_bytes = 1000625,
     bins = {
     },
 )
@@ -2152,6 +2312,16 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_win32_arm64_msvc_0_159_0_b6413b24db64",
+    package_name = "@oxc-parser/binding-win32-arm64-msvc",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-0.159.0.tgz",
+    sha256 = "67ba9a0b6f312b31bf65ec52cf61c27b976f1cd7639baabb8db95cc615be53bd",
+    size_bytes = 812638,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_win32_ia32_msvc_0_127_0_f48941c3388f",
     package_name = "@oxc-parser/binding-win32-ia32-msvc",
     url = "https://registry.npmjs.org/@oxc-parser/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-0.127.0.tgz",
@@ -2162,11 +2332,31 @@ pnpm_package(
 )
 
 pnpm_package(
+    name = "package_oxc_parser_binding_win32_ia32_msvc_0_159_0_6009a8aa0175",
+    package_name = "@oxc-parser/binding-win32-ia32-msvc",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-0.159.0.tgz",
+    sha256 = "04b941b9402af221dd68f84fb5126fa42f447804dac72e31f3e17ee1b68d5714",
+    size_bytes = 777517,
+    bins = {
+    },
+)
+
+pnpm_package(
     name = "package_oxc_parser_binding_win32_x64_msvc_0_127_0_b3b41af735e1",
     package_name = "@oxc-parser/binding-win32-x64-msvc",
     url = "https://registry.npmjs.org/@oxc-parser/binding-win32-x64-msvc/-/binding-win32-x64-msvc-0.127.0.tgz",
     sha256 = "2839dbd106b9b716ea99880a8648aaa6a49e6e20d4e553e1f7da2cbb1ba01664",
     size_bytes = 817152,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_binding_win32_x64_msvc_0_159_0_23a59de4549f",
+    package_name = "@oxc-parser/binding-win32-x64-msvc",
+    url = "https://registry.npmjs.org/@oxc-parser/binding-win32-x64-msvc/-/binding-win32-x64-msvc-0.159.0.tgz",
+    sha256 = "a415e243c6b011df750ebc0a60c627a851fdd88d65b3073b55b865cbb695647b",
+    size_bytes = 1207888,
     bins = {
     },
 )
@@ -2197,6 +2387,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/@oxc-project/types/-/types-0.156.0.tgz",
     sha256 = "9ea3e4ff27f4c9c7bc9b5a8feb7b7d4f2181dd2b1d90067d52f267b6c5897dbc",
     size_bytes = 7629,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_project_types_0_159_0_fbe6b6759c13",
+    package_name = "@oxc-project/types",
+    url = "https://registry.npmjs.org/@oxc-project/types/-/types-0.159.0.tgz",
+    sha256 = "2af2fc3348d36a975d8aedf0b8823bfb1c916451705671702d96ca219ecdca5d",
+    size_bytes = 7632,
     bins = {
     },
 )
@@ -6481,6 +6681,16 @@ pnpm_package(
     url = "https://registry.npmjs.org/oxc-parser/-/oxc-parser-0.127.0.tgz",
     sha256 = "b831239904128a3bda87cef97dfe8f87c9cff544635f030cbca04bb5601f27d6",
     size_bytes = 134279,
+    bins = {
+    },
+)
+
+pnpm_package(
+    name = "package_oxc_parser_0_159_0_748a8057cb23",
+    package_name = "oxc-parser",
+    url = "https://registry.npmjs.org/oxc-parser/-/oxc-parser-0.159.0.tgz",
+    sha256 = "15c661507a47761ecc4f9b10f820809d94e058295c75d931407cd7e741d07741",
+    size_bytes = 702416,
     bins = {
     },
 )
@@ -10772,6 +10982,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_android_arm_eabi_0_159_0_6e888eaa7c17",
+    package = ":package_oxc_parser_binding_android_arm_eabi_0_159_0_6e888eaa7c17",
+    store_key = "@oxc-parser+binding-android-arm-eabi@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-android-arm-eabi@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-android-arm-eabi@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-android-arm-eabi@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-android-arm-eabi@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_android_arm64_0_127_0_39d742cc0aa5",
     package = ":package_oxc_parser_binding_android_arm64_0_127_0_39d742cc0aa5",
     store_key = "@oxc-parser+binding-android-arm64@0.127.0",
@@ -10788,6 +11014,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_android_arm64_0_159_0_f4a6ee605751",
+    package = ":package_oxc_parser_binding_android_arm64_0_159_0_f4a6ee605751",
+    store_key = "@oxc-parser+binding-android-arm64@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-android-arm64@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-android-arm64@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-android-arm64@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-android-arm64@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_darwin_arm64_0_127_0_880c7e783637",
     package = ":package_oxc_parser_binding_darwin_arm64_0_127_0_880c7e783637",
     store_key = "@oxc-parser+binding-darwin-arm64@0.127.0",
@@ -10796,6 +11038,22 @@ pnpm_store_entry(
         "javascript_portable": "entry @oxc-parser/binding-darwin-arm64@0.127.0 has no complete required dependency closure on javascript_portable",
         "linux_aarch64": "entry @oxc-parser/binding-darwin-arm64@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-darwin-arm64@0.127.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+    package = ":package_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+    store_key = "@oxc-parser+binding-darwin-arm64@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-darwin-arm64@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-darwin-arm64@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-darwin-arm64@0.159.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "",
     },
     dependencies = {
@@ -10820,6 +11078,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_darwin_x64_0_159_0_7ac3fc78b505",
+    package = ":package_oxc_parser_binding_darwin_x64_0_159_0_7ac3fc78b505",
+    store_key = "@oxc-parser+binding-darwin-x64@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-darwin-x64@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-darwin-x64@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-darwin-x64@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-darwin-x64@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_freebsd_x64_0_127_0_ec705517e161",
     package = ":package_oxc_parser_binding_freebsd_x64_0_127_0_ec705517e161",
     store_key = "@oxc-parser+binding-freebsd-x64@0.127.0",
@@ -10829,6 +11103,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-freebsd-x64@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_freebsd_x64_0_159_0_e96293e211f0",
+    package = ":package_oxc_parser_binding_freebsd_x64_0_159_0_e96293e211f0",
+    store_key = "@oxc-parser+binding-freebsd-x64@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-freebsd-x64@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-freebsd-x64@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-freebsd-x64@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-freebsd-x64@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -10852,6 +11142,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_arm_gnueabihf_0_159_0_3d5467261f25",
+    package = ":package_oxc_parser_binding_linux_arm_gnueabihf_0_159_0_3d5467261f25",
+    store_key = "@oxc-parser+binding-linux-arm-gnueabihf@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm-gnueabihf@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_linux_arm_musleabihf_0_127_0_a2180cd742ff",
     package = ":package_oxc_parser_binding_linux_arm_musleabihf_0_127_0_a2180cd742ff",
     store_key = "@oxc-parser+binding-linux-arm-musleabihf@0.127.0",
@@ -10861,6 +11167,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_arm_musleabihf_0_159_0_7fee4cffcd19",
+    package = ":package_oxc_parser_binding_linux_arm_musleabihf_0_159_0_7fee4cffcd19",
+    store_key = "@oxc-parser+binding-linux-arm-musleabihf@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm-musleabihf@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm-musleabihf@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -10884,6 +11206,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+    package = ":package_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+    store_key = "@oxc-parser+binding-linux-arm64-gnu@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm64-gnu@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm64-gnu@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm64-gnu@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_linux_arm64_musl_0_127_0_d7bc5fb5e465",
     package = ":package_oxc_parser_binding_linux_arm64_musl_0_127_0_d7bc5fb5e465",
     store_key = "@oxc-parser+binding-linux-arm64-musl@0.127.0",
@@ -10893,6 +11231,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-linux-arm64-musl@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_arm64_musl_0_159_0_aff4de824e1f",
+    package = ":package_oxc_parser_binding_linux_arm64_musl_0_159_0_aff4de824e1f",
+    store_key = "@oxc-parser+binding-linux-arm64-musl@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-arm64-musl@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-arm64-musl@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-arm64-musl@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-arm64-musl@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -10916,6 +11270,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_ppc64_gnu_0_159_0_3f85e7322514",
+    package = ":package_oxc_parser_binding_linux_ppc64_gnu_0_159_0_3f85e7322514",
+    store_key = "@oxc-parser+binding-linux-ppc64-gnu@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-ppc64-gnu@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-ppc64-gnu@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-ppc64-gnu@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-ppc64-gnu@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_linux_riscv64_gnu_0_127_0_aacc4f3db7f2",
     package = ":package_oxc_parser_binding_linux_riscv64_gnu_0_127_0_aacc4f3db7f2",
     store_key = "@oxc-parser+binding-linux-riscv64-gnu@0.127.0",
@@ -10925,6 +11295,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_riscv64_gnu_0_159_0_124f4b5de68a",
+    package = ":package_oxc_parser_binding_linux_riscv64_gnu_0_159_0_124f4b5de68a",
+    store_key = "@oxc-parser+binding-linux-riscv64-gnu@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-riscv64-gnu@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-riscv64-gnu@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -10948,6 +11334,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_riscv64_musl_0_159_0_2fe99798a4b2",
+    package = ":package_oxc_parser_binding_linux_riscv64_musl_0_159_0_2fe99798a4b2",
+    store_key = "@oxc-parser+binding-linux-riscv64-musl@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-riscv64-musl@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-riscv64-musl@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-riscv64-musl@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-riscv64-musl@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_linux_s390x_gnu_0_127_0_b2e5b17589d8",
     package = ":package_oxc_parser_binding_linux_s390x_gnu_0_127_0_b2e5b17589d8",
     store_key = "@oxc-parser+binding-linux-s390x-gnu@0.127.0",
@@ -10957,6 +11359,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-linux-s390x-gnu@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_s390x_gnu_0_159_0_8e582252384f",
+    package = ":package_oxc_parser_binding_linux_s390x_gnu_0_159_0_8e582252384f",
+    store_key = "@oxc-parser+binding-linux-s390x-gnu@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-s390x-gnu@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-s390x-gnu@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-s390x-gnu@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-s390x-gnu@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -10980,6 +11398,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+    package = ":package_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+    store_key = "@oxc-parser+binding-linux-x64-gnu@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-x64-gnu@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-x64-gnu@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-x64-gnu@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_linux_x64_musl_0_127_0_d74c488273be",
     package = ":package_oxc_parser_binding_linux_x64_musl_0_127_0_d74c488273be",
     store_key = "@oxc-parser+binding-linux-x64-musl@0.127.0",
@@ -10996,6 +11430,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_linux_x64_musl_0_159_0_b8721ab6212f",
+    package = ":package_oxc_parser_binding_linux_x64_musl_0_159_0_b8721ab6212f",
+    store_key = "@oxc-parser+binding-linux-x64-musl@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-linux-x64-musl@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-linux-x64-musl@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-linux-x64-musl@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-linux-x64-musl@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_openharmony_arm64_0_127_0_de2f66328880",
     package = ":package_oxc_parser_binding_openharmony_arm64_0_127_0_de2f66328880",
     store_key = "@oxc-parser+binding-openharmony-arm64@0.127.0",
@@ -11005,6 +11455,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-openharmony-arm64@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_openharmony_arm64_0_159_0_2d9f0ef322df",
+    package = ":package_oxc_parser_binding_openharmony_arm64_0_159_0_2d9f0ef322df",
+    store_key = "@oxc-parser+binding-openharmony-arm64@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-openharmony-arm64@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-openharmony-arm64@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-openharmony-arm64@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-openharmony-arm64@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11044,6 +11510,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_win32_arm64_msvc_0_159_0_b6413b24db64",
+    package = ":package_oxc_parser_binding_win32_arm64_msvc_0_159_0_b6413b24db64",
+    store_key = "@oxc-parser+binding-win32-arm64-msvc@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-win32-arm64-msvc@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-win32-arm64-msvc@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-win32-arm64-msvc@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-win32-arm64-msvc@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_win32_ia32_msvc_0_127_0_f48941c3388f",
     package = ":package_oxc_parser_binding_win32_ia32_msvc_0_127_0_f48941c3388f",
     store_key = "@oxc-parser+binding-win32-ia32-msvc@0.127.0",
@@ -11060,6 +11542,22 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_binding_win32_ia32_msvc_0_159_0_6009a8aa0175",
+    package = ":package_oxc_parser_binding_win32_ia32_msvc_0_159_0_6009a8aa0175",
+    store_key = "@oxc-parser+binding-win32-ia32-msvc@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-win32-ia32-msvc@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-win32-ia32-msvc@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-win32-ia32-msvc@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-win32-ia32-msvc@0.159.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_parser_binding_win32_x64_msvc_0_127_0_b3b41af735e1",
     package = ":package_oxc_parser_binding_win32_x64_msvc_0_127_0_b3b41af735e1",
     store_key = "@oxc-parser+binding-win32-x64-msvc@0.127.0",
@@ -11069,6 +11567,22 @@ pnpm_store_entry(
         "linux_aarch64": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "entry @oxc-parser/binding-win32-x64-msvc@0.127.0 has no complete required dependency closure on macos_aarch64",
+    },
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_parser_binding_win32_x64_msvc_0_159_0_23a59de4549f",
+    package = ":package_oxc_parser_binding_win32_x64_msvc_0_159_0_23a59de4549f",
+    store_key = "@oxc-parser+binding-win32-x64-msvc@0.159.0",
+    runtime = ":assemble-store.ts",
+    unavailable_by_platform = {
+        "javascript_portable": "entry @oxc-parser/binding-win32-x64-msvc@0.159.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxc-parser/binding-win32-x64-msvc@0.159.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxc-parser/binding-win32-x64-msvc@0.159.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxc-parser/binding-win32-x64-msvc@0.159.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11099,6 +11613,16 @@ pnpm_store_entry(
     name = "entry_oxc_project_types_0_156_0_31923f59b6c8",
     package = ":package_oxc_project_types_0_156_0_31923f59b6c8",
     store_key = "@oxc-project+types@0.156.0",
+    runtime = ":assemble-store.ts",
+    dependencies = {
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
+    name = "entry_oxc_project_types_0_159_0_fbe6b6759c13",
+    package = ":package_oxc_project_types_0_159_0_fbe6b6759c13",
+    store_key = "@oxc-project+types@0.159.0",
     runtime = ":assemble-store.ts",
     dependencies = {
     },
@@ -16664,6 +17188,31 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
+    name = "entry_oxc_parser_0_159_0_748a8057cb23",
+    package = ":package_oxc_parser_0_159_0_748a8057cb23",
+    store_key = "oxc-parser@0.159.0",
+    runtime = ":assemble-store.ts",
+    dependencies_by_platform = {
+        "javascript_portable": {
+            "@oxc-project/types": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+        },
+        "linux_aarch64": {
+            "@oxc-parser/binding-linux-arm64-gnu": ":entry_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+            "@oxc-project/types": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+        },
+        "linux_x86_64": {
+            "@oxc-parser/binding-linux-x64-gnu": ":entry_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+            "@oxc-project/types": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+        },
+        "macos_aarch64": {
+            "@oxc-parser/binding-darwin-arm64": ":entry_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+            "@oxc-project/types": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+        },
+    },
+    visibility = ["PUBLIC"],
+)
+
+pnpm_store_entry(
     name = "entry_oxc_resolver_11_21_2_f960d078eb2b",
     package = ":package_oxc_resolver_11_21_2_f960d078eb2b",
     store_key = "oxc-resolver@11.21.2",
@@ -18313,27 +18862,27 @@ pnpm_store_view(
     name = "view__cdb4ee2aea69",
     runtime = ":assemble-store.ts",
     direct = {
-        "oxc-parser": "oxc-parser@0.127.0",
+        "oxc-parser": "oxc-parser@0.159.0",
     },
     closure_by_platform = {
         "javascript_portable": {
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "linux_aarch64": {
-            "@oxc-parser+binding-linux-arm64-gnu@0.127.0": ":entry_oxc_parser_binding_linux_arm64_gnu_0_127_0_339d8e222bd1",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-linux-arm64-gnu@0.159.0": ":entry_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "linux_x86_64": {
-            "@oxc-parser+binding-linux-x64-gnu@0.127.0": ":entry_oxc_parser_binding_linux_x64_gnu_0_127_0_1c216b7b5e59",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-linux-x64-gnu@0.159.0": ":entry_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "macos_aarch64": {
-            "@oxc-parser+binding-darwin-arm64@0.127.0": ":entry_oxc_parser_binding_darwin_arm64_0_127_0_880c7e783637",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-darwin-arm64@0.159.0": ":entry_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
     },
     bins = {
@@ -18349,27 +18898,27 @@ pnpm_store_view(
     name = "product_view__cdb4ee2aea69",
     runtime = ":assemble-store.ts",
     direct = {
-        "oxc-parser": "oxc-parser@0.127.0",
+        "oxc-parser": "oxc-parser@0.159.0",
     },
     closure_by_platform = {
         "javascript_portable": {
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "linux_aarch64": {
-            "@oxc-parser+binding-linux-arm64-gnu@0.127.0": ":entry_oxc_parser_binding_linux_arm64_gnu_0_127_0_339d8e222bd1",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-linux-arm64-gnu@0.159.0": ":entry_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "linux_x86_64": {
-            "@oxc-parser+binding-linux-x64-gnu@0.127.0": ":entry_oxc_parser_binding_linux_x64_gnu_0_127_0_1c216b7b5e59",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-linux-x64-gnu@0.159.0": ":entry_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "macos_aarch64": {
-            "@oxc-parser+binding-darwin-arm64@0.127.0": ":entry_oxc_parser_binding_darwin_arm64_0_127_0_880c7e783637",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-darwin-arm64@0.159.0": ":entry_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
     },
     bins = {
@@ -18385,27 +18934,27 @@ pnpm_store_view(
     name = "external_view__cdb4ee2aea69",
     runtime = ":assemble-store.ts",
     direct = {
-        "oxc-parser": "oxc-parser@0.127.0",
+        "oxc-parser": "oxc-parser@0.159.0",
     },
     closure_by_platform = {
         "javascript_portable": {
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "linux_aarch64": {
-            "@oxc-parser+binding-linux-arm64-gnu@0.127.0": ":entry_oxc_parser_binding_linux_arm64_gnu_0_127_0_339d8e222bd1",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-linux-arm64-gnu@0.159.0": ":entry_oxc_parser_binding_linux_arm64_gnu_0_159_0_715f556cdc68",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "linux_x86_64": {
-            "@oxc-parser+binding-linux-x64-gnu@0.127.0": ":entry_oxc_parser_binding_linux_x64_gnu_0_127_0_1c216b7b5e59",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-linux-x64-gnu@0.159.0": ":entry_oxc_parser_binding_linux_x64_gnu_0_159_0_05ba44d7a054",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
         "macos_aarch64": {
-            "@oxc-parser+binding-darwin-arm64@0.127.0": ":entry_oxc_parser_binding_darwin_arm64_0_127_0_880c7e783637",
-            "@oxc-project+types@0.127.0": ":entry_oxc_project_types_0_127_0_4a09c38db72c",
-            "oxc-parser@0.127.0": ":entry_oxc_parser_0_127_0_1df3ef09fc22",
+            "@oxc-parser+binding-darwin-arm64@0.159.0": ":entry_oxc_parser_binding_darwin_arm64_0_159_0_91384bb6579d",
+            "@oxc-project+types@0.159.0": ":entry_oxc_project_types_0_159_0_fbe6b6759c13",
+            "oxc-parser@0.159.0": ":entry_oxc_parser_0_159_0_748a8057cb23",
         },
     },
     bins = {

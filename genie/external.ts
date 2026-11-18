@@ -505,7 +505,7 @@ export const catalog = defineCatalog({
   '@typescript-eslint/rule-tester': '8.69.0',
   '@typescript-eslint/utils': '8.69.0',
   prettier: '3.9.6',
-  'oxc-parser': '0.127.0',
+  'oxc-parser': '0.159.0',
   oxlint: '1.82.0',
   /** oxlint 1.82 requires the tsgolint peer at `>=7.0.2001` (the TS-7-aligned line). */
   'oxlint-tsgolint': '7.0.2001',
