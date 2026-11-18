@@ -85,7 +85,10 @@ export type Offer = typeof Offer.Type
 export const Pending = Schema.Struct({
   epoch: Version, kind: Schema.Literal('pending'), executionId: Schema.UUID,
   requestDigest: Digest, actionDigest: Digest, review: Review,
-  options: Schema.Array(Offer).check(Schema.isMinLength(1)),
+  options: Schema.Array(Offer).check(Schema.isMinLength(1), Schema.makeFilter(
+    (options) => new Set(options.map((option) => option.optionId)).size === options.length,
+    { description: 'unique option identifiers' },
+  )),
   issuedAt: Timestamp, expiresAt: Timestamp,
 })
 export type Pending = typeof Pending.Type
@@ -109,7 +112,8 @@ export type Status = typeof Status.Type
 export const Terminal = Schema.Struct({ cursor: Schema.Int, executionId: Schema.UUID, state: State, requestDigest: Digest })
 export type Terminal = typeof Terminal.Type
 export const Catalog = Schema.Struct({ epoch: Version, revision: Identifier,
-  entries: Schema.Array(Schema.Struct({ commandId: Identifier, sensitivity: Sensitivity, description: Schema.String })) })
+  entries: Schema.Array(Schema.Struct({ commandId: Identifier, sensitivity: Sensitivity, description: Schema.String,
+    accounts: Schema.Array(Identifier), argsSchema: Schema.Record(Schema.String, Schema.Unknown) })) })
 export type Catalog = typeof Catalog.Type
 export const AuthRequest = Schema.Struct({ epoch: Version, method: Schema.Literals(['GET', 'POST']),
   path: Schema.String, bodyDigest: Digest, nonce: Schema.UUID, issuedAt: Timestamp })

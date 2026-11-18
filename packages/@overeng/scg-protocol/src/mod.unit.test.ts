@@ -1,7 +1,7 @@
 import { createPrivateKey, createPublicKey } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { canonical, decodeJson, Decision, digest, Pending, signPayload, verifyPayload } from './mod.ts'
-import { canonicalVectors, testEd25519PublicKey, testEd25519Seed } from './vectors.ts'
+import { canonical, decodeJson, Decision, digest, Pending, signPayload, signingBytes, verifyPayload } from './mod.ts'
+import { canonicalVectors, decisionVector, testEd25519PublicKey, testEd25519Seed } from './vectors.ts'
 
 const privateKey = createPrivateKey({ key: Buffer.from(`302e020100300506032b657004220420${testEd25519Seed}`, 'hex'), format: 'der', type: 'pkcs8' })
 const publicKey = createPublicKey({ key: Buffer.from(`302a300506032b6570032100${testEd25519PublicKey}`, 'hex'), format: 'der', type: 'spki' })
@@ -16,6 +16,13 @@ const pending = {
 describe('shared canonical and Ed25519 protocol vectors', () => {
   it.each(canonicalVectors)('preserves Unicode and sorted UTF-16 keys', ({ value, expected }) => {
     expect(canonical(value)).toBe(expected)
+  })
+  it('matches the shared deterministic Ed25519 decision vector byte-for-byte', () => {
+    const vector = signPayload('decision', decisionVector.payload, decisionVector.keyId, privateKey)
+    expect(vector.signature).toBe(decisionVector.signature)
+    expect(new TextDecoder().decode(signingBytes('decision', decisionVector.payload, decisionVector.keyId))).toBe(decisionVector.signingText)
+    expect(digest(decisionVector.payload)).toBe(decisionVector.digest)
+    expect(verifyPayload('decision', vector, publicKey)).toBe(true)
   })
   it('binds entire pending, selected option, key, domain and epoch', () => {
     const payload = decodeJson(Decision, canonical({ epoch: 'scg-experiment-v1', kind: 'decision', executionId: pending.executionId,
