@@ -326,7 +326,7 @@ rec {
                 mkdir -p "$HOME"
                 cp ${./scripts/worktree-env.py} worktree-env.py
                 cp ${./scripts/worktree-env.test.py} worktree-env.test.py
-                python3 worktree-env.test.py
+                ${pkgs.python3}/bin/python3 worktree-env.test.py
                 touch "$out"
               '';
           editor-view-budget-smoke =
@@ -400,7 +400,7 @@ rec {
               preflight = ''
                 set -euo pipefail
                 if ! ${pkgs.diffutils}/bin/cmp "$2/profile/defs.bzl" "$1/.buck2/capabilities/defs.bzl"; then
-                  echo "Worktree capability selection changed; run python3 scripts/worktree-env.py prepare" >&2
+                  echo "Worktree capability selection changed; run ${pkgs.python3}/bin/python3 scripts/worktree-env.py prepare" >&2
                   exit 1
                 fi
               '';

@@ -43,6 +43,25 @@ class Publication(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Stage new source"):
             module.identity(self.root)
 
+    def test_policy_paths_capture_only_named_immutable_tools(self):
+        tools = Path(os.environ["WORKTREE_TEST_TOOLS"]).resolve(strict=True)
+        caller = self.root / "caller-bin"
+        caller.mkdir()
+        (caller / "buck2").symlink_to(tools / "bin/buck2")
+        guards = str(self.root / "agent-seat/policy-bin")
+        selected = module.policy_paths([guards, str(caller)], ["buck2"])
+        self.assertEqual(selected, [guards, str((tools / "bin/buck2").resolve().parent)])
+        self.assertNotIn(str(caller), selected)
+
+    def test_policy_paths_do_not_forward_ambient_tools_or_missing_commands(self):
+        caller = self.root / "caller-bin"
+        caller.mkdir()
+        (caller / "gate-slot").touch(mode=0o755)
+        guards = str(self.root / "agent-seat/policy-bin")
+        self.assertEqual(
+            module.policy_paths([guards, str(caller)], ["gate-slot", "absent"]), [guards]
+        )
+
     def test_immutable_selection_and_stale_manifest(self):
         tools = Path(os.environ["WORKTREE_TEST_TOOLS"]).resolve(strict=True)
         state = self.root / ".worktree-tools/v1"
