@@ -379,8 +379,9 @@ mod linux {
             return Ok(());
         }
         let mount = mount_id(&held)?;
-        if !native_mounts.contains_key(&mount) {
-            native_mount_proof(mount, pid_dir, reference)?;
+        if !native_mounts.contains_key(&mount)
+            && native_mount_proof(mount, pid_dir, reference)?
+        {
             // Keep one reference per proved native mount. This pins its mount
             // ID against reuse, so later references need no repeated mountinfo
             // allocation/parsing even if tasks change their mount namespace.
@@ -389,10 +390,11 @@ mod linux {
         Ok(())
     }
 
-    fn native_mount_proof(mount: u64, pid_dir: &Path, reference: &Path) -> Result<()> {
+    // true proves a native mount; false proves the process gone, not its mount.
+    fn native_mount_proof(mount: u64, pid_dir: &Path, reference: &Path) -> Result<bool> {
         let mounts = match fs::read_to_string(pid_dir.join("mountinfo")) {
             Ok(mounts) => mounts,
-            Err(error) if process_gone(pid_dir, &error) => return Ok(()),
+            Err(error) if process_gone(pid_dir, &error) => return Ok(false),
             Err(error) => return Err(format!("process mount visibility incomplete: {error}")),
         };
         for line in mounts.lines() {
@@ -408,7 +410,7 @@ mod linux {
             // native filesystems. Overlay, FUSE and remote/proxy views can hide
             // backing objects behind different device/inode identities.
             return match filesystem.split_ascii_whitespace().next() {
-                Some("ext2" | "ext3" | "ext4" | "xfs" | "btrfs" | "zfs" | "tmpfs" | "ramfs") => Ok(()),
+                Some("ext2" | "ext3" | "ext4" | "xfs" | "btrfs" | "zfs" | "tmpfs" | "ramfs") => Ok(true),
                 _ => Err(format!(
                     "process backing identity unknown at {}",
                     reference.display()
@@ -1551,11 +1553,11 @@ exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --n
             assert!(native_mount_proof(mount, &root, &root).is_err());
             fs::write(root.join("mountinfo"),
                 format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
-            assert!(native_mount_proof(mount, &root, &root).is_ok());
+            assert!(native_mount_proof(mount, &root, &root).unwrap());
             fs::remove_file(root.join("mountinfo")).unwrap();
             assert!(native_mount_proof(mount, &root, &root).is_err());
             fs::remove_dir(&root).unwrap();
-            assert!(native_mount_proof(mount, &root, &root).is_ok());
+            assert!(!native_mount_proof(mount, &root, &root).unwrap());
         }
 
         #[test]
