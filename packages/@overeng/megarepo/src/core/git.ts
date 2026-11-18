@@ -1433,11 +1433,15 @@ export const createWorktreeDetached = (args: {
   repoPath: string
   worktreePath: string
   commit: string
+  /** Protect pool registration atomically, including interrupted creation. */
+  lockReason?: string
 }) =>
   Effect.gen(function* () {
     yield* assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath })
     yield* runGitCommand({
-      args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
+      args: ['worktree', 'add', '--detach',
+        ...(args.lockReason === undefined ? [] : ['--lock', '--reason', args.lockReason]),
+        args.worktreePath, args.commit],
       cwd: args.repoPath,
     })
   }).pipe(
