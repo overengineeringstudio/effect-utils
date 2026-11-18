@@ -1472,19 +1472,28 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
         #[test]
         #[cfg(target_os = "linux")]
         fn real_open_descriptor_protects_a_root() {
+            use std::os::unix::fs::symlink;
             let root = fixture("real-fd");
             let worktree = root.join("worktree");
+            let pid = root.join("proc/123");
             fs::create_dir_all(&worktree).unwrap();
+            fs::create_dir_all(pid.join("fd")).unwrap();
             fs::write(worktree.join("payload"), "live").unwrap();
             let descriptor = fs::File::open(worktree.join("payload")).unwrap();
-            let reference = descriptor_path(&descriptor);
-            let inventory = footprint(&worktree).unwrap();
+            symlink(descriptor_path(&descriptor), pid.join("fd/4")).unwrap();
+            symlink(&root, pid.join("cwd")).unwrap();
+            fs::write(pid.join("status"),
+                format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
+            let mount = mount_id(&open_directory(&root).unwrap()).unwrap();
+            fs::write(pid.join("mountinfo"),
+                format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
             assert!(
-                reference_inode_proof(&reference, Path::new("/proc/self"), &inventory.inodes)
-                    .unwrap_err()
-                    .contains("live process inode reference")
+                process_proof(&root.join("proc"), &worktree)
+                    .unwrap_err().contains("live process inode reference")
             );
             drop(descriptor);
+            fs::remove_file(pid.join("fd/4")).unwrap();
+            assert!(process_proof(&root.join("proc"), &worktree).is_ok());
         }
 
         #[test]
