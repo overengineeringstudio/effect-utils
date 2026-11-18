@@ -119,7 +119,9 @@ for name in first second ci local; do
   fi
   decision="$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)"
   test "$decision" = healthy
-  report="$(bash "$tmpdir/$mode-exec-doctor.sh")"
+  report_file="$tmpdir/$name-doctor.json"
+  PNPM_DOCTOR_OUTPUT_FILE="$report_file" bash "$tmpdir/$mode-exec-doctor.sh" >/dev/null
+  report="$(cat "$report_file")"
   test "$(printf '%s\n' "$report" | jq -r .version)" = 1
   test -n "$(printf '%s\n' "$report" | jq -r .installHash)"
   test -n "$(printf '%s\n' "$report" | jq -r .projectionHash)"

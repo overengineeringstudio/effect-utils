@@ -883,8 +883,13 @@ let
         ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" \
           "$install_hash" "$projection_hash" "$storage_state" "$(realpath "$PNPM_NATIVE_BIN")" <<'EOF'
         const [root, decision, reason, installHash, projectionHash, storageState, pnpm] = process.argv.slice(2)
-        console.log(JSON.stringify({ phase: 'doctor', version: 1, root, decision, reason,
-          installHash, projectionHash, storageState, pnpm, node: process.execPath }))
+        const report = JSON.stringify({ phase: 'doctor', version: 1, root, decision, reason,
+          installHash, projectionHash, storageState, pnpm, node: process.execPath })
+        if (process.env.PNPM_DOCTOR_OUTPUT_FILE) {
+          require('node:fs').writeFileSync(process.env.PNPM_DOCTOR_OUTPUT_FILE, report + '\n',
+            { flag: 'wx', mode: 0o600 })
+        }
+        console.log(report)
         EOF
       '';
     };

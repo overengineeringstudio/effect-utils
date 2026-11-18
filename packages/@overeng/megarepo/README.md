@@ -76,6 +76,9 @@ Readiness consumes the root-owned `pnpm:doctor` installation/projection/storage
 receipts and full link-health proof across all declared package node_modules,
 including `.bin`. It additionally binds exact source/tool/platform identity,
 actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
+The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
+store-state directory. Pool validation reads that file after the single-task
+runner exits; it never parses devenv console output or relies on log flags.
 No adapter, copied Buck state or scripts-disabled preparation is used.
 
 Release invokes the packaged absolute `WORKTREE_TEARDOWN_BIN` provider, not an

@@ -89,7 +89,7 @@ export const prewarmPool = (args: {
     yield* preparePoolInstall(path)
     yield* cleanSource(slot)
     yield* free(slot)
-    slot = { ...slot, identity: yield* poolInstallIdentity(path, args.commit) }
+    slot = { ...slot, identity: yield* poolInstallIdentity(path, args.commit, args.base) }
     const bytes = yield* poolBytes(path)
     if (bytes > args.charge) {
       slot = { ...slot, charge: bytes }
@@ -116,7 +116,7 @@ export const claimPool = (args: {
     yield* adoptPersistentDeletionLease(barrier(args.base, slot))
     yield* cleanSource(slot)
     yield* free(slot)
-    if ((yield* poolInstallIdentity(slot.path, slot.commit)) !== slot.identity ||
+    if ((yield* poolInstallIdentity(slot.path, slot.commit, args.base)) !== slot.identity ||
         (yield* poolBytes(slot.path)) > slot.charge)
       return yield* new PoolError({ message: 'Pool install identity or byte charge changed' })
     const next = yield* claimPoolGeneration(slot, args.identity, args.owner)
@@ -144,7 +144,7 @@ export const releasePool = (args: {
     yield* runPoolCommand(args.base, teardown, [slot.path])
     yield* free(slot)
     yield* cleanSource(slot)
-    if ((yield* poolInstallIdentity(slot.path, slot.commit)) !== slot.identity)
+    if ((yield* poolInstallIdentity(slot.path, slot.commit, args.base)) !== slot.identity)
       return yield* new PoolError({ message: 'Installed projection changed; retained' })
     // Only this detached slot is cleaned; preserved node_modules was validated above.
     yield* Git.runCommand({ cwd: slot.path, args: ['clean', '-fdx', '-e', '/node_modules/'] })
@@ -152,7 +152,7 @@ export const releasePool = (args: {
     yield* preparePoolInstall(slot.path)
     yield* cleanSource(slot)
     yield* free(slot)
-    if ((yield* poolInstallIdentity(slot.path, slot.commit)) !== slot.identity ||
+    if ((yield* poolInstallIdentity(slot.path, slot.commit, args.base)) !== slot.identity ||
         (yield* poolBytes(slot.path)) > slot.charge)
       return yield* new PoolError({ message: 'Reprepared root no longer matches reserved identity/bytes' })
     const ready: PoolSlot = { ...slot, state: 'ready', chargeKnown: true, token: '', owner: '', reason: '' }

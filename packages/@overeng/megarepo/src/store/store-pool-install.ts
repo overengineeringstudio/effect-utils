@@ -5,13 +5,15 @@ import { Effect, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
 
+import { type AbsoluteDirPath } from '@overeng/effect-path'
+
 import * as Git from '../core/git.ts'
 import { PoolError } from './store-pool-state.ts'
 
-export const runPoolCommand = (cwd: string, command: string, args: ReadonlyArray<string>) =>
+export const runPoolCommand = (cwd: string, command: string, args: ReadonlyArray<string>, env?: Record<string, string>) =>
   Effect.scoped(Effect.gen(function* () {
     const child = yield* ChildProcess.make(command, args, {
-      cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'inherit',
+      cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'inherit', ...(env === undefined ? {} : { env }),
     })
     const chunks = yield* Stream.runCollect(child.stdout)
     const code = yield* child.exitCode
@@ -30,20 +32,21 @@ export const preparePoolInstall = (path: string) => Effect.scoped(Effect.gen(fun
 /** The root-owned pnpm doctor validates the complete projection and install receipts.
  * Pool code adds source/platform and actual GVS path binding, not a second graph validator.
  */
-export const poolInstallIdentity = (path: string, commit: string) => Effect.gen(function* () {
+export const poolInstallIdentity = (path: string, commit: string, base: AbsoluteDirPath) => Effect.scoped(Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   if ((yield* Git.resolveRef({ repoPath: path, ref: 'HEAD' })) !== commit)
     return yield* new PoolError({ message: 'Pool source commit changed' })
-  const output = yield* runPoolCommand(path, 'devenv', ['tasks', 'run', 'pnpm:doctor', '--no-tui'])
-  const reports = output.split('\n').map((line) => line.trim())
-    .filter((line) => line.startsWith('{"phase":"doctor"'))
-  if (reports.length !== 1)
-    return yield* new PoolError({ message: 'Expected exactly one root-owned pnpm readiness report' })
+  const reportRoot = `${base}/.state/pool-reports`
+  yield* fs.makeDirectory(reportRoot, { recursive: true })
+  const reportDirectory = yield* fs.makeTempDirectoryScoped({ directory: reportRoot, prefix: 'doctor-' })
+  const report = `${reportDirectory}/readiness.json`
+  yield* runPoolCommand(path, 'devenv', ['tasks', 'run', '--mode', 'single', 'pnpm:doctor', '--no-tui'],
+    { PNPM_DOCTOR_OUTPUT_FILE: report })
   const proof = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Struct({
     phase: Schema.Literal('doctor'), version: Schema.Literal(1), root: Schema.String,
     decision: Schema.String, installHash: Schema.String, projectionHash: Schema.String,
     storageState: Schema.String, pnpm: Schema.String, node: Schema.String,
-  })))(reports[0])
+  })))(yield* fs.readFileString(report))
   if (proof.decision !== 'healthy' || proof.installHash === '' || proof.projectionHash === '' ||
       (yield* fs.realPath(proof.root)) !== (yield* fs.realPath(path)))
     return yield* new PoolError({ message: 'Root-owned pnpm readiness evidence is stale or unhealthy' })
@@ -80,7 +83,7 @@ export const poolInstallIdentity = (path: string, commit: string) => Effect.gen(
   if (process.platform === 'linux')
     hash.update(yield* runPoolCommand(path, 'getconf', ['GNU_LIBC_VERSION']))
   return hash.digest('hex')
-})
+}))
 
 /** Logical bytes are charged conservatively; no claim of physical/exclusive reclamation. */
 export const poolBytes = (path: string) => Effect.gen(function* () {
