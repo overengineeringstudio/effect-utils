@@ -39,32 +39,23 @@ let
   ];
   taskScripts = lib.mapAttrs (
     name: task:
-    if task.exec == null then
+    if task.command == null then
       null
     else
       pkgs.writeShellScript ("quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name) (
-        lib.concatStringsSep "\n" (
+        "set -e\n"
+        + lib.concatStringsSep "\n" (
           lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") task.env
         )
         + "\n"
         + lib.optionalString (task.cwd != null) "cd ${lib.escapeShellArg task.cwd}\n"
-        + task.exec
+        + "exec ${task.command}\n"
       )
   ) config.tasks;
-  # Include *all* evaluated tasks: the existing guards intentionally inspect
-  # omitted/legacy producers and transitive edges, not just the selected cohort.
-  taskAuthority = pkgs.writeText "quick-contract-task-authority.json" (
-    builtins.toJSON {
-      tasks = lib.mapAttrsToList (
-        name: task:
-        (lib.removeAttrs task [ "exec" ])
-        // {
-          inherit name;
-          command = taskScripts.${name};
-        }
-      ) config.tasks;
-    }
-  );
+  # Reuse the evaluated native commands and JSON, including interpreter,
+  # fail-fast/export semantics and all dependency/status/input metadata.
+  # Guards inspect omitted/legacy producers as well as the selected cohort.
+  taskAuthority = config.task.config;
   # Conservatively bind the complete tracked source closure, including scripts
   # embedded by Nix path interpolation. Stage new sources before preparation.
   sourceFiles = lib.fileset.toList (lib.fileset.gitTracked root);
@@ -151,7 +142,7 @@ let
   '';
   transaction = pkgs.writeShellScript "quick-contract-transaction" ''
     ${environment}
-    export DEVENV_TASKS_JSON=${taskAuthority}
+    export DEVENV_TASK_FILE=${taskAuthority} DEVENV_TASKS_JSON=${taskAuthority}
     ${lib.concatStringsSep "\n" (
       lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") runtimeEnv
     )}
