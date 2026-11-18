@@ -104,9 +104,12 @@ export const assembleRuntimeClosure = async ({
   try {
     await mkdir(stage)
     for (const source of sources) await walk(source.source, source.destination)
-    for (const link of pending) {
-      const resolved = await realpath(link).catch(() => fail(`dangling or cyclic link: ${link}`))
-      if (!inside(stage, resolved)) fail(`link escapes closure: ${link}`)
+    if (pending.length > 0) {
+      const canonicalStage = await realpath(stage)
+      for (const link of pending) {
+        const resolved = await realpath(link).catch(() => fail(`dangling or cyclic link: ${link}`))
+        if (!inside(canonicalStage, resolved)) fail(`link escapes closure: ${link}`)
+      }
     }
     const primaryView = find(await realpath(importers[primary]!))
     await symlink(relative(stage, primaryView.destination), join(stage, 'node_modules'))
@@ -151,6 +154,7 @@ export const digestRuntimeClosure = async (root: string): Promise<string> => {
   return hash.digest('hex')
 }
 
+/** Verifies physical containment, including roots reached through symlinked parents. */
 export const verifyRuntimeClosure = async (root: string, expectedDigest: string): Promise<void> => {
   if (!/^[a-f0-9]{64}$/.test(expectedDigest)) fail('expected digest must be lowercase SHA-256')
   const descriptor: unknown = JSON.parse(await readFile(join(root, 'descriptor.json'), 'utf8'))
@@ -170,11 +174,12 @@ export const verifyRuntimeClosure = async (root: string, expectedDigest: string)
   const importers = fields.importers as string[]
   if (importers.join('\0') !== [...new Set(importers)].sort(compare).join('\0'))
     fail('runtime closure importers must be sorted and unique')
+  const canonicalRoot = await realpath(root)
   const primaryView = await realpath(join(root, 'node_modules'))
   const namedView = await realpath(
     join(root, 'importers', fields.primary as string, 'node_modules'),
   )
-  if (!inside(root, primaryView) || primaryView !== namedView)
+  if (!inside(canonicalRoot, primaryView) || primaryView !== namedView)
     fail('primary importer does not match the node_modules root')
   if ((await digestRuntimeClosure(root)) !== expectedDigest) fail('runtime closure digest mismatch')
 }

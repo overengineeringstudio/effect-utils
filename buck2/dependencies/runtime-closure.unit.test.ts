@@ -99,6 +99,37 @@ describe('runtime closure relocation', () => {
     )
   })
 
+  it('accepts symlinked parents without allowing the primary importer to escape', async () => {
+    const root = setup()
+    const alias = join(root, 'alias')
+    symlinkSync(root, alias, 'dir')
+    const view = join(root, 'view')
+    mkdirSync(view)
+    writeFileSync(join(view, 'value.js'), 'module.exports = 7\n')
+    symlinkSync('value.js', join(view, 'entry.js'))
+    const out = join(alias, 'output')
+    await assembleRuntimeClosure({
+      output: out,
+      primary: 'service',
+      importers: { service: view },
+      roots: [view],
+    })
+    const descriptor = JSON.parse(readFileSync(join(out, 'descriptor.json'), 'utf8')) as {
+      digest: string
+    }
+    await verifyRuntimeClosure(out, descriptor.digest)
+
+    const outside = join(root, 'outside')
+    mkdirSync(outside)
+    rmSync(join(out, 'node_modules'))
+    rmSync(join(out, 'importers', 'service', 'node_modules'))
+    symlinkSync(outside, join(out, 'node_modules'), 'dir')
+    symlinkSync(outside, join(out, 'importers', 'service', 'node_modules'), 'dir')
+    await expect(verifyRuntimeClosure(out, descriptor.digest)).rejects.toThrow(
+      'primary importer does not match',
+    )
+  })
+
   it('rejects undeclared and absolute symlink targets', async () => {
     const root = setup()
     const view = join(root, 'view')

@@ -78,6 +78,9 @@ importers:
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       effect:
         specifier: 4.1.0
         version: 4.1.0
@@ -943,6 +946,9 @@ importers:
       '@storybook/react':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(typescript@7.0.2)
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
@@ -1108,6 +1114,9 @@ importers:
       '@storybook/react-vite':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
@@ -1257,6 +1266,9 @@ importers:
       '@storybook/react':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(typescript@7.0.2)
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
@@ -1450,6 +1462,9 @@ importers:
       '@storybook/react':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(typescript@7.0.2)
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
@@ -1644,6 +1659,9 @@ importers:
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       effect:
         specifier: 4.1.0
         version: 4.1.0
@@ -1870,6 +1888,9 @@ importers:
       '@storybook/react':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(typescript@7.0.2)
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
@@ -2313,6 +2334,9 @@ importers:
       '@playwright/test':
         specifier: 1.64.1
         version: 1.64.1
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
@@ -2434,6 +2458,9 @@ importers:
       '@storybook/react-vite':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(storybook@10.6.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(prettier@3.9.6)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)))(typescript@7.0.2)(vite@8.3.8(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
       '@types/react':
         specifier: 19.2.18
         version: 19.2.18
