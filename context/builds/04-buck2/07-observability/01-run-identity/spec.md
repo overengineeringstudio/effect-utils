@@ -190,6 +190,11 @@ span. Omission retains the derived-UUID behavior and clears stale inherited
 identity without valid context. This is correlation, not authorization:
 downstream guards still independently validate any signed-run binding.
 
+The worktree PATH entrypoint accepts caller-owned identity only through the
+one-shot `BUCK2_CALLER_UUID` environment variable. It consumes that variable
+before invoking Buck and clears ordinary inherited `BUCK_WRAPPER_UUID`, so
+nested commands receive a fresh identity unless their own caller supplies one.
+
 The mode is **preparation plus post-hoc completion**, never supervision. No
 process sits between the caller and Buck: the caller invokes Buck directly
 with the prepared environment, and after Buck exits the caller completes the

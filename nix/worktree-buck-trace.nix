@@ -26,8 +26,8 @@ pkgs.writeShellScript "worktree-buck-trace" ''
   spool="''${PIPELINE_SPOOL_DIR:-$WORKSPACE_ROOT/.worktree-tools/otel}/buck2"
   event_log=""
   sidecar=""
-  caller_uuid="''${BUCK_WRAPPER_UUID:-}"
-  unset BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
+  caller_uuid="''${BUCK2_CALLER_UUID:-}"
+  unset BUCK2_CALLER_UUID BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
     BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID
   if [ -n "$caller_uuid" ]; then export BUCK_WRAPPER_UUID="$caller_uuid"; fi
   if ${pkgs.coreutils}/bin/mkdir -p "$spool"; then
