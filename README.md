@@ -98,6 +98,37 @@ this part-1 inventory guard does not replace that consumer proof.
 
 ## Packages
 
+### SCG Discord signer
+
+`@overeng/scg-discord` is a Bun/Effect adapter for the shared `@overeng/scg-protocol`
+contracts. `./card` exports the pure Components V2 renderer and limit validator.
+The runtime verifies Discord's Ed25519 signature over the raw timestamp/body,
+checks the application and human allowlist, and durably binds opaque message
+controls to a signed pending digest and offered option. HTTP callbacks return
+type-6 deferred update before authority I/O; a click never masquerades as accepted.
+
+Compose `DiscordStore`, `makeAuthorityClient`, `makeDiscordDelivery`, `makeSigner`,
+`listenDiscordInteractions` and `syncDiscordSurface` in an independently enrolled
+signer process. The public HTTPS API proxies exact raw bytes and Discord signature
+headers to its private Unix listener at `/interactions`. The listener reconciles
+the durable outbox and stale original cards before accepting traffic. The parent
+socket directory and its shared proxy group are provisioned separately; the
+signer's database and signing key remain private to its UID.
+
+Cards name exactly the statements offered by the authority. Similar-lease controls
+appear only for signed offers with explicit scope, absolute expiry and guardrails.
+Session-rule offers are inspect/reject-only on Discord. Sensitive shared previews
+disclose command/account only; Inspect and Show my words are ephemeral. Origin
+words are hydrated transiently and digest-checked, never stored in the journal;
+only non-sensitive Discord-origin words may be quoted publicly.
+
+Recovering an accepted decision consults its durable winner digest rather than
+resubmitting or dispatching again. Unacknowledged candidates are discarded on
+restart; failed terminal edits are retried before the terminal cursor advances.
+Delivery failure never signs a synthetic global deny. A create-before-journal
+message has no enabled controls. Experimental exact-only authority support does
+not imply live lease support, signer enrollment, an application/token or deployment.
+
 ### GitHub Actions retained artifacts
 
 [`@overeng/gh-ci-utils`](./packages/@overeng/gh-ci-utils) provides read-only
