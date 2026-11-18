@@ -1,13 +1,13 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, deletionLeasePath } from './store-deletion-lease.ts'
-import { completePool, inspectPool } from './store-pool.ts'
+import { claimPool, completePool, inspectPool, quarantinePool, releasePool } from './store-pool.ts'
 import { type PoolSlot, reservePoolSlot, withPoolState } from './store-pool-state.ts'
 
 const fixture = Effect.gen(function* () {
@@ -47,5 +47,68 @@ describe('native pool ownership safety', () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
-[Showing lines 1-48 of 114. Use :49 to continue]
+  it.effect('charges retained partial output even when the preparation reservation was too small', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      yield* fs.writeFileString(`${slot.path}/partial-install`, 'x'.repeat(16384))
+      yield* withPoolState(storePath, (state, save) => save({
+        ...state, slots: [{ ...slot, charge: 1, token: 'partial', state: 'preparing', chargeKnown: false }],
+      }))
+      yield* quarantinePool(storePath, slot.id, 'partial', 'install failed')
+      const state = yield* withPoolState(storePath, (state) => Effect.succeed(state))
+      expect(state.slots[0]?.state).toBe('quarantined')
+      expect(state.slots[0]!.charge).toBeGreaterThan(16384)
+      expect(yield* fs.readFileString(`${slot.path}/partial-install`)).toHaveLength(16384)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('registers detached with a native Git lock which refuses ordinary removal', () =>
+    Effect.gen(function* () {
+      const { slot } = yield* fixture
+      const entry = (yield* Git.listWorktrees(slot.bare)).find((item) => item.path === slot.path)
+      expect(Option.getOrUndefined(entry!.lockReason)).toBe('mr-pool:native:preparing')
+      expect(Option.isNone(entry!.branch)).toBe(true)
+      expect(yield* Git.removeWorktree({ repoPath: slot.bare, worktreePath: slot.path }).pipe(Effect.exit))
+        .toSatisfy(Exit.isFailure)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('never resets dirty source during claim and retains it in quarantine', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      yield* fs.writeFileString(`${slot.path}/unpublished.txt`, 'user work')
+      expect(yield* claimPool({ base: storePath, identity: 'receipt', owner: 'test' }).pipe(Effect.exit))
+        .toSatisfy(Exit.isFailure)
+      expect(yield* fs.readFileString(`${slot.path}/unpublished.txt`)).toBe('user work')
+      const state = yield* withPoolState(storePath, (state) => Effect.succeed(state))
+      expect(state.slots[0]?.state).toBe('quarantined')
+      expect(yield* claimPool({ base: storePath, identity: 'receipt', owner: 'next' }).pipe(Effect.exit))
+        .toSatisfy(Exit.isFailure)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('retains committed work even after HEAD is moved back to its source commit', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      yield* fs.writeFileString(`${slot.path}/authored.txt`, 'commit')
+      yield* Git.runCommand({ cwd: slot.path, args: ['add', 'authored.txt'] })
+      yield* Git.runCommand({ cwd: slot.path, args: ['-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+        'commit', '--no-gpg-sign', '--no-verify', '-m', 'authored'] })
+      yield* Git.runCommand({ cwd: slot.path, args: ['checkout', '--detach', slot.commit] })
+      const failure = yield* claimPool({ base: storePath, identity: 'receipt', owner: 'test' }).pipe(Effect.flip)
+      expect(String(failure)).toContain('history retained')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('a stale release cannot drain, mutate or return another generation', () =>
+    Effect.gen(function* () {
+      const { storePath, slot } = yield* fixture
+      const failure = yield* releasePool({ base: storePath, id: slot.id, token: 'stale', generation: 1 }).pipe(Effect.flip)
+      expect(String(failure)).toContain('Stale')
+      expect((yield* withPoolState(storePath, (state) => Effect.succeed(state.slots[0])))?.state).toBe('ready')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
 })

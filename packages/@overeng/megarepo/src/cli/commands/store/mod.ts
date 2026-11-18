@@ -35,6 +35,7 @@ import {
   sourceCredentialError,
 } from '../../../core/config.ts'
 import * as Git from '../../../core/git.ts'
+import { storePoolCommand } from './pool.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../core/lock.ts'
 import * as LibObservability from '../../../core/observability.ts'
 import { classifyRef, isCommitSha } from '../../../core/ref.ts'
@@ -5117,6 +5118,7 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeLockCommand,
     storeActivityCommand,
     storeWorktreeCommand,
+    storePoolCommand,
   ]),
   Cli.Command.withDescription('Manage the shared git store'),
 )
