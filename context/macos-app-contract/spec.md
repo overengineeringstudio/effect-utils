@@ -933,6 +933,32 @@ from the policy-configured typed-operation socket. These are distinct protocols:
 ctl lifecycle commands do not reinterpret operation requests, and ordinary
 operation clients cannot trigger lifecycle changes or consent.
 
+### GUI main thread and compiled modules
+
+```text
+GUI process main thread: AppKit event loop -> linked module lifecycle
+GUI process IPC thread: private socket -> bounded request workers
+shutdown: stop admission -> cancel workers -> join IPC -> restore signals
+```
+
+The GUI role reserves its main thread for AppKit. The accept loop and request
+workers run off-thread; IPC completion or a termination signal ends the event
+loop, and GUI initialization failure still cancels and joins IPC. The existing
+supervisor role remains headless. Neither service startup requests consent.
+
+`host/gui/HostGUI.swift` is compiled into a static library and linked into the
+same native executable. Its only exported C entrypoint is
+`permissions_host_gui_run_v1(shutdown_observer, context) -> int32`: the observer
+is host-owned, synchronous, and can only report shutdown. The borrowed context
+does not escape the call. Zero means orderly completion; nonzero fails startup.
+`registeredModules()` is the reviewed source-only registration seam; its
+`@MainActor` modules start before event processing and stop in reverse order.
+Registration is empty unless concrete module code is added in source review.
+The Swift sources and build script participate in the sealed source identity.
+No policy field, socket request, dynamic library path or runtime plugin can
+register code. No signing operation or caller-selected signing payload crosses
+this ABI. Any linked signer owns its private key operations and native review.
+
 Persisted consent state is read using an initial nonblocking open and checked
 for the expected regular-file type before decoding. A FIFO must be rejected,
 not allowed to hang startup before file-type validation.

@@ -215,6 +215,14 @@ pub fn serve(host: Arc<Host>) -> Result<(), HostError> {
     managed::identity()?.check_config(&host.config)?;
     if host.role == Role::GuiAgent { crate::native::require_gui_session()?; }
     let _signals = Signals::install()?;
+    if host.role == Role::GuiAgent {
+        crate::gui::serve(|| serve_loop(host), &STOPPING)
+    } else {
+        serve_loop(host)
+    }
+}
+
+fn serve_loop(host: Arc<Host>) -> Result<(), HostError> {
     let path = if host.role == Role::Supervisor { &host.config.socket } else { &host.gui_channel.path };
     let (listener, _guard) = endpoint::bind(path, endpoint::EndpointPolicy { owner_uid: host.config.uid, socket_mode: 0o600 })
         .map_err(|_| HostError::new("policy-denied", "Socket endpoint unavailable or unsafe"))?;
