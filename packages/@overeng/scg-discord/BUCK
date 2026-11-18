@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/scg-discord/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:067fa1f31aecdf69a667ba535003a5aa35f4ea369de860398e343dbc499cd6ca
+# Semantic fingerprint: sha256:beae17cde3b29eff83eb17be268072f81e2307008380c438bfa68f3784014ba7
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -28,6 +28,8 @@ export_materialization_inputs([
     "src/http.ts",
     "src/interaction.ts",
     "src/interaction.unit.test.ts",
+    "src/listener-process.fixture.ts",
+    "src/listener.integration.test.ts",
     "src/listener.ts",
     "src/mod.ts",
     "src/signer.integration.test.ts",
@@ -82,6 +84,8 @@ package_view(
         "src/http.ts": "src/http.ts",
         "src/interaction.ts": "src/interaction.ts",
         "src/interaction.unit.test.ts": "src/interaction.unit.test.ts",
+        "src/listener-process.fixture.ts": "src/listener-process.fixture.ts",
+        "src/listener.integration.test.ts": "src/listener.integration.test.ts",
         "src/listener.ts": "src/listener.ts",
         "src/mod.ts": "src/mod.ts",
         "src/signer.integration.test.ts": "src/signer.integration.test.ts",
@@ -120,6 +124,8 @@ package_view(
         "src/http.ts": "src/http.ts",
         "src/interaction.ts": "src/interaction.ts",
         "src/interaction.unit.test.ts": "src/interaction.unit.test.ts",
+        "src/listener-process.fixture.ts": "src/listener-process.fixture.ts",
+        "src/listener.integration.test.ts": "src/listener.integration.test.ts",
         "src/listener.ts": "src/listener.ts",
         "src/mod.ts": "src/mod.ts",
         "src/signer.integration.test.ts": "src/signer.integration.test.ts",
@@ -156,6 +162,8 @@ package_view(
         "src/http.ts": "src/http.ts",
         "src/interaction.ts": "src/interaction.ts",
         "src/interaction.unit.test.ts": "src/interaction.unit.test.ts",
+        "src/listener-process.fixture.ts": "src/listener-process.fixture.ts",
+        "src/listener.integration.test.ts": "src/listener.integration.test.ts",
         "src/listener.ts": "src/listener.ts",
         "src/mod.ts": "src/mod.ts",
         "src/signer.integration.test.ts": "src/signer.integration.test.ts",

@@ -2095,6 +2095,7 @@
       "selectedTestFiles": [
         "src/card.unit.test.ts",
         "src/interaction.unit.test.ts",
+        "src/listener.integration.test.ts",
         "src/signer.integration.test.ts"
       ],
       "sourceOwners": {},
@@ -2103,6 +2104,7 @@
       "testFiles": [
         "src/card.unit.test.ts",
         "src/interaction.unit.test.ts",
+        "src/listener.integration.test.ts",
         "src/signer.integration.test.ts"
       ],
       "unboundedAfter": [],
