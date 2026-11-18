@@ -11,7 +11,11 @@ import * as NodePath from 'node:path'
 
 import { Duration, Effect, Option, Schedule, Schema, Sink, Stream } from 'effect'
 
-import { startGitWriterProcess, withGitWriterLock } from '../store/git-writer-lock.ts'
+import {
+  resolveGitCommonDir,
+  startGitWriterProcess,
+  withGitWriterLock,
+} from '../store/git-writer-lock.ts'
 import * as Observability from './observability.ts'
 
 // =============================================================================
@@ -85,6 +89,12 @@ export class GitCommandError extends Error {
     this.stderr = stderr
   }
 }
+
+/** Refuse worktree acquisition until the shared config is safe for per-worktree config. */
+export class CommonBareWorktreeConfigError extends Schema.TaggedError<CommonBareWorktreeConfigError>()(
+  'CommonBareWorktreeConfigError',
+  { repoPath: Schema.String, fixCommand: Schema.String, message: Schema.String },
+) {}
 
 /** Error thrown when a git command exceeds the deterministic command deadline. */
 export class GitCommandTimeoutError extends GitCommandError {
@@ -291,6 +301,67 @@ const runGitCommand = ({
       }),
     )
   })()
+
+/** Read only the common file: includes and config.worktree must not mask key presence. */
+const readCommonConfigValues = (configPath: string, key: string) =>
+  runGitCommand({
+    args: ['config', '-f', configPath, '--no-includes', '--get-all', key],
+  }).pipe(
+    Effect.map((value) => Option.some(value)),
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === ''
+        ? Effect.succeed(Option.none<string>())
+        : Effect.fail(error),
+    ),
+  )
+
+/** Any common core.bare value is unsafe when worktree-specific config is enabled. */
+export const hasCommonBareWithWorktreeConfig = Effect.fn(
+  'git/has-common-bare-with-worktree-config',
+)(function* ({ repoPath }: { repoPath: string }) {
+  const common = yield* resolveGitCommonDir(repoPath)
+  const configPath = NodePath.join(common, 'config')
+  const enabled = yield* runGitCommand({
+    args: ['config', '-f', configPath, '--no-includes', '--type=bool', '--get', 'extensions.worktreeconfig'],
+  }).pipe(
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed('false') : Effect.fail(error),
+    ),
+  )
+  if (enabled !== 'true') return false
+  return Option.isSome(yield* readCommonConfigValues(configPath, 'core.bare'))
+})
+
+/** Read-only preflight, deliberately outside mutation/lease admission. */
+export const assertNoCommonBareWithWorktreeConfig = Effect.fn(
+  'git/assert-no-common-bare-with-worktree-config',
+)(function* ({ repoPath }: { repoPath: string }) {
+  if ((yield* hasCommonBareWithWorktreeConfig({ repoPath })) === true) {
+    const fixCommand = 'mr store fix'
+    return yield* new CommonBareWorktreeConfigError({
+      repoPath,
+      fixCommand,
+      message: `Refusing worktree acquisition for '${repoPath}': extensions.worktreeConfig is enabled and the common config contains core.bare. Run '${fixCommand}' to repair the common config.`,
+    })
+  }
+})
+
+/** Remove only common core.bare, rechecking under the repository writer lock. */
+export const repairCommonBareWithWorktreeConfig = ({ repoPath }: { repoPath: string }) =>
+  Effect.gen(function* () {
+    if ((yield* hasCommonBareWithWorktreeConfig({ repoPath })) === false) return false
+    const common = yield* resolveGitCommonDir(repoPath)
+    yield* runGitCommand({
+      args: ['config', '-f', NodePath.join(common, 'config'), '--no-includes', '--unset-all', 'core.bare'],
+    })
+    return true
+  }).pipe(
+    withGitWriterLock({ path: repoPath }),
+    Observability.withRepoPathSpan({
+      name: 'git/repair-common-bare-with-worktree-config',
+      path: repoPath,
+    }),
+  )
 
 /** Run a bounded, observable git command and return trimmed stdout. */
 export const runCommand = (options: {
@@ -579,6 +650,7 @@ export const createWorktree = (args: {
   env?: Record<string, string>
 }) =>
   Effect.gen(function* () {
+    yield* assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath })
     const cmdArgs = ['worktree', 'add']
     if (args.lockReason !== undefined) cmdArgs.push('--lock', '--reason', args.lockReason)
     if (args.createBranch === true) {
@@ -609,6 +681,8 @@ export const createWorktree = (args: {
     })
   }).pipe(
     withGitWriterLock({ path: args.repoPath }),
+    (effect) =>
+      assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath }).pipe(Effect.andThen(effect)),
     Observability.withGitBranchSpan({
       name: 'git/create-worktree',
       branch: args.branch,
@@ -932,6 +1006,7 @@ export const cloneBare = (args: { url: string; targetPath: string }) => {
       ),
     )
     if (exists === true) {
+      yield* assertNoCommonBareWithWorktreeConfig({ repoPath: args.targetPath })
       const validationArgs = ['rev-parse', '--is-bare-repository']
       const isBare = yield* runGitCommand({ args: validationArgs, cwd: args.targetPath })
       if (isBare !== 'true') {
@@ -958,6 +1033,22 @@ export const cloneBare = (args: { url: string; targetPath: string }) => {
     return exists === false
   }).pipe(
     withGitWriterLock({ path: args.targetPath, create: true }),
+    (effect) =>
+      Effect.gen(function* () {
+        const exists = yield* Effect.tryPromise(() =>
+          lstat(args.targetPath).then(
+            () => true,
+            (cause: unknown) => {
+              if (isErrno({ cause, code: 'ENOENT' }) === true) return false
+              throw cause
+            },
+          ),
+        )
+        if (exists === true) {
+          yield* assertNoCommonBareWithWorktreeConfig({ repoPath: args.targetPath })
+        }
+        return yield* effect
+      }),
     Observability.withGitUrlSpan({
       name: 'git/clone-bare',
       label: url,
@@ -1328,12 +1419,17 @@ export const createWorktreeDetached = (args: {
   worktreePath: string
   commit: string
 }) =>
-  runGitCommand({
-    args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
-    cwd: args.repoPath,
+  Effect.gen(function* () {
+    yield* assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath })
+    yield* runGitCommand({
+      args: ['worktree', 'add', '--detach', args.worktreePath, args.commit],
+      cwd: args.repoPath,
+    })
   }).pipe(
     Effect.asVoid,
     withGitWriterLock({ path: args.repoPath }),
+    (effect) =>
+      assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath }).pipe(Effect.andThen(effect)),
     Observability.withGitCommitSpan({
       name: 'git/create-worktree-detached',
       label: args.commit.slice(0, 8),

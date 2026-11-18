@@ -59,7 +59,10 @@ export interface WorkspaceResult {
 export const runGitCommand = (cwd: AbsoluteDirPath, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const result = yield* ChildProcessSpawner.use((spawner) =>
-      spawner.string(Command.make('git', args, { cwd, env: makeTempGitEnvironment() })),
+      // A complete environment is required: merging would restore scrubbed Git overrides.
+      spawner.string(
+        Command.make('git', args, { cwd, env: makeTempGitEnvironment(), extendEnv: false }),
+      ),
     )
     return result.trim()
   })

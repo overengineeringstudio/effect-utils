@@ -18,6 +18,7 @@ import type {
   StoreWorktreeIssue,
   StoreGcWarning,
   StoreGcCandidateOutcome,
+  StoreRepoIssue,
 } from './schema.ts'
 
 // =============================================================================
@@ -209,7 +210,7 @@ const StoreStatusView = ({
   worktreeCount: number
   diskUsage?: string | undefined
   worktrees: readonly StoreWorktreeStatus[]
-  repoIssues: readonly { repo: string; type: string; message: string }[]
+  repoIssues: readonly StoreRepoIssue[]
 }) => {
   // Filter to only worktrees with issues
   const worktreesWithIssues = worktrees.filter((w) => w.issues.length > 0)
@@ -217,11 +218,11 @@ const StoreStatusView = ({
   // Count issues by severity
   const errorCount = worktrees.reduce(
     (acc, w) => acc + w.issues.filter((i) => i.severity === 'error').length,
-    repoIssues.length,
+    repoIssues.filter((issue) => issue.severity === 'error').length,
   )
   const warningCount = worktrees.reduce(
     (acc, w) => acc + w.issues.filter((i) => i.severity === 'warning').length,
-    0,
+    repoIssues.filter((issue) => issue.severity === 'warning').length,
   )
   const infoCount = worktrees.reduce(
     (acc, w) => acc + w.issues.filter((i) => i.severity === 'info').length,
@@ -248,8 +249,8 @@ const StoreStatusView = ({
           <Text bold>Issues:</Text>
           {repoIssues.map((issue) => (
             <Box key={`${issue.repo}-${issue.type}`} flexDirection="column">
-              <Text color="red">
-                {SYMBOLS.cross} {issue.repo} (.bare)
+              <Text color={issue.severity === 'warning' ? 'yellow' : 'red'}>
+                {issue.severity === 'warning' ? SYMBOLS.warning : SYMBOLS.cross} {issue.repo} (.bare)
               </Text>
               <Text> {issue.message}</Text>
             </Box>

@@ -426,6 +426,10 @@ export const withStoreWorktreeLease =
         (yield* fs.exists(source)) === true
           ? yield* resolveGitCommonDir(source).pipe(Effect.orElseSucceed(() => undefined))
           : undefined
+      // Reject before creating either a container lock or an activation lease.
+      if (bare !== undefined) {
+        yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bare })
+      }
       const container =
         bare?.endsWith('/.bare') === true && bare.startsWith(`${store}/`) === true
           ? dirname(bare)

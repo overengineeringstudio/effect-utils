@@ -2383,6 +2383,19 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                           : 'bare repo is missing remote.origin.fetch; run mr store fix',
                     },
                   ]
+            if (
+              bareExists === true &&
+              (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath }))
+            ) {
+              repoIssues.push({
+                repo: repo.relativePath,
+                path: bareRepoPath,
+                type: 'common_bare_worktree_config',
+                severity: 'warning',
+                message:
+                  'common config sets core.bare with extensions.worktreeConfig enabled; run mr store fix',
+              })
+            }
 
             const refsDir = EffectPath.ops.join(
               repo.fullPath,
@@ -4467,6 +4480,23 @@ const storeFixCommand = Cli.Command.make(
             EffectPath.unsafe.relativeDir('.bare/'),
           )
           if ((yield* fs.exists(bareRepoPath)) === false) continue
+          if (
+            issues.some(
+              (issue) =>
+                issue.meta?._tag === 'common_bare_worktree_config' &&
+                issue.meta.bareRepoPath === bareRepoPath,
+            ) === false &&
+            (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath }))
+          ) {
+            issues.push({
+              type: 'common_bare_worktree_config',
+              severity: 'warning',
+              memberName: repo.relativePath,
+              message: `Common config at ${bareRepoPath} sets core.bare with extensions.worktreeConfig enabled`,
+              fix: 'mr store fix',
+              meta: { _tag: 'common_bare_worktree_config', bareRepoPath },
+            })
+          }
           for (const worktree of yield* collectRepoStoreWorktrees({
             fs,
             repoPath: repo.fullPath,
