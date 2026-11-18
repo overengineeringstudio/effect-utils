@@ -594,10 +594,10 @@ mod linux {
         };
         // Close the inventory's own proc directory descriptor before examining
         // this process's fd table. No process-wide or procfs-FD exemption.
-        let descriptors: Vec<_> = descriptors.collect();
+        let descriptors: Vec<_> = descriptors.map(|entry| entry.map(|entry| entry.path())).collect();
         for descriptor in descriptors {
             let path = match descriptor {
-                Ok(descriptor) => descriptor.path(),
+                Ok(path) => path,
                 Err(error) if process_gone(pid_dir, &error) => return Ok(true),
                 Err(error) => return Err(error.to_string()),
             };
@@ -658,6 +658,7 @@ mod linux {
     ) -> Result<()> {
         let entries: Vec<_> = fs::read_dir(proc_root)
             .map_err(|e| format!("cannot inventory processes: {e}"))?
+            .map(|entry| entry.map(|entry| entry.path()))
             .collect();
         let uid = own_uid()?;
         let mut native_mounts = BTreeMap::new();
@@ -665,13 +666,14 @@ mod linux {
             let entry = entry.map_err(|e| e.to_string())?;
             if !entry
                 .file_name()
+                .unwrap_or_default()
                 .to_string_lossy()
                 .chars()
                 .all(|c| c.is_ascii_digit())
             {
                 continue;
             }
-            let pid_dir = entry.path();
+            let pid_dir = entry;
             let status = match fs::read_to_string(pid_dir.join("status")) {
                 Ok(status) => status,
                 Err(error) if process_gone(&pid_dir, &error) => continue,
@@ -714,10 +716,10 @@ mod linux {
                     ));
                 }
             };
-            let tasks: Vec<_> = tasks.collect();
+            let tasks: Vec<_> = tasks.map(|entry| entry.map(|entry| entry.path())).collect();
             let mut observed = false;
             for task in tasks {
-                let task = task.map_err(|error| error.to_string())?.path();
+                let task = task.map_err(|error| error.to_string())?;
                 if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored, inodes, &mut native_mounts)? {
                     observed = true;
                 } else if task.try_exists().map_err(|error| error.to_string())? {
@@ -1525,6 +1527,7 @@ mkdir "$1/store" "$1/alias"
 printf live > "$1/store/payload"
 mount --bind "$1/store" "$1/alias" || exit 77
 export PNPM_GC_BIND_ALIAS_ROOT="$1"
+cd "$1" || exit 77
 exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --nocapture
 "#, "bind-reference"])
                 .arg(&root).arg(env::current_exe().unwrap()).output().unwrap();
