@@ -27,7 +27,8 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     import json, uuid
 
-    start_all()
+    # The driver defaults to QEMU -no-reboot; this suite proves real host reboot.
+    host.start(allow_reboot=True)
     host.wait_for_unit("authority-ready.service")
     control = "/var/lib/authority-release"
     roots = "/nix/var/nix/gcroots/authority"
