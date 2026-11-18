@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
 import { Deferred, Effect, Exit, FileSystem } from 'effect'
-import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/http'
 import { expect } from 'vitest'
 
 import { createAuthority, type Authority, type AuthorityOptions } from '@overeng/scg-authority'

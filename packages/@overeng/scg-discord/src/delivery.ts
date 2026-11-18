@@ -1,5 +1,5 @@
 import { Effect, Redacted, Schema } from 'effect'
-import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import { HttpClient, HttpClientRequest } from 'effect/http'
 
 import type { DiscordMessage } from './card.ts'
 import { DiscordError, type DiscordDelivery } from './signer.ts'

@@ -1,7 +1,7 @@
 import { randomUUID, type KeyObject } from 'node:crypto'
 
 import { Effect, Schema } from 'effect'
-import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import { HttpClient, HttpClientRequest } from 'effect/http'
 
 import {
   SignedPending,
