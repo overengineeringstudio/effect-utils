@@ -704,6 +704,39 @@ fn action_kind(code: i32) -> &'static str {
         _ => "not_set",
     }
 }
+fn action_outcome(code: i32, failed: bool) -> &'static str {
+    if failed {
+        return "unknown";
+    }
+    match code {
+        1 | 8 => "local-exec",
+        2 | 11 => "remote-exec",
+        3 | 7 | 9 | 10 => "cache-hit",
+        // Deferred and simple actions do not prove command execution or
+        // coalescing. Cache reuse is never evidence of coalescing either.
+        _ => "unknown",
+    }
+}
+
+fn command_digest(command: &data::CommandExecution) -> Option<&str> {
+    use data::command_execution_kind::Command;
+    let command = command
+        .details
+        .as_ref()?
+        .command_kind
+        .as_ref()?
+        .command
+        .as_ref()?;
+    let digest = match command {
+        Command::LocalCommand(command) => &command.action_digest,
+        Command::RemoteCommand(command) => &command.action_digest,
+        Command::OmittedLocalCommand(command) => &command.action_digest,
+        Command::WorkerCommand(command) => &command.action_digest,
+        Command::WorkerInitCommand(_) => return None,
+    };
+    (!digest.is_empty()).then_some(digest.as_str())
+}
+
 fn target_attrs(attrs: &mut Vec<Value>, target: &data::ConfiguredTargetLabel) {
     if let Some(label) = &target.label {
         attrs.push(attr(
@@ -854,7 +887,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         Ok(None) => return Err("empty Buck log".into()),
         Err(e) => return Err(format!("unreadable Buck log header: {e}").into()),
     }
-    let _header = data::Invocation::decode(buf.as_slice())
+    let header = data::Invocation::decode(buf.as_slice())
         .map_err(|e| format!("unreadable Buck log header: {e}"))?;
     let mut model = Model {
         uuid: String::new(),
@@ -865,6 +898,13 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         stop_reason: None,
         unknown_fields: 0,
     };
+    if !header.working_dir.is_empty() {
+        // Identity only: never export the native absolute working directory.
+        model.resource_attrs.push(attr(
+            "buck2.root_id",
+            sha256_hex(header.working_dir.as_bytes()),
+        ));
+    }
     let mut by_id = HashMap::new();
     let mut critical = HashSet::new();
     let mut last_time = 0;
@@ -954,6 +994,15 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                     }
                     let (name, mut attrs, action) = start_shape(data);
                     attrs.push(int_attr("buck2.span_id", e.span_id));
+                    if action {
+                        attrs.push(attr(
+                            "buck2.occurrence_id",
+                            format!(
+                                "occurrence-sha256-v1:{}",
+                                sha256_hex(format!("{}:{}", model.uuid, e.span_id).as_bytes())
+                            ),
+                        ));
+                    }
                     let label = if action {
                         let target = attrs
                             .iter()
@@ -1021,6 +1070,19 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                 span.attrs
                                     .push(bool_attr("buck2.cache_hit", span.cache_hit));
                                 span.attrs.push(bool_attr("buck2.failed", a.failed));
+                                span.attrs.push(attr(
+                                    "buck2.execution_outcome",
+                                    action_outcome(a.execution_kind, a.failed),
+                                ));
+                                if let Some(digest) = a.commands.iter().rev().find_map(command_digest) {
+                                    span.attrs.push(attr("buck2.action_digest", digest));
+                                }
+                                if let Some(host) = a.hostname.as_deref().filter(|host| !host.is_empty()) {
+                                    span.attrs.push(attr("buck2.action_host", host));
+                                }
+                                if let Some(duration) = &a.wall_time {
+                                    span.attrs.push(int_attr("buck2.duration_ns", duration_ns(duration)));
+                                }
                                 span.execution_ns = a
                                     .commands
                                     .iter()
@@ -1055,6 +1117,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                 span.queue_ns = queue;
                                 span.attrs
                                     .push(int_attr("buck2.output_size", a.output_size));
+                                span.attrs.push(int_attr("buck2.total_bytes", a.output_size));
                                 if let Some(bytes) = a.input_files_bytes {
                                     span.attrs.push(int_attr("buck2.input_files_bytes", bytes));
                                 }
@@ -1157,6 +1220,12 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         if span.action {
             span.attrs
                 .push(bool_attr("buck2.critical_path", span.critical));
+            if let Some(ns) = span.execution_ns {
+                span.attrs.push(int_attr("buck2.execution_ns", ns));
+            }
+            if let Some(ns) = span.queue_ns {
+                span.attrs.push(int_attr("buck2.queue_ns", ns));
+            }
         }
     }
     let actions = model.spans.iter().filter(|s| s.action).count();

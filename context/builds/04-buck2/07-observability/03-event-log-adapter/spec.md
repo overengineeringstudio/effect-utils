@@ -56,6 +56,41 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 - **Cache-hit classification:** each action's first end sets `buck2.execution_kind`
   and `buck2.cache_hit`; the same classification produces the command summary
   hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
+  `buck2.execution_outcome` separately describes native execution evidence:
+  local/local-worker → `local-exec`, remote/remote-worker → `remote-exec`,
+  action-cache/local-action-cache/remote-dep-file-cache/local-dep-file →
+  `cache-hit`; all other kinds and any failed action → `unknown`. Local
+  dep-file reuse does not change the existing action-cache summary counters.
+  Neither cache reuse nor
+  deferred execution proves coalescing, so this writer emits no `coalesced`
+  outcome.
+- **Occurrence evidence:** `buck2.occurrence_id` is
+  `occurrence-sha256-v1:<lowercase SHA-256 hex of "<log-uuid>:<native-span-id>">`,
+  independent of OTLP view or caller context.
+  `buck2.action_digest` takes the last available nonempty native digest from
+  command attempts (local, omitted-local, worker or remote); it is never
+  synthesized from a label or action key. A native action-end hostname supplies
+  `buck2.action_host`, not the converter's hostname. `buck2.duration_ns` is
+  native action wall time; `buck2.execution_ns` and `buck2.queue_ns` expose the
+  same timing observations as the producer metrics below (execution prefers
+  command execution time, then action wall time). `buck2.total_bytes` is native
+  total output size, alongside `buck2.output_size` and optional
+  `buck2.input_files_bytes`; it does not estimate traffic or input-plus-output
+  size. Missing optional evidence remains absent, while explicit zero is
+  retained. An unfinished action has an occurrence identity but no invented
+  end evidence.
+- **Opaque checkout identity:** a nonempty invocation-header `working_dir`
+  supplies resource `buck2.root_id = lowercase-hex(SHA-256(UTF-8(working_dir)))`.
+  The native working directory and command argv are not exported for identity;
+  an absent directory leaves root identity absent. This identifies the native
+  invocation directory, not a separately discovered repository root.
+- **View evidence boundary:** command summaries and producer metrics are
+  computed from the decoded model before critical-view pruning. Both views
+  retain identical native evidence on a retained action, and the full view
+  retains every decoded span. Critical pruning, truncated logs, decoder limits,
+  and mandatory-span overflow remain explicit evidence limitations; neither a
+  retained occurrence nor these summaries establish an unsampled, gap-free
+  cross-invocation history.
 - **Command outcome:** `buck2.is_success` comes from the final `CommandResult`,
   not the deprecated `CommandEnd.is_success` (unset by current writers).
   Top-level errors fail; build/BXL responses succeed only with no errors;
