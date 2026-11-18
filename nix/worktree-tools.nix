@@ -43,6 +43,7 @@ let
     export PATH="$policy_path$WORKSPACE_ROOT/node_modules/.bin:@tools@/bin:''${PATH:-}"
     ${exports}
     ${check} "$WORKSPACE_ROOT" "$generation"
+    export WORKTREE_CAPABILITIES_PROFILE="$(${pkgs.coreutils}/bin/realpath "$generation/profile")"
     # A real emitted environment root encloses dispatch, capture and export.
     exec ${otelSpan}/bin/otel-span run effect-utils-env environment.entry \
       --attr span.label=buck --attr "process.working_directory=$PWD" \
