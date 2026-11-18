@@ -42,6 +42,18 @@ truncation. These are observations, not proof of lock ownership or a network sta
 Run the FIFO-controlled regression with
 `CI=1 python3 genie/ci-scripts/preparation-watchdog.test.py`.
 
+## Immutable authority microVM
+
+`nix/immutable-microvm/guest.nix` composes with the pinned microvm.nix guest
+module: cloud-hypervisor, 2 vCPU / 2 GiB, EROFS store, private `/var`, no host
+filesystem shares, no guest Nix or Perl, systemd initrd and networkd.
+`services.immutableAuthority.package` supplies the authority binary; environment
+and networking are explicit module inputs. Tailscale owns its identity in the
+guest state disk and is never enrolled by the image or reference tests.
+The nested flake builds a credential-free reference image, not an authorization
+service: `nix build ./nix/immutable-microvm#a` on x86_64 Linux.
+Image outputs are public code, never a location for keys or provider credentials.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
