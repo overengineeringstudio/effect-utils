@@ -99,7 +99,7 @@ describe('common bare config with worktree config', () => {
       yield* config('extensions.worktreeConfig', 'true')
       const workspace = EffectPath.unsafe.absoluteDir(`${root}/workspace/`)
       yield* fs.makeDirectory(workspace)
-      const before = yield* fs.readDirectory(root, { recursive: true })
+      const before = (yield* fs.readDirectory(root, { recursive: true })).toSorted()
       const beforeConfig = yield* fs.readFileString(`${bare}/config`)
       const result = yield* syncMember({
         name: 'member',
@@ -113,7 +113,7 @@ describe('common bare config with worktree config', () => {
       expect(result.status).toBe('error')
       expect(result.message).toContain('core.bare')
       expect(result.message).toContain('mr store fix')
-      expect(yield* fs.readDirectory(root, { recursive: true })).toEqual(before)
+      expect((yield* fs.readDirectory(root, { recursive: true })).toSorted()).toEqual(before)
       expect(yield* fs.readFileString(`${bare}/config`)).toBe(beforeConfig)
       expect(yield* fs.exists(`${bare}/FETCH_HEAD`)).toBe(false)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -180,7 +180,7 @@ describe('common bare config with worktree config', () => {
           const { fs, root, store, bare, config } = yield* fixture
           yield* config('extensions.worktreeConfig', 'true')
           const worktree = `${store}example.com/owner/repo/refs/heads/new/nested`
-          const before = yield* fs.readDirectory(root, { recursive: true })
+          const before = (yield* fs.readDirectory(root, { recursive: true })).toSorted()
           const beforeConfig = yield* fs.readFileString(`${bare}/config`)
           const branchArgs = {
             repoPath: bare,
@@ -217,7 +217,7 @@ describe('common bare config with worktree config', () => {
             expect(error.fixCommand).toBe('mr store fix')
             expect(error.message).toContain('core.bare')
           }
-          expect(yield* fs.readDirectory(root, { recursive: true })).toEqual(before)
+          expect((yield* fs.readDirectory(root, { recursive: true })).toSorted()).toEqual(before)
           expect(yield* fs.readFileString(`${bare}/config`)).toBe(beforeConfig)
           expect(yield* fs.exists(worktree)).toBe(false)
         }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
