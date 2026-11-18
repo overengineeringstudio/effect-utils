@@ -376,6 +376,12 @@ lease recovery is unchanged. Detached worktree creation can acquire its native G
 lock atomically. Durable pool records serialize host-store capacity and generation
 claims, and retain unknown accounting rather than allocating around uncertainty.
 
+Pool preparation uses the normal root-owned `pnpm:install` and validates its
+machine-readable doctor report, installed shared GVS paths, exact source and
+resolved tool/platform identity. Logical root bytes are charged conservatively.
+The `mr` product supplies its existing teardown helper through the explicit
+`WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
