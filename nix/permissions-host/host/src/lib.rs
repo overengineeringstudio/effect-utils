@@ -13,6 +13,7 @@ pub mod documents;
 pub mod native;
 pub mod control;
 pub mod transport;
+mod gui;
 pub mod children;
 #[cfg(feature = "example-children")]
 pub mod example_children;

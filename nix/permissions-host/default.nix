@@ -87,6 +87,7 @@ let
       ./host/Cargo.toml
       ./host/Cargo.lock
       ./host/src
+      ./host/gui
       (lib.fileset.maybeMissing ./host/build.rs)
       ../macos-app/host/Cargo.toml
       ../macos-app/host/Cargo.lock
@@ -132,11 +133,13 @@ let
       "example-children"
     ];
     buildInputs = [ pkgs.apple-sdk_15 ];
+    nativeBuildInputs = [ pkgs.swift ];
     # Reuse the capability's pure SDK environment, NOT its compiler wrapper:
     # that wrapper signs outputs after ABI normalization. This assembly must not.
     env = darwinRust.compileEnv // {
       HOST_SOURCE_HASH = hostSourceHash;
       RUSTC = "${pkgs.rustc}/bin/rustc";
+      SWIFTC = "${pkgs.swift}/bin/swiftc";
       CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER = "${pkgs.clang}/bin/clang";
       CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER = "${pkgs.clang}/bin/clang";
       RUSTFLAGS = lib.concatStringsSep " " [
