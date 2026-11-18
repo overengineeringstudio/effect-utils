@@ -84,6 +84,7 @@ const expectedFiles = [
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
   'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
   'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
+  'packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch',
 ] as const
 
 describe('Buck rules product inventory', () => {
