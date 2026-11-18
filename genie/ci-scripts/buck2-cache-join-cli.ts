@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import * as NodeRuntime from '@effect/platform-node/NodeRuntime'
 import * as NodeServices from '@effect/platform-node/NodeServices'
-import { Effect, Schema } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
@@ -44,6 +45,7 @@ import {
 } from './buck2-cache-proof-history.ts'
 import { writeBuck2CacheProofReports } from './buck2-cache-proof-reports.ts'
 import { decodeEvidence, renderWarm99Diagnostics } from './buck2-cache-warm99.ts'
+import { reconcileOccurrenceRecords, type OccurrenceEvidence } from './buck2-occurrence-records.ts'
 
 const limits = {
   runs: 1000,
@@ -126,6 +128,9 @@ Prometheus output (default) uses gauges of window totals, not cumulative counter
 Trusted presence: only complete main-writer uploads or verified remote-hit observations before each reader invocation qualify.
 --proof-directory retains full downloaded proof sources, authoritative run/job expectations,
 and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
+--occurrence-records <directory> includes immutable native v1 JSONL records (repeatable).
+--expected-occurrence-host <hostname> declares expected retained sources (repeatable);
+operator-local files do not grant CI private-fleet read authority or certify unobserved hosts.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
 API safety: about 700 calls daily target, 800 maximum, stop at 200 remaining, two downloads with 250 ms pacing.
 Every discovered supported reader/writer run is selected without sampling.
@@ -198,6 +203,8 @@ const program = Effect.gen(function* () {
           'previous-utc-day': { type: 'boolean' },
           'otlp-spool': { type: 'string' },
           'proof-directory': { type: 'string' },
+          'occurrence-records': { type: 'string', multiple: true },
+          'expected-occurrence-host': { type: 'string', multiple: true },
           help: { type: 'boolean', short: 'h' },
         },
       }).values,
@@ -622,13 +629,72 @@ const program = Effect.gen(function* () {
   const relevantArtifacts = observations.filter(
     (value) => value !== undefined && runs.has(Number(value.runId)),
   ).length
+  let retainedEvidence: OccurrenceEvidence | undefined
+  const retainedFiles: { name: string; body: string }[] = []
+  const retainedGaps: string[] = []
+  const retainedBudget = makeDownloadBudget(512 * 1024 ** 2)
+  if (options['occurrence-records'] !== undefined) {
+    let capped = false
+    for (const directory of options['occurrence-records']) {
+      const entries = yield* io({
+        message: 'Cannot enumerate retained occurrence records',
+        body: () => readdir(directory, { withFileTypes: true }),
+      }).pipe(Effect.result)
+      if (entries._tag === 'Failure') {
+        retainedGaps.push('retained-record-directory-unavailable')
+        continue
+      }
+      for (const entry of entries.success) {
+        if (entry.name.endsWith('.jsonl') === false) continue
+        if (entry.isFile() === false) {
+          retainedGaps.push('unsupported-retained-record-file')
+          continue
+        }
+        if (retainedFiles.length >= 100_000) {
+          retainedGaps.push('retained-record-count-overflow')
+          capped = true
+          break
+        }
+        const path = join(directory, entry.name)
+        const bytes = yield* readBoundedBytes(
+          Stream.fromAsyncIterable(createReadStream(path), () =>
+            failure('Cannot read retained occurrence record'),
+          ),
+          64 * 1024 ** 2,
+          retainedBudget,
+        ).pipe(Effect.result)
+        if (bytes._tag === 'Failure') {
+          retainedGaps.push('retained-record-read-gap')
+          if (bytes.failure instanceof DownloadLimitError) {
+            retainedGaps.push('retained-record-byte-overflow')
+            capped = true
+            break
+          }
+          continue
+        }
+        retainedFiles.push({ name: path, body: bytes.success.toString('utf8') })
+      }
+      if (capped === true) break
+    }
+    const reconciled = reconcileOccurrenceRecords({
+      files: retainedFiles,
+      expectedHosts: options['expected-occurrence-host'] ?? [],
+      windowStartMs: since,
+      windowEndMs: until,
+    })
+    retainedEvidence = {
+      records: reconciled.records,
+      evidenceGaps: [...reconciled.evidenceGaps, ...retainedGaps],
+    }
+  }
   const executeOnce = aggregateOccurrences({
     artifacts: observations.flatMap((value) => (value === undefined ? [] : [value.artifact])),
     windowStartMs: since,
     windowEndMs: until,
+    retainedEvidence,
     evidenceGaps: [
       // CI workflow discovery cannot certify local/other-repository invocation coverage.
-      'fleet-expected-invocation-census-unavailable',
+      ...(retainedEvidence === undefined ? ['fleet-expected-invocation-census-unavailable'] : []),
       ...proofCollectionGaps,
       ...(budgetStopped === true ? ['collection-budget-exhausted'] : []),
       ...(unlabelledEvidenceGaps > 0 ? ['artifact-evidence-unavailable'] : []),
@@ -645,6 +711,8 @@ const program = Effect.gen(function* () {
       selected_artifacts: selected.length,
       relevant_artifacts: relevantArtifacts,
       skipped_expired: skippedExpired,
+      retained_occurrence_files: retainedFiles.length,
+      retained_occurrence_bytes: retainedBudget.bytes,
       skipped_by_policy: skippedByPolicy,
       api_call_cap: 800,
       api_reserve_floor: 200,
