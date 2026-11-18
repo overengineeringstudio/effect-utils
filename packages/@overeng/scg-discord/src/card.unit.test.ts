@@ -385,8 +385,7 @@ describe('pending card', () => {
 
   it('rejects duplicate custom ids', () => {
     expect(
-      renderPendingCard({ pending: basePending, ids: { ...ids, inspect: 'c:opaque-1' }, env })
-        ._tag,
+      renderPendingCard({ pending: basePending, ids: { ...ids, inspect: 'c:opaque-1' }, env })._tag,
     ).toBe('Rejected')
   })
 

@@ -83,7 +83,11 @@ export class DiscordStore {
     return this.cards().find((card) => card.messageId === messageId && card.channelId === channelId)
   }
   /** Atomic claim and outbox write: concurrent signed replays can produce at most one job. */
-  claim({ id, signedAt, job }: {
+  claim({
+    id,
+    signedAt,
+    job,
+  }: {
     readonly id: string
     readonly signedAt: number
     readonly job?: Job | undefined

@@ -710,7 +710,7 @@ export const renderPendingCard = ({
   readonly ids: CardIds
   readonly env: CardEnv
   /** Digest-verified origin words; required for Discord-born words to be quoted. */
-  readonly originWords?: VerifiedOriginWords
+  readonly originWords?: VerifiedOriginWords | undefined
 }): CardResult => {
   const errors: string[] = []
   const layout = layoutOffers(pending.options)
@@ -827,7 +827,7 @@ export const renderClosedCard = ({
   readonly closure: CardClosure
   readonly env: CardEnv
   /** Digest-verified origin words; required for Discord-born words to be quoted. */
-  readonly originWords?: VerifiedOriginWords
+  readonly originWords?: VerifiedOriginWords | undefined
 }): CardResult => {
   const errors: string[] = []
   const { accent, line } = closureCopy({ pending, closure, env })
@@ -980,28 +980,40 @@ export const validateMessage = (body: DiscordMessage): ValidationResult => {
   if (body.allowed_mentions.parse.length !== 0) errors.push('allowed_mentions.parse must be []')
   if ('content' in body || 'embeds' in body) errors.push('IS_COMPONENTS_V2 forbids content/embeds')
 
-  const visit = (component: Component, path: string): void => {
+  const visit = ({
+    component,
+    path,
+  }: {
+    readonly component: Component
+    readonly path: string
+  }): void => {
     components += 1
     switch (component.type) {
       case 17: {
         if (component.accent_color < 0 || component.accent_color > 0xffffff)
           errors.push(`${path} accent_color out of range`)
-        component.components.forEach((child, i) => visit(child, `${path}.components[${i}]`))
+        component.components.forEach((child, i) =>
+          visit({ component: child, path: `${path}.components[${i}]` }),
+        )
         return
       }
       case 9: {
         const n = component.components.length
         if (n < 1 || n > Limits.sectionTexts)
           errors.push(`${path} section has ${n} text displays (1–3)`)
-        component.components.forEach((child, i) => visit(child, `${path}.components[${i}]`))
-        visit(component.accessory, `${path}.accessory`)
+        component.components.forEach((child, i) =>
+          visit({ component: child, path: `${path}.components[${i}]` }),
+        )
+        visit({ component: component.accessory, path: `${path}.accessory` })
         return
       }
       case 1: {
         const n = component.components.length
         if (n < 1 || n > Limits.buttonsPerRow)
           errors.push(`${path} action row has ${n} buttons (1–5)`)
-        component.components.forEach((child, i) => visit(child, `${path}.components[${i}]`))
+        component.components.forEach((child, i) =>
+          visit({ component: child, path: `${path}.components[${i}]` }),
+        )
         return
       }
       case 2: {
@@ -1031,7 +1043,7 @@ export const validateMessage = (body: DiscordMessage): ValidationResult => {
       }
     }
   }
-  body.components.forEach((component, i) => visit(component, `components[${i}]`))
+  body.components.forEach((component, i) => visit({ component, path: `components[${i}]` }))
 
   if (components > Limits.totalComponents)
     errors.push(`total components ${components} > ${Limits.totalComponents}`)

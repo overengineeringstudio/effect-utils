@@ -10,7 +10,12 @@ export const makeDiscordDelivery = Effect.fn('scg.discord.delivery')(function* (
   token: Redacted.Redacted<string>,
 ) {
   const client = yield* HttpClient.HttpClient
-  const request = Effect.fn('scg.discord.rest')(function* ({ method, path, message, botAuth }: {
+  const request = Effect.fn('scg.discord.rest')(function* ({
+    method,
+    path,
+    message,
+    botAuth,
+  }: {
     readonly method: 'POST' | 'PATCH'
     readonly path: string
     readonly message: DiscordMessage
@@ -19,18 +24,27 @@ export const makeDiscordDelivery = Effect.fn('scg.discord.delivery')(function* (
     const base = HttpClientRequest.make(method)(`https://discord.com/api/v10${path}`).pipe(
       HttpClientRequest.bodyJsonUnsafe(message),
     )
-    const req = botAuth === true
-      ? HttpClientRequest.setHeader('authorization', `Bot ${Redacted.value(token)}`)(base)
-      : base
+    const req =
+      botAuth === true
+        ? HttpClientRequest.setHeader('authorization', `Bot ${Redacted.value(token)}`)(base)
+        : base
     const response = yield* client.execute(req)
     if (response.status < 200 || response.status >= 300) {
-      return yield* new DiscordError({ operation: 'discord-response', cause: { status: response.status } })
+      return yield* new DiscordError({
+        operation: 'discord-response',
+        cause: { status: response.status },
+      })
     }
     return response
   })
   return {
     post: ({ channelId, message }) =>
-      request({ method: 'POST', path: `/channels/${encodeURIComponent(channelId)}/messages`, message, botAuth: true }).pipe(
+      request({
+        method: 'POST',
+        path: `/channels/${encodeURIComponent(channelId)}/messages`,
+        message,
+        botAuth: true,
+      }).pipe(
         Effect.flatMap((response) => response.json),
         Effect.flatMap(Schema.decodeUnknownEffect(Posted)),
         Effect.mapError((cause) => new DiscordError({ operation: 'post-message', cause })),
@@ -39,7 +53,8 @@ export const makeDiscordDelivery = Effect.fn('scg.discord.delivery')(function* (
       request({
         method: 'PATCH',
         path: `/channels/${encodeURIComponent(card.channelId)}/messages/${encodeURIComponent(card.messageId)}`,
-        message, botAuth: true,
+        message,
+        botAuth: true,
       }).pipe(
         Effect.asVoid,
         Effect.mapError((cause) => new DiscordError({ operation: 'edit-message', cause })),
@@ -48,7 +63,8 @@ export const makeDiscordDelivery = Effect.fn('scg.discord.delivery')(function* (
       request({
         method: 'POST',
         path: `/webhooks/${encodeURIComponent(applicationId)}/${encodeURIComponent(interactionToken)}`,
-        message, botAuth: false,
+        message,
+        botAuth: false,
       }).pipe(
         Effect.asVoid,
         Effect.mapError((cause) => new DiscordError({ operation: 'ephemeral-message', cause })),
