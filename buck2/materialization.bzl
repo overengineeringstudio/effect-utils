@@ -104,12 +104,7 @@ def _package_tree_impl(ctx):
                 fail("duplicate workspace source: {}".format(destination))
             files[destination] = source
     inputs.extend(files.values())
-    args = cmd_args([
-        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
-        cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
-        "--output",
-        out,
-    ])
+    args = cmd_args(["--output", out])
 
     # A dependency view owns no dependency bytes: the package view links it as
     # one first hop instead of copying a closure per consumer.
@@ -166,11 +161,20 @@ def _package_tree_impl(ctx):
         _require_relative_path(link_path, "workspace link")
         _require_relative_path(target_path, "workspace link target")
         args.add("--workspace-link", link_path, target_path)
+    # Full workspaces exceed host ARG_MAX; keep every mapped input in a declared
+    # response artifact rather than expanding the source census in exec argv.
+    manifest = ctx.actions.write_json("package-tree-arguments.json", args)
+    inputs.append(manifest)
+    command = cmd_args([
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
+        cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
+        manifest,
+    ], hidden = [args])
     # local-materialization-policy: cheap tree assembly stays on the nonremote
     # platform; local_only alone would still permit remote-cache downloads.
     ts_action(
         ctx,
-        args,
+        command,
         inputs = _unique_artifacts(inputs),
         outputs = [out],
         category = "package_tree",

@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { runPackageTreeCli } from './package-tree.ts'
+
+const assembleFromArguments = (args: readonly string[]): void => {
+  const manifest = `${args[1]!}.arguments.json`
+  writeFileSync(manifest, JSON.stringify(args))
+  runPackageTreeCli(manifest)
+}
 
 const bun = realpathSync(process.execPath)
 const runner = fileURLToPath(new URL('./package-command-runner.ts', import.meta.url))
@@ -216,7 +222,7 @@ const bundleWorkspaceSources = async ({
     relative(leafView, join(external, 'node_modules', 'external-data')),
     join(leafView, 'external-data'),
   )
-  runPackageTreeCli([
+  assembleFromArguments([
     '--output',
     leaf,
     '--dependency-view',
@@ -233,7 +239,7 @@ const bundleWorkspaceSources = async ({
     relative(join(workspaceView, '@scope'), leaf),
     join(workspaceView, '@scope', 'leaf'),
   )
-  runPackageTreeCli([
+  assembleFromArguments([
     '--output',
     workspace,
     '--dependency-view',
@@ -254,7 +260,7 @@ const bundleWorkspaceSources = async ({
   ])
   await mkdir(join(view, '@scope'), { recursive: true })
   await symlink(relative(join(view, '@scope'), workspace), join(view, '@scope', 'workspace'))
-  runPackageTreeCli([
+  assembleFromArguments([
     '--output',
     packageTree,
     '--dependency-view',
