@@ -55,10 +55,9 @@ const compareRuns = (left: EvidenceRun, right: EvidenceRun): number =>
   left.event.localeCompare(right.event) ||
   (left.head_branch ?? '').localeCompare(right.head_branch ?? '')
 
-/** Retain main writers; sample merge writers and reader lanes independently per UTC day. */
+/** Exact evidence never samples readers or merge writers. Resource caps are proof gaps. */
 export const selectRuns = (
   runs: readonly EvidenceRun[],
-  readerLimit = 25,
 ): {
   selected: EvidenceRun[]
   lanes: { lane: CacheLane; seen: number; selected: number }[]
@@ -79,30 +78,8 @@ export const selectRuns = (
 
   const selected: EvidenceRun[] = []
   const lanes = cacheLanes.map((lane) => {
-    const byDay = new Map<string, EvidenceRun[]>()
-    for (const run of byLane[lane]) {
-      const day = new Date(run.created_at).toISOString().slice(0, 10)
-      const cohort = byDay.get(day) ?? []
-      cohort.push(run)
-      byDay.set(day, cohort)
-    }
-    let selectedCount = 0
-    for (const candidates of byDay.values()) {
-      if (lane === 'merge_group') candidates.sort((left, right) => left.id - right.id)
-      const limit =
-        lane === 'main-writer' ? candidates.length : lane === 'merge_group' ? 50 : readerLimit
-      const count = Math.min(candidates.length, Math.max(0, Math.floor(limit)))
-      for (let index = 0; index < count; index++) {
-        const position =
-          count === candidates.length
-            ? index
-            : count === 1
-              ? 0
-              : Math.floor((index * (candidates.length - 1)) / (count - 1))
-        selected.push(candidates[position]!)
-      }
-      selectedCount += count
-    }
+    selected.push(...byLane[lane])
+    const selectedCount = byLane[lane].length
     return { lane, seen: byLane[lane].length, selected: selectedCount }
   })
   selected.sort(compareRuns)

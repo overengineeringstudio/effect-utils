@@ -162,17 +162,13 @@ Discovery never uses the repository artifact listing endpoint. The
 `compiled-products.yml` workflow is omitted because its evidence producers
 are deliberately disabled.
 
-Runs are grouped by UTC creation day and discovered lane cohort. Every
-`main-writer` run is selected. The `merge_group` cohort selects at most 50
-runs per UTC day, ordered by numeric run ID; it supplies both writer evidence
-and the R09 reader lane. Each `main-reader` and `pr` cohort selects at most 25
-runs per UTC day, ordered by ascending `created_at` then numeric run ID.
-For a cohort of size `L` and limit `N`, select all if `L <= N`; otherwise select
-indices `floor(i * (L - 1) / (N - 1))` for `i = 0..N-1`.
-This deterministic, evenly spaced sample includes both endpoints; a
-one-element sample selects the first run. Sampling is by run, not artifact or
-job: the `ci.yml` main-writer cohort also retains its reader jobs. Discovered
-cohorts control selection, never strict action eligibility.
+All discovered supported writer, merge-group and reader runs are selected without
+sampling, ordered by creation time then numeric ID. Resource caps, unavailable
+artifacts and discovery gaps cannot silently shrink the population: execute-once
+proof is unknown. Existing compact action artifacts retain at least the 30-day
+exact-evidence window; daily bounded metric scorecards use existing trend retention.
+The CI join does not certify local/other-repository invocation coverage; until an
+independent fleet census is joined, its fleet proof remains unknown.
 
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
 windowEndMs)`, attributing chronological repository/configuration/digest execution
@@ -236,17 +232,12 @@ evidence is removed on exit.
 CE1 (REUSE-R08) is `avoidable_miss_actions / eligible_actions` per lane.
 CE2 (REUSE-R09) is
 `remote_hit_actions / eligible_actions` for `merge_group` and `pr`; CE3
-(REUSE-R10) is the same ratio for `main-reader`. These are sampled ratios of
-the summed selected action counts, not a mean of per-run percentages or an
-extrapolation to unsampled runs. All main-writer runs and sampled merge-group
-runs supply writer evidence; all sampled cohorts measure only their selected
-runs. With merge-group writers sampled, CE1 avoidable-miss counts are a lower
-bound: omitted writers can hide eligible misses. Eligibility and reported
-ratios are computed against the selected writer cohort, not an inferred full
-population. A zero eligible denominator means no measured rate, not a
-zero-percent hit rate.
-Preserve raw counts, selection coverage, and evidence gaps alongside ratios;
-intentional sampling is not itself an evidence gap.
+(REUSE-R10) is the same ratio for `main-reader`. These are ratios of summed
+observed action counts, not means of per-run percentages or extrapolations.
+Every discovered supported writer is selected. Missing writer evidence can hide
+eligible misses, so preserve raw counts, population coverage and gaps alongside
+ratios. A zero eligible denominator means no measured rate, not a zero-percent
+hit rate. Any sampling or loss makes exact execute-once proof unknown.
 
 Action eligibility coverage is `eligible / (eligible + cold + changed)`,
 distinct from the remote-hit ratio among eligible actions and from run-selection
