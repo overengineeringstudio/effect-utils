@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { NodeRuntime, NodeServices } from '@effect/platform-node'
+import * as NodeRuntime from '@effect/platform-node/NodeRuntime'
+import * as NodeServices from '@effect/platform-node/NodeServices'
 import { Effect, Schema } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
@@ -27,7 +28,14 @@ import {
   makeDownloadBudget,
   readBoundedBytes,
 } from './buck2-cache-join-download.ts'
-import { aggregate, previousUtcDay, renderPrometheus, renderOtlp } from './buck2-cache-join.ts'
+import {
+  aggregate,
+  aggregateOccurrences,
+  previousUtcDay,
+  renderPrometheus,
+  renderOtlp,
+  renderOccurrenceOtlp,
+} from './buck2-cache-join.ts'
 import {
   planProofHistory,
   selectProofRelevantRuns,
@@ -118,8 +126,8 @@ Trusted presence: only complete main-writer uploads or verified remote-hit obser
 and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
 API safety: about 700 calls daily target, 800 maximum, stop at 200 remaining, two downloads with 250 ms pacing.
-Per UTC day: all main-writer runs; at most 50 evenly ID-spaced merge_group and 25 time-spaced main-reader/pr runs.
-Sampled readers make metrics a lower bound; coverage gauges show selected/seen runs.
+Every discovered supported reader/writer run is selected without sampling.
+Missing fleet invocation census or bounded collection gaps make execute-once proof unknown.
 Transient HTTP 5xx and transport failures retry at most three attempts, all charged to the cap.
 Budget exhaustion emits an explicit join evidence gap; resource caps fail clearly.
 Invalid or unavailable evidence contributes evidence_gaps without discarding valid evidence.
@@ -598,8 +606,22 @@ const program = Effect.gen(function* () {
   const relevantArtifacts = observations.filter(
     (value) => value !== undefined && runs.has(Number(value.runId)),
   ).length
+  const executeOnce = aggregateOccurrences({
+    artifacts: observations.flatMap((value) => (value === undefined ? [] : [value.artifact])),
+    windowStartMs: since,
+    windowEndMs: until,
+    evidenceGaps: [
+      // CI workflow discovery cannot certify local/other-repository invocation coverage.
+      'fleet-expected-invocation-census-unavailable',
+      ...proofCollectionGaps,
+      ...(budgetStopped ? ['collection-budget-exhausted'] : []),
+      ...(unlabelledEvidenceGaps > 0 ? ['artifact-evidence-unavailable'] : []),
+      ...(skippedExpired > 0 ? ['expired-action-evidence'] : []),
+    ],
+  })
   const outputReport = {
     ...report,
+    executeOnce,
     collection: {
       api_calls: apiCalls,
       remaining,
@@ -624,6 +646,10 @@ const program = Effect.gen(function* () {
     })
     const manifestPath = join(proofDirectory, 'buck2-cache-warm99-observations.json')
     yield* io('Cannot publish authoritative historical proof', async () => {
+      await writeFile(
+        join(proofDirectory, 'buck2-execute-once-scorecard.json'),
+        `${JSON.stringify(executeOnce, null, 2)}\n`,
+      )
       await writeFile(
         manifestPath,
         `${JSON.stringify({ ...planned.manifest, nixSubstitutionEvidence: 'unavailable' }, null, 2)}\n`,
@@ -671,7 +697,11 @@ const program = Effect.gen(function* () {
   }
   if (options['otlp-spool'] !== undefined) {
     const directory = options['otlp-spool']
-    const body = yield* Schema.encodeEffect(ReportJson)(renderOtlp(report))
+    const occurrenceMetrics = renderOccurrenceOtlp(executeOnce)
+    const cacheMetrics = renderOtlp(report)
+    const body = yield* Schema.encodeEffect(ReportJson)({
+      resourceMetrics: [...cacheMetrics.resourceMetrics, ...occurrenceMetrics.resourceMetrics],
+    })
     const bytes = Buffer.from(body)
     const id = createHash('sha256').update(bytes).digest('hex')
     const header = yield* Schema.encodeEffect(ReportJson)({
