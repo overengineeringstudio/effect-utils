@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:29c334d28154ee50b32e893aa60c5f614444d092ff7751ba52954b5badac7a41",
+  "lockfileFingerprint": "sha256:35831030c625727b1b78dd3a064c9a389fda9ccb15c6aca0fd12103cf7c9cdbf",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -1113,15 +1113,6 @@
       "sha256": "0138c1c4a0b9c89d1c76fb8d1765c5aa4efa11ab5ab91ad04afe4ccdb1ff5af5",
       "sizeBytes": 188462
     },
-    "@napi-rs/wasm-runtime@1.2.3": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-UMduMbqO5s5zF2NkNacMT/yK5Y5QiKvWr2+50bzIIxFDwVJ2h49b+oyjaCGPhJxd2/gC2x39EHv/gHVuu36x2Q==",
-      "packageIdentity": "@napi-rs/wasm-runtime@1.2.3",
-      "registryUrl": "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-1.2.3.tgz",
-      "sha256": "434e1f4532cef2e9505ad597735cdad0eab0b3cfe3b6708f9dfb399f737346b2",
-      "sizeBytes": 156767
-    },
     "@napi-rs/wasm-runtime@1.2.6": {
       "bins": {},
       "classification": "public",
@@ -2121,230 +2112,230 @@
       "sha256": "4e588ef84cea068eca726bbb4e452e9a67da74404e63a7b9ccab91cd2c9a4b08",
       "sizeBytes": 828997
     },
-    "@oxlint-tsgolint/darwin-arm64@7.0.2001": {
+    "@oxlint-tsgolint/darwin-arm64@7.0.2007": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-CUJEdbSZ54+Xy9OXqOhWLTKZKV0BBiV7C2i/ygyVmXtkUNXx5YCzN8DpSSshTAKktoL7S+tnQ/ftFG/i7X896w==",
-      "packageIdentity": "@oxlint-tsgolint/darwin-arm64@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/darwin-arm64/-/darwin-arm64-7.0.2001.tgz",
-      "sha256": "c342a82add72186c061afcd53ba6160f1be15bdd860d038dd5f7237ff31ad9c2",
-      "sizeBytes": 7406307
+      "integrity": "sha512-bjNxPFyu1wNK74epHzXrtVLrj7oEuB8jQvJZDSia2d5EZ/0YgnyhI37E9U530IUZlNCqlTWjko1iT3CKAYF9+A==",
+      "packageIdentity": "@oxlint-tsgolint/darwin-arm64@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/darwin-arm64/-/darwin-arm64-7.0.2007.tgz",
+      "sha256": "2366d0f0d1ddc601de717b1f15afe45a8c9c849a9198821fefd6c8db030126ea",
+      "sizeBytes": 7530184
     },
-    "@oxlint-tsgolint/darwin-x64@7.0.2001": {
+    "@oxlint-tsgolint/darwin-x64@7.0.2007": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-pXfBb5BqONCcgrXQNUZWXgiYmRSWJzd97S8i41VVOh6ut0tyo+cJ5FKFpczDHxiVNfj/3e7c9B4MtztNdpIVCw==",
-      "packageIdentity": "@oxlint-tsgolint/darwin-x64@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/darwin-x64/-/darwin-x64-7.0.2001.tgz",
-      "sha256": "6ca9d95490397dd973c158eedaf7983ee80391585ccb4cb35dc1decceb54ee58",
-      "sizeBytes": 7816826
+      "integrity": "sha512-dCd7mzk2FeTaU46LLeXy5mQyEFICaPqlew/LpehNzEuL86D0jTYlwZHbibRqdRrvkSNgq1szz/7014FIHgyV1g==",
+      "packageIdentity": "@oxlint-tsgolint/darwin-x64@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/darwin-x64/-/darwin-x64-7.0.2007.tgz",
+      "sha256": "1b682cd735fe901054ea2bb9f1f9ca8d771a8ac37c29f15ded1ca5f9c56bfc2b",
+      "sizeBytes": 7943737
     },
-    "@oxlint-tsgolint/linux-arm64@7.0.2001": {
+    "@oxlint-tsgolint/linux-arm64@7.0.2007": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-roP7zujb/QDPzDwEKsFFpzNHHy91/Y7oX9vQXk78ekyZtcQj1QXDIMH33gjDdHBfRl4K9pZ36xhRgrP4Zr+R8A==",
-      "packageIdentity": "@oxlint-tsgolint/linux-arm64@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/linux-arm64/-/linux-arm64-7.0.2001.tgz",
-      "sha256": "212cfb55ee752ff86e408cfcd33479f291ee628caf6872eb85e7472d55232539",
-      "sizeBytes": 7138875
+      "integrity": "sha512-qb0XUQXuTmQ8H++zsx/tQitG0/fU3BE16KGp1qXExeDgRzEc7WIlCuN1i+rmA40lty9gQs+x3a73BFODVhTZqA==",
+      "packageIdentity": "@oxlint-tsgolint/linux-arm64@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/linux-arm64/-/linux-arm64-7.0.2007.tgz",
+      "sha256": "239f7f35483dbb711beb1cf565b46664bb4764d04f29bcf3e26e60e9c48a094d",
+      "sizeBytes": 7251670
     },
-    "@oxlint-tsgolint/linux-x64@7.0.2001": {
+    "@oxlint-tsgolint/linux-x64@7.0.2007": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-UDezNqdECVmngu2TPnjaS1YoAmcTaBoI5lV9vk3VahBxoi+I5r9k3iJTT7qZoYWOXTD/7T7bNcwRgrocR6BscQ==",
-      "packageIdentity": "@oxlint-tsgolint/linux-x64@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/linux-x64/-/linux-x64-7.0.2001.tgz",
-      "sha256": "d5cf3db918c245700ae91fe993bfa6b78e93ce1ea7165447978113cc87a6ae06",
-      "sizeBytes": 7716410
+      "integrity": "sha512-75vx0067HSgxq/HEZzlHwqhcujn3bshg43fVLTx604jZdZZMQfPVCcxTh2RTEShP7ACT1PRty6vboZlWh5RtEA==",
+      "packageIdentity": "@oxlint-tsgolint/linux-x64@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/linux-x64/-/linux-x64-7.0.2007.tgz",
+      "sha256": "279fc23cc6f33ea9a6c2c088adad7bc539f243f20c81800f89ca51dfb13c4b18",
+      "sizeBytes": 7839724
     },
-    "@oxlint-tsgolint/win32-arm64@7.0.2001": {
+    "@oxlint-tsgolint/win32-arm64@7.0.2007": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-uJZhqB6pdXLuN+AD1F5082byyQti/NPmJA77GtcFlmT2HzRelqbNls3SaIqxpjdFgvSBF9g0yOKGBkGFg7kX8Q==",
-      "packageIdentity": "@oxlint-tsgolint/win32-arm64@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/win32-arm64/-/win32-arm64-7.0.2001.tgz",
-      "sha256": "39e0f23aa7b45bbf9afb0694dff15d45268a7ea39e368db3b008a3fb3878f92c",
-      "sizeBytes": 7203439
+      "integrity": "sha512-6zl7I+BvScfOPtnPtSEP5JA+z8NkDPGd47YnQChL5lLF/Dzs7Rasr1G+q0zGlQcP8OEgW43hW4QlUTXxPfD13Q==",
+      "packageIdentity": "@oxlint-tsgolint/win32-arm64@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/win32-arm64/-/win32-arm64-7.0.2007.tgz",
+      "sha256": "3d15425a4dfb781b5c84e0aceef015aa5ed5e47ba2eb1b3d076766ff315429d6",
+      "sizeBytes": 7320076
     },
-    "@oxlint-tsgolint/win32-x64@7.0.2001": {
+    "@oxlint-tsgolint/win32-x64@7.0.2007": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-FkDRm8hx9OwzGQqyWG1tO5QrTLRApff9DzSgpz9QZau37BR8d1VYKOxMLGf6shPZntJFoTwIIJYT68VndYDCog==",
-      "packageIdentity": "@oxlint-tsgolint/win32-x64@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/win32-x64/-/win32-x64-7.0.2001.tgz",
-      "sha256": "a678257b5233ccc1cc50911f1d25d559e8a045d665639ab5b4a8d61596439351",
-      "sizeBytes": 7866761
+      "integrity": "sha512-VptFHYhBm0SIWCUkx89hmTrKVOQsDg0iB1YE3EBlvRRtCHGUd3pU1kMxPBg1wOd83ZMmIn7zB6maBROtpmrP5g==",
+      "packageIdentity": "@oxlint-tsgolint/win32-x64@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/@oxlint-tsgolint/win32-x64/-/win32-x64-7.0.2007.tgz",
+      "sha256": "18851f25f16f9693ac346afff3ddde1bcb9a225b233559244997c89664414af1",
+      "sizeBytes": 7992472
     },
-    "@oxlint/binding-android-arm-eabi@1.82.0": {
+    "@oxlint/binding-android-arm-eabi@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-a3LB+C5Dsj5b/qtmG/mv5WrzuiXEpg1KF5nXWcEvaoN5TYAqkIvxPOwTPp3Jy/FoGpRo8zsTFhMElMXfeoOEzA==",
-      "packageIdentity": "@oxlint/binding-android-arm-eabi@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-android-arm-eabi/-/binding-android-arm-eabi-1.82.0.tgz",
-      "sha256": "6586036ce616355861a06019512f4a6a7b259dc68b1e73cf60d12d45da940b8d",
-      "sizeBytes": 5161475
+      "integrity": "sha512-730FKSBsKg/NawYnpI3gXRroXptOVqY32iYBPLUZaSx0vgYzOeiNtwojZL4gJdzo9wDvHUlstShmGRHrWcbRYg==",
+      "packageIdentity": "@oxlint/binding-android-arm-eabi@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-android-arm-eabi/-/binding-android-arm-eabi-1.94.0.tgz",
+      "sha256": "cba1042749d5b5ae6d14302b10f6d642805154b9c28ed6c4388f9bbc54ae4750",
+      "sizeBytes": 5367773
     },
-    "@oxlint/binding-android-arm64@1.82.0": {
+    "@oxlint/binding-android-arm64@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-OBlhRgNqFblGpGenno/aqOfJLOkQ2B8Ig3iDAalfn0H8hJGZKXPeexCRTDm6uwv6YUjSA9Xnwt1y/Bgj5ZH8uw==",
-      "packageIdentity": "@oxlint/binding-android-arm64@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-android-arm64/-/binding-android-arm64-1.82.0.tgz",
-      "sha256": "b56a69de85c9792a597064e34b552df3758005bf87eb6b3b8add189d63f697c8",
-      "sizeBytes": 6119494
+      "integrity": "sha512-8v8TICIiZpXLot1HSq5+vsG9NEKQ5czQBYlUqJR75OVfFDr3cGOmRU/CtHDWnS4tm8nW+Z4Y357qGToSfYqFvA==",
+      "packageIdentity": "@oxlint/binding-android-arm64@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-android-arm64/-/binding-android-arm64-1.94.0.tgz",
+      "sha256": "6131b67b3db0ec0edeb05345831ddc82785036cda89d1357d8bfd9a5299fdfc7",
+      "sizeBytes": 6370843
     },
-    "@oxlint/binding-darwin-arm64@1.82.0": {
+    "@oxlint/binding-darwin-arm64@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-dsopxqtY5ZdyT9uLHyGt1SyiLop6hi7hWI3PKpePodkRQOkLaCm+OE4fR9CAz9qdfjiFO8531tX/QDyP/psjFg==",
-      "packageIdentity": "@oxlint/binding-darwin-arm64@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-darwin-arm64/-/binding-darwin-arm64-1.82.0.tgz",
-      "sha256": "7a6d90d6bd672374c501352e82a1a5087799e5d7bb089f5b517b246edb2e992a",
-      "sizeBytes": 5627286
+      "integrity": "sha512-NePcRMO/ltt1Pnytohl6pl0bd/QyRX8HbpptuDz9LK7FTsFD4lKxDMBt7di9k6IFLO0J05jO2nm7wGqIh6dRHA==",
+      "packageIdentity": "@oxlint/binding-darwin-arm64@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-darwin-arm64/-/binding-darwin-arm64-1.94.0.tgz",
+      "sha256": "bf6931904a58229b3bab3a2259e4d70c92b925f47ce62fbdaf65db8d344d0bd9",
+      "sizeBytes": 5883091
     },
-    "@oxlint/binding-darwin-x64@1.82.0": {
+    "@oxlint/binding-darwin-x64@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-94Lu0SgTClKColU66g1VDuigV3HkcbkJBnTtZjGYfE8UPugaWDgKrm2icjC6HJVUYler2OXaHP/X0TBy8+CowQ==",
-      "packageIdentity": "@oxlint/binding-darwin-x64@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-darwin-x64/-/binding-darwin-x64-1.82.0.tgz",
-      "sha256": "c2403682fecdf403fd5acabe94dfcb7ae8c6a2ef57235b26b7495c7e733551be",
-      "sizeBytes": 6054524
+      "integrity": "sha512-QV+m+OaEgLmYyillvP1wKXhMm6tDZEWx3vG7Wjmx9ybg15+6YMfqzvp6e+uPukC6zNywuule0vMn0fZgihZzZA==",
+      "packageIdentity": "@oxlint/binding-darwin-x64@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-darwin-x64/-/binding-darwin-x64-1.94.0.tgz",
+      "sha256": "40a1e6e38a72be4aba2b8ea8e20ed0684412e6e63a99bd672b6a3ae163307460",
+      "sizeBytes": 6305948
     },
-    "@oxlint/binding-freebsd-x64@1.82.0": {
+    "@oxlint/binding-freebsd-x64@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-hne/V06ewhh1i0w8+l7GDNROAGCGPmyFuOwiP7YTRu0JycyStJ4785dmF8xU5p0uUwt2emvIF9vc7Xjis+cJ0g==",
-      "packageIdentity": "@oxlint/binding-freebsd-x64@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-freebsd-x64/-/binding-freebsd-x64-1.82.0.tgz",
-      "sha256": "91cdbaaf4c94db862cd8cf17e4782b8dd3a72ff9b74adbcb89429b1c4d7acd3a",
-      "sizeBytes": 6246143
+      "integrity": "sha512-KVZjca581nrV6P71kZ9M1otBib9LH0IMn9rr4mrnbRp18V0HiZhBHbU26gji/Ieq2G34qMacnMc3zrmKmvWqWA==",
+      "packageIdentity": "@oxlint/binding-freebsd-x64@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-freebsd-x64/-/binding-freebsd-x64-1.94.0.tgz",
+      "sha256": "0da616cbd256d084ecd16ec846bb33af148a00090a5b6a181a2e924df0e5f0b8",
+      "sizeBytes": 6487719
     },
-    "@oxlint/binding-linux-arm-gnueabihf@1.82.0": {
+    "@oxlint/binding-linux-arm-gnueabihf@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-aWY2xtbZf1LneW9Qsv/n2Sp8gOu74JrlQzEtj4coHX2SHFrCfhmAumaU+sI/A5nr+yoTRTSmI/pL2s6ADlNSkw==",
-      "packageIdentity": "@oxlint/binding-linux-arm-gnueabihf@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.82.0.tgz",
-      "sha256": "7c4cc08564979b640c765f0672143d42ef7603405ae0a6305475f3c1b478a281",
-      "sizeBytes": 5808073
+      "integrity": "sha512-AMQtgQJk8DgdIV+qaQ5sFoHAko4iKa8zo+gYqELy2grtU8hXWB08DAGB3u90aQL1YSxbd3zqHjgcODBHDFyzBQ==",
+      "packageIdentity": "@oxlint/binding-linux-arm-gnueabihf@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.94.0.tgz",
+      "sha256": "60965c06a60ef28cbfcaf8525a53e33f13027b094c2a96d451c0f9d34b336a59",
+      "sizeBytes": 6044191
     },
-    "@oxlint/binding-linux-arm-musleabihf@1.82.0": {
+    "@oxlint/binding-linux-arm-musleabihf@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-Fe+TtXCXMh/5f7kWlZ2VAwsMumZWtraFlKVk1NJlL52/beGwfDE7ov+/8gVirHzWokzGu7X65hSPq0ucPDskWQ==",
-      "packageIdentity": "@oxlint/binding-linux-arm-musleabihf@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-1.82.0.tgz",
-      "sha256": "e505e9cf924dc6e05ee53b6cc8befcc982eca7b8806c06373ffef2bb064767ef",
-      "sizeBytes": 5833271
+      "integrity": "sha512-ZLzoGVGAmQkp9leeB5rNxAXLcvlmkmd/GY71LKd5uikk+28NEApY3S2FB3pq6MkfOCFFnFg6QgD9lJIjd07D0Q==",
+      "packageIdentity": "@oxlint/binding-linux-arm-musleabihf@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-1.94.0.tgz",
+      "sha256": "b147581395583d642537bc8437efa9e7340c437a7ccd36fd72c62a33bd486e94",
+      "sizeBytes": 6069542
     },
-    "@oxlint/binding-linux-arm64-gnu@1.82.0": {
+    "@oxlint/binding-linux-arm64-gnu@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-6azCZ6OJudlvipNttXCCQcyeFfcJ/NvUZdSN1z8elo73kCHtyQC7WTiUcSjWYvJ1jaq9KDUyMAoAS/vNzhBomA==",
-      "packageIdentity": "@oxlint/binding-linux-arm64-gnu@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.82.0.tgz",
-      "sha256": "18bde00e319178e83897b5778f47eecbc126719dc2a0cda4e6375592b6347e95",
-      "sizeBytes": 6140433
+      "integrity": "sha512-N1dW6o7cY90hLVkDsvz8nWIFOwbO+n272pvW7uLYB7u47HagJVnLChfK6QA9dWFdiPudud9zfksVUOciHc5PNA==",
+      "packageIdentity": "@oxlint/binding-linux-arm64-gnu@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.94.0.tgz",
+      "sha256": "36a92c291981fb3f48c020b1756de5522286ef756503e5948cc3344658ad5a79",
+      "sizeBytes": 6382587
     },
-    "@oxlint/binding-linux-arm64-musl@1.82.0": {
+    "@oxlint/binding-linux-arm64-musl@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-PLEaSD8IAIIlwW4dwOd9YaxuxeOpwiXL4J24rcnE4iNtyM5j9Q9/3+gti08oXpx0u2ygNjRDx9xjWWpQonuJEw==",
-      "packageIdentity": "@oxlint/binding-linux-arm64-musl@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.82.0.tgz",
-      "sha256": "6250a008a001b416bd606ca6e93c4dbe55b76119d0c6ba55902bce02f1ac2092",
-      "sizeBytes": 6127685
+      "integrity": "sha512-7tCF4OV/bGDQ2xxgb+sDI97SpmmDrUII4JxTG553voJVA9cnkbXSGSXzo78Ax73BuhEOPoQc2Qi6VrfT0cDG2A==",
+      "packageIdentity": "@oxlint/binding-linux-arm64-musl@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.94.0.tgz",
+      "sha256": "8de305fa7c7d92ef474020d06e47755c0ae6f4c71a02c86e3476881fbd0c6c4f",
+      "sizeBytes": 6366491
     },
-    "@oxlint/binding-linux-ppc64-gnu@1.82.0": {
+    "@oxlint/binding-linux-ppc64-gnu@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-D94em/BwknNTn4vqxjHh5wb2oL566eFhArabqKIr0cNZMHOJuiraFp1A8tXpH05bbE5tqwEfLXTI0MWEGtn3Dw==",
-      "packageIdentity": "@oxlint/binding-linux-ppc64-gnu@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.82.0.tgz",
-      "sha256": "2b46a6e65a47c0b9f8a4a83ccef358bf7839d01d26ce2303a8bb419be83eead3",
-      "sizeBytes": 7567586
+      "integrity": "sha512-B5vUHE4wNisVEuaYxwFUn6tY+vw7A+9APxxqGKI+UmP3yKLpkhnt0qsaCrzjpX55F8rCRHBaTvIDdYo32NE36g==",
+      "packageIdentity": "@oxlint/binding-linux-ppc64-gnu@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.94.0.tgz",
+      "sha256": "d8d5b82582522b39a3ee597f5a7ba18e0c4c08b7d572609539a228ea54bbbdb1",
+      "sizeBytes": 7821772
     },
-    "@oxlint/binding-linux-riscv64-gnu@1.82.0": {
+    "@oxlint/binding-linux-riscv64-gnu@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-MOprxBaoYU2D4VgxXCl3ghydThWtx7Um1lL51kGYNeQ5Al7WzsH7/tqGdNtbLrIWnjq3bsm13+nz/gRIxjrOXw==",
-      "packageIdentity": "@oxlint/binding-linux-riscv64-gnu@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-1.82.0.tgz",
-      "sha256": "01d98588a6d23d6b0a480354e9dc6f59e0182a618d0faf0546c03cf96e8805b8",
-      "sizeBytes": 6450140
+      "integrity": "sha512-/U0b15+c4hTodo8YhEqDlQ6OjnGKvc8igjM/mh23ukqqCUBKiBCaxqUV8bcaofK9uZ+f8wCygkyXLS6LN25YSA==",
+      "packageIdentity": "@oxlint/binding-linux-riscv64-gnu@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-1.94.0.tgz",
+      "sha256": "f4216389e3bba25ddbf1ff40c44ae18081e31844860373b85a338d22bfccb47b",
+      "sizeBytes": 6695123
     },
-    "@oxlint/binding-linux-riscv64-musl@1.82.0": {
+    "@oxlint/binding-linux-riscv64-musl@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-5h55QsfJ/luDXZzC20k6SNOY1Az+dCP9WvntKtcUWh2JhckAdwApY2ZusaBTwLENnReXU+A2fJtSrYvZJNKNPg==",
-      "packageIdentity": "@oxlint/binding-linux-riscv64-musl@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-1.82.0.tgz",
-      "sha256": "2eedef4845b05d75633b428113a903be65a6b1a707d68aa8cfcd1d02ba47b5ec",
-      "sizeBytes": 6483190
+      "integrity": "sha512-ba94Vwl0qOnwXIXNDR33AEbLXuX++ckM74t+9Te7CiPSPAHivhOYyeEkUAicrvOEei1pxXkWggLbFeBFFBTuHA==",
+      "packageIdentity": "@oxlint/binding-linux-riscv64-musl@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-1.94.0.tgz",
+      "sha256": "9462ddbdcd45bd5a7f46829e273ce8cb3a979811c20e63f3af08af1824b9a326",
+      "sizeBytes": 6721270
     },
-    "@oxlint/binding-linux-s390x-gnu@1.82.0": {
+    "@oxlint/binding-linux-s390x-gnu@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-IE8NJNLlHr0CaXyGJPGVn0eTkUyoj1I2UfA8x7I4PSOYKsQ/6btVC7Pywrj5onk0cMH25r6Z38SoN3AvE5Zuog==",
-      "packageIdentity": "@oxlint/binding-linux-s390x-gnu@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.82.0.tgz",
-      "sha256": "e03d630e26ffd6c49359f012aff727932dc0d3193eaed11d738291be5b9547dc",
-      "sizeBytes": 6738507
+      "integrity": "sha512-GVwwwms3O8pdgbCiPavwq2vltyB4661GkDz6kJduZ0E5nsSJUDJ0svaP+ePYpuDVYi4+K1qhCKnWa/Ec8I4LUA==",
+      "packageIdentity": "@oxlint/binding-linux-s390x-gnu@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.94.0.tgz",
+      "sha256": "315019991cf72e3fa386c7827e7a9e9494faa1710acf067fd568ad57b5273038",
+      "sizeBytes": 7084933
     },
-    "@oxlint/binding-linux-x64-gnu@1.82.0": {
+    "@oxlint/binding-linux-x64-gnu@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-XUUUxaBo9XKl+J1B9EmP1cTGQPddzeURvoGkfwh/94PGnbW+hBprDljneoI2M1jzC1bzrIV3ihc7iM9UXl8+tg==",
-      "packageIdentity": "@oxlint/binding-linux-x64-gnu@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.82.0.tgz",
-      "sha256": "afd20bcd6e648f340473ddd4dd0e45a3628156da2ed1ee8beea2de42251012f3",
-      "sizeBytes": 6514610
+      "integrity": "sha512-iUfCFJN8ZIresSnpTfiIkhF3s8X+XA4I9KJ249QwR2QYTMwh0+pla1pj1xaFi+HtR9McjM4Jaemf70HzX7ilOQ==",
+      "packageIdentity": "@oxlint/binding-linux-x64-gnu@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.94.0.tgz",
+      "sha256": "169fcc427dfd4b0e95625d941d023ac2c89a9cb1bb94e78b087e3339870ef47c",
+      "sizeBytes": 6765015
     },
-    "@oxlint/binding-linux-x64-musl@1.82.0": {
+    "@oxlint/binding-linux-x64-musl@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-SWLSFulX9TDuH6yvbPYp4+VNn6jkkIvvI+KiujDM5rWBRHEfkesCC/pCneIIUr6ovkxZ5fRtpi2v5Cz5FrMJZg==",
-      "packageIdentity": "@oxlint/binding-linux-x64-musl@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-x64-musl/-/binding-linux-x64-musl-1.82.0.tgz",
-      "sha256": "31dd0cd1b377cc86549d292c90065b3ec186555e62d6bad14056b26b329881c8",
-      "sizeBytes": 6461971
+      "integrity": "sha512-RqWVeWpDACS4Oh0m21OBmy+CQ50CbbhuHFmNNPVS2P/4R3d188MjEuEuV7So82/tAM8UAT+UuMDtRDESd9NJ7g==",
+      "packageIdentity": "@oxlint/binding-linux-x64-musl@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-linux-x64-musl/-/binding-linux-x64-musl-1.94.0.tgz",
+      "sha256": "d1c28556c723285e496805d4a55d3917736f19ae5bb63df0abdfc3868052103a",
+      "sizeBytes": 6711786
     },
-    "@oxlint/binding-openharmony-arm64@1.82.0": {
+    "@oxlint/binding-openharmony-arm64@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-BQy35f6ZUdNr9a6c7B7orxQTcLjByGT2z3WAgmRovpRwmPYAaJ+NTplmMzhdjdJ4qSchfMNZy/Ukg+qRg6zseQ==",
-      "packageIdentity": "@oxlint/binding-openharmony-arm64@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-openharmony-arm64/-/binding-openharmony-arm64-1.82.0.tgz",
-      "sha256": "4ed09db223ea2920b13a4b2b6acfc88362e7855447b9499b1584fda283ae842d",
-      "sizeBytes": 6132085
+      "integrity": "sha512-K/2DHOUoypwYVqzxJMRPdMuBKjAetZEAsGPP7rHimd+2+5J1TxM+17pG8kw+ayH4+rqBXiPd+H9wgPcU+fF77A==",
+      "packageIdentity": "@oxlint/binding-openharmony-arm64@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-openharmony-arm64/-/binding-openharmony-arm64-1.94.0.tgz",
+      "sha256": "0b1758a510cc73d8cf23801242a7d0339a1e65c77d8f9e166bb5c1ac4ddd8f86",
+      "sizeBytes": 6381086
     },
-    "@oxlint/binding-win32-arm64-msvc@1.82.0": {
+    "@oxlint/binding-win32-arm64-msvc@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-V4QhSTg5gctZue8RJjsGi7NpQPThr/p1/HfmiMC5kfe1KFEup9SQRVub4A6kijQjdHfxj7bLL1KO3QO7/5bwMQ==",
-      "packageIdentity": "@oxlint/binding-win32-arm64-msvc@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.82.0.tgz",
-      "sha256": "b8689f6cc9f8ef9335f9d87637ab6e3d63402c9032f0a2adb6780d05be83b063",
-      "sizeBytes": 5712485
+      "integrity": "sha512-hYOCaOJiB4ZCGswBWKl3JQrhqu6mnC5DCUw/1UMNzRXgsHIJ0V226J43LAVICVIDGlhFUZTYShFW+wHWpt6qCQ==",
+      "packageIdentity": "@oxlint/binding-win32-arm64-msvc@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.94.0.tgz",
+      "sha256": "5ee83be52ce5e005709a914831f580c707549f0cfce9bf2894040ca4059b91d7",
+      "sizeBytes": 5966915
     },
-    "@oxlint/binding-win32-ia32-msvc@1.82.0": {
+    "@oxlint/binding-win32-ia32-msvc@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-TUSCLaKB2yktpFAJ/r3HAUYsaV/3DT7JS4iNKyoh3a9YNwD0UG7Ezh4D8m23654vQcU6P/RQrCAjRPKe4peP/A==",
-      "packageIdentity": "@oxlint/binding-win32-ia32-msvc@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-1.82.0.tgz",
-      "sha256": "218d22ecc40101d1abfe7af64be7700c34b803570fae37a97d9d5989f878c288",
-      "sizeBytes": 5701728
+      "integrity": "sha512-1l1FDlzbPmAeDoZ8UGspOE2dOmz1ZL6SlDsvOmRCmWSQjCdTy5LzUepS8mO/SGpAoz4D6WAt/yNZAUyHqbkmkQ==",
+      "packageIdentity": "@oxlint/binding-win32-ia32-msvc@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-1.94.0.tgz",
+      "sha256": "209a27ecc6d050d150ae179796eeddc44cffc7a2aeccfcf591d9d9a136dcab4d",
+      "sizeBytes": 5936234
     },
-    "@oxlint/binding-win32-x64-msvc@1.82.0": {
+    "@oxlint/binding-win32-x64-msvc@1.94.0": {
       "bins": {},
       "classification": "public",
-      "integrity": "sha512-VTVoRIWJTb+wvUX8EYoPArfFH02whuR10goFXE/LHRRX33ajRrFgqbcONXZMiF4C5rnattfkm87HqYn8jb8hmQ==",
-      "packageIdentity": "@oxlint/binding-win32-x64-msvc@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.82.0.tgz",
-      "sha256": "3f5bd44c36cb74795ac290e82662fcdf176bb70923bb0813b111d227a7228e3b",
-      "sizeBytes": 5977465
+      "integrity": "sha512-I3eZdd4bemIJQDNv9XDV/FEofDxIoN32tzCv98wIgLdW05EqxZb5hF4AwPrRzHD/dQhl0n7KgPy5AQPfM0HWrA==",
+      "packageIdentity": "@oxlint/binding-win32-x64-msvc@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.94.0.tgz",
+      "sha256": "665375f7d7a6e6eb5622b3c53408c0933046037ee9a09b004d011b09ffef2e59",
+      "sizeBytes": 6235378
     },
     "@pierre/highlights@0.2.0": {
       "bins": {},
@@ -5733,17 +5724,6 @@
       "sha256": "f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6",
       "sizeBytes": 2967
     },
-    "nanoid@3.3.18": {
-      "bins": {
-        "nanoid": "bin/nanoid.cjs"
-      },
-      "classification": "public",
-      "integrity": "sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==",
-      "packageIdentity": "nanoid@3.3.18",
-      "registryUrl": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
-      "sha256": "b9dc81cb403ea2510314dd2d1ad8d71934f325db90c1b43805e781b87e3fb009",
-      "sizeBytes": 5713
-    },
     "nanoid@3.3.20": {
       "bins": {
         "nanoid": "bin/nanoid.cjs"
@@ -5847,27 +5827,27 @@
       "sha256": "aa825f9457600a5eaef62bcf88863515a9cce713604c7931ce65bf743ce3c0c7",
       "sizeBytes": 12137
     },
-    "oxlint-tsgolint@7.0.2001": {
+    "oxlint-tsgolint@7.0.2007": {
       "bins": {
         "tsgolint": "bin/tsgolint.js"
       },
       "classification": "public",
-      "integrity": "sha512-KjK/XLcXr1DSyonKhsuFqJRiuKqcyG9j3LJ8nkOsrLzGvodBPqzHOKauy10asLMDI0sUpvb+1sxlzff3udZvfg==",
-      "packageIdentity": "oxlint-tsgolint@7.0.2001",
-      "registryUrl": "https://registry.npmjs.org/oxlint-tsgolint/-/oxlint-tsgolint-7.0.2001.tgz",
-      "sha256": "39df25aa7ce8f7a62b9257a1d4b0bf86af6c827fb3bc2003f659d4bf39ee6179",
-      "sizeBytes": 5237
+      "integrity": "sha512-i8X2qf6VVqFzoNVP34joMKuZpO6T2uXMOgKJaSPFc6p+E3FTnbIGPRbI8K4ZApmtDTMu2CIeGfpzeK1zzGwfnA==",
+      "packageIdentity": "oxlint-tsgolint@7.0.2007",
+      "registryUrl": "https://registry.npmjs.org/oxlint-tsgolint/-/oxlint-tsgolint-7.0.2007.tgz",
+      "sha256": "dc165705f357037a33c13a0cf626b328760cf5c1f64d2c0a24fc4507415dd86d",
+      "sizeBytes": 5393
     },
-    "oxlint@1.82.0": {
+    "oxlint@1.94.0": {
       "bins": {
         "oxlint": "bin/oxlint"
       },
       "classification": "public",
-      "integrity": "sha512-+iFM1BGw1ntYJt3QngbJmjbrGxPaKMUADOXOijpWGnYcBPq8YZnQftSS1C+pVcDYy9YxqDVJKQqQkTazTQMboQ==",
-      "packageIdentity": "oxlint@1.82.0",
-      "registryUrl": "https://registry.npmjs.org/oxlint/-/oxlint-1.82.0.tgz",
-      "sha256": "2066484420002a6cd162a41b5d109307cbe7ce91bbfb049757846d4a7bde2c0d",
-      "sizeBytes": 378203
+      "integrity": "sha512-Fnt+3wSKRhtLmvgRfxgRX0excSPCoyiXRol4eWKZLtXxWMQtwQ3KjKQUYXOw5loyinfnZfGzh4RCYf7opfL0vw==",
+      "packageIdentity": "oxlint@1.94.0",
+      "registryUrl": "https://registry.npmjs.org/oxlint/-/oxlint-1.94.0.tgz",
+      "sha256": "dff939298221a34824c21dae117ef5dad63462d9352244659b0e7dd43be14779",
+      "sizeBytes": 380054
     },
     "p-limit@3.1.0": {
       "bins": {},
@@ -6433,15 +6413,6 @@
       "registryUrl": "https://registry.npmjs.org/smol-toml/-/smol-toml-1.8.0.tgz",
       "sha256": "1fc995be91cdb777fc13e20c2edfebaaf60ef4e4d2d5331caef2837b04d37892",
       "sizeBytes": 23162
-    },
-    "source-map-js@1.2.1": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
-      "packageIdentity": "source-map-js@1.2.1",
-      "registryUrl": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
-      "sha256": "f126a6f9fca487a43219d8cb8c3a955279187a966119d548eb5cd47e999d4853",
-      "sizeBytes": 35340
     },
     "source-map-js@1.2.2": {
       "bins": {},
@@ -7080,5 +7051,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:278f042224544e91ad9647278746ff978df02a2502e90c8b307230fd742fd52c"
+  "fingerprint": "sha256:69dc7f61058a1adccbbab0967a008af7bf304a4fea84243b3467365f911fb695"
 }

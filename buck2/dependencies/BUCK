@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:bc52cf8a4dd12f06d797a180ea34f76f0f63014fd6d2ca7ba6a70554626e65cb
+# Store fingerprint: sha256:cf204772892eef5ec77df021763c1ec40e61543ab9bd40f52ea7fc6987b17f3a
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -1282,16 +1282,6 @@ pnpm_package(
 )
 
 pnpm_package(
-    name = "package_napi_rs_wasm_runtime_1_2_3_6ca10180c938",
-    package_name = "@napi-rs/wasm-runtime",
-    url = "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-1.2.3.tgz",
-    sha256 = "434e1f4532cef2e9505ad597735cdad0eab0b3cfe3b6708f9dfb399f737346b2",
-    size_bytes = 156767,
-    bins = {
-    },
-)
-
-pnpm_package(
     name = "package_napi_rs_wasm_runtime_1_2_6_fba0ad373721",
     package_name = "@napi-rs/wasm-runtime",
     url = "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-1.2.6.tgz",
@@ -2402,251 +2392,251 @@ pnpm_package(
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
+    name = "package_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
     package_name = "@oxlint-tsgolint/darwin-arm64",
-    url = "https://registry.npmjs.org/@oxlint-tsgolint/darwin-arm64/-/darwin-arm64-7.0.2001.tgz",
-    sha256 = "c342a82add72186c061afcd53ba6160f1be15bdd860d038dd5f7237ff31ad9c2",
-    size_bytes = 7406307,
+    url = "https://registry.npmjs.org/@oxlint-tsgolint/darwin-arm64/-/darwin-arm64-7.0.2007.tgz",
+    sha256 = "2366d0f0d1ddc601de717b1f15afe45a8c9c849a9198821fefd6c8db030126ea",
+    size_bytes = 7530184,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_darwin_x64_7_0_2001_bb4a26bf5778",
+    name = "package_oxlint_tsgolint_darwin_x64_7_0_2007_e4a113860fde",
     package_name = "@oxlint-tsgolint/darwin-x64",
-    url = "https://registry.npmjs.org/@oxlint-tsgolint/darwin-x64/-/darwin-x64-7.0.2001.tgz",
-    sha256 = "6ca9d95490397dd973c158eedaf7983ee80391585ccb4cb35dc1decceb54ee58",
-    size_bytes = 7816826,
+    url = "https://registry.npmjs.org/@oxlint-tsgolint/darwin-x64/-/darwin-x64-7.0.2007.tgz",
+    sha256 = "1b682cd735fe901054ea2bb9f1f9ca8d771a8ac37c29f15ded1ca5f9c56bfc2b",
+    size_bytes = 7943737,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
+    name = "package_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
     package_name = "@oxlint-tsgolint/linux-arm64",
-    url = "https://registry.npmjs.org/@oxlint-tsgolint/linux-arm64/-/linux-arm64-7.0.2001.tgz",
-    sha256 = "212cfb55ee752ff86e408cfcd33479f291ee628caf6872eb85e7472d55232539",
-    size_bytes = 7138875,
+    url = "https://registry.npmjs.org/@oxlint-tsgolint/linux-arm64/-/linux-arm64-7.0.2007.tgz",
+    sha256 = "239f7f35483dbb711beb1cf565b46664bb4764d04f29bcf3e26e60e9c48a094d",
+    size_bytes = 7251670,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
+    name = "package_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
     package_name = "@oxlint-tsgolint/linux-x64",
-    url = "https://registry.npmjs.org/@oxlint-tsgolint/linux-x64/-/linux-x64-7.0.2001.tgz",
-    sha256 = "d5cf3db918c245700ae91fe993bfa6b78e93ce1ea7165447978113cc87a6ae06",
-    size_bytes = 7716410,
+    url = "https://registry.npmjs.org/@oxlint-tsgolint/linux-x64/-/linux-x64-7.0.2007.tgz",
+    sha256 = "279fc23cc6f33ea9a6c2c088adad7bc539f243f20c81800f89ca51dfb13c4b18",
+    size_bytes = 7839724,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_win32_arm64_7_0_2001_13e4afc64c3a",
+    name = "package_oxlint_tsgolint_win32_arm64_7_0_2007_da22c0933e75",
     package_name = "@oxlint-tsgolint/win32-arm64",
-    url = "https://registry.npmjs.org/@oxlint-tsgolint/win32-arm64/-/win32-arm64-7.0.2001.tgz",
-    sha256 = "39e0f23aa7b45bbf9afb0694dff15d45268a7ea39e368db3b008a3fb3878f92c",
-    size_bytes = 7203439,
+    url = "https://registry.npmjs.org/@oxlint-tsgolint/win32-arm64/-/win32-arm64-7.0.2007.tgz",
+    sha256 = "3d15425a4dfb781b5c84e0aceef015aa5ed5e47ba2eb1b3d076766ff315429d6",
+    size_bytes = 7320076,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_win32_x64_7_0_2001_448011f72ac4",
+    name = "package_oxlint_tsgolint_win32_x64_7_0_2007_7e23f7b5943b",
     package_name = "@oxlint-tsgolint/win32-x64",
-    url = "https://registry.npmjs.org/@oxlint-tsgolint/win32-x64/-/win32-x64-7.0.2001.tgz",
-    sha256 = "a678257b5233ccc1cc50911f1d25d559e8a045d665639ab5b4a8d61596439351",
-    size_bytes = 7866761,
+    url = "https://registry.npmjs.org/@oxlint-tsgolint/win32-x64/-/win32-x64-7.0.2007.tgz",
+    sha256 = "18851f25f16f9693ac346afff3ddde1bcb9a225b233559244997c89664414af1",
+    size_bytes = 7992472,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
+    name = "package_oxlint_binding_android_arm_eabi_1_94_0_6eaebc1086d9",
     package_name = "@oxlint/binding-android-arm-eabi",
-    url = "https://registry.npmjs.org/@oxlint/binding-android-arm-eabi/-/binding-android-arm-eabi-1.82.0.tgz",
-    sha256 = "6586036ce616355861a06019512f4a6a7b259dc68b1e73cf60d12d45da940b8d",
-    size_bytes = 5161475,
+    url = "https://registry.npmjs.org/@oxlint/binding-android-arm-eabi/-/binding-android-arm-eabi-1.94.0.tgz",
+    sha256 = "cba1042749d5b5ae6d14302b10f6d642805154b9c28ed6c4388f9bbc54ae4750",
+    size_bytes = 5367773,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
+    name = "package_oxlint_binding_android_arm64_1_94_0_5158cbf96262",
     package_name = "@oxlint/binding-android-arm64",
-    url = "https://registry.npmjs.org/@oxlint/binding-android-arm64/-/binding-android-arm64-1.82.0.tgz",
-    sha256 = "b56a69de85c9792a597064e34b552df3758005bf87eb6b3b8add189d63f697c8",
-    size_bytes = 6119494,
+    url = "https://registry.npmjs.org/@oxlint/binding-android-arm64/-/binding-android-arm64-1.94.0.tgz",
+    sha256 = "6131b67b3db0ec0edeb05345831ddc82785036cda89d1357d8bfd9a5299fdfc7",
+    size_bytes = 6370843,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
+    name = "package_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
     package_name = "@oxlint/binding-darwin-arm64",
-    url = "https://registry.npmjs.org/@oxlint/binding-darwin-arm64/-/binding-darwin-arm64-1.82.0.tgz",
-    sha256 = "7a6d90d6bd672374c501352e82a1a5087799e5d7bb089f5b517b246edb2e992a",
-    size_bytes = 5627286,
+    url = "https://registry.npmjs.org/@oxlint/binding-darwin-arm64/-/binding-darwin-arm64-1.94.0.tgz",
+    sha256 = "bf6931904a58229b3bab3a2259e4d70c92b925f47ce62fbdaf65db8d344d0bd9",
+    size_bytes = 5883091,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
+    name = "package_oxlint_binding_darwin_x64_1_94_0_a5ff21975bb9",
     package_name = "@oxlint/binding-darwin-x64",
-    url = "https://registry.npmjs.org/@oxlint/binding-darwin-x64/-/binding-darwin-x64-1.82.0.tgz",
-    sha256 = "c2403682fecdf403fd5acabe94dfcb7ae8c6a2ef57235b26b7495c7e733551be",
-    size_bytes = 6054524,
+    url = "https://registry.npmjs.org/@oxlint/binding-darwin-x64/-/binding-darwin-x64-1.94.0.tgz",
+    sha256 = "40a1e6e38a72be4aba2b8ea8e20ed0684412e6e63a99bd672b6a3ae163307460",
+    size_bytes = 6305948,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
+    name = "package_oxlint_binding_freebsd_x64_1_94_0_26cae1223b9b",
     package_name = "@oxlint/binding-freebsd-x64",
-    url = "https://registry.npmjs.org/@oxlint/binding-freebsd-x64/-/binding-freebsd-x64-1.82.0.tgz",
-    sha256 = "91cdbaaf4c94db862cd8cf17e4782b8dd3a72ff9b74adbcb89429b1c4d7acd3a",
-    size_bytes = 6246143,
+    url = "https://registry.npmjs.org/@oxlint/binding-freebsd-x64/-/binding-freebsd-x64-1.94.0.tgz",
+    sha256 = "0da616cbd256d084ecd16ec846bb33af148a00090a5b6a181a2e924df0e5f0b8",
+    size_bytes = 6487719,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
+    name = "package_oxlint_binding_linux_arm_gnueabihf_1_94_0_b65b8c3b7eb7",
     package_name = "@oxlint/binding-linux-arm-gnueabihf",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.82.0.tgz",
-    sha256 = "7c4cc08564979b640c765f0672143d42ef7603405ae0a6305475f3c1b478a281",
-    size_bytes = 5808073,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.94.0.tgz",
+    sha256 = "60965c06a60ef28cbfcaf8525a53e33f13027b094c2a96d451c0f9d34b336a59",
+    size_bytes = 6044191,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
+    name = "package_oxlint_binding_linux_arm_musleabihf_1_94_0_5dca6afaa060",
     package_name = "@oxlint/binding-linux-arm-musleabihf",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-1.82.0.tgz",
-    sha256 = "e505e9cf924dc6e05ee53b6cc8befcc982eca7b8806c06373ffef2bb064767ef",
-    size_bytes = 5833271,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-1.94.0.tgz",
+    sha256 = "b147581395583d642537bc8437efa9e7340c437a7ccd36fd72c62a33bd486e94",
+    size_bytes = 6069542,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
+    name = "package_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
     package_name = "@oxlint/binding-linux-arm64-gnu",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.82.0.tgz",
-    sha256 = "18bde00e319178e83897b5778f47eecbc126719dc2a0cda4e6375592b6347e95",
-    size_bytes = 6140433,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.94.0.tgz",
+    sha256 = "36a92c291981fb3f48c020b1756de5522286ef756503e5948cc3344658ad5a79",
+    size_bytes = 6382587,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
+    name = "package_oxlint_binding_linux_arm64_musl_1_94_0_6c4122109551",
     package_name = "@oxlint/binding-linux-arm64-musl",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.82.0.tgz",
-    sha256 = "6250a008a001b416bd606ca6e93c4dbe55b76119d0c6ba55902bce02f1ac2092",
-    size_bytes = 6127685,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.94.0.tgz",
+    sha256 = "8de305fa7c7d92ef474020d06e47755c0ae6f4c71a02c86e3476881fbd0c6c4f",
+    size_bytes = 6366491,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
+    name = "package_oxlint_binding_linux_ppc64_gnu_1_94_0_fc0f1a263285",
     package_name = "@oxlint/binding-linux-ppc64-gnu",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.82.0.tgz",
-    sha256 = "2b46a6e65a47c0b9f8a4a83ccef358bf7839d01d26ce2303a8bb419be83eead3",
-    size_bytes = 7567586,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.94.0.tgz",
+    sha256 = "d8d5b82582522b39a3ee597f5a7ba18e0c4c08b7d572609539a228ea54bbbdb1",
+    size_bytes = 7821772,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
+    name = "package_oxlint_binding_linux_riscv64_gnu_1_94_0_289d8a77e9c1",
     package_name = "@oxlint/binding-linux-riscv64-gnu",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-1.82.0.tgz",
-    sha256 = "01d98588a6d23d6b0a480354e9dc6f59e0182a618d0faf0546c03cf96e8805b8",
-    size_bytes = 6450140,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-1.94.0.tgz",
+    sha256 = "f4216389e3bba25ddbf1ff40c44ae18081e31844860373b85a338d22bfccb47b",
+    size_bytes = 6695123,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
+    name = "package_oxlint_binding_linux_riscv64_musl_1_94_0_3db5761b2836",
     package_name = "@oxlint/binding-linux-riscv64-musl",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-1.82.0.tgz",
-    sha256 = "2eedef4845b05d75633b428113a903be65a6b1a707d68aa8cfcd1d02ba47b5ec",
-    size_bytes = 6483190,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-1.94.0.tgz",
+    sha256 = "9462ddbdcd45bd5a7f46829e273ce8cb3a979811c20e63f3af08af1824b9a326",
+    size_bytes = 6721270,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
+    name = "package_oxlint_binding_linux_s390x_gnu_1_94_0_971205b397b1",
     package_name = "@oxlint/binding-linux-s390x-gnu",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.82.0.tgz",
-    sha256 = "e03d630e26ffd6c49359f012aff727932dc0d3193eaed11d738291be5b9547dc",
-    size_bytes = 6738507,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.94.0.tgz",
+    sha256 = "315019991cf72e3fa386c7827e7a9e9494faa1710acf067fd568ad57b5273038",
+    size_bytes = 7084933,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
+    name = "package_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
     package_name = "@oxlint/binding-linux-x64-gnu",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.82.0.tgz",
-    sha256 = "afd20bcd6e648f340473ddd4dd0e45a3628156da2ed1ee8beea2de42251012f3",
-    size_bytes = 6514610,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.94.0.tgz",
+    sha256 = "169fcc427dfd4b0e95625d941d023ac2c89a9cb1bb94e78b087e3339870ef47c",
+    size_bytes = 6765015,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
+    name = "package_oxlint_binding_linux_x64_musl_1_94_0_4907c45e22f1",
     package_name = "@oxlint/binding-linux-x64-musl",
-    url = "https://registry.npmjs.org/@oxlint/binding-linux-x64-musl/-/binding-linux-x64-musl-1.82.0.tgz",
-    sha256 = "31dd0cd1b377cc86549d292c90065b3ec186555e62d6bad14056b26b329881c8",
-    size_bytes = 6461971,
+    url = "https://registry.npmjs.org/@oxlint/binding-linux-x64-musl/-/binding-linux-x64-musl-1.94.0.tgz",
+    sha256 = "d1c28556c723285e496805d4a55d3917736f19ae5bb63df0abdfc3868052103a",
+    size_bytes = 6711786,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
+    name = "package_oxlint_binding_openharmony_arm64_1_94_0_aaa3649d37e2",
     package_name = "@oxlint/binding-openharmony-arm64",
-    url = "https://registry.npmjs.org/@oxlint/binding-openharmony-arm64/-/binding-openharmony-arm64-1.82.0.tgz",
-    sha256 = "4ed09db223ea2920b13a4b2b6acfc88362e7855447b9499b1584fda283ae842d",
-    size_bytes = 6132085,
+    url = "https://registry.npmjs.org/@oxlint/binding-openharmony-arm64/-/binding-openharmony-arm64-1.94.0.tgz",
+    sha256 = "0b1758a510cc73d8cf23801242a7d0339a1e65c77d8f9e166bb5c1ac4ddd8f86",
+    size_bytes = 6381086,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
+    name = "package_oxlint_binding_win32_arm64_msvc_1_94_0_9259fac49e79",
     package_name = "@oxlint/binding-win32-arm64-msvc",
-    url = "https://registry.npmjs.org/@oxlint/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.82.0.tgz",
-    sha256 = "b8689f6cc9f8ef9335f9d87637ab6e3d63402c9032f0a2adb6780d05be83b063",
-    size_bytes = 5712485,
+    url = "https://registry.npmjs.org/@oxlint/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.94.0.tgz",
+    sha256 = "5ee83be52ce5e005709a914831f580c707549f0cfce9bf2894040ca4059b91d7",
+    size_bytes = 5966915,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
+    name = "package_oxlint_binding_win32_ia32_msvc_1_94_0_6bc9aee3a237",
     package_name = "@oxlint/binding-win32-ia32-msvc",
-    url = "https://registry.npmjs.org/@oxlint/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-1.82.0.tgz",
-    sha256 = "218d22ecc40101d1abfe7af64be7700c34b803570fae37a97d9d5989f878c288",
-    size_bytes = 5701728,
+    url = "https://registry.npmjs.org/@oxlint/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-1.94.0.tgz",
+    sha256 = "209a27ecc6d050d150ae179796eeddc44cffc7a2aeccfcf591d9d9a136dcab4d",
+    size_bytes = 5936234,
     bins = {
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
+    name = "package_oxlint_binding_win32_x64_msvc_1_94_0_ed334db06b31",
     package_name = "@oxlint/binding-win32-x64-msvc",
-    url = "https://registry.npmjs.org/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.82.0.tgz",
-    sha256 = "3f5bd44c36cb74795ac290e82662fcdf176bb70923bb0813b111d227a7228e3b",
-    size_bytes = 5977465,
+    url = "https://registry.npmjs.org/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.94.0.tgz",
+    sha256 = "665375f7d7a6e6eb5622b3c53408c0933046037ee9a09b004d011b09ffef2e59",
+    size_bytes = 6235378,
     bins = {
     },
 )
@@ -6394,17 +6384,6 @@ pnpm_package(
 )
 
 pnpm_package(
-    name = "package_nanoid_3_3_18_b20a4df32f5a",
-    package_name = "nanoid",
-    url = "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
-    sha256 = "b9dc81cb403ea2510314dd2d1ad8d71934f325db90c1b43805e781b87e3fb009",
-    size_bytes = 5713,
-    bins = {
-        "nanoid": "bin/nanoid.cjs",
-    },
-)
-
-pnpm_package(
     name = "package_nanoid_3_3_20_97f7e27701df",
     package_name = "nanoid",
     url = "https://registry.npmjs.org/nanoid/-/nanoid-3.3.20.tgz",
@@ -6517,22 +6496,22 @@ pnpm_package(
 )
 
 pnpm_package(
-    name = "package_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+    name = "package_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
     package_name = "oxlint-tsgolint",
-    url = "https://registry.npmjs.org/oxlint-tsgolint/-/oxlint-tsgolint-7.0.2001.tgz",
-    sha256 = "39df25aa7ce8f7a62b9257a1d4b0bf86af6c827fb3bc2003f659d4bf39ee6179",
-    size_bytes = 5237,
+    url = "https://registry.npmjs.org/oxlint-tsgolint/-/oxlint-tsgolint-7.0.2007.tgz",
+    sha256 = "dc165705f357037a33c13a0cf626b328760cf5c1f64d2c0a24fc4507415dd86d",
+    size_bytes = 5393,
     bins = {
         "tsgolint": "bin/tsgolint.js",
     },
 )
 
 pnpm_package(
-    name = "package_oxlint_1_82_0_b1d52a4a3427",
+    name = "package_oxlint_1_94_0_0e345fa27037",
     package_name = "oxlint",
-    url = "https://registry.npmjs.org/oxlint/-/oxlint-1.82.0.tgz",
-    sha256 = "2066484420002a6cd162a41b5d109307cbe7ce91bbfb049757846d4a7bde2c0d",
-    size_bytes = 378203,
+    url = "https://registry.npmjs.org/oxlint/-/oxlint-1.94.0.tgz",
+    sha256 = "dff939298221a34824c21dae117ef5dad63462d9352244659b0e7dd43be14779",
+    size_bytes = 380054,
     bins = {
         "oxlint": "bin/oxlint",
     },
@@ -7152,16 +7131,6 @@ pnpm_package(
     url = "https://registry.npmjs.org/smol-toml/-/smol-toml-1.8.0.tgz",
     sha256 = "1fc995be91cdb777fc13e20c2edfebaaf60ef4e4d2d5331caef2837b04d37892",
     size_bytes = 23162,
-    bins = {
-    },
-)
-
-pnpm_package(
-    name = "package_source_map_js_1_2_1_43b6dddbe93e",
-    package_name = "source-map-js",
-    url = "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
-    sha256 = "f126a6f9fca487a43219d8cb8c3a955279187a966119d548eb5cd47e999d4853",
-    size_bytes = 35340,
     bins = {
     },
 )
@@ -9777,9 +9746,9 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_napi_rs_wasm_runtime_1_2_3_emnapi_core_1_11_0_emnapi_runtime_1_11_0_fd73680e29da",
-    package = ":package_napi_rs_wasm_runtime_1_2_3_6ca10180c938",
-    store_key = "@napi-rs+wasm-runtime@1.2.3_@emnapi+core@1.11.0_@emnapi+runtime@1.11.0",
+    name = "entry_napi_rs_wasm_runtime_1_2_6_emnapi_core_1_11_0_emnapi_runtime_1_11_0_102d1d616584",
+    package = ":package_napi_rs_wasm_runtime_1_2_6_fba0ad373721",
+    store_key = "@napi-rs+wasm-runtime@1.2.6_@emnapi+core@1.11.0_@emnapi+runtime@1.11.0",
     runtime = ":assemble-store.ts",
     dependencies = {
         "@emnapi/core": ":entry_emnapi_core_1_11_0_55deaf22b5b3",
@@ -9790,9 +9759,9 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_napi_rs_wasm_runtime_1_2_3_emnapi_core_1_9_2_emnapi_runtime_1_9_2_7ea2ff59ab7e",
-    package = ":package_napi_rs_wasm_runtime_1_2_3_6ca10180c938",
-    store_key = "@napi-rs+wasm-runtime@1.2.3_@emnapi+core@1.9.2_@emnapi+runtime@1.9.2",
+    name = "entry_napi_rs_wasm_runtime_1_2_6_emnapi_core_1_9_2_emnapi_runtime_1_9_2_27e81612ce4f",
+    package = ":package_napi_rs_wasm_runtime_1_2_6_fba0ad373721",
+    store_key = "@napi-rs+wasm-runtime@1.2.6_@emnapi+core@1.9.2_@emnapi+runtime@1.9.2",
     runtime = ":assemble-store.ts",
     dependencies = {
         "@emnapi/core": ":entry_emnapi_core_1_9_2_35c37e64a8d6",
@@ -11441,14 +11410,14 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
-    package = ":package_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
-    store_key = "@oxlint-tsgolint+darwin-arm64@7.0.2001",
+    name = "entry_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
+    package = ":package_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
+    store_key = "@oxlint-tsgolint+darwin-arm64@7.0.2007",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint-tsgolint/darwin-arm64@7.0.2001 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint-tsgolint/darwin-arm64@7.0.2001 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint-tsgolint/darwin-arm64@7.0.2001 has no complete required dependency closure on linux_x86_64",
+        "javascript_portable": "entry @oxlint-tsgolint/darwin-arm64@7.0.2007 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/darwin-arm64@7.0.2007 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/darwin-arm64@7.0.2007 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "",
     },
     dependencies = {
@@ -11457,15 +11426,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_darwin_x64_7_0_2001_bb4a26bf5778",
-    package = ":package_oxlint_tsgolint_darwin_x64_7_0_2001_bb4a26bf5778",
-    store_key = "@oxlint-tsgolint+darwin-x64@7.0.2001",
+    name = "entry_oxlint_tsgolint_darwin_x64_7_0_2007_e4a113860fde",
+    package = ":package_oxlint_tsgolint_darwin_x64_7_0_2007_e4a113860fde",
+    store_key = "@oxlint-tsgolint+darwin-x64@7.0.2007",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint-tsgolint/darwin-x64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint-tsgolint/darwin-x64@7.0.2007 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/darwin-x64@7.0.2007 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/darwin-x64@7.0.2007 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/darwin-x64@7.0.2007 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11473,15 +11442,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
-    package = ":package_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
-    store_key = "@oxlint-tsgolint+linux-arm64@7.0.2001",
+    name = "entry_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
+    package = ":package_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
+    store_key = "@oxlint-tsgolint+linux-arm64@7.0.2007",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint-tsgolint/linux-arm64@7.0.2001 has no complete required dependency closure on javascript_portable",
+        "javascript_portable": "entry @oxlint-tsgolint/linux-arm64@7.0.2007 has no complete required dependency closure on javascript_portable",
         "linux_aarch64": "",
-        "linux_x86_64": "entry @oxlint-tsgolint/linux-arm64@7.0.2001 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint-tsgolint/linux-arm64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/linux-arm64@7.0.2007 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/linux-arm64@7.0.2007 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11489,15 +11458,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
-    package = ":package_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
-    store_key = "@oxlint-tsgolint+linux-x64@7.0.2001",
+    name = "entry_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
+    package = ":package_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
+    store_key = "@oxlint-tsgolint+linux-x64@7.0.2007",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint-tsgolint/linux-x64@7.0.2001 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint-tsgolint/linux-x64@7.0.2001 has no complete required dependency closure on linux_aarch64",
+        "javascript_portable": "entry @oxlint-tsgolint/linux-x64@7.0.2007 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/linux-x64@7.0.2007 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "",
-        "macos_aarch64": "entry @oxlint-tsgolint/linux-x64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+        "macos_aarch64": "entry @oxlint-tsgolint/linux-x64@7.0.2007 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11505,15 +11474,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_win32_arm64_7_0_2001_13e4afc64c3a",
-    package = ":package_oxlint_tsgolint_win32_arm64_7_0_2001_13e4afc64c3a",
-    store_key = "@oxlint-tsgolint+win32-arm64@7.0.2001",
+    name = "entry_oxlint_tsgolint_win32_arm64_7_0_2007_da22c0933e75",
+    package = ":package_oxlint_tsgolint_win32_arm64_7_0_2007_da22c0933e75",
+    store_key = "@oxlint-tsgolint+win32-arm64@7.0.2007",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint-tsgolint/win32-arm64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint-tsgolint/win32-arm64@7.0.2007 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/win32-arm64@7.0.2007 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/win32-arm64@7.0.2007 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/win32-arm64@7.0.2007 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11521,15 +11490,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_win32_x64_7_0_2001_448011f72ac4",
-    package = ":package_oxlint_tsgolint_win32_x64_7_0_2001_448011f72ac4",
-    store_key = "@oxlint-tsgolint+win32-x64@7.0.2001",
+    name = "entry_oxlint_tsgolint_win32_x64_7_0_2007_7e23f7b5943b",
+    package = ":package_oxlint_tsgolint_win32_x64_7_0_2007_7e23f7b5943b",
+    store_key = "@oxlint-tsgolint+win32-x64@7.0.2007",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint-tsgolint/win32-x64@7.0.2001 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint-tsgolint/win32-x64@7.0.2007 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint-tsgolint/win32-x64@7.0.2007 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint-tsgolint/win32-x64@7.0.2007 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint-tsgolint/win32-x64@7.0.2007 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11537,15 +11506,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
-    package = ":package_oxlint_binding_android_arm_eabi_1_82_0_17b3c960b549",
-    store_key = "@oxlint+binding-android-arm-eabi@1.82.0",
+    name = "entry_oxlint_binding_android_arm_eabi_1_94_0_6eaebc1086d9",
+    package = ":package_oxlint_binding_android_arm_eabi_1_94_0_6eaebc1086d9",
+    store_key = "@oxlint+binding-android-arm-eabi@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-android-arm-eabi@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-android-arm-eabi@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-android-arm-eabi@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-android-arm-eabi@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-android-arm-eabi@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11553,15 +11522,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
-    package = ":package_oxlint_binding_android_arm64_1_82_0_b0db0015d127",
-    store_key = "@oxlint+binding-android-arm64@1.82.0",
+    name = "entry_oxlint_binding_android_arm64_1_94_0_5158cbf96262",
+    package = ":package_oxlint_binding_android_arm64_1_94_0_5158cbf96262",
+    store_key = "@oxlint+binding-android-arm64@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-android-arm64@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-android-arm64@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-android-arm64@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-android-arm64@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-android-arm64@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11569,14 +11538,14 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
-    package = ":package_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
-    store_key = "@oxlint+binding-darwin-arm64@1.82.0",
+    name = "entry_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
+    package = ":package_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
+    store_key = "@oxlint+binding-darwin-arm64@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-darwin-arm64@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-darwin-arm64@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-darwin-arm64@1.82.0 has no complete required dependency closure on linux_x86_64",
+        "javascript_portable": "entry @oxlint/binding-darwin-arm64@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-darwin-arm64@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-darwin-arm64@1.94.0 has no complete required dependency closure on linux_x86_64",
         "macos_aarch64": "",
     },
     dependencies = {
@@ -11585,15 +11554,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
-    package = ":package_oxlint_binding_darwin_x64_1_82_0_e54212cebc57",
-    store_key = "@oxlint+binding-darwin-x64@1.82.0",
+    name = "entry_oxlint_binding_darwin_x64_1_94_0_a5ff21975bb9",
+    package = ":package_oxlint_binding_darwin_x64_1_94_0_a5ff21975bb9",
+    store_key = "@oxlint+binding-darwin-x64@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-darwin-x64@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-darwin-x64@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-darwin-x64@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-darwin-x64@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-darwin-x64@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11601,15 +11570,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
-    package = ":package_oxlint_binding_freebsd_x64_1_82_0_2d8d7ed77b30",
-    store_key = "@oxlint+binding-freebsd-x64@1.82.0",
+    name = "entry_oxlint_binding_freebsd_x64_1_94_0_26cae1223b9b",
+    package = ":package_oxlint_binding_freebsd_x64_1_94_0_26cae1223b9b",
+    store_key = "@oxlint+binding-freebsd-x64@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-freebsd-x64@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-freebsd-x64@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-freebsd-x64@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-freebsd-x64@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-freebsd-x64@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11617,15 +11586,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
-    package = ":package_oxlint_binding_linux_arm_gnueabihf_1_82_0_6c5f6b351cbf",
-    store_key = "@oxlint+binding-linux-arm-gnueabihf@1.82.0",
+    name = "entry_oxlint_binding_linux_arm_gnueabihf_1_94_0_b65b8c3b7eb7",
+    package = ":package_oxlint_binding_linux_arm_gnueabihf_1_94_0_b65b8c3b7eb7",
+    store_key = "@oxlint+binding-linux-arm-gnueabihf@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-arm-gnueabihf@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-arm-gnueabihf@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-arm-gnueabihf@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm-gnueabihf@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm-gnueabihf@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11633,15 +11602,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
-    package = ":package_oxlint_binding_linux_arm_musleabihf_1_82_0_825ab3dcd7a5",
-    store_key = "@oxlint+binding-linux-arm-musleabihf@1.82.0",
+    name = "entry_oxlint_binding_linux_arm_musleabihf_1_94_0_5dca6afaa060",
+    package = ":package_oxlint_binding_linux_arm_musleabihf_1_94_0_5dca6afaa060",
+    store_key = "@oxlint+binding-linux-arm-musleabihf@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-arm-musleabihf@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-arm-musleabihf@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-arm-musleabihf@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm-musleabihf@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm-musleabihf@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11649,15 +11618,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
-    package = ":package_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
-    store_key = "@oxlint+binding-linux-arm64-gnu@1.82.0",
+    name = "entry_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
+    package = ":package_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
+    store_key = "@oxlint+binding-linux-arm64-gnu@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-arm64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
+        "javascript_portable": "entry @oxlint/binding-linux-arm64-gnu@1.94.0 has no complete required dependency closure on javascript_portable",
         "linux_aarch64": "",
-        "linux_x86_64": "entry @oxlint/binding-linux-arm64-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-arm64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm64-gnu@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm64-gnu@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11665,15 +11634,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
-    package = ":package_oxlint_binding_linux_arm64_musl_1_82_0_c7dda0149c3e",
-    store_key = "@oxlint+binding-linux-arm64-musl@1.82.0",
+    name = "entry_oxlint_binding_linux_arm64_musl_1_94_0_6c4122109551",
+    package = ":package_oxlint_binding_linux_arm64_musl_1_94_0_6c4122109551",
+    store_key = "@oxlint+binding-linux-arm64-musl@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-arm64-musl@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-arm64-musl@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-arm64-musl@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-arm64-musl@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-arm64-musl@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11681,15 +11650,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
-    package = ":package_oxlint_binding_linux_ppc64_gnu_1_82_0_4c415a180705",
-    store_key = "@oxlint+binding-linux-ppc64-gnu@1.82.0",
+    name = "entry_oxlint_binding_linux_ppc64_gnu_1_94_0_fc0f1a263285",
+    package = ":package_oxlint_binding_linux_ppc64_gnu_1_94_0_fc0f1a263285",
+    store_key = "@oxlint+binding-linux-ppc64-gnu@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-ppc64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-ppc64-gnu@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-ppc64-gnu@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-ppc64-gnu@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-ppc64-gnu@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11697,15 +11666,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
-    package = ":package_oxlint_binding_linux_riscv64_gnu_1_82_0_306b77562593",
-    store_key = "@oxlint+binding-linux-riscv64-gnu@1.82.0",
+    name = "entry_oxlint_binding_linux_riscv64_gnu_1_94_0_289d8a77e9c1",
+    package = ":package_oxlint_binding_linux_riscv64_gnu_1_94_0_289d8a77e9c1",
+    store_key = "@oxlint+binding-linux-riscv64-gnu@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-riscv64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-riscv64-gnu@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-riscv64-gnu@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-riscv64-gnu@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-riscv64-gnu@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11713,15 +11682,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
-    package = ":package_oxlint_binding_linux_riscv64_musl_1_82_0_67887b144248",
-    store_key = "@oxlint+binding-linux-riscv64-musl@1.82.0",
+    name = "entry_oxlint_binding_linux_riscv64_musl_1_94_0_3db5761b2836",
+    package = ":package_oxlint_binding_linux_riscv64_musl_1_94_0_3db5761b2836",
+    store_key = "@oxlint+binding-linux-riscv64-musl@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-riscv64-musl@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-riscv64-musl@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-riscv64-musl@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-riscv64-musl@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-riscv64-musl@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11729,15 +11698,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
-    package = ":package_oxlint_binding_linux_s390x_gnu_1_82_0_114c6d8983b7",
-    store_key = "@oxlint+binding-linux-s390x-gnu@1.82.0",
+    name = "entry_oxlint_binding_linux_s390x_gnu_1_94_0_971205b397b1",
+    package = ":package_oxlint_binding_linux_s390x_gnu_1_94_0_971205b397b1",
+    store_key = "@oxlint+binding-linux-s390x-gnu@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-s390x-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-s390x-gnu@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-s390x-gnu@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-s390x-gnu@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-s390x-gnu@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11745,15 +11714,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
-    package = ":package_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
-    store_key = "@oxlint+binding-linux-x64-gnu@1.82.0",
+    name = "entry_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
+    package = ":package_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
+    store_key = "@oxlint+binding-linux-x64-gnu@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-x64-gnu@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-x64-gnu@1.82.0 has no complete required dependency closure on linux_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-x64-gnu@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-x64-gnu@1.94.0 has no complete required dependency closure on linux_aarch64",
         "linux_x86_64": "",
-        "macos_aarch64": "entry @oxlint/binding-linux-x64-gnu@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "macos_aarch64": "entry @oxlint/binding-linux-x64-gnu@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11761,15 +11730,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
-    package = ":package_oxlint_binding_linux_x64_musl_1_82_0_3b99abaa2cd5",
-    store_key = "@oxlint+binding-linux-x64-musl@1.82.0",
+    name = "entry_oxlint_binding_linux_x64_musl_1_94_0_4907c45e22f1",
+    package = ":package_oxlint_binding_linux_x64_musl_1_94_0_4907c45e22f1",
+    store_key = "@oxlint+binding-linux-x64-musl@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-linux-x64-musl@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-linux-x64-musl@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-linux-x64-musl@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-linux-x64-musl@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-linux-x64-musl@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11777,15 +11746,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
-    package = ":package_oxlint_binding_openharmony_arm64_1_82_0_2d927a84f037",
-    store_key = "@oxlint+binding-openharmony-arm64@1.82.0",
+    name = "entry_oxlint_binding_openharmony_arm64_1_94_0_aaa3649d37e2",
+    package = ":package_oxlint_binding_openharmony_arm64_1_94_0_aaa3649d37e2",
+    store_key = "@oxlint+binding-openharmony-arm64@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-openharmony-arm64@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-openharmony-arm64@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-openharmony-arm64@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-openharmony-arm64@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-openharmony-arm64@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11793,15 +11762,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
-    package = ":package_oxlint_binding_win32_arm64_msvc_1_82_0_f407c8ca29f4",
-    store_key = "@oxlint+binding-win32-arm64-msvc@1.82.0",
+    name = "entry_oxlint_binding_win32_arm64_msvc_1_94_0_9259fac49e79",
+    package = ":package_oxlint_binding_win32_arm64_msvc_1_94_0_9259fac49e79",
+    store_key = "@oxlint+binding-win32-arm64-msvc@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-win32-arm64-msvc@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-win32-arm64-msvc@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-win32-arm64-msvc@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-win32-arm64-msvc@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-win32-arm64-msvc@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11809,15 +11778,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
-    package = ":package_oxlint_binding_win32_ia32_msvc_1_82_0_427524bf3b4f",
-    store_key = "@oxlint+binding-win32-ia32-msvc@1.82.0",
+    name = "entry_oxlint_binding_win32_ia32_msvc_1_94_0_6bc9aee3a237",
+    package = ":package_oxlint_binding_win32_ia32_msvc_1_94_0_6bc9aee3a237",
+    store_key = "@oxlint+binding-win32-ia32-msvc@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-win32-ia32-msvc@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-win32-ia32-msvc@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-win32-ia32-msvc@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-win32-ia32-msvc@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-win32-ia32-msvc@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -11825,15 +11794,15 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
-    package = ":package_oxlint_binding_win32_x64_msvc_1_82_0_d1eb57188aed",
-    store_key = "@oxlint+binding-win32-x64-msvc@1.82.0",
+    name = "entry_oxlint_binding_win32_x64_msvc_1_94_0_ed334db06b31",
+    package = ":package_oxlint_binding_win32_x64_msvc_1_94_0_ed334db06b31",
+    store_key = "@oxlint+binding-win32-x64-msvc@1.94.0",
     runtime = ":assemble-store.ts",
     unavailable_by_platform = {
-        "javascript_portable": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on javascript_portable",
-        "linux_aarch64": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on linux_aarch64",
-        "linux_x86_64": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on linux_x86_64",
-        "macos_aarch64": "entry @oxlint/binding-win32-x64-msvc@1.82.0 has no complete required dependency closure on macos_aarch64",
+        "javascript_portable": "entry @oxlint/binding-win32-x64-msvc@1.94.0 has no complete required dependency closure on javascript_portable",
+        "linux_aarch64": "entry @oxlint/binding-win32-x64-msvc@1.94.0 has no complete required dependency closure on linux_aarch64",
+        "linux_x86_64": "entry @oxlint/binding-win32-x64-msvc@1.94.0 has no complete required dependency closure on linux_x86_64",
+        "macos_aarch64": "entry @oxlint/binding-win32-x64-msvc@1.94.0 has no complete required dependency closure on macos_aarch64",
     },
     dependencies = {
     },
@@ -16501,16 +16470,6 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_nanoid_3_3_18_b20a4df32f5a",
-    package = ":package_nanoid_3_3_18_b20a4df32f5a",
-    store_key = "nanoid@3.3.18",
-    runtime = ":assemble-store.ts",
-    dependencies = {
-    },
-    visibility = ["PUBLIC"],
-)
-
-pnpm_store_entry(
     name = "entry_nanoid_3_3_20_97f7e27701df",
     package = ":package_nanoid_3_3_20_97f7e27701df",
     store_key = "nanoid@3.3.20",
@@ -16726,46 +16685,46 @@ pnpm_store_entry(
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-    package = ":package_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-    store_key = "oxlint-tsgolint@7.0.2001",
+    name = "entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+    package = ":package_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+    store_key = "oxlint-tsgolint@7.0.2007",
     runtime = ":assemble-store.ts",
     dependencies_by_platform = {
         "javascript_portable": {
         },
         "linux_aarch64": {
-            "@oxlint-tsgolint/linux-arm64": ":entry_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
+            "@oxlint-tsgolint/linux-arm64": ":entry_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
         },
         "linux_x86_64": {
-            "@oxlint-tsgolint/linux-x64": ":entry_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
+            "@oxlint-tsgolint/linux-x64": ":entry_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
         },
         "macos_aarch64": {
-            "@oxlint-tsgolint/darwin-arm64": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
+            "@oxlint-tsgolint/darwin-arm64": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
         },
     },
     visibility = ["PUBLIC"],
 )
 
 pnpm_store_entry(
-    name = "entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
-    package = ":package_oxlint_1_82_0_b1d52a4a3427",
-    store_key = "oxlint@1.82.0_oxlint-tsgolint@7.0.2001",
+    name = "entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
+    package = ":package_oxlint_1_94_0_0e345fa27037",
+    store_key = "oxlint@1.94.0_oxlint-tsgolint@7.0.2007",
     runtime = ":assemble-store.ts",
     dependencies_by_platform = {
         "javascript_portable": {
-            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
         },
         "linux_aarch64": {
-            "@oxlint/binding-linux-arm64-gnu": ":entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
-            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "@oxlint/binding-linux-arm64-gnu": ":entry_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
         },
         "linux_x86_64": {
-            "@oxlint/binding-linux-x64-gnu": ":entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
-            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "@oxlint/binding-linux-x64-gnu": ":entry_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
         },
         "macos_aarch64": {
-            "@oxlint/binding-darwin-arm64": ":entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
-            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
+            "@oxlint/binding-darwin-arm64": ":entry_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
+            "oxlint-tsgolint": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
         },
     },
     visibility = ["PUBLIC"],
@@ -16942,9 +16901,9 @@ pnpm_store_entry(
     store_key = "postcss@8.4.31",
     runtime = ":assemble-store.ts",
     dependencies = {
-        "nanoid": ":entry_nanoid_3_3_18_b20a4df32f5a",
+        "nanoid": ":entry_nanoid_3_3_20_97f7e27701df",
         "picocolors": ":entry_picocolors_1_1_1_7c5f37242535",
-        "source-map-js": ":entry_source_map_js_1_2_1_43b6dddbe93e",
+        "source-map-js": ":entry_source_map_js_1_2_2_d8639530bc0e",
     },
     visibility = ["PUBLIC"],
 )
@@ -16955,9 +16914,9 @@ pnpm_store_entry(
     store_key = "postcss@8.5.26",
     runtime = ":assemble-store.ts",
     dependencies = {
-        "nanoid": ":entry_nanoid_3_3_18_b20a4df32f5a",
+        "nanoid": ":entry_nanoid_3_3_20_97f7e27701df",
         "picocolors": ":entry_picocolors_1_1_1_7c5f37242535",
-        "source-map-js": ":entry_source_map_js_1_2_1_43b6dddbe93e",
+        "source-map-js": ":entry_source_map_js_1_2_2_d8639530bc0e",
     },
     visibility = ["PUBLIC"],
 )
@@ -17539,16 +17498,6 @@ pnpm_store_entry(
     name = "entry_smol_toml_1_8_0_b6ee802a0d10",
     package = ":package_smol_toml_1_8_0_b6ee802a0d10",
     store_key = "smol-toml@1.8.0",
-    runtime = ":assemble-store.ts",
-    dependencies = {
-    },
-    visibility = ["PUBLIC"],
-)
-
-pnpm_store_entry(
-    name = "entry_source_map_js_1_2_1_43b6dddbe93e",
-    package = ":package_source_map_js_1_2_1_43b6dddbe93e",
-    store_key = "source-map-js@1.2.1",
     runtime = ":assemble-store.ts",
     dependencies = {
     },
@@ -91589,8 +91538,8 @@ pnpm_store_view(
         "@typescript-eslint/rule-tester": "@typescript-eslint+rule-tester@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "@typescript-eslint/utils": "@typescript-eslint+utils@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "eslint": "eslint@10.10.0_jiti@2.7.0",
-        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001",
-        "oxlint-tsgolint": "oxlint-tsgolint@7.0.2001",
+        "oxlint": "oxlint@1.94.0_oxlint-tsgolint@7.0.2007",
+        "oxlint-tsgolint": "oxlint-tsgolint@7.0.2007",
         "typescript": "typescript@5.9.3",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._94c3d47349836366",
     },
@@ -91715,8 +91664,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -91786,8 +91735,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-linux-arm64-gnu@1.82.0": ":entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
-            "@oxlint-tsgolint+linux-arm64@7.0.2001": ":entry_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
+            "@oxlint+binding-linux-arm64-gnu@1.94.0": ":entry_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
+            "@oxlint-tsgolint+linux-arm64@7.0.2007": ":entry_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-arm64-gnu@1.2.19": ":entry_rolldown_binding_linux_arm64_gnu_1_2_19_a9a01dd72eac",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -91886,8 +91835,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -91957,8 +91906,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-linux-x64-gnu@1.82.0": ":entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
-            "@oxlint-tsgolint+linux-x64@7.0.2001": ":entry_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
+            "@oxlint+binding-linux-x64-gnu@1.94.0": ":entry_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
+            "@oxlint-tsgolint+linux-x64@7.0.2007": ":entry_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-x64-gnu@1.2.19": ":entry_rolldown_binding_linux_x64_gnu_1_2_19_ab4eef779af3",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -92057,8 +92006,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -92128,8 +92077,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-darwin-arm64@1.82.0": ":entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
-            "@oxlint-tsgolint+darwin-arm64@7.0.2001": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
+            "@oxlint+binding-darwin-arm64@1.94.0": ":entry_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
+            "@oxlint-tsgolint+darwin-arm64@7.0.2007": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-darwin-arm64@1.2.19": ":entry_rolldown_binding_darwin_arm64_1_2_19_02a7439b6148",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -92229,8 +92178,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -92278,9 +92227,9 @@ pnpm_store_view(
     },
     bins = {
         "eslint": "eslint@10.10.0_jiti@2.7.0\tbin/eslint.js",
-        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001\tbin/oxlint",
+        "oxlint": "oxlint@1.94.0_oxlint-tsgolint@7.0.2007\tbin/oxlint",
         "tsc": "typescript@5.9.3\tbin/tsc",
-        "tsgolint": "oxlint-tsgolint@7.0.2001\tbin/tsgolint.js",
+        "tsgolint": "oxlint-tsgolint@7.0.2007\tbin/tsgolint.js",
         "tsserver": "typescript@5.9.3\tbin/tsserver",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._94c3d47349836366\tvitest.mjs",
     },
@@ -92300,8 +92249,8 @@ pnpm_store_view(
         "@typescript-eslint/rule-tester": "@typescript-eslint+rule-tester@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "@typescript-eslint/utils": "@typescript-eslint+utils@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "eslint": "eslint@10.10.0_jiti@2.7.0",
-        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001",
-        "oxlint-tsgolint": "oxlint-tsgolint@7.0.2001",
+        "oxlint": "oxlint@1.94.0_oxlint-tsgolint@7.0.2007",
+        "oxlint-tsgolint": "oxlint-tsgolint@7.0.2007",
         "typescript": "typescript@5.9.3",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._94c3d47349836366",
     },
@@ -92426,8 +92375,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -92497,8 +92446,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-linux-arm64-gnu@1.82.0": ":entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
-            "@oxlint-tsgolint+linux-arm64@7.0.2001": ":entry_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
+            "@oxlint+binding-linux-arm64-gnu@1.94.0": ":entry_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
+            "@oxlint-tsgolint+linux-arm64@7.0.2007": ":entry_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-arm64-gnu@1.2.19": ":entry_rolldown_binding_linux_arm64_gnu_1_2_19_a9a01dd72eac",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -92597,8 +92546,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -92668,8 +92617,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-linux-x64-gnu@1.82.0": ":entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
-            "@oxlint-tsgolint+linux-x64@7.0.2001": ":entry_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
+            "@oxlint+binding-linux-x64-gnu@1.94.0": ":entry_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
+            "@oxlint-tsgolint+linux-x64@7.0.2007": ":entry_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-x64-gnu@1.2.19": ":entry_rolldown_binding_linux_x64_gnu_1_2_19_ab4eef779af3",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -92768,8 +92717,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -92839,8 +92788,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-darwin-arm64@1.82.0": ":entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
-            "@oxlint-tsgolint+darwin-arm64@7.0.2001": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
+            "@oxlint+binding-darwin-arm64@1.94.0": ":entry_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
+            "@oxlint-tsgolint+darwin-arm64@7.0.2007": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-darwin-arm64@1.2.19": ":entry_rolldown_binding_darwin_arm64_1_2_19_02a7439b6148",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -92940,8 +92889,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -92989,9 +92938,9 @@ pnpm_store_view(
     },
     bins = {
         "eslint": "eslint@10.10.0_jiti@2.7.0\tbin/eslint.js",
-        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001\tbin/oxlint",
+        "oxlint": "oxlint@1.94.0_oxlint-tsgolint@7.0.2007\tbin/oxlint",
         "tsc": "typescript@5.9.3\tbin/tsc",
-        "tsgolint": "oxlint-tsgolint@7.0.2001\tbin/tsgolint.js",
+        "tsgolint": "oxlint-tsgolint@7.0.2007\tbin/tsgolint.js",
         "tsserver": "typescript@5.9.3\tbin/tsserver",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._94c3d47349836366\tvitest.mjs",
     },
@@ -93011,8 +92960,8 @@ pnpm_store_view(
         "@typescript-eslint/rule-tester": "@typescript-eslint+rule-tester@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "@typescript-eslint/utils": "@typescript-eslint+utils@8.69.0_eslint@10.10.0_jiti@2.7.0_typescript@5.9.3",
         "eslint": "eslint@10.10.0_jiti@2.7.0",
-        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001",
-        "oxlint-tsgolint": "oxlint-tsgolint@7.0.2001",
+        "oxlint": "oxlint@1.94.0_oxlint-tsgolint@7.0.2007",
+        "oxlint-tsgolint": "oxlint-tsgolint@7.0.2007",
         "typescript": "typescript@5.9.3",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._94c3d47349836366",
     },
@@ -93137,8 +93086,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -93208,8 +93157,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-linux-arm64-gnu@1.82.0": ":entry_oxlint_binding_linux_arm64_gnu_1_82_0_e7daa82c20a0",
-            "@oxlint-tsgolint+linux-arm64@7.0.2001": ":entry_oxlint_tsgolint_linux_arm64_7_0_2001_edffccc99dea",
+            "@oxlint+binding-linux-arm64-gnu@1.94.0": ":entry_oxlint_binding_linux_arm64_gnu_1_94_0_49fa32af7497",
+            "@oxlint-tsgolint+linux-arm64@7.0.2007": ":entry_oxlint_tsgolint_linux_arm64_7_0_2007_273a4bc580d1",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-arm64-gnu@1.2.19": ":entry_rolldown_binding_linux_arm64_gnu_1_2_19_a9a01dd72eac",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -93308,8 +93257,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -93379,8 +93328,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-linux-x64-gnu@1.82.0": ":entry_oxlint_binding_linux_x64_gnu_1_82_0_3dcde000a463",
-            "@oxlint-tsgolint+linux-x64@7.0.2001": ":entry_oxlint_tsgolint_linux_x64_7_0_2001_bc3b288436e4",
+            "@oxlint+binding-linux-x64-gnu@1.94.0": ":entry_oxlint_binding_linux_x64_gnu_1_94_0_6a4e4eef2915",
+            "@oxlint-tsgolint+linux-x64@7.0.2007": ":entry_oxlint_tsgolint_linux_x64_7_0_2007_1f0d79206dde",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-linux-x64-gnu@1.2.19": ":entry_rolldown_binding_linux_x64_gnu_1_2_19_ab4eef779af3",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -93479,8 +93428,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -93550,8 +93499,8 @@ pnpm_store_view(
             "@keyv+serialize@1.1.1": ":entry_keyv_serialize_1_1_1_aa477d4d1034",
             "@opentelemetry+api@1.9.1": ":entry_opentelemetry_api_1_9_1_65aff18a9fc4",
             "@oxc-project+types@0.156.0": ":entry_oxc_project_types_0_156_0_31923f59b6c8",
-            "@oxlint+binding-darwin-arm64@1.82.0": ":entry_oxlint_binding_darwin_arm64_1_82_0_8aeb1199ab9d",
-            "@oxlint-tsgolint+darwin-arm64@7.0.2001": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2001_b88d246c4f3c",
+            "@oxlint+binding-darwin-arm64@1.94.0": ":entry_oxlint_binding_darwin_arm64_1_94_0_66126af8f93f",
+            "@oxlint-tsgolint+darwin-arm64@7.0.2007": ":entry_oxlint_tsgolint_darwin_arm64_7_0_2007_0227f0dc77d9",
             "@polka+url@1.0.0-next.29": ":entry_polka_url_1_0_0_next_29_d5677997de50",
             "@rolldown+binding-darwin-arm64@1.2.19": ":entry_rolldown_binding_darwin_arm64_1_2_19_02a7439b6148",
             "@rolldown+pluginutils@1.0.1": ":entry_rolldown_pluginutils_1_0_1_3f649c36a41c",
@@ -93651,8 +93600,8 @@ pnpm_store_view(
             "natural-compare@1.4.0": ":entry_natural_compare_1_4_0_de1347ea1b99",
             "obug@2.1.4": ":entry_obug_2_1_4_8a8c83bb5f2a",
             "optionator@0.9.4": ":entry_optionator_0_9_4_b028d685c41c",
-            "oxlint-tsgolint@7.0.2001": ":entry_oxlint_tsgolint_7_0_2001_3cf6222963f7",
-            "oxlint@1.82.0_oxlint-tsgolint@7.0.2001": ":entry_oxlint_1_82_0_oxlint_tsgolint_7_0_2001_c8cb990e0183",
+            "oxlint-tsgolint@7.0.2007": ":entry_oxlint_tsgolint_7_0_2007_cd0db7a7965a",
+            "oxlint@1.94.0_oxlint-tsgolint@7.0.2007": ":entry_oxlint_1_94_0_oxlint_tsgolint_7_0_2007_d28e76e80d7d",
             "p-limit@3.1.0": ":entry_p_limit_3_1_0_c16cf2138c21",
             "p-locate@5.0.0": ":entry_p_locate_5_0_0_6dd2208f9e4c",
             "path-exists@4.0.0": ":entry_path_exists_4_0_0_3ae48f237e1a",
@@ -93700,9 +93649,9 @@ pnpm_store_view(
     },
     bins = {
         "eslint": "eslint@10.10.0_jiti@2.7.0\tbin/eslint.js",
-        "oxlint": "oxlint@1.82.0_oxlint-tsgolint@7.0.2001\tbin/oxlint",
+        "oxlint": "oxlint@1.94.0_oxlint-tsgolint@7.0.2007\tbin/oxlint",
         "tsc": "typescript@5.9.3\tbin/tsc",
-        "tsgolint": "oxlint-tsgolint@7.0.2001\tbin/tsgolint.js",
+        "tsgolint": "oxlint-tsgolint@7.0.2007\tbin/tsgolint.js",
         "tsserver": "typescript@5.9.3\tbin/tsserver",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._94c3d47349836366\tvitest.mjs",
     },
@@ -109433,7 +109382,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -109465,7 +109413,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -109636,7 +109583,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -109668,7 +109614,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -109839,7 +109784,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -109871,7 +109815,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -110043,7 +109986,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -110075,7 +110017,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -110296,7 +110237,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -110328,7 +110268,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -110499,7 +110438,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -110531,7 +110469,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -110702,7 +110639,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -110734,7 +110670,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -110906,7 +110841,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -110938,7 +110872,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -111159,7 +111092,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -111191,7 +111123,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -111362,7 +111293,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -111394,7 +111324,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -111565,7 +111494,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -111597,7 +111525,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
@@ -111769,7 +111696,6 @@ pnpm_store_view(
             "micromatch@4.0.8": ":entry_micromatch_4_0_8_b2e59867d4ce",
             "mrmime@2.0.1": ":entry_mrmime_2_0_1_cb73e44ebd6e",
             "ms@2.1.3": ":entry_ms_2_1_3_2083576c5af8",
-            "nanoid@3.3.18": ":entry_nanoid_3_3_18_b20a4df32f5a",
             "nanoid@3.3.20": ":entry_nanoid_3_3_20_97f7e27701df",
             "next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a": ":entry_next_16_2_6_babel_core_7_29_7_opentelemetry_api_1_9_1_playwright_test_1__9c8ebba465b8",
             "node-releases@2.0.54": ":entry_node_releases_2_0_54_983632ab994e",
@@ -111801,7 +111727,6 @@ pnpm_store_view(
             "semver@7.8.5": ":entry_semver_7_8_5_82a86616e50d",
             "sharp@0.34.5": ":entry_sharp_0_34_5_201146ddf941",
             "sirv@3.0.2": ":entry_sirv_3_0_2_b4e90ee86fd6",
-            "source-map-js@1.2.1": ":entry_source_map_js_1_2_1_43b6dddbe93e",
             "source-map-js@1.2.2": ":entry_source_map_js_1_2_2_d8639530bc0e",
             "std-env@4.2.0": ":entry_std_env_4_2_0_5abae82613e9",
             "styled-jsx@5.1.6_@babel+core@7.29.7_react@19.2.8": ":entry_styled_jsx_5_1_6_babel_core_7_29_7_react_19_2_8_ca1792022a5e",
