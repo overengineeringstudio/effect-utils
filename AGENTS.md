@@ -28,6 +28,20 @@ We're using megarepo for repo management. We're using `pnpm` temporarily for ins
 
 Buck owns checking for every TypeScript project and declaration production for every emitting project. The checkout itself is the standalone Buck root; CI and devenv invoke the `//:quick` aggregate through the pinned `BUCK2_BIN`. `buck2:typescript:materialize-dist` publishes declarations atomically when source-side tools or editors need package `dist` trees.
 
+Agents/CI can prepare the narrow Nix-built PATH with
+`python3 scripts/worktree-env.py prepare` under normal build admission, then use
+`python3 scripts/worktree-env.py run -- buck2 build //:quick`, or the published
+`.worktree-tools/v1/current/tools/bin/buck2` directly. New source files must
+be staged first because Nix's Git source excludes untracked files. Dirty tracked
+changes are supported. Missing, stale or GC'd projections refuse with the repair
+command rather than falling back to ambient tools. Preparation is explicit and
+does not install dependencies, hooks, secrets or services. The existing devenv
+tasks remain available; `build //:quick` alone is not full `check:quick` parity.
+Build/test/run retain the existing Buck identity/converter/export boundary and
+emit a real environment entry span when OTLP delivery is configured. Pipeline
+spools remain pipeline-owned; standalone evidence is retained under `.worktree-tools/otel`.
+Immutable tool generations are rooted until normal safe worktree teardown.
+
 # Worktree removal
 
 Before removing a worktree, close its editors/builds and run the installed `worktree-teardown <worktree-path>` command from outside it, then run `git worktree remove`. The command is exported as the effect-utils flake's `worktree-teardown` package; it does not realize the retiring checkout's shell. Only editor-free checkouts skip editor release without explicit `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` (Nix builds remain disabled).

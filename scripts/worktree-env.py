@@ -53,6 +53,9 @@ def main():
     # Git hooks must never redirect the worktree or index used for identity.
     for variable in git("rev-parse", "--local-env-vars").decode().splitlines():
         os.environ.pop(variable, None)
+    inherited = os.environ.get("PATH", "").split(os.pathsep)
+    guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
+    os.environ["WORKTREE_POLICY_PATH"] = os.pathsep.join(guards)
     root = Path(git("rev-parse", "--show-toplevel").decode().strip()).resolve()
     os.chdir(root)
     state = root / ".worktree-tools/v1"
@@ -109,9 +112,6 @@ def main():
             raise RuntimeError("run requires a command after --")
         # Keep the authenticated agent policy guards before all development tools.
         # Repository products precede the general development tool closure.
-        inherited = os.environ.get("PATH", "").split(os.pathsep)
-        guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
-        os.environ["WORKTREE_POLICY_PATH"] = os.pathsep.join(guards)
         os.environ["PATH"] = os.pathsep.join(guards + [str(root / "node_modules/.bin"), str(tools / "bin")] + inherited)
         os.environ["WORKSPACE_ROOT"] = str(root)
     os.chdir(invocation_directory)
