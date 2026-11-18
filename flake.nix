@@ -311,17 +311,24 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
-          worktree-tools-identity = pkgs.runCommand "worktree-tools-identity" {
-            nativeBuildInputs = [ pkgs.git pkgs.python3 ];
-            WORKTREE_TEST_TOOLS = buck2;
-          } ''
-            export HOME="$TMPDIR/home"
-            mkdir -p "$HOME"
-            cp ${./scripts/worktree-env.py} worktree-env.py
-            cp ${./scripts/worktree-env.test.py} worktree-env.test.py
-            python3 worktree-env.test.py
-            touch "$out"
-          '';
+          worktree-tools-identity =
+            pkgs.runCommand "worktree-tools-identity"
+              {
+                nativeBuildInputs = [
+                  pkgs.git
+                  pkgs.python3
+                ];
+                WORKTREE_TEST_TOOLS = buck2;
+                WORKTREE_TEST_OTEL = "${ciTestShellProducts.otel-span}/bin/otel-span";
+              }
+              ''
+                export HOME="$TMPDIR/home"
+                mkdir -p "$HOME"
+                cp ${./scripts/worktree-env.py} worktree-env.py
+                cp ${./scripts/worktree-env.test.py} worktree-env.test.py
+                python3 worktree-env.test.py
+                touch "$out"
+              '';
           editor-view-budget-smoke =
             pkgs.runCommand "editor-view-budget-smoke" { nativeBuildInputs = [ pkgs.jq ]; }
               ''
@@ -363,8 +370,17 @@ rec {
               events = capabilityPackages.buck2-events;
               otelSpan = self.packages.${system}.otel-span;
               tools = with capabilityPackages; [
-                bun buck2-node buck2-python-bootstrap pnpm effect-tsgo oxfmt oxlint-with-plugins
-                pkgs.coreutils pkgs.git pkgs.nix pkgs.watchman
+                bun
+                buck2-node
+                buck2-python-bootstrap
+                pnpm
+                effect-tsgo
+                oxfmt
+                oxlint-with-plugins
+                pkgs.coreutils
+                pkgs.git
+                pkgs.nix
+                pkgs.watchman
               ];
               environment.BUCK2_BIN = "${buck2}/bin/buck2";
               prepare = ''

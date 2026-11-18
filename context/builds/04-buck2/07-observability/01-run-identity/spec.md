@@ -169,10 +169,10 @@ caller task span (task run)
   ├─ otel-span buck2 mode  — PREPARES only, then exits (never runs Buck)
   │    1. pre-derive the command span id and record the start time
   │    2. read W3C context; validate regex
-  │       ├─ valid  -> BUCK_WRAPPER_UUID = uuidform(sha256(trace_id:command_span_id))
+  │       ├─ valid  -> preserve explicit --uuid, otherwise derive uuidform(sha256(trace_id:command_span_id))
   │       │            write local sidecar "<uuid> <traceparent-of-command-span>"
-  │       └─ invalid/absent/all-zero -> export nothing
-  │    3. hand the caller the derived env + span id, and exit
+  │       └─ invalid/absent/all-zero -> clear trace context; preserve only explicit --uuid
+  │    3. hand the caller the prepared env + span id, and exit
   ├─ caller invokes buck2 ... --event-log <path> --write-build-id <path>
   │    directly (task shell or TS spawn; nothing sits between — 0011)
   └─ after Buck exits: caller emits the completed command span post hoc —
@@ -181,6 +181,14 @@ caller task span (task run)
          --status-code ok|error --attr-int exit.code=<n>
        (fail-open: emit failures are ignored)
 ```
+
+`--uuid` accepts a canonical lowercase UUID supplied by a caller that already
+owns invocation identity. It preserves that identity even without usable trace
+context; it does not manufacture a sidecar mapping in that case. With valid
+context the existing sidecar maps the same UUID to the newly prepared command
+span. Omission retains the derived-UUID behavior and clears stale inherited
+identity without valid context. This is correlation, not authorization:
+downstream guards still independently validate any signed-run binding.
 
 The mode is **preparation plus post-hoc completion**, never supervision. No
 process sits between the caller and Buck: the caller invokes Buck directly
