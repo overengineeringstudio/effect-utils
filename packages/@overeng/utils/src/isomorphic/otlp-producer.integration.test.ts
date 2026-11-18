@@ -33,13 +33,11 @@ Vitest.describe('authenticated producer exporters', () => {
       ).toBeGreaterThan(0)
       // The exporter scope is drained; inspect once instead of retrying an intentionally empty signal.
       expect(
-        (
-          yield* collector.inspect({
-            src: capture.outDir,
-            signal: 'metrics',
-            service: 'producer-integration',
-          })
-        ).length,
+        (yield* collector.inspect({
+          src: capture.outDir,
+          signal: 'metrics',
+          service: 'producer-integration',
+        })).length,
       ).toBe(0)
     }).pipe(Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer))),
   )
