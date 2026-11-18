@@ -43,7 +43,17 @@ validate_release() {
   case "$(readlink -f "$1")" in /nix/store/*) ;; *) exit 65 ;; esac
 }
 if [ "${1:-}" = verify ]; then
-  probe "$(readlink -f "$ROOTS/current")" ""
+  current=$(readlink -f "$ROOTS/current")
+  if ! probe "$current" ""; then
+    record degraded "$current"
+    systemctl --no-block stop "$VM_UNIT"
+    exit 70
+  fi
+  if test -e "$CONTROL/receipt.json" && jq -e '.outcome == "restoring"' "$CONTROL/receipt.json" > /dev/null; then
+    record recovered "$current"
+    rm -f "$ROOTS/candidate"
+    sync -f "$ROOTS"
+  fi
   exit 0
 fi
 if [ "${1:-}" = rescue ]; then
@@ -69,7 +79,7 @@ if [ "${1:-}" = recover ]; then
     prior=$(jq -er .prior "$CONTROL/pending.json")
     validate_release "$prior"
     select_release "$prior"
-    record recovered "$prior"
+    record restoring "$prior"
     rm "$CONTROL/pending.json"
     sync -f "$CONTROL"
   elif [ ! -e "$ROOTS/current" ]; then

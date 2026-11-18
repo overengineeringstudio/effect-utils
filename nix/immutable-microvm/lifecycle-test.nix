@@ -34,6 +34,7 @@ pkgs.testers.runNixOSTest {
 
     def health():
         nonce = str(uuid.uuid4())
+        host.wait_until_succeeds("curl --fail --silent 'http://192.0.2.2:8080/health?nonce=" + nonce + "'")
         result = json.loads(host.succeed("curl --fail --silent 'http://192.0.2.2:8080/health?nonce=" + nonce + "'"))
         assert result["nonce"] == nonce
         assert result["ready"] is True
@@ -71,6 +72,14 @@ pkgs.testers.runNixOSTest {
     host.fail("activate ${releases.badEpoch}")
     assert health()["bootNonce"] == before["bootNonce"]
 
+    # Losing the requesting client does not own or cancel the transaction.
+    host.succeed("systemd-run --unit=lost-client $(command -v activate) ${releases.badCatalog}")
+    host.wait_until_succeeds("test -e " + control + "/pending.json")
+    host.succeed("systemctl stop lost-client.service")
+    host.wait_until_succeeds("test ! -e " + control + "/pending.json")
+    receipt("rolled-back")
+    assert health()["stateIdentity"] == initial["stateIdentity"]
+
     # Kill the target-local controller during a real update; OnFailure restores
     # the prior image even without a connected deployment client.
     host.succeed("systemd-run --unit=detached-client $(command -v activate) ${releases.badCatalog}")
@@ -83,6 +92,9 @@ pkgs.testers.runNixOSTest {
     restarted = health()
     assert restarted["bootNonce"] != before["bootNonce"]
     assert restarted["stateIdentity"] == initial["stateIdentity"]
+    # Reboot with a durable in-progress candidate, not merely a clean release.
+    host.succeed("systemd-run --unit=reboot-client $(command -v activate) ${releases.badCatalog}")
+    host.wait_until_succeeds("test -e " + control + "/pending.json")
     host.reboot()
     host.wait_for_unit("authority-ready.service")
     assert health()["release"] == "b"
