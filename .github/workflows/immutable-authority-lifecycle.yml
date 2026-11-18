@@ -15,17 +15,10 @@ on:
         genie/ci-workflow/**,
         packages/@overeng/genie/src/runtime/github-workflow/**,
       ]
-  workflow_dispatch:
-    inputs:
-      measurement_baseline_ref:
-        description: Optional ref/SHA to checkout before running CI measurement jobs. Used to backfill comparable baseline artifacts.
-        required: false
-        default: ''
-        type: string
 
 jobs:
   lifecycle:
-    if: ${{ github.event.repository.private == false }}
+    if: ${{ github.event.repository.private == false && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: [namespace-profile-linux-x86-64;container.privileged=true]
     concurrency:
       group: namespace-public-linux-x64-8x16

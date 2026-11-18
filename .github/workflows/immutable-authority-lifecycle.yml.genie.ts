@@ -8,6 +8,7 @@ import {
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import {
   publicNamespaceKvmConcurrency,
+  publicNamespaceKvmIf,
   publicNamespaceKvmRunner,
 } from '../../genie/ci-workflow/shared.ts'
 
@@ -26,12 +27,11 @@ export default ciWorkflow({
         'packages/@overeng/genie/src/runtime/github-workflow/**',
       ],
     },
-    workflow_dispatch: {},
   },
   permissions: { contents: 'read' },
   jobs: {
     lifecycle: {
-      if: '${{ github.event.repository.private == false }}',
+      if: publicNamespaceKvmIf,
       'runs-on': [publicNamespaceKvmRunner],
       concurrency: publicNamespaceKvmConcurrency,
       'timeout-minutes': 30,
