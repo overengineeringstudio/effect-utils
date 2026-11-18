@@ -11,9 +11,9 @@
   nativeProducts,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
-  gitRev ? "unknown",
-  commitTs ? 0,
-  dirty ? false,
+  gitRev,
+  commitTs,
+  dirty,
 }:
 
 let
@@ -29,31 +29,48 @@ let
     "@opentui/core-win32-arm64"
     "@opentui/core-win32-x64"
   ];
-  # The stamp every CLI's `resolveCliVersion()` parses for human-readable
-  # version output. Buck produces platform-invariant bytes, so the host-facing
-  # build identity is supplied by this wrapper rather than baked into them.
-  buildStamp = builtins.toJSON {
-    type = "nix";
-    version = "0.1.0";
-    rev = gitRev;
-    inherit commitTs dirty;
-  };
-  mk =
+  # Buck's portable bytes do not embed host build identity. Stamp every CLI
+  # wrapper from its owning package manifest using the shared validated shape.
+  inherit (import ./cli-build-stamp.nix { inherit pkgs; }) mkNixStamp;
+  buildStamp =
+    name:
+    let
+      packageName =
+        {
+          genie-bootstrap-closure-check = "genie";
+          notion-db-runtime = "notion-datasource-sync";
+        }
+        .${name} or name;
+      package = builtins.fromJSON (
+        builtins.readFile (../../../packages + "/@overeng/${packageName}/package.json")
+      );
+    in
+    builtins.toJSON (mkNixStamp {
+      version = package.version;
+      rev = if dirty then null else gitRev;
+      dirtyRev = if dirty then gitRev else null;
+      lastModified = commitTs;
+    });
+  productArguments =
     name: options:
-    importProduct (
-      {
-        inherit (products.${name})
-          artifact
-          descriptor
-          descriptorContent
-          expectedDescriptorSha256
-          expectedModuleSha256
-          sourceImport
-          ;
-        expectedProductName = name;
-      }
-      // options
-    );
+    {
+      inherit (products.${name})
+        artifact
+        descriptor
+        descriptorContent
+        expectedDescriptorSha256
+        expectedModuleSha256
+        sourceImport
+        ;
+      expectedProductName = name;
+    }
+    // options
+    // pkgs.lib.optionalAttrs (options.expectedProductKind == "cli") {
+      environment = (options.environment or { }) // {
+        CLI_BUILD_STAMP = buildStamp name;
+      };
+    };
+  mk = name: options: importProduct (productArguments name options);
 
   ai-gateway-edge = mk "ai-gateway-edge" {
     binaryName = "ai-gateway-edge";
@@ -96,20 +113,23 @@ let
   # `oxfmt` is on PATH because genie calls the executable formatter interface.
   # `actionlint`, the export type-proof compiler and the matching TypeScript API
   # server are absolute binaries, so generated-file checks never depend on PATH.
-  genie = pkgs.lib.makeOverridable (options: mk "genie" options) {
-    binaryName = "genie";
-    environment = genieProviders.environment // {
-      CLI_BUILD_STAMP = buildStamp;
-      # Bun caches plugin-linked imports without the invoking workspace's lock.
-      BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
-    };
-    expectedExternalCapabilities = genieProviders.capabilities;
-    expectedExternalModules = genieProviders.externalModules;
-    expectedProductKind = "cli";
-    nativeNodePackages = genieProviders.nativeNodePackages;
-    pathPackages = genieProviders.pathPackages;
-    smokeTestArgs = [ "--dry-run" ];
-  };
+  # Apply overrides after stamping so the internal settings-only compile
+  # wrapper can still remove publication provenance from its runtime closure.
+  genie = pkgs.lib.makeOverridable importProduct (
+    productArguments "genie" {
+      binaryName = "genie";
+      environment = genieProviders.environment // {
+        # Bun caches plugin-linked imports without the invoking workspace's lock.
+        BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
+      };
+      expectedExternalCapabilities = genieProviders.capabilities;
+      expectedExternalModules = genieProviders.externalModules;
+      expectedProductKind = "cli";
+      nativeNodePackages = genieProviders.nativeNodePackages;
+      pathPackages = genieProviders.pathPackages;
+      smokeTestArgs = [ "--dry-run" ];
+    }
+  );
   genie-bootstrap-closure-check = mk "genie-bootstrap-closure-check" {
     environment.GENIE_TYPESCRIPT_API_SERVER = "${nativeProducts.typescript-api-server}/bin/typescript-api-server";
     binaryName = "genie-bootstrap-closure-check";
@@ -119,13 +139,11 @@ let
   };
   ci-tools = mk "ci-tools" {
     binaryName = "ci-tools";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedProductKind = "cli";
     smokeTestArgs = [ "--help" ];
   };
   gh-ci-utils = mk "gh-ci-utils" {
     binaryName = "gh-ci-utils";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedExternalCapabilities = [
       "gh"
       "git"
@@ -166,9 +184,7 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    environment = megarepoProviders.environment // {
-      CLI_BUILD_STAMP = buildStamp;
-    };
+    environment = megarepoProviders.environment;
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
     pathPackages = megarepoProviders.pathPackages;
@@ -176,7 +192,6 @@ let
   };
   tui-stories = mk "tui-stories" {
     binaryName = "tui-stories";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedProductKind = "cli";
     smokeTestArgs = [ "--help" ];
   };
@@ -184,13 +199,11 @@ let
   # datasource-sync runtime that owns the `notion db <verb>` surface.
   notionMain = mk "notion-cli" {
     binaryName = "notion-main";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedProductKind = "cli";
     generateCompletions = false;
   };
   notionDb = mk "notion-db-runtime" {
     binaryName = "notion-db-runtime";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedExternalCapabilities = [ "opentui-core-native" ];
     # The exact bare imports this product's bytes leave for the host:
     # `@opentui/core` dispatches to one of its platform packages at run time,
@@ -227,7 +240,6 @@ let
       '';
   notion-md = mk "notion-md" {
     binaryName = "notion-md";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedProductKind = "cli";
     smokeTestArgs = [ "--help" ];
   };
@@ -235,7 +247,6 @@ let
   # rather than inheriting whatever the calling repo happens to expose.
   npm-release = mk "npm-release" {
     binaryName = "npm-release";
-    environment.CLI_BUILD_STAMP = buildStamp;
     expectedExternalCapabilities = [ "npm" ];
     expectedProductKind = "cli";
     pathPackages = [ pkgs.nodejs ];

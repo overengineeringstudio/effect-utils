@@ -3,14 +3,23 @@ import { createHash } from 'node:crypto'
 import * as Http from 'node:http'
 
 import { NodeHttpServer, NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect, Layer } from 'effect'
+import { Cause, Effect, Layer } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/http'
 
+import { CliVersion, resolveCliBuildIdentity } from '@overeng/utils/node/cli-version'
+
+import packageJson from '../package.json' with { type: 'json' }
 import { loadConfig } from './Config.ts'
 import { makeRoutes } from './Proxy.ts'
 
+const cliIdentity = resolveCliBuildIdentity({
+  baseVersion: packageJson.version,
+  buildStamp: '__CLI_BUILD_STAMP__',
+})
+
 const usage = `Usage: ai-gateway-edge serve --config <path> --bind <host:port> [--metrics-bind <host:port>]
-       ai-gateway-edge hash-token (token from stdin)`
+       ai-gateway-edge hash-token (token from stdin)
+       ai-gateway-edge --version`
 const option = (flag: string) => {
   const index = process.argv.indexOf(flag)
   return index === -1 ? undefined : process.argv[index + 1]
@@ -23,6 +32,10 @@ const bind = (value: string) => {
 }
 
 const main = Effect.gen(function* () {
+  if (process.argv.length === 3 && process.argv[2] === '--version') {
+    console.log(cliIdentity.displayVersion)
+    return
+  }
   if (process.argv.includes('--help') === true || process.argv.includes('-h') === true) {
     console.log(usage)
     return
@@ -44,7 +57,8 @@ const main = Effect.gen(function* () {
     option('--bind') === undefined ||
     option('--bind') === ''
   ) {
-    console.error(usage)
+    const suffix = yield* CliVersion.suffix
+    console.error(`${usage}${suffix}`)
     process.exitCode = 2
     return
   }
@@ -76,4 +90,20 @@ const main = Effect.gen(function* () {
   return yield* Layer.launch(Layer.mergeAll(app, metricsLayer))
 })
 
-main.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+main.pipe(
+  Effect.tapCause((cause) =>
+    Cause.hasInterruptsOnly(cause) === true
+      ? Effect.void
+      : Effect.gen(function* () {
+          const suffix = yield* CliVersion.suffix
+          yield* Effect.logError(cause, suffix)
+        }),
+  ),
+  Effect.provideService(CliVersion, {
+    name: 'ai-gateway-edge',
+    version: cliIdentity.displayVersion,
+  }),
+  Effect.provide(NodeServices.layer),
+  Effect.annotateLogs({ 'service.version': cliIdentity.machineVersion }),
+  NodeRuntime.runMain({ disableErrorReporting: true }),
+)

@@ -181,6 +181,13 @@ Shared ownership and stamp transport (BUILD.ID-R01–R03):
 | Buck native products    | `nix/buck2-products/from-source.nix`                                                            | Inject the product stamp through Buck's `build_identity.cli_build_stamp` configuration |
 | Rust                    | Shared Rust crate                                                                               | Required owner for reusable identity parsing and formatting across Rust binaries       |
 
+`resolveCliIdentity` in `@overeng/utils/node/cli-version` resolves display and
+machine versions together and constructs a validated telemetry `ServiceIdentity`
+with the machine version. CLI composition roots use its `displayVersion` for
+`--version` and `CliVersion` diagnostics, and its `serviceIdentity` for telemetry.
+Dependency-free bootstrap commands use `resolveCliBuildIdentity` and
+`formatCliVersionSuffix` from the shared checked-JavaScript implementation.
+
 The source and runtime transport names are:
 
 - Placeholder in source: `__CLI_BUILD_STAMP__`

@@ -1,10 +1,9 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer } from 'effect'
 import * as Cli from 'effect/cli'
 
-import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
@@ -12,10 +11,11 @@ import {
   CliVersion,
   handlerConsoleLayer,
   jsonStdoutGuardLayer,
-  resolveCliVersion,
+  resolveCliIdentity,
 } from '@overeng/utils/node/cli-version'
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
+import packageJson from '../package.json' with { type: 'json' }
 import { genieCommand } from '../src/build/mod.tsx'
 import { isCompiledBinary } from '../src/core/discovery.ts'
 import { GenieRuntimeTranspilerCacheError } from '../src/core/errors.ts'
@@ -39,15 +39,11 @@ if (isCompiledBinary() === false && process.env.BUN_RUNTIME_TRANSPILER_CACHE_PAT
 
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'
-const version = resolveCliVersion({
-  baseVersion: '0.1.0',
-  buildStamp,
-})
-
-const identity = Schema.decodeSync(ServiceIdentity)({
+const { displayVersion: version, serviceIdentity: identity } = resolveCliIdentity({
   name: 'genie',
   namespace: 'overeng',
-  version,
+  baseVersion: packageJson.version,
+  buildStamp,
 })
 
 const command = Cli.Command.provide(
@@ -62,6 +58,7 @@ const program = Effect.gen(function* () {
 
   yield* Cli.Command.runWith(command, { version })(args).pipe(
     Effect.scoped,
+    Effect.annotateLogs({ 'service.version': identity.version }),
     Effect.provide(
       Layer.mergeAll(
         Layer.provide(

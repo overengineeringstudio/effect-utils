@@ -52,7 +52,13 @@
       "bun"
     ],
     "jsx": "react-jsx",
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@overeng/utils/node/cli-build-identity": [
+        "../utils/src/node/cli-build-identity.js",
+        "./node_modules/@overeng/utils/src/node/cli-build-identity.js"
+      ]
+    }
   },
   "include": [
     "src/**/*.ts",

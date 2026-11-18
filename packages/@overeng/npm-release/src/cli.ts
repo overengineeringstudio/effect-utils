@@ -13,7 +13,15 @@ import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Cause, Duration, Effect, Option, Schedule } from 'effect'
 import { Command as Cli, Flag } from 'effect/cli'
 
+import { CliVersion, resolveCliBuildIdentity } from '@overeng/utils/node/cli-version'
+
+import packageJson from '../package.json' with { type: 'json' }
 import { readPlan, verifyPlan, type VerifyFailure } from './verify.ts'
+
+const cliIdentity = resolveCliBuildIdentity({
+  baseVersion: packageJson.version,
+  buildStamp: '__CLI_BUILD_STAMP__',
+})
 
 const planOption = Flag.File('plan').pipe(
   Flag.withDescription('Path to a JSON verify plan: { schemaVersion, version, npmTag, packages }'),
@@ -39,12 +47,17 @@ const delaySecondsOption = Flag.Int('delay-seconds').pipe(
  * roll-call. Reasons are already package-qualified, so they are not re-prefixed.
  */
 const renderFailures = (failures: ReadonlyArray<VerifyFailure>) =>
-  Effect.forEach(
-    failures,
-    (failure) =>
-      Effect.logError(`${failure.reason}${failure.terminal === true ? ' [terminal]' : ''}`),
-    { discard: true },
-  )
+  Effect.gen(function* () {
+    const suffix = yield* CliVersion.suffix
+    yield* Effect.forEach(
+      failures,
+      (failure) =>
+        Effect.logError(
+          `${failure.reason}${failure.terminal === true ? ' [terminal]' : ''}${suffix}`,
+        ),
+      { discard: true },
+    )
+  })
 
 const verifyCommand = Cli.make(
   'verify',
@@ -77,7 +90,7 @@ const verifyCommand = Cli.make(
 )
 
 const cli = Cli.runWith(Cli.make('npm-release').pipe(Cli.withSubcommands([verifyCommand])), {
-  version: '0.1.0',
+  version: cliIdentity.displayVersion,
 })
 
 /**
@@ -88,10 +101,13 @@ const cli = Cli.runWith(Cli.make('npm-release').pipe(Cli.withSubcommands([verify
 const reportUnexpected = (cause: Cause.Cause<unknown>) =>
   Cause.hasInterruptsOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.findErrorOption(cause), {
-        onNone: () => Effect.logError(Cause.pretty(cause)),
-        onSome: (error) =>
-          isRendered(error) === true ? Effect.void : Effect.logError(String(error)),
+    : Effect.gen(function* () {
+        const suffix = yield* CliVersion.suffix
+        yield* Option.match(Cause.findErrorOption(cause), {
+          onNone: () => Effect.logError(`${Cause.pretty(cause)}${suffix}`),
+          onSome: (error) =>
+            isRendered(error) === true ? Effect.void : Effect.logError(`${String(error)}${suffix}`),
+        })
       })
 
 /** Failures already surfaced by `renderFailures`; re-logging them would duplicate. */
@@ -105,6 +121,12 @@ if (import.meta.main) {
   cli(process.argv.slice(2)).pipe(
     Effect.provide(NodeServices.layer),
     Effect.tapCause(reportUnexpected),
+    Effect.provide(CliVersion.formatterLayer),
+    Effect.provideService(CliVersion, {
+      name: 'npm-release',
+      version: cliIdentity.displayVersion,
+    }),
+    Effect.annotateLogs({ 'service.version': cliIdentity.machineVersion }),
     NodeRuntime.runMain({ disableErrorReporting: true }),
   )
 }

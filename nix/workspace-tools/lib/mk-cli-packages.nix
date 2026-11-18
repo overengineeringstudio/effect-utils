@@ -9,9 +9,9 @@
   nativeProducts,
   typeProofCompilerBin,
   oxfmtPkg ? pkgs.oxfmt,
-  gitRev ? "unknown",
-  commitTs ? 0,
-  dirty ? false,
+  gitRev,
+  commitTs,
+  dirty,
 }:
 let
   candidates = import ./buck2-product-candidates.nix {

@@ -1,22 +1,20 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect, Layer, Logger, Schema } from 'effect'
+import { Effect, Layer, Logger } from 'effect'
 import * as Cli from 'effect/cli'
 
-import { ServiceIdentity } from '@overeng/otel-contract'
 import { runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import {
   CliVersion,
   handlerConsoleLayer,
   jsonStdoutGuardLayer,
-  resolveCliVersion,
 } from '@overeng/utils/node/cli-version'
 import { makeOtelCliLayer, otelEndpointFromConfig } from '@overeng/utils/node/otel'
 
 import { mrCommand } from '../src/cli/mod.ts'
-import { MR_VERSION } from '../src/core/version.ts'
+import { mrIdentity } from '../src/core/version.ts'
 
 /**
  * Clear git environment variables that leak when `mr` runs inside a git hook
@@ -36,12 +34,7 @@ for (const key of [
   delete process.env[key]
 }
 
-// Build stamp placeholder replaced by nix build with NixStamp JSON
-const buildStamp = '__CLI_BUILD_STAMP__'
-const version = resolveCliVersion({
-  baseVersion: MR_VERSION,
-  buildStamp,
-})
+const { displayVersion: version, serviceIdentity: identity } = mrIdentity
 
 /**
  * Resolve the OTLP endpoint at the composition root via Effect `Config`, then
@@ -51,12 +44,6 @@ const version = resolveCliVersion({
  * layer's scope to the command effect, so the still-sync `Layer.suspend` exporter
  * finalizers still flush on shutdown (no `Layer.unwrapEffect`).
  */
-const identity = Schema.decodeSync(ServiceIdentity)({
-  name: 'megarepo',
-  namespace: 'overeng',
-  version,
-})
-
 const program = Effect.gen(function* () {
   const endpoint = yield* otelEndpointFromConfig()
 
@@ -79,6 +66,7 @@ const program = Effect.gen(function* () {
     args,
   ).pipe(
     Effect.scoped,
+    Effect.annotateLogs({ 'service.version': identity.version }),
     Effect.provide(
       Layer.mergeAll(
         Layer.provide(

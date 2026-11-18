@@ -129,8 +129,8 @@ export interface OtelCliLayerConfig {
   /**
    * Typed, decoded service identity stamped onto the OTLP resource for ALL
    * signals (traces, metrics, logs): `service.name` + `service.namespace` +
-   * `service.version`. Construct it through `Schema.decode(ServiceIdentity)` so
-   * a malformed name is a type/decode error at the composition root.
+   * `service.version`. CLI boundaries use `resolveCliIdentity(...).serviceIdentity`
+   * to validate names and select machineVersion rather than the human displayVersion.
    */
   identity: ServiceIdentity
   /**
@@ -224,11 +224,14 @@ const parseOtelResourceAttributes = (raw: string | undefined): Record<string, st
  * @example
  * ```typescript
  * // In bin/my-cli.ts
+ * import { resolveCliIdentity } from '@overeng/utils/node/cli-version'
  * import { makeOtelCliLayer } from '@overeng/utils/node/otel'
  *
- * const identity = Schema.decodeSync(ServiceIdentity)({
- *   name: 'my-cli', namespace: 'overeng', version,
+ * const { serviceIdentity: identity } = resolveCliIdentity({
+ *   name: 'my-cli', namespace: 'overeng',
+ *   baseVersion: packageJson.version, buildStamp: '__CLI_BUILD_STAMP__',
  * })
+ * ```
  */
 export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelConfig> => {
   const {
@@ -392,8 +395,11 @@ export interface TelemetryLayerOptions {
  *
  * @example
  * ```typescript
- * const identity = Schema.decodeSync(ServiceIdentity)({
- *   name: 'my-cli', namespace: 'overeng', version,
+ * import { resolveCliIdentity } from '@overeng/utils/node/cli-version'
+ *
+ * const { serviceIdentity: identity } = resolveCliIdentity({
+ *   name: 'my-cli', namespace: 'overeng',
+ *   baseVersion: packageJson.version, buildStamp: '__CLI_BUILD_STAMP__',
  * })
  * const endpoint = yield* otelEndpointFromConfig()
  * program.pipe(Effect.provide(withTelemetry({ identity, shape: 'cli', endpoint })))

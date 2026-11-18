@@ -148,3 +148,10 @@ export const resolveCliMachineVersion = (options) => resolveCliBuildIdentity(opt
 
 /** @param {{baseVersion: string, buildStamp: string, runtimeStampEnvVar?: string}} options @returns {string} */
 export const resolveCliVersion = (options) => resolveCliBuildIdentity(options).displayVersion
+
+/**
+ * Shared human diagnostic suffix, including dependency-free bootstrap CLIs.
+ * @param {{readonly name: string, readonly version: string}} info
+ * @returns {string}
+ */
+export const formatCliVersionSuffix = ({ name, version }) => ` (${name} ${version})`

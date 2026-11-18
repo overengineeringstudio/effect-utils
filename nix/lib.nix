@@ -79,6 +79,12 @@
         nativeProducts = self.packages.${args.pkgs.stdenv.hostPlatform.system};
         products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
         typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
+        gitRev =
+          self.sourceInfo.shortRev or self.sourceInfo.rev or self.sourceInfo.dirtyShortRev
+            or self.sourceInfo.dirtyRev or (throw "CLI build identity requires a Git source revision");
+        commitTs =
+          self.sourceInfo.lastModified or (throw "CLI build identity requires a source commit timestamp");
+        dirty = self.sourceInfo ? dirtyShortRev || self.sourceInfo ? dirtyRev;
       }
       // args
     );
@@ -127,6 +133,12 @@
         nativeProducts = self.packages.${args.pkgs.stdenv.hostPlatform.system};
         products = self.buckProducts.${args.pkgs.stdenv.hostPlatform.system}.products;
         typeProofCompilerBin = "${tsgo.packages.${args.pkgs.stdenv.hostPlatform.system}.tsgo}/bin/tsgo";
+        gitRev =
+          self.sourceInfo.shortRev or self.sourceInfo.rev or self.sourceInfo.dirtyShortRev
+            or self.sourceInfo.dirtyRev or (throw "CLI build identity requires a Git source revision");
+        commitTs =
+          self.sourceInfo.lastModified or (throw "CLI build identity requires a source commit timestamp");
+        dirty = self.sourceInfo ? dirtyShortRev || self.sourceInfo ? dirtyRev;
       }
       // args
     );

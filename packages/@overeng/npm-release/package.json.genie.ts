@@ -9,6 +9,7 @@ import {
   workspaceMember,
 } from '../../../genie/internal.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 /**
  * The `.` export is the decision layer and imports nothing at runtime, so consumers
@@ -19,6 +20,9 @@ const peerDepNames = ['@effect/platform-node', 'effect'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/npm-release' }),
+  dependencies: {
+    workspace: [utilsPkg],
+  },
   devDependencies: {
     workspace: [utilsDevPkg],
     external: catalog.pick(...peerDepNames, '@types/node', 'typescript', 'vitest'),

@@ -10,6 +10,7 @@ import {
   jsonStdoutGuardLayer,
   parseCliBuildStamp,
   resolveCliBuildIdentity,
+  resolveCliIdentity,
 } from './cli-version.ts'
 
 const placeholder = '__CLI_BUILD_STAMP__'
@@ -97,6 +98,56 @@ Vitest.describe('parseCliBuildStamp', () => {
   Vitest.it('ignores malformed stamps', () => {
     expect(parseCliBuildStamp('not-json')).toBeUndefined()
     expect(parseCliBuildStamp(JSON.stringify({ type: 'local', rev: 'abc123' }))).toBeUndefined()
+  })
+})
+
+Vitest.describe('resolveCliIdentity', () => {
+  Vitest.it('uses the machine version for telemetry, not the human display version', () => {
+    for (const stamp of [nixStamp, localStamp]) {
+      const identity = resolveCliIdentity({
+        name: 'example-cli',
+        namespace: 'overeng',
+        baseVersion: '2.3.4',
+        buildStamp: placeholder,
+        env: { CLI_BUILD_STAMP: stamp },
+        now,
+      })
+      expect(identity.serviceIdentity).toEqual({
+        name: 'example-cli',
+        namespace: 'overeng',
+        version: identity.machineVersion,
+      })
+      expect(identity.displayVersion).not.toBe(identity.machineVersion)
+      expect(identity.machineVersion).toBe(
+        stamp === nixStamp ? '0.1.0+def456' : '2.3.4+local.abc123.dirty',
+      )
+    }
+  })
+
+  Vitest.it('preserves embedded Nix precedence over the runtime environment', () => {
+    const identity = resolveCliIdentity({
+      name: 'example-cli',
+      namespace: 'overeng',
+      baseVersion: '2.3.4',
+      buildStamp: nixStamp,
+      env: { CLI_BUILD_STAMP: localStamp },
+      now,
+    })
+    expect(identity.sourceKind).toBe('nix')
+    expect(identity.serviceIdentity.version).toBe('0.1.0+def456')
+  })
+
+  Vitest.it('uses package metadata when no stamp is available', () => {
+    const identity = resolveCliIdentity({
+      name: 'example-cli',
+      namespace: 'overeng',
+      baseVersion: '2.3.4',
+      buildStamp: placeholder,
+      env: {},
+      now,
+    })
+    expect(identity.displayVersion).toBe('2.3.4')
+    expect(identity.serviceIdentity.version).toBe('2.3.4')
   })
 })
 

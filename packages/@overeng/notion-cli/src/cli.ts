@@ -1,20 +1,21 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Cause, Effect, type Exit, Layer, Option, Schema } from 'effect'
+import { Cause, Effect, type Exit, Layer, Option } from 'effect'
 import { CliOutput, Command } from 'effect/cli'
 
 import { editorExitCode } from '@overeng/notion-md'
-import { ServiceIdentity } from '@overeng/otel-contract'
 import { CurrentWorkingDirectory } from '@overeng/utils/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
 import {
   CliVersion,
   handlerConsoleLayer,
   jsonStdoutGuardLayer,
-  resolveCliVersion,
+  resolveCliIdentity,
 } from '@overeng/utils/node/cli-version'
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
+
+import packageJson from '../package.json' with { type: 'json' }
 
 export { runNotionCliMain }
 export { makeNotionRootCommand }
@@ -24,15 +25,11 @@ export { makeNotionRootCommand }
 // -----------------------------------------------------------------------------
 
 const buildStamp = '__CLI_BUILD_STAMP__'
-const version = resolveCliVersion({
-  baseVersion: '0.1.0',
-  buildStamp,
-})
-
-const identity = Schema.decodeSync(ServiceIdentity)({
+const { displayVersion: version, serviceIdentity: identity } = resolveCliIdentity({
   name: 'notion-cli',
   namespace: 'overeng',
-  version,
+  baseVersion: packageJson.version,
+  buildStamp,
 })
 
 const isRootVersionArgv = (argv: ReadonlyArray<string>): boolean => {
@@ -133,6 +130,7 @@ const runRootCli = async (argv: ReadonlyArray<string>) => {
           },
         })
       }),
+      Effect.annotateLogs({ 'service.version': identity.version }),
       Effect.provide(
         Layer.mergeAll(
           Layer.provide(

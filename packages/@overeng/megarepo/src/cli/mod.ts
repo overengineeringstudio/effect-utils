@@ -4,11 +4,13 @@
  * Main CLI entry point for the `mr` command.
  */
 
+import { Effect } from 'effect'
 import * as Cli from 'effect/cli'
 
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
+import { CliVersion } from '@overeng/utils/node/cli-version'
 
-import { MR_VERSION } from '../core/version.ts'
+import { mrIdentity } from '../core/version.ts'
 // Import extracted commands
 import {
   addCommand,
@@ -77,4 +79,10 @@ export const mrCommand = Cli.Command.make('mr').pipe(
 
 /** Exported CLI for external use */
 export const cli = (args: ReadonlyArray<string>) =>
-  Cli.Command.runWith(mrCommand, { version: MR_VERSION })(rewriteHelpSubcommand(args))
+  Cli.Command.runWith(mrCommand, { version: mrIdentity.displayVersion })(
+    rewriteHelpSubcommand(args),
+  ).pipe(
+    Effect.provide(CliVersion.formatterLayer),
+    Effect.provideService(CliVersion, { name: 'mr', version: mrIdentity.displayVersion }),
+    Effect.annotateLogs({ 'service.version': mrIdentity.machineVersion }),
+  )

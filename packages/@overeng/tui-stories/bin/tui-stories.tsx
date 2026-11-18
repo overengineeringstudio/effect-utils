@@ -13,12 +13,13 @@ import {
   resolveCliVersion,
 } from '@overeng/utils/node/cli-version'
 
+import packageJson from '../package.json' with { type: 'json' }
 import { tuiStoriesCommand } from '../src/cli/mod.ts'
 
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'
 const version = resolveCliVersion({
-  baseVersion: '0.1.0',
+  baseVersion: packageJson.version,
   buildStamp,
 })
 
