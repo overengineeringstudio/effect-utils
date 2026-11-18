@@ -174,6 +174,13 @@ one-element sample selects the first run. Sampling is by run, not artifact or
 job: the `ci.yml` main-writer cohort also retains its reader jobs. Discovered
 cohorts control selection, never strict action eligibility.
 
+`aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
+windowEndMs)`, attributing chronological repository/configuration/digest execution
+repeats globally across hosts/roots/CI; hits and explicit coalescing are separate.
+Missing native identity/root/host/time/digest/outcome/completeness or metadata,
+unlinked remote/coalesced worker attempts, conflicts, sampling, loss or overflow mean unknown.
+Valid rows survive; unavailable costs are null with explicit unavailable counts.
+
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
 run. Expired evidence artifacts are not downloaded and contribute evidence
