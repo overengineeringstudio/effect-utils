@@ -266,15 +266,14 @@ impl Host {
                 documents::copy(&self.config.documents, &self.config.staging, input, cancelled).map(OperationResult::Copy)
             },
             Operation::Notify(input) => {
+                self.config.grant("notifications")?;
+                if input.title.len()>256 || input.body.len()>4096 { return Err(HostError::new("invalid-request", "Notification exceeds byte bounds")); }
+                let label = self.config.products.get(&input.product_id).ok_or_else(|| HostError::new("policy-denied", "Unknown notification product"))?;
                 if self.role == transport::Role::Supervisor {
-                    self.config.grant("notifications")?;
                     let value = self.gui_channel.call(&json!({"operation":"notify","input":{"productId":input.product_id,"title":input.title,"body":input.body}}), cancelled)?;
                     let notification_id = value.get("notificationId").and_then(Value::as_str).ok_or_else(|| HostError::new("invalid-gui-response", "GUI notification receipt is invalid"))?.to_owned();
                     return Ok(OperationResult::Notify(NotifyResult { notification_id, submitted: true }));
                 }
-                self.config.grant("notifications")?;
-                if input.title.len()>256 || input.body.len()>4096 { return Err(HostError::new("invalid-request", "Notification exceeds byte bounds")); }
-                let label = self.config.products.get(&input.product_id).ok_or_else(|| HostError::new("policy-denied", "Unknown notification product"))?;
                 let mut last = self.last_notification.lock();
                 if last.is_some_and(|instant| instant.elapsed().as_millis() < u128::from(self.config.notification_min_interval_ms)) { return Err(HostError::new("busy", "Notification rate limit reached")); }
                 *last = Some(Instant::now());
@@ -507,6 +506,33 @@ mod tests {
         let response=host.respond(Ok(wire("fixture.run",json!({}))),json!({}),&||false);
         assert_eq!(response["error"]["code"],"child-supervisor-unavailable");
         drop(host); std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test] fn notification_admission_precedes_gui_forwarding() {
+        let root = std::env::temp_dir().join(opaque_id().unwrap());
+        std::fs::create_dir(&root).unwrap();
+        let mut config = test_config(&root);
+        config.enabled_grants.push("notifications".into());
+        config.products.insert("product".into(), "Example".into());
+        let host = Host::new(config).unwrap();
+        // No GUI socket exists: only an admitted request may reach that boundary.
+        for (product, title, body, expected) in [
+            ("product", "t".repeat(257), "private body".into(), "invalid-request"),
+            ("product", "private title".into(), "b".repeat(4097), "invalid-request"),
+            ("product", "é".repeat(129), "private body".into(), "invalid-request"),
+            ("unknown", "private title".into(), "private body".into(), "policy-denied"),
+            ("product", "é".repeat(128), "é".repeat(2048), "session-unavailable"),
+        ] {
+            let request = json!({"protocolVersion":1,"requestId":"x","operationVersion":1,"callerLabel":"","operation":"notify","input":{"productId":product,"title":title,"body":body}});
+            let response = host.respond(Ok(serde_json::to_vec(&request).unwrap()), json!({}), &|| false);
+            assert_eq!(response["error"]["code"], expected);
+        }
+        let raw = std::fs::read_to_string(root.join("audit")).unwrap();
+        let events: Vec<Value> = raw.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(events.iter().filter(|event| event["phase"] == "admission").count(), 5);
+        assert_eq!(events.iter().filter(|event| event["phase"] == "outcome").count(), 5);
+        assert!(!raw.contains("private title") && !raw.contains("private body"));
+        drop(host);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test] fn audit_projects_policy_target_but_not_notification_content() {
         let root = std::env::temp_dir().join(opaque_id().unwrap());
