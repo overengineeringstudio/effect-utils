@@ -400,8 +400,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
     mount, ownership, shared-store exclusions and identity checks still apply.
     The helper must independently pin and validate the actual client's candidate
     and lease FDs, identity/start time, complete process census, current namespace,
-    backing origins, complete mount graph and declared host IPC scope. Rootless
-    UID0 is not host authority. A live helper invocation is not a periodic file.
+    backing origins, complete mount graph and declared host IPC scope. The
+    authenticated root helper must establish genuine host authority. The
+    consumer's full-identity uid-map check only rejects rootless mappings; it
+    does not prove the initial user namespace, since a privileged parent can
+    create a nested full-identity-mapped namespace. Rootless UID0 is not host
+    authority. A live helper invocation is not a periodic file.
     The fixed command receives `--pnpm-store-evidence-v1`, candidate path,
     decimal device/inode, root/lease FD numbers, random 32-hex nonce and decimal
     client start time. Its only stdout is one newline-terminated tab-separated

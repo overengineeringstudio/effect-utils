@@ -36,10 +36,12 @@ fn validate(bytes: &[u8], nonce: &str, device: u64, inode: u64, start: &str) -> 
 pub(super) fn prove(root: &Path, directory: &fs::File, lease: Option<&fs::File>) -> Result<(), String> {
     let command = COMMAND.ok_or("no fixed process evidence command configured")?;
     let lease = lease.ok_or("process evidence requires the held exclusive maintenance lease")?;
-    // Rootless UID0 and namespaced root-owned paths are not host-root authority.
+    // Conservatively reject rootless mappings, not authenticate host authority:
+    // a privileged parent can create a nested, full-identity-mapped namespace.
+    // The authenticated root helper must independently establish host authority.
     let mapping = fs::read_to_string("/proc/self/uid_map").map_err(|error| error.to_string())?;
     if mapping.split_whitespace().collect::<Vec<_>>() != ["0", "0", "4294967295"] {
-        return Err("process evidence requires the initial host user namespace".into());
+        return Err("process evidence rejects non-full-identity user mappings".into());
     }
     let stat = fs::read_to_string("/proc/self/stat").map_err(|error| error.to_string())?;
     let start = stat.rsplit_once(')').ok_or("invalid client stat")?.1
