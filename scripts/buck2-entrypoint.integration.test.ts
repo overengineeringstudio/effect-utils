@@ -161,13 +161,12 @@ describe('short persistent Watchman location', () => {
         const deleted = realpathSync(fixture())
         await command(['--no-spawn', '--no-local', 'watch', kept])
         await command(['--no-spawn', '--no-local', 'watch', deleted])
-        expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toContain(
-          deleted,
-        )
+        expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toContain(deleted)
         rmSync(deleted, { recursive: true })
         // Query only: no launcher admission or watch-del participates in cancellation.
+        const cancellationDeadline = performance.now() + 2500
         let listed = await command(['--no-spawn', '--no-local', 'watch-list'])
-        for (let attempt = 0; attempt < 100 && listed.roots.includes(deleted); attempt++)
+        while (listed.roots.includes(deleted) && performance.now() < cancellationDeadline)
           listed = await command(['--no-spawn', '--no-local', 'watch-list'])
         expect(listed.roots).not.toContain(deleted)
         expect(listed.roots).toContain(kept)
