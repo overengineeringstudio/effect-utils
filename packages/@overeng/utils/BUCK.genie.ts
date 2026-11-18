@@ -47,6 +47,7 @@ export const buck2TypeScriptAdmission = {
         'src/node/cmd.unit.test.ts',
         // Real loopback HTTP servers and transport disconnects require the source-side host lane.
         'src/node/github-app.integration.test.ts',
+        'src/node/otel-delivery.integration.test.ts',
         'src/node/otel-identity.test.ts',
         'src/node/otel-telemetry.test.ts',
         'src/node/watch.unit.test.ts',
