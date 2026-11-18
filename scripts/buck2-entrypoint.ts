@@ -400,8 +400,29 @@ export const directBuckArguments = async ({
         makeDeadlineSignal:
           probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
       })
-    // Reap vanished worktrees on every entry, including otherwise-hot admission.
-    await watchmanProbe()
+    const available = await cachedProbe({
+      cacheDirectory,
+      root: realpathSync(root),
+      key: JSON.stringify([
+        'watchman-root-admission-v1',
+        realpathSync(root),
+        readOptional(join(root, '.watchmanconfig')),
+        process.platform,
+        env['PATH'],
+        env['HOME'],
+        env['XDG_RUNTIME_DIR'],
+        env['WATCHMAN_SOCK'],
+        env['WATCHMAN_STATE_DIR'],
+        env['TMPDIR'],
+        env['TMP'],
+        env['USER'],
+        env['LOGNAME'],
+        env['WATCHMAN_CONFIG_FILE'],
+      ]),
+      probe: watchmanProbe,
+    })
+    // Never admit a negative cached outcome, including entries written by an older launcher.
+    if (available === false) await watchmanProbe()
     reconcileFileWatcher({
       repoRoot: root,
       provider: explicitWatcher === undefined ? 'watchman' : undefined,

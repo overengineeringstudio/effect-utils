@@ -563,14 +563,10 @@ the ceiling and attempt 1 failed in a connect/TLS phase (`dns`, `tcp`, or
 and is not retried. Slow ingress TLS (about 2 s on Funnel) therefore cannot
 turn an admission into a cache-less fallback by itself.
 Watchman admission is separate from these remote-endpoint outage policies.
-Every Watchman-configured JavaScript launcher entry, including an explicit local
-Watchman override, runs `watch-list`, removes roots whose paths fail with
-`ENOENT` or `ENOTDIR` using `watch-del`, then runs `watchman --no-local
-[--sockname=...] --output-encoding=json watch-project <canonical Buck root>`.
-Other filesystem failures never cause watch deletion. A concurrent deletion
-that already removed the watch is harmless. Managed services start with
-`--no-save-state` and no statefile override; restart does not restore old roots.
-The final request verifies service availability and requires the returned canonical watched root to equal the
+An uncached Watchman-configured invocation, including an explicit local Watchman
+override, runs `watchman --no-local [--sockname=...] --output-encoding=json
+watch-project <canonical Buck root>`. This single request verifies service
+availability and requires the returned canonical watched root to equal the
 resolved `.buckroot`; an ancestor-relative watch is rejected, even if its
 coverage appears sufficient. A service/version query alone is insufficient,
 and an ancestor watch whose ignore rules exclude the project is unsafe.
@@ -601,18 +597,18 @@ exemption is asserted regardless of the runner's own priority.
 The exemption never reaches a shared default service. Source authority:
 [`WatchmanConfig.cpp` global loading](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/WatchmanConfig.cpp#L27-L68)
 and [`main.cpp` priority refusal](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/main.cpp#L87-L107).
-Each Watchman command uses the caller's flat probe deadline (2500 ms by
-default). Only a timeout gets one retry, so each command is bounded to two
-caller deadlines (5000 ms by default). REAPI probes use the split budget above
-instead of this flat deadline.
+Each Watchman attempt uses the caller's flat probe deadline (2500 ms by
+default), replacing the former 900 ms cap. Only a timeout gets one retry; total
+Watchman probing is bounded to two caller deadlines (5000 ms by default). REAPI
+probes use the split budget above instead of this flat deadline.
 
 Missing executable, unavailable service, exhausted timeout, malformed/error
 response or incorrect watched root fails closed with the root, attempted command,
 failure reason and actionable remediation; none selects notify automatically.
 Root mismatch directs the caller to `watchman watch <root>`; other failures
-explain service/socket/version diagnostics. JavaScript watcher admission is not
-cached, so root cleanup is not skipped after a successful entry.
-Healthy invocation-cache shortcuts reuse only completed
+explain service/socket/version diagnostics. Only successful admission is cached
+for five seconds, keyed by canonical root, `.watchmanconfig` contents and
+process/socket identity. Healthy invocation-cache shortcuts reuse only completed
 successful admission and include `.watchmanconfig` contents and the selected
 isolation's provider marker in their identity; old fallback launch-cache entries
 are outside the current cache namespace. Missing markers bypass the shell

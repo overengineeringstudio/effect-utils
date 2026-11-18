@@ -728,12 +728,10 @@ generation references. See the [capability publication contract](context/builds/
 Tracked `[buck2] file_watcher = watchman` also opts into watcher admission, even
 without remote-cache configuration. The packaged entrypoint admits the actual
 Watchman service and canonical watched root with `watchman --no-local
-watch-project <root>` before native daemon startup. Each entry first lists
-watched roots and removes only paths proven missing, preserving existing roots
-and roots with permission or I/O errors. Managed servers start with
-`--no-save-state` and no statefile override, so restarts cannot restore obsolete
-worktree watches. Root admission is not cached. An attempt has a 2500 ms
-deadline and one retry for a timeout only. Un-niced default-service queries allow Watchman
+watch-project <root>` before native daemon startup. An attempt has a 2500 ms
+deadline and one retry for a timeout only. Successful root admission is cached
+for at most five seconds, scoped to the root, `.watchmanconfig`, PATH, HOME and
+socket environment identity. Un-niced default-service queries allow Watchman
 to spawn on demand on Linux and Darwin, including job-local CI runners. Niced
 clients use `--no-spawn`: they may connect to an existing service, but never
 create a permanently niced shared daemon. Only a proven-missing default
@@ -743,6 +741,9 @@ service un-niced with `watchman get-sockname` outside the gate or provision
 the host service, and never relax the shared startup priority limit. Other
 niced failures keep their genuine executable or service diagnosis; admission
 never falls back to notify.
+Managed services start with `--no-save-state` and no statefile override, so
+restart does not restore and re-crawl obsolete worktree watches. Root deletion
+is handled by Watchman itself, not a launcher-side `watch-del` loop.
 An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
 must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
 rooted Watchman fails with the probe command and remediation; it never selects notify as an

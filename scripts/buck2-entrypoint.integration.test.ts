@@ -99,7 +99,7 @@ describe('short persistent Watchman location', () => {
   })
 
   it.skipIf(Bun.which('watchman') === null)(
-    'bootstraps real Watchman with a long HOME and concurrent admission clients',
+    'runs real Watchman without restored state and automatically cancels deleted roots',
     async () => {
       const root = fixture()
       writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
@@ -144,11 +144,6 @@ describe('short persistent Watchman location', () => {
         await command(['--no-site-spawner', '--no-local', 'version'])
         const pid = await command(['--no-spawn', '--no-local', 'get-pid'])
         expect(pid.pid).toBe(Number(readFileSync(join(directory, 'pid'), 'utf8').trim()))
-        const kept = realpathSync(fixture())
-        const missing = realpathSync(fixture())
-        await command(['--no-spawn', '--no-local', 'watch', kept])
-        await command(['--no-spawn', '--no-local', 'watch', missing])
-        rmSync(missing, { recursive: true })
         await Promise.all(
           [0, 1].map((client) =>
             directBuckArguments({
@@ -162,10 +157,21 @@ describe('short persistent Watchman location', () => {
         )
         expect((await command(['--no-spawn', '--no-local', 'get-pid'])).pid).toBe(pid.pid)
         expect(prepareWatchmanEnvironment({ HOME: home })).toBe(directory)
-        const listed = await command(['--no-spawn', '--no-local', 'watch-list'])
+        const kept = realpathSync(fixture())
+        const deleted = realpathSync(fixture())
+        await command(['--no-spawn', '--no-local', 'watch', kept])
+        await command(['--no-spawn', '--no-local', 'watch', deleted])
+        expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toContain(
+          deleted,
+        )
+        rmSync(deleted, { recursive: true })
+        // Query only: no launcher admission or watch-del participates in cancellation.
+        let listed = await command(['--no-spawn', '--no-local', 'watch-list'])
+        for (let attempt = 0; attempt < 100 && listed.roots.includes(deleted); attempt++)
+          listed = await command(['--no-spawn', '--no-local', 'watch-list'])
+        expect(listed.roots).not.toContain(deleted)
         expect(listed.roots).toContain(kept)
         expect(listed.roots).toContain(realpathSync(root))
-        expect(listed.roots).not.toContain(missing)
         await command(['--no-spawn', '--no-local', 'shutdown-server'])
         await command(['--no-site-spawner', '--no-local', 'version'])
         expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toEqual([])
@@ -322,18 +328,6 @@ const watcherFixture = () => {
   writeFileSync(
     join(root, 'watchman'),
     `#!${Bun.which('sh')}
-# Root-admission fixtures count watch-project calls; lifecycle cleanup is tested
-# separately against the real service.
-case " $* " in
-  *" watch-list "*)
-    if [ -f '${root}/listed-roots' ]; then cat '${root}/listed-roots'
-    else printf '{"version":"2026.10.05","roots":[]}\\n'; fi
-    exit 0 ;;
-  *" watch-del "*)
-    printf '%s\\n' "$*" >> '${calls}'
-    printf '{"version":"2026.10.05","watch-del":true}\\n'
-    exit 0 ;;
-esac
 printf '%s\\n' "$*" >> '${calls}'
 if [ "$1" = "--version" ]; then
   printf '2026.10.05\\n'
@@ -1929,23 +1923,6 @@ for (let attempt = 0; attempt < 2; attempt++) {
 })
 
 describe('direct pinned Buck watcher admission', () => {
-  it('reaps missing watched roots on every entry while preserving existing roots', async () => {
-    const { root, env, calls } = watcherFixture()
-    const kept = join(root, 'kept')
-    const missing = join(root, 'missing')
-    mkdirSync(kept)
-    // First entry is healthy; the next must not skip cleanup through a cached admission.
-    await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
-    writeFileSync(join(root, 'listed-roots'), JSON.stringify({ roots: [kept, missing] }))
-    await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
-    const recorded = readFileSync(calls, 'utf8')
-    expect(recorded).toContain(`watch-del ${missing}\n`)
-    expect(recorded).not.toContain(`watch-del ${kept}\n`)
-    expect(recorded.lastIndexOf(`watch-del ${missing}\n`)).toBeLessThan(
-      recorded.lastIndexOf(`watch-project ${root}\n`),
-    )
-  })
-
   it('admits a healthy service in a watcher-only root before the cache opt-in return', async () => {
     const { root, env, calls } = watcherFixture()
     const args = ['run', '//:app', '--', '--version', '--help', '-c', 'buck2.file_watcher=notify']
@@ -2114,7 +2091,7 @@ describe('direct pinned Buck watcher admission', () => {
     let observing = true
     const observer = watch(calls, () => {
       if (observing === false) return
-      const deadline = probeDeadlines[1]
+      const deadline = probeDeadlines[0]
       if (deadline === undefined) throw new Error('expected held Watchman attempt deadline')
       if (deadline.signal.aborted === false && readFileSync(calls, 'utf8') !== '') deadline.abort()
     })
@@ -2133,7 +2110,7 @@ describe('direct pinned Buck watcher admission', () => {
       })
       expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
       expect(watcherLocal(root)).toContain('file_watcher = watchman')
-      expect(probeDeadlines.map((deadline) => deadline.signal.aborted)).toEqual([false, true, false])
+      expect(probeDeadlines.map((deadline) => deadline.signal.aborted)).toEqual([true, false])
     } finally {
       observing = false
       observer.close()
@@ -2161,7 +2138,7 @@ describe('direct pinned Buck watcher admission', () => {
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
   })
 
-  it('does not write cached watcher admissions for any service identity', async () => {
+  it('names every watcher admission variant with the physical worktree root hash', async () => {
     const { root, env } = watcherFixture()
     const cacheDirectory = join(root, 'root-keyed-probe-cache')
     for (const runtime of ['first-runtime', 'second-runtime']) {
@@ -2172,7 +2149,10 @@ describe('direct pinned Buck watcher admission', () => {
         args: ['targets', '//:app'],
       })
     }
-    expect(existsSync(cacheDirectory)).toBe(false)
+    const prefix = `${createHash('sha256').update(realpathSync(root)).digest('hex')}-`
+    const entries = readdirSync(cacheDirectory)
+    expect(entries).toHaveLength(2)
+    expect(entries.every((entry) => entry.startsWith(prefix) && entry.endsWith('.json'))).toBe(true)
   })
 
   it('does not share root admission between worktrees using the same service identity', async () => {
@@ -2283,15 +2263,23 @@ describe('direct pinned Buck watcher admission', () => {
     },
   )
 
-  it('immediately rejects a stopped service rather than reusing healthy admission', async () => {
+  it('expires a healthy probe so a stopped service fails rather than switching to notify', async () => {
     const { root, env, state, calls } = watcherFixture()
     const invocation = { ...options(root), env, args: ['build', '//:app'] }
     await directBuckArguments(invocation)
     writeFileSync(state, 'unreachable')
-    await expect(directBuckArguments(invocation)).rejects.toThrow('probe failed (service)')
+    await directBuckArguments(invocation)
     expect(watcherLocal(root)).toContain('file_watcher = watchman')
-    expect(watcherLocal(root)).not.toContain('file_watcher = notify')
-    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(1)
+    try {
+      setSystemTime(new Date(Date.now() + 5001))
+      await expect(directBuckArguments(invocation)).rejects.toThrow('probe failed (service)')
+      expect(watcherLocal(root)).toContain('file_watcher = watchman')
+      expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+      expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
+    } finally {
+      setSystemTime()
+    }
   })
 
   for (const identity of [
