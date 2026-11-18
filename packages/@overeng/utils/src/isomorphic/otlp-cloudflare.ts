@@ -13,8 +13,13 @@ export interface ObservabilityDestinationProps {
 /** Cloudflare owns gzip OTLP-JSON serialization; preflight is not native delivery proof. */
 export const cloudflareDestinationProps = (
   name: string,
-  config: ProducerConfig & { readonly transport: Extract<ProducerConfig['transport'], { kind: 'https' }> },
-): { readonly traces: ObservabilityDestinationProps; readonly logs: ObservabilityDestinationProps } => {
+  config: ProducerConfig & {
+    readonly transport: Extract<ProducerConfig['transport'], { kind: 'https' }>
+  },
+): {
+  readonly traces: ObservabilityDestinationProps
+  readonly logs: ObservabilityDestinationProps
+} => {
   const endpoint = producerEndpoint(config.transport)
   const headers = {
     authorization: Redacted.make(`Bearer ${Redacted.value(config.bearer)}`),
@@ -23,12 +28,18 @@ export const cloudflareDestinationProps = (
   }
   return {
     traces: {
-      name: `${name}-traces`, url: `${endpoint}/v1/traces`, headers,
-      logpushDataset: 'opentelemetry-traces', skipPreflightCheck: true,
+      name: `${name}-traces`,
+      url: `${endpoint}/v1/traces`,
+      headers,
+      logpushDataset: 'opentelemetry-traces',
+      skipPreflightCheck: true,
     },
     logs: {
-      name: `${name}-logs`, url: `${endpoint}/v1/logs`, headers,
-      logpushDataset: 'opentelemetry-logs', skipPreflightCheck: true,
+      name: `${name}-logs`,
+      url: `${endpoint}/v1/logs`,
+      headers,
+      logpushDataset: 'opentelemetry-logs',
+      skipPreflightCheck: true,
     },
   }
 }
@@ -40,20 +51,27 @@ export const cloudflareDestinationProps = (
  * Destination headers live in sensitive Alchemy state; never return them as stack outputs.
  */
 export const declareCloudflareProducer = <TSlug, TError, TContext>(
-  destination: (id: string, props: ObservabilityDestinationProps) => Effect.Effect<{ readonly slug: TSlug }, TError, TContext>,
+  destination: (
+    id: string,
+    props: ObservabilityDestinationProps,
+  ) => Effect.Effect<{ readonly slug: TSlug }, TError, TContext>,
   name: string,
   config: Parameters<typeof cloudflareDestinationProps>[1],
-) => Effect.gen(function* () {
-  const props = cloudflareDestinationProps(name, config)
-  const traces = yield* destination(`${name}-traces`, props.traces)
-  const logs = yield* destination(`${name}-logs`, props.logs)
-  return {
-    enabled: true,
-    headSamplingRate: 1,
-    logs: {
-      enabled: true, persist: false, headSamplingRate: 1,
-      invocationLogs: true, destinations: [logs.slug],
-    },
-    traces: { enabled: true, persist: false, headSamplingRate: 1, destinations: [traces.slug] },
-  }
-})
+) =>
+  Effect.gen(function* () {
+    const props = cloudflareDestinationProps(name, config)
+    const traces = yield* destination(`${name}-traces`, props.traces)
+    const logs = yield* destination(`${name}-logs`, props.logs)
+    return {
+      enabled: true,
+      headSamplingRate: 1,
+      logs: {
+        enabled: true,
+        persist: false,
+        headSamplingRate: 1,
+        invocationLogs: true,
+        destinations: [logs.slug],
+      },
+      traces: { enabled: true, persist: false, headSamplingRate: 1, destinations: [traces.slug] },
+    }
+  })

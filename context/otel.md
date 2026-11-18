@@ -67,7 +67,6 @@ The collector plane owns identity overwrite, allowlist/redaction, gzip/JSON/
 protobuf bounds, rate limits and credential rotation. The kit owns none of
 those decisions. A transport success or destination slug is not backend readback.
 
-
 ## Quick Start
 
 ```bash

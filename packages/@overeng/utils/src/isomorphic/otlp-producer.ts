@@ -25,13 +25,19 @@ export interface ProducerConfig {
 /** Reject credential-bearing URLs and accidental public plaintext bearer delivery. */
 export const producerEndpoint = (transport: ProducerTransport): string => {
   const url = new URL(transport.endpoint)
-  const loopback = url.hostname === '127.0.0.1' || url.hostname === '[::1]' || url.hostname === 'localhost'
+  const loopback =
+    url.hostname === '127.0.0.1' || url.hostname === '[::1]' || url.hostname === 'localhost'
   if (
-    url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.search !== '' ||
+    url.hash !== '' ||
     url.pathname !== '/' ||
     (transport.kind === 'https' ? url.protocol !== 'https:' : url.protocol !== 'http:' || !loopback)
   ) {
-    throw new TypeError('OTLP endpoint must be an HTTPS origin or a Fabric loopback HTTP origin, without credentials')
+    throw new TypeError(
+      'OTLP endpoint must be an HTTPS origin or a Fabric loopback HTTP origin, without credentials',
+    )
   }
   return url.origin
 }

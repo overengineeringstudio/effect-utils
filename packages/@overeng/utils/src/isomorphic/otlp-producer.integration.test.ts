@@ -15,17 +15,25 @@ Vitest.describe('authenticated producer exporters', () => {
       yield* Effect.scoped(
         Effect.log('producer integration record').pipe(
           Effect.withSpan('producer.integration', { root: true }),
-          Effect.provide(producerTelemetryLayer({
-            transport: { kind: 'fabric', endpoint: capture.endpoints.http },
-            bearer: Redacted.make('test-only-bearer'),
-            serviceName: 'producer-integration',
-            build: { machineVersion: '1.0.0+test' },
-          })),
+          Effect.provide(
+            producerTelemetryLayer({
+              transport: { kind: 'fabric', endpoint: capture.endpoints.http },
+              bearer: Redacted.make('test-only-bearer'),
+              serviceName: 'producer-integration',
+              build: { machineVersion: '1.0.0+test' },
+            }),
+          ),
         ),
       )
-      expect((yield* capture.inspect({ signal: 'traces', service: 'producer-integration' })).length).toBeGreaterThan(0)
-      expect((yield* capture.inspect({ signal: 'logs', service: 'producer-integration' })).length).toBeGreaterThan(0)
-      expect((yield* capture.inspect({ signal: 'metrics', service: 'producer-integration' })).length).toBe(0)
+      expect(
+        (yield* capture.inspect({ signal: 'traces', service: 'producer-integration' })).length,
+      ).toBeGreaterThan(0)
+      expect(
+        (yield* capture.inspect({ signal: 'logs', service: 'producer-integration' })).length,
+      ).toBeGreaterThan(0)
+      expect(
+        (yield* capture.inspect({ signal: 'metrics', service: 'producer-integration' })).length,
+      ).toBe(0)
     }).pipe(Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer))),
   )
 })
