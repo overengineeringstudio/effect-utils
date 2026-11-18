@@ -51,7 +51,7 @@ const persist = (path: string, state: PoolState) =>
     await rename(temporary, path)
     const directory = await open(dirname(path), 'r')
     try { await directory.sync() } finally { await directory.close() }
-  }).pipe(Effect.mapError((cause) => new PoolError({ message: `Pool persistence failed: ${cause}` })))
+  }).pipe(Effect.mapError((cause) => new PoolError({ message: `Pool persistence failed: ${cause}` })), Effect.uninterruptible)
 
 /** One host-store-wide exclusion point, including capacity reservation. No TTL takeover. */
 export const withPoolState = <A, E, R>(
