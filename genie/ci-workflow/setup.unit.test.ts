@@ -396,7 +396,7 @@ describe('namespaceRunner', () => {
     expect(script.indexOf('exit 1')).toBeLessThan(script.indexOf('nix config show'))
   })
 
-  it('keeps Namespace container admission off dedicated fleet jobs', () => {
+  it('keeps Namespace container admission off fleet and API-only jobs', () => {
     for (const id of ['test-live-alchemy-github', 'publish-manifest-pr', 'published-status']) {
       expect(
         ciWorkflow.data.jobs[id]!.steps.some((step) => step.id === linuxSandboxAdmissionStepId),
@@ -410,7 +410,7 @@ describe('namespaceRunner', () => {
     ).toBe(true)
   })
 
-  it('leaves binary cache configuration to dedicated fleet runners', () => {
+  it('keeps binary cache setup off fleet and API-only jobs', () => {
     for (const id of ['test-live-alchemy-github', 'publish-manifest-pr', 'published-status']) {
       expect(
         ciWorkflow.data.jobs[id]!.steps.some((step) => step.uses?.startsWith('cachix/cachix-action@')),
@@ -1273,7 +1273,13 @@ describe('published consumer ref', () => {
       `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
     )
     expect(reporter.permissions).toEqual({ statuses: 'write' })
-    expect(reporter['runs-on']).toEqual(['sh-linux-x64', 'nix'])
+    expect(reporter['runs-on']).toEqual(promotion['runs-on'])
+    expect(reporter['runs-on']).toEqual([
+      'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1',
+    ])
+    expect(reporter.steps).toHaveLength(1)
+    expect(reporter.env?.BUCK2_NO_REMOTE_CACHE).toBe('1')
+    expect(reporter.steps.some((step) => /nix|devenv|tailscale/.test(step.run ?? ''))).toBe(false)
     expect(reporter.steps.every((step) => step.uses === undefined)).toBe(true)
     const report = reporter.steps.find((step) => step.name === 'Report published/current status')!
     expect(report.env).toEqual({
