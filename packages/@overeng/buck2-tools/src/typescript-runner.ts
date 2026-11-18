@@ -173,7 +173,10 @@ export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions
   requireMinimumArgumentCount({ args, command: 'typecheck', count: 4 })
   const emitIsolation: { value: DarwinEmitIsolation } = { value: 'sandbox-exec' }
   const declared = parseReadRoots({
-    args, command: 'typecheck', from: 4, emitIsolation,
+    args,
+    command: 'typecheck',
+    from: 4,
+    emitIsolation,
   })
   return {
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
@@ -989,29 +992,30 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
             fingerprintTool: options.fingerprintTool,
           })
     status = await runTsgo({
-      argv: options.workspaceBuild === true
-        ? [options.tsgo, '--build', '--force', join(packageRoot, options.project)]
-        : [
-        options.tsgo,
-        '--project',
-        join(packageRoot, options.project),
-        '--outDir',
-        join(packageRoot, options.outDir),
-        '--noEmit',
-        'false',
-        '--composite',
-        'false',
-        '--incremental',
-        'false',
-        '--declaration',
-        'true',
-        // Published package products ship JavaScript runtime entries next to their
-        // declarations; Node cannot type-strip `.ts` under node_modules.
-        '--emitDeclarationOnly',
-        'false',
-        '--pretty',
-        'false',
-      ],
+      argv:
+        options.workspaceBuild === true
+          ? [options.tsgo, '--build', '--force', join(packageRoot, options.project)]
+          : [
+              options.tsgo,
+              '--project',
+              join(packageRoot, options.project),
+              '--outDir',
+              join(packageRoot, options.outDir),
+              '--noEmit',
+              'false',
+              '--composite',
+              'false',
+              '--incremental',
+              'false',
+              '--declaration',
+              'true',
+              // Published package products ship JavaScript runtime entries next to their
+              // declarations; Node cannot type-strip `.ts` under node_modules.
+              '--emitDeclarationOnly',
+              'false',
+              '--pretty',
+              'false',
+            ],
       darwinBuckOut: process.platform === 'darwin' ? emitBuckOut(packageTree) : undefined,
       darwinIsolation: options.darwinIsolation,
       readRoots,
@@ -1024,7 +1028,9 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
         fingerprintTool: options.fingerprintTool,
       })
       if (stagedAfter !== stagedBefore)
-        fail(`staged input roots changed during emit (before ${stagedBefore}, after ${stagedAfter})`)
+        fail(
+          `staged input roots changed during emit (before ${stagedBefore}, after ${stagedAfter})`,
+        )
       if (status === 0) {
         await copyDeclarationSources({
           declarationSources: options.declarationSources,
@@ -1112,7 +1118,9 @@ export const runTypeScriptCli = async (args: readonly string[]): Promise<number>
     })
   }
   if (command === 'emit') return runEmit(parseEmitOptions(commandArgs))
-  return fail(`expected command "typecheck", "workspace-check" or "emit", received ${command ?? '<missing>'}`)
+  return fail(
+    `expected command "typecheck", "workspace-check" or "emit", received ${command ?? '<missing>'}`,
+  )
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
