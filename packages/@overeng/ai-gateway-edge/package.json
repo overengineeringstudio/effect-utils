@@ -9,6 +9,7 @@
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/stylex-tokens",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]
@@ -34,7 +35,9 @@
     "effect": "4.1.0"
   },
   "devDependencies": {
+    "@effect/opentelemetry": "4.1.0",
     "@overeng/ai-gateway-conformance": "workspace:^",
+    "@playwright/test": "1.64.1",
     "@types/node": "26.5.0",
     "typescript": "7.0.2",
     "vite": "8.3.8",

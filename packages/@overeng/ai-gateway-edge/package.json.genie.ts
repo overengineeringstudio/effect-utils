@@ -18,7 +18,14 @@ const workspaceDeps = catalog.compose({
   },
   devDependencies: {
     workspace: [conformancePkg],
-    external: catalog.pick('@types/node', 'typescript', 'vite', 'vitest'),
+    external: catalog.pick(
+      '@effect/opentelemetry',
+      '@playwright/test',
+      '@types/node',
+      'typescript',
+      'vite',
+      'vitest',
+    ),
   },
 })
 

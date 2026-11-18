@@ -10,7 +10,7 @@ import {
   CliVersion,
   handlerConsoleLayer,
   jsonStdoutGuardLayer,
-  resolveCliVersion,
+  resolveCliBuildIdentity,
 } from '@overeng/utils/node/cli-version'
 
 import packageJson from '../package.json' with { type: 'json' }
@@ -18,7 +18,7 @@ import { tuiStoriesCommand } from '../src/cli/mod.ts'
 
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'
-const version = resolveCliVersion({
+const { displayVersion: version, machineVersion } = resolveCliBuildIdentity({
   baseVersion: packageJson.version,
   buildStamp,
 })
@@ -29,6 +29,7 @@ Cli.Command.runWith(Cli.Command.provide(tuiStoriesCommand, handlerConsoleLayer),
   args,
 ).pipe(
   Effect.scoped,
+  Effect.annotateLogs({ 'service.version': machineVersion }),
   Effect.provide(
     Layer.mergeAll(
       Layer.provide(
