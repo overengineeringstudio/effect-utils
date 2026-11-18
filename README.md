@@ -741,6 +741,9 @@ service un-niced with `watchman get-sockname` outside the gate or provision
 the host service, and never relax the shared startup priority limit. Other
 niced failures keep their genuine executable or service diagnosis; admission
 never falls back to notify.
+Managed services start with `--no-save-state` and no statefile override, so
+restart does not restore and re-crawl obsolete worktree watches. Root deletion
+is handled by Watchman itself, not a launcher-side `watch-del` loop.
 An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
 must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
 rooted Watchman fails with the probe command and remediation; it never selects notify as an

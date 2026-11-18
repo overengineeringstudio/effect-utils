@@ -261,7 +261,7 @@ export const probeWatchman = async ({
       ? []
       : [
           '--no-site-spawner',
-          `--statefile=${join(managedDirectory, 'state')}`,
+          '--no-save-state',
           `--pidfile=${join(managedDirectory, 'pid')}`,
           `--logfile=${join(managedDirectory, 'log')}`,
         ]),
