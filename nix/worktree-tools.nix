@@ -39,6 +39,19 @@ let
     for entry in "''${inherited_path[@]}"; do
       case "$entry" in */agent-seat/policy-bin) policy_path="$policy_path$entry:" ;; esac
     done
+    # Keep the operator's immutable admission package, never its ambient bin dir.
+    operator_gate="$(type -P gate-slot || true)"
+    if [ -n "$operator_gate" ]; then
+      operator_gate="$(${pkgs.coreutils}/bin/realpath "$operator_gate")"
+      operator_package="''${operator_gate%/bin/gate-slot}"
+      case "$operator_package" in
+        /nix/store/*)
+          if [[ "''${operator_package#/nix/store/}" != */* && "$operator_gate" == "$operator_package/bin/gate-slot" ]]; then
+            policy_path="$policy_path$operator_package/bin:"
+          fi
+          ;;
+      esac
+    fi
     export WORKTREE_POLICY_PATH="''${policy_path%:}"
     export PATH="$policy_path$WORKSPACE_ROOT/node_modules/.bin:@tools@/bin:''${PATH:-}"
     ${exports}
