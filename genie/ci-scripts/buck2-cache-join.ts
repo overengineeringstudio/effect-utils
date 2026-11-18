@@ -9,6 +9,7 @@ import {
   identity,
   type Observation,
 } from './buck2-cache-warm99.ts'
+import type { OccurrenceEvidenceRecord } from './buck2-occurrence-records.ts'
 
 export const lanes = ['main-reader', 'merge_group', 'pr', 'main-writer'] as const
 export const platforms = ['linux', 'darwin', 'unknown'] as const
@@ -273,13 +274,20 @@ export const aggregateOccurrences = ({
   windowStartMs,
   windowEndMs,
   evidenceGaps,
+  retainedEvidence,
 }: {
   artifacts: readonly ActionArtifact[]
   windowStartMs: number
   windowEndMs: number
   evidenceGaps: readonly string[]
+  retainedEvidence?: {
+    records: readonly OccurrenceEvidenceRecord[]
+    evidenceGaps: readonly string[]
+  }
 }): OccurrenceScorecard => {
   const reasons = new Set(evidenceGaps)
+  if (retainedEvidence !== undefined)
+    for (const gap of retainedEvidence.evidenceGaps) reasons.add(gap)
   const validWindow =
     Number.isFinite(windowStartMs) && Number.isFinite(windowEndMs) && windowStartMs < windowEndMs
   if (validWindow !== true) reasons.add('invalid-window')
@@ -294,6 +302,15 @@ export const aggregateOccurrences = ({
   }
   const rows = new Map<string, Row>()
   const conflicts = new Set<string>()
+  const recordOccurrence = (row: Row) => {
+    const previous = rows.get(row.id)
+    if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(row)) {
+      reasons.add('conflicting-occurrence')
+      conflicts.add(row.id)
+    } else {
+      rows.set(row.id, row)
+    }
+  }
   for (const artifact of artifacts) {
     const { header } = artifact
     if (
@@ -359,29 +376,68 @@ export const aggregateOccurrences = ({
         nonempty(action.occurrenceId) === false ||
         nonempty(action.buildId) === false ||
         nonempty(invocation?.rootId) === false ||
-        nonempty(host) === false
+        nonempty(host) === false ||
+        nonempty(action.digest) === false
       )
         continue
-      const row: Row = {
+      recordOccurrence({
         id: action.occurrenceId,
         host,
         root: invocation.rootId,
         build: action.buildId,
-        key: JSON.stringify([header.metadata.repo, action.configuration, action.digest]),
+        key: action.digest,
         time,
         outcome,
         durationNs: measurement(action.durationNs),
         totalBytes: measurement(action.totalBytes),
-      }
-      const previous = rows.get(row.id)
-      if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(row)) {
-        reasons.add('conflicting-occurrence')
-        conflicts.add(row.id)
-      } else {
-        rows.set(row.id, row)
-      }
+      })
     }
   }
+  if (retainedEvidence !== undefined)
+    for (const record of retainedEvidence.records) {
+      const time = record.completedAt
+      if (time === null || Number.isFinite(time) === false) {
+        reasons.add('missing-native-time')
+        continue
+      }
+      if (validWindow !== true || time < windowStartMs || time >= windowEndMs) continue
+      if (nonempty(record.runId) === false) reasons.add('missing-run')
+      if (nonempty(record.lane) === false) reasons.add('missing-lane')
+      if (
+        nonempty(record.id) === false ||
+        nonempty(record.buildId) === false ||
+        nonempty(record.host) === false ||
+        nonempty(record.rootId) === false ||
+        nonempty(record.digest) === false
+      ) {
+        reasons.add('missing-occurrence-identity')
+        continue
+      }
+      if (
+        record.startedAt === null ||
+        Number.isFinite(record.startedAt) === false ||
+        record.startedAt > time
+      ) {
+        reasons.add('missing-native-time')
+        continue
+      }
+      if (record.executionOutcome === 'failed' || record.executionOutcome === 'unknown') {
+        reasons.add('missing-execution-outcome')
+        continue
+      }
+      if (record.executionOutcome === 'remote-exec') reasons.add('unlinked-worker-attempt')
+      recordOccurrence({
+        id: record.id,
+        host: record.host,
+        root: record.rootId,
+        build: record.buildId,
+        key: record.digest,
+        time,
+        outcome: record.executionOutcome,
+        durationNs: measurement(record.durationNs),
+        totalBytes: measurement(record.totalBytes),
+      })
+    }
   const totals = emptyOccurrenceCounts()
   const hosts = new Map<string, OccurrenceCounts>()
   const executed = new Set<string>()

@@ -171,14 +171,29 @@ The CI join does not certify local/other-repository invocation coverage; until a
 independent fleet census is joined, its fleet proof remains unknown.
 
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
-windowEndMs)`, attributing chronological repository/configuration/digest execution
-repeats globally across hosts/roots/CI; hits and explicit coalescing are separate.
+windowEndMs)`, attributing chronological full-action-digest execution repeats
+globally across repositories, configurations, hosts, roots and CI; hits and explicit coalescing are separate.
 Missing native identity/root/host/time/digest/outcome/completeness or metadata,
 unlinked remote/coalesced worker attempts, conflicts, sampling, loss or overflow mean unknown.
 Valid rows survive; unavailable costs are null with explicit unavailable counts.
 `renderOccurrenceOtlp` emits host-only `buck2.cache.execute_once` window-end gauges
 in the join's OTLP resource/scope; unlabelled `proof_known` gates exactness.
 Unknown proof retains observed points; unavailable cost totals omit their points.
+
+The same join accepts repeatable `--occurrence-records <v1-directory>` and
+`--expected-occurrence-host <hostname>` inputs for operator-local compact native
+records. It reconciles immutable conversion snapshots with independent wrapper
+open/terminal census records; exact transport retries do not add executions.
+Matching full captures may repair truncated prefixes, but conflicting identities,
+missing census/build links, late enrollment and retention under 30 days are gaps.
+The local reader caps 100,000 files, 64 MiB per file and 512 MiB total; crossing a
+cap makes proof unknown, never silently sampled. Records retain native epoch
+nanoseconds as strings; `durationNs` remains exact span elapsed time, matching CI.
+Host enrollment does not establish uninterrupted capture, an authoritative fleet
+registry, unsupported-entrypoint coverage or remote worker/shared-operation links;
+those absent authorities remain unknown. Valid observed per-host counts survive,
+including hosts outside the declared inventory. No CI private-fleet read authority,
+remote fetch transport, pipeline, daemon or exporter is introduced.
 
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
