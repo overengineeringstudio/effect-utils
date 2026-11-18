@@ -84,7 +84,12 @@ fn publish(dir: &Path, key: &str, write: impl FnOnce(&mut File) -> io::Result<()
                 if size == 0 { break; }
                 digest.update(&buffer[..size]);
             }
-            target = dir.join(format!("{}-{:x}.jsonl", sha256_hex(key.as_bytes()), digest.finalize()));
+            use std::fmt::Write as _;
+            let mut content_digest = String::with_capacity(64);
+            for byte in digest.finalize() {
+                write!(&mut content_digest, "{byte:02x}").expect("writing to String cannot fail");
+            }
+            target = dir.join(format!("{}-{content_digest}.jsonl", sha256_hex(key.as_bytes())));
         }
         match fs::hard_link(&temporary, &target) {
             Ok(()) => {},
