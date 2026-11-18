@@ -34,6 +34,9 @@ export const darwinArm64Runner = [fleetRunnerLabels.darwinArm64, nixRunnerSelect
 /** Public Linux amd64 8 vCPU / 16 GiB profile, qualified for nested /dev/kvm guests. */
 export const publicNamespaceKvmRunner =
   'namespace-profile-linux-x86-64;container.privileged=true' as const
+/** Sponsor-funded privileged compute accepts only trusted events and same-repo PR heads. */
+export const publicNamespaceKvmIf =
+  "${{ github.event.repository.private == false && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}" as const
 /** Shared across workflows: at most one heavy public Namespace job per repository. */
 export const publicNamespaceKvmConcurrency = {
   group: 'namespace-public-linux-x64-8x16',

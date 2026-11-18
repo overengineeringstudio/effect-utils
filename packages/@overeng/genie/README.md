@@ -155,8 +155,10 @@ actions and known wrappers; setup-action caching; and Docker `type=gha`.
 
 The effect-utils repository additionally admits `publicNamespaceKvmRunner`, its
 Linux amd64 8-vCPU/16-GiB Namespace profile with nested KVM. Use the exact static
-selector, `if: '${{ github.event.repository.private == false }}'`,
-`permissions: { contents: 'read' }`, and `publicNamespaceKvmConcurrency`.
+selector, `if: publicNamespaceKvmIf`, `permissions: { contents: 'read' }`, and
+`publicNamespaceKvmConcurrency`. The condition admits only public repositories
+on push/merge-group events or pull requests whose head belongs to the same
+repository; fork PRs cannot consume this privileged sponsored runner.
 The shared job-level concurrency group serializes these heavy jobs across all
 workflows in the repository; matrices, alternate groups and cancellation are
 not admitted. No secret references, cache-write credentials, OIDC permissions,

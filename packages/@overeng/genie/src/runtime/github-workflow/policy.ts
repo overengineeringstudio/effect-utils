@@ -58,6 +58,7 @@ export type WorkflowPolicy = {
   readonly boundedPublicRunner?: {
     readonly label: string
     readonly concurrencyGroup: string
+    readonly ifExpression: string
   }
   readonly banDockerGhaCache?: boolean
   /** Action repository (optionally a subpath), without a ref; matches every ref and subpath. */
@@ -719,7 +720,7 @@ export const collectWorkflowPolicyViolations = ({
       })
       const permissions = config.permissions ?? workflow.permissions
       if (
-        config.if !== '${{ github.event.repository.private == false }}' ||
+        config.if !== bounded.ifExpression ||
         (Array.isArray(runnerLabels) === true && runnerLabels.length !== 1) ||
         (runnerLabels !== bounded.label &&
           JSON.stringify(runnerLabels) !== JSON.stringify([bounded.label])) ||

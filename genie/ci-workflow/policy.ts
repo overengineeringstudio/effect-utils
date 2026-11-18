@@ -19,6 +19,7 @@ import {
   nixRunnerSelector,
   publicNamespaceKvmRunner,
   publicNamespaceKvmConcurrency,
+  publicNamespaceKvmIf,
 } from './runners.ts'
 
 const admittedRunnerLabels = [...Object.values(fleetRunnerLabels), nixRunnerSelector]
@@ -49,6 +50,7 @@ export const fleetWorkflowPolicy = ({
         boundedPublicRunner: {
           label: publicNamespaceKvmRunner,
           concurrencyGroup: publicNamespaceKvmConcurrency.group,
+          ifExpression: publicNamespaceKvmIf,
         },
       }
     : {}),

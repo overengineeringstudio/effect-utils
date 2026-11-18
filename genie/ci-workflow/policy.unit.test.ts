@@ -47,6 +47,7 @@ import {
   linuxX64Runner,
   publicNamespaceKvmRunner,
   publicNamespaceKvmConcurrency,
+  publicNamespaceKvmIf,
 } from './runners.ts'
 import {
   cargoClippyJob,
@@ -85,7 +86,7 @@ const rustOptions = { runsOn: [...linuxX64Runner], namespacePrivilege: 'never' a
 describe('public Namespace nested-KVM admission', () => {
   const publicJob: GitHubWorkflowArgs['jobs'][string] = {
     'runs-on': [publicNamespaceKvmRunner],
-    if: '${{ github.event.repository.private == false }}',
+    if: publicNamespaceKvmIf,
     permissions: { contents: 'read' },
     concurrency: publicNamespaceKvmConcurrency,
     steps: [{ run: 'test -c /dev/kvm' }],
@@ -107,8 +108,31 @@ describe('public Namespace nested-KVM admission', () => {
   })
 
   it.each([
+    { event: 'push', private: false, head: undefined, admitted: true },
+    { event: 'merge_group', private: false, head: undefined, admitted: true },
+    { event: 'pull_request', private: false, head: policy.repository, admitted: true },
+    { event: 'pull_request', private: false, head: 'stranger/fork', admitted: false },
+    { event: 'push', private: true, head: undefined, admitted: false },
+    { event: 'workflow_dispatch', private: false, head: undefined, admitted: false },
+    { event: 'pull_request_target', private: false, head: policy.repository, admitted: false },
+  ])('bounds sponsored compute to trusted public inputs: %j', (fixture) => {
+    const evaluate = new Function('github', `return (${publicNamespaceKvmIf.slice(3, -2)})`)
+    expect(
+      evaluate({
+        repository: policy.repository,
+        event_name: fixture.event,
+        event: {
+          repository: { private: fixture.private },
+          pull_request: { head: { repo: { full_name: fixture.head } } },
+        },
+      }),
+    ).toBe(fixture.admitted)
+  })
+
+  it.each([
     { if: undefined },
     { if: '${{ true }}' },
+    { if: '${{ github.event.repository.private == false }}' },
     { concurrency: undefined },
     { concurrency: { ...publicNamespaceKvmConcurrency, 'cancel-in-progress': true } },
     { concurrency: { ...publicNamespaceKvmConcurrency, group: '${{ github.run_id }}' } },
