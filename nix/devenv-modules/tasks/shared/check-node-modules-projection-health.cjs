@@ -331,7 +331,9 @@ const runProjectionHash = () => {
         if (stat.isSymbolicLink()) {
           appendSymlinkEvidence(entryPath)
         } else if (stat.isFile()) {
-          appendLine(`bin file ${entryPath} ${crypto.createHash('sha256').update(fs.readFileSync(entryPath)).digest('hex')}`)
+          appendLine(
+            `bin file ${entryPath} ${crypto.createHash('sha256').update(fs.readFileSync(entryPath)).digest('hex')}`,
+          )
         } else {
           throw new Error(`Unexpected executable projection entry: ${entryPath}`)
         }
