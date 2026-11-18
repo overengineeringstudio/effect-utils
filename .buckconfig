@@ -47,4 +47,4 @@
   trusted_tier = private
 
 [project]
-  ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp
+  ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,.worktree-tools,buck-out,node_modules,packages/.editor-view,target,tmp

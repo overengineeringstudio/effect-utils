@@ -5,6 +5,7 @@
     "context/.editor-view",
     "buck-out",
     ".devenv",
+    ".worktree-tools",
     "target",
     "tmp",
     "node_modules",
