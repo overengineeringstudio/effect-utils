@@ -390,8 +390,11 @@ mod linux {
     }
 
     fn native_mount_proof(mount: u64, pid_dir: &Path, reference: &Path) -> Result<()> {
-        let mounts = fs::read_to_string(pid_dir.join("mountinfo"))
-            .map_err(|error| format!("process mount visibility incomplete: {error}"))?;
+        let mounts = match fs::read_to_string(pid_dir.join("mountinfo")) {
+            Ok(mounts) => mounts,
+            Err(error) if process_gone(pid_dir, &error) => return Ok(()),
+            Err(error) => return Err(format!("process mount visibility incomplete: {error}")),
+        };
         for line in mounts.lines() {
             let Some((fields, filesystem)) = line.split_once(" - ") else {
                 return Err("malformed process mount evidence".into());
@@ -587,6 +590,9 @@ mod linux {
                 ));
             }
         };
+        // Close the inventory's own proc directory descriptor before examining
+        // this process's fd table. No process-wide or procfs-FD exemption.
+        let descriptors: Vec<_> = descriptors.collect();
         for descriptor in descriptors {
             let path = match descriptor {
                 Ok(descriptor) => descriptor.path(),
@@ -648,8 +654,9 @@ mod linux {
         admitted_directory: Option<i32>,
         inodes: &BTreeMap<(u64, u64), InodeFootprint>,
     ) -> Result<()> {
-        let entries =
-            fs::read_dir(proc_root).map_err(|e| format!("cannot inventory processes: {e}"))?;
+        let entries: Vec<_> = fs::read_dir(proc_root)
+            .map_err(|e| format!("cannot inventory processes: {e}"))?
+            .collect();
         let uid = own_uid()?;
         let mut native_mounts = BTreeMap::new();
         for entry in entries {
@@ -705,6 +712,7 @@ mod linux {
                     ));
                 }
             };
+            let tasks: Vec<_> = tasks.collect();
             let mut observed = false;
             for task in tasks {
                 let task = task.map_err(|error| error.to_string())?.path();
@@ -1479,64 +1487,47 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             assert!(!pam_broker_exception_allowed(&root, uid, "(sd-pam)", 123).unwrap());
         }
 
-        #[test]
-        #[cfg(target_os = "linux")]
-        fn real_open_descriptor_protects_a_root() {
-            use std::os::unix::fs::symlink;
-            let root = fixture("real-fd");
-            let worktree = root.join("worktree");
-            let pid = root.join("proc/123");
-            fs::create_dir_all(&worktree).unwrap();
-            fs::create_dir_all(pid.join("fd")).unwrap();
-            fs::write(worktree.join("payload"), "live").unwrap();
-            let descriptor = fs::File::open(worktree.join("payload")).unwrap();
-            symlink(descriptor_path(&descriptor), pid.join("fd/4")).unwrap();
-            symlink(&root, pid.join("cwd")).unwrap();
-            fs::write(pid.join("status"),
-                format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap())).unwrap();
-            let mount = mount_id(&open_directory(&root).unwrap()).unwrap();
-            fs::write(pid.join("mountinfo"),
-                format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
-            assert!(
-                process_proof(&root.join("proc"), &worktree)
-                    .unwrap_err().contains("live process inode reference")
-            );
-            drop(descriptor);
-            fs::remove_file(pid.join("fd/4")).unwrap();
-            assert!(process_proof(&root.join("proc"), &worktree).is_ok());
-        }
 
         #[test]
         fn bind_alias_references_protect_payload_inodes() {
             if let Some(root) = env::var_os("PNPM_GC_BIND_ALIAS_ROOT") {
                 let root = PathBuf::from(root);
-                let inventory = footprint(&root.join("store")).unwrap();
-                for reference in [root.join("alias"), root.join("alias/payload")] {
-                    assert!(
-                        reference_inode_proof(&reference, Path::new("/proc/self"), &inventory.inodes, &mut BTreeMap::new())
-                            .unwrap_err().contains("live process inode reference")
-                    );
-                }
+                let store = root.join("store");
+                assert!(process_proof(Path::new("/proc"), &store).is_ok());
+                let descriptor = fs::File::open(root.join("alias/payload")).unwrap();
+                assert!(
+                    process_proof(Path::new("/proc"), &store)
+                        .unwrap_err().contains("live process inode reference")
+                );
+                drop(descriptor);
+                assert!(process_proof(Path::new("/proc"), &store).is_ok());
+                let original = env::current_dir().unwrap();
+                env::set_current_dir(root.join("alias")).unwrap();
+                let protected = process_proof(Path::new("/proc"), &store);
+                env::set_current_dir(original).unwrap();
+                assert!(protected.unwrap_err().contains("live process inode reference"));
+                assert!(process_proof(Path::new("/proc"), &store).is_ok());
                 return;
             }
-            let probe = Command::new("unshare").args(["-rm", "true"]).output();
+            let probe = Command::new("unshare").args(["-rmpf", "--mount-proc", "true"]).output();
             if !probe.as_ref().is_ok_and(|output| output.status.success()) {
-                eprintln!("SKIP bind alias integration: user/mount namespaces unavailable");
+                eprintln!("SKIP real native census: isolated user/mount/PID namespaces unavailable");
                 return;
             }
             let root = fixture("bind-reference");
-            fs::create_dir_all(root.join("store")).unwrap();
-            fs::create_dir_all(root.join("alias")).unwrap();
-            fs::write(root.join("store/payload"), "live").unwrap();
+            fs::create_dir_all(&root).unwrap();
             let output = Command::new("unshare")
-                .args(["-rm", "bash", "-c", r#"
+                .args(["-rmpf", "--mount-proc", "bash", "-c", r#"
+mount -t tmpfs tmpfs "$1" || exit 77
+mkdir "$1/store" "$1/alias"
+printf live > "$1/store/payload"
 mount --bind "$1/store" "$1/alias" || exit 77
 export PNPM_GC_BIND_ALIAS_ROOT="$1"
 exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --nocapture
 "#, "bind-reference"])
                 .arg(&root).arg(env::current_exe().unwrap()).output().unwrap();
             if output.status.code() == Some(77) {
-                eprintln!("SKIP bind alias integration: bind mount unavailable");
+                eprintln!("SKIP real native census: tmpfs/bind fixture mounts unavailable");
                 return;
             }
             assert!(output.status.success(), "{}{}",
@@ -1560,6 +1551,10 @@ exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --n
             assert!(native_mount_proof(mount, &root, &root).is_err());
             fs::write(root.join("mountinfo"),
                 format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
+            assert!(native_mount_proof(mount, &root, &root).is_ok());
+            fs::remove_file(root.join("mountinfo")).unwrap();
+            assert!(native_mount_proof(mount, &root, &root).is_err());
+            fs::remove_dir(&root).unwrap();
             assert!(native_mount_proof(mount, &root, &root).is_ok());
         }
 
