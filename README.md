@@ -94,6 +94,9 @@ The runtime verifies Discord's Ed25519 signature over the raw timestamp/body,
 checks the application and human allowlist, and durably binds opaque message
 controls to a signed pending digest and offered option. HTTP callbacks return
 type-6 deferred update before authority I/O; a click never masquerades as accepted.
+Transport and journal failures carry an operation and a cause encoded with
+`Schema.Defect()`, preserving the original failure rather than replacing it with
+an error-construction defect. Consumers must redact private causes in service logs.
 
 Compose `DiscordStore`, `makeAuthorityClient`, `makeDiscordDelivery`, `makeSigner`,
 `listenDiscordInteractions` and `syncDiscordSurface` in an independently enrolled

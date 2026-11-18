@@ -24,7 +24,7 @@ import { decisionFor, type Card, type DiscordStore, type Job } from './store.ts'
 
 export class DiscordError extends Schema.TaggedError<DiscordError>()('DiscordError', {
   operation: Schema.String,
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 export interface AuthorityClient {
   readonly pending: (executionId: string) => Effect.Effect<SignedPending, DiscordError>
