@@ -57,24 +57,32 @@ mr store pool status
 Run release **outside** the slot after the owner command exits. Claim emits a
 JSON receipt and passes `MR_POOL_SLOT`, `MR_POOL_TOKEN`, `MR_POOL_GENERATION`
 to its child. Release is explicit; task failure quarantines instead of resetting.
-Status reconciles abandoned/unknown providers toward quarantine only.
+Success publishes a fenced `completed` state before provider exit; status cannot
+mistake normal completion for abandonment. Status reconciles abandoned/unknown
+providers toward quarantine only.
 
 Host-store-wide count and charged-byte limits include preparing, leased and
 quarantined roots, across repositories. Reservations are accounting, not filesystem
 quotas; ordinary admitted execution remains responsible for runtime containment.
-An oversized preparation is retained and charged at its measured logical size.
+Every failed preparation reconciles retained logical bytes, including partial
+install growth. Unknown retained accounting or holders block further allocation.
 Limits cannot be changed while authoritative records exist.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.
 The barrier's v2 record is deliberately not PID-death-recoverable; older readers
 reject it and retain the root. Ordinary v1 lease recovery is unchanged.
-Readiness binds exact source/install/tool/platform identity, actual installed
-pnpm metadata and resolved dependency paths. Worktree-local stores are refused.
+Readiness consumes the root-owned `pnpm:doctor` installation/projection/storage
+receipts and full link-health proof across all declared package node_modules,
+including `.bin`. It additionally binds exact source/tool/platform identity,
+actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
 No adapter, copied Buck state or scripts-disabled preparation is used.
 
-Release invokes the installed `worktree-teardown` owner, requires complete
-process-reference absence and unchanged clean source/history, validates the
+Release invokes the packaged absolute `WORKTREE_TEARDOWN_BIN` provider, not an
+ambient PATH command. It uses the existing store-owner `gc-owner` process policy:
+readable foreign references veto, unreadable foreign processes are counted, and
+own-UID completeness requires native or bounded lsof evidence. Unknown owner
+processes retain the root. After unchanged clean source/history proof, it validates the
 installed dependency view, then cleans only its own detached root preserving
 validated `node_modules`, and reruns normal installation. Missing teardown,
 unknown processes, dirty/untracked source, changed commits or failed preparation

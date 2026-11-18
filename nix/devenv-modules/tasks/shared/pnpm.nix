@@ -847,16 +847,44 @@ let
         ${ensureLocalPnpmHomeFn}
         ${configurePnpmStorageFn}
 
-        if [ -f node_modules/.modules.yaml ] && check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
-          doctor_decision="healthy"
-          doctor_reason="dependency-graph-healthy"
-        else
-          doctor_decision="repair-root"
-          doctor_reason="dependency-graph-unhealthy"
+        ${computeWorkspaceStateHash}
+        ${computeInstallStateHashFn}
+        ${computeProjectionStateHashFn}
+        _pnpm_install_contract_file="$PWD/pnpm-install-contract.json"
+        install_hash=""
+        projection_hash=""
+        storage_state="$(printf '%s\n%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE")"
+        doctor_decision="repair-root"
+        doctor_reason="dependency-evidence-stale"
+        if [ -f node_modules/.modules.yaml ] && [ -f package.json ] &&
+           [ -f pnpm-lock.yaml ] && [ -f pnpm-workspace.yaml ] &&
+           [ -f "${cacheRoot}/install-state.hash" ] &&
+           [ -f "${cacheRoot}/projection-state.hash" ] &&
+           [ -f "${cacheRoot}/pnpm-storage-state" ]; then
+          install_hash="$(compute_install_state_hash)"
+          projection_hash="$(compute_projection_state_hash)"
+          if [ "$install_hash" = "$(cat "${cacheRoot}/install-state.hash")" ] &&
+             [ "$projection_hash" = "$(cat "${cacheRoot}/projection-state.hash")" ] &&
+             [ "$storage_state" = "$(cat "${cacheRoot}/pnpm-storage-state")" ] &&
+             check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+            doctor_decision="healthy"
+            doctor_reason="dependency-graph-healthy"
+          fi
         fi
-        ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" <<'EOF'
-        const [root, decision, reason] = process.argv.slice(2)
-        console.log(JSON.stringify({ phase: 'doctor', root, decision, reason }))
+        ${lib.optionalString (normalizedSourceInputPaths != [ ]) ''
+          if ! ( ${checkSourceInputs} ); then doctor_decision="repair-root"; fi
+        ''}
+        ${lib.optionalString (productTarballStage != null) ''
+          if ! ( ${checkProductTarballs} ); then doctor_decision="repair-root"; fi
+        ''}
+        ${lib.optionalString (workspaceRoot == ".") ''
+          if [ ! -f "$_pnpm_install_contract_file" ]; then doctor_decision="repair-root"; fi
+        ''}
+        ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" \
+          "$install_hash" "$projection_hash" "$storage_state" "$(realpath "$PNPM_NATIVE_BIN")" <<'EOF'
+        const [root, decision, reason, installHash, projectionHash, storageState, pnpm] = process.argv.slice(2)
+        console.log(JSON.stringify({ phase: 'doctor', version: 1, root, decision, reason,
+          installHash, projectionHash, storageState, pnpm, node: process.execPath }))
         EOF
       '';
     };
