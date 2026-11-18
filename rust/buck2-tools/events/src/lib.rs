@@ -42,6 +42,8 @@ use gen::buck::{
     data::{self, buck_event, instant_event, span_end_event, span_start_event},
 };
 
+mod retained;
+
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -49,6 +51,8 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Record the supported invocation census, independently of export.
+    Census(retained::Census),
     Ingest {
         #[arg(required = true)]
         logs: Vec<PathBuf>,
@@ -59,6 +63,9 @@ enum Command {
         out: Option<PathBuf>,
         #[arg(long)]
         spool_dir: Option<PathBuf>,
+        /// Compact host-owned evidence, outside disposable worktree spools.
+        #[arg(long)]
+        records_dir: Option<PathBuf>,
     },
     /// Retry pending OTLP chunks without re-decoding native event logs.
     Export {
@@ -79,16 +86,19 @@ pub fn main_entry() -> Result<(), Box<dyn std::error::Error>> {
 }
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
+        Command::Census(args) => Ok(retained::census(args)?),
         Command::Ingest {
             logs,
             sidecar,
             out,
             spool_dir,
+            records_dir,
         } => ingest(
             &logs,
             sidecar.as_ref(),
             out.as_ref(),
             &spool_directory(spool_dir),
+            &retained::directory(records_dir)?,
         ),
         Command::Export {
             spool_dir,
@@ -119,6 +129,7 @@ fn ingest(
     sidecar: Option<&PathBuf>,
     out: Option<&PathBuf>,
     spool_dir: &Path,
+    records_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sidecars = if let Some(p) = sidecar {
         match fs::read_to_string(p) {
@@ -142,6 +153,9 @@ fn ingest(
     let identity_attrs = identity_attributes(|name| std::env::var(name).ok());
     for (index, log) in logs.iter().enumerate() {
         let model = decode(log)?;
+        // Publish compact authoritative input before acknowledging conversion.
+        // Failure leaves the native input and independent census for recovery.
+        retained::capture(&model, records_dir)?;
         let parent = sidecars.get(&model.uuid);
         let views = make_views(&model, parent);
         for (kind, trace_id, spans) in views {
