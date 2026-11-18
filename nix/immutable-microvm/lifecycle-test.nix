@@ -75,6 +75,7 @@ pkgs.testers.runNixOSTest {
     # Losing the requesting client does not own or cancel the transaction.
     host.succeed("systemd-run --unit=lost-client $(command -v activate) ${releases.badCatalog}")
     host.wait_until_succeeds("test -e " + control + "/pending.json")
+    host.fail("activate ${releases.a}")  # Concurrent release admission is refused.
     host.succeed("systemctl stop lost-client.service")
     host.wait_until_succeeds("test ! -e " + control + "/pending.json")
     receipt("rolled-back")
