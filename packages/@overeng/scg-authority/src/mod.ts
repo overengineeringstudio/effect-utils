@@ -268,7 +268,7 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
         owner,
         executionId,
         requestDigest,
-        actionDigest: Protocol.digest(action),
+        actionDigest: Protocol.digestAction(submitted.catalogDigest, action),
         admittedAt: issuedAt,
         review: {
           command: action.commandId,
@@ -385,7 +385,11 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
         JSON.parse(execution.admitted),
       )
       const action = decode(Protocol.Action, stored.action)
-      if (Protocol.digest(action) !== execution.action_digest) fail('corrupt-admitted-action', 500)
+      if (
+        Protocol.digestAction(stored.admitted.submitted.catalogDigest, action) !==
+        execution.action_digest
+      )
+        fail('corrupt-admitted-action', 500)
       const dispatch: Protocol.SignedDispatch = Protocol.signPayload(
         'dispatch',
         {
@@ -393,6 +397,7 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
           kind: 'dispatch',
           executionId: execution.id,
           action,
+          catalogDigest: stored.admitted.submitted.catalogDigest,
           actionDigest: execution.action_digest,
           requestDigest: execution.request_digest,
           audience: options.audience,

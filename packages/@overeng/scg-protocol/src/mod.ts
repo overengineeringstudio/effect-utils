@@ -179,6 +179,7 @@ export const Dispatch = Schema.Struct({
   kind: Schema.Literal('dispatch'),
   executionId: Uuid,
   action: Action,
+  catalogDigest: Digest,
   actionDigest: Digest,
   requestDigest: Digest,
   audience: Identifier,
@@ -292,6 +293,9 @@ export class ProtocolError extends Error {
 }
 export const digest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(canonical(value)).digest('hex')}`
+/** Executable semantics are pinned along with the exact account and arguments. */
+export const digestAction = (catalogDigest: string, action: Action): string =>
+  digest({ catalogDigest, action })
 export const signingBytes = (domain: string, payload: unknown, keyId: string): Uint8Array =>
   new TextEncoder().encode(
     canonical({ domain: `scg/${domain}/v1`, keyId, algorithm: 'Ed25519', payload }),

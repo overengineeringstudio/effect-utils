@@ -11,6 +11,10 @@ export default packageJson(
         { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
         { environment: 'node' },
       ),
+      './vectors': exportEntry(
+        { types: './dist/src/vectors.d.ts', default: './src/vectors.ts' },
+        { environment: 'isomorphic-es2024' },
+      ),
     },
   },
   catalog.compose({

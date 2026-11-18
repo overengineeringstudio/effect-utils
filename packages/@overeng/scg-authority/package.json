@@ -22,6 +22,7 @@
     "effect": "4.1.0"
   },
   "devDependencies": {
+    "@effect/platform-node": "4.1.0",
     "@effect/vitest": "4.1.0",
     "@types/bun": "1.4.2",
     "@types/node": "26.5.0",

@@ -1,9 +1,11 @@
 import { Database } from 'bun:sqlite'
 import { generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { NodeServices } from '@effect/platform-node'
+import { describe, it } from '@effect/vitest'
+import { Effect, Exit, FileSystem, Scope } from 'effect'
+import { afterEach, beforeEach, expect } from 'vitest'
 
 import * as Protocol from '@overeng/scg-protocol'
 
@@ -73,14 +75,27 @@ let time: number
 let authority: Authority
 let options: AuthorityOptions
 let calls: Protocol.SignedDispatch[]
+let releaseFixture: () => Promise<void>
 const open = (executor?: AuthorityOptions['executor']): Authority => {
   authority = createAuthority({ ...options, ...(executor === undefined ? {} : { executor }) })
   return authority
 }
 beforeEach(async () => {
-  const root = fileURLToPath(new URL('../../../../tmp/scg-authority-tests/', import.meta.url))
-  await mkdir(root, { recursive: true })
-  directory = await mkdtemp(`${root}case-`)
+  // The promise-based authority tests share a filesystem scope spanning their Vitest hooks.
+  const fixture = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = fileURLToPath(new URL('../../../../tmp/scg-authority-tests/', import.meta.url))
+      yield* fs.makeDirectory(root, { recursive: true })
+      const scope = yield* Scope.make()
+      const path = yield* fs.makeTempDirectoryScoped({ directory: root, prefix: 'case-' }).pipe(
+        Effect.provideService(Scope.Scope, scope),
+      )
+      return { path, scope }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+  directory = fixture.path
+  releaseFixture = () => Effect.runPromise(Scope.close(fixture.scope, Exit.succeed(undefined)))
   time = 1_800_000_000_000
   calls = []
   options = {
@@ -112,7 +127,9 @@ beforeEach(async () => {
       calls.push(dispatch)
       if (
         !Protocol.verifyPayload('dispatch', dispatch, authorityKeys.publicKey) ||
-        Protocol.digest(dispatch.payload.action) !== dispatch.payload.actionDigest ||
+        Protocol.digestAction(dispatch.payload.catalogDigest, dispatch.payload.action) !==
+          dispatch.payload.actionDigest ||
+        dispatch.payload.catalogDigest !== Protocol.digest(catalog) ||
         dispatch.payload.audience !== 'local-test-executor' ||
         dispatch.payload.deadline <= time
       )
@@ -123,8 +140,7 @@ beforeEach(async () => {
   open()
 })
 afterEach(async () => {
-  authority.close()
-  await rm(directory, { recursive: true, force: true })
+  try { authority.close() } finally { await releaseFixture() }
 })
 
 const request = (
@@ -302,7 +318,16 @@ describe('durable exact-grant authority', () => {
     expect(dispatch).toBeDefined()
     if (dispatch === undefined) throw new AuthorityError('missing-dispatch')
     expect(dispatch.payload.action).toEqual(action)
-    expect(dispatch.payload.actionDigest).toBe(Protocol.digest(action))
+    expect(dispatch.payload.catalogDigest).toBe(Protocol.digest(catalog))
+    expect(dispatch.payload.actionDigest).toBe(
+      Protocol.digestAction(Protocol.digest(catalog), action),
+    )
+    expect(
+      Protocol.digestAction(
+        Protocol.digest({ ...catalog, revision: 'different-semantics' }),
+        action,
+      ),
+    ).not.toBe(dispatch.payload.actionDigest)
     expect(dispatch.payload.requestDigest).toBe(execution.requestDigest)
     for (const changed of [
       { ...action, account: 'other-account' },
@@ -316,7 +341,9 @@ describe('durable exact-grant authority', () => {
         'authority-key',
         authorityKeys.privateKey,
       )
-      expect(Protocol.digest(reSigned.payload.action)).not.toBe(reSigned.payload.actionDigest)
+      expect(
+        Protocol.digestAction(reSigned.payload.catalogDigest, reSigned.payload.action),
+      ).not.toBe(reSigned.payload.actionDigest)
     }
     expect(() =>
       authority.submit(owner, { ...submitted(), action: { ...action, account: 'other-account' } }),

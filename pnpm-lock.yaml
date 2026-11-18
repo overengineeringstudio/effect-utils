@@ -2306,6 +2306,9 @@ importers:
         specifier: 4.1.0
         version: 4.1.0
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.0
+        version: 4.1.0(effect@4.1.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.1.0
         version: 4.1.0(effect@4.1.0)(vitest@5.0.3)
