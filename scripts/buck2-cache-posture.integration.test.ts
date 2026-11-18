@@ -223,7 +223,9 @@ describe('standalone Buck cache posture', () => {
   })
 
   it('routes optional archive seeding to the repository-private tier without enabling uploads', () => {
-    const tracked = buckConfigValues(readFileSync(new URL('../.buckconfig', import.meta.url), 'utf8'))
+    const tracked = buckConfigValues(
+      readFileSync(new URL('../.buckconfig', import.meta.url), 'utf8'),
+    )
     const origin = new URL(tracked['archive_origin.trusted_url_prefix'] ?? '')
     expect(origin.port).toBe('41069')
     expect(origin.pathname).toBe('/cas/')
