@@ -572,8 +572,9 @@ TypeScript lowering; unrelated runtime requirements and JSX transforms still app
 
 `buck2 build //:quick` checks deterministic declared inputs, including exact
 work-storage resource parity. Full quick parity additionally needs the bounded
-checkout contracts exposed by `buck2 test //:check-quick`. Those tests are local,
-uncached observations of Git inventories, capability publication, daemon
+checkout contracts exposed by `buck2 run //:check-quick`. This native run preserves
+caller-owned policy, identity and trace context. The uncached checks observe Git
+inventories, capability publication, daemon
 lifecycle, Nix imports, generated bindings, hook isolation, and interruption.
 They are not hermetic build actions or remote-execution candidates.
 
@@ -585,11 +586,13 @@ publisher. The profile's stable `quick-contracts` symlink exposes the same decla
 capability. Invoke its `bin/quick-contracts-prepare ROOT GENERATION` **before**
 running Buck; `GENERATION/profile` must root the selected profile.
 Preparation uses the pinned retained task graph to publish the
-source-generator and standalone-staging views; the Buck test never calls devenv
+source-generator and standalone-staging views; the Buck run never calls devenv
 or performs that setup itself.
 
-Preparation and execution preserve `WORKTREE_POLICY_PATH` guard directories
-(empty for standalone users) ahead of the declared Nix runtime closure. A receipt
+Preparation and execution preserve `WORKTREE_POLICY_PATH` guard directories and
+the canonical immutable operator admission package ahead of the declared Nix runtime
+closure; no ambient executable directory is forwarded. The real gate-slot lifecycle
+regression requires the operator-provided Nix-installed `gate-slot`. A receipt
 binds prepared views to the evaluated task authority and selected capability
 profile. Tracked-source changes invalidate the immutable projection: stage new
 source files, rebuild the profile, republish it, and prepare again. All existing

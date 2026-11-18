@@ -11,7 +11,7 @@ def _quick_contracts_impl(ctx):
     inputs = []
     for source_set in ctx.attrs.source_sets:
         inputs.extend(source_set[StaticSourceSetInfo].files)
-    # Build the admitted deterministic aggregate first. These live tests have no
+    # Build the admitted deterministic aggregate first. These live checks have no
     # verdict action: checkout census, daemons, Nix and interruption are runtime
     # observations and must execute even when every declared byte is unchanged.
     inputs.extend(ctx.attrs.quick[DefaultInfo].default_outputs)
@@ -22,23 +22,8 @@ def _quick_contracts_impl(ctx):
     )
     return [
         DefaultInfo(other_outputs = inputs),
+        # Native run preserves caller-owned profile, policy and trace context.
         RunInfo(args = command),
-        ExternalRunnerTestInfo(
-            type = "custom",
-            command = [command],
-            env = {},
-            labels = ["bounded-checkout-contract", "requires-prepared-task-authority"],
-            contacts = [],
-            default_executor = CommandExecutorConfig(
-                local_enabled = True,
-                remote_enabled = False,
-                remote_cache_enabled = False,
-                allow_cache_uploads = False,
-            ),
-            run_from_project_root = True,
-            use_project_relative_paths = False,
-            supports_test_execution_caching = False,
-        ),
     ]
 
 quick_contracts = cache_guarded_rule(
