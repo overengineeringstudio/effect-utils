@@ -20,7 +20,7 @@ Use Buck for check verdicts; retained devenv tasks handle setup and the broader 
 - **Testing**: `devenv tasks run test:run` (all) or `devenv tasks run test:<pkg>` (single package) or `devenv tasks run test:watch`
 - **Dependencies**: `devenv tasks run buck2:editor:publish`
 - **Genie**: `devenv tasks run genie:run` or `devenv tasks run genie:watch` or `devenv tasks run genie:check`
-- **Quick check**: `python3 scripts/worktree-env.py run -- buck2 test //:check-quick` after full-profile preparation below. Broader checks still use `devenv tasks run check:all`.
+- **Quick check**: `python3 scripts/worktree-env.py run -- buck2 run //:check-quick` after full-profile preparation below. Broader checks still use `devenv tasks run check:all`.
 
 For devenv commands, `--no-tui` shows all output. Buck uses the explicit Nix-built PATH preparation below rather than entering `devenv shell` for each command.
 
@@ -41,10 +41,13 @@ For the complete quick contract, evaluate the retained task/tool authority once:
 `WORKTREE_CAPABILITIES_PROFILE="$(devenv build effectUtils.quickContracts.capabilities --no-tui | python3 -c 'import json,sys; print(json.load(sys.stdin)["effectUtils.quickContracts.capabilities"])')"`
 then `export WORKTREE_CAPABILITIES_PROFILE` and run `python3 scripts/worktree-env.py prepare`.
 This full-profile setup explicitly runs the retained standalone source-staging
-task; the subsequent `buck2 test //:check-quick` owns all check verdicts and
+task; the subsequent `buck2 run //:check-quick` owns all check verdicts and
 reuses the authenticated published profile in fresh terminals. Refresh after
 source changes. The legacy `devenv tasks run check:quick` remains available until
 full cross-platform parity is proved; no devenv tasks are removed.
+This live run retains caller-owned policy/identity/trace context. Its real admission
+lifecycle guard requires the operator's Nix-installed `gate-slot`; only that immutable
+package and agent-policy guard directories are retained, never ambient compiler paths.
 Build/test/run retain the existing Buck identity/converter/export boundary and
 emit a real environment entry span when OTLP delivery is configured. Pipeline
 spools remain pipeline-owned; standalone evidence is retained under `.worktree-tools/otel`.

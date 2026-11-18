@@ -898,7 +898,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
         buck2TrustedCacheWriterStep({
           name: 'Quick contracts (Buck)',
           env: githubTokenEnv(),
-          run: runBuckChecks('test //:check-quick', true),
+          run: runBuckChecks('run //:check-quick', true),
         }),
         frozenLockfileStep,
         buck2TrustedCacheWriterStep({

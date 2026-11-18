@@ -38,7 +38,7 @@ test('Buck quick contracts retain the existing pipeline trace boundary', () => {
     (candidate) => 'name' in candidate && candidate.name === 'Quick contracts (Buck)',
   )
   expect(step).toBeDefined()
-  expect('run' in step! && step.run).toContain('buck2 test //:check-quick')
+  expect('run' in step! && step.run).toContain('buck2 run //:check-quick')
   expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
 })
 
