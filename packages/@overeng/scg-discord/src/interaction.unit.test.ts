@@ -1,11 +1,12 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 
 import { it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import { discordPublicKey, verifyInteraction } from './interaction.ts'
 
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 const discord = generateKeyPairSync('ed25519')
 const stranger = generateKeyPairSync('ed25519')
 const nowMs = 1_800_000_000_000
@@ -69,7 +70,7 @@ for (const [name, changed] of [
 it.effect('accepts signed PING without a user but never bypasses signature validation', () =>
   Effect.gen(function* () {
     const ping = Buffer.from(
-      JSON.stringify({ id: 'ping', application_id: 'test-app', token: 'ping-token', type: 1 }),
+      encodeJson({ id: 'ping', application_id: 'test-app', token: 'ping-token', type: 1 }),
     )
     const signed = sign(
       null,

@@ -36,10 +36,14 @@ export interface AuthorityClient {
 }
 /** Delivery boundary for original cards and private inspection replies. */
 export interface DiscordDelivery {
-  readonly post: (options: { readonly channelId: string; readonly message: DiscordMessage }) =>
-    Effect.Effect<{ readonly id: string; readonly channel_id: string }, DiscordError>
-  readonly edit: (options: { readonly card: Card; readonly message: DiscordMessage }) =>
-    Effect.Effect<void, DiscordError>
+  readonly post: (options: {
+    readonly channelId: string
+    readonly message: DiscordMessage
+  }) => Effect.Effect<{ readonly id: string; readonly channel_id: string }, DiscordError>
+  readonly edit: (options: {
+    readonly card: Card
+    readonly message: DiscordMessage
+  }) => Effect.Effect<void, DiscordError>
   readonly ephemeral: (options: {
     readonly applicationId: string
     readonly token: string
@@ -67,12 +71,15 @@ export interface InteractionInput {
   readonly timestamp: string | undefined
   readonly nowMs: number
   /** Flush/end the HTTP response; false means the deadline elapsed, so do no remote work. */
-  readonly acknowledge: (options: { readonly status: number; readonly body: { readonly type: number } }) => boolean
+  readonly acknowledge: (options: {
+    readonly status: number
+    readonly body: { readonly type: number }
+  }) => boolean
 }
 /** Durable lifecycle separating acceptance from final visible outcome delivery. */
 export interface DiscordSigner {
   readonly handle: (input: InteractionInput) => Effect.Effect<void, InteractionError | DiscordError>
-  readonly recover: () => Effect.Effect<void, InteractionError | DiscordError>
+  readonly recover: Effect.Effect<void, InteractionError | DiscordError>
   readonly submit: (job: Job) => Effect.Effect<void, InteractionError | DiscordError>
   readonly close: (options: {
     readonly card: Card
@@ -88,7 +95,12 @@ const io = <T>({ operation, run }: { readonly operation: string; readonly run: (
   Effect.try({ try: run, catch: (cause) => new DiscordError({ operation, cause }) })
 
 /** Composes verification, replay control, signing and serialized card reconciliation. */
-export const makeSigner = ({ config, store, authority, discord }: {
+export const makeSigner = ({
+  config,
+  store,
+  authority,
+  discord,
+}: {
   readonly config: SignerConfig
   readonly store: DiscordStore
   readonly authority: AuthorityClient
@@ -115,43 +127,70 @@ export const makeSigner = ({ config, store, authority, discord }: {
       if (digest(text) !== origin.digest) return yield* new InteractionError({ reason: 'binding' })
       originWords = { digest: origin.digest, text }
     }
-    const result = renderPendingCard({ pending: card.record.payload, ids: {
-      options: Object.fromEntries(card.controls.map(({ optionId, id }) => [optionId, id])),
-      inspect: card.inspectId,
-      words: card.wordsId,
-    }, env: config, originWords: originWords })
+    const result = renderPendingCard({
+      pending: card.record.payload,
+      ids: {
+        options: Object.fromEntries(card.controls.map(({ optionId, id }) => [optionId, id])),
+        inspect: card.inspectId,
+        words: card.wordsId,
+      },
+      env: config,
+      originWords: originWords,
+    })
     if (result._tag === 'Rejected') return yield* new InteractionError({ reason: 'body' })
     return result.message
   })
-  const publishUnlocked = Effect.fn('scg.discord.publish')(function* ({ record, channelId }: {
+  const publishUnlocked = Effect.fn('scg.discord.publish')(function* ({
+    record,
+    channelId,
+  }: {
     readonly record: SignedPending
     readonly channelId: string
   }) {
     if (verified(record) === false) return yield* new InteractionError({ reason: 'signature' })
-    if ((yield* io({ operation: 'find-publication', run: () => store.has(record.payload.executionId) })) === true) {
-      const existing = yield* io({ operation: 'find-open-publication', run: () =>
-        store
-          .cards()
-          .find((card) => card.record.payload.executionId === record.payload.executionId) })
+    if (
+      (yield* io({
+        operation: 'find-publication',
+        run: () => store.has(record.payload.executionId),
+      })) === true
+    ) {
+      const existing = yield* io({
+        operation: 'find-open-publication',
+        run: () =>
+          store
+            .cards()
+            .find((card) => card.record.payload.executionId === record.payload.executionId),
+      })
       // A failed activation PATCH leaves an open journal entry. Retry the exact
       // durable control mapping, but never reactivate a closed or resolved review.
       if (existing !== undefined) {
         const status = yield* authority.status(record.payload.executionId)
-        if (status.state === 'pending') yield* discord.edit({ card: existing, message: yield* render(existing) })
+        if (status.state === 'pending')
+          yield* discord.edit({ card: existing, message: yield* render(existing) })
         else yield* closeUnlocked({ card: existing, status: status, elsewhere: true })
       }
       return
     }
     // Never expose an enabled control before its exact mapping is durably journaled.
-    const posted = yield* discord.post({ channelId: channelId, message: {
-      flags: 32768,
-      allowed_mentions: { parse: [] },
-      components: [{ type: 10, content: 'Authenticating review. No decision is available yet.' }],
-    } })
-    const card = yield* io({ operation: 'add-card', run: () => store.add({ record: record, channelId: posted.channel_id, messageId: posted.id }) })
+    const posted = yield* discord.post({
+      channelId: channelId,
+      message: {
+        flags: 32768,
+        allowed_mentions: { parse: [] },
+        components: [{ type: 10, content: 'Authenticating review. No decision is available yet.' }],
+      },
+    })
+    const card = yield* io({
+      operation: 'add-card',
+      run: () => store.add({ record: record, channelId: posted.channel_id, messageId: posted.id }),
+    })
     yield* discord.edit({ card: card, message: yield* render(card) })
   })
-  const closeUnlocked = Effect.fn('scg.discord.close')(function* ({ card, status: observed, elsewhere }: {
+  const closeUnlocked = Effect.fn('scg.discord.close')(function* ({
+    card,
+    status: observed,
+    elsewhere,
+  }: {
     readonly card: Card
     readonly status: Status
     readonly elsewhere: boolean
@@ -161,7 +200,8 @@ export const makeSigner = ({ config, store, authority, discord }: {
     if (
       store
         .cards()
-        .some((item) => item.record.payload.executionId === card.record.payload.executionId) === false
+        .some((item) => item.record.payload.executionId === card.record.payload.executionId) ===
+      false
     )
       return
     const status = yield* authority.status(card.record.payload.executionId)
@@ -174,25 +214,42 @@ export const makeSigner = ({ config, store, authority, discord }: {
       return yield* new InteractionError({ reason: 'binding' })
     }
     if (status.state === 'pending') return
-    const rendered = renderClosedCard({ pending: card.record.payload, closure: { _tag: 'Resolved', state: status.state, decidedElsewhere: elsewhere }, env: config })
+    const rendered = renderClosedCard({
+      pending: card.record.payload,
+      closure: { _tag: 'Resolved', state: status.state, decidedElsewhere: elsewhere },
+      env: config,
+    })
     if (rendered._tag === 'Rejected') return yield* new InteractionError({ reason: 'body' })
     yield* discord.edit({ card: card, message: rendered.message })
     // Reservation removes controls, but its mapping remains durable until the
     // actual execution outcome has been visibly delivered.
     if (status.state !== 'reserved')
-      yield* io({ operation: 'close-card', run: () => store.closed(card.record.payload.executionId) })
+      yield* io({
+        operation: 'close-card',
+        run: () => store.closed(card.record.payload.executionId),
+      })
   })
   const publish: DiscordSigner['publish'] = (options) =>
     publishUnlocked(options).pipe(Semaphore.withPermits(edits, 1))
   const close: DiscordSigner['close'] = (options) =>
     closeUnlocked(options).pipe(Semaphore.withPermits(edits, 1))
   const submit = Effect.fn('scg.discord.submit')(function* (job: Job) {
-    if (verified(job.card.record) === false) return yield* new InteractionError({ reason: 'signature' })
-    const candidate = signPayload({ domain: 'decision', payload: job.decision, keyId: config.signerKeyId, key: config.signerPrivateKey })
+    if (verified(job.card.record) === false)
+      return yield* new InteractionError({ reason: 'signature' })
+    const candidate = signPayload({
+      domain: 'decision',
+      payload: job.decision,
+      keyId: config.signerKeyId,
+      key: config.signerPrivateKey,
+    })
     const previous = yield* authority.status(job.card.record.payload.executionId)
     const status = previous.state === 'pending' ? yield* authority.decide(candidate) : previous
     if (status.state === 'pending') return yield* new InteractionError({ reason: 'unavailable' })
-    yield* close({ card: job.card, status: status, elsewhere: status.decisionDigest !== digest(candidate) })
+    yield* close({
+      card: job.card,
+      status: status,
+      elsewhere: status.decisionDigest !== digest(candidate),
+    })
     yield* io({ operation: 'complete-job', run: () => store.complete(job.interactionId) })
   })
   const handle = Effect.fn('scg.discord.handle')(function* (input: InteractionInput) {
@@ -210,7 +267,10 @@ export const makeSigner = ({ config, store, authority, discord }: {
     const customId = interaction.data?.custom_id
     if (message === undefined || customId === undefined)
       return yield* new InteractionError({ reason: 'binding' })
-    const card = yield* io({ operation: 'find-card', run: () => store.find({ messageId: message.id, channelId: message.channel_id }) })
+    const card = yield* io({
+      operation: 'find-card',
+      run: () => store.find({ messageId: message.id, channelId: message.channel_id }),
+    })
     if (card === undefined || verified(card.record) === false)
       return yield* new InteractionError({ reason: 'binding' })
     const selected = card.controls.find(({ id }) => id === customId)
@@ -241,21 +301,34 @@ export const makeSigner = ({ config, store, authority, discord }: {
         : {
             interactionId: interaction.id,
             card,
-            decision: decisionFor({ card: card, optionId: option.optionId, principalId: principalId, surfaceId: config.surfaceId, decidedAt: input.nowMs }),
+            decision: decisionFor({
+              card: card,
+              optionId: option.optionId,
+              principalId: principalId,
+              surfaceId: config.surfaceId,
+              decidedAt: input.nowMs,
+            }),
           }
     if (
-      (yield* io({ operation: 'claim-interaction', run: () =>
-        store.claim({ id: interaction.id, signedAt: Number(input.timestamp) * 1000, job: job }) })) === false
+      (yield* io({
+        operation: 'claim-interaction',
+        run: () =>
+          store.claim({ id: interaction.id, signedAt: Number(input.timestamp) * 1000, job: job }),
+      })) === false
     ) {
       return yield* new InteractionError({ reason: 'replay' })
     }
     if (input.acknowledge({ status: 200, body: { type: 6 } }) === false)
       return yield* new InteractionError({ reason: 'timestamp' })
-    if (job !== undefined) yield* io({ operation: 'acknowledge-job', run: () => store.acknowledged(interaction.id) })
+    if (job !== undefined)
+      yield* io({ operation: 'acknowledge-job', run: () => store.acknowledged(interaction.id) })
     // All remote I/O occurs after the deferred-update ACK; receipt, never the click, closes the card.
     const current = yield* authority.pending(card.record.payload.executionId)
     if (verified(current) === false || digest(current.payload) !== digest(card.record.payload)) {
-      yield* io({ operation: 'discard-invalid-candidate', run: () => store.complete(interaction.id) })
+      yield* io({
+        operation: 'discard-invalid-candidate',
+        run: () => store.complete(interaction.id),
+      })
       return yield* new InteractionError({ reason: 'binding' })
     }
     if (inspect === true || words === true) {
@@ -273,19 +346,28 @@ export const makeSigner = ({ config, store, authority, discord }: {
         const text = yield* config.readOriginWords(origin.locator)
         if (digest(text) !== origin.digest)
           return yield* new InteractionError({ reason: 'binding' })
-        reply = renderWordsReply({ pending: current.payload, words: { digest: origin.digest, text }, env: config })
+        reply = renderWordsReply({
+          pending: current.payload,
+          words: { digest: origin.digest, text },
+          env: config,
+        })
       } else reply = renderInspectReply({ pending: current.payload, env: config })
       if (reply._tag === 'Rejected') return yield* new InteractionError({ reason: 'body' })
-      yield* discord.ephemeral({ applicationId: interaction.application_id, token: interaction.token, message: reply.message })
+      yield* discord.ephemeral({
+        applicationId: interaction.application_id,
+        token: interaction.token,
+        message: reply.message,
+      })
     } else if (job !== undefined) yield* submit(job)
   })
   /** Before accepting traffic: reconcile durable outbox, then retire every stale original card. */
   const recover = Effect.fn('scg.discord.recover')(function* () {
     yield* io({ operation: 'discard-unacknowledged', run: () => store.discardUnacknowledged() })
-    for (const job of yield* io({ operation: 'load-jobs', run: () => store.jobs() })) yield* submit(job)
+    for (const job of yield* io({ operation: 'load-jobs', run: () => store.jobs() }))
+      yield* submit(job)
     for (const card of yield* io({ operation: 'load-cards', run: () => store.cards() })) {
       yield* publish({ record: card.record, channelId: card.channelId })
     }
   })
-  return { handle, recover, submit, close, publish }
+  return { handle, recover: recover(), submit, close, publish }
 }

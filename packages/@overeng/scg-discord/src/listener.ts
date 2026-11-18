@@ -106,12 +106,15 @@ export const listenDiscordInteractions = Effect.fn('scg.discord.listen')(functio
     }),
     (database) => Effect.sync(() => database.close()),
   )
-  yield* options.signer.recover()
+  yield* options.signer.recover
   yield* Effect.tryPromise({
     try: () => reclaimStaleSocket(options.socketPath),
     catch: (cause) => new DiscordError({ operation: 'socket-recovery', cause }),
   })
-  const handler = makeInteractionHttpHandler({ signer: options.signer, onFailure: options.onFailure })
+  const handler = makeInteractionHttpHandler({
+    signer: options.signer,
+    onFailure: options.onFailure,
+  })
   const server = yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: () => {

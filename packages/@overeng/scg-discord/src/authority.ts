@@ -37,22 +37,32 @@ export const makeAuthorityClient = Effect.fn('scg.discord.authorityClient')(func
   const client = yield* HttpClient.HttpClient
   const request = Effect.fn('scg.discord.authorityRequest')(function* <
     TSchema extends Schema.ConstraintDecoder<unknown>,
-  >({ method, path, body, schema }: {
+  >({
+    method,
+    path,
+    body,
+    schema,
+  }: {
     readonly method: 'GET' | 'POST'
     readonly path: string
     readonly body: SignedDecision | undefined
     readonly schema: TSchema
   }) {
-    const auth = signPayload({ domain: 'auth-request', payload: {
-      epoch: 'scg-experiment-v1',
-      method,
-      path,
-      bodyDigest: digest(body ?? null),
-      nonce: randomUUID(),
-      issuedAt: Date.now(),
-    }, keyId: config.keyId, key: config.privateKey })
+    const auth = signPayload({
+      domain: 'auth-request',
+      payload: {
+        epoch: 'scg-experiment-v1',
+        method,
+        path,
+        bodyDigest: digest(body ?? null),
+        nonce: randomUUID(),
+        issuedAt: Date.now(),
+      },
+      keyId: config.keyId,
+      key: config.privateKey,
+    })
     const baseRequest = HttpClientRequest.make(method)(new URL(path, base)).pipe(
-      HttpClientRequest.setHeader('x-scg-auth', JSON.stringify(auth)),
+      HttpClientRequest.setHeader('x-scg-auth', encodeJson(auth)),
     )
     const req =
       body === undefined ? baseRequest : HttpClientRequest.bodyJsonUnsafe(body)(baseRequest)
@@ -65,21 +75,43 @@ export const makeAuthorityClient = Effect.fn('scg.discord.authorityClient')(func
     }
     return yield* response.json.pipe(Effect.flatMap(Schema.decodeUnknownEffect(schema)))
   })
-  const wrap = <T, E, R>(effect: Effect.Effect<T, E, R>) =>
-    effect.pipe(
-      Effect.mapError((cause) => new DiscordError({ operation: 'authority-request', cause })),
-    )
   return {
     pending: (executionId: string) =>
       wrap(
-        request({ method: 'GET', path: `${routes.pending}${encodeURIComponent(executionId)}`, body: undefined, schema: SignedPending }),
+        request({
+          method: 'GET',
+          path: `${routes.pending}${encodeURIComponent(executionId)}`,
+          body: undefined,
+          schema: SignedPending,
+        }),
       ),
     status: (executionId: string) =>
-      wrap(request({ method: 'GET', path: `${routes.status}${encodeURIComponent(executionId)}`, body: undefined, schema: Status })),
-    decide: (decision: SignedDecision) => wrap(request({ method: 'POST', path: routes.decision, body: decision, schema: Status })),
+      wrap(
+        request({
+          method: 'GET',
+          path: `${routes.status}${encodeURIComponent(executionId)}`,
+          body: undefined,
+          schema: Status,
+        }),
+      ),
+    decide: (decision: SignedDecision) =>
+      wrap(request({ method: 'POST', path: routes.decision, body: decision, schema: Status })),
     sync: (cursor: number) =>
-      wrap(request({ method: 'GET', path: `${routes.sync}?cursor=${cursor}`, body: undefined, schema: Sync })),
+      wrap(
+        request({
+          method: 'GET',
+          path: `${routes.sync}?cursor=${cursor}`,
+          body: undefined,
+          schema: Sync,
+        }),
+      ),
   } satisfies AuthorityClient & {
-    readonly sync: (cursor: number) => Effect.Effect<typeof Sync.Type, DiscordError>
+    readonly sync: (cursor: number) => Effect.Effect<Sync, DiscordError>
   }
 })
+const wrap = <T, E, R>(effect: Effect.Effect<T, E, R>) =>
+  effect.pipe(
+    Effect.mapError((cause) => new DiscordError({ operation: 'authority-request', cause })),
+  )
+
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
