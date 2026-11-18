@@ -349,6 +349,7 @@ mod linux {
         reference: &Path,
         pid_dir: &Path,
         inodes: &BTreeMap<(u64, u64), InodeFootprint>,
+        native_mounts: &mut BTreeMap<u64, fs::File>,
     ) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
         let held = match fs::OpenOptions::new()
@@ -377,11 +378,18 @@ mod linux {
         if !metadata.is_dir() && !metadata.is_file() {
             return Ok(());
         }
-        native_mount_proof(&held, pid_dir, reference)
+        let mount = mount_id(&held)?;
+        if !native_mounts.contains_key(&mount) {
+            native_mount_proof(mount, pid_dir, reference)?;
+            // Keep one reference per proved native mount. This pins its mount
+            // ID against reuse, so later references need no repeated mountinfo
+            // allocation/parsing even if tasks change their mount namespace.
+            native_mounts.insert(mount, held);
+        }
+        Ok(())
     }
 
-    fn native_mount_proof(held: &fs::File, pid_dir: &Path, reference: &Path) -> Result<()> {
-        let mount = mount_id(held)?;
+    fn native_mount_proof(mount: u64, pid_dir: &Path, reference: &Path) -> Result<()> {
         let mounts = fs::read_to_string(pid_dir.join("mountinfo"))
             .map_err(|error| format!("process mount visibility incomplete: {error}"))?;
         for line in mounts.lines() {
@@ -534,6 +542,7 @@ mod linux {
         status: &str,
         ignored_directory: Option<i32>,
         inodes: &BTreeMap<(u64, u64), InodeFootprint>,
+        native_mounts: &mut BTreeMap<u64, fs::File>,
     ) -> Result<bool> {
         let cwd = directory.join("cwd");
         match fs::read_link(&cwd) {
@@ -544,7 +553,7 @@ mod linux {
                     target.display()
                 ));
             }
-            Ok(_) => reference_inode_proof(&cwd, pid_dir, inodes)?,
+            Ok(_) => reference_inode_proof(&cwd, pid_dir, inodes, native_mounts)?,
             Err(error) if process_gone(pid_dir, &error) => return Ok(true),
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(error)
@@ -605,7 +614,7 @@ mod linux {
                             target.display()
                         ));
                     }
-                    reference_inode_proof(&path, pid_dir, inodes)?;
+                    reference_inode_proof(&path, pid_dir, inodes, native_mounts)?;
                 }
                 Err(error) if process_gone(pid_dir, &error) => return Ok(true),
                 // A descriptor can close while its process remains live.
@@ -642,6 +651,7 @@ mod linux {
         let entries =
             fs::read_dir(proc_root).map_err(|e| format!("cannot inventory processes: {e}"))?;
         let uid = own_uid()?;
+        let mut native_mounts = BTreeMap::new();
         for entry in entries {
             let entry = entry.map_err(|e| e.to_string())?;
             if !entry
@@ -681,7 +691,7 @@ mod linux {
             } else {
                 None
             };
-            if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored, inodes)? {
+            if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored, inodes, &mut native_mounts)? {
                 continue;
             }
             // A leader can exit while worker threads retain cwd and open files.
@@ -698,7 +708,7 @@ mod linux {
             let mut observed = false;
             for task in tasks {
                 let task = task.map_err(|error| error.to_string())?.path();
-                if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored, inodes)? {
+                if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored, inodes, &mut native_mounts)? {
                     observed = true;
                 } else if task.try_exists().map_err(|error| error.to_string())? {
                     return Err(format!(
@@ -726,7 +736,7 @@ mod linux {
         if let Some(proc_root) = env::var_os("PNPM_GC_TEST_PROC_ROOT") {
             return process_proof_ignoring_directory(Path::new(&proc_root), root, ignored, &footprint.inodes);
         }
-        native_mount_proof(admitted_directory, Path::new("/proc/self"), root)?;
+        native_mount_proof(mount_id(admitted_directory)?, Path::new("/proc/self"), root)?;
         process_proof_ignoring_directory(Path::new("/proc"), root, ignored, &footprint.inodes)
     }
 
@@ -1503,7 +1513,7 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
                 let inventory = footprint(&root.join("store")).unwrap();
                 for reference in [root.join("alias"), root.join("alias/payload")] {
                     assert!(
-                        reference_inode_proof(&reference, Path::new("/proc/self"), &inventory.inodes)
+                        reference_inode_proof(&reference, Path::new("/proc/self"), &inventory.inodes, &mut BTreeMap::new())
                             .unwrap_err().contains("live process inode reference")
                     );
                 }
@@ -1541,16 +1551,16 @@ exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --n
             for filesystem in ["overlay", "fuse", "fuse.zfs", "nfs", "unknown"] {
                 fs::write(root.join("mountinfo"),
                     format!("{mount} 0 0:0 / / rw - {filesystem} fixture rw\n")).unwrap();
-                assert!(native_mount_proof(&directory, &root, &root)
+                assert!(native_mount_proof(mount, &root, &root)
                     .unwrap_err().contains("backing identity unknown"));
             }
             fs::write(root.join("mountinfo"), "").unwrap();
-            assert!(native_mount_proof(&directory, &root, &root).is_err());
+            assert!(native_mount_proof(mount, &root, &root).is_err());
             fs::write(root.join("mountinfo"), "malformed").unwrap();
-            assert!(native_mount_proof(&directory, &root, &root).is_err());
+            assert!(native_mount_proof(mount, &root, &root).is_err());
             fs::write(root.join("mountinfo"),
                 format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
-            assert!(native_mount_proof(&directory, &root, &root).is_ok());
+            assert!(native_mount_proof(mount, &root, &root).is_ok());
         }
 
         #[test]
