@@ -387,6 +387,11 @@ The `mr` product supplies its existing teardown helper through the explicit
 Its curated GNU coreutils provider measures apparent logical size, including sparse
 and compressed payloads; allocated disk usage and exclusive reclamation are separate.
 
+Preparation reserves host-store-wide count and logical-byte capacity before
+creating a fixed-path detached root with an atomic native Git lock. It publishes
+readiness only after installation and source/process proofs; failed preparation
+retains the locked root and reconciles partial growth into its charged bytes.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
