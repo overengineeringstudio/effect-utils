@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:a656defa659abb5a98fcf5c27b73a1e78bd1199fbf72d4237ed43dbad277b449",
+  "lockfileFingerprint": "sha256:5b9e3bda74827d09c23dfdf9d2b086bbd619cf33ae20d6272dda01f7b8666aff",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -1743,6 +1743,15 @@
       "sha256": "14e60a1caebb0dc2e96e4cd5ae6e24e0cc2c8a1065f64e79a45743853ebb81ea",
       "sizeBytes": 821797
     },
+    "@oxc-parser/binding-android-arm-eabi@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-9/yHxYVeyVzS3CEilO17axbtudUEmySuCL5x4nRz63nld21u4sdxXNhAOLeLCw/c8puAu9RmMb1+FWpq6jJYeQ==",
+      "packageIdentity": "@oxc-parser/binding-android-arm-eabi@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-android-arm-eabi/-/binding-android-arm-eabi-0.159.0.tgz",
+      "sha256": "7efbb069b6216de5a394a533d11844d4165755566fc57b443e727e2bbc2ff53e",
+      "sizeBytes": 794377
+    },
     "@oxc-parser/binding-android-arm64@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1751,6 +1760,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-android-arm64/-/binding-android-arm64-0.127.0.tgz",
       "sha256": "f8bc226fcba3ce539b15b96a073dfe63a9b5be271a699193d007e047e759d8e5",
       "sizeBytes": 949529
+    },
+    "@oxc-parser/binding-android-arm64@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-w9/NlA/feGMweV8DD1yzNwRAgusdGawCxqK+p3bVhDhXDeg8ahIeJxK/iVTOSA8s4dcnRS8hZYumznAFiKMf5Q==",
+      "packageIdentity": "@oxc-parser/binding-android-arm64@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-android-arm64/-/binding-android-arm64-0.159.0.tgz",
+      "sha256": "d3410c3c2dae2e703ee7ba1fb3768130297f7fd25eeece59f377428cc78351d8",
+      "sizeBytes": 950290
     },
     "@oxc-parser/binding-darwin-arm64@0.127.0": {
       "bins": {},
@@ -1761,6 +1779,15 @@
       "sha256": "2db0aa463f72c19eaef18b7dd10baafa23e6272e4f20580ce98e55588224bb21",
       "sizeBytes": 895484
     },
+    "@oxc-parser/binding-darwin-arm64@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-ybQsbjJR9K/vpmUFfpp8mz7gUPVUZRgI4Oci+g0QwKZAh0m5fSzayXvGrrBIIEQwYPa+Q83kvFUluc0RlNZxTg==",
+      "packageIdentity": "@oxc-parser/binding-darwin-arm64@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-darwin-arm64/-/binding-darwin-arm64-0.159.0.tgz",
+      "sha256": "85a994abe160bcf7c5c64d36ac28206b86a4d1e2f2e757fcf16af7ba068d1340",
+      "sizeBytes": 1264382
+    },
     "@oxc-parser/binding-darwin-x64@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1769,6 +1796,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-darwin-x64/-/binding-darwin-x64-0.127.0.tgz",
       "sha256": "c8b98a2b19963992f99e77dee011c7aa7657eaffc7acf98884292e7189b9cd47",
       "sizeBytes": 941937
+    },
+    "@oxc-parser/binding-darwin-x64@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-J2wQ6NVZGRgnIaw1CHotZPwIqFtLb3Bm/rh5Bsa45/kaeRqYN21IiaSY0CM7HPd49tt5lWkLEgLzWF1RcGY/nw==",
+      "packageIdentity": "@oxc-parser/binding-darwin-x64@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-darwin-x64/-/binding-darwin-x64-0.159.0.tgz",
+      "sha256": "54202d65af6aad54bd20d081c64493c18c480c627bf0177478b5e50fa17fd86d",
+      "sizeBytes": 1352743
     },
     "@oxc-parser/binding-freebsd-x64@0.127.0": {
       "bins": {},
@@ -1779,6 +1815,15 @@
       "sha256": "b5c9bb1c9be0842dcdb215a0a2aeeaf1ffc57b1c34f34166e256e77864883bab",
       "sizeBytes": 943857
     },
+    "@oxc-parser/binding-freebsd-x64@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-2m2Ei566aZdgHw1lpdEsYFJyvfTfMfYqZa7FqYSdLAsatNI4uj1G7dt9TuRKzSC8sd870MvIK2j/jBqHwYRo+g==",
+      "packageIdentity": "@oxc-parser/binding-freebsd-x64@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-freebsd-x64/-/binding-freebsd-x64-0.159.0.tgz",
+      "sha256": "aaa4d20b8ac3c17629fcc6cca7466f4752ec0073c555076fb9dd9bf5d7ff2c25",
+      "sizeBytes": 936416
+    },
     "@oxc-parser/binding-linux-arm-gnueabihf@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1787,6 +1832,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-0.127.0.tgz",
       "sha256": "264a56288edf2c5a0981858f1fa24b4c5ea9b1b4906ee9ae6b358f09b7c837cb",
       "sizeBytes": 918641
+    },
+    "@oxc-parser/binding-linux-arm-gnueabihf@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-E2MRPHA/CKm81FU6wOoFbuGt7AoEdQYOjTiUgpNp5UgSFTX8Na5iR986TiG4GXxMaxHiXBMqRF2UXSqrVmUzrQ==",
+      "packageIdentity": "@oxc-parser/binding-linux-arm-gnueabihf@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-0.159.0.tgz",
+      "sha256": "5c48dc8fa70e933e25a842eac35db504ac5fa4fe081758d358cec64ec1a00d37",
+      "sizeBytes": 887057
     },
     "@oxc-parser/binding-linux-arm-musleabihf@0.127.0": {
       "bins": {},
@@ -1797,6 +1851,15 @@
       "sha256": "9061456cd96661968b5ca9c921b7f20d66c5633f416ff45b00f3b8b5b82feece",
       "sizeBytes": 914880
     },
+    "@oxc-parser/binding-linux-arm-musleabihf@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-BMJjs3iDvWef8t/FoBdhF7RpyNTk5Zm/6BveT+6JNsl2FK6jy4zG71T8rfJbYEyP9TRJ7jnm8Glb0O6VeJXIrA==",
+      "packageIdentity": "@oxc-parser/binding-linux-arm-musleabihf@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-arm-musleabihf/-/binding-linux-arm-musleabihf-0.159.0.tgz",
+      "sha256": "8892829f348cdf316345f3949b41518f5a28c32f47949830cfdf8bc791a273ea",
+      "sizeBytes": 881259
+    },
     "@oxc-parser/binding-linux-arm64-gnu@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1805,6 +1868,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-0.127.0.tgz",
       "sha256": "f16cd9e11b1c16b73b3a61d5d8f9cb9e396f2f4e1a71f4eeca2b4b31dfa3fa51",
       "sizeBytes": 1000019
+    },
+    "@oxc-parser/binding-linux-arm64-gnu@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-O+kPugGeoMKraX3ItOs0U0d6DvWVcgVf9jA6YaGmEnngJIBdcIU/DFmNlLJwRD+ZuiDl+nAM+C6JZ+cOXGN9wA==",
+      "packageIdentity": "@oxc-parser/binding-linux-arm64-gnu@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-0.159.0.tgz",
+      "sha256": "ff74a3e61dee390c806f082f627fc1cfa38a2c0a6409096437e143229eb5bd33",
+      "sizeBytes": 1376147
     },
     "@oxc-parser/binding-linux-arm64-musl@0.127.0": {
       "bins": {},
@@ -1815,6 +1887,15 @@
       "sha256": "85d03ac7386af79368fb32eb5b943fb6b45fcced707e138453e4738263ea8022",
       "sizeBytes": 999973
     },
+    "@oxc-parser/binding-linux-arm64-musl@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-7rRQZZZjdr49S7Y550sM2KWTQtLyhz74+l6A8dUgHq0rxqJWt1GHJnZPIVSc5G6dwtPcx39ZUYf8CXmaxIQu3g==",
+      "packageIdentity": "@oxc-parser/binding-linux-arm64-musl@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-arm64-musl/-/binding-linux-arm64-musl-0.159.0.tgz",
+      "sha256": "056adaa4ddfe18d1f45a1854fa4a1a162c61917f91c92f1e52303a6bd5ca89c0",
+      "sizeBytes": 993520
+    },
     "@oxc-parser/binding-linux-ppc64-gnu@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1823,6 +1904,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-0.127.0.tgz",
       "sha256": "7f9cd2e36248a1ce83e5f3cdb9fdbc7ab74f432474c382128a7a76987234d159",
       "sizeBytes": 1221785
+    },
+    "@oxc-parser/binding-linux-ppc64-gnu@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-5PXsuw1HeAPrGHFkoAuWtqKh6spW7s5u/OKORhlr2KMqrROAj3azYg0MfsjWbcSr5VBqnS2sp7aNz88MoEhSQw==",
+      "packageIdentity": "@oxc-parser/binding-linux-ppc64-gnu@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-0.159.0.tgz",
+      "sha256": "ac7cf26aab77b8d872cf3a1f400c30abcbd413a88d389f117dace5ca16a1bd71",
+      "sizeBytes": 1183351
     },
     "@oxc-parser/binding-linux-riscv64-gnu@0.127.0": {
       "bins": {},
@@ -1833,6 +1923,15 @@
       "sha256": "9b46b9bea81164a3304fcb6f1df932b11adbf8e8b901533c4024c0628695cbce",
       "sizeBytes": 1087153
     },
+    "@oxc-parser/binding-linux-riscv64-gnu@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-dd8F9Fv+gYN4S2O53vn+JtMrjZLyiwzdzH6u8iC2zrloDtRBLgJRXWWAZ03gCIoEtAmynoIDCl3HvSZD0sSp6Q==",
+      "packageIdentity": "@oxc-parser/binding-linux-riscv64-gnu@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-riscv64-gnu/-/binding-linux-riscv64-gnu-0.159.0.tgz",
+      "sha256": "96bb9ccf6b17255c09237188ccc5ae5f1cde776639275b7c04a3b75800bda210",
+      "sizeBytes": 1052638
+    },
     "@oxc-parser/binding-linux-riscv64-musl@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1841,6 +1940,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-0.127.0.tgz",
       "sha256": "a0a1c17a86b6f6582e7ad8090a4254c036866d6130d14d2577c302ef3111a66d",
       "sizeBytes": 1087191
+    },
+    "@oxc-parser/binding-linux-riscv64-musl@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-JHie9br++hDW7Y5z7Z3HgyUp+ToYzZLQ6r0XY1fdIAoKBDuknKdZh7uR1yxMflv3NzIRwCZk6j0vKiSAYnIuOA==",
+      "packageIdentity": "@oxc-parser/binding-linux-riscv64-musl@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-riscv64-musl/-/binding-linux-riscv64-musl-0.159.0.tgz",
+      "sha256": "127ecce91447dfe2d23393dc0e546ec1231e41188a2d71da554ff80128e470aa",
+      "sizeBytes": 1056343
     },
     "@oxc-parser/binding-linux-s390x-gnu@0.127.0": {
       "bins": {},
@@ -1851,6 +1959,15 @@
       "sha256": "dfe672b04dfad742a32e8f89780806c3e0056acc634263a8e69c4c76b09ebb13",
       "sizeBytes": 1066617
     },
+    "@oxc-parser/binding-linux-s390x-gnu@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-BMvYKECH7wCb70/2xHF8R94jjIX8zG4n58fLkN9wdjTI079x7FOGPd+Gp5dfQ8ouv2pZJZ5p9wA1Kbm0BYMVYw==",
+      "packageIdentity": "@oxc-parser/binding-linux-s390x-gnu@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-0.159.0.tgz",
+      "sha256": "8f0c0ce278dbcceb3ebb8a611320586d5d5c489f7691bee76237d7d5a0c53421",
+      "sizeBytes": 1057601
+    },
     "@oxc-parser/binding-linux-x64-gnu@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1859,6 +1976,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-x64-gnu/-/binding-linux-x64-gnu-0.127.0.tgz",
       "sha256": "2874538b47e5f37fe6cee8d5ad73931aaa8ca7ce0c8661f7070d1c6ba80cdfa3",
       "sizeBytes": 1046830
+    },
+    "@oxc-parser/binding-linux-x64-gnu@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-dH2vcVJi2sqSd2S51WB/LXyoJKho+TL7UoCDOuMZ+0mggFF9Gf4fjspo89hZnT/KrINBJg3UsGlfogHGHUmQNA==",
+      "packageIdentity": "@oxc-parser/binding-linux-x64-gnu@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-x64-gnu/-/binding-linux-x64-gnu-0.159.0.tgz",
+      "sha256": "1a4a742b999183622bd9852ae6e9c443c7b6ffaccdfb8fefb9462a66763b2ee5",
+      "sizeBytes": 1413330
     },
     "@oxc-parser/binding-linux-x64-musl@0.127.0": {
       "bins": {},
@@ -1869,6 +1995,15 @@
       "sha256": "e15d61abb398a6b28fa94d4ffe05e4651f88a33e15c5c0df336a3e3c69140e52",
       "sizeBytes": 1031305
     },
+    "@oxc-parser/binding-linux-x64-musl@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-QTuiVVnxBfelO1dokkRh5scfEkodbvpeiXfgnb7N3196/FIiCwVt44UXwnuU3RI2QjdeLQgr7CfN0SJ0UdvfGg==",
+      "packageIdentity": "@oxc-parser/binding-linux-x64-musl@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-linux-x64-musl/-/binding-linux-x64-musl-0.159.0.tgz",
+      "sha256": "cb8861ac0f7b4042e9b2d28057d7db911a6382125899937273df3e641b77b250",
+      "sizeBytes": 1009258
+    },
     "@oxc-parser/binding-openharmony-arm64@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1877,6 +2012,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-openharmony-arm64/-/binding-openharmony-arm64-0.127.0.tgz",
       "sha256": "7abd34e09b56c1c580f740b89a1704c831baaaaffc07f8d1d59182f513bb0735",
       "sizeBytes": 1002089
+    },
+    "@oxc-parser/binding-openharmony-arm64@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-lropr2CN3zGJ46uEY0AXviiXip6jRo3p7Hr6AqGFZx34EU9j58kWFHM3boqjjbrQkiPRBH/ZsTHolAf6ZehYmw==",
+      "packageIdentity": "@oxc-parser/binding-openharmony-arm64@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-openharmony-arm64/-/binding-openharmony-arm64-0.159.0.tgz",
+      "sha256": "9e9c717cd74c5dad5e6f51cdd4e858f3ed3945f7cca8db2b04625a74cfbdd688",
+      "sizeBytes": 1000625
     },
     "@oxc-parser/binding-wasm32-wasi@0.127.0": {
       "bins": {},
@@ -1896,6 +2040,15 @@
       "sha256": "266a1edaf211d53631af27af09596de9b26dce3ed60e54b4d5912201d55cee10",
       "sizeBytes": 800467
     },
+    "@oxc-parser/binding-win32-arm64-msvc@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-8Mpnrt5JMCz4YJZsliH2L4LivJ1Go8Z9VEFbjqIHmp7yUO9XMwqqvcetl+uqcBbj9+vTXDLw8GPWhiVLv670fA==",
+      "packageIdentity": "@oxc-parser/binding-win32-arm64-msvc@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-0.159.0.tgz",
+      "sha256": "67ba9a0b6f312b31bf65ec52cf61c27b976f1cd7639baabb8db95cc615be53bd",
+      "sizeBytes": 812638
+    },
     "@oxc-parser/binding-win32-ia32-msvc@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1905,6 +2058,15 @@
       "sha256": "7f81682eb0bf33522eee9f95ba8fa5569884945ba8b7ed9190af859e7182aa20",
       "sizeBytes": 758053
     },
+    "@oxc-parser/binding-win32-ia32-msvc@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-Rzwjdp1yCMXmBvf3/L6wMg2JnkRF7lLacSHvq7NwKMYD6gNwsdwnQrotnY3CCDyng7C2b0GKA9TtrN321LoU4w==",
+      "packageIdentity": "@oxc-parser/binding-win32-ia32-msvc@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-win32-ia32-msvc/-/binding-win32-ia32-msvc-0.159.0.tgz",
+      "sha256": "04b941b9402af221dd68f84fb5126fa42f447804dac72e31f3e17ee1b68d5714",
+      "sizeBytes": 777517
+    },
     "@oxc-parser/binding-win32-x64-msvc@0.127.0": {
       "bins": {},
       "classification": "public",
@@ -1913,6 +2075,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-win32-x64-msvc/-/binding-win32-x64-msvc-0.127.0.tgz",
       "sha256": "2839dbd106b9b716ea99880a8648aaa6a49e6e20d4e553e1f7da2cbb1ba01664",
       "sizeBytes": 817152
+    },
+    "@oxc-parser/binding-win32-x64-msvc@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-cZIw4RN4DvSdFONNCbR3PR7vvfviFnlbU6pflZFXH9ll/fuaPkgcXrQq3DLISmDnZ3E3Vly9zHmIdJgjsD+W0w==",
+      "packageIdentity": "@oxc-parser/binding-win32-x64-msvc@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-parser/binding-win32-x64-msvc/-/binding-win32-x64-msvc-0.159.0.tgz",
+      "sha256": "a415e243c6b011df750ebc0a60c627a851fdd88d65b3073b55b865cbb695647b",
+      "sizeBytes": 1207888
     },
     "@oxc-project/types@0.127.0": {
       "bins": {},
@@ -1940,6 +2111,15 @@
       "registryUrl": "https://registry.npmjs.org/@oxc-project/types/-/types-0.156.0.tgz",
       "sha256": "9ea3e4ff27f4c9c7bc9b5a8feb7b7d4f2181dd2b1d90067d52f267b6c5897dbc",
       "sizeBytes": 7629
+    },
+    "@oxc-project/types@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-QWjWhxheluOJ82kDHNyps00UvRpQCtI34B5A/SzpgQycUD/79FuvT4I0aQIfE/bdPwKmX4QPftnywFBH6FxJhQ==",
+      "packageIdentity": "@oxc-project/types@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/@oxc-project/types/-/types-0.159.0.tgz",
+      "sha256": "2af2fc3348d36a975d8aedf0b8823bfb1c916451705671702d96ca219ecdca5d",
+      "sizeBytes": 7632
     },
     "@oxc-resolver/binding-android-arm-eabi@11.21.2": {
       "bins": {},
@@ -5818,6 +5998,15 @@
       "sha256": "b831239904128a3bda87cef97dfe8f87c9cff544635f030cbca04bb5601f27d6",
       "sizeBytes": 134279
     },
+    "oxc-parser@0.159.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-Z1OaHU1EeTtobDHlYOAijfCTZr13PpWs/ZvwbJHaz5zOHfV6fLSmYZwB6klE8cggz51syi8HmLikHju0orJr4g==",
+      "packageIdentity": "oxc-parser@0.159.0",
+      "registryUrl": "https://registry.npmjs.org/oxc-parser/-/oxc-parser-0.159.0.tgz",
+      "sha256": "15c661507a47761ecc4f9b10f820809d94e058295c75d931407cd7e741d07741",
+      "sizeBytes": 702416
+    },
     "oxc-resolver@11.21.2": {
       "bins": {},
       "classification": "public",
@@ -7051,5 +7240,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:df2bd592c495f4015fd558f592d396431ac0f5983bdef8d7b9559be9d40cd435"
+  "fingerprint": "sha256:95d0f97894fa8c6d9770b14179d4f36157fd74ac25aa28a8f89e4dca3366df20"
 }

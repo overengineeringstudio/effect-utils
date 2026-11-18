@@ -7,7 +7,7 @@
   "private": true,
   "license": "Apache-2.0",
   "devDependencies": {
-    "oxc-parser": "0.127.0"
+    "oxc-parser": "0.159.0"
   },
   "workspaces": [
     "context/effect/socket",
