@@ -152,6 +152,20 @@ emitted into YAML. The generic validator is in
 Policy rejects hosted, Namespace, unknown, unresolved dynamic, fallback, and
 mixed-heavy runner selections; forbidden events; Actions artifact/cache
 actions and known wrappers; setup-action caching; and Docker `type=gha`.
+
+The effect-utils repository additionally admits `publicNamespaceKvmRunner`, its
+Linux amd64 8-vCPU/16-GiB Namespace profile with nested KVM. Use the exact static
+selector, `if: '${{ github.event.repository.private == false }}'`,
+`permissions: { contents: 'read' }`, and `publicNamespaceKvmConcurrency`.
+The shared job-level concurrency group serializes these heavy jobs across all
+workflows in the repository; matrices, alternate groups and cancellation are
+not admitted. No secret references, cache-write credentials, OIDC permissions,
+additional runner labels or paid add-on configuration belong in these jobs.
+The public boundary is a hard error even in report mode. Other repositories
+retain fleet-only policy; legacy Namespace profiles remain migration debt.
+Admission is not proof of sponsorship: maintainers must confirm workspace OSS
+coverage for compute and any existing profile storage before enabling jobs.
+
 Finite runner matrices are resolved before admission. Dynamic runner outputs
 require an exact typed admission declaration with admitted possible labels.
 `linuxX64Runner` selects light work; `linuxX64HeavyRunner` is the dedicated

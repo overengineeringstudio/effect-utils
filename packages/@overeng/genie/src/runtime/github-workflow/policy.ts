@@ -16,6 +16,7 @@ export type WorkflowPolicyRule =
   | 'runner-label-mix'
   | 'fleet-pr-without-same-repo-guard'
   | 'fork-controlled-runner'
+  | 'bounded-public-runner'
 
 /** Stable, exact identity for an observed violation and its report-mode ledger entry. */
 export type WorkflowPolicyViolation = {
@@ -53,6 +54,11 @@ export type WorkflowPolicy = {
   readonly exclusiveRunnerLabels?: readonly string[]
   readonly bannedHostedRunners?: boolean
   readonly bannedNamespaceRunners?: boolean
+  /** Public-only, credential-free runner admission with a repository-wide serial queue. */
+  readonly boundedPublicRunner?: {
+    readonly label: string
+    readonly concurrencyGroup: string
+  }
   readonly banDockerGhaCache?: boolean
   /** Action repository (optionally a subpath), without a ref; matches every ref and subpath. */
   readonly bannedActions?: readonly string[]
@@ -107,6 +113,7 @@ const rules: readonly WorkflowPolicyRule[] = [
   'runner-label-mix',
   'fleet-pr-without-same-repo-guard',
   'fork-controlled-runner',
+  'bounded-public-runner',
 ]
 const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'hosted-runner': true,
@@ -119,6 +126,7 @@ const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'runner-label-mix': true,
   'fleet-pr-without-same-repo-guard': true,
   'fork-controlled-runner': true,
+  'bounded-public-runner': true,
 }
 
 const guardEvents = {
@@ -530,6 +538,7 @@ export const collectWorkflowPolicyViolations = ({
 }): WorkflowPolicyViolation[] => {
   const violations: WorkflowPolicyViolation[] = []
   const protectedRunnerJobs = new Set<string>()
+  const boundedRunnerJobs = new Set<string>()
   const add = ({
     job,
     rule,
@@ -548,6 +557,7 @@ export const collectWorkflowPolicyViolations = ({
       violations.push(violation)
   }
   const labelRules = ({ job, path, label }: { job: string; path: string; label: string }): void => {
+    if (policy.boundedPublicRunner?.label === label) boundedRunnerJobs.add(job)
     if (policy.sameRepoGuardRunnerLabels?.includes(label) === true) protectedRunnerJobs.add(job)
     if (
       policy.bannedHostedRunners !== false &&
@@ -556,6 +566,7 @@ export const collectWorkflowPolicyViolations = ({
       add({ job, rule: 'hosted-runner', path, value: label })
     if (
       policy.bannedNamespaceRunners !== false &&
+      label !== policy.boundedPublicRunner?.label &&
       /^(?:namespace-profile-|nscloud-|namespace-features:)/i.test(label) === true
     )
       add({ job, rule: 'namespace-runner', path, value: label })
@@ -698,6 +709,38 @@ export const collectWorkflowPolicyViolations = ({
       add({ job, rule: 'dynamic-runner', path, value: runner })
     }
     checkRunner({ runner: config['runs-on'], resolveMatrix: true })
+    const bounded = policy.boundedPublicRunner
+    const runnerLabels = config['runs-on']
+    if (bounded !== undefined && boundedRunnerJobs.has(job)) {
+      const credentials = JSON.stringify({
+        env: workflow.env,
+        defaults: workflow.defaults,
+        job: config,
+      })
+      const permissions = config.permissions ?? workflow.permissions
+      if (
+        config.if !== '${{ github.event.repository.private == false }}' ||
+        (Array.isArray(runnerLabels) && runnerLabels.length !== 1) ||
+        (runnerLabels !== bounded.label &&
+          JSON.stringify(runnerLabels) !== JSON.stringify([bounded.label])) ||
+        typeof config.concurrency !== 'object' ||
+        config.concurrency.group !== bounded.concurrencyGroup ||
+        config.concurrency['cancel-in-progress'] !== false ||
+        JSON.stringify(permissions) !== JSON.stringify({ contents: 'read' }) ||
+        /\bsecrets\b/i.test(credentials) ||
+        /(?:ACTIONS_ID_TOKEN_REQUEST|ACTIONS_RUNTIME_TOKEN|(?:CACHE|CACHIX|ATTIC|NIX)[A-Z0-9_]*(?:TOKEN|KEY)|(?:TOKEN|KEY)[A-Z0-9_]*CACHE)/i.test(
+          credentials,
+        ) ||
+        config.strategy !== undefined
+      )
+        add({
+          job,
+          rule: 'bounded-public-runner',
+          path: `jobs.${job}`,
+          value:
+            'Public runner requires public-only guard, serial concurrency, read-only permissions, no credentials, and no matrix',
+        })
+    }
     if (
       protectedRunnerJobs.has(job) === true &&
       events.some((event) => isTrustedWorkflowEvent(event) === false) === true &&
@@ -975,7 +1018,8 @@ export const validateWorkflowPolicy = ({
       policy.mode === 'report' &&
       (violation.rule === 'fleet-pr-without-same-repo-guard' ||
         violation.rule === 'pull-request-target' ||
-        violation.rule === 'fork-controlled-runner')
+        violation.rule === 'fork-controlled-runner' ||
+        violation.rule === 'bounded-public-runner')
     ) {
       issues.push({ kind: 'VIOLATION', message: violationKey(violation), violation })
     }
