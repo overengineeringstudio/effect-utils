@@ -1,7 +1,13 @@
 # Transitional execution projection: devenv still owns evaluated task definitions;
 # Buck owns the bounded check invocation. No task runner is called at test time.
 { baseCapabilities }:
-{ config, inputs, lib, pkgs, ... }:
+{
+  config,
+  inputs,
+  lib,
+  pkgs,
+  ...
+}:
 let
   root = ../.;
   cfg = config.effectUtils.quickContracts;
@@ -31,43 +37,78 @@ let
     "otel:pipeline-run:test"
     "git-hooks:environment:test"
   ];
-  taskScripts = lib.mapAttrs (name: task:
-    if task.exec == null then null else pkgs.writeShellScript
-      ("quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name)
-      (lib.concatStringsSep "\n" (lib.mapAttrsToList
-        (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") task.env)
-        + "\n" + lib.optionalString (task.cwd != null) "cd ${lib.escapeShellArg task.cwd}\n"
-        + task.exec)
+  taskScripts = lib.mapAttrs (
+    name: task:
+    if task.exec == null then
+      null
+    else
+      pkgs.writeShellScript ("quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name) (
+        lib.concatStringsSep "\n" (
+          lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") task.env
+        )
+        + "\n"
+        + lib.optionalString (task.cwd != null) "cd ${lib.escapeShellArg task.cwd}\n"
+        + task.exec
+      )
   ) config.tasks;
   # Include *all* evaluated tasks: the existing guards intentionally inspect
   # omitted/legacy producers and transitive edges, not just the selected cohort.
-  taskAuthority = pkgs.writeText "quick-contract-task-authority.json" (builtins.toJSON {
-    tasks = lib.mapAttrsToList (name: task: (lib.removeAttrs task [ "exec" ]) // {
-      inherit name;
-      command = taskScripts.${name};
-    }) config.tasks;
-  });
+  taskAuthority = pkgs.writeText "quick-contract-task-authority.json" (
+    builtins.toJSON {
+      tasks = lib.mapAttrsToList (
+        name: task:
+        (lib.removeAttrs task [ "exec" ])
+        // {
+          inherit name;
+          command = taskScripts.${name};
+        }
+      ) config.tasks;
+    }
+  );
   # Conservatively bind the complete tracked source closure, including scripts
   # embedded by Nix path interpolation. Stage new sources before preparation.
   sourceFiles = lib.fileset.toList (lib.fileset.gitTracked root);
   sourceIdentity = pkgs.writeText "quick-contract-source-identity" (
-    lib.concatMapStrings (file:
+    lib.concatMapStrings (
+      file:
       "${builtins.hashFile "sha256" file}  ${lib.removePrefix (toString root + "/") (toString file)}\n"
     ) sourceFiles
   );
-  runtimePath = lib.makeBinPath ([
-    pkgs.bash pkgs.coreutils pkgs.findutils pkgs.gnused pkgs.gnugrep
-    pkgs.git pkgs.jq pkgs.watchman pkgs.openssl pkgs.nix
-    pkgs.diffutils pkgs.gawk pkgs.gnutar pkgs.gzip pkgs.curl pkgs.python3
-  ] ++ config.packages);
+  runtimePath = lib.makeBinPath (
+    [
+      pkgs.bash
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.gnused
+      pkgs.gnugrep
+      pkgs.git
+      pkgs.jq
+      pkgs.watchman
+      pkgs.openssl
+      pkgs.nix
+      pkgs.diffutils
+      pkgs.gawk
+      pkgs.gnutar
+      pkgs.gzip
+      pkgs.curl
+      pkgs.python3
+    ]
+    ++ config.packages
+  );
   # Only non-secret execution bindings. Credentials and telemetry context remain
   # caller-owned; neither is serialized into the immutable capability.
   runtimeEnv = lib.getAttrs (builtins.filter (name: builtins.hasAttr name config.env) [
-    "BUCK2_BIN" "EDITOR_VIEW_SOURCE_LAUNCHER" "EDITOR_VIEW_LEASE_BIN"
-    "EDITOR_VIEW_LEASE_LIBRARY" "EDITOR_VIEW_LEASE_TEST_CHILD_BIN"
-    "EDITOR_VIEW_LEASE_UNKNOWN_FS_BIN" "EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN"
-    "GENIE_ACTIONLINT_BIN" "JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN"
-    "BUCK2_STDIO_LIBRARY" "BUCK2_MACHINE_VERSION"
+    "BUCK2_BIN"
+    "EDITOR_VIEW_SOURCE_LAUNCHER"
+    "EDITOR_VIEW_LEASE_BIN"
+    "EDITOR_VIEW_LEASE_LIBRARY"
+    "EDITOR_VIEW_LEASE_TEST_CHILD_BIN"
+    "EDITOR_VIEW_LEASE_UNKNOWN_FS_BIN"
+    "EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN"
+    "GENIE_ACTIONLINT_BIN"
+    "JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN"
+    "BUCK2_STDIO_LIBRARY"
+    "BUCK2_MACHINE_VERSION"
   ]) config.env;
   environment = ''
     set -euo pipefail
@@ -111,8 +152,9 @@ let
   transaction = pkgs.writeShellScript "quick-contract-transaction" ''
     ${environment}
     export DEVENV_TASKS_JSON=${taskAuthority}
-    ${lib.concatStringsSep "\n" (lib.mapAttrsToList
-      (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") runtimeEnv)}
+    ${lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") runtimeEnv
+    )}
     ${validateSource}
     if ! printf '%s\n%s\n' ${taskAuthority} "$WORKTREE_CAPABILITIES_PROFILE" | \
       cmp -s - .devenv/quick-contracts-prepared; then
@@ -133,8 +175,14 @@ let
 in
 {
   options.effectUtils.quickContracts = {
-    package = lib.mkOption { type = lib.types.package; readOnly = true; };
-    capabilities = lib.mkOption { type = lib.types.package; readOnly = true; };
+    package = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+    };
+    capabilities = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+    };
   };
   config.effectUtils.quickContracts = {
     package = pkgs.runCommand "quick-contracts" { } ''
@@ -146,18 +194,20 @@ in
     '';
     capabilities = pkgs.symlinkJoin {
       name = "buck2-capabilities";
-      paths = [ (import ./buck2-capabilities.nix {
-        inherit pkgs;
-        src = root;
-        inherit (baseCapabilities) capabilityPackages;
-        extraCapabilities = baseCapabilities.extraCapabilities // {
-          quick-contracts = {
-            kind = "directory";
-            package = cfg.package;
-            protocol = "effect-utils/quick-contracts/v1";
+      paths = [
+        (import ./buck2-capabilities.nix {
+          inherit pkgs;
+          src = root;
+          inherit (baseCapabilities) capabilityPackages;
+          extraCapabilities = baseCapabilities.extraCapabilities // {
+            quick-contracts = {
+              kind = "directory";
+              package = cfg.package;
+              protocol = "effect-utils/quick-contracts/v1";
+            };
           };
-        };
-      }) ];
+        })
+      ];
       # Stable stage-zero handle to the same capability, not a second registry.
       postBuild = "ln -s ${cfg.package} $out/quick-contracts";
     };
