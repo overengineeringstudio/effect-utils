@@ -586,7 +586,7 @@ describe('exact execute-once occurrence scorecard', () => {
     const repeat = occurrenceArtifact('repeat', 'host-b', 299, { executionOutcome: 'remote-exec' })
     repeat.header.metadata.runId = '2'
     repeat.header.metadata.repo = 'other/repository'
-    repeat.actions[0]!.configuration = 'other-configuration'
+    repeat.actions[0]!.configuration = null
     const report = occurrences([
       repeat,
       first,

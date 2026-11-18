@@ -173,6 +173,8 @@ independent fleet census is joined, its fleet proof remains unknown.
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
 windowEndMs)`, attributing chronological full-action-digest execution repeats
 globally across repositories, configurations, hosts, roots and CI; hits and explicit coalescing are separate.
+Configuration labels are not occurrence identity prerequisites; the existing
+cache-eligibility proof retains its separate configuration requirements.
 Missing native identity/root/host/time/digest/outcome/completeness or metadata,
 unlinked remote/coalesced worker attempts, conflicts, sampling, loss or overflow mean unknown.
 Valid rows survive; unavailable costs are null with explicit unavailable counts.

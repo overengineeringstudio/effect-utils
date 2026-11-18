@@ -356,7 +356,6 @@ export const aggregateOccurrences = ({
       requireField({ present: nonempty(invocation?.rootId), reason: 'missing-root' })
       requireField({ present: nonempty(host), reason: 'missing-host' })
       requireField({ present: nonempty(action.digest), reason: 'missing-digest' })
-      requireField({ present: nonempty(action.configuration), reason: 'missing-configuration' })
       requireField({
         present:
           action.startedAt !== null &&
