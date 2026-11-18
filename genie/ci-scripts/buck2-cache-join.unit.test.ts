@@ -585,6 +585,8 @@ describe('exact execute-once occurrence scorecard', () => {
     const first = occurrenceArtifact('first', 'host-a', 200, { configuration: null })
     const repeat = occurrenceArtifact('repeat', 'host-b', 299, { executionOutcome: 'remote-exec' })
     repeat.header.metadata.runId = '2'
+    repeat.header.metadata.repo = 'other/repository'
+    repeat.actions[0]!.configuration = 'other-configuration'
     const report = occurrences([
       repeat,
       first,
@@ -608,6 +610,42 @@ describe('exact execute-once occurrence scorecard', () => {
       ['host-b', 1],
       ['host-c', 0],
     ])
+  })
+  it('deduplicates the same native occurrence delivered by local retention and CI', () => {
+    const artifact = occurrenceArtifact('first', 'host-a', 210, {
+      buildId: 'native-build',
+      digest: 'native-digest',
+      durationNs: 1_000_000,
+    })
+    artifact.header.invocations[0]!.buildId = 'native-build'
+    const scorecard = aggregateOccurrences({
+      artifacts: [artifact],
+      windowStartMs: 200,
+      windowEndMs: 300,
+      evidenceGaps: [],
+      retainedEvidence: {
+        records: [
+          {
+            id: 'first',
+            buildId: 'native-build',
+            rootId: 'root-first',
+            host: 'host-a',
+            runId: 'native-build',
+            lane: 'supported-entrypoint/local',
+            digest: 'native-digest',
+            startedAt: 209,
+            completedAt: 210,
+            executionOutcome: 'local-exec',
+            durationNs: 1_000_000,
+            totalBytes: 20,
+          },
+        ],
+        evidenceGaps: [],
+      },
+    })
+    expect(scorecard.proof).toBe('known')
+    expect(scorecard.totals.occurrences).toBe(1)
+    expect(scorecard.totals.repeatExecutions).toBe(0)
   })
   it('marks missing prerequisites and gaps unknown while retaining valid observations', () => {
     const cases: Parameters<typeof actionFixture>[0][] = [
