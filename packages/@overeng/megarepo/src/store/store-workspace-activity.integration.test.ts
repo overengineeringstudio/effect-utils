@@ -23,11 +23,13 @@ import {
   PROCESS_SNAPSHOT_PRODUCER,
   PtySessions,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
+  WorkspaceActivityResult,
   captureProcessActivityManifest,
   isWorkspaceActive,
   readBudgetWorkspaceActivity,
   readBudgetWorktreeInUse,
   readWorkspaceActivity,
+  readWorkspaceActivityResult,
   writeWorkspaceActivityManifest,
   type BudgetActivityConfig,
 } from './store-workspace-activity.ts'
@@ -461,9 +463,11 @@ const withNativeProjection = Effect.fnUntraced(function* ({
   fs,
   root,
   subjects,
+  expiredCaptures = 0,
 }: {
   fs: FileSystem.FileSystem
   root: string
+  expiredCaptures?: number
   subjects: Readonly<
     Record<
       string,
@@ -494,6 +498,38 @@ const withNativeProjection = Effect.fnUntraced(function* ({
       },
     }),
   )
+  yield* fs.writeFileString(`${root}/st3-attempts`, '0')
+  yield* fs.writeFileString(
+    `${root}/st3-partial.json`,
+    encodeJson({
+      api_version: 'st3.client.v0',
+      snapshot: {
+        id: 'discarded-epoch',
+        host_id: `host/${hostname()}`,
+        created_at: '2020-01-01T00:00:00.000Z',
+        store_index: 0,
+      },
+      value: {
+        kind: 'page',
+        collection: 'agents',
+        // There is deliberately no subject fixture for this discarded owner.
+        items: [{ id: 'discarded-owner' }],
+        page: { has_more: true, next_cursor: 'expired-cursor' },
+      },
+    }),
+  )
+  yield* fs.writeFileString(
+    `${root}/st3-expired.json`,
+    encodeJson({
+      api_version: 'st3.client.v0',
+      error_version: 'st3.client.error.v0',
+      request_id: 'request/expired-fixture',
+      code: 'page-cursor-expired',
+      message: 'the snapshot changed; restart pagination from the first page',
+      retryable: true,
+      details: { collection: 'agents' },
+    }),
+  )
   for (const [id, actual] of Object.entries(subjects)) {
     yield* fs.writeFileString(
       `${root}/st3-${id}.json`,
@@ -504,7 +540,23 @@ const withNativeProjection = Effect.fnUntraced(function* ({
     binary,
     `#!/bin/sh
 case "$1 $2" in
-  "agents ls") cat "$(dirname "$0")/st3-page.json" ;;
+  "agents ls")
+    root="$(dirname "$0")"
+    case " $* " in
+      *" --cursor expired-cursor "*)
+        cat "$root/st3-expired.json" >&2
+        exit 1
+        ;;
+    esac
+    attempt="$(cat "$root/st3-attempts")"
+    attempt=$((attempt + 1))
+    printf '%s' "$attempt" > "$root/st3-attempts"
+    if [ "$attempt" -le "${expiredCaptures}" ]; then
+      cat "$root/st3-partial.json"
+    else
+      cat "$root/st3-page.json"
+    fi
+    ;;
   "subject show") cat "$(dirname "$0")/st3-$3.json" ;;
   *) exit 1 ;;
 esac
@@ -602,6 +654,126 @@ describe('readWorkspaceActivity native ownership', () => {
             budget?.ownerClaims?.find((claim) => claim.workspace === workspace)?.agents,
           ).toEqual([...statuses.map((status) => `agent-${status}`), 'agent-1'])
           expect(budget?.nativeEvidence?.complete).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  it.live(
+    'discards expired pagination and restarts with a fresh epoch',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root, workspace } = yield* fixture
+        yield* withNativeProjection({
+          fs,
+          root,
+          subjects: { 'current-owner': { status: 'running', workspace, host: hostname() } },
+          expiredCaptures: 1,
+        })
+        const result = yield* readWorkspaceActivityResult({ fs })
+        expect(Schema.is(WorkspaceActivityResult)(result)).toBe(true)
+        expect(result._tag).toBe('Available')
+        if (result._tag !== 'Available') return
+        expect(result.activity.ownerClaims).toEqual([{ workspace, agents: ['current-owner'] }])
+        expect(result.activity.activePaths).toEqual(new Set([workspace]))
+        expect(yield* fs.readFileString(`${root}/st3-attempts`)).toBe('2')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'bounds continuous pagination churn and retains the terminal structured native error',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root } = yield* fixture
+        yield* withNativeProjection({ fs, root, subjects: {}, expiredCaptures: 100 })
+        const result = yield* readWorkspaceActivityResult({ fs })
+        expect(Schema.is(WorkspaceActivityResult)(result)).toBe(true)
+        expect(result).toEqual({
+          _tag: 'Unavailable',
+          failure: {
+            reason: 'command',
+            message: 'Activity command failed',
+            command: `${root}/st3-fixture`,
+            args: [
+              'agents',
+              'ls',
+              '--all',
+              '--json',
+              '--limit',
+              '100',
+              '--daemon-wait',
+              '0',
+              '--cursor',
+              'expired-cursor',
+            ],
+            exitCode: 1,
+            attempts: 3,
+            nativeError: {
+              api_version: 'st3.client.v0',
+              error_version: 'st3.client.error.v0',
+              request_id: 'request/expired-fixture',
+              code: 'page-cursor-expired',
+              message: 'the snapshot changed; restart pagination from the first page',
+              retryable: true,
+              details: { collection: 'agents' },
+            },
+          },
+        })
+        expect(yield* fs.readFileString(`${root}/st3-attempts`)).toBe('3')
+        expect(yield* readWorkspaceActivity({ fs })).toBeUndefined()
+        expect(yield* fs.readFileString(`${root}/st3-attempts`)).toBe('6')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  for (const { label, diagnostic, attempts, code } of [
+    {
+      label: 'stable native CLI terminal code',
+      diagnostic: 'st: the list changed while it was being read (page-cursor-expired)\n',
+      attempts: 3,
+      code: 'page-cursor-expired',
+    },
+    {
+      label: 'unstructured prose mentioning expiry',
+      diagnostic: 'st: page-cursor-expired appears only in prose\n',
+      attempts: 1,
+      code: undefined,
+    },
+    {
+      label: 'structured non-expiry error mentioning expiry',
+      diagnostic: encodeJson({
+        api_version: 'st3.client.v0',
+        error_version: 'st3.client.error.v0',
+        request_id: 'request/not-expired',
+        code: 'internal',
+        message: 'page-cursor-expired',
+        retryable: true,
+        details: {},
+      }),
+      attempts: 1,
+      code: 'internal',
+    },
+  ]) {
+    it.live(
+      `classifies ${label} without parsing message text`,
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root } = yield* fixture
+          yield* withNativeProjection({ fs, root, subjects: {}, expiredCaptures: 100 })
+          yield* fs.writeFileString(`${root}/st3-expired.json`, diagnostic)
+          const result = yield* readWorkspaceActivityResult({ fs })
+          expect(result._tag).toBe('Unavailable')
+          if (result._tag !== 'Unavailable') return
+          expect(result.failure.attempts).toBe(attempts)
+          expect(result.failure.nativeError?.code ?? result.failure.diagnosticCode).toBe(code)
+          expect(yield* fs.readFileString(`${root}/st3-attempts`)).toBe(String(attempts))
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
@@ -1207,7 +1379,12 @@ signal.pause()
         ).toBeUndefined()
         expect(
           yield* readBudgetWorktreeInUse({ worktreePath: workspace, activity: undefined }),
-        ).toEqual({ _tag: 'unknown', reason: 'inaccessible-process' })
+        ).toMatchObject({
+          _tag: 'unknown',
+          reason: 'inaccessible-process',
+          pid: expect.any(Number),
+          probe: { kind: expect.any(String), path: expect.any(String) },
+        })
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

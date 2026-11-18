@@ -533,6 +533,16 @@ measurement, cleanup, daemon shutdown, or deletion lease. Decision tests assert 
 fail-closed result on Darwin rather than skipping. Native Darwin census support is tracked
 in [#1955](https://github.com/overengineeringstudio/effect-utils/issues/1955).
 
+Buck maintenance treats `git worktree lock` as retention, not activity. Git index/ref locks
+and operation markers still veto maintenance. JSON entries retain schema-backed `vetoEvidence`:
+Git lock paths are relative to the common Git directory (including linked-worktree admin
+paths), incomplete lock scans remain unknown, and missing/unreadable HEAD, index, or
+logs/HEAD files are identified individually. Incomplete holder censuses preserve the
+unknown reason, failing PID/probe when available, and whether activity admission failed.
+Native seat capture restarts from the first page after an expired cursor, at most three
+attempts sharing the original deadline and byte budget; it never combines pages from
+different captures. Continued churn remains a veto with its terminal capture reason.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical

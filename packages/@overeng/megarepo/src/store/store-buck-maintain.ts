@@ -17,9 +17,11 @@ import {
 } from './store-buck-daemons.ts'
 import { buckDurationMs, loadStoreBuckMaintainConfig } from './store-buck-maintain-config.ts'
 import {
+  BuckMaintainGitActivityFailure,
   discoverBuckMaintainWorktrees,
   readBuckMaintainGitEvidence,
   readBuckMaintainOutputActivity,
+  type BuckMaintainGitEvidence,
 } from './store-buck-maintain-evidence.ts'
 import {
   decideBuckOut,
@@ -33,12 +35,18 @@ import {
   releaseDeletionLease,
 } from './store-deletion-lease.ts'
 import { loadStoreGcConfig } from './store-gc-config.ts'
-import { isInsideWorktree, parseProcStat, readProcessReferences } from './store-inuse.ts'
+import {
+  isInsideWorktree,
+  parseProcStat,
+  ProcessCensusProbe,
+  readProcessReferences,
+} from './store-inuse.ts'
 import {
   isWorkspaceActive,
   readBudgetWorkspaceActivity,
   readBudgetWorktreeInUse,
-  readWorkspaceActivity,
+  readWorkspaceActivityResult,
+  WorkspaceActivityFailure,
 } from './store-workspace-activity.ts'
 import { Store, StoreLayer } from './store.ts'
 
@@ -50,6 +58,31 @@ export interface BuckMaintainOwnerEvidence {
   readonly workspace?: string
 }
 
+/** Machine-readable explanations, without turning uncertain evidence into admission. */
+export const BuckMaintainVetoEvidence = Schema.Union([
+  Schema.TaggedStruct('git-locked', {
+    lockPaths: Schema.Array(Schema.String),
+    scanComplete: Schema.Boolean,
+  }),
+  Schema.TaggedStruct('git-activity-unknown', {
+    files: Schema.Array(BuckMaintainGitActivityFailure),
+  }),
+  Schema.TaggedStruct('holder-census-incomplete', {
+    reason: Schema.Literals([
+      'no-proc',
+      'scan-failed',
+      'inaccessible-process',
+      'own-uid-unreadable',
+    ]),
+    pid: Schema.optionalKey(Schema.Int),
+    probe: Schema.optionalKey(ProcessCensusProbe),
+    activityAdmissionFailed: Schema.Boolean,
+  }),
+  Schema.TaggedStruct('seat-claims-incomplete', {
+    failure: WorkspaceActivityFailure,
+  }),
+]).annotate({ identifier: 'BuckMaintain.VetoEvidence' })
+export type BuckMaintainVetoEvidence = typeof BuckMaintainVetoEvidence.Type
 /** Full cwd/root/fd/mapping census is Linux-only until Darwin support (#1955). */
 export const BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON = 'census-unsupported-platform'
 
@@ -67,6 +100,7 @@ export interface BuckMaintainEntry {
     readonly reason?: string | undefined
   }>
   readonly ownerEvidence: ReadonlyArray<BuckMaintainOwnerEvidence>
+  readonly vetoEvidence?: ReadonlyArray<BuckMaintainVetoEvidence>
 }
 
 /** Versioned receipt for both report-only and acting maintenance runs. */
@@ -206,9 +240,21 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
     let daemons = yield* findWorktreeBuckDaemons({ worktreePath: worktree })
     let ignoredProcesses = daemons.flatMap((entry) => entry.processes)
     const ownerEvidence: BuckMaintainOwnerEvidence[] = []
+    const vetoEvidence: BuckMaintainVetoEvidence[] = []
+    const recordGitVeto = (git: BuckMaintainGitEvidence) => {
+      if (git.locked !== false)
+        vetoEvidence.push({
+          _tag: 'git-locked',
+          lockPaths: git.lockPaths,
+          scanComplete: git.lockScanComplete,
+        })
+      else if (git.lastActivityMs === undefined)
+        vetoEvidence.push({ _tag: 'git-activity-unknown', files: git.activityFailures })
+    }
     const capture = Effect.fn('store.buckMaintain.capture')(function* () {
       const preflightGit = yield* readBuckMaintainGitEvidence(worktree)
-      if (preflightGit.locked !== false || preflightGit.lastActivityMs === undefined)
+      if (preflightGit.locked !== false || preflightGit.lastActivityMs === undefined) {
+        recordGitVeto(preflightGit)
         return {
           reason: preflightGit.locked !== false ? 'git-locked' : 'git-activity-unknown',
           git: preflightGit,
@@ -216,6 +262,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
           activity: undefined,
           fullLastActivityMs: undefined,
         }
+      }
       const activity = yield* readBudgetWorkspaceActivity({
         fs,
         config: activityConfig,
@@ -227,7 +274,15 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         activity,
         ignoredProcesses,
       })
-      if (preflightHolder._tag !== 'free')
+      if (preflightHolder._tag !== 'free') {
+        if (preflightHolder._tag === 'unknown')
+          vetoEvidence.push({
+            _tag: 'holder-census-incomplete',
+            reason: preflightHolder.reason,
+            ...(preflightHolder.pid === undefined ? {} : { pid: preflightHolder.pid }),
+            ...(preflightHolder.probe === undefined ? {} : { probe: preflightHolder.probe }),
+            activityAdmissionFailed: activity === undefined,
+          })
         return {
           reason: preflightHolder._tag === 'in-use' ? 'holder-live' : 'holder-census-incomplete',
           git: preflightGit,
@@ -235,7 +290,11 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
           activity,
           fullLastActivityMs: undefined,
         }
-      const native = yield* readWorkspaceActivity({ fs })
+      }
+      const nativeResult = yield* readWorkspaceActivityResult({ fs })
+      const native = nativeResult._tag === 'Available' ? nativeResult.activity : undefined
+      if (nativeResult._tag === 'Unavailable')
+        vetoEvidence.push({ _tag: 'seat-claims-incomplete', failure: nativeResult.failure })
       const seatEvidence: BuckMaintainOwnerEvidence[] = []
       const canonicalWorktree = yield* fs.realPath(worktree).pipe(Effect.option)
       for (const claim of [...(activity?.ownerClaims ?? []), ...(native?.ownerClaims ?? [])]) {
@@ -275,6 +334,15 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       })
       const evidence = ownerEvidence
       const owners = evidence.map((entry) => entry.owner)
+      if (git.locked !== false || git.lastActivityMs === undefined) recordGitVeto(git)
+      if (holder._tag === 'unknown')
+        vetoEvidence.push({
+          _tag: 'holder-census-incomplete',
+          reason: holder.reason,
+          ...(holder.pid === undefined ? {} : { pid: holder.pid }),
+          ...(holder.probe === undefined ? {} : { probe: holder.probe }),
+          activityAdmissionFailed: activity === undefined,
+        })
       const reason = decideMaintainGate({
         blackout: isInBlackout({ now: Date.now(), blackout: config.blackout }),
         gitLocked: git.locked,
@@ -336,6 +404,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         reason: undefined as string | undefined,
       })),
       ownerEvidence: initial?.evidence ?? ownerEvidence,
+      vetoEvidence,
     }
     if (blackout === true || initial?.reason !== undefined) {
       entries.push({

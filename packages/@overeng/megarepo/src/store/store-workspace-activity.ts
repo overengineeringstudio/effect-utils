@@ -129,18 +129,84 @@ export const PtySessions = Schema.Array(
   }),
 ).annotate({ identifier: 'StoreWorkspaceActivity.PtySessions' })
 
+/** Native API error envelopes are retained without interpreting their message. */
+export const NativeActivityError = Schema.Struct({
+  api_version: Schema.Literals(['st3.client.v0', 'fractal.client.v0']),
+  error_version: Schema.Literals(['st3.client.error.v0', 'fractal.client.error.v0']),
+  request_id: NonEmpty,
+  code: NonEmpty,
+  message: Schema.String,
+  retryable: Schema.Boolean,
+  details: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+}).annotate({ identifier: 'StoreWorkspaceActivity.NativeError' })
+
+/** Receipt-safe evidence explaining why a native capture could not be admitted. */
+export const WorkspaceActivityFailure = Schema.Struct({
+  reason: Schema.Literals(['admission', 'command', 'capture']),
+  message: Schema.String,
+  command: Schema.optionalKey(Schema.String),
+  args: Schema.optionalKey(Schema.Array(Schema.String)),
+  exitCode: Schema.optionalKey(Schema.Number),
+  nativeError: Schema.optionalKey(NativeActivityError),
+  diagnosticCode: Schema.optionalKey(NonEmpty),
+  attempts: Schema.optionalKey(Count),
+}).annotate({ identifier: 'StoreWorkspaceActivity.Failure' })
+export type WorkspaceActivityFailure = typeof WorkspaceActivityFailure.Type
+
+const ActivityPaths = Schema.declare<ReadonlySet<string>>(
+  (input): input is ReadonlySet<string> =>
+    input instanceof Set && [...input].every((path) => typeof path === 'string'),
+)
+export const WorkspaceActivityResult = Schema.Union([
+  Schema.TaggedStruct('Available', {
+    activity: Schema.Struct({
+      activePaths: ActivityPaths,
+      ownerClaims: Schema.optionalKey(
+        Schema.Array(
+          Schema.Struct({
+            workspace: Schema.String,
+            agents: Schema.Array(Schema.String),
+          }),
+        ),
+      ),
+      processPaths: Schema.optionalKey(Schema.UndefinedOr(ActivityPaths)),
+      processClaimPaths: Schema.optionalKey(Schema.UndefinedOr(ActivityPaths)),
+      epoch: Schema.Struct({ host: Schema.String }),
+      nativeEvidence: Schema.optionalKey(
+        Schema.UndefinedOr(
+          Schema.Struct({
+            readerVersion: Schema.Number,
+            coverage: Schema.Struct({
+              host: Schema.String,
+              agents: Schema.Literal('all-states-all-hosts'),
+              subjects: Schema.Literal('nonhistorical-actuals'),
+              ptys: Schema.Literal('retained-local'),
+            }),
+            complete: Schema.Boolean,
+          }),
+        ),
+      ),
+    }),
+  }),
+  Schema.TaggedStruct('Unavailable', { failure: WorkspaceActivityFailure }),
+]).annotate({ identifier: 'StoreWorkspaceActivity.Result' })
+export type WorkspaceActivityResult = typeof WorkspaceActivityResult.Type
+
 /** Required activity evidence cannot be read or admitted safely. */
 export class ActivityUnavailable extends Schema.TaggedError<ActivityUnavailable>()(
   'ActivityUnavailable',
   {
     message: Schema.String,
+    evidence: Schema.optionalKey(WorkspaceActivityFailure),
   },
 ) {}
-const unavailable = (message: string) => new ActivityUnavailable({ message })
+const unavailable = (message: string, evidence?: WorkspaceActivityFailure) =>
+  new ActivityUnavailable({ message, ...(evidence === undefined ? {} : { evidence }) })
 
 const COMMAND_BYTES = 2 * 1024 * 1024
 const CAPTURE_BYTES = 16 * 1024 * 1024
 const CAPTURE_TIMEOUT_MS = 30_000
+const CAPTURE_ATTEMPTS = 3
 
 /** Both directions matter: a composed root owns child worktrees, and a PTY can sit below one. */
 export const isWorkspaceActive = ({
@@ -226,15 +292,34 @@ const makeActivityCommandJson = Effect.gen(function* () {
         ),
       )
     }
-    const [stdout, , exitCode] = yield* Effect.all(
+    const [stdout, stderr, exitCode] = yield* Effect.all(
       [
         bounded({ stream: handle.stdout, limit: COMMAND_BYTES, retain: true }),
-        bounded({ stream: handle.stderr, limit: 64 * 1024, retain: false }),
+        bounded({ stream: handle.stderr, limit: 64 * 1024, retain: true }),
         handle.exitCode,
       ],
       { concurrency: 3 },
     )
-    if (exitCode !== 0) return yield* unavailable('Activity command failed')
+    if (exitCode !== 0) {
+      // Native JSON error envelopes take precedence over the human diagnostic.
+      const decode = Schema.decodeUnknownOption(Schema.fromJsonString(NativeActivityError))
+      const nativeError = Option.getOrUndefined(Option.orElse(decode(stdout), () => decode(stderr)))
+      // Older native CLIs render only a stable terminal code, including for
+      // --json reads. Match that entire diagnostic, never words in its prose.
+      const diagnosticCode =
+        nativeError === undefined
+          ? /^(?:st3?|fractal): [^\r\n]* \(([a-z][a-z0-9-]*)\)\r?\n?$/.exec(stderr)?.[1]
+          : undefined
+      return yield* unavailable('Activity command failed', {
+        reason: 'command',
+        message: 'Activity command failed',
+        command,
+        args,
+        exitCode: Number(exitCode),
+        ...(nativeError === undefined ? {} : { nativeError }),
+        ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
+      })
+    }
     return stdout
   })
   return <TType, TEncoded>({
@@ -254,21 +339,29 @@ const makeActivityCommandJson = Effect.gen(function* () {
 })
 
 /**
- * Read native st3 actual workspaces and retained local PTYs. Unknown evidence is not
- * an empty set: callers must veto reclamation when this returns undefined.
- * Each invocation is a fresh capture, with bounded pagination, bytes and time.
+ * Read fresh native activity with receipt-safe failure evidence. Expired agent
+ * pagination restarts the entire capture, discarding every partial page. All
+ * attempts share the original deadline and byte budget.
  */
-export const readWorkspaceActivity: (options: {
+export const readWorkspaceActivityResult: (options: {
   readonly fs: FileSystem.FileSystem
   readonly admittedEpoch?: WorkspaceActivityEpoch | undefined
-}) => Effect.Effect<WorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
-  'store.readWorkspaceActivity',
+}) => Effect.Effect<WorkspaceActivityResult, never, ChildProcessSpawner> = Effect.fn(
+  'store.readWorkspaceActivityResult',
 )(function* ({ fs, admittedEpoch }) {
   const host = `host/${hostname()}`
-  if (admittedEpoch !== undefined && admittedEpoch.host !== host) return undefined
+  if (admittedEpoch !== undefined && admittedEpoch.host !== host)
+    return {
+      _tag: 'Unavailable',
+      failure: { reason: 'admission', message: 'Activity host admission changed' },
+    } satisfies WorkspaceActivityResult
   const st3Binary = process.env['MEGAREPO_GC_ST3_BIN'] ?? 'st3'
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
-  if (st3Binary.length === 0 || ptyBinary.length === 0) return undefined
+  if (st3Binary.length === 0 || ptyBinary.length === 0)
+    return {
+      _tag: 'Unavailable',
+      failure: { reason: 'admission', message: 'Activity command is disabled' },
+    } satisfies WorkspaceActivityResult
   const commandJson = yield* makeActivityCommandJson
 
   const read = Effect.gen(function* () {
@@ -466,10 +559,53 @@ export const readWorkspaceActivity: (options: {
       } satisfies NativeActivityEvidence,
     }
   })
-  return yield* read.pipe(
+  let attempts = 0
+  let terminalFailure: WorkspaceActivityFailure | undefined
+  return yield* Effect.suspend(() => {
+    attempts += 1
+    return read
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.sync(() => {
+        terminalFailure =
+          error instanceof ActivityUnavailable
+            ? (error.evidence ?? { reason: 'capture', message: error.message })
+            : { reason: 'capture', message: String(error) }
+      }),
+    ),
+    Effect.retry({
+      times: CAPTURE_ATTEMPTS - 1,
+      while: (error) =>
+        error instanceof ActivityUnavailable &&
+        error.evidence?.command === st3Binary &&
+        error.evidence.args?.[0] === 'agents' &&
+        error.evidence.args[1] === 'ls' &&
+        (error.evidence.nativeError?.code ?? error.evidence.diagnosticCode) ===
+          'page-cursor-expired',
+    }),
     Effect.timeout(CAPTURE_TIMEOUT_MS),
-    Effect.orElseSucceed(() => undefined),
+    Effect.map((activity): WorkspaceActivityResult => ({ _tag: 'Available', activity })),
+    Effect.catch((error) =>
+      Effect.succeed({
+        _tag: 'Unavailable' as const,
+        failure: {
+          ...(terminalFailure ?? { reason: 'capture' as const, message: String(error) }),
+          attempts,
+        },
+      }),
+    ),
   )
+})
+
+/** Unknown evidence is not an empty set: existing callers must veto reclamation. */
+export const readWorkspaceActivity: (options: {
+  readonly fs: FileSystem.FileSystem
+  readonly admittedEpoch?: WorkspaceActivityEpoch | undefined
+}) => Effect.Effect<WorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
+  'store.readWorkspaceActivity',
+)(function* (options) {
+  const result = yield* readWorkspaceActivityResult(options)
+  return result._tag === 'Available' ? result.activity : undefined
 })
 
 /** Schema tag of the producer-neutral activity manifest. */

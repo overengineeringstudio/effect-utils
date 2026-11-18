@@ -370,7 +370,12 @@ it.live(
       const locked = paths['locked']!
       const budget = paths['budget']!
       const leased = paths['leased']!
-      yield* Effect.sync(() => execFileSync('git', ['-C', source, 'worktree', 'lock', locked]))
+      const lockedGitDir = yield* Effect.sync(() =>
+        execFileSync('git', ['-C', locked, 'rev-parse', '--absolute-git-dir'], {
+          encoding: 'utf8',
+        }).trim(),
+      )
+      yield* fs.writeFileString(join(lockedGitDir, 'index.lock'), '')
       const manifestPath = join(store, 'activity.json')
       yield* fs.writeFileString(
         manifestPath,

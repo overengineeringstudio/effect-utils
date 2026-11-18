@@ -39,6 +39,7 @@ import {
   parseProcMapsPaths,
   parseProcStat,
   parseProcUids,
+  ProcessCensusProbe,
   readProcessReferences,
   readWorktreeInUse,
   readWorktreeReferencesInUse,
@@ -356,6 +357,133 @@ describe.skipIf(supportsProcessCwdProbe === false)('store-inuse native process p
 })
 
 describe.skipIf(process.platform !== 'linux')('store-inuse strict reference probe', () => {
+  for (const probe of [
+    { kind: 'cwd', path: '/proc/42/cwd' },
+    { kind: 'root', path: '/proc/42/root' },
+    { kind: 'fd', path: '/proc/42/fd' },
+    { kind: 'fd', path: '/proc/42/fd/7' },
+    { kind: 'maps', path: '/proc/42/maps' },
+    { kind: 'status', path: '/proc/42/status' },
+    { kind: 'stat', path: '/proc/42/stat' },
+  ] as const) {
+    it.effect(
+      `retains exact failed PID and ${probe.path} probe unless its lifetime is covered`,
+      Effect.fnUntraced(function* () {
+        const base = yield* FileSystem.FileSystem
+        const uid = process.getuid!()
+        const denied = Effect.fail(
+          systemError({
+            _tag: 'PermissionDenied',
+            module: 'FileSystem',
+            method: 'census-evidence-fixture',
+            pathOrDescriptor: probe.path,
+          }),
+        )
+        const fs: FileSystem.FileSystem = {
+          ...base,
+          realPath: (path) => Effect.succeed(path),
+          readDirectory: (path) =>
+            path === probe.path ? denied : Effect.succeed(path === '/proc' ? ['42'] : ['7']),
+          readLink: (path) => (path === probe.path ? denied : Effect.succeed('/outside')),
+          readFileString: (path) =>
+            path === probe.path
+              ? denied
+              : Effect.succeed(
+                  path.endsWith('/stat') === true
+                    ? `42 (holder) S 1 42 42 0 -1 0 ${'0 '.repeat(12)}1234`
+                    : path.endsWith('/status') === true
+                      ? `Uid:\t${uid}\t${uid}\t${uid}\t${uid}\n`
+                      : '',
+                ),
+        }
+        expect(yield* Schema.decodeUnknownEffect(ProcessCensusProbe)(probe)).toEqual(probe)
+        for (const startTime of [undefined, '999', '1234']) {
+          const coveredProcesses = startTime === undefined ? undefined : [{ pid: 42, startTime }]
+          const scan = yield* readProcessReferences({
+            fs,
+            selfPid: 99,
+            scope: 'own-uid',
+            coveredProcesses,
+          })
+          const result = yield* readWorktreeReferencesInUse({
+            worktreePath: '/worktree',
+            selfPid: 99,
+            scope: 'own-uid',
+            coveredProcesses,
+          }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+          if (startTime === '1234' && probe.kind !== 'stat') {
+            expect(scan).toMatchObject({
+              _tag: 'complete',
+              processIdentities: [{ pid: 42, startTime: '1234' }],
+            })
+            expect(result).toEqual({ _tag: 'free' })
+          } else {
+            const unknown = {
+              _tag: 'unknown',
+              reason: 'inaccessible-process',
+              pid: 42,
+              probe,
+            }
+            expect(scan).toEqual(unknown)
+            expect(result).toEqual(unknown)
+          }
+        }
+      }, Effect.provide(NodeServices.layer)),
+    )
+  }
+
+  for (const scope of ['own-uid', 'gc-owner'] as const) {
+    for (const changedLifetime of [false, true]) {
+      it.effect(
+        `${scope} retains stat evidence when covered lifetime recheck ${changedLifetime === true ? 'changes' : 'fails'}`,
+        Effect.fnUntraced(function* () {
+          const base = yield* FileSystem.FileSystem
+          const uid = process.getuid!()
+          let statReads = 0
+          const fs: FileSystem.FileSystem = {
+            ...base,
+            realPath: (path) => Effect.succeed(path),
+            readDirectory: (path) => Effect.succeed(path === '/proc' ? ['42'] : []),
+            readLink: () => Effect.succeed('/outside'),
+            readFileString: (path) => {
+              if (path.endsWith('/stat') === true) {
+                statReads += 1
+                if (statReads > 1 && changedLifetime === false) {
+                  return Effect.fail(
+                    systemError({
+                      _tag: 'PermissionDenied',
+                      module: 'FileSystem',
+                      method: 'census-lifetime-fixture',
+                      pathOrDescriptor: path,
+                    }),
+                  )
+                }
+                return Effect.succeed(
+                  `42 (holder) S 1 42 42 0 -1 0 ${'0 '.repeat(12)}${statReads === 1 ? '1234' : '5678'}`,
+                )
+              }
+              return Effect.succeed(
+                path.endsWith('/status') === true ? `Uid:\t${uid}\t${uid}\t${uid}\t${uid}\n` : '',
+              )
+            },
+          }
+          const result = yield* readWorktreeReferencesInUse({
+            worktreePath: '/worktree',
+            selfPid: 99,
+            scope,
+            coveredProcesses: [{ pid: 42, startTime: '1234' }],
+          }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+          expect(result).toMatchObject({
+            _tag: 'unknown',
+            reason: scope === 'gc-owner' ? 'own-uid-unreadable' : 'inaccessible-process',
+            pid: 42,
+            probe: { kind: 'stat', path: '/proc/42/stat' },
+          })
+        }, Effect.provide(NodeServices.layer)),
+      )
+    }
+  }
+
   for (const scenario of [
     {
       name: 'ignores and counts an unreadable foreign process',
@@ -444,7 +572,11 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
         if (result._tag === 'in-use') {
           expect(result.holder).toEqual({ pid: 42, path: scenario.cwd })
         }
-        if (result._tag === 'unknown') expect(result.reason).toBe('own-uid-unreadable')
+        if (result._tag === 'unknown') {
+          expect(result.reason).toBe('own-uid-unreadable')
+          expect(result.pid).toBe(42)
+          expect(result.probe).toEqual({ kind: 'cwd', path: '/proc/42/cwd' })
+        }
         // The original scope must remain fail-closed for this exact same fixture.
         expect(
           yield* readWorktreeReferencesInUse({
@@ -454,6 +586,11 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
         ).toEqual({
           _tag: 'unknown',
           reason: 'inaccessible-process',
+          pid: 42,
+          probe: {
+            kind: scenario.readableCwd === true ? 'root' : 'cwd',
+            path: `/proc/42/${scenario.readableCwd === true ? 'root' : 'cwd'}`,
+          },
         })
       }, Effect.provide(NodeServices.layer)),
     )
@@ -736,7 +873,7 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
         const fs = yield* FileSystem.FileSystem
         const worktree = yield* fs.makeTempDirectoryScoped()
         // PID 1 is root-owned; its cwd/root/fds are unreadable to this user.
-        expect(yield* readWorktreeReferencesInUse({ worktreePath: worktree })).toEqual({
+        expect(yield* readWorktreeReferencesInUse({ worktreePath: worktree })).toMatchObject({
           _tag: 'unknown',
           reason: 'inaccessible-process',
         })
@@ -853,11 +990,13 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
               _tag: 'unknown',
               reason: 'inaccessible-process',
               pid: hidden.identity.pid,
+              probe: { kind: 'cwd', path: `/proc/${hidden.identity.pid}/cwd` },
             },
             wrongStartTime: {
               _tag: 'unknown',
               reason: 'inaccessible-process',
               pid: hidden.identity.pid,
+              probe: { kind: 'cwd', path: `/proc/${hidden.identity.pid}/cwd` },
             },
             exact: 'complete',
             identities: expect.arrayContaining([hidden.identity]),
@@ -912,6 +1051,7 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
             _tag: 'unknown',
             reason: 'inaccessible-process',
             pid: late.identity.pid,
+            probe: { kind: 'cwd', path: `/proc/${late.identity.pid}/cwd` },
           })
         },
         Effect.provide(NodeServices.layer),
