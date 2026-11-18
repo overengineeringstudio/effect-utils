@@ -382,6 +382,12 @@ resolved tool/platform identity. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
 
+The lifecycle API reserves capacity before preparation and serializes matching
+claims by durable generation. Successful execution records completion before
+provider exit; only explicit fenced release can drain, revalidate and reprepare.
+Dirty, committed or uncertain roots remain locked and quarantined. Inspection
+never promotes uncertainty to readiness; there is no automatic destructive retirement.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
