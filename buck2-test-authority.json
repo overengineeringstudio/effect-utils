@@ -2281,6 +2281,7 @@
       "collectionTarget": "effect_utils//packages/@overeng/utils:test_collect",
       "excludes": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
@@ -2372,6 +2373,7 @@
       ],
       "unboundedAfter": [],
       "unboundedFiles": [
+        "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
