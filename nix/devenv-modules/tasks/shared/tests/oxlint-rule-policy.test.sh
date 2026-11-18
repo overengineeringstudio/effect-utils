@@ -383,7 +383,7 @@ export const styles = stylex.create({
   box: {
     WebkitUserSelect: 'none',
     boxShadow: '0 0 4px red',
-    outlineStyle: { default: 'none', ':hover': 'solid' },
+    outlineOffset: { default: 0, ':hover': 2 },
     opacity: { default: 1, [stylex.when.descendant(':hover')]: 0.5 },
   },
 })
