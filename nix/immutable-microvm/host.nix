@@ -103,7 +103,12 @@ in
         Kind = "tap";
         Name = cfg.tap;
       };
-      tapConfig.User = cfg.user;
+      tapConfig = {
+        User = cfg.user;
+        # Match microvm-run's vnet_hdr + multi_queue TAP flags for 2 vCPUs.
+        VNetHeader = true;
+        MultiQueue = true;
+      };
     };
     systemd.network.networks."30-authority" = {
       matchConfig.Name = cfg.tap;
