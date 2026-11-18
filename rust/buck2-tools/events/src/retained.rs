@@ -42,10 +42,28 @@ fn now_ns() -> io::Result<u128> {
         .map_err(io::Error::other)
 }
 
+fn durable_directory(dir: &Path) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    let marker = dir.join(".directory-synced");
+    if marker.try_exists()? { return Ok(()); }
+    // A visible marker can only follow every ancestor barrier, including when
+    // another process creates the hierarchy concurrently. A lost marker merely
+    // repeats these first-use barriers; ordinary captures only sync the leaf.
+    let canonical = fs::canonicalize(dir)?;
+    for ancestor in canonical.ancestors() {
+        File::open(ancestor)?.sync_all()?;
+    }
+    match OpenOptions::new().write(true).create_new(true).open(marker) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 // Hard-link publication is create-if-absent: simultaneous retries never replace
 // an existing invocation record or refresh its retention clock.
 fn publish(dir: &Path, key: &str, write: impl FnOnce(&mut File) -> io::Result<()>) -> io::Result<()> {
-    fs::create_dir_all(dir)?;
+    durable_directory(dir)?;
     let temporary = dir.join(format!(".{}.{}.tmp", std::process::id(), now_ns()?));
     let content_addressed = key.starts_with("build:");
     let mut target = dir.join(format!("{}.jsonl", sha256_hex(key.as_bytes())));

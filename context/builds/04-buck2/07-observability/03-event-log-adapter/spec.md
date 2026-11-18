@@ -106,6 +106,9 @@ for isolated tests/operator capture; normal callers share the default.
 Every immutable JSONL file is atomically published and synced before ingest
 acknowledges conversion. Conversion filenames include native-build and content
 hashes, so replay is idempotent while partial and later complete snapshots coexist.
+First use syncs the entire newly established directory ancestry before creating
+an owned `.directory-synced` marker. Later publications sync their file and leaf
+directory; concurrent creation or a lost marker cannot skip the ancestry barrier.
 The conversion header carries `build_id`, `root_id`, typed `resource_attributes`,
 `truncated`, `stop_reason`, `unknown_fields`, and `action_count`. Each following
 `occurrence` carries `build_id`, `span_id`, decimal-string `start_ns`/`end_ns`,
@@ -121,8 +124,9 @@ lane stays null. Host manifests carry `enrolled_at_ns`, `retention_seconds`,
 They establish enrollment, not continuous fleet coverage.
 
 Records remain at least 30 days from first durable capture; replay does not
-refresh that clock. Capture prunes only expired records, never manifests or
-younger records. A conversion is capped at 64 MiB; overflow/I/O errors fail ingest
+refresh that clock. A host-wide scan is claimed at most once per UTC day and
+prunes only expired records, never manifests or younger records.
+A conversion is capped at 64 MiB; overflow/I/O errors fail ingest
 so native input remains available. There is no silent size eviction or claim of
 unlimited disk capacity. Existing OTLP delivery remains diagnostic until the
 reader reconciles census opens, terminals, and converted native build IDs.
