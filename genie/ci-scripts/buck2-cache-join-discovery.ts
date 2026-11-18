@@ -48,7 +48,7 @@ export const classifyRun = (run: EvidenceRun): CacheLane | undefined => {
 
 const cacheLanes: CacheLane[] = ['main-writer', 'main-reader', 'merge_group', 'pr']
 
-const compareRuns = (left: EvidenceRun, right: EvidenceRun): number =>
+const compareRuns = ({ left, right }: { left: EvidenceRun; right: EvidenceRun }): number =>
   Date.parse(left.created_at) - Date.parse(right.created_at) ||
   left.id - right.id ||
   left.workflow.localeCompare(right.workflow) ||
@@ -69,7 +69,7 @@ export const selectRuns = (
     merge_group: [],
     pr: [],
   }
-  for (const run of [...runs].sort(compareRuns)) {
+  for (const run of runs.toSorted((left, right) => compareRuns({ left, right }))) {
     if (seenIds.has(run.id) === true) continue
     seenIds.add(run.id)
     const lane = classifyRun(run)
@@ -82,7 +82,7 @@ export const selectRuns = (
     const selectedCount = byLane[lane].length
     return { lane, seen: byLane[lane].length, selected: selectedCount }
   })
-  selected.sort(compareRuns)
+  selected.sort((left, right) => compareRuns({ left, right }))
   return { selected, lanes }
 }
 
