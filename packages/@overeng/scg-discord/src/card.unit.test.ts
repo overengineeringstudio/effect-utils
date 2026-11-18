@@ -570,6 +570,13 @@ describe('validateMessage', () => {
     components,
   })
 
+  it('accepts a top-level text display for an inert publication placeholder', () => {
+    const result = validateMessage(body([text('Authenticating review. No decision is available yet.')]))
+    expect(result.ok).toBe(true)
+    expect(result.stats.components).toBe(1)
+    expect(result.stats.buttons).toBe(0)
+  })
+
   it('counts nested components and rejects more than 40', () => {
     const result = validateMessage(
       body([

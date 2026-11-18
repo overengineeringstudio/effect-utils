@@ -113,7 +113,7 @@ export type Component = Container | ContainerChild | Button
 export interface DiscordMessage {
   readonly flags: number
   readonly allowed_mentions: { readonly parse: readonly [] }
-  readonly components: readonly Container[]
+  readonly components: readonly (Container | TextDisplay)[]
 }
 
 export interface MessageStats {
