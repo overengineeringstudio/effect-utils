@@ -171,15 +171,17 @@ relative-time implementation.
 
 The contract is language-agnostic. Existing implementations should be reused when they fit, but no single language owns the contract.
 
-One existing implementation is the TypeScript/Nix path in effect-utils:
+Shared ownership and stamp transport (BUILD.ID-R01–R03):
 
-- `packages/@overeng/utils/src/node/cli-version.ts`
-- `nix/workspace-tools/lib/cli-build-stamp.nix`
-- `nix/devenv-modules/lib/mk-source-cli.nix`
-- `nix/workspace-tools/lib/mk-bun-cli.nix`
-- `nix/workspace-tools/lib/mk-pnpm-cli.nix`
+| Layer                   | Owner                                                                                           | Responsibility                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| TypeScript / JavaScript | `@overeng/utils`: `packages/@overeng/utils/src/node/cli-build-identity.js` and `cli-version.ts` | Parse and resolve canonical identity; share CLI version and error-suffix integration   |
+| Nix                     | `effect-utils.lib.cliBuildStamp` in `nix/workspace-tools/lib/cli-build-stamp.nix`               | Produce local source stamps and canonical Nix stamps through `mkNixStamp`              |
+| Buck CLI packaging      | `nix/workspace-tools/lib/mk-cli-packages.nix` and `buck2-product-candidates.nix`                | Select and wrap Buck products; supply runtime stamps through `CLI_BUILD_STAMP`         |
+| Buck native products    | `nix/buck2-products/from-source.nix`                                                            | Inject the product stamp through Buck's `build_identity.cli_build_stamp` configuration |
+| Rust                    | Shared Rust crate                                                                               | Required owner for reusable identity parsing and formatting across Rust binaries       |
 
-That implementation currently uses:
+The source and runtime transport names are:
 
 - Placeholder in source: `__CLI_BUILD_STAMP__`
 - Runtime env var for source execution: `CLI_BUILD_STAMP`
@@ -190,10 +192,11 @@ For any other language/runtime:
 - reuse the same env var or embedded JSON shape when practical
 - prefer one shared helper/library per language or subsystem over per-binary formatting
 
-For Rust binaries using `otel-bootstrap`, capture `option_env!("CLI_BUILD_STAMP")`
-in the **binary crate** and pass it to `build_identity_from_env` and telemetry's
-`embedded_build_stamp`. Buck compiles shared libraries separately from product
-stamps; reading `option_env!` inside the helper crate loses the Nix revision.
+Rust binaries capture `option_env!("CLI_BUILD_STAMP")` in the **binary crate**
+and pass the captured stamp to the shared Rust crate for identity resolution
+and to telemetry initialization when present. Buck compiles shared libraries
+separately from product stamps; reading `option_env!` inside the helper crate
+loses the product's embedded stamp.
 
 ## Modality Rules
 
