@@ -7093,14 +7093,18 @@ jobs:
           fi
           decision="$(manifest_pr_writer_push "$GITHUB_REPOSITORY" "$branch")"
           if [ "$decision" = skip-queued ]; then exit 0; fi
+          pushed_sha="$(git rev-parse HEAD)"
           body='Updates the v2 manifest for bootstrap changes, daily safety, or bootstrap healing. Correctness rests on #2346; published still receives the full manifest on every main push. Skips leave matching bootstrap proposals untouched; stale bootstrap proposals are refreshed or closed if main already matches.'
           pr="$(gh pr list --base main --head "$branch" --state open --json number --jq '.[0].number // empty')"
           if [ -n "$pr" ]; then
             gh pr edit "$pr" --body "$body"
           else
-            gh pr create --base main --head "$branch" \
-              --title 'chore(buck2): update product cache manifest' --body "$body"
+            pr="$(gh pr create --base main --head "$branch" \
+              --title 'chore(buck2): update product cache manifest' --body "$body")"
           fi
+          pr="${pr##*/}"
+          source genie/ci-workflow/manifest-pr-enqueue.sh
+          manifest_pr_enqueue "$GITHUB_REPOSITORY" "$pr" "$pushed_sha"
   promote-published:
     needs: [publish-products, consumer-smoke]
     if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha
