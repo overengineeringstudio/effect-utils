@@ -1,0 +1,84 @@
+diff --git a/lib/vite.js b/lib/vite.js
+--- a/lib/vite.js
++++ b/lib/vite.js
+@@ -20,8 +20,23 @@
+   let viteServer = null;
+   let viteOutDir = null;
+   let cssInjectedInGenerateBundle = false;
++  // Own pollers through Vite's plugin lifecycle, including middleware mode.
++  // https://github.com/meta/stylex/issues/1857
++  const stopPollers = new Set();
++  const withPollerCleanup = hook => {
++    const handler = typeof hook === 'function' ? hook : hook?.handler;
++    const cleanup = function (...args) {
++      for (const stop of stopPollers) stop();
++      return handler?.apply(this, args);
++    };
++    return hook && typeof hook === 'object'
++      ? { ...hook, handler: cleanup }
++      : cleanup;
++  };
+   return {
+     ...plugin,
++    buildEnd: withPollerCleanup(plugin.buildEnd),
++    closeBundle: withPollerCleanup(plugin.closeBundle),
+     config(config) {
+       if (!stylexPackages || stylexPackages.length === 0) return;
+       const addExcludes = (existing = []) => Array.from(new Set([...existing, ...stylexPackages]));
+@@ -75,7 +90,13 @@
+             } catch {}
+           }
+         }, 150);
+-        server.httpServer?.once('close', () => clearInterval(interval));
++        const stop = () => {
++          clearInterval(interval);
++          server.httpServer?.off('close', stop);
++          stopPollers.delete(stop);
++        };
++        stopPollers.add(stop);
++        server.httpServer?.once('close', stop);
+       }
+     },
+     resolveId(id) {
+diff --git a/lib/es/vite.mjs b/lib/es/vite.mjs
+--- a/lib/es/vite.mjs
++++ b/lib/es/vite.mjs
+@@ -13,8 +13,23 @@
+   let viteServer = null;
+   let viteOutDir = null;
+   let cssInjectedInGenerateBundle = false;
++  // Own pollers through Vite's plugin lifecycle, including middleware mode.
++  // https://github.com/meta/stylex/issues/1857
++  const stopPollers = new Set();
++  const withPollerCleanup = hook => {
++    const handler = typeof hook === 'function' ? hook : hook?.handler;
++    const cleanup = function (...args) {
++      for (const stop of stopPollers) stop();
++      return handler?.apply(this, args);
++    };
++    return hook && typeof hook === 'object'
++      ? { ...hook, handler: cleanup }
++      : cleanup;
++  };
+   return {
+     ...plugin,
++    buildEnd: withPollerCleanup(plugin.buildEnd),
++    closeBundle: withPollerCleanup(plugin.closeBundle),
+     config(config) {
+       if (!stylexPackages || stylexPackages.length === 0) return;
+       const addExcludes = (existing = []) => Array.from(new Set([...existing, ...stylexPackages]));
+@@ -68,7 +83,13 @@
+             } catch {}
+           }
+         }, 150);
+-        server.httpServer?.once('close', () => clearInterval(interval));
++        const stop = () => {
++          clearInterval(interval);
++          server.httpServer?.off('close', stop);
++          stopPollers.delete(stop);
++        };
++        stopPollers.add(stop);
++        server.httpServer?.once('close', stop);
+       }
+     },
+     resolveId(id) {
