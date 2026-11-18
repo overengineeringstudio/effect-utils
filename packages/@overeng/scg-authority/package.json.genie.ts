@@ -18,7 +18,14 @@ export default packageJson(
     workspace: workspaceMember({ memberPath: 'packages/@overeng/scg-authority' }),
     dependencies: { workspace: [scgProtocolPkg], external: catalog.pick('effect') },
     devDependencies: {
-      external: catalog.pick('@types/node', '@types/bun', 'typescript', 'vitest', '@effect/vitest', '@effect/platform-node'),
+      external: catalog.pick(
+        '@types/node',
+        '@types/bun',
+        'typescript',
+        'vitest',
+        '@effect/vitest',
+        '@effect/platform-node',
+      ),
     },
   }),
 )

@@ -88,9 +88,9 @@ beforeEach(async () => {
       const root = fileURLToPath(new URL('../../../../tmp/scg-authority-tests/', import.meta.url))
       yield* fs.makeDirectory(root, { recursive: true })
       const scope = yield* Scope.make()
-      const path = yield* fs.makeTempDirectoryScoped({ directory: root, prefix: 'case-' }).pipe(
-        Effect.provideService(Scope.Scope, scope),
-      )
+      const path = yield* fs
+        .makeTempDirectoryScoped({ directory: root, prefix: 'case-' })
+        .pipe(Effect.provideService(Scope.Scope, scope))
       return { path, scope }
     }).pipe(Effect.provide(NodeServices.layer)),
   )
@@ -140,7 +140,11 @@ beforeEach(async () => {
   open()
 })
 afterEach(async () => {
-  try { authority.close() } finally { await releaseFixture() }
+  try {
+    authority.close()
+  } finally {
+    await releaseFixture()
+  }
 })
 
 const request = (
