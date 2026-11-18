@@ -241,11 +241,23 @@ it.effect('retries interrupted activation without reposting or reactivating a cl
     expect(f.events).toEqual(['post', 'edit'])
     expect(f.store().cards()).toEqual([card])
     expect(JSON.stringify(f.messages[0])).toContain(card.controls[0]!.id)
+    const release = f.delayExecution()
     yield* signer.handle(f.request(card))
+    expect(f.store().cards()).toEqual([card])
+    expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
+    expect(f.authority().signerStatus(signerIdentity, record.payload.executionId).state).toBe('reserved')
+    release()
     yield* Effect.promise(() => f.authority().drain())
     const delivered = f.messages.length
     yield* signer.publish(record, 'test-channel')
-    expect(f.messages).toHaveLength(delivered)
+    expect(f.messages).toHaveLength(delivered + 1)
+    expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
+    const finalMessage = f.messages.at(-1)
+    yield* signer.publish(record, 'test-channel')
+    expect(f.messages).toHaveLength(delivered + 1)
+    expect(f.messages.at(-1)).toEqual(finalMessage)
+    expect(JSON.stringify(finalMessage)).toContain('· ran.')
+    expect(f.executions()).toBe(1)
     expect(f.events.filter((event) => event === 'post')).toHaveLength(1)
     expect(f.store().cards()).toHaveLength(0)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -256,10 +268,17 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const f = yield* fixture
+      const release = f.delayExecution()
       const card = f.track()
       yield* f.signer().handle(f.request(card))
-      yield* Effect.promise(() => f.authority().drain())
       expect(f.events).toEqual(['ack:6', 'pending', 'decide', 'edit'])
+      expect(f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state).toBe('reserved')
+      expect(f.store().cards()).toEqual([card])
+      expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
+      release()
+      yield* Effect.promise(() => f.authority().drain())
+      yield* f.signer().publish(card.record, card.channelId)
+      expect(f.events).toEqual(['ack:6', 'pending', 'decide', 'edit', 'edit'])
       expect(f.executions()).toBe(1)
       expect(f.store().cards()).toHaveLength(0)
       expect(f.store().jobs()).toHaveLength(0)
@@ -345,7 +364,7 @@ it.effect('expired and decided-elsewhere cards lose all controls on recovery', (
     expect(f.store().cards()).toHaveLength(0)
     expect(f.messages.map((message) => JSON.stringify(message))).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('elsewhere'),
+        expect.stringContaining('on another surface'),
         expect.stringContaining('Expired'),
       ]),
     )
@@ -376,13 +395,14 @@ it.effect('wrong digest/account/signature bindings and wrong message/channel nev
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
-it.effect('real HTTP route returns type-6 ACK while authority acceptance is still blocked', () =>
+// HTTP transport deadlines use the platform clock; a TestClock cannot advance network callbacks.
+it.live('real HTTP route returns type-6 ACK while authority acceptance is still blocked', () =>
   Effect.gen(function* () {
     const f = yield* fixture
     f.setTime(Date.now())
     const card = f.track()
     const acceptance = yield* Deferred.make<void>()
-    const edited = yield* Deferred.make<void>()
+    const completed = yield* Deferred.make<void, unknown>()
     const signer = makeSigner(
       config,
       f.store(),
@@ -391,22 +411,24 @@ it.effect('real HTTP route returns type-6 ACK while authority acceptance is stil
         decide: (candidate) =>
           Deferred.await(acceptance).pipe(Effect.andThen(f.client.decide(candidate))),
       },
-      {
-        ...f.delivery,
-        edit: (target, message) =>
-          f.delivery
-            .edit(target, message)
-            .pipe(Effect.tap(() => Deferred.succeed(edited, undefined))),
-      },
+      f.delivery,
     )
     const server = yield* Effect.acquireRelease(
       Effect.tryPromise({
         try: () => {
           const { promise, resolve, reject } = Promise.withResolvers<Server>()
           const instance = createServer(
-            makeInteractionHttpHandler(signer, () => {
-              /* Rejections are asserted by the HTTP response. */
-            }),
+            makeInteractionHttpHandler(
+              {
+                ...signer,
+                handle: (input) => signer.handle(input).pipe(
+                  Effect.tap(() => Deferred.succeed(completed, undefined)),
+                ),
+              },
+              (cause) => {
+                void Effect.runPromise(Deferred.fail(completed, cause))
+              },
+            ),
           )
           instance.once('error', reject)
           instance.listen(0, '127.0.0.1', () => resolve(instance))
@@ -441,8 +463,11 @@ it.effect('real HTTP route returns type-6 ACK while authority acceptance is stil
     expect(f.messages).toHaveLength(0)
     expect(f.decisions()).toBe(0)
     yield* Deferred.succeed(acceptance, undefined)
-    yield* Deferred.await(edited)
+    yield* Deferred.await(completed)
+    yield* Effect.promise(() => f.authority().drain())
     expect(f.decisions()).toBe(1)
+    expect(f.store().jobs()).toHaveLength(0)
+    expect(f.executions()).toBe(1)
   }).pipe(Effect.provide(FetchHttpClient.layer), Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
