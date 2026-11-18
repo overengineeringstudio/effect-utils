@@ -128,6 +128,8 @@ only non-sensitive Discord-origin words may be quoted publicly.
 Recovering an accepted decision consults its durable winner digest rather than
 resubmitting or dispatching again. Unacknowledged candidates are discarded on
 restart; failed terminal edits are retried before the terminal cursor advances.
+Card and decision-job journal JSON uses the same `Schema.fromJsonString` codec
+for encoding and decoding.
 Delivery failure never signs a synthetic global deny. A create-before-journal
 message has no enabled controls. Experimental exact-only authority support does
 not imply live lease support, signer enrollment, an application/token or deployment.

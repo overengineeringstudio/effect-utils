@@ -45,7 +45,7 @@ export class DiscordStore {
     }
     this.#db
       .query('INSERT INTO cards (execution_id,json) VALUES (?,?)')
-      .run(record.payload.executionId, Schema.encodeSync(Schema.toJsonString(Card))(card))
+      .run(record.payload.executionId, Schema.encodeSync(Schema.fromJsonString(Card))(card))
     return card
   }
   has(executionId: string): boolean {
@@ -76,7 +76,7 @@ export class DiscordStore {
       if (job !== undefined)
         this.#db
           .query('INSERT INTO jobs (id,json) VALUES (?,?)')
-          .run(id, Schema.encodeSync(Schema.toJsonString(Job))(job))
+          .run(id, Schema.encodeSync(Schema.fromJsonString(Job))(job))
       return true
     })()
   }
