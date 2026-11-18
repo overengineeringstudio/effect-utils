@@ -68,6 +68,7 @@ const fixture = Effect.gen(function* () {
   let executions = 0
   let decisions = 0
   let time = now
+  let clock = () => time
   let executorBarrier: Promise<void> = Promise.resolve()
   const options: AuthorityOptions = {
     dbPath: `${directory}/authority.sqlite`,
@@ -76,7 +77,7 @@ const fixture = Effect.gen(function* () {
     callers: [{ ...owner, publicKey: keys.caller.publicKey }],
     audience: 'synthetic-executor',
     release: 'integration',
-    now: () => time,
+    now: () => clock(),
     pendingTtlMs: 60_000,
     catalog: {
       catalog,
@@ -154,7 +155,8 @@ const fixture = Effect.gen(function* () {
   }
   const track = (record = pending()): Card => store.add(record, 'test-channel', randomUUID())
   const request = (card: Card, customId = card.controls[0]!.id, interactionId = randomUUID()) => {
-    const timestamp = String(Math.floor(time / 1000))
+    const requestedAt = clock()
+    const timestamp = String(Math.floor(requestedAt / 1000))
     const body = Buffer.from(
       JSON.stringify({
         id: interactionId,
@@ -174,7 +176,7 @@ const fixture = Effect.gen(function* () {
         Buffer.concat([Buffer.from(timestamp), body]),
         keys.discord.privateKey,
       ).toString('hex'),
-      nowMs: time,
+      nowMs: requestedAt,
       acknowledge: (_status: number, value: { readonly type: number }) => {
         events.push(`ack:${value.type}`)
         return true
@@ -206,6 +208,9 @@ const fixture = Effect.gen(function* () {
     },
     setTime: (value: number) => {
       time = value
+    },
+    useLiveClock: () => {
+      clock = Date.now
     },
     rejectEdits: (value: boolean) => {
       rejectEdits = value
@@ -245,7 +250,9 @@ it.effect('retries interrupted activation without reposting or reactivating a cl
     yield* signer.handle(f.request(card))
     expect(f.store().cards()).toEqual([card])
     expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
-    expect(f.authority().signerStatus(signerIdentity, record.payload.executionId).state).toBe('reserved')
+    expect(f.authority().signerStatus(signerIdentity, record.payload.executionId).state).toBe(
+      'reserved',
+    )
     release()
     yield* Effect.promise(() => f.authority().drain())
     const delivered = f.messages.length
@@ -272,7 +279,9 @@ it.effect(
       const card = f.track()
       yield* f.signer().handle(f.request(card))
       expect(f.events).toEqual(['ack:6', 'pending', 'decide', 'edit'])
-      expect(f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state).toBe('reserved')
+      expect(
+        f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state,
+      ).toBe('reserved')
       expect(f.store().cards()).toEqual([card])
       expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
       release()
@@ -399,7 +408,9 @@ it.effect('wrong digest/account/signature bindings and wrong message/channel nev
 it.live('real HTTP route returns type-6 ACK while authority acceptance is still blocked', () =>
   Effect.gen(function* () {
     const f = yield* fixture
-    f.setTime(Date.now())
+    // Authority, Discord timestamp and the real HTTP handler must read the same
+    // advancing clock, not a one-time snapshot preceding authority acceptance.
+    f.useLiveClock()
     const card = f.track()
     const acceptance = yield* Deferred.make<void>()
     const completed = yield* Deferred.make<void, unknown>()
@@ -421,9 +432,10 @@ it.live('real HTTP route returns type-6 ACK while authority acceptance is still 
             makeInteractionHttpHandler(
               {
                 ...signer,
-                handle: (input) => signer.handle(input).pipe(
-                  Effect.tap(() => Deferred.succeed(completed, undefined)),
-                ),
+                handle: (input) =>
+                  signer
+                    .handle(input)
+                    .pipe(Effect.tap(() => Deferred.succeed(completed, undefined))),
               },
               (cause) => {
                 void Effect.runPromise(Deferred.fail(completed, cause))
@@ -487,45 +499,55 @@ it.effect('an elapsed HTTP ACK deadline never becomes a decision after restart',
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
-it.effect('reserved cards survive restart and failed final delivery until the delayed executor finishes', () =>
-  Effect.gen(function* () {
-    const f = yield* fixture
-    const release = f.delayExecution()
-    const card = f.track()
-    yield* f.signer().handle(f.request(card))
-    const reserved = yield* f.client.status(card.record.payload.executionId)
-    expect(reserved.state).toBe('reserved')
-    expect(f.store().cards()).toHaveLength(1)
-    expect(JSON.stringify(f.messages.at(-1))).toContain('running')
-    f.restartSigner()
-    yield* f.signer().recover()
-    expect(f.store().cards()).toHaveLength(1)
-    release()
-    yield* Effect.tryPromise({
-      try: async () => {
-        for (let turn = 0; turn < 1_000; turn += 1) {
-          if (f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state !== 'reserved') return
-          await setImmediate()
-        }
-        throw new Error('Executor did not finish')
-      },
-      catch: (cause) => new DiscordError({ operation: 'await-test-executor', cause }),
-    })
-    const client: SyncAuthorityClient = {
-      ...f.client,
-      sync: () => Effect.succeed({ cursor: 7, pending: [], terminal: [] }),
-    }
-    f.rejectEdits(true)
-    expect(Exit.isFailure(yield* Effect.exit(syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')))).toBe(true)
-    expect(f.store().cards()).toHaveLength(1)
-    expect(f.store().cursor()).toBe(0)
-    f.rejectEdits(false)
-    yield* syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')
-    expect(f.store().cards()).toHaveLength(0)
-    expect(f.store().cursor()).toBe(7)
-    const finalMessage = f.messages.at(-1)
-    yield* f.signer().close(card, reserved, false)
-    expect(f.messages.at(-1)).toEqual(finalMessage)
-    expect(f.executions()).toBe(1)
-  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+it.effect(
+  'reserved cards survive restart and failed final delivery until the delayed executor finishes',
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const release = f.delayExecution()
+      const card = f.track()
+      yield* f.signer().handle(f.request(card))
+      const reserved = yield* f.client.status(card.record.payload.executionId)
+      expect(reserved.state).toBe('reserved')
+      expect(f.store().cards()).toHaveLength(1)
+      expect(JSON.stringify(f.messages.at(-1))).toContain('running')
+      f.restartSigner()
+      yield* f.signer().recover()
+      expect(f.store().cards()).toHaveLength(1)
+      release()
+      yield* Effect.tryPromise({
+        try: async () => {
+          for (let turn = 0; turn < 1_000; turn += 1) {
+            if (
+              f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state !==
+              'reserved'
+            )
+              return
+            await setImmediate()
+          }
+          throw new Error('Executor did not finish')
+        },
+        catch: (cause) => new DiscordError({ operation: 'await-test-executor', cause }),
+      })
+      const client: SyncAuthorityClient = {
+        ...f.client,
+        sync: () => Effect.succeed({ cursor: 7, pending: [], terminal: [] }),
+      }
+      f.rejectEdits(true)
+      expect(
+        Exit.isFailure(
+          yield* Effect.exit(syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')),
+        ),
+      ).toBe(true)
+      expect(f.store().cards()).toHaveLength(1)
+      expect(f.store().cursor()).toBe(0)
+      f.rejectEdits(false)
+      yield* syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')
+      expect(f.store().cards()).toHaveLength(0)
+      expect(f.store().cursor()).toBe(7)
+      const finalMessage = f.messages.at(-1)
+      yield* f.signer().close(card, reserved, false)
+      expect(f.messages.at(-1)).toEqual(finalMessage)
+      expect(f.executions()).toBe(1)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
