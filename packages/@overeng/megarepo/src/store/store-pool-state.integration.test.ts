@@ -12,7 +12,7 @@ import { claimPoolGeneration, type PoolSlot, requirePoolLease, reservePoolSlot, 
 const slot: PoolSlot = {
   id: 'slot', path: '/source/pool/slot', bare: '/source/.bare', commit: 'a'.repeat(40),
   identity: 'installed', charge: 64, generation: 1, state: 'leased', token: 'claim',
-  barrierToken: 'barrier', owner: 'task', reason: '',
+  barrierToken: 'barrier', owner: 'task', reason: '', chargeKnown: true,
 }
 
 describe('pool authoritative lifecycle', () => {
@@ -53,6 +53,10 @@ describe('pool authoritative lifecycle', () => {
       const failure = yield* reservePoolSlot(state, { ...slot, id: 'next', bare: '/other/.bare' }).pipe(Effect.flip)
       expect(failure.message).toContain('capacity')
       expect((yield* reservePoolSlot(state, { ...slot, id: 'next', charge: 36 })).slots).toHaveLength(2)
+      const unknown = yield* reservePoolSlot({ ...state, slots: [{ ...slot, chargeKnown: false }] }, slot).pipe(Effect.flip)
+      expect(unknown.message).toContain('unknown')
+      const historical = yield* reservePoolSlot({ ...state, slots: [{ ...slot, chargeKnown: undefined }] }, slot).pipe(Effect.flip)
+      expect(historical.message).toContain('unknown')
     }),
   )
 

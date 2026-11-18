@@ -17,8 +17,9 @@ export const PoolSlot = Schema.Struct({
   commit: Schema.String,
   identity: Schema.String,
   charge: Schema.Number,
+  chargeKnown: Schema.optional(Schema.Boolean),
   generation: Schema.Number,
-  state: Schema.Literals(['preparing', 'ready', 'leased', 'quarantined']),
+  state: Schema.Literals(['preparing', 'ready', 'leased', 'completed', 'quarantined']),
   token: Schema.String,
   barrierToken: Schema.String,
   owner: Schema.String,
@@ -85,7 +86,7 @@ export const withPoolState = <A, E, R>(
 
 /** Pure generation fence; a token can authorize only its original claim. */
 export const requirePoolLease = (slot: PoolSlot, token: string, generation: number) =>
-  slot.state === 'leased' && slot.token === token && slot.generation === generation
+  (slot.state === 'leased' || slot.state === 'completed') && slot.token === token && slot.generation === generation
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Stale or non-leased pool generation' }))
 
@@ -99,6 +100,8 @@ export const claimPoolGeneration = (slot: PoolSlot, identity: string, owner: str
 }
 
 export const reservePoolSlot = (state: PoolState, slot: PoolSlot) => {
+  if (state.slots.some((item) => item.chargeKnown !== true))
+    return Effect.fail(new PoolError({ message: 'Pool retained bytes are unknown; allocation blocked' }))
   if (!Number.isSafeInteger(slot.charge) || slot.charge <= 0 ||
       state.slots.length >= state.maxSlots ||
       state.slots.reduce((sum, item) => sum + item.charge, 0) + slot.charge > state.maxBytes)

@@ -146,6 +146,7 @@ let
           "git"
           "nix"
           "worktree-lease"
+          "worktree-teardown"
         ]
       else
         (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
@@ -161,6 +162,10 @@ let
       worktree-lease = {
         capability = "worktree-lease";
         environment.WORKTREE_LEASE_BIN = "${nativeProducts.worktree-lease}/bin/worktree-lease";
+      };
+      worktree-teardown = {
+        capability = "worktree-teardown";
+        environment.WORKTREE_TEARDOWN_BIN = "${import ../../worktree-teardown.nix { inherit pkgs; }}/bin/worktree-teardown";
       };
     };
   };

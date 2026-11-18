@@ -5,8 +5,8 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { parseSourceString, isRemoteSource } from '../../../core/config.ts'
 import * as Git from '../../../core/git.ts'
 import { preparePoolInstall, runPoolCommand } from '../../../store/store-pool-install.ts'
-import { claimPool, inspectPool, prewarmPool, releasePool } from '../../../store/store-pool.ts'
-import { PoolError, withPoolState } from '../../../store/store-pool-state.ts'
+import { claimPool, completePool, inspectPool, prewarmPool, quarantinePool, releasePool } from '../../../store/store-pool.ts'
+import { PoolError } from '../../../store/store-pool-state.ts'
 import { Store, StoreLayer } from '../../../store/store.ts'
 
 const repository = { repo: Cli.Argument.String('repo') }
@@ -38,10 +38,7 @@ const claim = Cli.Command.make('claim', {
 }, ({ identity, owner, command }) => Effect.gen(function* () {
   const store = yield* Store
   const slot = yield* claimPool({ base: store.basePath, identity, owner })
-  const retain = (reason: string) => withPoolState(store.basePath, (state, save) => save({
-    ...state, slots: state.slots.map((item) => item.id === slot.id && item.token === slot.token
-      ? { ...item, state: 'quarantined' as const, reason } : item),
-  }))
+  const retain = (reason: string) => quarantinePool(store.basePath, slot.id, slot.token, reason)
   yield* Console.log(JSON.stringify(slot))
   // The live provider is the activation ancestor for ordinary install/check wrappers.
   const code = yield* Effect.scoped(Effect.gen(function* () {
@@ -55,6 +52,7 @@ const claim = Cli.Command.make('claim', {
     yield* retain(`Task exited ${code}`)
     process.exitCode = code
   }
+  if (code === 0) yield* completePool(store.basePath, slot.id, slot.token, slot.generation)
 })).pipe(Cli.Command.withDescription('Atomically claim a generation and run its owner command; release explicitly from outside'))
 
 const release = Cli.Command.make('release', {

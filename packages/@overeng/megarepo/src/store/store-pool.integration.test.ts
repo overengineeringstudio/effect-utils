@@ -6,8 +6,8 @@ import { expect } from 'vitest'
 
 import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
-import { acquireDeletionLease } from './store-deletion-lease.ts'
-import { claimPool, releasePool } from './store-pool.ts'
+import { acquireDeletionLease, deletionLeasePath } from './store-deletion-lease.ts'
+import { claimPool, completePool, inspectPool, quarantinePool, releasePool } from './store-pool.ts'
 import { type PoolSlot, reservePoolSlot, withPoolState } from './store-pool-state.ts'
 
 const fixture = Effect.gen(function* () {
@@ -23,13 +23,46 @@ const fixture = Effect.gen(function* () {
   yield* Git.createWorktreeDetached({ repoPath: bare, worktreePath: path, commit,
     lockReason: 'mr-pool:native:preparing' })
   const slot: PoolSlot = { id: 'native', path, bare, commit, identity: 'receipt', charge: 1048576,
-    state: 'ready', generation: 0, token: '', barrierToken: lease.token, owner: '', reason: '' }
+    state: 'ready', chargeKnown: true, generation: 0, token: '', barrierToken: lease.token, owner: '', reason: '' }
   yield* withPoolState(f.storePath, (state, save) => Effect.flatMap(reservePoolSlot(state, slot), save),
     { maxSlots: 1, maxBytes: 1048576 })
   return { ...f, slot }
 })
 
 describe('native pool ownership safety', () => {
+  it.effect('successful completion survives status with a lost provider identity', () =>
+    Effect.gen(function* () {
+      const { storePath, slot } = yield* fixture
+      yield* withPoolState(storePath, (state, save) => save({
+        ...state, slots: [{ ...slot, state: 'leased', token: 'task', generation: 1 }],
+      }))
+      yield* completePool(storePath, slot.id, 'task', 1)
+      const fs = yield* FileSystem.FileSystem
+      const lease = deletionLeasePath({ storeBasePath: storePath, ownerPath: slot.path })
+      const record = yield* fs.readFileString(lease)
+      yield* fs.writeFileString(lease, record.replace(`"pid":${process.pid}`, '"pid":2147483647'))
+      const observed = yield* inspectPool(storePath)
+      expect(observed.slots[0]?.state).toBe('completed')
+      expect(yield* completePool(storePath, slot.id, 'stale', 1).pipe(Effect.exit)).toSatisfy(Exit.isFailure)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('charges retained partial output even when the preparation reservation was too small', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      yield* fs.writeFileString(`${slot.path}/partial-install`, 'x'.repeat(16384))
+      yield* withPoolState(storePath, (state, save) => save({
+        ...state, slots: [{ ...slot, charge: 1, token: 'partial', state: 'preparing', chargeKnown: false }],
+      }))
+      yield* quarantinePool(storePath, slot.id, 'partial', 'install failed')
+      const state = yield* withPoolState(storePath, (state) => Effect.succeed(state))
+      expect(state.slots[0]?.state).toBe('quarantined')
+      expect(state.slots[0]!.charge).toBeGreaterThan(16384)
+      expect(yield* fs.readFileString(`${slot.path}/partial-install`)).toHaveLength(16384)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('registers detached with a native Git lock which refuses ordinary removal', () =>
     Effect.gen(function* () {
       const { slot } = yield* fixture

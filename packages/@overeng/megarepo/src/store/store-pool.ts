@@ -39,9 +39,22 @@ const cleanSource = (slot: PoolSlot) => Effect.gen(function* () {
     return yield* new PoolError({ message: 'Native pool worktree protection is missing' })
 })
 const free = (slot: PoolSlot) => Effect.gen(function* () {
-  const proof = yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'all-uids' })
+  const proof = yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
   if (proof._tag !== 'free')
     return yield* new PoolError({ message: `Pool holders not proven absent: ${JSON.stringify(proof)}` })
+})
+
+/** Retention never hides partial growth; unknown holders/accounting block allocation. */
+const retainPoolSlot = (slot: PoolSlot, reason: string) => Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const exists = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => undefined))
+  const bytes = exists === false ? 0 : yield* poolBytes(slot.path).pipe(Effect.orElseSucceed(() => undefined))
+  const holders = exists === false ? undefined
+    : yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
+  const next: PoolSlot = { ...slot, state: 'quarantined', reason,
+    charge: Math.max(slot.charge, bytes ?? slot.charge),
+    chargeKnown: bytes !== undefined && (exists === false || holders?._tag === 'free') }
+  return next
 })
 
 export const prewarmPool = (args: {
@@ -57,7 +70,7 @@ export const prewarmPool = (args: {
   const path = `${dirname(bare)}/pool/${id}`
   let slot: PoolSlot = {
     id, path, bare, commit: args.commit, identity: '', charge: args.charge,
-    generation: 0, state: 'preparing', token: '', barrierToken: '', owner: '', reason: '',
+    generation: 0, state: 'preparing', chargeKnown: false, token: '', barrierToken: '', owner: '', reason: '',
   }
   const reserved = yield* reservePoolSlot(state, slot)
   const update = () => save({ ...reserved, slots: reserved.slots.map((item) => item.id === id ? slot : item) })
@@ -82,14 +95,14 @@ export const prewarmPool = (args: {
       slot = { ...slot, charge: bytes }
       return yield* new PoolError({ message: 'Prepared root exceeds reserved charge' })
     }
-    slot = { ...slot, state: 'ready' }
+    slot = { ...slot, state: 'ready', chargeKnown: true }
     yield* update()
     return slot
   }).pipe(withGitContainerLock({ path: bare, mode: 'shared' }))
-  return yield* prepare.pipe(Effect.tapError((error) => {
-    slot = { ...slot, state: 'quarantined', reason: String(error) }
-    return update()
-  }))
+  return yield* prepare.pipe(Effect.tapError((error) => Effect.gen(function* () {
+    slot = yield* retainPoolSlot(slot, String(error))
+    yield* update()
+  })))
 }), { maxSlots: args.maxSlots, maxBytes: args.maxBytes })
 
 /** Claim is serialized with capacity and generations; it never resets a root. */
@@ -110,7 +123,7 @@ export const claimPool = (args: {
     yield* update(next)
     return next
   }).pipe(withGitContainerLock({ path: slot.bare, mode: 'shared' }),
-    Effect.tapError((error) => update({ ...slot, state: 'quarantined', reason: String(error) })))
+    Effect.tapError((error) => Effect.flatMap(retainPoolSlot(slot, String(error)), update)))
 }))
 
 /** Teardown is the existing owner. Dirty, committed, crashed or uncertain roots stay locked. */
@@ -122,10 +135,13 @@ export const releasePool = (args: {
   yield* requirePoolLease(slot, args.token, args.generation)
   const update = (next: PoolSlot) => save({ ...state, slots: state.slots.map((item) => item.id === slot.id ? next : item) })
   // Durable quarantine precedes any draining/reset. A crash cannot expose ready.
-  yield* update({ ...slot, state: 'quarantined', reason: 'release incomplete' })
+  yield* update({ ...slot, state: 'quarantined', chargeKnown: false, reason: 'release incomplete' })
   return yield* Effect.gen(function* () {
     yield* adoptPersistentDeletionLease(barrier(args.base, slot))
-    yield* runPoolCommand(args.base, 'worktree-teardown', [slot.path])
+    const teardown = process.env.WORKTREE_TEARDOWN_BIN
+    if (teardown === undefined || !teardown.startsWith('/'))
+      return yield* new PoolError({ message: 'Packaged WORKTREE_TEARDOWN_BIN provider is required' })
+    yield* runPoolCommand(args.base, teardown, [slot.path])
     yield* free(slot)
     yield* cleanSource(slot)
     if ((yield* poolInstallIdentity(slot.path, slot.commit)) !== slot.identity)
@@ -139,12 +155,30 @@ export const releasePool = (args: {
     if ((yield* poolInstallIdentity(slot.path, slot.commit)) !== slot.identity ||
         (yield* poolBytes(slot.path)) > slot.charge)
       return yield* new PoolError({ message: 'Reprepared root no longer matches reserved identity/bytes' })
-    const ready: PoolSlot = { ...slot, state: 'ready', token: '', owner: '', reason: '' }
+    const ready: PoolSlot = { ...slot, state: 'ready', chargeKnown: true, token: '', owner: '', reason: '' }
     yield* update(ready)
     return ready
   }).pipe(withGitContainerLock({ path: slot.bare, mode: 'shared' }),
-    Effect.tapError((error) => update({ ...slot, state: 'quarantined', reason: String(error) })))
+    Effect.tapError((error) => Effect.flatMap(retainPoolSlot(slot, String(error)), update)))
 }))
+
+/** A successful provider publishes completion before exiting; it remains non-reusable. */
+export const completePool = (base: AbsoluteDirPath, id: string, token: string, generation: number) =>
+  withPoolState(base, (state, save) => Effect.gen(function* () {
+    const slot = state.slots.find((item) => item.id === id)
+    if (slot === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
+    yield* requirePoolLease(slot, token, generation)
+    yield* save({ ...state, slots: state.slots.map((item) =>
+      item.id === id ? { ...item, state: 'completed' as const } : item) })
+  }))
+
+export const quarantinePool = (base: AbsoluteDirPath, id: string, token: string, reason: string) =>
+  withPoolState(base, (state, save) => Effect.gen(function* () {
+    const slots: Array<PoolSlot> = []
+    for (const slot of state.slots)
+      slots.push(slot.id === id && slot.token === token ? yield* retainPoolSlot(slot, reason) : slot)
+    yield* save({ ...state, slots })
+  }))
 
 /** Inspection reconciles abandoned providers only toward retention, never readiness. */
 export const inspectPool = (base: AbsoluteDirPath) => withPoolState(base, (state, save) =>
@@ -153,7 +187,8 @@ export const inspectPool = (base: AbsoluteDirPath) => withPoolState(base, (state
     for (const slot of state.slots) {
       const uncertain = slot.state === 'preparing' ||
         (slot.state === 'leased' && !(yield* persistentDeletionLeaseOwnerAlive(barrier(base, slot))))
-      slots.push(uncertain ? { ...slot, state: 'quarantined', reason: 'Provider lost or unknown' } : slot)
+      slots.push(uncertain || slot.chargeKnown !== true
+        ? yield* retainPoolSlot(slot, uncertain ? 'Provider lost or unknown' : slot.reason) : slot)
     }
     const next = { ...state, slots }
     yield* save(next)
