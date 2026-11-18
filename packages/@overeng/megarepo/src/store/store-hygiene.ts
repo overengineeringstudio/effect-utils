@@ -39,6 +39,7 @@ export type StoreIssueType =
   | 'missing_bare'
   | 'missing_fetch_refspec'
   | 'missing_origin'
+  | 'common_bare_worktree_config'
   | 'dirty'
   | 'unpushed'
   | 'orphaned'
@@ -72,6 +73,7 @@ export type StoreIssueMeta =
     }
   | { readonly _tag: 'missing_bare'; readonly source: MemberSource }
   | { readonly _tag: 'missing_fetch_refspec'; readonly bareRepoPath: string }
+  | { readonly _tag: 'common_bare_worktree_config'; readonly bareRepoPath: string }
   | {
       readonly _tag: 'foreign-git-dir'
       readonly worktreePath: string
@@ -98,6 +100,29 @@ export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
     ),
   },
 ) {}
+
+/** Check every selected existing repository before an acquisition caller mutates anything. */
+export const assertStoreAcquisitionHealthy = Effect.fn('store.assertAcquisitionHealthy')(
+  function* ({
+    sourceStrings,
+    store,
+  }: {
+    readonly sourceStrings: readonly string[]
+    readonly store: MegarepoStore
+  }) {
+    const checked = new Set<string>()
+    for (const sourceString of sourceStrings) {
+      const source = parseSourceString(sourceString)
+      if (source === undefined || isRemoteSource(source) === false) continue
+      const repoPath = store.getBareRepoPath(source)
+      if (checked.has(repoPath) === true) continue
+      checked.add(repoPath)
+      if ((yield* store.hasBareRepo(source)) === true) {
+        yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath })
+      }
+    }
+  },
+)
 
 // =============================================================================
 // Validation
@@ -151,6 +176,19 @@ export const validateStoreMembers = ({
           fix: `run 'mr apply' to clone the bare repo`,
           meta: { _tag: 'missing_bare', source },
         })
+        continue
+      }
+
+      if ((yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })) === true) {
+        issues.push({
+          severity: 'warning',
+          type: 'common_bare_worktree_config',
+          memberName,
+          message: `Common config at ${bareRepoPath} sets core.bare with extensions.worktreeConfig enabled; linked worktrees inherit it`,
+          fix: 'mr store fix',
+          meta: { _tag: 'common_bare_worktree_config', bareRepoPath },
+        })
+        // Worktree operations cannot reliably inspect this repository until repaired.
         continue
       }
 
@@ -431,10 +469,44 @@ export const fixStoreIssues = ({
     const results: FixResult[] = []
 
     for (const issue of issues) {
-      // Only attempt to fix error-severity issues
-      if (issue.severity !== 'error') continue
+      // This repository warning is repairable even though it is not a preflight error.
+      if (issue.severity !== 'error' && issue.type !== 'common_bare_worktree_config') continue
 
       switch (issue.type) {
+        case 'common_bare_worktree_config': {
+          if (issue.meta?._tag !== 'common_bare_worktree_config') break
+          if (dryRun === true) {
+            results.push({
+              memberName: issue.memberName,
+              issueType: issue.type,
+              status: 'skipped',
+              message: 'would remove core.bare from common config',
+            })
+            break
+          }
+          yield* Git.repairCommonBareWithWorktreeConfig({ repoPath: issue.meta.bareRepoPath }).pipe(
+            Effect.match({
+              onSuccess: (changed) =>
+                results.push({
+                  memberName: issue.memberName,
+                  issueType: issue.type,
+                  status: changed === true ? 'fixed' : 'skipped',
+                  message:
+                    changed === true
+                      ? 'removed core.bare from common config'
+                      : 'common config is already safe',
+                }),
+              onFailure: (error) =>
+                results.push({
+                  memberName: issue.memberName,
+                  issueType: issue.type,
+                  status: 'error',
+                  message: `failed to repair common config: ${error.message}`,
+                }),
+            }),
+          )
+          break
+        }
         case 'foreign-git-dir': {
           if (issue.meta?._tag !== 'foreign-git-dir') break
           const { worktreePath, bareRepoPath } = issue.meta
@@ -568,11 +640,11 @@ export const fixStoreIssues = ({
             break
           }
 
-          // Remove existing broken worktree
-          yield* fs.remove(worktreePath, { recursive: true }).pipe(Effect.ignore)
-
           // Recreate the worktree
           yield* Effect.gen(function* () {
+            yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })
+            // Refuse unhealthy common config before deleting or recreating anything.
+            yield* fs.remove(worktreePath, { recursive: true }).pipe(Effect.ignore)
             yield* makeStoreDirectory(worktreePath).pipe(Effect.ignore)
 
             const parsed = parseWorktreeRef(worktreePath)

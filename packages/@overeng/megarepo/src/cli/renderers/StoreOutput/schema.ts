@@ -158,13 +158,22 @@ export const StoreWorktreeStatus = Schema.Struct({
 export type StoreWorktreeStatus = Schema.Schema.Type<typeof StoreWorktreeStatus>
 
 /** Repository config issues exist even when no worktrees have been materialized. */
-export const StoreRepoIssue = Schema.Struct({
-  repo: Schema.String,
-  path: Schema.String,
-  type: Schema.Literals(['missing_origin', 'missing_fetch_refspec']),
-  severity: Schema.Literals(['error']),
-  message: Schema.String,
-})
+export const StoreRepoIssue = Schema.Union([
+  Schema.Struct({
+    repo: Schema.String,
+    path: Schema.String,
+    type: Schema.Literals(['missing_origin', 'missing_fetch_refspec']),
+    severity: Schema.Literal('error'),
+    message: Schema.String,
+  }),
+  Schema.Struct({
+    repo: Schema.String,
+    path: Schema.String,
+    type: Schema.Literal('common_bare_worktree_config'),
+    severity: Schema.Literal('warning'),
+    message: Schema.String,
+  }),
+])
 export type StoreRepoIssue = typeof StoreRepoIssue.Type
 
 /** Schema for warnings shown before garbage collection (e.g., not in megarepo). */

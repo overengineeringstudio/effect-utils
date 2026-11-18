@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b38e432860c067cb77aa6b9287baa758e60789af45e97a14e850cb08cfe31feb
+# Semantic fingerprint: sha256:928f08b940c1ef1d359fc04cd5cc7c185c572ba0ea9128c76408cd382d85c3f8
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -314,6 +314,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/worktree-lease.integration.test.ts": "//packages/@overeng/megarepo:src/cli/worktree-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
         "node_modules/@overeng/megarepo/src/core/config.unit.test.ts": "//packages/@overeng/megarepo:src/core/config.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/core/git-common-config.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-common-config.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-memory.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-memory.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-reflog.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-reflog.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-streaming-parsers.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-streaming-parsers.integration.test.ts",
@@ -427,6 +428,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
         "node_modules/@overeng/megarepo/src/test-utils/mod.ts": "//packages/@overeng/megarepo:src/test-utils/mod.ts",
         "node_modules/@overeng/megarepo/src/test-utils/rehome-fixture.ts": "//packages/@overeng/megarepo:src/test-utils/rehome-fixture.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/setup.integration.test.ts": "//packages/@overeng/megarepo:src/test-utils/setup.integration.test.ts",
         "node_modules/@overeng/megarepo/src/test-utils/setup.ts": "//packages/@overeng/megarepo:src/test-utils/setup.ts",
         "node_modules/@overeng/megarepo/src/test-utils/setup.unit.test.ts": "//packages/@overeng/megarepo:src/test-utils/setup.unit.test.ts",
         "node_modules/@overeng/megarepo/src/test-utils/store-setup.integration.test.ts": "//packages/@overeng/megarepo:src/test-utils/store-setup.integration.test.ts",
@@ -716,6 +718,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/worktree-lease.integration.test.ts": "//packages/@overeng/megarepo:src/cli/worktree-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
         "node_modules/@overeng/megarepo/src/core/config.unit.test.ts": "//packages/@overeng/megarepo:src/core/config.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/core/git-common-config.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-common-config.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-memory.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-memory.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-reflog.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-reflog.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-streaming-parsers.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-streaming-parsers.integration.test.ts",
@@ -829,6 +832,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
         "node_modules/@overeng/megarepo/src/test-utils/mod.ts": "//packages/@overeng/megarepo:src/test-utils/mod.ts",
         "node_modules/@overeng/megarepo/src/test-utils/rehome-fixture.ts": "//packages/@overeng/megarepo:src/test-utils/rehome-fixture.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/setup.integration.test.ts": "//packages/@overeng/megarepo:src/test-utils/setup.integration.test.ts",
         "node_modules/@overeng/megarepo/src/test-utils/setup.ts": "//packages/@overeng/megarepo:src/test-utils/setup.ts",
         "node_modules/@overeng/megarepo/src/test-utils/setup.unit.test.ts": "//packages/@overeng/megarepo:src/test-utils/setup.unit.test.ts",
         "node_modules/@overeng/megarepo/src/test-utils/store-setup.integration.test.ts": "//packages/@overeng/megarepo:src/test-utils/store-setup.integration.test.ts",
@@ -1118,6 +1122,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/worktree-lease.integration.test.ts": "//packages/@overeng/megarepo:src/cli/worktree-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
         "node_modules/@overeng/megarepo/src/core/config.unit.test.ts": "//packages/@overeng/megarepo:src/core/config.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/core/git-common-config.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-common-config.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-memory.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-memory.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-reflog.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-reflog.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/git-streaming-parsers.integration.test.ts": "//packages/@overeng/megarepo:src/core/git-streaming-parsers.integration.test.ts",
@@ -1231,6 +1236,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
         "node_modules/@overeng/megarepo/src/test-utils/mod.ts": "//packages/@overeng/megarepo:src/test-utils/mod.ts",
         "node_modules/@overeng/megarepo/src/test-utils/rehome-fixture.ts": "//packages/@overeng/megarepo:src/test-utils/rehome-fixture.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/setup.integration.test.ts": "//packages/@overeng/megarepo:src/test-utils/setup.integration.test.ts",
         "node_modules/@overeng/megarepo/src/test-utils/setup.ts": "//packages/@overeng/megarepo:src/test-utils/setup.ts",
         "node_modules/@overeng/megarepo/src/test-utils/setup.unit.test.ts": "//packages/@overeng/megarepo:src/test-utils/setup.unit.test.ts",
         "node_modules/@overeng/megarepo/src/test-utils/store-setup.integration.test.ts": "//packages/@overeng/megarepo:src/test-utils/store-setup.integration.test.ts",

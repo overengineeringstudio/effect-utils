@@ -46,7 +46,11 @@ import {
   ensurePreparationMarker,
   withCommitTreePreparationLock,
 } from '../../store/git-writer-lock.ts'
-import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
+import {
+  assertStoreAcquisitionHealthy,
+  runPreflightChecks,
+  type StoreHygieneError,
+} from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import type { StoreLock } from '../../store/store-lock.ts'
 import {
@@ -855,6 +859,19 @@ export const syncMegarepo = <R = never>({
   }).pipe(
     (effect) =>
       Effect.gen(function* () {
+        // This wrapper runs before preparation locks/markers as well as the
+        // members-root creation in the engine body, including recursive calls.
+        const { config } = yield* readMegarepoConfig(megarepoRoot)
+        yield* assertStoreAcquisitionHealthy({
+          sourceStrings: Object.entries(config.members)
+            .filter(([name]) =>
+              options.only !== undefined && options.only.length > 0
+                ? options.only.includes(name)
+                : options.skip?.includes(name) !== true,
+            )
+            .map(([, sourceString]) => sourceString),
+          store: yield* Store,
+        })
         const fs = yield* FileSystem.FileSystem
         const root = yield* fs.realPath(megarepoRoot)
         if (
