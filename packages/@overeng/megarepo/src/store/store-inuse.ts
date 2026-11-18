@@ -45,7 +45,7 @@ export const ProcessCensusProbe = Schema.Struct({
     'lsof',
   ]),
   path: Schema.String,
-}).annotations({ identifier: 'Store.ProcessCensusProbe' })
+}).annotate({ identifier: 'Store.ProcessCensusProbe' })
 export type ProcessCensusProbe = typeof ProcessCensusProbe.Type
 
 /** Probe outcome. `unknown` MUST be treated as in-use by callers. */
