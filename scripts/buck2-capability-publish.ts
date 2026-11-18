@@ -217,13 +217,7 @@ const copyGeneration = ({
     else if (stat.isFile() === true) copyFileSync(from, to)
     else if (stat.isSymbolicLink() === true) {
       const target = readlinkSync(from)
-      // Composed capability profiles (e.g. quick-contracts) symlink every
-      // per-tool entry — including BUCK/manifest.json metadata — into the
-      // component capability's store path. Absolute store targets stay
-      // exact; any other link name or relative target is still refused.
-      const allowed =
-        name === 'executable' || name === 'directory' || name === 'BUCK' || name === 'manifest.json'
-      if (isAbsolute(target) === false || allowed === false)
+      if (isAbsolute(target) === false || (name !== 'executable' && name !== 'directory'))
         throw new Error(`Capability link must be an absolute per-tool store path: ${from}`)
       symlinkSync(target, to)
     } else throw new Error(`Unsupported capability projection entry: ${from}`)
