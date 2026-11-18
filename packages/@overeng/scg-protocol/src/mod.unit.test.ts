@@ -55,20 +55,29 @@ describe('shared canonical and Ed25519 protocol vectors', () => {
     expect(canonical(value)).toBe(expected)
   })
   it('matches the shared deterministic Ed25519 decision vector byte-for-byte', () => {
-    const vector = signPayload('decision', decisionVector.payload, decisionVector.keyId, privateKey)
+    const vector = signPayload({
+      domain: 'decision',
+      payload: decisionVector.payload,
+      keyId: decisionVector.keyId,
+      key: privateKey,
+    })
     expect(vector.signature).toBe(decisionVector.signature)
     expect(
       new TextDecoder().decode(
-        signingBytes('decision', decisionVector.payload, decisionVector.keyId),
+        signingBytes({
+          domain: 'decision',
+          payload: decisionVector.payload,
+          keyId: decisionVector.keyId,
+        }),
       ),
     ).toBe(decisionVector.signingText)
     expect(digest(decisionVector.payload)).toBe(decisionVector.digest)
-    expect(verifyPayload('decision', vector, publicKey)).toBe(true)
+    expect(verifyPayload({ domain: 'decision', envelope: vector, key: publicKey })).toBe(true)
   })
   it('binds entire pending, selected option, key, domain and epoch', () => {
-    const payload = decodeJson(
-      Decision,
-      canonical({
+    const payload = decodeJson({
+      schema: Decision,
+      text: canonical({
         epoch: 'scg-experiment-v1',
         kind: 'decision',
         executionId: pending.executionId,
@@ -78,31 +87,46 @@ describe('shared canonical and Ed25519 protocol vectors', () => {
         principalId: 'owner',
         decidedAt: pending.issuedAt,
       }),
-    )
-    const signed = signPayload('decision', payload, 'test-key', privateKey)
-    expect(verifyPayload('decision', signed, publicKey)).toBe(true)
-    expect(verifyPayload('pending', signed, publicKey)).toBe(false)
-    expect(verifyPayload('decision', { ...signed, keyId: 'other' }, publicKey)).toBe(false)
+    })
+    const signed = signPayload({
+      domain: 'decision',
+      payload: payload,
+      keyId: 'test-key',
+      key: privateKey,
+    })
+    expect(verifyPayload({ domain: 'decision', envelope: signed, key: publicKey })).toBe(true)
+    expect(verifyPayload({ domain: 'pending', envelope: signed, key: publicKey })).toBe(false)
     expect(
-      verifyPayload(
-        'decision',
-        { ...signed, payload: { ...payload, optionId: 'deny' } },
-        publicKey,
-      ),
+      verifyPayload({
+        domain: 'decision',
+        envelope: { ...signed, keyId: 'other' },
+        key: publicKey,
+      }),
+    ).toBe(false)
+    expect(
+      verifyPayload({
+        domain: 'decision',
+        envelope: { ...signed, payload: { ...payload, optionId: 'deny' } },
+        key: publicKey,
+      }),
     ).toBe(false)
     expect(
       digest({ ...pending, review: { ...pending.review, agentClaim: 'Changed reason' } }),
     ).not.toBe(payload.pendingDigest)
     expect(() =>
-      decodeJson(Decision, canonical({ ...payload, epoch: 'scg-authority-v1' })),
+      decodeJson({ schema: Decision, text: canonical({ ...payload, epoch: 'scg-authority-v1' }) }),
     ).toThrow()
   })
   it('rejects duplicate escaped properties, unknown fields, times and unsupported canonical values', () => {
-    expect(() => decodeJson(Decision, '{"optionId":"allow-once","option\\u0049d":"deny"}')).toThrow(
-      'Duplicate JSON property',
-    )
-    expect(() => decodeJson(Pending, canonical({ ...pending, approved: true }))).toThrow()
-    expect(() => decodeJson(Pending, canonical({ ...pending, expiresAt: 1.5 }))).toThrow()
+    expect(() =>
+      decodeJson({ schema: Decision, text: '{"optionId":"allow-once","option\\u0049d":"deny"}' }),
+    ).toThrow('Duplicate JSON property')
+    expect(() =>
+      decodeJson({ schema: Pending, text: canonical({ ...pending, approved: true }) }),
+    ).toThrow()
+    expect(() =>
+      decodeJson({ schema: Pending, text: canonical({ ...pending, expiresAt: 1.5 }) }),
+    ).toThrow()
     for (const value of [undefined, NaN, Infinity, new Date(), { invalid: undefined }])
       expect(() => canonical(value)).toThrow()
   })
@@ -113,9 +137,9 @@ describe('shared canonical and Ed25519 protocol vectors', () => {
       review: pending.review,
     }
     expect(() =>
-      decodeJson(
-        Pending,
-        canonical({
+      decodeJson({
+        schema: Pending,
+        text: canonical({
           ...pending,
           options: [
             {
@@ -126,13 +150,13 @@ describe('shared canonical and Ed25519 protocol vectors', () => {
             },
           ],
         }),
-      ),
+      }),
     ).toThrow()
     expect(() =>
-      decodeJson(
-        Pending,
-        canonical({ ...pending, options: [{ kind: 'allow-once', optionId: 'allow-once' }] }),
-      ),
+      decodeJson({
+        schema: Pending,
+        text: canonical({ ...pending, options: [{ kind: 'allow-once', optionId: 'allow-once' }] }),
+      }),
     ).toThrow()
   })
 })

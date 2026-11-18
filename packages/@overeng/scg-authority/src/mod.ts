@@ -52,10 +52,19 @@ export interface AuthorityOptions {
 }
 /** Durable exact-grant operations; signer receipts omit private executor results. */
 export interface Authority {
-  readonly submit: (args: { readonly owner: Protocol.Owner; readonly submitted: Protocol.Submitted }) => Protocol.Status
-  readonly status: (args: { readonly owner: Protocol.Owner; readonly id: string }) => Protocol.Status
+  readonly submit: (args: {
+    readonly owner: Protocol.Owner
+    readonly submitted: Protocol.Submitted
+  }) => Protocol.Status
+  readonly status: (args: {
+    readonly owner: Protocol.Owner
+    readonly id: string
+  }) => Protocol.Status
   readonly signerStatus: (args: { readonly signer: Signer; readonly id: string }) => Protocol.Status
-  readonly pending: (args: { readonly signer: Signer; readonly id: string }) => Protocol.SignedPending
+  readonly pending: (args: {
+    readonly signer: Signer
+    readonly id: string
+  }) => Protocol.SignedPending
   readonly decide: (decision: Protocol.SignedDecision) => Promise<Protocol.Status>
   readonly sync: (args: { readonly signer: Signer; readonly cursor: number }) => Protocol.Sync
   readonly authenticate: (args: {
@@ -100,13 +109,22 @@ interface OutboxRow {
   request_digest: string
 }
 const epoch = 'scg-experiment-v1' as const
-const fail = ({ code, status = 400 }: { readonly code: string; readonly status?: number }): never => {
+const fail = ({
+  code,
+  status = 400,
+}: {
+  readonly code: string
+  readonly status?: number
+}): never => {
   throw new AuthorityError({ code, httpStatus: status })
 }
 const decode = <TSchema extends Schema.ConstraintDecoder<unknown>>({
   schema,
   input,
-}: { readonly schema: TSchema; readonly input: unknown }): TSchema['Type'] => {
+}: {
+  readonly schema: TSchema
+  readonly input: unknown
+}): TSchema['Type'] => {
   try {
     return Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })(input)
   } catch {
@@ -116,7 +134,10 @@ const decode = <TSchema extends Schema.ConstraintDecoder<unknown>>({
 const decodeJson = <TSchema extends Schema.ConstraintDecoder<unknown>>({
   schema,
   text,
-}: { readonly schema: TSchema; readonly text: string }): TSchema['Type'] => {
+}: {
+  readonly schema: TSchema
+  readonly text: string
+}): TSchema['Type'] => {
   try {
     return Protocol.decodeJson({ schema: schema, text: text })
   } catch {
@@ -145,7 +166,8 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
     authWindow <= 0
   )
     fail({ code: 'invalid-duration' })
-  if (options.authority.privateKey.asymmetricKeyType !== 'ed25519') fail({ code: 'invalid-authority-key' })
+  if (options.authority.privateKey.asymmetricKeyType !== 'ed25519')
+    fail({ code: 'invalid-authority-key' })
   const signers = new Map(options.signers.map((entry) => [entry.keyId, entry]))
   const callers = new Map(options.callers.map((entry) => [entry.keyId, entry]))
   if (
@@ -158,7 +180,12 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
     if (entry.publicKey.asymmetricKeyType !== 'ed25519') fail({ code: 'invalid-registry-key' })
   }
   const catalogPayload = decode({ schema: Protocol.Catalog, input: options.catalog.catalog })
-  const signedCatalog = Protocol.signPayload({ domain: 'catalog', payload: catalogPayload, keyId: options.authority.keyId, key: options.authority.privateKey })
+  const signedCatalog = Protocol.signPayload({
+    domain: 'catalog',
+    payload: catalogPayload,
+    keyId: options.authority.keyId,
+    key: options.authority.privateKey,
+  })
   const catalogDigest = Protocol.digest(catalogPayload)
   const bootNonce = randomUUID()
   const db = new Database(options.dbPath, { create: true, strict: true })
@@ -182,7 +209,13 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
   const audit = (value: unknown): void => {
     db.query('INSERT INTO audit(digest) VALUES (?)').run(Protocol.digest(value))
   }
-  const emit = ({ execution, state }: { readonly execution: ExecutionRow; readonly state: Protocol.Status['state'] }): void => {
+  const emit = ({
+    execution,
+    state,
+  }: {
+    readonly execution: ExecutionRow
+    readonly state: Protocol.Status['state']
+  }): void => {
     db.query('INSERT INTO outbox(execution_id,state,request_digest) VALUES (?,?,?)').run(
       execution.id,
       state,
@@ -225,7 +258,8 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
   }
   const authorizeOwner = (owner: Protocol.Owner): void => {
     const pinned = callers.get(owner.keyId)
-    if (pinned === undefined || pinned.identity !== owner.identity) fail({ code: 'unauthorized-owner', status: 403 })
+    if (pinned === undefined || pinned.identity !== owner.identity)
+      fail({ code: 'unauthorized-owner', status: 403 })
   }
   const expire = (execution: ExecutionRow): ExecutionRow => {
     if (execution.state === 'pending') {
@@ -238,8 +272,19 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
     return execution
   }
   const signedPending = (execution: ExecutionRow): Protocol.SignedPending =>
-    Protocol.signPayload({ domain: 'pending', payload: decode({ schema: Protocol.Pending, input: JSON.parse(execution.pending) }), keyId: options.authority.keyId, key: options.authority.privateKey })
-  const submit = ({ owner: ownerInput, submitted: input }: { readonly owner: Protocol.Owner; readonly submitted: Protocol.Submitted }): Protocol.Status => {
+    Protocol.signPayload({
+      domain: 'pending',
+      payload: decode({ schema: Protocol.Pending, input: JSON.parse(execution.pending) }),
+      keyId: options.authority.keyId,
+      key: options.authority.privateKey,
+    })
+  const submit = ({
+    owner: ownerInput,
+    submitted: input,
+  }: {
+    readonly owner: Protocol.Owner
+    readonly submitted: Protocol.Submitted
+  }): Protocol.Status => {
     const owner = decode({ schema: Protocol.Owner, input: ownerInput })
     authorizeOwner(owner)
     const submitted = decode({ schema: Protocol.Submitted, input: input })
@@ -251,7 +296,8 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
         )
         .get(owner.identity, owner.keyId, submitted.idempotencyKey)
       if (previous !== null) {
-        if (previous.request_digest !== requestDigest) fail({ code: 'idempotency-conflict', status: 409 })
+        if (previous.request_digest !== requestDigest)
+          fail({ code: 'idempotency-conflict', status: 409 })
         return toStatus(expire(previous))
       }
       if (submitted.catalogDigest !== catalogDigest) fail({ code: 'stale-catalog', status: 409 })
@@ -269,39 +315,48 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
           : 'low'
       const executionId = randomUUID()
       const issuedAt = now()
-      const admitted: Protocol.Admitted = decode({ schema: Protocol.Admitted, input: {
-        submitted,
-        owner,
-        executionId,
-        requestDigest,
-        actionDigest: Protocol.digestAction({ catalogDigest: submitted.catalogDigest, action: action }),
-        admittedAt: issuedAt,
-        review: {
-          command: action.commandId,
-          account: action.account,
-          sensitivity,
-          fields: admission.fields,
-          agentClaim: submitted.claimed.intent,
-        },
-      } })
-      const pending: Protocol.Pending = decode({ schema: Protocol.Pending, input: {
-        epoch,
-        kind: 'pending',
-        executionId,
-        requestDigest,
-        actionDigest: admitted.actionDigest,
-        review: admitted.review,
-        options: [
-          {
-            optionId: 'allow-once',
-            kind: 'allow-once',
-            statement: 'Allow this exact action once.',
+      const admitted: Protocol.Admitted = decode({
+        schema: Protocol.Admitted,
+        input: {
+          submitted,
+          owner,
+          executionId,
+          requestDigest,
+          actionDigest: Protocol.digestAction({
+            catalogDigest: submitted.catalogDigest,
+            action: action,
+          }),
+          admittedAt: issuedAt,
+          review: {
+            command: action.commandId,
+            account: action.account,
+            sensitivity,
+            fields: admission.fields,
+            agentClaim: submitted.claimed.intent,
           },
-          { optionId: 'deny', kind: 'deny', statement: 'Deny this action.' },
-        ],
-        issuedAt,
-        expiresAt: issuedAt + ttl,
-      } })
+        },
+      })
+      const pending: Protocol.Pending = decode({
+        schema: Protocol.Pending,
+        input: {
+          epoch,
+          kind: 'pending',
+          executionId,
+          requestDigest,
+          actionDigest: admitted.actionDigest,
+          review: admitted.review,
+          options: [
+            {
+              optionId: 'allow-once',
+              kind: 'allow-once',
+              statement: 'Allow this exact action once.',
+            },
+            { optionId: 'deny', kind: 'deny', statement: 'Deny this action.' },
+          ],
+          issuedAt,
+          expiresAt: issuedAt + ttl,
+        },
+      })
       // The immutable admitted action is stored separately from the caller's submitted bytes.
       db.query(`INSERT INTO executions(id,owner,owner_key,idempotency_key,request_digest,action_digest,admitted,pending,state)
         VALUES (?,?,?,?,?,?,?,?, 'pending')`).run(
@@ -327,7 +382,10 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
   const status = ({
     owner,
     id,
-  }: { readonly owner: Protocol.Owner; readonly id: string }): Protocol.Status => {
+  }: {
+    readonly owner: Protocol.Owner
+    readonly id: string
+  }): Protocol.Status => {
     authorizeOwner(owner)
     return transaction(() => {
       const execution = row(id)
@@ -339,7 +397,10 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
   const signerStatus = ({
     signer,
     id,
-  }: { readonly signer: Signer; readonly id: string }): Protocol.Status => {
+  }: {
+    readonly signer: Signer
+    readonly id: string
+  }): Protocol.Status => {
     authorizeSigner(signer)
     return transaction(() => {
       const { result: _result, ...receipt } = toStatus(expire(row(id)))
@@ -349,7 +410,10 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
   const pending = ({
     signer,
     id,
-  }: { readonly signer: Signer; readonly id: string }): Protocol.SignedPending => {
+  }: {
+    readonly signer: Signer
+    readonly id: string
+  }): Protocol.SignedPending => {
     authorizeSigner(signer)
     return transaction(() => {
       const execution = expire(row(id))
@@ -365,13 +429,19 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
       principalId: decision.principalId,
       surfaceId: decision.surfaceId,
     })
-    if (Protocol.verifyPayload({ domain: 'decision', envelope: signed, key: pinned.publicKey }) === false)
+    if (
+      Protocol.verifyPayload({ domain: 'decision', envelope: signed, key: pinned.publicKey }) ===
+      false
+    )
       fail({ code: 'invalid-signature', status: 403 })
     if (decision.optionId !== 'allow-once' && decision.optionId !== 'deny')
       fail({ code: 'unsupported-option' })
     const outcome = transaction(() => {
       const execution = expire(row(decision.executionId))
-      const pendingPayload = decode({ schema: Protocol.Pending, input: JSON.parse(execution.pending) })
+      const pendingPayload = decode({
+        schema: Protocol.Pending,
+        input: JSON.parse(execution.pending),
+      })
       if (
         decision.pendingDigest !== Protocol.digest(pendingPayload) ||
         pendingPayload.options.some(
@@ -395,25 +465,35 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
         terminal({ execution: execution, state: 'denied' })
         return { status: toStatus(row(execution.id)), dispatch: undefined }
       }
-      const stored = decode({ schema: Schema.Struct({ admitted: Protocol.Admitted, action: Protocol.Action }), input: JSON.parse(execution.admitted) })
+      const stored = decode({
+        schema: Schema.Struct({ admitted: Protocol.Admitted, action: Protocol.Action }),
+        input: JSON.parse(execution.admitted),
+      })
       const action = decode({ schema: Protocol.Action, input: stored.action })
       if (
-        Protocol.digestAction({ catalogDigest: stored.admitted.submitted.catalogDigest, action: action }) !==
-        execution.action_digest
+        Protocol.digestAction({
+          catalogDigest: stored.admitted.submitted.catalogDigest,
+          action: action,
+        }) !== execution.action_digest
       )
         fail({ code: 'corrupt-admitted-action', status: 500 })
-      const dispatch: Protocol.SignedDispatch = Protocol.signPayload({ domain: 'dispatch', payload: {
-        epoch,
-        kind: 'dispatch',
-        executionId: execution.id,
-        action,
-        catalogDigest: stored.admitted.submitted.catalogDigest,
-        actionDigest: execution.action_digest,
-        requestDigest: execution.request_digest,
-        audience: options.audience,
-        reservationId: randomUUID(),
-        deadline: pendingPayload.expiresAt,
-      }, keyId: options.authority.keyId, key: options.authority.privateKey })
+      const dispatch: Protocol.SignedDispatch = Protocol.signPayload({
+        domain: 'dispatch',
+        payload: {
+          epoch,
+          kind: 'dispatch',
+          executionId: execution.id,
+          action,
+          catalogDigest: stored.admitted.submitted.catalogDigest,
+          actionDigest: execution.action_digest,
+          requestDigest: execution.request_digest,
+          audience: options.audience,
+          reservationId: randomUUID(),
+          deadline: pendingPayload.expiresAt,
+        },
+        keyId: options.authority.keyId,
+        key: options.authority.privateKey,
+      })
       terminal({ execution: execution, state: 'reserved' })
       audit({ decisionDigest: Protocol.digest(signed), dispatchDigest: Protocol.digest(dispatch) })
       return { status: toStatus(row(execution.id)), dispatch }
@@ -434,14 +514,16 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
             fail({ code: 'invalid-executor-result' })
           transaction(() => {
             const execution = row(dispatch.payload.executionId)
-            if (execution.state === 'reserved') terminal({ execution: execution, state: result.state, result: result.result })
+            if (execution.state === 'reserved')
+              terminal({ execution: execution, state: result.state, result: result.result })
           })
         })
         .catch(() => {
           if (closed === false)
             transaction(() => {
               const execution = row(dispatch.payload.executionId)
-              if (execution.state === 'reserved') terminal({ execution: execution, state: 'unknown' })
+              if (execution.state === 'reserved')
+                terminal({ execution: execution, state: 'unknown' })
             })
         })
       tasks.add(task)
@@ -453,7 +535,10 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
   const sync = ({
     signer,
     cursor,
-  }: { readonly signer: Signer; readonly cursor: number }): Protocol.Sync => {
+  }: {
+    readonly signer: Signer
+    readonly cursor: number
+  }): Protocol.Sync => {
     authorizeSigner(signer)
     if (Number.isSafeInteger(cursor) === false || cursor < 0) fail({ code: 'invalid-cursor' })
     return transaction(() => {
@@ -497,7 +582,14 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
     const caller = callers.get(signed.keyId)
     const signer = signers.get(signed.keyId)
     const pinned = caller ?? signer
-    if (pinned === undefined || Protocol.verifyPayload({ domain: 'auth-request', envelope: signed, key: pinned.publicKey }) === false)
+    if (
+      pinned === undefined ||
+      Protocol.verifyPayload({
+        domain: 'auth-request',
+        envelope: signed,
+        key: pinned.publicKey,
+      }) === false
+    )
       fail({ code: 'invalid-authentication', status: 401 })
     if (
       auth.method !== method ||
@@ -539,14 +631,17 @@ export const createAuthority = (options: AuthorityOptions): Authority => {
     authenticate,
     catalog: (): Protocol.SignedCatalog => signedCatalog,
     health: (nonce?: string): Protocol.Health =>
-      decode({ schema: Protocol.Health, input: {
-        epoch,
-        release: options.release,
-        catalogDigest,
-        bootNonce,
-        ready: closed === false,
-        ...(nonce === undefined ? {} : { nonce }),
-      } }),
+      decode({
+        schema: Protocol.Health,
+        input: {
+          epoch,
+          release: options.release,
+          catalogDigest,
+          bootNonce,
+          ready: closed === false,
+          ...(nonce === undefined ? {} : { nonce }),
+        },
+      }),
     drain: async (): Promise<void> => {
       await Promise.all(tasks)
     },
@@ -572,32 +667,51 @@ export const createHttpHandler =
       }
       const path = `${url.pathname}${url.search}`
       const text = request.method === 'GET' ? undefined : await request.text()
-      const body: unknown = text === undefined ? null : decodeJson({ schema: Schema.Unknown, text: text })
-      const header = request.headers.get('x-scg-auth') ?? fail({ code: 'missing-authentication', status: 401 })
-      const identity = authority.authenticate({ input: decodeJson({ schema: Protocol.SignedAuthRequest, text: header }), method: request.method, path: path, body: body })
+      const body: unknown =
+        text === undefined ? null : decodeJson({ schema: Schema.Unknown, text: text })
+      const header =
+        request.headers.get('x-scg-auth') ?? fail({ code: 'missing-authentication', status: 401 })
+      const identity = authority.authenticate({
+        input: decodeJson({ schema: Protocol.SignedAuthRequest, text: header }),
+        method: request.method,
+        path: path,
+        body: body,
+      })
       const routes = Protocol.routes
       let result: unknown
       if (request.method === 'GET' && url.pathname === routes.catalog) result = authority.catalog()
       else if (request.method === 'POST' && url.pathname === routes.submit && 'owner' in identity)
-        result = authority.submit({ owner: identity.owner, submitted: decode({ schema: Protocol.Submitted, input: body }) })
+        result = authority.submit({
+          owner: identity.owner,
+          submitted: decode({ schema: Protocol.Submitted, input: body }),
+        })
       else if (
         request.method === 'GET' &&
         url.pathname.startsWith(routes.status) === true &&
         'owner' in identity
       )
-        result = authority.status({ owner: identity.owner, id: decodeURIComponent(url.pathname.slice(routes.status.length)) })
+        result = authority.status({
+          owner: identity.owner,
+          id: decodeURIComponent(url.pathname.slice(routes.status.length)),
+        })
       else if (
         request.method === 'GET' &&
         url.pathname.startsWith(routes.status) === true &&
         'signer' in identity
       )
-        result = authority.signerStatus({ signer: identity.signer, id: decodeURIComponent(url.pathname.slice(routes.status.length)) })
+        result = authority.signerStatus({
+          signer: identity.signer,
+          id: decodeURIComponent(url.pathname.slice(routes.status.length)),
+        })
       else if (
         request.method === 'GET' &&
         url.pathname.startsWith(routes.pending) === true &&
         'signer' in identity
       )
-        result = authority.pending({ signer: identity.signer, id: decodeURIComponent(url.pathname.slice(routes.pending.length)) })
+        result = authority.pending({
+          signer: identity.signer,
+          id: decodeURIComponent(url.pathname.slice(routes.pending.length)),
+        })
       else if (
         request.method === 'POST' &&
         url.pathname === routes.decision &&
@@ -607,7 +721,10 @@ export const createHttpHandler =
         if (signed.keyId !== identity.signer.keyId) fail({ code: 'signer-mismatch', status: 403 })
         result = await authority.decide(signed)
       } else if (request.method === 'GET' && url.pathname === routes.sync && 'signer' in identity)
-        result = authority.sync({ signer: identity.signer, cursor: Number(url.searchParams.get('cursor') ?? '0') })
+        result = authority.sync({
+          signer: identity.signer,
+          cursor: Number(url.searchParams.get('cursor') ?? '0'),
+        })
       else fail({ code: 'forbidden-route', status: 403 })
       return Response.json(result)
     } catch (error) {

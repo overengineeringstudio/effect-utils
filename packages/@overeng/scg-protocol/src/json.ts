@@ -4,7 +4,7 @@ import { Schema } from 'effect'
 const checkProperties = (text: string): void => {
   let index = 0
   const space = (): void => {
-    while (/\s/.test(text[index] ?? '') && index < text.length) index++
+    while (/\s/.test(text[index] ?? '') === true && index < text.length) index++
   }
   const string = (): string => {
     const start = index++
@@ -29,7 +29,7 @@ const checkProperties = (text: string): void => {
         space()
         if (text[index] !== '"') throw new SyntaxError('Expected JSON property')
         const key = string()
-        if (keys.has(key)) throw new SyntaxError('Duplicate JSON property')
+        if (keys.has(key) === true) throw new SyntaxError('Duplicate JSON property')
         keys.add(key)
         space()
         if (text[index++] !== ':') throw new SyntaxError('Expected JSON colon')
@@ -62,7 +62,7 @@ const checkProperties = (text: string): void => {
       return
     }
     const start = index
-    while (index < text.length && !/[\s,\]}]/.test(text[index] ?? '')) index++
+    while (index < text.length && /[\s,\]}]/.test(text[index] ?? '') === false) index++
     if (start === index) throw new SyntaxError('Expected JSON value')
   }
   value()
@@ -71,10 +71,13 @@ const checkProperties = (text: string): void => {
 }
 
 /** Wire decoder rejects duplicate, unknown and malformed fields, never silently strips them. */
-export const decodeJson = <TSchema extends Schema.ConstraintDecoder<unknown>>(
-  schema: TSchema,
-  text: string,
-): TSchema['Type'] => {
+export const decodeJson = <TSchema extends Schema.ConstraintDecoder<unknown>>({
+  schema,
+  text,
+}: {
+  readonly schema: TSchema
+  readonly text: string
+}): TSchema['Type'] => {
   checkProperties(text)
   return Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })(JSON.parse(text))
 }

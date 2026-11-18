@@ -4,14 +4,21 @@ import { Schema } from 'effect'
 
 export { decodeJson } from './json.ts'
 
+/** Experimental wire epoch; its state must never be promoted into a trusted epoch. */
 export const Version = Schema.Literal('scg-experiment-v1')
+/** Fresh execution, reservation and transport-nonce identifiers. */
 export const Uuid = Schema.String.check(Schema.isUUID())
+/** SHA-256 commitment to the canonical JSON representation, including its algorithm prefix. */
 export const Digest = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/))
+/** Nonempty bounded wire identifiers; their authorization meaning belongs to the authority. */
 export const Identifier = Schema.NonEmptyString.check(Schema.isMaxLength(256))
+/** Absolute Unix time in milliseconds, representable without integer precision loss. */
 export const Timestamp = Schema.Int.check(
   Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 )
+/** Review classification, not permission to execute an action. */
 export const Sensitivity = Schema.Literals(['low', 'sensitive'])
+/** Catalog-tagged semantic action; never an arbitrary executable or shell command. */
 export const Action = Schema.Struct({
   commandId: Identifier,
   account: Identifier,
@@ -21,6 +28,7 @@ export const Action = Schema.Struct({
   ),
 })
 export type Action = typeof Action.Type
+/** Caller submission with a pinned catalog and owner-scoped durable idempotency key. */
 export const Submitted = Schema.Struct({
   epoch: Version,
   catalogDigest: Digest,
@@ -32,8 +40,10 @@ export const Submitted = Schema.Struct({
   }),
 })
 export type Submitted = typeof Submitted.Type
+/** Authenticated caller identity and enrolled key; agent-provided claims cannot establish ownership. */
 export const Owner = Schema.Struct({ identity: Identifier, keyId: Identifier })
 export type Owner = typeof Owner.Type
+/** Authority-projected review fields, keeping caller claims explicitly separate from trusted context. */
 export const Review = Schema.Struct({
   command: Identifier,
   account: Identifier,
@@ -70,6 +80,7 @@ export const Review = Schema.Struct({
     }),
   ),
 })
+/** Authority admission binding the submission, authenticated owner and projected review to one execution. */
 export const Admitted = Schema.Struct({
   submitted: Submitted,
   owner: Owner,
@@ -85,6 +96,7 @@ const Selector = Schema.Record(
   Schema.String,
   Schema.Union([Schema.String, Schema.Array(Schema.String)]),
 )
+/** Signed offer vocabulary; the M1 authority accepts only allow-once and deny selections. */
 export const Offer = Schema.Union([
   Schema.Struct({ ...OfferBase, kind: Schema.Literal('allow-once') }),
   Schema.Struct({ ...OfferBase, kind: Schema.Literal('deny') }),
@@ -145,6 +157,7 @@ export const Offer = Schema.Union([
   }),
 ])
 export type Offer = typeof Offer.Type
+/** Whole approval request committed by a decision, including exact offers, statements and expiry. */
 export const Pending = Schema.Struct({
   epoch: Version,
   kind: Schema.Literal('pending'),
@@ -163,6 +176,7 @@ export const Pending = Schema.Struct({
   expiresAt: Timestamp,
 })
 export type Pending = typeof Pending.Type
+/** Signer selection bound to the complete pending digest, option and enrolled surface principal. */
 export const Decision = Schema.Struct({
   epoch: Version,
   kind: Schema.Literal('decision'),
@@ -174,6 +188,7 @@ export const Decision = Schema.Struct({
   decidedAt: Timestamp,
 })
 export type Decision = typeof Decision.Type
+/** Exact reserved execution sent across the executor boundary, with audience and deadline binding. */
 export const Dispatch = Schema.Struct({
   epoch: Version,
   kind: Schema.Literal('dispatch'),
@@ -187,6 +202,7 @@ export const Dispatch = Schema.Struct({
   deadline: Timestamp,
 })
 export type Dispatch = typeof Dispatch.Type
+/** Durable execution states; a reserved execution is never implicitly made spendable after restart. */
 export const State = Schema.Literals([
   'pending',
   'denied',
@@ -196,6 +212,7 @@ export const State = Schema.Literals([
   'failed',
   'unknown',
 ])
+/** Execution receipt; result plaintext is available only on the authenticated owner's boundary. */
 export const Status = Schema.Struct({
   executionId: Uuid,
   state: State,
@@ -205,6 +222,7 @@ export const Status = Schema.Struct({
   decisionDigest: Schema.optionalKey(Digest),
 })
 export type Status = typeof Status.Type
+/** Digest-only durable transition receipt for signer reconciliation. */
 export const Terminal = Schema.Struct({
   cursor: Schema.Int,
   executionId: Uuid,
@@ -212,6 +230,7 @@ export const Terminal = Schema.Struct({
   requestDigest: Digest,
 })
 export type Terminal = typeof Terminal.Type
+/** Signed semantic command definitions; concrete accounts and policy are supplied by private composition. */
 export const Catalog = Schema.Struct({
   epoch: Version,
   revision: Identifier,
@@ -226,6 +245,7 @@ export const Catalog = Schema.Struct({
   ),
 })
 export type Catalog = typeof Catalog.Type
+/** Replay-protected transport proof binding HTTP method, path and complete request-body digest. */
 export const AuthRequest = Schema.Struct({
   epoch: Version,
   method: Schema.Literals(['GET', 'POST']),
@@ -235,6 +255,7 @@ export const AuthRequest = Schema.Struct({
   issuedAt: Timestamp,
 })
 export type AuthRequest = typeof AuthRequest.Type
+/** Ed25519 envelope schema; verification must also pin the domain and enrolled key. */
 export const signed = <TSchema extends Schema.Top>(payload: TSchema) =>
   Schema.Struct({
     payload,
@@ -242,10 +263,15 @@ export const signed = <TSchema extends Schema.Top>(payload: TSchema) =>
     algorithm: Schema.Literal('Ed25519'),
     signature: Schema.String,
   })
+/** Authority-signed pending request, including its complete review and offers. */
 export const SignedPending = signed(Pending)
+/** Enrolled service-signed decision; the signed payload alone does not grant execution. */
 export const SignedDecision = signed(Decision)
+/** Authority-signed exact reservation for the enrolled executor audience. */
 export const SignedDispatch = signed(Dispatch)
+/** Authority-signed catalog used to pin submission semantics. */
 export const SignedCatalog = signed(Catalog)
+/** Enrolled caller or signer transport proof, checked independently from decision signatures. */
 export const SignedAuthRequest = signed(AuthRequest)
 export type SignedPending = typeof SignedPending.Type
 export type SignedDecision = typeof SignedDecision.Type
@@ -253,6 +279,7 @@ export type SignedDispatch = typeof SignedDispatch.Type
 export type SignedCatalog = typeof SignedCatalog.Type
 export type SignedAuthRequest = typeof SignedAuthRequest.Type
 
+/** Executor receipt bound to the exact signed dispatch and the digest of its result. */
 export const ExecutionResult = Schema.Struct({
   epoch: Version,
   executionId: Uuid,
@@ -262,6 +289,7 @@ export const ExecutionResult = Schema.Struct({
   resultDigest: Digest,
 })
 export type ExecutionResult = typeof ExecutionResult.Type
+/** Enrolled worker's signed execution receipt, not a caller-supplied completion claim. */
 export const SignedExecutionResult = signed(ExecutionResult)
 export type SignedExecutionResult = typeof SignedExecutionResult.Type
 
@@ -269,8 +297,8 @@ export type SignedExecutionResult = typeof SignedExecutionResult.Type
 export const canonical = (value: unknown): string => {
   if (value === null || typeof value === 'string' || typeof value === 'boolean')
     return JSON.stringify(value)
-  if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (typeof value === 'number' && Number.isFinite(value) === true) return JSON.stringify(value)
+  if (Array.isArray(value) === true) return `[${value.map(canonical).join(',')}]`
   if (
     typeof value === 'object' &&
     value !== null &&
@@ -283,6 +311,7 @@ export const canonical = (value: unknown): string => {
   }
   throw new ProtocolError('invalid-canonical-value')
 }
+/** Structured rejection of values outside the canonical protocol representation. */
 export class ProtocolError extends Error {
   readonly _tag = 'ProtocolError'
   readonly code: string
@@ -291,21 +320,42 @@ export class ProtocolError extends Error {
     this.code = code
   }
 }
+/** Domain-independent SHA-256 commitment to canonical JSON bytes. */
 export const digest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(canonical(value)).digest('hex')}`
 /** Executable semantics are pinned along with the exact account and arguments. */
-export const digestAction = (catalogDigest: string, action: Action): string =>
-  digest({ catalogDigest, action })
-export const signingBytes = (domain: string, payload: unknown, keyId: string): Uint8Array =>
+export const digestAction = ({
+  catalogDigest,
+  action,
+}: {
+  readonly catalogDigest: string
+  readonly action: Action
+}): string => digest({ catalogDigest, action })
+/** Domain-separated canonical bytes binding the payload, key identifier and signature algorithm. */
+export const signingBytes = ({
+  domain,
+  payload,
+  keyId,
+}: {
+  readonly domain: string
+  readonly payload: unknown
+  readonly keyId: string
+}): Uint8Array =>
   new TextEncoder().encode(
     canonical({ domain: `scg/${domain}/v1`, keyId, algorithm: 'Ed25519', payload }),
   )
-export const signPayload = <TPayload>(
-  domain: string,
-  payload: TPayload,
-  keyId: string,
-  key: KeyObject,
-): {
+/** Sign exactly the domain-separated wire bytes with the enrolled private key. */
+export const signPayload = <TPayload>({
+  domain,
+  payload,
+  keyId,
+  key,
+}: {
+  readonly domain: string
+  readonly payload: TPayload
+  readonly keyId: string
+  readonly key: KeyObject
+}): {
   payload: TPayload
   keyId: string
   algorithm: 'Ed25519'
@@ -314,22 +364,27 @@ export const signPayload = <TPayload>(
   payload,
   keyId,
   algorithm: 'Ed25519',
-  signature: sign(null, signingBytes(domain, payload, keyId), key).toString('base64'),
+  signature: sign(null, signingBytes({ domain, payload, keyId }), key).toString('base64'),
 })
-export const verifyPayload = <TPayload>(
-  domain: string,
-  envelope: {
+/** Verify the pinned domain and Ed25519 public key against the complete canonical envelope payload. */
+export const verifyPayload = <TPayload>({
+  domain,
+  envelope,
+  key,
+}: {
+  readonly domain: string
+  readonly envelope: {
     readonly payload: TPayload
     readonly keyId: string
     readonly algorithm: 'Ed25519'
     readonly signature: string
-  },
-  key: KeyObject,
-): boolean =>
+  }
+  readonly key: KeyObject
+}): boolean =>
   key.asymmetricKeyType === 'ed25519' &&
   verify(
     null,
-    signingBytes(domain, envelope.payload, envelope.keyId),
+    signingBytes({ domain, payload: envelope.payload, keyId: envelope.keyId }),
     key,
     Buffer.from(envelope.signature, 'base64'),
   )
@@ -344,6 +399,7 @@ export const routes = {
   sync: '/v1/sync',
   health: '/health',
 } as const
+/** Non-authorizing liveness and pinned-release response with an optional caller challenge. */
 export const Health = Schema.Struct({
   epoch: Version,
   release: Identifier,
@@ -354,11 +410,13 @@ export const Health = Schema.Struct({
 })
 export type Health = typeof Health.Type
 
+/** Authenticated signer reconciliation: signed pending items and digest-only durable transitions. */
 export const Sync = Schema.Struct({
   cursor: Schema.Int,
   pending: Schema.Array(SignedPending),
   terminal: Schema.Array(Terminal),
 })
 export type Sync = typeof Sync.Type
+/** A decision returns the same durable execution receipt as status, not a separate transient grant. */
 export const DecisionResponse = Status
 export type DecisionResponse = typeof DecisionResponse.Type

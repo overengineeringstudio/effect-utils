@@ -9,9 +9,12 @@ export const canonicalVectors = [
     expected: '{"items":[true,false,null,0],"optionId":"allow-once","until":1795039200000}',
   },
 ] as const
+/** Published RFC 8032 fixture seed; deliberately public and forbidden as an enrollment secret. */
 export const testEd25519Seed = '9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60'
+/** Raw Ed25519 public key corresponding to the published RFC 8032 fixture seed. */
 export const testEd25519PublicKey =
   'd75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'
+/** Fixed C3 canonical text, digest and signature shared by independent decision implementations. */
 export const decisionVector = {
   payload: {
     epoch: 'scg-experiment-v1',
