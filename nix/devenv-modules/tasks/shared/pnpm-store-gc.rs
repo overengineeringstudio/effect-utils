@@ -16,6 +16,8 @@ mod linux {
     const GRACE_SECONDS: u64 = 24 * 60 * 60;
     const STORE_NAME: &str = "pnpm-store-pure-v1";
     const LEASE_NAME: &str = ".effect-utils-pnpm-store-cache-maintenance.lock";
+    // O_PATH pins a proc magic-link target without opening its contents/devices.
+    const O_PATH: i32 = 0o10000000;
 
     // Linux UAPI: include/uapi/asm-generic/fcntl.h supplies the x86 values;
     // arch/arm64/include/uapi/asm/fcntl.h overrides them to match ARM.
@@ -343,6 +345,68 @@ mod linux {
         Path::new(target).starts_with(root)
     }
 
+    fn reference_inode_proof(
+        reference: &Path,
+        pid_dir: &Path,
+        inodes: &BTreeMap<(u64, u64), InodeFootprint>,
+    ) -> Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let held = match fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(O_PATH)
+            .open(reference)
+        {
+            Ok(held) => held,
+            // A proc descriptor can close after readlink, or the task can exit.
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                || process_gone(pid_dir, &error) => return Ok(()),
+            Err(error) => return Err(format!(
+                "process identity visibility incomplete at {}: {error}",
+                reference.display()
+            )),
+        };
+        let metadata = held.metadata().map_err(|error| error.to_string())?;
+        if inodes.contains_key(&(metadata.dev(), metadata.ino())) {
+            return Err(format!(
+                "live process inode reference: {}",
+                reference.display()
+            ));
+        }
+        // Store payload admission permits only directories and regular files.
+        // Pipes, sockets and anonymous kernel objects cannot alias those inodes.
+        if !metadata.is_dir() && !metadata.is_file() {
+            return Ok(());
+        }
+        native_mount_proof(&held, pid_dir, reference)
+    }
+
+    fn native_mount_proof(held: &fs::File, pid_dir: &Path, reference: &Path) -> Result<()> {
+        let mount = mount_id(held)?;
+        let mounts = fs::read_to_string(pid_dir.join("mountinfo"))
+            .map_err(|error| format!("process mount visibility incomplete: {error}"))?;
+        for line in mounts.lines() {
+            let Some((fields, filesystem)) = line.split_once(" - ") else {
+                return Err("malformed process mount evidence".into());
+            };
+            if fields.split_ascii_whitespace().next().and_then(|id| id.parse::<u64>().ok())
+                != Some(mount)
+            {
+                continue;
+            }
+            // Negative inode evidence is meaningful only for identity-preserving
+            // native filesystems. Overlay, FUSE and remote/proxy views can hide
+            // backing objects behind different device/inode identities.
+            return match filesystem.split_ascii_whitespace().next() {
+                Some("ext2" | "ext3" | "ext4" | "xfs" | "btrfs" | "zfs" | "tmpfs" | "ramfs") => Ok(()),
+                _ => Err(format!(
+                    "process backing identity unknown at {}",
+                    reference.display()
+                )),
+            };
+        }
+        Err(format!("process reference mount {mount} is not observable"))
+    }
+
     fn broker_exception_allowed(uid: u32, fd_owner: u32, comm: &str, exe: Option<&Path>) -> bool {
         // Explicitly approved privilege-separated brokers only. Root ownership of
         // an own-UID process's fd directory is the kernel's non-dumpable boundary.
@@ -469,6 +533,7 @@ mod linux {
         uid: u32,
         status: &str,
         ignored_directory: Option<i32>,
+        inodes: &BTreeMap<(u64, u64), InodeFootprint>,
     ) -> Result<bool> {
         let cwd = directory.join("cwd");
         match fs::read_link(&cwd) {
@@ -479,7 +544,7 @@ mod linux {
                     target.display()
                 ));
             }
-            Ok(_) => {}
+            Ok(_) => reference_inode_proof(&cwd, pid_dir, inodes)?,
             Err(error) if process_gone(pid_dir, &error) => return Ok(true),
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(error)
@@ -540,6 +605,7 @@ mod linux {
                             target.display()
                         ));
                     }
+                    reference_inode_proof(&path, pid_dir, inodes)?;
                 }
                 Err(error) if process_gone(pid_dir, &error) => return Ok(true),
                 // A descriptor can close while its process remains live.
@@ -563,13 +629,15 @@ mod linux {
 
     #[cfg(test)]
     fn process_proof(proc_root: &Path, root: &Path) -> Result<()> {
-        process_proof_ignoring_directory(proc_root, root, None)
+        let footprint = footprint(root)?;
+        process_proof_ignoring_directory(proc_root, root, None, &footprint.inodes)
     }
 
     fn process_proof_ignoring_directory(
         proc_root: &Path,
         root: &Path,
         admitted_directory: Option<i32>,
+        inodes: &BTreeMap<(u64, u64), InodeFootprint>,
     ) -> Result<()> {
         let entries =
             fs::read_dir(proc_root).map_err(|e| format!("cannot inventory processes: {e}"))?;
@@ -613,7 +681,7 @@ mod linux {
             } else {
                 None
             };
-            if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored)? {
+            if !owned || process_directory_proof(&pid_dir, &pid_dir, root, uid, &status, ignored, inodes)? {
                 continue;
             }
             // A leader can exit while worker threads retain cwd and open files.
@@ -630,7 +698,7 @@ mod linux {
             let mut observed = false;
             for task in tasks {
                 let task = task.map_err(|error| error.to_string())?.path();
-                if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored)? {
+                if process_directory_proof(&pid_dir, &task, root, uid, &status, ignored, inodes)? {
                     observed = true;
                 } else if task.try_exists().map_err(|error| error.to_string())? {
                     return Err(format!(
@@ -649,16 +717,17 @@ mod linux {
         Ok(())
     }
 
-    fn liveness(root: &Path, admitted_directory: &fs::File) -> Result<()> {
+    fn liveness(root: &Path, admitted_directory: &fs::File, footprint: &Footprint) -> Result<()> {
         use std::os::fd::AsRawFd;
         let ignored = Some(admitted_directory.as_raw_fd());
         // Only the explicitly test-compiled CLI accepts this fixture. Production
         // packages contain no environment/argument bypass of the real census.
         #[cfg(pnpm_gc_test)]
         if let Some(proc_root) = env::var_os("PNPM_GC_TEST_PROC_ROOT") {
-            return process_proof_ignoring_directory(Path::new(&proc_root), root, ignored);
+            return process_proof_ignoring_directory(Path::new(&proc_root), root, ignored, &footprint.inodes);
         }
-        process_proof_ignoring_directory(Path::new("/proc"), root, ignored)
+        native_mount_proof(admitted_directory, Path::new("/proc/self"), root)?;
+        process_proof_ignoring_directory(Path::new("/proc"), root, ignored, &footprint.inodes)
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -666,9 +735,10 @@ mod linux {
         fingerprint: String,
         allocated: u64,
         reclaimable: u64,
+        inodes: BTreeMap<(u64, u64), InodeFootprint>,
     }
 
-    #[derive(Hash)]
+    #[derive(Debug, Hash, PartialEq, Eq)]
     struct InodeFootprint {
         allocated: u64,
         links: u64,
@@ -898,8 +968,8 @@ mod linux {
             reject_shared_store(&self.path)?;
             reject_mounts(&self.path)?;
             let ownership = checkout_ownership_proof(git_dir, root)?;
-            liveness(&self.path, &self.directory)?;
             let footprint = footprint_held(self)?;
+            liveness(&self.path, &self.directory, &footprint)?;
             self.assert_identity()?;
             Ok((
                 format!("{}\n{ownership}\n{}", root.display(), footprint.fingerprint),
@@ -1031,6 +1101,7 @@ mod linux {
             ),
             allocated,
             reclaimable,
+            inodes,
         })
     }
 
@@ -1260,6 +1331,7 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             let pid = census.join("123");
             let task = pid.join("task/456");
             let store = root.join("store");
+            fs::create_dir_all(&store).unwrap();
             fs::create_dir_all(task.join("fd")).unwrap();
             fs::write(
                 pid.join("status"),
@@ -1400,22 +1472,76 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
         #[test]
         #[cfg(target_os = "linux")]
         fn real_open_descriptor_protects_a_root() {
-            use std::os::unix::fs::symlink;
             let root = fixture("real-fd");
-            let census = root.join("census");
             let worktree = root.join("worktree");
-            fs::create_dir_all(&census).unwrap();
             fs::create_dir_all(&worktree).unwrap();
             fs::write(worktree.join("payload"), "live").unwrap();
             let descriptor = fs::File::open(worktree.join("payload")).unwrap();
-            symlink("/proc/self", census.join(std::process::id().to_string())).unwrap();
+            let reference = descriptor_path(&descriptor);
+            let inventory = footprint(&worktree).unwrap();
             assert!(
-                process_proof(&census, &worktree)
+                reference_inode_proof(&reference, Path::new("/proc/self"), &inventory.inodes)
                     .unwrap_err()
-                    .contains("/fd/")
+                    .contains("live process inode reference")
             );
             drop(descriptor);
-            assert!(process_proof(&census, &worktree).is_ok());
+        }
+
+        #[test]
+        fn bind_alias_references_protect_payload_inodes() {
+            if let Some(root) = env::var_os("PNPM_GC_BIND_ALIAS_ROOT") {
+                let root = PathBuf::from(root);
+                let inventory = footprint(&root.join("store")).unwrap();
+                for reference in [root.join("alias"), root.join("alias/payload")] {
+                    assert!(
+                        reference_inode_proof(&reference, Path::new("/proc/self"), &inventory.inodes)
+                            .unwrap_err().contains("live process inode reference")
+                    );
+                }
+                return;
+            }
+            let probe = Command::new("unshare").args(["-rm", "true"]).output();
+            if !probe.as_ref().is_ok_and(|output| output.status.success()) {
+                eprintln!("SKIP bind alias integration: user/mount namespaces unavailable");
+                return;
+            }
+            let root = fixture("bind-reference");
+            fs::create_dir_all(root.join("store")).unwrap();
+            fs::create_dir_all(root.join("alias")).unwrap();
+            fs::write(root.join("store/payload"), "live").unwrap();
+            let output = Command::new("unshare")
+                .args(["-rm", "bash", "-c", r#"
+mount --bind "$1/store" "$1/alias" || exit 77
+export PNPM_GC_BIND_ALIAS_ROOT="$1"
+exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --nocapture
+"#, "bind-reference"])
+                .arg(&root).arg(env::current_exe().unwrap()).output().unwrap();
+            if output.status.code() == Some(77) {
+                eprintln!("SKIP bind alias integration: bind mount unavailable");
+                return;
+            }
+            assert!(output.status.success(), "{}{}",
+                String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        }
+
+        #[test]
+        fn proxy_and_missing_mount_evidence_never_prove_absence() {
+            let root = fixture("proxy-reference");
+            let directory = open_directory(&root).unwrap();
+            let mount = mount_id(&directory).unwrap();
+            for filesystem in ["overlay", "fuse", "fuse.zfs", "nfs", "unknown"] {
+                fs::write(root.join("mountinfo"),
+                    format!("{mount} 0 0:0 / / rw - {filesystem} fixture rw\n")).unwrap();
+                assert!(native_mount_proof(&directory, &root, &root)
+                    .unwrap_err().contains("backing identity unknown"));
+            }
+            fs::write(root.join("mountinfo"), "").unwrap();
+            assert!(native_mount_proof(&directory, &root, &root).is_err());
+            fs::write(root.join("mountinfo"), "malformed").unwrap();
+            assert!(native_mount_proof(&directory, &root, &root).is_err());
+            fs::write(root.join("mountinfo"),
+                format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
+            assert!(native_mount_proof(&directory, &root, &root).is_ok());
         }
 
         #[test]
@@ -1424,6 +1550,7 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             let root = fixture("proc");
             let proc_root = root.join("proc");
             let worktree = root.join("worktree");
+            fs::create_dir_all(&worktree).unwrap();
             fs::create_dir_all(proc_root.join("123/fd")).unwrap();
             fs::write(
                 proc_root.join("123/status"),
@@ -1437,6 +1564,7 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
                     .contains("live process")
             );
             let sibling = root.join("sibling");
+            fs::create_dir_all(&sibling).unwrap();
             // Another process holds an fd, while its cwd is outside the root.
             fs::create_dir_all(proc_root.join("456/fd")).unwrap();
             fs::write(
@@ -1455,12 +1583,16 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             )
             .unwrap();
             symlink(&sibling, only_fd.join("789/cwd")).unwrap();
+            let mount = mount_id(&open_directory(&sibling).unwrap()).unwrap();
+            fs::write(only_fd.join("789/mountinfo"),
+                format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
             symlink(worktree.join("dependency"), only_fd.join("789/fd/4")).unwrap();
             assert!(
                 process_proof(&only_fd, &worktree)
                     .unwrap_err()
                     .contains("/fd/4")
             );
+            fs::create_dir_all(root.join("unrelated")).unwrap();
             assert!(process_proof(&only_fd, &root.join("unrelated")).is_ok());
         }
 
@@ -1549,12 +1681,19 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             let census = root.join("proc");
             let checkout = root.join("checkout");
             let store = checkout.join(".devenv").join(STORE_NAME);
+            fs::create_dir_all(&store).unwrap();
+            let cwd = open_directory(&checkout).unwrap();
+            let mount = mount_id(&cwd).unwrap();
             fs::create_dir_all(census.join("123/fd")).unwrap();
             fs::write(
                 census.join("123/status"),
                 format!("Uid:\t{0}\t{0}\t{0}\t{0}\n", own_uid().unwrap()),
             )
             .unwrap();
+            // A synthetic native mount record; production never accepts this
+            // fixture proc root or substitutes types for the real mountinfo.
+            fs::write(census.join("123/mountinfo"),
+                format!("{mount} 0 0:0 / / rw - ext4 fixture rw\n")).unwrap();
             symlink(&checkout, census.join("123/cwd")).unwrap();
             assert!(process_proof(&census, &store).is_ok());
             fs::create_dir_all(census.join("456/fd")).unwrap();
@@ -1570,6 +1709,7 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
         fn other_uid_processes_are_outside_the_declared_cache_workflow() {
             let root = fixture("uid-scope");
             let census = root.join("proc");
+            fs::create_dir_all(root.join("store")).unwrap();
             fs::create_dir_all(census.join("123")).unwrap();
             let other = if own_uid().unwrap() == 0 { 1 } else { 0 };
             fs::write(

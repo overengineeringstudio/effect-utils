@@ -382,6 +382,16 @@ for outer tasks that must complete before the nested devenv process can evaluate
     does not prove a checkout stopped referencing its store.
   - The collector requires no own-UID cwd/open-fd references under the
     historical **store**, not the entire checkout, using Linux `/proc`.
+    Besides component-aware path matching, references are pinned with `O_PATH`
+    and compared against the candidate's complete device/inode inventory, so
+    native bind aliases and hardlinked payload references also protect it.
+    Negative identity evidence requires an observable native mount
+    (`ext2/3/4`, XFS, Btrfs, ZFS, tmpfs or ramfs) for both the candidate and
+    each regular-file/directory reference. Overlay, FUSE, remote/proxy views,
+    detached/unobservable mounts and incomplete mount evidence fail closed:
+    different device/inode numbers do not prove unrelated backing objects.
+    This does not qualify otherwise unreadable container processes, introduce
+    a privileged helper, or authorize namespace-path translation.
     Other-UID processes are outside the normal
     user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
     own-UID processes fail closed, except the explicit Linux privileged-broker
