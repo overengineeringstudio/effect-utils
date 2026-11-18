@@ -2385,7 +2385,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                   ]
             if (
               bareExists === true &&
-              (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath }))
+              (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })) === true
             ) {
               repoIssues.push({
                 repo: repo.relativePath,
@@ -4486,7 +4486,7 @@ const storeFixCommand = Cli.Command.make(
                 issue.meta?._tag === 'common_bare_worktree_config' &&
                 issue.meta.bareRepoPath === bareRepoPath,
             ) === false &&
-            (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath }))
+            (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })) === true
           ) {
             issues.push({
               type: 'common_bare_worktree_config',

@@ -302,19 +302,6 @@ const runGitCommand = ({
     )
   })()
 
-/** Read only the common file: includes and config.worktree must not mask key presence. */
-const readCommonConfigValues = (configPath: string, key: string) =>
-  runGitCommand({
-    args: ['config', '-f', configPath, '--no-includes', '--get-all', key],
-  }).pipe(
-    Effect.map((value) => Option.some(value)),
-    Effect.catchTag('GitCommandError', (error) =>
-      error.exitCode === 1 && error.stderr === ''
-        ? Effect.succeed(Option.none<string>())
-        : Effect.fail(error),
-    ),
-  )
-
 /** Any common core.bare value is unsafe when worktree-specific config is enabled. */
 export const hasCommonBareWithWorktreeConfig = Effect.fn(
   'git/has-common-bare-with-worktree-config',
@@ -337,7 +324,18 @@ export const hasCommonBareWithWorktreeConfig = Effect.fn(
     ),
   )
   if (enabled !== 'true') return false
-  return Option.isSome(yield* readCommonConfigValues(configPath, 'core.bare'))
+  // Read only the common file: includes and config.worktree must not mask key presence.
+  const bare = yield* runGitCommand({
+    args: ['config', '-f', configPath, '--no-includes', '--get-all', 'core.bare'],
+  }).pipe(
+    Effect.asSome,
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === ''
+        ? Effect.succeed(Option.none<string>())
+        : Effect.fail(error),
+    ),
+  )
+  return Option.isSome(bare)
 })
 
 /** Read-only preflight, deliberately outside mutation/lease admission. */

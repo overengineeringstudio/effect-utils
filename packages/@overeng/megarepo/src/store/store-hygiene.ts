@@ -156,7 +156,7 @@ export const validateStoreMembers = ({
         continue
       }
 
-      if (yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })) {
+      if ((yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })) === true) {
         issues.push({
           severity: 'warning',
           type: 'common_bare_worktree_config',
