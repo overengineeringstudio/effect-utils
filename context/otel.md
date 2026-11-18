@@ -53,10 +53,13 @@ The Effect layer exports traces and logs as OTLP-JSON, flushes with its enclosin
 scope, and takes `build.machineVersion` from the shared build identity contract.
 It does not enable metrics or register a global OpenTelemetry SDK.
 
-The Alchemy helper takes the consumer's pinned
-`Cloudflare.Workers.ObservabilityDestination` constructor and declares independent
-trace/log account destinations. Its result is passed as the Worker's
-`observability` property. Cloudflare serializes native exports as gzip OTLP-JSON;
+The Alchemy helper accepts named arguments
+`declareCloudflareProducer({ destination, name, config })`, where `destination`
+is the consumer's pinned `Cloudflare.Workers.ObservabilityDestination` constructor.
+It declares independent trace/log account destinations. The lower-level
+`cloudflareDestinationProps({ name, config })` exposes the corresponding props.
+Pass the helper's result as the Worker's `observability` property.
+Cloudflare serializes native exports as gzip OTLP-JSON;
 the helper does not decompress or proxy them. Destination preflights are skipped,
 not acknowledged artificially; real decoded delivery is the acceptance evidence.
 Destination headers are sensitive Alchemy state, never public stack outputs.

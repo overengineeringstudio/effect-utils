@@ -16,6 +16,7 @@ export type ProducerTransport =
     }
   | { readonly kind: 'fabric'; readonly endpoint: string }
 
+/** Explicit authenticated transport settings shared by runtime and native producers. */
 export interface ProducerConfig {
   readonly transport: ProducerTransport
   /** Admission maps this credential to registry identity; payload identity is not trusted. */
@@ -33,7 +34,8 @@ export const producerEndpoint = (transport: ProducerTransport): string => {
     url.search !== '' ||
     url.hash !== '' ||
     url.pathname !== '/' ||
-    (transport.kind === 'https' ? url.protocol !== 'https:' : url.protocol !== 'http:' || !loopback)
+    (transport.kind === 'https' && url.protocol !== 'https:') ||
+    (transport.kind === 'fabric' && (url.protocol !== 'http:' || loopback === false))
   ) {
     throw new TypeError(
       'OTLP endpoint must be an HTTPS origin or a Fabric loopback HTTP origin, without credentials',
@@ -53,6 +55,7 @@ export const producerHeaders = (config: ProducerConfig): Record<string, string> 
     : {}),
 })
 
+/** Runtime trace/log exporter identity and authenticated transport settings. */
 export interface ProducerTelemetryConfig extends ProducerConfig {
   /** Diagnostic claim only; the admission registry overwrites canonical service identity. */
   readonly serviceName: string

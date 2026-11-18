@@ -15,7 +15,7 @@ const config = {
 
 describe('producer admission transport', () => {
   it('declares independent native trace/log destinations without identity claims', () => {
-    const props = cloudflareDestinationProps('example-prod-api', config)
+    const props = cloudflareDestinationProps({ name: 'example-prod-api', config })
     expect(
       Object.fromEntries(
         Object.entries(props.traces.headers).map(([key, value]) => [key, Redacted.value(value)]),
