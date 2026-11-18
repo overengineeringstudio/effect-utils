@@ -2087,6 +2087,28 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/scg-discord:test_collect",
+      "excludes": [],
+      "packageName": "scg-discord",
+      "packagePath": "packages/@overeng/scg-discord",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/card.unit.test.ts",
+        "src/interaction.unit.test.ts",
+        "src/signer.integration.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/scg-discord:test",
+      "taskName": "test:scg-discord",
+      "testFiles": [
+        "src/card.unit.test.ts",
+        "src/interaction.unit.test.ts",
+        "src/signer.integration.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/scg-protocol:test_collect",
       "excludes": [],
       "packageName": "scg-protocol",
