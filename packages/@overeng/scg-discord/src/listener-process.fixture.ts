@@ -13,8 +13,8 @@ const unavailable = Effect.fail(
   new DiscordError({ operation: 'fixture-network', cause: 'No external network enrolled' }),
 )
 const store = new DiscordStore(`${socketPath}.signer.sqlite`)
-const signer = makeSigner(
-  {
+const signer = makeSigner({
+  config: {
     applicationId: 'synthetic-app',
     allowedUserIds: new Set(['human']),
     discordPublicKey: keys.publicKey,
@@ -26,24 +26,24 @@ const signer = makeSigner(
     timeZone: 'UTC',
   },
   store,
-  {
+  authority: {
     pending: () => unavailable,
     status: () => unavailable,
     decide: () => unavailable,
   },
-  {
+  discord: {
     post: () => unavailable,
     edit: () => unavailable,
     ephemeral: () => unavailable,
   },
-)
+})
 try {
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         yield* listenDiscordInteractions({ socketPath, signer, onFailure: () => undefined })
         process.stdout.write('READY\n')
-        yield* Effect.never
+        return yield* Effect.never
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
   )

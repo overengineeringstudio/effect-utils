@@ -3,6 +3,7 @@ import { createPublicKey, verify, type KeyObject } from 'node:crypto'
 import { Effect, Schema } from 'effect'
 
 const User = Schema.Struct({ id: Schema.NonEmptyString })
+/** Discord PING and component interaction fields required by the signer ingress. */
 export const Interaction = Schema.Struct({
   id: Schema.NonEmptyString,
   application_id: Schema.NonEmptyString,
@@ -15,8 +16,10 @@ export const Interaction = Schema.Struct({
   ),
   data: Schema.optionalKey(Schema.Struct({ custom_id: Schema.NonEmptyString })),
 })
+/** Decoded Discord interaction accepted by the ingress schema. */
 export type Interaction = typeof Interaction.Type
 
+/** Fail-closed interaction rejection reason, without exposing signed body contents. */
 export class InteractionError extends Schema.TaggedError<InteractionError>()('InteractionError', {
   reason: Schema.Literals([
     'signature',
@@ -32,7 +35,7 @@ export class InteractionError extends Schema.TaggedError<InteractionError>()('In
 
 /** Discord supplies a raw 32-byte Ed25519 public key, not a PEM certificate. */
 export const discordPublicKey = (hex: string): KeyObject => {
-  if (!/^[a-f\d]{64}$/i.test(hex))
+  if (/^[a-f\d]{64}$/i.test(hex) === false)
     throw new TypeError('Expected a 32-byte Discord Ed25519 public key')
   return createPublicKey({
     key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(hex, 'hex')]),
@@ -55,7 +58,7 @@ export const verifyInteraction = Effect.fn('scg.discord.verifyInteraction')(func
   if (input.body.byteLength > 65_536) return yield* new InteractionError({ reason: 'body' })
   if (
     timestamp === undefined ||
-    !/^\d{1,12}$/.test(timestamp) ||
+    /^\d{1,12}$/.test(timestamp) === false ||
     Math.abs(input.nowMs - Number(timestamp) * 1000) > 300_000
   ) {
     return yield* new InteractionError({ reason: 'timestamp' })
@@ -63,13 +66,13 @@ export const verifyInteraction = Effect.fn('scg.discord.verifyInteraction')(func
   if (
     input.publicKey.asymmetricKeyType !== 'ed25519' ||
     signature === undefined ||
-    !/^[a-f\d]{128}$/i.test(signature) ||
-    !verify(
+    /^[a-f\d]{128}$/i.test(signature) === false ||
+    verify(
       null,
       Buffer.concat([Buffer.from(timestamp), input.body]),
       input.publicKey,
       Buffer.from(signature, 'hex'),
-    )
+    ) === false
   ) {
     return yield* new InteractionError({ reason: 'signature' })
   }
@@ -86,7 +89,7 @@ export const verifyInteraction = Effect.fn('scg.discord.verifyInteraction')(func
     const userId = interaction.member?.user.id ?? interaction.user?.id
     if (
       userId === undefined ||
-      !input.allowedUserIds.has(userId) ||
+      input.allowedUserIds.has(userId) === false ||
       (interaction.member !== undefined &&
         interaction.user !== undefined &&
         interaction.member.user.id !== interaction.user.id)

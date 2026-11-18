@@ -13,8 +13,10 @@ const Card = Schema.Struct({
   inspectId: Schema.String,
   wordsId: Schema.String,
 })
+/** Signed pending record and opaque controls bound to one Discord message. */
 export type Card = typeof Card.Type
 const Job = Schema.Struct({ interactionId: Schema.String, card: Card, decision: Decision })
+/** Durable decision outbox entry for an acknowledged interaction. */
 export type Job = typeof Job.Type
 
 /** Private signer state. A single process owns this DB; never share it with the authority. */
@@ -32,7 +34,15 @@ export class DiscordStore {
   close(): void {
     this.#db.close()
   }
-  add(record: SignedPending, channelId: string, messageId: string): Card {
+  add({
+    record,
+    channelId,
+    messageId,
+  }: {
+    readonly record: SignedPending
+    readonly channelId: string
+    readonly messageId: string
+  }): Card {
     const card: Card = {
       record,
       channelId,
@@ -63,11 +73,21 @@ export class DiscordStore {
       .all()
       .map(({ json }) => Schema.decodeUnknownSync(Schema.fromJsonString(Card))(json))
   }
-  find(messageId: string, channelId: string): Card | undefined {
+  find({
+    messageId,
+    channelId,
+  }: {
+    readonly messageId: string
+    readonly channelId: string
+  }): Card | undefined {
     return this.cards().find((card) => card.messageId === messageId && card.channelId === channelId)
   }
   /** Atomic claim and outbox write: concurrent signed replays can produce at most one job. */
-  claim(id: string, signedAt: number, job?: Job): boolean {
+  claim({ id, signedAt, job }: {
+    readonly id: string
+    readonly signedAt: number
+    readonly job?: Job | undefined
+  }): boolean {
     return this.#db.transaction(() => {
       const result = this.#db
         .query('INSERT OR IGNORE INTO interactions VALUES (?,?)')
@@ -114,13 +134,20 @@ export class DiscordStore {
   }
 }
 
-export const decisionFor = (
-  card: Card,
-  optionId: Pending['options'][number]['optionId'],
-  principalId: string,
-  surfaceId: string,
-  decidedAt: number,
-): Decision => ({
+/** Binds a selected option and principal to the exact pending record shown on the card. */
+export const decisionFor = ({
+  card,
+  optionId,
+  principalId,
+  surfaceId,
+  decidedAt,
+}: {
+  readonly card: Card
+  readonly optionId: Pending['options'][number]['optionId']
+  readonly principalId: string
+  readonly surfaceId: string
+  readonly decidedAt: number
+}): Decision => ({
   epoch: card.record.payload.epoch,
   kind: 'decision',
   executionId: card.record.payload.executionId,
