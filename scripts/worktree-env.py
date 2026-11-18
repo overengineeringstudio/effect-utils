@@ -3,8 +3,8 @@
 
 Python is stage-zero glue, matching the existing consumer-root materializer.
 Nix and Buck remain the tool-closure and computation authorities respectively.
-Caller-owned policy wrappers and named immutable admission tools stay ahead of
-the check runtime; ambient executable directories are never forwarded.
+The Nix launcher retains caller-owned policy wrappers and immutable admission
+tools without forwarding ambient executable directories into check runtimes.
 """
 import fcntl
 import hashlib
@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,18 +19,6 @@ import tempfile
 
 def git(*args):
     return subprocess.check_output([os.environ.get("WORKTREE_GIT", "git"), *args])
-
-
-def policy_paths(inherited, commands):
-    guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
-    search = os.pathsep.join(inherited)
-    for command in commands:
-        executable = shutil.which(command, path=search)
-        if executable is not None:
-            binary = Path(executable).resolve(strict=True)
-            if binary.parent.name == "bin" and binary.parent.parent.parent == Path("/nix/store"):
-                guards.append(str(binary.parent))
-    return list(dict.fromkeys(guards))
 
 
 def identity(root):
@@ -69,7 +56,7 @@ def main():
     for variable in git("rev-parse", "--local-env-vars").decode().splitlines():
         os.environ.pop(variable, None)
     inherited = os.environ.get("PATH", "").split(os.pathsep)
-    guards = policy_paths(inherited, ["gate-slot"])
+    guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
     os.environ["WORKTREE_POLICY_PATH"] = os.pathsep.join(guards)
     root = Path(git("rev-parse", "--show-toplevel").decode().strip()).resolve()
     os.chdir(root)
