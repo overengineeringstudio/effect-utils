@@ -43,7 +43,7 @@ def _tsgo_typecheck_impl(ctx):
     args = cmd_args([
         hermetic_bun_command(ctx, toolchain.bun, sandbox_inputs = inputs),
         toolchain.runner,
-        "typecheck",
+        "workspace-check" if ctx.attrs.workspace_build else "typecheck",
         toolchain.executable,
         package_tree.tree,
         ctx.attrs.project,
@@ -52,6 +52,11 @@ def _tsgo_typecheck_impl(ctx):
     fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
     args.add("--fingerprint-tool", fingerprint.store_path)
     args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
+    isolation = ctx.attrs._darwin_emit_isolation
+    if ctx.attrs.workspace_build:
+        if isolation not in ["sandbox-exec", "nix-build-sandbox"]:
+            fail("Unknown Darwin workspace isolation mode: {}".format(isolation))
+        args.add("--darwin-isolation", isolation)
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
     ts_action(
@@ -64,9 +69,10 @@ def _tsgo_typecheck_impl(ctx):
             "effect-tsgo": toolchain.closure_paths,
         },
         tool_inputs = toolchain.inputs + [fingerprint.executable, fingerprint.manifest],
-        category = "tsgo_typecheck",
+        category = "tsgo_workspace_check" if ctx.attrs.workspace_build else "tsgo_typecheck",
         identifier = ctx.attrs.name,
         local_only = True,
+        inherit_nix_build_environment = ctx.attrs.workspace_build and isolation == "nix-build-sandbox",
     )
     return [
         DefaultInfo(default_output = verdict),
@@ -83,6 +89,10 @@ _tsgo_typecheck = cache_guarded_rule(
     attrs = dict(ts_action_attrs(), **{
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "project": attrs.string(default = "tsconfig.json"),
+        "workspace_build": attrs.bool(default = False),
+        "_darwin_emit_isolation": attrs.default_only(attrs.string(
+            default = read_root_config("typescript", "darwin_emit_isolation", "sandbox-exec"),
+        )),
         "_tsgo": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:effect_tsgo",
             providers = [EffectTsgoToolchainInfo],
@@ -97,6 +107,15 @@ _tsgo_typecheck = cache_guarded_rule(
 def tsgo_typecheck(name, **kwargs):
     _tsgo_typecheck(
         name = name,
+        exec_compatible_with = ts_action_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        **kwargs
+    )
+
+def tsgo_workspace_check(name, **kwargs):
+    """Force-check the authored project-reference graph in an isolated writable copy."""
+    _tsgo_typecheck(
+        name = name,
+        workspace_build = True,
         exec_compatible_with = ts_action_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )

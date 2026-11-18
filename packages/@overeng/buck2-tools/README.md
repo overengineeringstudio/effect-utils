@@ -29,6 +29,20 @@ an existing mismatched file fails closed rather
 than being silently repaired. Remove only the reported invalid preload after
 investigating its provenance, then launch again.
 
+## Referenced TypeScript workspace checks
+
+`tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`
+contract, including project references and compiler options. It shares the existing
+compiler capability, fingerprint admission, cancellation and Darwin isolation
+boundary. Compilation writes only a private scratch copy; the action publishes a
+verdict, not generated declarations or incremental state.
+
+`package_view` accepts package-local `source_sets`, repo-relative `dependency_roots`
+and `workspace_sources`. These retain original relative imports and each importer's
+declared dependency closure without reading an installed checkout. Source snapshots
+may deliberately use the shared static source globs/exclusions for conservative
+workspace-wide cache identity; this does not promise per-project invalidation.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.

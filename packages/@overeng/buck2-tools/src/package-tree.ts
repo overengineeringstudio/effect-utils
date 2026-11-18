@@ -41,6 +41,10 @@ export type PackageTreeOptions = {
   readonly workspaceFiles: ReadonlyMap<string, string>
   readonly workspaceDependencyViews: ReadonlyMap<string, string>
   readonly workspaceLinks: ReadonlyMap<string, string>
+  /** Repo-relative importer boundaries for a complete source workspace. */
+  readonly dependencyRoots?: ReadonlyMap<string, string>
+  /** Workspace package names mapped to their original repo-relative source directories. */
+  readonly workspaceSources?: ReadonlyMap<string, string>
   /**
    * Remove TypeScript project references from the staged authority projects.
    *
@@ -109,6 +113,8 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
   const workspaceFiles = new Map<string, string>()
   const workspaceDependencyViews = new Map<string, string>()
   const workspaceLinks = new Map<string, string>()
+  const dependencyRoots = new Map<string, string>()
+  const workspaceSources = new Map<string, string>()
   let stripProjectReferences = false
   const projectFiles = new Set<string>()
 
@@ -118,6 +124,8 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
       flag === '--file' ||
       flag === '--workspace-file' ||
       flag === '--workspace-dependency-view' ||
+      flag === '--dependency-root' ||
+      flag === '--workspace-source' ||
       flag === '--workspace-link'
     ) {
       const destination = requireRelativePath({
@@ -131,9 +139,13 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
           ? files
           : flag === '--workspace-file'
             ? workspaceFiles
-            : flag === '--workspace-dependency-view'
-              ? workspaceDependencyViews
-              : workspaceLinks
+          : flag === '--dependency-root'
+            ? dependencyRoots
+            : flag === '--workspace-source'
+              ? workspaceSources
+              : flag === '--workspace-dependency-view'
+                ? workspaceDependencyViews
+                : workspaceLinks
       setUnique({ values, key: destination, value, field: flag })
       index += 3
       continue
@@ -163,6 +175,8 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
     workspaceFiles,
     workspaceDependencyViews,
     workspaceLinks,
+    dependencyRoots,
+    workspaceSources,
     stripProjectReferences,
     projectFiles: projectFiles.size === 0 ? ['tsconfig.json'] : [...projectFiles],
   }
@@ -450,7 +464,8 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       }
     }
     if (options.dependencies.kind === 'empty') {
-      mkdirSync(join(output, 'node_modules'))
+      if (options.dependencyRoots?.has('node_modules') !== true)
+        mkdirSync(join(output, 'node_modules'))
     } else if (options.dependencies.kind === 'copy') {
       cloneTree({ source: options.dependencies.path, destination: join(output, 'node_modules') })
     } else {
@@ -484,6 +499,28 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       invalidArguments(
         `--strip-project-references declared but no ${[...pendingProjects].join(', ')} was staged`,
       )
+    }
+    for (const [destination, source] of options.dependencyRoots ?? []) {
+      if (destination !== 'node_modules' && destination.endsWith('/node_modules') === false)
+        invalidArguments(`dependency root must target node_modules: ${destination}`)
+      const dependencyDestination = destinationInside({ root: output, relativePath: destination })
+      mkdirSync(dirname(dependencyDestination), { recursive: true })
+      projectDependencyView({
+        allow: allowedExternalLinks,
+        destination: dependencyDestination,
+        source,
+        workspacePackages: new Set(options.workspaceSources?.keys()),
+      })
+      for (const [name, packagePath] of options.workspaceSources ?? []) {
+        requireRelativePath({ value: name, field: 'workspace package name' })
+        const target = destinationInside({ root: output, relativePath: packagePath })
+        const link = destinationInside({
+          root: output,
+          relativePath: `${destination}/${name}`,
+        })
+        mkdirSync(dirname(link), { recursive: true })
+        symlinkSync(relative(dirname(link), target), link)
+      }
     }
     for (const [destination, source] of options.workspaceDependencyViews) {
       if (lstatSync(source).isDirectory() === false) {
