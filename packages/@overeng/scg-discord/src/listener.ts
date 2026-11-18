@@ -1,12 +1,5 @@
 import { Database } from 'bun:sqlite'
-import {
-  closeSync,
-  constants,
-  lstatSync,
-  openSync,
-  realpathSync,
-  unlinkSync,
-} from 'node:fs'
+import { closeSync, constants, lstatSync, openSync, realpathSync, unlinkSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { createConnection } from 'node:net'
 import { dirname } from 'node:path'
@@ -33,7 +26,13 @@ const acquireSocketOwnership = (socketPath: string): Database => {
     throw new Error('Socket parent must be a canonical, owned, non-writable private directory')
   const lockPath = `${socketPath}.lifecycle.sqlite`
   try {
-    closeSync(openSync(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_RDWR, 0o600))
+    closeSync(
+      openSync(
+        lockPath,
+        constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_RDWR,
+        0o600,
+      ),
+    )
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause
   }
@@ -79,8 +78,10 @@ const reclaimStaleSocket = async (socketPath: string): Promise<void> => {
   })
   const current = lstatSync(socketPath)
   if (
-    !current.isSocket() || current.uid !== previous.uid ||
-    current.dev !== previous.dev || current.ino !== previous.ino
+    !current.isSocket() ||
+    current.uid !== previous.uid ||
+    current.dev !== previous.dev ||
+    current.ino !== previous.ino
   )
     throw new Error('Ingress socket changed during stale verification')
   unlinkSync(socketPath)
@@ -93,7 +94,10 @@ export const listenDiscordInteractions = Effect.fn('scg.discord.listen')(functio
   readonly onFailure: (cause: unknown) => void
 }) {
   if (!options.socketPath.startsWith('/'))
-    return yield* new DiscordError({ operation: 'socket-path', cause: 'Expected an absolute private socket path' })
+    return yield* new DiscordError({
+      operation: 'socket-path',
+      cause: 'Expected an absolute private socket path',
+    })
   const fs = yield* FileSystem.FileSystem
   yield* Effect.acquireRelease(
     Effect.try({

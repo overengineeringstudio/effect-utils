@@ -159,7 +159,9 @@ export const makeSigner = (
     // Resolve status under the same lock as PATCH: an old reserved observation must
     // never overwrite a final outcome delivered by another reconciliation.
     if (
-      !store.cards().some((item) => item.record.payload.executionId === card.record.payload.executionId)
+      !store
+        .cards()
+        .some((item) => item.record.payload.executionId === card.record.payload.executionId)
     )
       return
     const status = yield* authority.status(card.record.payload.executionId)
