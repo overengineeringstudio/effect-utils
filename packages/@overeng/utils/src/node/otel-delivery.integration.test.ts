@@ -56,7 +56,12 @@ const runCli = (endpoint: string, shutdownTimeout: number, fail = false) =>
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
       const child = yield* spawner.spawn(
-        ChildProcess.make('bun', [fixture, endpoint, String(shutdownTimeout), fail ? 'fail' : 'ok']),
+        ChildProcess.make('bun', [
+          fixture,
+          endpoint,
+          String(shutdownTimeout),
+          fail ? 'fail' : 'ok',
+        ]),
       )
       return yield* Effect.all(
         {
@@ -114,17 +119,21 @@ Vitest.describe('makeOtelCliLayer delivery outcomes', () => {
     }).pipe(Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer))),
   )
 
-  Vitest.it.effect('reports a real shutdown timeout without changing stdout or successful exit', () =>
-    Effect.gen(function* () {
-      const server = yield* blackHole
-      const result = yield* runCli(`${server.endpoint}/private-token`, 100).pipe(
-        Effect.timeout('10 seconds'),
-      )
-      expect(result.stdout).toBe('{"ok":true}\n')
-      expect(result.code).toBe(0)
-      expect(result.stderr).toContain('OTEL warning: traces shutdown timed out; telemetry may be lost.')
-      expect(result.stderr).not.toContain('private-token')
-      expect(result.stderr).not.toContain(server.endpoint)
-    }).pipe(Effect.provide(NodeServices.layer)),
+  Vitest.it.effect(
+    'reports a real shutdown timeout without changing stdout or successful exit',
+    () =>
+      Effect.gen(function* () {
+        const server = yield* blackHole
+        const result = yield* runCli(`${server.endpoint}/private-token`, 100).pipe(
+          Effect.timeout('10 seconds'),
+        )
+        expect(result.stdout).toBe('{"ok":true}\n')
+        expect(result.code).toBe(0)
+        expect(result.stderr).toContain(
+          'OTEL warning: traces shutdown timed out; telemetry may be lost.',
+        )
+        expect(result.stderr).not.toContain('private-token')
+        expect(result.stderr).not.toContain(server.endpoint)
+      }).pipe(Effect.provide(NodeServices.layer)),
   )
 })

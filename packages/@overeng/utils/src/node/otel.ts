@@ -320,11 +320,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
     // process-global onto every CLI (restate-effect decision 0007).
     const observer = (event: OtlpExporter.Event): void => {
       const signal =
-        event.label === 'OtlpTracer'
-          ? 'traces'
-          : event.label === 'OtlpMetrics'
-            ? 'metrics'
-            : 'logs'
+        event.label === 'OtlpTracer' ? 'traces' : event.label === 'OtlpMetrics' ? 'metrics' : 'logs'
       let delivery: OtelDeliveryEvent
       if (event._tag === 'Shutdown') {
         delivery = {
@@ -334,7 +330,9 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
           disabled: event.disabled,
         }
         if (event.timedOut === true) {
-          process.stderr.write(`OTEL warning: ${signal} shutdown timed out; telemetry may be lost.\n`)
+          process.stderr.write(
+            `OTEL warning: ${signal} shutdown timed out; telemetry may be lost.\n`,
+          )
         }
       } else if (Exit.isSuccess(event.exit) === true) {
         delivery = { _tag: 'BatchSucceeded', signal }
@@ -420,8 +418,10 @@ const shapeDefaults = (shape: Shape): ShapeOverrides => {
 }
 
 /** Inputs to {@link withTelemetry}: the validated identity, process {@link Shape}, resolved endpoint, and rare per-call knob overrides. */
-export interface TelemetryLayerOptions
-  extends Pick<OtelCliLayerConfig, 'onDeliveryEvent' | 'resourceAttributes'> {
+export interface TelemetryLayerOptions extends Pick<
+  OtelCliLayerConfig,
+  'onDeliveryEvent' | 'resourceAttributes'
+> {
   /**
    * Typed, decoded service identity stamped onto `service.{name,namespace,version}`
    * of EVERY signal's resource. Construct it via `Schema.decode(ServiceIdentity)`
@@ -477,7 +477,9 @@ export const withTelemetry = (options: TelemetryLayerOptions): Layer.Layer<OtelC
     identity,
     endpoint,
     ...(options.onDeliveryEvent === undefined ? {} : { onDeliveryEvent: options.onDeliveryEvent }),
-    ...(options.resourceAttributes === undefined ? {} : { resourceAttributes: options.resourceAttributes }),
+    ...(options.resourceAttributes === undefined
+      ? {}
+      : { resourceAttributes: options.resourceAttributes }),
     ...(knobs.exportInterval === undefined ? {} : { exportInterval: knobs.exportInterval }),
     ...(knobs.metricsExportInterval === undefined
       ? {}
