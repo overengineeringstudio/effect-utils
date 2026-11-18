@@ -944,3 +944,8 @@ Bun's inspector reporter protocol can stream lifecycle events, but would require
 a debugger connection. Its ordinary lifecycle/preload hooks do not expose failure
 results or deadlines. JUnit provides typed outcomes and measured durations without
 parsing stdout, changing assertion semantics or opening a debugger port.
+
+## Compact local occurrence evidence
+
+The native adapter retains compact evidence and an independent supported-entrypoint
+census for 30 days outside worktrees. See the [state contract and backfill usage](../../../context/builds/04-buck2/07-observability/03-event-log-adapter/spec.md#compact-local-occurrence-evidence).

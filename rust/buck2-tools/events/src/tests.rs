@@ -131,8 +131,13 @@ fn direct_decode_truncation_and_trace_views() {
     assert!(model.spans[1].critical);
     assert!(model.resource_attrs.is_empty());
     for key in [
-        "buck2.action_digest", "buck2.execution_outcome", "buck2.duration_ns",
-        "buck2.execution_ns", "buck2.queue_ns", "buck2.total_bytes", "buck2.action_host",
+        "buck2.action_digest",
+        "buck2.execution_outcome",
+        "buck2.duration_ns",
+        "buck2.execution_ns",
+        "buck2.queue_ns",
+        "buck2.total_bytes",
+        "buck2.action_host",
     ] {
         assert!(!model.spans[1].attrs.iter().any(|a| a["key"] == key));
     }
@@ -409,7 +414,10 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
                         data::ActionExecutionEnd {
                             execution_kind: 1,
                             hostname: Some("synthetic-worker".into()),
-                            wall_time: Some(prost_types::Duration { seconds: 2, nanos: 3 }),
+                            wall_time: Some(prost_types::Duration {
+                                seconds: 2,
+                                nanos: 3,
+                            }),
                             output_size: 123,
                             input_files_bytes: Some(456),
                             commands: vec![data::CommandExecution {
@@ -455,9 +463,17 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
         vec![attr("buck2.root_id", sha256_hex(working_dir.as_bytes()))]
     );
     let value = |index: usize, key: &str| {
-        model.spans[index].attrs.iter().find(|a| a["key"] == key).unwrap()["value"].clone()
+        model.spans[index]
+            .attrs
+            .iter()
+            .find(|a| a["key"] == key)
+            .unwrap()["value"]
+            .clone()
     };
-    assert_ne!(value(1, "buck2.occurrence_id"), value(2, "buck2.occurrence_id"));
+    assert_ne!(
+        value(1, "buck2.occurrence_id"),
+        value(2, "buck2.occurrence_id")
+    );
     assert_eq!(
         value(1, "buck2.occurrence_id")["stringValue"],
         format!(
@@ -466,9 +482,18 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
         )
     );
     for index in 1..=2 {
-        assert_eq!(value(index, "buck2.action_digest")["stringValue"], "native-digest:123");
-        assert_eq!(value(index, "buck2.execution_outcome")["stringValue"], "local-exec");
-        assert_eq!(value(index, "buck2.action_host")["stringValue"], "synthetic-worker");
+        assert_eq!(
+            value(index, "buck2.action_digest")["stringValue"],
+            "native-digest:123"
+        );
+        assert_eq!(
+            value(index, "buck2.execution_outcome")["stringValue"],
+            "local-exec"
+        );
+        assert_eq!(
+            value(index, "buck2.action_host")["stringValue"],
+            "synthetic-worker"
+        );
         assert_eq!(value(index, "buck2.duration_ns")["intValue"], "2000000003");
         assert_eq!(value(index, "buck2.execution_ns")["intValue"], "1000000004");
         assert_eq!(value(index, "buck2.queue_ns")["intValue"], "0");
@@ -478,9 +503,16 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
     model.spans[1].critical = true;
     let views = make_views(&model, None);
     let action = |view: usize| {
-        views[view].2.iter().find(|span| {
-            span["attributes"].as_array().unwrap().contains(&int_attr("buck2.span_id", 2))
-        }).unwrap()
+        views[view]
+            .2
+            .iter()
+            .find(|span| {
+                span["attributes"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&int_attr("buck2.span_id", 2))
+            })
+            .unwrap()
     };
     assert_eq!(action(0)["attributes"], action(1)["attributes"]);
     let exported = serde_json::to_string(&model.resource_attrs).unwrap()
@@ -493,10 +525,17 @@ fn native_action_evidence_is_stable_across_views_and_replay() {
 fn action_outcomes_and_digest_sources_remain_native() {
     use data::command_execution_kind::Command;
     for (kind, expected) in [
-        (1, "local-exec"), (8, "local-exec"),
-        (2, "remote-exec"), (11, "remote-exec"),
-        (3, "cache-hit"), (7, "cache-hit"), (9, "cache-hit"), (10, "cache-hit"),
-        (0, "unknown"), (4, "unknown"), (6, "unknown"),
+        (1, "local-exec"),
+        (8, "local-exec"),
+        (2, "remote-exec"),
+        (11, "remote-exec"),
+        (3, "cache-hit"),
+        (7, "cache-hit"),
+        (9, "cache-hit"),
+        (10, "cache-hit"),
+        (0, "unknown"),
+        (4, "unknown"),
+        (6, "unknown"),
         (999, "unknown"),
     ] {
         assert_eq!(action_outcome(kind, false), expected);
@@ -523,13 +562,18 @@ fn action_outcomes_and_digest_sources_remain_native() {
             Command::WorkerCommand(_) => Some("worker-digest"),
             _ => None,
         };
-        assert_eq!(command_digest(&data::CommandExecution {
-            details: Some(data::CommandExecutionDetails {
-                command_kind: Some(data::CommandExecutionKind { command: Some(command) }),
+        assert_eq!(
+            command_digest(&data::CommandExecution {
+                details: Some(data::CommandExecutionDetails {
+                    command_kind: Some(data::CommandExecutionKind {
+                        command: Some(command)
+                    }),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
-            ..Default::default()
-        }), expected);
+            expected
+        );
     }
     assert_eq!(command_digest(&data::CommandExecution::default()), None);
 }
@@ -993,7 +1037,7 @@ fn metric_resource_reuses_writer_host_without_build_identity() {
         &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
     );
     let out = dir.path().join("out");
-    ingest(&[log], None, Some(&out), &dir.path().join("pending")).unwrap();
+    ingest(&[log], None, Some(&out), &dir.path().join("pending"), &dir.path().join("records")).unwrap();
     let metrics: Value =
         serde_json::from_slice(&fs::read(out.join("0-metrics.json")).unwrap()).unwrap();
     let traces: Value =
@@ -1052,7 +1096,7 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     );
     let spool = dir.path().join("pending");
     let out = dir.path().join("dump");
-    ingest(&[log], None, Some(&out), &spool).unwrap();
+    ingest(&[log], None, Some(&out), &spool, &dir.path().join("records")).unwrap();
     let pending: Vec<_> = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1079,7 +1123,7 @@ fn ingest_reports_spool_failure(signal: &str) {
         &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
     );
     let spool = dir.path().join("pending");
-    ingest(std::slice::from_ref(&log), None, None, &spool).unwrap();
+    ingest(std::slice::from_ref(&log), None, None, &spool, &dir.path().join("records")).unwrap();
     let target = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1097,6 +1141,7 @@ fn ingest_reports_spool_failure(signal: &str) {
             sidecar: None,
             out: None,
             spool_dir: Some(spool),
+            records_dir: Some(dir.path().join("records")),
         },
     });
     let error = result.expect_err("an unspooled chunk must fail ingest");
@@ -1423,4 +1468,50 @@ fn command_success_uses_final_response_not_deprecated_span_flag() {
         );
         assert_command_success(&decode(&path).unwrap(), expected);
     }
+}
+
+#[test]
+fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = write_log(&dir, "compact.pb.zst", &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest));
+    let mut model = decode(&log).unwrap();
+    model.resource_attrs.push(attr("host.name", "fixture-host"));
+    model.spans.iter_mut().find(|span| span.action).unwrap().attrs.push(attr("buck2.path", "/private/raw"));
+    let records = dir.path().join("records");
+    retained::capture(&model, &records).unwrap();
+    retained::capture(&model, &records).unwrap();
+    assert_eq!(fs::read_dir(&records).unwrap().count(), 3);
+    let bodies: Vec<_> = fs::read_dir(&records).unwrap().map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap()).collect();
+    let body = bodies.iter().find(|body| body.contains("\"conversion\"")).unwrap();
+    assert!(!body.contains("/private/raw"));
+    assert!(body.contains("\"occurrence\""));
+    assert!(body.contains("buck2.occurrence_id"));
+    model.truncated = true;
+    retained::capture(&model, &records).unwrap();
+    assert_eq!(fs::read_dir(&records).unwrap().count(), 4);
+}
+
+#[test]
+fn census_survives_without_native_log_or_otlp_export() {
+    let dir = tempfile::tempdir().unwrap();
+    for phase in ["open", "terminal"] {
+        run(Cli::parse_from(["buck2-events", "census", "--invocation-id", "fixture-invocation",
+            "--phase", phase, "--host", "fixture-host", "--records-dir", dir.path().to_str().unwrap()])).unwrap();
+    }
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 4);
+    let path = fs::read_dir(dir.path()).unwrap().map(|entry| entry.unwrap().path())
+        .find(|path| fs::read_to_string(path).unwrap().contains("\"phase\":\"open\"")).unwrap();
+    let old = UNIX_EPOCH + Duration::from_secs(1);
+    File::options().write(true).open(path).unwrap().set_modified(old).unwrap();
+    // A daily scan, not every census, expires only records older than 30 days.
+    // Clear this test-owned claim to exercise the next scan without sleeping.
+    for entry in fs::read_dir(dir.path()).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name().to_string_lossy().starts_with(".prune-") {
+            fs::remove_file(entry.path()).unwrap();
+        }
+    }
+    run(Cli::parse_from(["buck2-events", "census", "--invocation-id", "next",
+        "--phase", "open", "--host", "fixture-host", "--records-dir", dir.path().to_str().unwrap()])).unwrap();
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 4);
 }
