@@ -12,10 +12,10 @@ pkgs.testers.runNixOSTest {
       "kvm-amd"
       "kvm-intel"
     ];
+    # Exercise the shipped readiness bound, not an accelerated CI-only timeout.
     services.immutableAuthorityHost = {
       enable = true;
       initialRelease = releases.a;
-      healthTimeout = 30;
     };
     environment.systemPackages = [
       pkgs.curl
