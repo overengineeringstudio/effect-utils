@@ -1,10 +1,21 @@
 import { spawnSync } from 'node:child_process'
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, it } from 'vitest'
+
+const nodeExecutable = process.env.NODE_BIN ?? 'node'
 
 /**
  * Vite loads config files through Node, which refuses TypeScript stripping for
@@ -63,7 +74,7 @@ it('loads the StyleX Vite entry from a node_modules-installed consumer', () => {
       ].join('\n'),
     )
 
-    const result = spawnSync(process.execPath, [loaderPath], {
+    const result = spawnSync(nodeExecutable, [loaderPath], {
       cwd: consumerRoot,
       encoding: 'utf8',
     })
@@ -78,3 +89,178 @@ it('loads the StyleX Vite entry from a node_modules-installed consumer', () => {
     rmSync(consumerRoot, { recursive: true, force: true })
   }
 })
+
+// A resolved server.close() promise is insufficient: the upstream poller kept
+// Node alive afterwards. The child must exit naturally, without process.exit.
+it.each(['shared factory', 'upstream ESM', 'upstream CJS'])(
+  'naturally exits after closing middleware-mode Vite with %s',
+  (entry) => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'overeng-stylex-shutdown-'))
+    const packageRoot = fileURLToPath(new URL('../../..', import.meta.url))
+    const require = createRequire(import.meta.url)
+    const compilerImport =
+      entry === 'shared factory'
+        ? `import { createStylexVitePlugins } from ${JSON.stringify(new URL('./mod.js', import.meta.url).href)}
+           const plugins = createStylexVitePlugins()`
+        : entry === 'upstream ESM'
+          ? `import stylex from ${JSON.stringify(import.meta.resolve('@stylexjs/unplugin/vite'))}
+             const plugins = [stylex()]`
+          : `import { createRequire } from 'node:module'
+             const require = createRequire(${JSON.stringify(import.meta.url)})
+             const plugins = [require(${JSON.stringify(require.resolve('@stylexjs/unplugin/vite'))}).default()]`
+
+    try {
+      const result = spawnSync(
+        nodeExecutable,
+        [
+          '--input-type=module',
+          '-e',
+          `
+            import assert from 'node:assert/strict'
+            import { createServer } from ${JSON.stringify(import.meta.resolve('vite'))}
+            ${compilerImport}
+            // Reuse the plugin through two real server lifecycles.
+            for (let run = 0; run < 2; run++) {
+              const server = await createServer({
+                configFile: false,
+                root: ${JSON.stringify(packageRoot)},
+                cacheDir: ${JSON.stringify(cacheDir)},
+                logLevel: 'silent',
+                plugins,
+                optimizeDeps: { noDiscovery: true },
+                server: { middlewareMode: true, watch: null },
+              })
+              assert.equal(server.httpServer, null)
+              await server.close()
+              console.log('closed')
+            }
+          `,
+        ],
+        { cwd: packageRoot, encoding: 'utf8', timeout: 10_000 },
+      )
+
+      expect({
+        error: result.error?.message,
+        status: result.status,
+        signal: result.signal,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }).toEqual({
+        error: undefined,
+        status: 0,
+        signal: null,
+        stdout: 'closed\nclosed\n',
+        stderr: '',
+      })
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true })
+    }
+  },
+)
+
+it.each(['serve', 'build'] as const)(
+  'compiles real composed token sources against the consumer runtime during %s',
+  (command) => {
+    const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'overeng-stylex-composed-tokens-')))
+    const consumerRoot = join(fixtureRoot, 'consumer')
+    const externalPackage = join(fixtureRoot, 'member', 'packages', 'stylex-tokens')
+    const packageRoot = fileURLToPath(new URL('../../..', import.meta.url))
+    const tokenPackageRoot = dirname(
+      dirname(fileURLToPath(import.meta.resolve('@overeng/stylex-tokens/tokens.stylex'))),
+    )
+    const entryPath = join(consumerRoot, 'entry.js')
+    try {
+      mkdirSync(join(externalPackage, 'src'), { recursive: true })
+      for (const path of ['package.json', 'src/tokens.stylex.ts']) {
+        cpSync(join(tokenPackageRoot, path), join(externalPackage, path))
+      }
+      for (const [name, target] of [
+        ['@overeng/stylex-tokens', externalPackage],
+        ['@stylexjs/stylex', join(packageRoot, 'node_modules', '@stylexjs/stylex')],
+      ] as const) {
+        const link = join(consumerRoot, 'node_modules', name)
+        mkdirSync(join(link, '..'), { recursive: true })
+        symlinkSync(target, link, 'dir')
+      }
+      writeFileSync(
+        join(consumerRoot, 'package.json'),
+        JSON.stringify({ type: 'module', dependencies: { '@stylexjs/stylex': '0.19.0' } }),
+      )
+      writeFileSync(
+        join(consumerRoot, 'index.html'),
+        '<div id="app"></div><script type="module" src="/entry.js"></script>',
+      )
+      writeFileSync(
+        entryPath,
+        [
+          "import * as stylex from '@stylexjs/stylex'",
+          "import { spacing } from '@overeng/stylex-tokens/tokens.stylex'",
+          "const styles = stylex.create({ root: { padding: spacing['4'] } })",
+          "document.querySelector('#app').className = stylex.props(styles.root).className",
+        ].join('\n'),
+      )
+      const result = spawnSync(
+        nodeExecutable,
+        [
+          '--input-type=module',
+          '-e',
+          `
+        import assert from 'node:assert/strict'
+        import { build, createServer } from ${JSON.stringify(import.meta.resolve('vite'))}
+        import { createStylexVitePlugins } from ${JSON.stringify(new URL('./mod.js', import.meta.url).href)}
+        const config = {
+          root: ${JSON.stringify(consumerRoot)},
+          configFile: false,
+          logLevel: 'silent',
+          plugins: createStylexVitePlugins({ entries: [${JSON.stringify(entryPath)}] }),
+        }
+        if (${JSON.stringify(command)} === 'build') {
+          const result = await build({ ...config, build: { write: false, minify: false } })
+          const outputs = (Array.isArray(result) ? result : [result]).flatMap(bundle => bundle.output)
+          assert(outputs.some(output => output.type === 'asset' && output.fileName.endsWith('.css') && String(output.source).includes('padding')))
+          console.log('built')
+        } else {
+          const server = await createServer({ ...config, server: { host: '127.0.0.1', port: 0, watch: null } })
+          try {
+            await server.listen()
+            // This programmatic client has no browser crawl to publish the initial prebundle.
+            await server.environments.client.waitForRequestsIdle()
+            console.log('listening')
+            const origin = server.resolvedUrls.local[0]
+            assert((await fetch(origin)).ok)
+            const entry = await fetch(new URL('/entry.js', origin))
+            assert(entry.ok)
+            assert((await entry.text()).includes('className'))
+            console.log('entry')
+            const tokens = await fetch(new URL(${JSON.stringify(`/@fs/${join(externalPackage, 'src/tokens.stylex.ts')}`)}, origin))
+            assert(tokens.ok)
+            assert((await tokens.text()).length > 0)
+            assert.equal(server.config.resolve.dedupe.filter(name => name === '@stylexjs/stylex').length, 1)
+            console.log('tokens')
+          } finally {
+            await server.close()
+            console.log('closed')
+          }
+        }
+      `,
+        ],
+        { cwd: consumerRoot, encoding: 'utf8', timeout: 20_000 },
+      )
+      expect({
+        status: result.status,
+        signal: result.signal,
+        error: result.error?.message,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }).toEqual({
+        status: 0,
+        signal: null,
+        error: undefined,
+        stdout: command === 'build' ? 'built\n' : 'listening\nentry\ntokens\nclosed\n',
+        stderr: '',
+      })
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
+    }
+  },
+)

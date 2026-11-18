@@ -48,6 +48,7 @@ export const rehomeCommitWorktree = Effect.fn('store.rehomeCommitWorktree')(func
   readonly bareRepoPath: string
   readonly dryRun?: boolean
 }) {
+  yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })
   const tree = resolve(worktreePath)
   const bare = resolve(bareRepoPath)
   const control = join(tree, '.git')
@@ -98,6 +99,7 @@ export const rehomeCommitWorktree = Effect.fn('store.rehomeCommitWorktree')(func
   const plan = `Rehome ${tree} from ${observed.foreign ?? bare} to ${bare}; fetch missing ${sha} from the foreign repository, register a detached worktree, and preserve all worktree files and foreign registration`
   if (dryRun === true) return `Would ${plan.charAt(0).toLowerCase()}${plan.slice(1)}`
   return yield* Effect.gen(function* () {
+    yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })
     const { foreign } = yield* validate()
     if (foreign === undefined) {
       yield* git(bare)(['worktree', 'repair', tree])

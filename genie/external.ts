@@ -696,7 +696,12 @@ const stylexBabelPluginPatch = {
     'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
 } satisfies PatchesRegistry
 
-/** Repo-local patches that should not be projected into downstream consumers. */
+const stylexUnpluginPatch = {
+  '@stylexjs/unplugin@0.19.0':
+    'packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch',
+} satisfies PatchesRegistry
+
+/** Patches applied in effect-utils, including the shared consumer patches below. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: '.',
   patches: {
@@ -709,6 +714,7 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
     '@myobie/pty@0.10.0': 'patches/@myobie__pty@0.10.0.patch',
     ...storybookBuilderVitePatch,
     ...stylexBabelPluginPatch,
+    ...stylexUnpluginPatch,
   },
 })
 
@@ -716,7 +722,11 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
  * Repo-root-relative registry used by downstream projection helpers
  * (patchPostinstall / pnpmPatchedDependencies / createPnpmPatchedDependencies).
  */
-const patches: PatchesRegistry = { ...storybookBuilderVitePatch, ...stylexBabelPluginPatch }
+const patches: PatchesRegistry = {
+  ...storybookBuilderVitePatch,
+  ...stylexBabelPluginPatch,
+  ...stylexUnpluginPatch,
+}
 
 /**
  * Parse a patch specifier into package name and version.

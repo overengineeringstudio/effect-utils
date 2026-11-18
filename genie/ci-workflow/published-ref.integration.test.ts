@@ -81,6 +81,7 @@ const runPromotion = (manifestChanged: boolean, script = advanceStep.run) =>
       ].join('\n'),
     ],
     {
+      stderr: 'pipe',
       env: {
         ...process.env,
         MANIFEST_CHANGED: String(manifestChanged),
@@ -170,6 +171,7 @@ const runReport = ({
       ].join('\n'),
     ],
     {
+      stderr: 'pipe',
       env: {
         ...process.env,
         GITHUB_SHA: main,

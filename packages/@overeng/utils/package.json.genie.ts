@@ -10,6 +10,7 @@ import {
 } from '../../../genie/internal.ts'
 import effectDistributedLockPkg from '../effect-distributed-lock/package.json.genie.ts'
 import otelContractPkg from '../otel-contract/package.json.genie.ts'
+import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 /** Packages exposed as peer deps (consumers provide) + included in devDeps (for local dev/test) */
@@ -37,7 +38,7 @@ const runtimeDeps = catalog.compose({
     },
   },
   devDependencies: {
-    workspace: [utilsDevPkg],
+    workspace: [utilsDevPkg, stylexTokensPkg],
     external: {
       ...catalog.pick(
         ...peerDepNames,
