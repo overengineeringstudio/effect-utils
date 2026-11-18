@@ -153,12 +153,21 @@ export const makeSigner = (
   })
   const closeUnlocked = Effect.fn('scg.discord.close')(function* (
     card: Card,
-    status: Status,
+    observed: Status,
     elsewhere: boolean,
   ) {
+    // Resolve status under the same lock as PATCH: an old reserved observation must
+    // never overwrite a final outcome delivered by another reconciliation.
+    if (
+      !store.cards().some((item) => item.record.payload.executionId === card.record.payload.executionId)
+    )
+      return
+    const status = yield* authority.status(card.record.payload.executionId)
     if (
       status.executionId !== card.record.payload.executionId ||
-      status.requestDigest !== card.record.payload.requestDigest
+      status.requestDigest !== card.record.payload.requestDigest ||
+      observed.executionId !== card.record.payload.executionId ||
+      observed.requestDigest !== card.record.payload.requestDigest
     ) {
       return yield* new InteractionError({ reason: 'binding' })
     }
@@ -170,8 +179,10 @@ export const makeSigner = (
     )
     if (rendered._tag === 'Rejected') return yield* new InteractionError({ reason: 'body' })
     yield* discord.edit(card, rendered.message)
-    // Mark closed only after the PATCH succeeds; restart retries failed edits.
-    yield* io('close-card', () => store.closed(card.record.payload.executionId))
+    // Reservation removes controls, but its mapping remains durable until the
+    // actual execution outcome has been visibly delivered.
+    if (status.state !== 'reserved')
+      yield* io('close-card', () => store.closed(card.record.payload.executionId))
   })
   const publish: DiscordSigner['publish'] = (record, channelId) =>
     publishUnlocked(record, channelId).pipe(Semaphore.withPermits(edits, 1))
