@@ -217,6 +217,9 @@ describe('mr store status bare repository health', () => {
         const bare = bareRepoPaths['github.com/test/acquire']!
         const worktree = worktreePaths['github.com/test/acquire#main']!
         const commit = yield* getWorktreeCommit(worktree)
+        // The remote fixture fetches once while seeding origin refs. Remove that
+        // receipt so any acquisition-time fetch is observable as a new file.
+        yield* fs.remove(`${bare}FETCH_HEAD`)
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: { member: 'test/acquire#main' },
           lockEntries: {
