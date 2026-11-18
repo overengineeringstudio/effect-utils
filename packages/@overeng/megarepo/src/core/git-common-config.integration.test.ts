@@ -29,8 +29,16 @@ const fixture = Effect.gen(function* () {
   yield* Git.runCommand({
     cwd: source,
     args: [
-      '-c', 'user.name=Test User', '-c', 'user.email=test@example.com',
-      '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'initial',
+      '-c',
+      'user.name=Test User',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'initial',
     ],
   })
   // Use Git directly so refusal tests can also detect accidental writer-lock creation.
@@ -61,7 +69,9 @@ describe('common bare config with worktree config', () => {
       expect(yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
       expect(yield* Git.repairCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
       yield* config('extensions.worktreeConfig', 'true')
-      yield* Git.runCommand({ args: ['config', '-f', `${bare}/config`, '--unset-all', 'core.bare'] })
+      yield* Git.runCommand({
+        args: ['config', '-f', `${bare}/config`, '--unset-all', 'core.bare'],
+      })
       expect(yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
       expect(yield* Git.repairCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -75,7 +85,9 @@ describe('common bare config with worktree config', () => {
       yield* config('include.path', included)
       expect(yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
       yield* config('extensions.worktreeConfig', 'true')
-      yield* Git.runCommand({ args: ['config', '-f', `${bare}/config`, '--unset-all', 'core.bare'] })
+      yield* Git.runCommand({
+        args: ['config', '-f', `${bare}/config`, '--unset-all', 'core.bare'],
+      })
       yield* fs.writeFileString(included, '[core]\nbare = true\n')
       expect(yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -128,7 +140,9 @@ describe('common bare config with worktree config', () => {
       yield* config('extensions.worktreeConfig', 'true')
       yield* config('core.logAllRefUpdates', 'always')
       yield* config('custom.keep', 'unchanged')
-      yield* Git.runCommand({ args: ['config', '-f', `${bare}/config`, '--add', 'core.bare', 'false'] })
+      yield* Git.runCommand({
+        args: ['config', '-f', `${bare}/config`, '--add', 'core.bare', 'false'],
+      })
       yield* fs.writeFileString(`${bare}/config.worktree`, '[core]\nbare = true\n')
       const worktreeConfig = yield* fs.readFileString(`${bare}/config.worktree`)
       expect(yield* Git.repairCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(true)
@@ -138,7 +152,11 @@ describe('common bare config with worktree config', () => {
         ['custom.keep', 'unchanged'],
         ['extensions.worktreeConfig', 'true'],
       ]) {
-        expect(yield* Git.runCommand({ args: ['config', '-f', `${bare}/config`, '--no-includes', '--get', key!] })).toBe(value)
+        expect(
+          yield* Git.runCommand({
+            args: ['config', '-f', `${bare}/config`, '--no-includes', '--get', key!],
+          }),
+        ).toBe(value)
       }
       expect(yield* fs.readFileString(`${bare}/config.worktree`)).toBe(worktreeConfig)
       const repairedConfig = yield* fs.readFileString(`${bare}/config`)
@@ -147,40 +165,62 @@ describe('common bare config with worktree config', () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
-  for (const operation of ['clone-existing', 'branch', 'detached', 'store-branch', 'store-detached', 'lease'] as const) {
-    it.effect(`refuses ${operation} before directory, writer lock, container lock or lease mutation`, () =>
-      Effect.gen(function* () {
-        const { fs, root, store, bare, config } = yield* fixture
-        yield* config('extensions.worktreeConfig', 'true')
-        const worktree = `${store}example.com/owner/repo/refs/heads/new/nested`
-        const before = yield* fs.readDirectory(root, { recursive: true })
-        const beforeConfig = yield* fs.readFileString(`${bare}/config`)
-        const branchArgs = { repoPath: bare, worktreePath: worktree, branch: 'new', createBranch: true }
-        const detachedArgs = { repoPath: bare, worktreePath: worktree, commit: 'main' }
-        const acquire = operation === 'clone-existing'
-          ? Git.cloneBare({ url: `${root}/source`, targetPath: bare }).pipe(Effect.asVoid)
-          : operation === 'branch'
-            ? Git.createWorktree(branchArgs)
-          : operation === 'detached'
-            ? Git.createWorktreeDetached(detachedArgs)
-            : operation === 'store-branch'
-              ? createStoreWorktree({ ...branchArgs, storeBasePath: store })
-              : operation === 'store-detached'
-                ? createStoreWorktreeDetached({ ...detachedArgs, storeBasePath: store })
-                : withStoreWorktreeLease({ storeBasePath: store, ownerPath: worktree, bareRepoPath: bare })(
-                    fs.makeDirectory(worktree, { recursive: true }),
-                  )
-        const error = yield* Effect.flip(acquire)
-        expect(error).toBeInstanceOf(Git.CommonBareWorktreeConfigError)
-        if (error instanceof Git.CommonBareWorktreeConfigError) {
-          expect(error.repoPath).toBe(bare)
-          expect(error.fixCommand).toBe('mr store fix')
-          expect(error.message).toContain('core.bare')
-        }
-        expect(yield* fs.readDirectory(root, { recursive: true })).toEqual(before)
-        expect(yield* fs.readFileString(`${bare}/config`)).toBe(beforeConfig)
-        expect(yield* fs.exists(worktree)).toBe(false)
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  for (const operation of [
+    'clone-existing',
+    'branch',
+    'detached',
+    'store-branch',
+    'store-detached',
+    'lease',
+  ] as const) {
+    it.effect(
+      `refuses ${operation} before directory, writer lock, container lock or lease mutation`,
+      () =>
+        Effect.gen(function* () {
+          const { fs, root, store, bare, config } = yield* fixture
+          yield* config('extensions.worktreeConfig', 'true')
+          const worktree = `${store}example.com/owner/repo/refs/heads/new/nested`
+          const before = yield* fs.readDirectory(root, { recursive: true })
+          const beforeConfig = yield* fs.readFileString(`${bare}/config`)
+          const branchArgs = {
+            repoPath: bare,
+            worktreePath: worktree,
+            branch: 'new',
+            createBranch: true,
+          }
+          const detachedArgs = { repoPath: bare, worktreePath: worktree, commit: 'main' }
+          const rejection =
+            operation === 'clone-existing'
+              ? Git.cloneBare({ url: `${root}/source`, targetPath: bare }).pipe(
+                  Effect.asVoid,
+                  Effect.flip,
+                )
+              : operation === 'branch'
+                ? Git.createWorktree(branchArgs).pipe(Effect.flip)
+                : operation === 'detached'
+                  ? Git.createWorktreeDetached(detachedArgs).pipe(Effect.flip)
+                  : operation === 'store-branch'
+                    ? createStoreWorktree({ ...branchArgs, storeBasePath: store }).pipe(Effect.flip)
+                    : operation === 'store-detached'
+                      ? createStoreWorktreeDetached({ ...detachedArgs, storeBasePath: store }).pipe(
+                          Effect.flip,
+                        )
+                      : withStoreWorktreeLease({
+                          storeBasePath: store,
+                          ownerPath: worktree,
+                          bareRepoPath: bare,
+                        })(fs.makeDirectory(worktree, { recursive: true })).pipe(Effect.flip)
+          const error = yield* rejection
+          expect(error).toBeInstanceOf(Git.CommonBareWorktreeConfigError)
+          if (error instanceof Git.CommonBareWorktreeConfigError) {
+            expect(error.repoPath).toBe(bare)
+            expect(error.fixCommand).toBe('mr store fix')
+            expect(error.message).toContain('core.bare')
+          }
+          expect(yield* fs.readDirectory(root, { recursive: true })).toEqual(before)
+          expect(yield* fs.readFileString(`${bare}/config`)).toBe(beforeConfig)
+          expect(yield* fs.exists(worktree)).toBe(false)
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
   }
 })

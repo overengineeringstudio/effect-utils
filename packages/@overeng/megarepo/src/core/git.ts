@@ -322,7 +322,15 @@ export const hasCommonBareWithWorktreeConfig = Effect.fn(
   const common = yield* resolveGitCommonDir(repoPath)
   const configPath = NodePath.join(common, 'config')
   const enabled = yield* runGitCommand({
-    args: ['config', '-f', configPath, '--no-includes', '--type=bool', '--get', 'extensions.worktreeconfig'],
+    args: [
+      'config',
+      '-f',
+      configPath,
+      '--no-includes',
+      '--type=bool',
+      '--get',
+      'extensions.worktreeconfig',
+    ],
   }).pipe(
     Effect.catchTag('GitCommandError', (error) =>
       error.exitCode === 1 && error.stderr === '' ? Effect.succeed('false') : Effect.fail(error),
@@ -352,7 +360,14 @@ export const repairCommonBareWithWorktreeConfig = ({ repoPath }: { repoPath: str
     if ((yield* hasCommonBareWithWorktreeConfig({ repoPath })) === false) return false
     const common = yield* resolveGitCommonDir(repoPath)
     yield* runGitCommand({
-      args: ['config', '-f', NodePath.join(common, 'config'), '--no-includes', '--unset-all', 'core.bare'],
+      args: [
+        'config',
+        '-f',
+        NodePath.join(common, 'config'),
+        '--no-includes',
+        '--unset-all',
+        'core.bare',
+      ],
     })
     return true
   }).pipe(
@@ -682,7 +697,9 @@ export const createWorktree = (args: {
   }).pipe(
     withGitWriterLock({ path: args.repoPath }),
     (effect) =>
-      assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath }).pipe(Effect.andThen(effect)),
+      assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath }).pipe(
+        Effect.andThen(effect),
+      ),
     Observability.withGitBranchSpan({
       name: 'git/create-worktree',
       branch: args.branch,
@@ -1429,7 +1446,9 @@ export const createWorktreeDetached = (args: {
     Effect.asVoid,
     withGitWriterLock({ path: args.repoPath }),
     (effect) =>
-      assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath }).pipe(Effect.andThen(effect)),
+      assertNoCommonBareWithWorktreeConfig({ repoPath: args.repoPath }).pipe(
+        Effect.andThen(effect),
+      ),
     Observability.withGitCommitSpan({
       name: 'git/create-worktree-detached',
       label: args.commit.slice(0, 8),

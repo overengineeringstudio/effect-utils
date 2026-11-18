@@ -250,7 +250,8 @@ const StoreStatusView = ({
           {repoIssues.map((issue) => (
             <Box key={`${issue.repo}-${issue.type}`} flexDirection="column">
               <Text color={issue.severity === 'warning' ? 'yellow' : 'red'}>
-                {issue.severity === 'warning' ? SYMBOLS.warning : SYMBOLS.cross} {issue.repo} (.bare)
+                {issue.severity === 'warning' ? SYMBOLS.warning : SYMBOLS.cross} {issue.repo}{' '}
+                (.bare)
               </Text>
               <Text> {issue.message}</Text>
             </Box>
