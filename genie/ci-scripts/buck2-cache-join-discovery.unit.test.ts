@@ -212,11 +212,13 @@ describe('selectRuns', () => {
     const result = selectRuns(runs)
     expect(result.selected).toHaveLength(464)
     for (const lane of result.lanes) expect(lane.selected).toBe(lane.seen)
-    expect(selectRuns([...runs].reverse())).toEqual(result)
+    expect(selectRuns(runs.toReversed())).toEqual(result)
     const nextDay = runs.map((run) => ({
-      ...run,
       id: run.id + 10000,
+      event: run.event,
+      head_branch: run.head_branch,
       created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
+      workflow: run.workflow,
     }))
     expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(928)
   })
@@ -238,6 +240,6 @@ describe('selectRuns', () => {
       evidenceRun(1, { workflow: 'ci-test.yml' }),
       evidenceRun(2),
     ]
-    expect(selectRuns(runs)).toEqual(selectRuns([...runs].reverse()))
+    expect(selectRuns(runs)).toEqual(selectRuns(runs.toReversed()))
   })
 })
