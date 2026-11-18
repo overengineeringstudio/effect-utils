@@ -9,6 +9,8 @@ use std::process::{Command, Stdio};
 const VERSION: &str = "pnpm-store-evidence-v1";
 const COMMAND: Option<&str> = option_env!("PNPM_GC_PROCESS_EVIDENCE_COMMAND");
 
+pub(super) fn configured() -> bool { COMMAND.is_some() }
+
 pub(super) enum Failure {
     Active(String),
     Incomplete(String),
@@ -64,21 +66,45 @@ fn run(command: &str, args: &[&std::ffi::OsStr]) -> Result<Vec<u8>, String> {
         .spawn().map_err(|error| format!("fixed process evidence command: {error}"))?;
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
-    let errors = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stderr.take(4097).read_to_end(&mut bytes).map(|_| bytes)
-    });
-    let mut bytes = Vec::new();
-    let read = stdout.take(257).read_to_end(&mut bytes);
-    if read.is_err() || bytes.len() > 256 { let _ = child.kill(); }
-    let status = child.wait().map_err(|error| error.to_string())?;
-    let errors = errors.join().map_err(|_| "process evidence stderr reader failed")?
-        .map_err(|error| error.to_string())?;
-    read.map_err(|error| error.to_string())?;
-    if !status.success() || bytes.len() > 256 || errors.len() > 4096 {
-        return Err("process evidence command failed or exceeded output bounds".into());
+    // Drain both pipes concurrently. Neither a full stderr pipe nor a privileged
+    // descendant retaining a pipe may block the collector indefinitely.
+    let (send, receive) = std::sync::mpsc::channel();
+    fn reader<R: Read + Send + 'static>(pipe: R, limit: u64, output: bool,
+        send: std::sync::mpsc::Sender<(bool, Result<Vec<u8>, String>)>) {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let result = pipe.take(limit + 1).read_to_end(&mut bytes)
+                .map_err(|error| error.to_string()).and_then(|_| {
+                    if bytes.len() as u64 > limit { Err("process evidence output limit".into()) }
+                    else { Ok(bytes) }
+                });
+            let _ = send.send((output, result));
+        });
     }
-    Ok(bytes)
+    reader(stdout, 256, true, send.clone());
+    reader(stderr, 4096, false, send);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let result = (|| {
+        let mut output = Vec::new();
+        for _ in 0..2 {
+            let (is_output, bytes) = receive.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+                .map_err(|_| "process evidence command timed out")?;
+            let bytes = bytes?;
+            if is_output { output = bytes; }
+        }
+        loop {
+            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+                return if status.success() { Ok(output) } else { Err("process evidence command failed".into()) };
+            }
+            if std::time::Instant::now() >= deadline { return Err("process evidence command timed out".into()); }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    })();
+    if result.is_err() {
+        let _ = child.kill();
+        let _ = child.try_wait();
+    }
+    result
 }
 
 #[cfg(test)]

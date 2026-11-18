@@ -407,7 +407,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
     client start time. Its only stdout is one newline-terminated tab-separated
     record: `pnpm-store-evidence-v1`, nonce, device, inode, `absent`, 64-lowercase-hex
     manifest digest, start time. Nonzero exit, mismatches, malformed records,
-    stdout over 256 bytes or stderr over 4096 bytes fail closed. No production
+    stdout over 256 bytes, stderr over 4096 bytes or a 30-second invocation
+    deadline fail closed. Both output pipes are drained concurrently. No production
     helper is supplied or enabled here; deployment requires independent security
     review and actual namespace/IPC qualification.
     This is a cooperative accidental-breakage contract: direct directory

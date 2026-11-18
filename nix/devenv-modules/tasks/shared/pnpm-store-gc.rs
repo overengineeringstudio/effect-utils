@@ -762,6 +762,7 @@ mod linux {
             Ok(()) => Ok(()),
             Err(process_evidence::Failure::Active(error)) => Err(error),
             Err(process_evidence::Failure::Incomplete(error)) => {
+                if !process_evidence::configured() { return Err(error); }
                 process_evidence::prove(root, admitted_directory, lease)
                     .map_err(|evidence| format!("{error}; {evidence}"))
             }
