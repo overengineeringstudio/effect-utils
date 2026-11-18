@@ -192,6 +192,29 @@ before browser modules execute. It identifies the serving package's real Nix
 store path or the deployment manifest handle; it is not a build-time static asset
 path or a guessed Home Manager symlink. Report it as `deployment.id`.
 
+## Vite composed StyleX runtime
+
+`createStylexVitePlugins` deduplicates `@stylexjs/stylex` to the consuming app
+in both serve and build. A linked external token package therefore uses the
+app's runtime peer even when its real source path is outside the app and has
+no local runtime installation. Consumers must declare the runtime; they do
+not need `preserveSymlinks`, an alias, or a second adapter. Development also
+pre-bundles that runtime during startup, before the first source-token import.
+
+## Vite StyleX shutdown
+
+`createStylexVitePlugins` preserves the compiler's development/HMR hooks.
+Workspaces must consume the shared `pnpmPatchedDependencies` registry (or
+`createPnpmPatchedDependencies` for peer-repo-relative paths): the maintained
+`@stylexjs/unplugin@0.19.0` patch owns each server's CSS-update poller and clears
+it through Vite's `buildEnd` and `closeBundle` hooks as well as HTTP close.
+This includes middleware-mode servers, where `server.httpServer` is `null`;
+awaiting `server.close()` then permits natural process exit.
+
+Both the CJS and ESM dependency entries carry the fix. The timer is private
+inside upstream `configureServer`, so the factory cannot dispose it through a
+clean wrapper. See [the upstream issue](https://github.com/meta/stylex/issues/1857).
+
 ## Next.js StyleX (webpack)
 
 Install `@overeng/utils`, `postcss`, `babel-loader`, `@stylexjs/stylex`,

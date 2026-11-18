@@ -130,8 +130,8 @@ cat >"$main/devenv.nix" <<NIX
 }
 NIX
 git -C "$main" add .
-# Fixture commits must not execute the operator's ambient policy hooks.
-git -C "$main" -c core.hooksPath=/dev/null -c user.name=teardown-test -c user.email=teardown-test@example.invalid commit -qm fixture
+# Fixture commits must not execute the operator's ambient policy hooks or signer.
+git -C "$main" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=teardown-test -c user.email=teardown-test@example.invalid commit -qm fixture
 git -C "$main" worktree add -q --detach "$worktree" HEAD
 cp "$ROOT/devenv.lock" "$worktree/devenv.lock"
 

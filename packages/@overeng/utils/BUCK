@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f56a82829f168977fef697f3fa9ca8b84197bdad07b457237897c5f3f6179004
+# Semantic fingerprint: sha256:e88e8f1de1cf7385ab75e08b186e743dadf0412f85f1c415c67dfb96abe86824
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,6 +23,12 @@ export_file(
 export_file(
     name = "patches/@stylexjs__babel-plugin@0.19.0.patch",
     src = "patches/@stylexjs__babel-plugin@0.19.0.patch",
+    visibility = ["PUBLIC"],
+)
+
+export_file(
+    name = "patches/@stylexjs__unplugin@0.19.0.patch",
+    src = "patches/@stylexjs__unplugin@0.19.0.patch",
     visibility = ["PUBLIC"],
 )
 
@@ -446,6 +452,7 @@ package_view(
     files = {
         "package.json": "package.json",
         "patches/@stylexjs__babel-plugin@0.19.0.patch": "patches/@stylexjs__babel-plugin@0.19.0.patch",
+        "patches/@stylexjs__unplugin@0.19.0.patch": "patches/@stylexjs__unplugin@0.19.0.patch",
         "src/browser/BroadcastLogger.ts": "src/browser/BroadcastLogger.ts",
         "src/browser/__tests__/BroadcastLogger.pw.test.ts": "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/browser/__tests__/fixtures/test-page.ts": "src/browser/__tests__/fixtures/test-page.ts",
@@ -612,6 +619,7 @@ npm_package_archive(
     workspace_manifests = [
         "//packages/@overeng/effect-distributed-lock:package.json",
         "//packages/@overeng/otel-contract:package.json",
+        "//packages/@overeng/stylex-tokens:package.json",
         "//packages/@overeng/utils-dev:package.json",
     ],
     output = "overeng-utils.tgz",
