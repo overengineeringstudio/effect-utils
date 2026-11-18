@@ -336,7 +336,6 @@ export const aggregateOccurrences = ({
       requireField(nonempty(invocation?.rootId), 'missing-root')
       requireField(nonempty(host), 'missing-host')
       requireField(nonempty(action.digest), 'missing-digest')
-      requireField(nonempty(action.configuration), 'missing-configuration')
       requireField(
         action.startedAt !== null && Number.isFinite(action.startedAt) && action.startedAt <= time,
         'missing-native-time',
@@ -353,7 +352,8 @@ export const aggregateOccurrences = ({
         !nonempty(action.occurrenceId) ||
         !nonempty(action.buildId) ||
         !nonempty(invocation?.rootId) ||
-        !nonempty(host)
+        !nonempty(host) ||
+        !nonempty(action.digest)
       )
         continue
       const row: Row = {
@@ -361,7 +361,7 @@ export const aggregateOccurrences = ({
         host,
         root: invocation.rootId,
         build: action.buildId,
-        key: JSON.stringify([header.metadata.repo, action.configuration, action.digest]),
+        key: action.digest,
         time,
         outcome,
         durationNs: measurement(action.durationNs),

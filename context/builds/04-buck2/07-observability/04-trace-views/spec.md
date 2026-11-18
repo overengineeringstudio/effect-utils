@@ -175,8 +175,8 @@ job: the `ci.yml` main-writer cohort also retains its reader jobs. Discovered
 cohorts control selection, never strict action eligibility.
 
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
-windowEndMs)`, attributing chronological repository/configuration/digest execution
-repeats globally across hosts/roots/CI; hits and explicit coalescing are separate.
+windowEndMs)`, attributing chronological full-action-digest execution repeats
+globally across repositories, configurations, hosts, roots and CI; hits and explicit coalescing are separate.
 Missing native identity/root/host/time/digest/outcome/completeness or metadata,
 unlinked remote/coalesced worker attempts, conflicts, sampling, loss or overflow mean unknown.
 Valid rows survive; unavailable costs are null with explicit unavailable counts.
