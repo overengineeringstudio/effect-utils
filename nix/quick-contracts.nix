@@ -192,24 +192,25 @@ in
       ln -s ${taskAuthority} "$out/tasks.json"
       ln -s ${sourceIdentity} "$out/source-identity"
     '';
-    capabilities = pkgs.symlinkJoin {
-      name = "buck2-capabilities";
-      paths = [
-        (import ./buck2-capabilities.nix {
-          inherit pkgs;
-          src = root;
-          inherit (baseCapabilities) capabilityPackages;
-          extraCapabilities = baseCapabilities.extraCapabilities // {
-            quick-contracts = {
-              kind = "directory";
-              package = cfg.package;
-              protocol = "effect-utils/quick-contracts/v1";
-            };
+    capabilities =
+      (import ./buck2-capabilities.nix {
+        inherit pkgs;
+        src = root;
+        inherit (baseCapabilities) capabilityPackages;
+        extraCapabilities = baseCapabilities.extraCapabilities // {
+          quick-contracts = {
+            kind = "directory";
+            package = cfg.package;
+            protocol = "effect-utils/quick-contracts/v1";
           };
-        })
-      ];
-      # Stable stage-zero handle to the same capability, not a second registry.
-      postBuild = "ln -s ${cfg.package} $out/quick-contracts";
-    };
+        };
+      }).overrideAttrs
+        (previous: {
+          # Preserve the producer's regular metadata files and exact tool links.
+          # A symlinkJoin would change immutable per-tool entries across profiles.
+          buildCommand = previous.buildCommand + ''
+            ln -s ${cfg.package} "$out/quick-contracts"
+          '';
+        });
   };
 }
