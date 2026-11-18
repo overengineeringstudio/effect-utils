@@ -7,6 +7,7 @@ import {
   previousUtcDay,
   platformForJob,
   renderOtlp,
+  renderOccurrenceOtlp,
   renderPrometheus,
   type JoinObservation,
   type JoinSample,
@@ -646,5 +647,60 @@ describe('exact execute-once occurrence scorecard', () => {
         'missing-lane',
       ].sort(),
     )
+  })
+})
+
+describe('occurrence OTLP rendering', () => {
+  it('renders bounded host gauges at window end without occurrence identity labels', () => {
+    const scorecard = aggregateOccurrences({
+      artifacts: [
+        occurrenceArtifact('first', 'host-a', 210),
+        occurrenceArtifact('second', 'host-b', 220, {
+          durationNs: null,
+          totalBytes: null,
+          executionOutcome: 'remote-exec',
+        }),
+      ],
+      windowStartMs: 200,
+      windowEndMs: 300,
+      evidenceGaps: ['sampled-selection'],
+    })
+    const chunk = renderOccurrenceOtlp(scorecard)
+    const metrics = chunk.resourceMetrics.flatMap((resource) =>
+      resource.scopeMetrics.flatMap((scope) => scope.metrics),
+    )
+    const proof = metrics.find(({ name }) => name.endsWith('.proof_known'))
+    expect(proof?.gauge.dataPoints).toEqual([
+      {
+        attributes: [],
+        timeUnixNano: '300000000',
+        asDouble: 0,
+      },
+    ])
+    const repeats = metrics.find(({ name }) => name.endsWith('.repeat_executions'))
+    expect(
+      repeats?.gauge.dataPoints.map(({ attributes, asDouble }) => [attributes, asDouble]),
+    ).toEqual([
+      [[{ key: 'host', value: { stringValue: 'host-a' } }], 0],
+      [[{ key: 'host', value: { stringValue: 'host-b' } }], 1],
+    ])
+    expect(
+      metrics.every((metric) =>
+        metric.gauge.dataPoints.every(
+          (point) =>
+            point.timeUnixNano === '300000000' &&
+            point.attributes.every(({ key }) => key === 'host'),
+        ),
+      ),
+    ).toBe(true)
+    const durations = metrics.find(({ name }) => name.endsWith('.duration_ns'))
+    expect(durations?.unit).toBe('ns')
+    expect(durations?.gauge.dataPoints).toHaveLength(1)
+    const unavailable = metrics.find(({ name }) => name.endsWith('.unavailable_bytes_count'))
+    expect(unavailable?.gauge.dataPoints.map(({ asDouble }) => asDouble)).toEqual([0, 1])
+    const known = renderOccurrenceOtlp({ ...scorecard, proof: 'known', reasons: [] })
+    expect(
+      known.resourceMetrics[0]?.scopeMetrics[0]?.metrics[0]?.gauge.dataPoints[0]?.asDouble,
+    ).toBe(1)
   })
 })
