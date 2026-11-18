@@ -8,13 +8,21 @@ pkgs.testers.runNixOSTest {
       cores = 4;
       qemu.options = [ "-cpu host" ];
     };
-    boot.kernelModules = [ "kvm-amd" "kvm-intel" ];
+    boot.kernelModules = [
+      "kvm-amd"
+      "kvm-intel"
+    ];
     services.immutableAuthorityHost = {
       enable = true;
       initialRelease = releases.a;
       healthTimeout = 30;
     };
-    environment.systemPackages = [ pkgs.curl pkgs.jq pkgs.util-linux config.services.immutableAuthorityHost.activationPackage ];
+    environment.systemPackages = [
+      pkgs.curl
+      pkgs.jq
+      pkgs.util-linux
+      config.services.immutableAuthorityHost.activationPackage
+    ];
   };
   testScript = ''
     import json, uuid

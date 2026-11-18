@@ -15,9 +15,13 @@ record() {
 }
 probe() {
   local release="$1" previous_boot="$2" deadline=$((SECONDS + HEALTH_TIMEOUT)) nonce
+  local -a curl_args=()
+  if [ -n "$READY_CONNECT_TO" ]; then
+    curl_args+=(--connect-to "$READY_CONNECT_TO")
+  fi
   while (( SECONDS < deadline )); do
     nonce=$(cat /proc/sys/kernel/random/uuid)
-    if curl --noproxy '*' --fail --silent --max-time 2 "$READY_URL?nonce=$nonce" > "$CONTROL/health.next" &&
+    if curl "${curl_args[@]}" --noproxy '*' --fail --silent --max-time 2 "$READY_URL?nonce=$nonce" > "$CONTROL/health.next" &&
       jq -e --slurpfile manifest "$release/manifest.json" --arg nonce "$nonce" --arg old "$previous_boot" '
         .release == $manifest[0].release and .catalogDigest == $manifest[0].catalogDigest and
         .epoch == $manifest[0].epoch and .nonce == $nonce and .ready == true and

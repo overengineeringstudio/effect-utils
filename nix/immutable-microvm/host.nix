@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.services.immutableAuthorityHost;
   control = "/var/lib/${cfg.name}-release";
@@ -6,12 +11,20 @@ let
   unit = "${cfg.name}-vm.service";
   transaction = pkgs.writeShellApplication {
     name = "authority-transaction";
-    runtimeInputs = [ pkgs.coreutils pkgs.util-linux pkgs.jq pkgs.curl pkgs.systemd ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.util-linux
+      pkgs.jq
+      pkgs.curl
+      pkgs.systemd
+    ];
     text = ''
       export CONTROL=${lib.escapeShellArg control} ROOTS=${lib.escapeShellArg roots}
       export VM_UNIT=${lib.escapeShellArg unit} READY_URL=${lib.escapeShellArg cfg.readyUrl}
+      export READY_CONNECT_TO=${lib.escapeShellArg cfg.readyConnectTo}
       export INITIAL_RELEASE=${cfg.initialRelease} HEALTH_TIMEOUT=${toString cfg.healthTimeout}
-    '' + builtins.readFile ./transaction.sh;
+    ''
+    + builtins.readFile ./transaction.sh;
   };
   activate = pkgs.writeShellApplication {
     name = "activate";
@@ -28,16 +41,48 @@ in
 {
   options.services.immutableAuthorityHost = {
     enable = lib.mkEnableOption "single-writer immutable authority VM";
-    name = lib.mkOption { type = lib.types.strMatching "[a-z][a-z0-9-]*"; default = "authority"; };
-    user = lib.mkOption { type = lib.types.str; default = "authority-vmm"; };
-    stateDirectory = lib.mkOption { type = lib.types.str; default = "/var/lib/authority"; };
+    name = lib.mkOption {
+      type = lib.types.strMatching "[a-z][a-z0-9-]*";
+      default = "authority";
+    };
+    user = lib.mkOption {
+      type = lib.types.str;
+      default = "authority-vmm";
+    };
+    stateDirectory = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/authority";
+    };
     initialRelease = lib.mkOption { type = lib.types.package; };
-    tap = lib.mkOption { type = lib.types.str; default = "authority-tap"; };
-    hostAddress = lib.mkOption { type = lib.types.str; default = "192.0.2.1/30"; };
-    readyUrl = lib.mkOption { type = lib.types.str; default = "http://192.0.2.2:8080/health"; };
-    healthTimeout = lib.mkOption { type = lib.types.ints.positive; default = 60; };
-    slice = lib.mkOption { type = lib.types.str; default = "system.slice"; };
-    activationPackage = lib.mkOption { type = lib.types.package; readOnly = true; };
+    tap = lib.mkOption {
+      type = lib.types.str;
+      default = "authority-tap";
+    };
+    hostAddress = lib.mkOption {
+      type = lib.types.str;
+      default = "192.0.2.1/30";
+    };
+    readyUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "http://192.0.2.2:8080/health";
+    };
+    readyConnectTo = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "curl connect-to mapping preserving HTTPS hostname/certificate verification.";
+    };
+    healthTimeout = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 60;
+    };
+    slice = lib.mkOption {
+      type = lib.types.str;
+      default = "system.slice";
+    };
+    activationPackage = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+    };
   };
   config = lib.mkIf cfg.enable {
     services.immutableAuthorityHost.activationPackage = activate;
@@ -47,10 +92,17 @@ in
       group = cfg.user;
       extraGroups = [ "kvm" ];
     };
-    boot.kernelModules = [ "kvm" "tun" "vhost_net" ];
+    boot.kernelModules = [
+      "kvm"
+      "tun"
+      "vhost_net"
+    ];
     systemd.network.enable = true;
     systemd.network.netdevs."30-authority" = {
-      netdevConfig = { Kind = "tap"; Name = cfg.tap; };
+      netdevConfig = {
+        Kind = "tap";
+        Name = cfg.tap;
+      };
       tapConfig.User = cfg.user;
     };
     systemd.network.networks."30-authority" = {
@@ -73,7 +125,10 @@ in
     };
     systemd.services."${cfg.name}-vm" = {
       wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" "systemd-networkd.service" ];
+      after = [
+        "network.target"
+        "systemd-networkd.service"
+      ];
       requires = [ "systemd-networkd.service" ];
       serviceConfig = {
         User = cfg.user;
@@ -92,7 +147,11 @@ in
         PrivateTmp = true;
         ReadWritePaths = [ cfg.stateDirectory ];
         DevicePolicy = "closed";
-        DeviceAllow = [ "/dev/kvm rw" "/dev/net/tun rw" "/dev/vhost-net rw" ];
+        DeviceAllow = [
+          "/dev/kvm rw"
+          "/dev/net/tun rw"
+          "/dev/vhost-net rw"
+        ];
         LimitMEMLOCK = "infinity";
       };
     };
