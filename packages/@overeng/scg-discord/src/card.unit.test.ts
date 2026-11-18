@@ -238,7 +238,7 @@ describe('pending card', () => {
   it('names the tier in the header and uses the write accent', () => {
     const message = ok(renderPendingCard(withReview({ tier: 'write' }), ids, env))
     expect(textOf(message)).toContain('### Write request')
-    expect(message.components[0]?.accent_color).toBe(0xf0b232)
+    expect(message.components[0]).toMatchObject({ type: 17, accent_color: 0xf0b232 })
   })
 
   it('renders D33 session, holds and coverage lines', () => {
@@ -571,7 +571,9 @@ describe('validateMessage', () => {
   })
 
   it('accepts a top-level text display for an inert publication placeholder', () => {
-    const result = validateMessage(body([text('Authenticating review. No decision is available yet.')]))
+    const result = validateMessage(
+      body([text('Authenticating review. No decision is available yet.')]),
+    )
     expect(result.ok).toBe(true)
     expect(result.stats.components).toBe(1)
     expect(result.stats.buttons).toBe(0)
