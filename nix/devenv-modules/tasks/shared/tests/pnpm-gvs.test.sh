@@ -12,8 +12,9 @@ unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE PNPM_HOME
 # A real package tarball makes the test offline, while exercising pnpm's actual
 # graph-hashed projection rather than a command-recording stub.
 mkdir -p "$tmpdir/package" "$HOME" "$tmpdir/bin"
-printf '{"name":"gvs-fixture","version":"1.0.0","main":"index.cjs","files":["index.cjs"]}\n' > "$tmpdir/package/package.json"
+printf '{"name":"gvs-fixture","version":"1.0.0","main":"index.cjs","bin":{"gvs-fixture":"cli.cjs"},"files":["index.cjs","cli.cjs"]}\n' > "$tmpdir/package/package.json"
 printf 'module.exports = 42\n' > "$tmpdir/package/index.cjs"
+printf '#!/usr/bin/env node\nconsole.log(42)\n' > "$tmpdir/package/cli.cjs"
 tar -czf "$tmpdir/fixture.tgz" -C "$tmpdir" package
 
 pnpm_bin="${REAL_PNPM_BIN:-$(nix build --impure --no-link --print-out-paths --expr "let flake = builtins.getFlake \"$NIX_FLAKE_REF\"; pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; }; in import $ROOT/nix/pnpm.nix { inherit pkgs; }")/bin/pnpm}"
@@ -118,6 +119,17 @@ for name in first second ci local; do
   fi
   decision="$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)"
   test "$decision" = healthy
+  report_file="$tmpdir/$name-doctor.json"
+  PNPM_DOCTOR_OUTPUT_FILE="$report_file" bash "$tmpdir/$mode-exec-doctor.sh" >/dev/null
+  report="$(cat "$report_file")"
+  test "$(printf '%s\n' "$report" | jq -r .version)" = 1
+  test -n "$(printf '%s\n' "$report" | jq -r .installHash)"
+  test -n "$(printf '%s\n' "$report" | jq -r .projectionHash)"
+  # Root-owned realization evidence covers dotentries, not just package links.
+  mv "$root/node_modules/.bin" "$tmpdir/saved-bin"
+  test "$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)" = repair-root
+  mv "$tmpdir/saved-bin" "$root/node_modules/.bin"
+  test "$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)" = healthy
   (cd "$root"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
   target="$(realpath "$root/node_modules/gvs-fixture")"
   metadata_store="$(realpath -m "$root/node_modules/$(jq -r .virtualStoreDir "$root/node_modules/.modules.yaml")")"
