@@ -18,7 +18,7 @@ const acquireSocketOwnership = (socketPath: string): Database => {
   const directory = lstatSync(parent)
   if (
     uid === undefined ||
-    !directory.isDirectory() ||
+    directory.isDirectory() === false ||
     directory.uid !== uid ||
     (directory.mode & 0o022) !== 0 ||
     realpathSync(parent) !== parent
@@ -37,7 +37,7 @@ const acquireSocketOwnership = (socketPath: string): Database => {
     if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause
   }
   const lock = lstatSync(lockPath)
-  if (!lock.isFile() || lock.uid !== uid || lock.nlink !== 1 || (lock.mode & 0o077) !== 0)
+  if (lock.isFile() === false || lock.uid !== uid || lock.nlink !== 1 || (lock.mode & 0o077) !== 0)
     throw new Error('Socket lifecycle lock must be an owned private regular file')
   const database = new Database(lockPath, { create: false, readwrite: true, strict: true })
   try {
@@ -55,10 +55,10 @@ const reclaimStaleSocket = async (socketPath: string): Promise<void> => {
   try {
     previous = lstatSync(socketPath)
   } catch (cause) {
-    if (absent(cause)) return
+    if (absent(cause) === true) return
     throw cause
   }
-  if (!previous.isSocket() || previous.uid !== process.getuid?.() || previous.nlink !== 1)
+  if (previous.isSocket() === false || previous.uid !== process.getuid?.() || previous.nlink !== 1)
     throw new Error('Refusing to reclaim an unowned or non-socket ingress path')
   await new Promise<void>((resolve, reject) => {
     const probe = createConnection(socketPath)
@@ -78,7 +78,7 @@ const reclaimStaleSocket = async (socketPath: string): Promise<void> => {
   })
   const current = lstatSync(socketPath)
   if (
-    !current.isSocket() ||
+    current.isSocket() === false ||
     current.uid !== previous.uid ||
     current.dev !== previous.dev ||
     current.ino !== previous.ino
@@ -93,7 +93,7 @@ export const listenDiscordInteractions = Effect.fn('scg.discord.listen')(functio
   readonly signer: DiscordSigner
   readonly onFailure: (cause: unknown) => void
 }) {
-  if (!options.socketPath.startsWith('/'))
+  if (options.socketPath.startsWith('/') === false)
     return yield* new DiscordError({
       operation: 'socket-path',
       cause: 'Expected an absolute private socket path',
@@ -111,7 +111,7 @@ export const listenDiscordInteractions = Effect.fn('scg.discord.listen')(functio
     try: () => reclaimStaleSocket(options.socketPath),
     catch: (cause) => new DiscordError({ operation: 'socket-recovery', cause }),
   })
-  const handler = makeInteractionHttpHandler(options.signer, options.onFailure)
+  const handler = makeInteractionHttpHandler({ signer: options.signer, onFailure: options.onFailure })
   const server = yield* Effect.acquireRelease(
     Effect.tryPromise({
       try: () => {
@@ -121,7 +121,7 @@ export const listenDiscordInteractions = Effect.fn('scg.discord.listen')(functio
             response.writeHead(404).end()
             return
           }
-          handler(request, response)
+          handler({ request, response })
         })
         instance.once('error', reject)
         instance.listen(options.socketPath, () => {

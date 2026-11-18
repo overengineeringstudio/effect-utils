@@ -32,7 +32,9 @@ import type { Offer, Pending, State } from '@overeng/scg-protocol'
 
 // ── Public types ──
 
+/** Review section of a pending record, as rendered on the card. */
 export type Review = Pending['review']
+/** Terminal state a closed card reports. */
 export type ClosedState = Exclude<typeof State.Type, 'pending'>
 type Context = NonNullable<Review['context']>
 type Origin = Context['origin']
@@ -50,6 +52,7 @@ export interface CardIds {
   readonly words?: string
 }
 
+/** Rendering environment shared by every card renderer. */
 export interface CardEnv {
   /** IANA zone for absolute times; always rendered with a numeric UTC offset. */
   readonly timeZone: string
@@ -77,36 +80,44 @@ export type CardClosure =
     }
   | { readonly _tag: 'Withdrawn'; readonly at?: number }
 
+/** Components V2 text display (type 10). */
 export interface TextDisplay {
   readonly type: 10
   readonly content: string
 }
+/** Components V2 separator (type 14). */
 export interface Separator {
   readonly type: 14
   readonly divider: boolean
   readonly spacing: 1 | 2
 }
+/** Components V2 button (type 2); always carries an opaque custom ID. */
 export interface Button {
   readonly type: 2
   readonly style: 1 | 2 | 3 | 4
   readonly label: string
   readonly custom_id: string
 }
+/** Components V2 action row (type 1) of up to five buttons. */
 export interface ActionRow {
   readonly type: 1
   readonly components: readonly Button[]
 }
+/** Components V2 section (type 9): 1–3 text displays with a button accessory. */
 export interface Section {
   readonly type: 9
   readonly components: readonly TextDisplay[]
   readonly accessory: Button
 }
+/** Any component a container may hold. */
 export type ContainerChild = TextDisplay | Separator | ActionRow | Section
+/** Components V2 container (type 17) with an accent color. */
 export interface Container {
   readonly type: 17
   readonly accent_color: number
   readonly components: readonly ContainerChild[]
 }
+/** Any component `validateMessage` visits. */
 export type Component = Container | ContainerChild | Button
 
 /** Message body for POST/PATCH channel messages or interaction response `data`. */
@@ -116,21 +127,25 @@ export interface DiscordMessage {
   readonly components: readonly (Container | TextDisplay)[]
 }
 
+/** Counts `validateMessage` measured on a message body. */
 export interface MessageStats {
   readonly components: number
   readonly textChars: number
   readonly buttons: number
 }
 
+/** Rendered message with its stats, or the reasons it was rejected (never truncated). */
 export type CardResult =
   | { readonly _tag: 'Ok'; readonly message: DiscordMessage; readonly stats: MessageStats }
   | { readonly _tag: 'Rejected'; readonly errors: readonly string[] }
 
+/** Discord message flags the card renderers set. */
 export const MessageFlags = {
   Ephemeral: 1 << 6,
   IsComponentsV2: 1 << 15,
 } as const
 
+/** Documented Discord Components V2 limits and the card's own display caps. */
 export const Limits = {
   totalComponents: 40,
   textChars: 4000,
@@ -167,7 +182,7 @@ export const codeSpan = (value: string): string =>
 
 // ── Time ──
 
-const timeParts = (ms: number, timeZone: string) =>
+const timeParts = ({ at, timeZone }: { readonly at: number; readonly timeZone: string }) =>
   Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone,
@@ -180,7 +195,7 @@ const timeParts = (ms: number, timeZone: string) =>
       hourCycle: 'h23',
       timeZoneName: 'longOffset',
     })
-      .formatToParts(new Date(ms))
+      .formatToParts(new Date(at))
       .map((part) => [part.type, part.value]),
   )
 
@@ -191,14 +206,26 @@ const offsetLabel = (zoneName: string | undefined) => {
 }
 
 /** `14:30 (UTC+01:00)` */
-export const formatClock = (ms: number, timeZone: string): string => {
-  const p = timeParts(ms, timeZone)
+export const formatClock = ({
+  at,
+  timeZone,
+}: {
+  readonly at: number
+  readonly timeZone: string
+}): string => {
+  const p = timeParts({ at, timeZone })
   return `${p.hour}:${p.minute} (${offsetLabel(p.timeZoneName)})`
 }
 
 /** `Tue 17 Nov 2026 18:00 (UTC+01:00)`: full absolute time for deadlines and bounds. */
-export const formatAbsolute = (ms: number, timeZone: string): string => {
-  const p = timeParts(ms, timeZone)
+export const formatAbsolute = ({
+  at,
+  timeZone,
+}: {
+  readonly at: number
+  readonly timeZone: string
+}): string => {
+  const p = timeParts({ at, timeZone })
   return `${p.weekday} ${p.day} ${p.month} ${p.year} ${p.hour}:${p.minute} (${offsetLabel(p.timeZoneName)})`
 }
 
@@ -219,18 +246,38 @@ const ButtonStyle = { primary: 1, secondary: 2, success: 3, danger: 4 } as const
 
 const text = (content: string): TextDisplay => ({ type: 10, content })
 const row = (...components: Button[]): ActionRow => ({ type: 1, components })
-const button = (style: Button['style'], label: string, customId: string): Button => ({
+const button = ({
+  style,
+  label,
+  customId,
+}: {
+  readonly style: Button['style']
+  readonly label: string
+  readonly customId: string
+}): Button => ({
   type: 2,
   style,
   label,
   custom_id: customId,
 })
-const container = (accent: number, components: readonly ContainerChild[]): Container => ({
+const container = ({
+  accent,
+  components,
+}: {
+  readonly accent: number
+  readonly components: readonly ContainerChild[]
+}): Container => ({
   type: 17,
   accent_color: accent,
   components,
 })
-const message = (components: readonly Container[], extraFlags = 0): DiscordMessage => ({
+const message = ({
+  components,
+  extraFlags = 0,
+}: {
+  readonly components: readonly Container[]
+  readonly extraFlags?: number
+}): DiscordMessage => ({
   flags: MessageFlags.IsComponentsV2 | extraFlags,
   allowed_mentions: { parse: [] },
   components,
@@ -252,6 +299,7 @@ export interface OfferLayout {
   readonly rules: readonly OfferOf<'session-rule'>[]
 }
 
+/** Groups offers into decision, similar-lease, grant-to-parent and session-rule slots (D33). */
 export const layoutOffers = (options: readonly Offer[]): OfferLayout => {
   const allow: Offer[] = []
   const deny: Offer[] = []
@@ -307,23 +355,41 @@ const guardrailText = (guardrail: OfferOf<'similar-lease'>['guardrail']) =>
   `≤${guardrail.total} calls total · ≤${guardrail.calls} per ${guardrail.windowSeconds} s`
 
 /** Full scope, absolute end and bounds of a lease-like offer; the button repeats only the statement. */
-const leaseLine = (offer: OfferOf<'similar-lease'> | OfferOf<'grant-to-parent'>, env: CardEnv) =>
+const leaseLine = ({
+  offer,
+  env,
+}: {
+  readonly offer: OfferOf<'similar-lease'> | OfferOf<'grant-to-parent'>
+  readonly env: CardEnv
+}) =>
   [
     `**${escapeDiscord(offer.statement)}**`,
     `-# ${codeSpan(offer.command)} on ${codeSpan(offer.account)} · where ${selectorText(offer.selector)}`,
-    `-# until ${formatAbsolute(offer.until, env.timeZone)} · ${relative(offer.until)} · ${guardrailText(offer.guardrail)}`,
+    `-# until ${formatAbsolute({ at: offer.until, timeZone: env.timeZone })} · ${relative(offer.until)} · ${guardrailText(offer.guardrail)}`,
   ].join('\n')
 
-const parentText = (offers: readonly OfferOf<'grant-to-parent'>[], env: CardEnv) =>
+const parentText = ({
+  offers,
+  env,
+}: {
+  readonly offers: readonly OfferOf<'grant-to-parent'>[]
+  readonly env: CardEnv
+}) =>
   [
     `**Grant to parent** · sibling sessions wait on the same command and account`,
     ...offers.map(
       (offer) =>
-        `${leaseLine(offer, env)}\n-# parent ${codeSpan(offer.parentSession)}; its children may receive delegated subsets`,
+        `${leaseLine({ offer, env })}\n-# parent ${codeSpan(offer.parentSession)}; its children may receive delegated subsets`,
     ),
   ].join('\n')
 
-const rulesText = (offers: readonly OfferOf<'session-rule'>[], env: CardEnv) =>
+const rulesText = ({
+  offers,
+  env,
+}: {
+  readonly offers: readonly OfferOf<'session-rule'>[]
+  readonly env: CardEnv
+}) =>
   [
     '**Session rule** · read-only here; sign on iOS/macOS, or Deny to reject',
     ...offers.flatMap((offer) => [
@@ -332,7 +398,7 @@ const rulesText = (offers: readonly OfferOf<'session-rule'>[], env: CardEnv) =>
         (rule) =>
           `-# ${rule.operation} ${codeSpan(rule.command)} on ${codeSpan(rule.account)} · where ${selectorText(rule.where)}` +
           `${rule.mandatorySelectors.length > 0 ? ` · required ${rule.mandatorySelectors.map(codeSpan).join(', ')}` : ''}` +
-          ` · max ${rule.maxCalls} · ≤${rule.rate.calls} per ${rule.rate.windowSeconds} s · until ${formatAbsolute(rule.until, env.timeZone)}`,
+          ` · max ${rule.maxCalls} · ≤${rule.rate.calls} per ${rule.rate.windowSeconds} s · until ${formatAbsolute({ at: rule.until, timeZone: env.timeZone })}`,
       ),
     ]),
   ].join('\n')
@@ -341,7 +407,13 @@ const rulesText = (offers: readonly OfferOf<'session-rule'>[], env: CardEnv) =>
  * Manifest items: command + account always. `fields`: `none` on sensitive cards,
  * `public` hides sensitive items' contents, `all` (ephemeral Inspect) shows everything.
  */
-const manifestText = (offer: OfferOf<'manifest-approve'>, fields: 'none' | 'public' | 'all') =>
+const manifestText = ({
+  offer,
+  fields,
+}: {
+  readonly offer: OfferOf<'manifest-approve'>
+  readonly fields: 'none' | 'public' | 'all'
+}) =>
   [
     `**${offer.items.length} calls in this manifest** · run in order, nothing can be appended`,
     ...offer.items.map((item, index) => {
@@ -356,13 +428,20 @@ const manifestText = (offer: OfferOf<'manifest-approve'>, fields: 'none' | 'publ
     }),
   ].join('\n')
 
-const chunk = <TItem>(items: readonly TItem[], size: number): TItem[][] =>
+const chunk = <TItem>({
+  items,
+  size,
+}: {
+  readonly items: readonly TItem[]
+  readonly size: number
+}): TItem[][] =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, i) =>
     items.slice(i * size, i * size + size),
   )
 
 // ── Origin rules (D37/D38) ──
 
+/** Where a request's origin words may appear (D37/D38). */
 export type OriginWordsMode =
   /** No origin context on the request. */
   | 'none'
@@ -380,7 +459,7 @@ export const originWordsMode = (review: Review): OriginWordsMode => {
   const origin = review.context?.origin
   if (origin === undefined) return 'none'
   if (origin.provenance === 'claimed') return 'claimed'
-  if (!origin.wordsAvailable) return 'unavailable'
+  if (origin.wordsAvailable === false) return 'unavailable'
   return origin.surface === 'discord' && review.sensitivity !== 'sensitive' ? 'quote' : 'handle'
 }
 
@@ -397,10 +476,10 @@ const flagLabel: Record<Context['flags'][number], string> = {
   'asked-before': 'Asked before',
 }
 
-const originMeta = (origin: Origin, env: CardEnv) =>
+const originMeta = ({ origin, env }: { readonly origin: Origin; readonly env: CardEnv }) =>
   [
     'You asked',
-    formatClock(origin.at, env.timeZone),
+    formatClock({ at: origin.at, timeZone: env.timeZone }),
     relative(origin.at),
     origin.surface === 'discord' ? 'Discord' : undefined,
     origin.place.length > 0 ? escapeDiscord(origin.place) : undefined,
@@ -423,14 +502,14 @@ interface Controls {
   readonly words: Button | undefined
 }
 
-const headerLine = (pending: Pending, env: CardEnv) => {
+const headerLine = ({ pending, env }: { readonly pending: Pending; readonly env: CardEnv }) => {
   const kind =
     pending.review.sensitivity === 'sensitive' || pending.review.tier === undefined
       ? 'Approval request'
       : pending.review.tier === 'write'
         ? 'Write request'
         : 'Read request'
-  return `### ${kind} · exact call\nDecide by **${formatClock(pending.expiresAt, env.timeZone)}** · ${relative(pending.expiresAt)}`
+  return `### ${kind} · exact call\nDecide by **${formatClock({ at: pending.expiresAt, timeZone: env.timeZone })}** · ${relative(pending.expiresAt)}`
 }
 
 const titleLine = (review: Review) => `${codeSpan(review.command)} on ${codeSpan(review.account)}`
@@ -443,10 +522,18 @@ const fieldsText = (review: Review) =>
 const claimText = (claim: string) => `> *Agent says (unverified):* ${escapeDiscord(claim)}`
 
 const sessionLine = (session: NonNullable<Review['session']>) =>
-  `Session ${codeSpan(session.label)} · ${session.verified ? '✓ verified' : '⚠ unverified'}`
+  `Session ${codeSpan(session.label)} · ${session.verified === true ? '✓ verified' : '⚠ unverified'}`
 
 /** D33 compact authority line(s) + D37 "Since your ask"; all derived from the SCG record. */
-const authorityText = (review: Review, env: CardEnv, cap: number) => {
+const authorityText = ({
+  review,
+  env,
+  cap,
+}: {
+  readonly review: Review
+  readonly env: CardEnv
+  readonly cap: number
+}) => {
   const lines: string[] = []
   if (review.holds !== undefined && review.holds.length > 0)
     lines.push(
@@ -463,7 +550,8 @@ const authorityText = (review: Review, env: CardEnv, cap: number) => {
     lines.push(
       `**Since your ask** · SCG record${more > 0 ? ` · ${more} earlier in Inspect` : ''}`,
       ...shown.map(
-        (entry) => `-# ${formatClock(entry.at, env.timeZone)} · ${escapeDiscord(entry.text)}`,
+        (entry) =>
+          `-# ${formatClock({ at: entry.at, timeZone: env.timeZone })} · ${escapeDiscord(entry.text)}`,
       ),
     )
   }
@@ -481,13 +569,19 @@ const authorityText = (review: Review, env: CardEnv, cap: number) => {
  * D37 origin block for the shared card. Claimed origins render "No linked ask" with
  * no quote and no words control; off-Discord words only as a handle + Show my words.
  */
-const originComponents = (
-  review: Review,
-  env: CardEnv,
-  words: VerifiedOriginWords | undefined,
-  wordsButton: Button | undefined,
-  errors: string[],
-): ContainerChild[] => {
+const originComponents = ({
+  review,
+  env,
+  words,
+  wordsButton,
+  errors,
+}: {
+  readonly review: Review
+  readonly env: CardEnv
+  readonly words: VerifiedOriginWords | undefined
+  readonly wordsButton: Button | undefined
+  readonly errors: string[]
+}): ContainerChild[] => {
   const context = review.context
   if (context === undefined) return []
   const origin = context.origin
@@ -503,7 +597,7 @@ const originComponents = (
       ),
     ]
   }
-  const lines: string[] = [originMeta(origin, env)]
+  const lines: string[] = [originMeta({ origin, env })]
   if (mode === 'quote' && words !== undefined) {
     if (words.digest !== origin.digest) errors.push('origin words digest mismatch')
     const quoted =
@@ -521,7 +615,7 @@ const originComponents = (
   if (chain !== undefined) lines.push(chain)
   const truncated = mode === 'quote' && words !== undefined && words.text.length > Limits.quoteChars
   const offerWords = mode === 'handle' || truncated
-  if (offerWords && wordsButton !== undefined)
+  if (offerWords === true && wordsButton !== undefined)
     return [{ type: 9, components: [text(lines.join('\n'))], accessory: wordsButton }]
   return [text(lines.join('\n'))]
 }
@@ -531,21 +625,28 @@ const originComponents = (
  * Manifest items and session rules are part of what is being decided, so they render
  * here; lease offers render next to their buttons in `renderPendingCard`.
  */
-const cardBody = (
-  pending: Pending,
-  layout: OfferLayout,
-  env: CardEnv,
-  controls: Controls | undefined,
-  words: VerifiedOriginWords | undefined,
-  errors: string[],
-): ContainerChild[] => {
+const cardBody = ({
+  pending,
+  layout,
+  env,
+  controls,
+  words,
+  errors,
+}: {
+  readonly pending: Pending
+  readonly layout: OfferLayout
+  readonly env: CardEnv
+  readonly controls: Controls | undefined
+  readonly words: VerifiedOriginWords | undefined
+  readonly errors: string[]
+}): ContainerChild[] => {
   const review = pending.review
   const manifests = layout.decisions.flatMap((offer) =>
     offer.kind === 'manifest-approve' ? [offer] : [],
   )
   if (review.sensitivity === 'sensitive') {
     const children: ContainerChild[] = [text(titleLine(review))]
-    for (const offer of manifests) children.push(text(manifestText(offer, 'none')))
+    for (const offer of manifests) children.push(text(manifestText({ offer, fields: 'none' })))
     children.push(text('🔒 Contents hidden · sensitive request. Inspect shows them only to you.'))
     if (layout.rules.length > 0)
       children.push(
@@ -560,7 +661,7 @@ const cardBody = (
     return children
   }
   const children: ContainerChild[] = [
-    ...originComponents(review, env, words, controls?.words, errors),
+    ...originComponents({ review, env, words, wordsButton: controls?.words, errors }),
     text(titleLine(review)),
   ]
   if (review.session !== undefined) children.push(text(sessionLine(review.session)))
@@ -577,14 +678,14 @@ const cardBody = (
   } else if (controls !== undefined) {
     children.push({ type: 9, components: [text('-# No fields.')], accessory: controls.inspect })
   }
-  for (const offer of manifests) children.push(text(manifestText(offer, 'public')))
-  if (layout.rules.length > 0) children.push(text(rulesText(layout.rules, env)))
-  const authority = authorityText(review, env, Limits.contextRows)
+  for (const offer of manifests) children.push(text(manifestText({ offer, fields: 'public' })))
+  if (layout.rules.length > 0) children.push(text(rulesText({ offers: layout.rules, env })))
+  const authority = authorityText({ review, env, cap: Limits.contextRows })
   if (authority !== undefined) children.push(text(authority))
   return children
 }
 
-const footerLine = (pending: Pending, env: CardEnv) =>
+const footerLine = ({ pending, env }: { readonly pending: Pending; readonly env: CardEnv }) =>
   `-# ${escapeDiscord(pending.executionId)} · digest ${pending.requestDigest.replace(/^sha256:/, '').slice(0, 12)} · times ${escapeDiscord(env.timeZone)}`
 
 const tierAccent = (review: Review) => (review.tier === 'write' ? Accent.write : Accent.read)
@@ -599,82 +700,101 @@ const tierAccent = (review: Review) => (review.tier === 'write' ? Accent.write :
  * offers are withheld (their bounds cannot be shown publicly) with a visible note.
  * Discord-born words must be passed (digest-verified) to be quoted.
  */
-export const renderPendingCard = (
-  pending: Pending,
-  ids: CardIds,
-  env: CardEnv,
-  originWords?: VerifiedOriginWords,
-): CardResult => {
+export const renderPendingCard = ({
+  pending,
+  ids,
+  env,
+  originWords,
+}: {
+  readonly pending: Pending
+  readonly ids: CardIds
+  readonly env: CardEnv
+  /** Digest-verified origin words; required for Discord-born words to be quoted. */
+  readonly originWords?: VerifiedOriginWords
+}): CardResult => {
   const errors: string[] = []
   const layout = layoutOffers(pending.options)
   const sensitive = pending.review.sensitivity === 'sensitive'
   const toButton = (offer: Offer): Button[] => {
     const customId = ids.options[offer.optionId]
-    if (customId !== undefined) return [button(offerStyle(offer), offerLabel(offer), customId)]
+    if (customId !== undefined)
+      return [button({ style: offerStyle(offer), label: offerLabel(offer), customId })]
     errors.push(`missing custom_id for option ${offer.optionId}`)
     return []
   }
   const decisions = layout.decisions.flatMap(toButton)
-  const similar = sensitive ? [] : layout.similar.flatMap(toButton)
-  const parent = sensitive ? [] : layout.parent.flatMap(toButton)
+  const similar = sensitive === true ? [] : layout.similar.flatMap(toButton)
+  const parent = sensitive === true ? [] : layout.parent.flatMap(toButton)
 
   const mode = originWordsMode(pending.review)
   const wordsOffered =
     mode === 'handle' || (mode === 'quote' && (originWords?.text.length ?? 0) > Limits.quoteChars)
-  if (wordsOffered && ids.words === undefined) errors.push('missing custom_id for Show my words')
+  if (wordsOffered === true && ids.words === undefined)
+    errors.push('missing custom_id for Show my words')
   const controls: Controls = {
-    inspect: button(ButtonStyle.secondary, 'Inspect', ids.inspect),
+    inspect: button({ style: ButtonStyle.secondary, label: 'Inspect', customId: ids.inspect }),
     words:
-      wordsOffered && ids.words !== undefined
-        ? button(ButtonStyle.secondary, 'Show my words', ids.words)
+      wordsOffered === true && ids.words !== undefined
+        ? button({ style: ButtonStyle.secondary, label: 'Show my words', customId: ids.words })
         : undefined,
   }
-  const body = cardBody(pending, layout, env, controls, originWords, errors)
+  const body = cardBody({ pending, layout, env, controls, words: originWords, errors })
   if (errors.length > 0) return { _tag: 'Rejected', errors }
 
-  const children: ContainerChild[] = [text(headerLine(pending, env)), ...body]
+  const children: ContainerChild[] = [text(headerLine({ pending, env })), ...body]
   if (decisions.length > 0)
     children.push(
       { type: 14, divider: true, spacing: 1 },
-      ...chunk(decisions, Limits.buttonsPerRow).map((buttons) => row(...buttons)),
+      ...chunk({ items: decisions, size: Limits.buttonsPerRow }).map((buttons) => row(...buttons)),
     )
   if (similar.length > 0)
     children.push(
       { type: 14, divider: true, spacing: 2 },
       text(
-        ['**Allow + similar**', ...layout.similar.map((offer) => leaseLine(offer, env))].join('\n'),
+        ['**Allow + similar**', ...layout.similar.map((offer) => leaseLine({ offer, env }))].join(
+          '\n',
+        ),
       ),
-      ...chunk(similar, Limits.buttonsPerRow).map((buttons) => row(...buttons)),
+      ...chunk({ items: similar, size: Limits.buttonsPerRow }).map((buttons) => row(...buttons)),
     )
   if (parent.length > 0)
     children.push(
       { type: 14, divider: true, spacing: 2 },
-      text(parentText(layout.parent, env)),
-      ...chunk(parent, Limits.buttonsPerRow).map((buttons) => row(...buttons)),
+      text(parentText({ offers: layout.parent, env })),
+      ...chunk({ items: parent, size: Limits.buttonsPerRow }).map((buttons) => row(...buttons)),
     )
-  const withheld = sensitive ? layout.similar.length + layout.parent.length : 0
+  const withheld = sensitive === true ? layout.similar.length + layout.parent.length : 0
   if (withheld > 0)
     children.push(
       text(
         `-# ${withheld} wider grant offer(s) not signable here: sensitive request. Review in Inspect; sign on iOS/macOS.`,
       ),
     )
-  children.push(text(footerLine(pending, env)))
-  return finish(message([container(tierAccent(pending.review), children)]))
+  children.push(text(footerLine({ pending, env })))
+  return finish(
+    message({
+      components: [container({ accent: tierAccent(pending.review), components: children })],
+    }),
+  )
 }
 
-const closureCopy = (
-  pending: Pending,
-  closure: CardClosure,
-  env: CardEnv,
-): { accent: number; line: string } => {
-  const when = closure.at === undefined ? '' : ` · ${formatClock(closure.at, env.timeZone)}`
+const closureCopy = ({
+  pending,
+  closure,
+  env,
+}: {
+  readonly pending: Pending
+  readonly closure: CardClosure
+  readonly env: CardEnv
+}): { accent: number; line: string } => {
+  const when =
+    closure.at === undefined ? '' : ` · ${formatClock({ at: closure.at, timeZone: env.timeZone })}`
   if (closure._tag === 'Withdrawn')
     return {
       accent: Accent.neutral,
       line: `**Withdrawn**${when} · this card no longer decides anything; nothing runs from it.`,
     }
-  const where = closure.decidedElsewhere ? ' on another surface' : ''
+  const where = closure.decidedElsewhere === true ? ' on another surface' : ''
   const offer = pending.options.find((option) => option.optionId === closure.optionId)
   const signed = offer === undefined ? '' : `\n-# signed: ${escapeDiscord(offer.statement)}`
   switch (closure.state) {
@@ -697,17 +817,39 @@ const closureCopy = (
 }
 
 /** Terminal PATCH (decided, decided elsewhere, expired, withdrawn): outcome accent + line, every control removed. */
-export const renderClosedCard = (
-  pending: Pending,
-  closure: CardClosure,
-  env: CardEnv,
-  originWords?: VerifiedOriginWords,
-): CardResult => {
+export const renderClosedCard = ({
+  pending,
+  closure,
+  env,
+  originWords,
+}: {
+  readonly pending: Pending
+  readonly closure: CardClosure
+  readonly env: CardEnv
+  /** Digest-verified origin words; required for Discord-born words to be quoted. */
+  readonly originWords?: VerifiedOriginWords
+}): CardResult => {
   const errors: string[] = []
-  const { accent, line } = closureCopy(pending, closure, env)
-  const body = cardBody(pending, layoutOffers(pending.options), env, undefined, originWords, errors)
+  const { accent, line } = closureCopy({ pending, closure, env })
+  const body = cardBody({
+    pending,
+    layout: layoutOffers(pending.options),
+    env,
+    controls: undefined,
+    words: originWords,
+    errors,
+  })
   if (errors.length > 0) return { _tag: 'Rejected', errors }
-  return finish(message([container(accent, [text(line), ...body, text(footerLine(pending, env))])]))
+  return finish(
+    message({
+      components: [
+        container({
+          accent,
+          components: [text(line), ...body, text(footerLine({ pending, env }))],
+        }),
+      ],
+    }),
+  )
 }
 
 /**
@@ -715,7 +857,13 @@ export const renderClosedCard = (
  * and bounds (manifest items with fields, session rules read-only), the full authority
  * trail, origin handle and chain, digests. Signs nothing and never quotes origin words.
  */
-export const renderInspectReply = (pending: Pending, env: CardEnv): CardResult => {
+export const renderInspectReply = ({
+  pending,
+  env,
+}: {
+  readonly pending: Pending
+  readonly env: CardEnv
+}): CardResult => {
   const review = pending.review
   const layout = layoutOffers(pending.options)
   const children: ContainerChild[] = [
@@ -725,71 +873,85 @@ export const renderInspectReply = (pending: Pending, env: CardEnv): CardResult =
   children.push(text(review.fields.length > 0 ? fieldsText(review) : '-# No fields.'))
   if (review.agentClaim.trim().length > 0) children.push(text(claimText(review.agentClaim)))
   for (const offer of layout.decisions)
-    if (offer.kind === 'manifest-approve') children.push(text(manifestText(offer, 'all')))
+    if (offer.kind === 'manifest-approve')
+      children.push(text(manifestText({ offer, fields: 'all' })))
   const offerLines = [
     ...layout.decisions.map((offer) => `• ${escapeDiscord(offer.statement)}`),
-    ...layout.similar.map((offer) => leaseLine(offer, env)),
+    ...layout.similar.map((offer) => leaseLine({ offer, env })),
   ]
   children.push(text(['**Offers**', ...offerLines].join('\n')))
-  if (layout.parent.length > 0) children.push(text(parentText(layout.parent, env)))
-  if (layout.rules.length > 0) children.push(text(rulesText(layout.rules, env)))
+  if (layout.parent.length > 0) children.push(text(parentText({ offers: layout.parent, env })))
+  if (layout.rules.length > 0) children.push(text(rulesText({ offers: layout.rules, env })))
   const context = review.context
   if (context !== undefined) {
     const origin = context.origin
     const lines =
       origin.provenance === 'claimed'
         ? ['**No linked ask**', `-# ${provenanceLabel.claimed}`]
-        : [originMeta(origin, env), `-# ${provenanceLabel[origin.provenance]}`]
+        : [originMeta({ origin, env }), `-# ${provenanceLabel[origin.provenance]}`]
     if (context.chain.length > 0) lines.push(`↳ ${context.chain.map(escapeDiscord).join(' › ')}`)
     children.push(text(lines.join('\n')))
   }
-  const authority = authorityText(review, env, Number.POSITIVE_INFINITY)
+  const authority = authorityText({ review, env, cap: Number.POSITIVE_INFINITY })
   if (authority !== undefined) children.push(text(authority))
   children.push(
     text(
       [
         `-# request ${codeSpan(pending.requestDigest)}`,
         `-# action ${codeSpan(pending.actionDigest)}`,
-        `-# issued ${formatAbsolute(pending.issuedAt, env.timeZone)} · decide by ${formatAbsolute(pending.expiresAt, env.timeZone)}`,
+        `-# issued ${formatAbsolute({ at: pending.issuedAt, timeZone: env.timeZone })} · decide by ${formatAbsolute({ at: pending.expiresAt, timeZone: env.timeZone })}`,
       ].join('\n'),
     ),
   )
-  return finish(message([container(tierAccent(review), children)], MessageFlags.Ephemeral))
+  return finish(
+    message({
+      components: [container({ accent: tierAccent(review), components: children })],
+      extraFlags: MessageFlags.Ephemeral,
+    }),
+  )
 }
 
 /**
  * Ephemeral "Show my words" reply (D38): the full, digest-verified origin words, only
  * to the approver. Claimed or wordless origins are rejected: they are never quoted.
  */
-export const renderWordsReply = (
-  pending: Pending,
-  words: VerifiedOriginWords,
-  env: CardEnv,
-): CardResult => {
+export const renderWordsReply = ({
+  pending,
+  words,
+  env,
+}: {
+  readonly pending: Pending
+  readonly words: VerifiedOriginWords
+  readonly env: CardEnv
+}): CardResult => {
   const origin = pending.review.context?.origin
   if (origin === undefined) return { _tag: 'Rejected', errors: ['request has no origin'] }
   if (origin.provenance === 'claimed')
     return { _tag: 'Rejected', errors: ['claimed origin words are never quoted'] }
-  if (!origin.wordsAvailable) return { _tag: 'Rejected', errors: ['origin words unavailable'] }
+  if (origin.wordsAvailable === false)
+    return { _tag: 'Rejected', errors: ['origin words unavailable'] }
   if (words.digest !== origin.digest)
     return { _tag: 'Rejected', errors: ['origin words digest mismatch'] }
   return finish(
-    message(
-      [
-        container(Accent.neutral, [
-          text(`### Your words · only visible to you\n${originMeta(origin, env)}`),
-          text(quoteBlock(words.text)),
-          text(`-# ${provenanceLabel[origin.provenance]}`),
-        ]),
+    message({
+      components: [
+        container({
+          accent: Accent.neutral,
+          components: [
+            text(`### Your words · only visible to you\n${originMeta({ origin, env })}`),
+            text(quoteBlock(words.text)),
+            text(`-# ${provenanceLabel[origin.provenance]}`),
+          ],
+        }),
       ],
-      MessageFlags.Ephemeral,
-    ),
+      extraFlags: MessageFlags.Ephemeral,
+    }),
   )
 }
 
 const finish = (body: DiscordMessage): CardResult => {
   const result = validateMessage(body)
-  return result.ok
+  return result.ok === true
     ? { _tag: 'Ok', message: body, stats: result.stats }
     : { _tag: 'Rejected', errors: result.errors }
 }
@@ -799,6 +961,7 @@ const finish = (body: DiscordMessage): CardResult => {
 /** Unescaped user/role/channel mentions or mass pings (timestamps `<t:…>` are fine). */
 const MENTION = /(?<!\\)<(?:@[!&]?|#)\d+>|(?<!\\)@(?:everyone|here)\b/
 
+/** Outcome of `validateMessage`: errors (empty when ok) and the measured stats. */
 export interface ValidationResult {
   readonly ok: boolean
   readonly errors: readonly string[]
@@ -845,11 +1008,11 @@ export const validateMessage = (body: DiscordMessage): ValidationResult => {
         buttons += 1
         if (component.label.length < 1 || component.label.length > Limits.buttonLabel)
           errors.push(`${path} label length ${component.label.length} (1–80)`)
-        if (MENTION.test(component.label)) errors.push(`${path} label contains a mention`)
+        if (MENTION.test(component.label) === true) errors.push(`${path} label contains a mention`)
         const id = component.custom_id
         if (id.length < 1 || id.length > Limits.customId)
           errors.push(`${path} custom_id length ${id.length} (1–100)`)
-        if (customIds.has(id)) errors.push(`${path} duplicate custom_id`)
+        if (customIds.has(id) === true) errors.push(`${path} duplicate custom_id`)
         customIds.add(id)
         return
       }
@@ -857,7 +1020,7 @@ export const validateMessage = (body: DiscordMessage): ValidationResult => {
         textChars += component.content.length
         if (component.content.length === 0) errors.push(`${path} empty text display`)
         // Code spans render mentions inert; outside them every untrusted `<`/`@` is escaped.
-        if (MENTION.test(component.content.replace(/(?<!\\)`[^`]*`/g, '')))
+        if (MENTION.test(component.content.replace(/(?<!\\)`[^`]*`/g, '')) === true)
           errors.push(`${path} text contains a mention`)
         return
       }

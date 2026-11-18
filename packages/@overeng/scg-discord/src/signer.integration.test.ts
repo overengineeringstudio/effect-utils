@@ -57,7 +57,7 @@ const config: SignerConfig = {
   signerPrivateKey: keys.signer.privateKey,
   timeZone: 'Europe/Berlin',
 }
-const io = <T>(operation: string, run: () => T) =>
+const io = <T>({ operation, run }: { readonly operation: string; readonly run: () => T }) =>
   Effect.try({ try: run, catch: (cause) => new DiscordError({ operation, cause }) })
 
 const fixture = Effect.gen(function* () {
@@ -105,14 +105,14 @@ const fixture = Effect.gen(function* () {
   const messages: DiscordMessage[] = []
   let rejectEdits = false
   const delivery: DiscordDelivery = {
-    post: (channelId) =>
+    post: ({ channelId }) =>
       Effect.sync(() => {
         events.push('post')
         return { id: randomUUID(), channel_id: channelId }
       }),
-    edit: (_card, message) =>
+    edit: ({ message }) =>
       Effect.gen(function* () {
-        if (rejectEdits)
+        if (rejectEdits === true)
           return yield* new DiscordError({
             operation: 'synthetic-delivery',
             cause: 'Delivery interrupted',
@@ -120,7 +120,7 @@ const fixture = Effect.gen(function* () {
         events.push('edit')
         messages.push(message)
       }),
-    ephemeral: (_app, _token, message) =>
+    ephemeral: ({ message }) =>
       Effect.sync(() => {
         events.push('ephemeral')
         messages.push(message)
@@ -128,11 +128,11 @@ const fixture = Effect.gen(function* () {
   }
   const client: AuthorityClient = {
     pending: (id) =>
-      io('pending', () => {
+      io({ operation: 'pending', run: () => {
         events.push('pending')
-        return authority.pending(signerIdentity, id)
-      }),
-    status: (id) => io('status', () => authority.signerStatus(signerIdentity, id)),
+        return authority.pending({ signer: signerIdentity, id: id })
+      } }),
+    status: (id) => io({ operation: 'status', run: () => authority.signerStatus({ signer: signerIdentity, id: id }) }),
     decide: (decision) =>
       Effect.tryPromise({
         try: async () => {
@@ -144,17 +144,21 @@ const fixture = Effect.gen(function* () {
       }),
   }
   const pending = () => {
-    const status = authority.submit(owner, {
+    const status = authority.submit({ owner: owner, submitted: {
       epoch: 'scg-experiment-v1',
       catalogDigest: digest(catalog),
       idempotencyKey: randomUUID(),
       action: { commandId: 'calendar.list', account: 'test-account', args: { from: '2027-01-01' } },
       claimed: { intent: 'Plan a synthetic day', sensitivity: 'low' },
-    })
-    return authority.pending(signerIdentity, status.executionId)
+    } })
+    return authority.pending({ signer: signerIdentity, id: status.executionId })
   }
-  const track = (record = pending()): Card => store.add(record, 'test-channel', randomUUID())
-  const request = (card: Card, customId = card.controls[0]!.id, interactionId = randomUUID()) => {
+  const track = (record = pending()): Card => store.add({ record: record, channelId: 'test-channel', messageId: randomUUID() })
+  const request = ({ card, customId = card.controls[0]!.id, interactionId = randomUUID() }: {
+    readonly card: Card
+    readonly customId?: string
+    readonly interactionId?: string
+  }) => {
     const requestedAt = clock()
     const timestamp = String(Math.floor(requestedAt / 1000))
     const body = Buffer.from(
@@ -177,8 +181,8 @@ const fixture = Effect.gen(function* () {
         keys.discord.privateKey,
       ).toString('hex'),
       nowMs: requestedAt,
-      acknowledge: (_status: number, value: { readonly type: number }) => {
-        events.push(`ack:${value.type}`)
+      acknowledge: ({ body }: { readonly status: number; readonly body: { readonly type: number } }) => {
+        events.push(`ack:${body.type}`)
         return true
       },
     }
@@ -192,7 +196,7 @@ const fixture = Effect.gen(function* () {
     client,
     delivery,
     options,
-    signer: () => makeSigner(config, store, client, delivery),
+    signer: () => makeSigner({ config: config, store: store, authority: client, discord: delivery }),
     store: () => store,
     authority: () => authority,
     executions: () => executions,
@@ -231,36 +235,36 @@ it.effect('retries interrupted activation without reposting or reactivating a cl
     const signer = f.signer()
     const client: SyncAuthorityClient = {
       ...f.client,
-      sync: (cursor) => io('sync', () => f.authority().sync(signerIdentity, cursor)),
+      sync: (cursor) => io({ operation: 'sync', run: () => f.authority().sync({ signer: signerIdentity, cursor: cursor }) }),
     }
     f.rejectEdits(true)
     expect(
       Exit.isFailure(
-        yield* Effect.exit(syncDiscordSurface(signer, f.store(), client, 'test-channel')),
+        yield* Effect.exit(syncDiscordSurface({ signer: signer, store: f.store(), authority: client, channelId: 'test-channel' })),
       ),
     ).toBe(true)
     const card = f.store().cards()[0]!
     expect(f.events).toEqual(['post'])
     f.rejectEdits(false)
-    yield* syncDiscordSurface(signer, f.store(), client, 'test-channel')
+    yield* syncDiscordSurface({ signer: signer, store: f.store(), authority: client, channelId: 'test-channel' })
     expect(f.events).toEqual(['post', 'edit'])
     expect(f.store().cards()).toEqual([card])
     expect(JSON.stringify(f.messages[0])).toContain(card.controls[0]!.id)
     const release = f.delayExecution()
-    yield* signer.handle(f.request(card))
+    yield* signer.handle(f.request({ card: card }))
     expect(f.store().cards()).toEqual([card])
     expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
-    expect(f.authority().signerStatus(signerIdentity, record.payload.executionId).state).toBe(
+    expect(f.authority().signerStatus({ signer: signerIdentity, id: record.payload.executionId }).state).toBe(
       'reserved',
     )
     release()
     yield* Effect.promise(() => f.authority().drain())
     const delivered = f.messages.length
-    yield* signer.publish(record, 'test-channel')
+    yield* signer.publish({ record: record, channelId: 'test-channel' })
     expect(f.messages).toHaveLength(delivered + 1)
     expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
     const finalMessage = f.messages.at(-1)
-    yield* signer.publish(record, 'test-channel')
+    yield* signer.publish({ record: record, channelId: 'test-channel' })
     expect(f.messages).toHaveLength(delivered + 1)
     expect(f.messages.at(-1)).toEqual(finalMessage)
     expect(JSON.stringify(finalMessage)).toContain('· ran.')
@@ -277,22 +281,22 @@ it.effect(
       const f = yield* fixture
       const release = f.delayExecution()
       const card = f.track()
-      yield* f.signer().handle(f.request(card))
+      yield* f.signer().handle(f.request({ card: card }))
       expect(f.events).toEqual(['ack:6', 'pending', 'decide', 'edit'])
       expect(
-        f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state,
+        f.authority().signerStatus({ signer: signerIdentity, id: card.record.payload.executionId }).state,
       ).toBe('reserved')
       expect(f.store().cards()).toEqual([card])
       expect(JSON.stringify(f.messages.at(-1))).not.toContain(card.controls[0]!.id)
       release()
       yield* Effect.promise(() => f.authority().drain())
-      yield* f.signer().publish(card.record, card.channelId)
+      yield* f.signer().publish({ record: card.record, channelId: card.channelId })
       expect(f.events).toEqual(['ack:6', 'pending', 'decide', 'edit', 'edit'])
       expect(f.executions()).toBe(1)
       expect(f.store().cards()).toHaveLength(0)
       expect(f.store().jobs()).toHaveLength(0)
       expect(
-        f.authority().signerStatus(signerIdentity, card.record.payload.executionId).decisionDigest,
+        f.authority().signerStatus({ signer: signerIdentity, id: card.record.payload.executionId }).decisionDigest,
       ).toMatch(/^sha256:/)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
@@ -301,7 +305,7 @@ it.effect('competing signed replays create one durable job and one execution', (
   Effect.gen(function* () {
     const f = yield* fixture
     const card = f.track()
-    const input = f.request(card)
+    const input = f.request({ card: card })
     const results = yield* Effect.all(
       [Effect.exit(f.signer().handle(input)), Effect.exit(f.signer().handle(input))],
       { concurrency: 'unbounded' },
@@ -317,7 +321,7 @@ it.effect('Inspect is ephemeral and never signs; replay protection survives rest
   Effect.gen(function* () {
     const f = yield* fixture
     const card = f.track()
-    const input = f.request(card, card.inspectId)
+    const input = f.request({ card: card, customId: card.inspectId })
     yield* f.signer().handle(input)
     expect(f.messages[0]?.flags).toBe(32832)
     expect(f.decisions()).toBe(0)
@@ -334,7 +338,7 @@ it.effect(
       const f = yield* fixture
       const card = f.track()
       f.rejectEdits(true)
-      expect(Exit.isFailure(yield* Effect.exit(f.signer().handle(f.request(card))))).toBe(true)
+      expect(Exit.isFailure(yield* Effect.exit(f.signer().handle(f.request({ card: card }))))).toBe(true)
       yield* Effect.promise(() => f.authority().drain())
       expect(f.store().jobs()).toHaveLength(1)
       f.restart()
@@ -351,21 +355,16 @@ it.effect('expired and decided-elsewhere cards lose all controls on recovery', (
   Effect.gen(function* () {
     const f = yield* fixture
     const card = f.track()
-    const denied = signPayload(
-      'decision',
-      {
-        epoch: 'scg-experiment-v1' as const,
-        kind: 'decision' as const,
-        executionId: card.record.payload.executionId,
-        pendingDigest: digest(card.record.payload),
-        optionId: 'deny',
-        principalId: signerIdentity.principalId,
-        surfaceId: signerIdentity.surfaceId,
-        decidedAt: now,
-      },
-      signerIdentity.keyId,
-      keys.signer.privateKey,
-    )
+    const denied = signPayload({ domain: 'decision', payload: {
+      epoch: 'scg-experiment-v1' as const,
+      kind: 'decision' as const,
+      executionId: card.record.payload.executionId,
+      pendingDigest: digest(card.record.payload),
+      optionId: 'deny',
+      principalId: signerIdentity.principalId,
+      surfaceId: signerIdentity.surfaceId,
+      decidedAt: now,
+    }, keyId: signerIdentity.keyId, key: keys.signer.privateKey })
     yield* Effect.promise(() => f.authority().decide(denied))
     const expiring = f.track()
     f.setTime(now + 60_001)
@@ -379,7 +378,7 @@ it.effect('expired and decided-elsewhere cards lose all controls on recovery', (
     )
     expect(f.messages.every((message) => !JSON.stringify(message).includes('custom_id'))).toBe(true)
     expect(
-      f.authority().signerStatus(signerIdentity, expiring.record.payload.executionId).state,
+      f.authority().signerStatus({ signer: signerIdentity, id: expiring.record.payload.executionId }).state,
     ).toBe('expired')
     expect(f.executions()).toBe(0)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -389,16 +388,11 @@ it.effect('wrong digest/account/signature bindings and wrong message/channel nev
   Effect.gen(function* () {
     const f = yield* fixture
     const original = f.pending()
-    const changed: SignedPending = signPayload(
-      'pending',
-      { ...original.payload, review: { ...original.payload.review, account: 'wrong-account' } },
-      'authority',
-      keys.authority.privateKey,
-    )
+    const changed: SignedPending = signPayload({ domain: 'pending', payload: { ...original.payload, review: { ...original.payload.review, account: 'wrong-account' } }, keyId: 'authority', key: keys.authority.privateKey })
     const card = f.track(changed)
-    expect(Exit.isFailure(yield* Effect.exit(f.signer().handle(f.request(card))))).toBe(true)
+    expect(Exit.isFailure(yield* Effect.exit(f.signer().handle(f.request({ card: card }))))).toBe(true)
     expect(f.decisions()).toBe(0)
-    const wrong = f.request({ ...card, channelId: 'wrong-channel' })
+    const wrong = f.request({ card: { ...card, channelId: 'wrong-channel' } })
     expect(Exit.isFailure(yield* Effect.exit(f.signer().handle(wrong)))).toBe(true)
     expect(f.decisions()).toBe(0)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -414,34 +408,27 @@ it.live('real HTTP route returns type-6 ACK while authority acceptance is still 
     const card = f.track()
     const acceptance = yield* Deferred.make<void>()
     const completed = yield* Deferred.make<void, unknown>()
-    const signer = makeSigner(
-      config,
-      f.store(),
-      {
-        ...f.client,
-        decide: (candidate) =>
-          Deferred.await(acceptance).pipe(Effect.andThen(f.client.decide(candidate))),
-      },
-      f.delivery,
-    )
+    const signer = makeSigner({ config: config, store: f.store(), authority: {
+      ...f.client,
+      decide: (candidate) =>
+        Deferred.await(acceptance).pipe(Effect.andThen(f.client.decide(candidate))),
+    }, discord: f.delivery })
     const server = yield* Effect.acquireRelease(
       Effect.tryPromise({
         try: () => {
           const { promise, resolve, reject } = Promise.withResolvers<Server>()
-          const instance = createServer(
-            makeInteractionHttpHandler(
-              {
-                ...signer,
-                handle: (input) =>
-                  signer
-                    .handle(input)
-                    .pipe(Effect.tap(() => Deferred.succeed(completed, undefined))),
-              },
-              (cause) => {
-                void Effect.runPromise(Deferred.fail(completed, cause))
-              },
-            ),
-          )
+          const handler = makeInteractionHttpHandler({
+            signer: {
+              ...signer,
+              handle: (input) => signer.handle(input).pipe(
+                Effect.tap(() => Deferred.succeed(completed, undefined)),
+              ),
+            },
+            onFailure: (cause) => {
+              void Effect.runPromise(Deferred.fail(completed, cause))
+            },
+          })
+          const instance = createServer((request, response) => handler({ request, response }))
           instance.once('error', reject)
           instance.listen(0, '127.0.0.1', () => resolve(instance))
           return promise
@@ -459,7 +446,7 @@ it.live('real HTTP route returns type-6 ACK while authority acceptance is still 
     const address = server.address()
     if (address === null || typeof address === 'string')
       return yield* Effect.die('Expected TCP test listener')
-    const input = f.request(card)
+    const input = f.request({ card: card })
     const client = yield* HttpClient.HttpClient
     const response = yield* client.execute(
       HttpClientRequest.post(`http://127.0.0.1:${address.port}/interactions`).pipe(
@@ -489,7 +476,7 @@ it.effect('an elapsed HTTP ACK deadline never becomes a decision after restart',
     const card = f.track()
     expect(
       Exit.isFailure(
-        yield* Effect.exit(f.signer().handle({ ...f.request(card), acknowledge: () => false })),
+        yield* Effect.exit(f.signer().handle({ ...f.request({ card: card }), acknowledge: () => false })),
       ),
     ).toBe(true)
     f.restart()
@@ -506,7 +493,7 @@ it.effect(
       const f = yield* fixture
       const release = f.delayExecution()
       const card = f.track()
-      yield* f.signer().handle(f.request(card))
+      yield* f.signer().handle(f.request({ card: card }))
       const reserved = yield* f.client.status(card.record.payload.executionId)
       expect(reserved.state).toBe('reserved')
       expect(f.store().cards()).toHaveLength(1)
@@ -519,7 +506,7 @@ it.effect(
         try: async () => {
           for (let turn = 0; turn < 1_000; turn += 1) {
             if (
-              f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state !==
+              f.authority().signerStatus({ signer: signerIdentity, id: card.record.payload.executionId }).state !==
               'reserved'
             )
               return
@@ -536,17 +523,17 @@ it.effect(
       f.rejectEdits(true)
       expect(
         Exit.isFailure(
-          yield* Effect.exit(syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')),
+          yield* Effect.exit(syncDiscordSurface({ signer: f.signer(), store: f.store(), authority: client, channelId: 'test-channel' })),
         ),
       ).toBe(true)
       expect(f.store().cards()).toHaveLength(1)
       expect(f.store().cursor()).toBe(0)
       f.rejectEdits(false)
-      yield* syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')
+      yield* syncDiscordSurface({ signer: f.signer(), store: f.store(), authority: client, channelId: 'test-channel' })
       expect(f.store().cards()).toHaveLength(0)
       expect(f.store().cursor()).toBe(7)
       const finalMessage = f.messages.at(-1)
-      yield* f.signer().close(card, reserved, false)
+      yield* f.signer().close({ card: card, status: reserved, elsewhere: false })
       expect(f.messages.at(-1)).toEqual(finalMessage)
       expect(f.executions()).toBe(1)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),

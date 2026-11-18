@@ -210,7 +210,7 @@ const textOf = (message: DiscordMessage) =>
 
 describe('pending card', () => {
   it('renders a V2 rich container whose buttons are the signed statements with opaque ids', () => {
-    const message = ok(renderPendingCard(basePending, ids, env))
+    const message = ok(renderPendingCard({ pending: basePending, ids, env }))
     expect(message.flags).toBe(MessageFlags.IsComponentsV2)
     expect(message.allowed_mentions).toEqual({ parse: [] })
     expect(message.components).toHaveLength(1)
@@ -236,22 +236,22 @@ describe('pending card', () => {
   })
 
   it('names the tier in the header and uses the write accent', () => {
-    const message = ok(renderPendingCard(withReview({ tier: 'write' }), ids, env))
+    const message = ok(renderPendingCard({ pending: withReview({ tier: 'write' }), ids, env }))
     expect(textOf(message)).toContain('### Write request')
     expect(message.components[0]).toMatchObject({ type: 17, accent_color: 0xf0b232 })
   })
 
   it('renders D33 session, holds and coverage lines', () => {
     const message = ok(
-      renderPendingCard(
-        withReview({
+      renderPendingCard({
+        pending: withReview({
           session: { label: 'S1', verified: true },
           holds: [{ label: 'mail.search', used: 3, cap: 20 }],
           coverage: { kind: 'would-create', text: 'exact call only' },
         }),
         ids,
         env,
-      ),
+      }),
     )
     const text = textOf(message)
     expect(text).toContain('Session `S1` · ✓ verified')
@@ -261,7 +261,11 @@ describe('pending card', () => {
 
   it('renders the similar row only when offered, with absolute end and bounds above it', () => {
     const message = ok(
-      renderPendingCard(withReview({}, [once, deny, similar1h, similar4h]), ids, env),
+      renderPendingCard({
+        pending: withReview({}, [once, deny, similar1h, similar4h]),
+        ids,
+        env,
+      }),
     )
     expect(labelsOf(message)).toEqual([
       'Inspect',
@@ -279,7 +283,9 @@ describe('pending card', () => {
   })
 
   it('renders grant-to-parent naming the parent and its delegation consequence', () => {
-    const message = ok(renderPendingCard(withReview({}, [once, deny, toParent]), ids, env))
+    const message = ok(
+      renderPendingCard({ pending: withReview({}, [once, deny, toParent]), ids, env }),
+    )
     expect(labelsOf(message)).toContain('Grant parent P1 until 18:00')
     const text = textOf(message)
     expect(text).toContain('**Grant to parent**')
@@ -288,7 +294,9 @@ describe('pending card', () => {
   })
 
   it('shows session rules read-only and never as a signing control', () => {
-    const message = ok(renderPendingCard(withReview({}, [sessionRule, deny]), ids, env))
+    const message = ok(
+      renderPendingCard({ pending: withReview({}, [sessionRule, deny]), ids, env }),
+    )
     expect(labelsOf(message)).toEqual(['Inspect', 'Deny · nothing runs'])
     expect(buttonsOf(message).map((button) => button.custom_id)).not.toContain('c:opaque-8')
     const text = textOf(message)
@@ -300,7 +308,7 @@ describe('pending card', () => {
   })
 
   it('renders manifest items and hides sensitive item contents', () => {
-    const message = ok(renderPendingCard(withReview({}, [manifest, deny]), ids, env))
+    const message = ok(renderPendingCard({ pending: withReview({}, [manifest, deny]), ids, env }))
     expect(labelsOf(message)).toContain('Allow these 2 once')
     const text = textOf(message)
     expect(text).toContain('**2 calls in this manifest**')
@@ -322,12 +330,12 @@ describe('pending card', () => {
       },
     )
     const message = ok(
-      renderPendingCard(
-        { ...pending, options: [once, deny, similar1h, toParent, sessionRule] },
+      renderPendingCard({
+        pending: { ...pending, options: [once, deny, similar1h, toParent, sessionRule] },
         ids,
         env,
-        words,
-      ),
+        originWords: words,
+      }),
     )
     const serialized = JSON.stringify(message)
     for (const hidden of [
@@ -357,42 +365,47 @@ describe('pending card', () => {
 
   it('escapes untrusted text so it cannot mention or format', () => {
     const message = ok(
-      renderPendingCard(withReview({ agentClaim: '@everyone <@123> **bold**' }), ids, env),
+      renderPendingCard({
+        pending: withReview({ agentClaim: '@everyone <@123> **bold**' }),
+        ids,
+        env,
+      }),
     )
     expect(textOf(message)).toContain('\\@everyone \\<\\@123\\> \\*\\*bold\\*\\*')
   })
 
   it('rejects a missing custom id instead of rendering an unmapped control', () => {
-    const result = renderPendingCard(
-      basePending,
-      { ...ids, options: { 'opt-deny': 'c:opaque-2' } },
+    const result = renderPendingCard({
+      pending: basePending,
+      ids: { ...ids, options: { 'opt-deny': 'c:opaque-2' } },
       env,
-    )
+    })
     expect(result).toEqual({ _tag: 'Rejected', errors: ['missing custom_id for option opt-once'] })
   })
 
   it('rejects duplicate custom ids', () => {
-    expect(renderPendingCard(basePending, { ...ids, inspect: 'c:opaque-1' }, env)._tag).toBe(
-      'Rejected',
-    )
+    expect(
+      renderPendingCard({ pending: basePending, ids: { ...ids, inspect: 'c:opaque-1' }, env })
+        ._tag,
+    ).toBe('Rejected')
   })
 
   it('fails oversized payloads rather than truncating', () => {
-    const result = renderPendingCard(
-      withReview({ fields: [{ label: 'body', value: 'x'.repeat(4001) }] }),
+    const result = renderPendingCard({
+      pending: withReview({ fields: [{ label: 'body', value: 'x'.repeat(4001) }] }),
       ids,
       env,
-    )
+    })
     expect(result._tag).toBe('Rejected')
     if (result._tag === 'Rejected') expect(result.errors.join()).toContain('> 4000')
   })
 
   it('fails when a signed statement does not fit a button label', () => {
-    const result = renderPendingCard(
-      withReview({}, [{ ...once, statement: `Allow once · ${'c'.repeat(80)}` }, deny]),
+    const result = renderPendingCard({
+      pending: withReview({}, [{ ...once, statement: `Allow once · ${'c'.repeat(80)}` }, deny]),
       ids,
       env,
-    )
+    })
     expect(result._tag).toBe('Rejected')
     if (result._tag === 'Rejected') expect(result.errors.join()).toContain('label length')
   })
@@ -402,7 +415,7 @@ describe('origin context (D37/D38)', () => {
   it('quotes Discord-born words with provenance and chain', () => {
     const pending = withOrigin()
     expect(originWordsMode(pending.review)).toBe('quote')
-    const message = ok(renderPendingCard(pending, ids, env, words))
+    const message = ok(renderPendingCard({ pending, ids, env, originWords: words }))
     const text = textOf(message)
     expect(text).toContain('You asked · 13:02 (UTC+01:00) · <t:')
     expect(text).toContain('· Discord · DM with Assistant')
@@ -414,7 +427,12 @@ describe('origin context (D37/D38)', () => {
 
   it('cuts long Discord quotes visibly and offers the full words ephemerally', () => {
     const message = ok(
-      renderPendingCard(withOrigin(), ids, env, { ...words, text: 'w'.repeat(200) }),
+      renderPendingCard({
+        pending: withOrigin(),
+        ids,
+        env,
+        originWords: { ...words, text: 'w'.repeat(200) },
+      }),
     )
     expect(textOf(message)).toContain(`> ${'w'.repeat(160)} …`)
     expect(labelsOf(message)).toContain('Show my words')
@@ -423,7 +441,7 @@ describe('origin context (D37/D38)', () => {
   it('never quotes off-Discord words; shows a handle and Show my words', () => {
     const pending = withOrigin({ surface: 'other', place: 'terminal session', turn: 'turn 6' })
     expect(originWordsMode(pending.review)).toBe('handle')
-    const message = ok(renderPendingCard(pending, ids, env, words))
+    const message = ok(renderPendingCard({ pending, ids, env, originWords: words }))
     const text = textOf(message)
     expect(text).not.toContain('reconcile')
     expect(text).toContain('terminal session · turn 6')
@@ -434,24 +452,35 @@ describe('origin context (D37/D38)', () => {
   it('renders claimed origins as "No linked ask" and never quotes them', () => {
     const pending = withOrigin({ provenance: 'claimed' })
     expect(originWordsMode(pending.review)).toBe('claimed')
-    const message = ok(renderPendingCard(pending, ids, env, words))
+    const message = ok(renderPendingCard({ pending, ids, env, originWords: words }))
     expect(textOf(message)).toContain('**No linked ask**')
     expect(JSON.stringify(message)).not.toContain('reconcile')
     expect(labelsOf(message)).not.toContain('Show my words')
-    expect(renderWordsReply(pending, words, env)._tag).toBe('Rejected')
+    expect(renderWordsReply({ pending, words, env })._tag).toBe('Rejected')
   })
 
   it('degrades to the handle when words are not hydrated', () => {
-    expect(textOf(ok(renderPendingCard(withOrigin(), ids, env)))).toContain('words unavailable')
+    expect(textOf(ok(renderPendingCard({ pending: withOrigin(), ids, env })))).toContain(
+      'words unavailable',
+    )
   })
 
   it('rejects words whose digest does not match the origin', () => {
-    const result = renderPendingCard(withOrigin(), ids, env, { ...words, digest: digestOf('d') })
+    const result = renderPendingCard({
+      pending: withOrigin(),
+      ids,
+      env,
+      originWords: { ...words, digest: digestOf('d') },
+    })
     expect(result).toEqual({ _tag: 'Rejected', errors: ['origin words digest mismatch'] })
   })
 
   it('requires a words custom id when Show my words is offered', () => {
-    const result = renderPendingCard(withOrigin({ surface: 'other' }), idsWithoutWords, env)
+    const result = renderPendingCard({
+      pending: withOrigin({ surface: 'other' }),
+      ids: idsWithoutWords,
+      env,
+    })
     expect(result).toEqual({ _tag: 'Rejected', errors: ['missing custom_id for Show my words'] })
   })
 
@@ -464,13 +493,13 @@ describe('origin context (D37/D38)', () => {
         flags: ['new-account', 'first-write', 'outside-delegation', 'asked-before'],
       },
     })
-    const text = textOf(ok(renderPendingCard(pending, ids, env, words)))
+    const text = textOf(ok(renderPendingCard({ pending, ids, env, originWords: words })))
     expect(text).toContain('**Since your ask** · SCG record · 2 earlier in Inspect')
     expect(text).not.toContain('audit row 2')
     for (const n of [3, 4, 5]) expect(text).toContain(`audit row ${n}`)
     expect(text).toContain('⚑ New account · First write · Outside delegation')
     expect(text).not.toContain('Asked before')
-    const inspect = textOf(ok(renderInspectReply(pending, env)))
+    const inspect = textOf(ok(renderInspectReply({ pending, env })))
     for (const n of [1, 2, 3, 4, 5]) expect(inspect).toContain(`audit row ${n}`)
   })
 })
@@ -501,7 +530,7 @@ describe('closed card', () => {
         ...withOrigin({ surface: 'other' }),
         options: [once, deny, similar1h, similar4h, toParent],
       }
-      const result = renderClosedCard(pending, closure, env)
+      const result = renderClosedCard({ pending, closure, env })
       const message = ok(result)
       expect(buttonsOf(message)).toEqual([])
       expect(result._tag === 'Ok' && result.stats.buttons).toBe(0)
@@ -511,7 +540,11 @@ describe('closed card', () => {
 
   it('keeps sensitive contents hidden on the closed card', () => {
     const message = ok(
-      renderClosedCard(withReview({ sensitivity: 'sensitive' }), { _tag: 'Withdrawn' }, env),
+      renderClosedCard({
+        pending: withReview({ sensitivity: 'sensitive' }),
+        closure: { _tag: 'Withdrawn' },
+        env,
+      }),
     )
     expect(JSON.stringify(message)).not.toContain('billing@example.com')
   })
@@ -527,7 +560,7 @@ describe('ephemeral replies', () => {
       sessionRule,
       manifest,
     ])
-    const message = ok(renderInspectReply(pending, env))
+    const message = ok(renderInspectReply({ pending, env }))
     expect(message.flags).toBe(MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral)
     expect(buttonsOf(message)).toEqual([])
     const text = textOf(message)
@@ -543,20 +576,28 @@ describe('ephemeral replies', () => {
 
   it('Show my words returns the full verified words ephemerally', () => {
     const message = ok(
-      renderWordsReply(withOrigin({ surface: 'other' }, { sensitivity: 'sensitive' }), words, env),
+      renderWordsReply({
+        pending: withOrigin({ surface: 'other' }, { sensitivity: 'sensitive' }),
+        words,
+        env,
+      }),
     )
     expect(message.flags).toBe(MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral)
     expect(textOf(message)).toContain(`> ${words.text}`)
   })
 
   it('Show my words rejects mismatched digests and wordless origins', () => {
-    expect(renderWordsReply(withOrigin(), { ...words, digest: digestOf('e') }, env)._tag).toBe(
-      'Rejected',
-    )
-    expect(renderWordsReply(withOrigin({ wordsAvailable: false }), words, env)._tag).toBe(
-      'Rejected',
-    )
-    expect(renderWordsReply(basePending, words, env)._tag).toBe('Rejected')
+    expect(
+      renderWordsReply({
+        pending: withOrigin(),
+        words: { ...words, digest: digestOf('e') },
+        env,
+      })._tag,
+    ).toBe('Rejected')
+    expect(
+      renderWordsReply({ pending: withOrigin({ wordsAvailable: false }), words, env })._tag,
+    ).toBe('Rejected')
+    expect(renderWordsReply({ pending: basePending, words, env })._tag).toBe('Rejected')
   })
 })
 
@@ -647,8 +688,10 @@ describe('literal text and time', () => {
   })
 
   it('formats absolute times with a numeric offset', () => {
-    expect(formatClock(at(13, 30), 'Europe/Berlin')).toBe('14:30 (UTC+01:00)')
-    expect(formatAbsolute(at(17, 0), 'Europe/Berlin')).toBe('Tue 17 Nov 2026 18:00 (UTC+01:00)')
-    expect(formatClock(at(13, 30), 'UTC')).toBe('13:30 (UTC+00:00)')
+    expect(formatClock({ at: at(13, 30), timeZone: 'Europe/Berlin' })).toBe('14:30 (UTC+01:00)')
+    expect(formatAbsolute({ at: at(17, 0), timeZone: 'Europe/Berlin' })).toBe(
+      'Tue 17 Nov 2026 18:00 (UTC+01:00)',
+    )
+    expect(formatClock({ at: at(13, 30), timeZone: 'UTC' })).toBe('13:30 (UTC+00:00)')
   })
 })

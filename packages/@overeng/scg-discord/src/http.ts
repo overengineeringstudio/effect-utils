@@ -6,11 +6,14 @@ import type { DiscordSigner } from './signer.ts'
 
 /** Mount only on the configured interaction URL. No body parser may run before signature verification. */
 export const makeInteractionHttpHandler =
-  (
-    signer: DiscordSigner,
-    onFailure: (cause: unknown) => void,
-  ): ((request: IncomingMessage, response: ServerResponse) => void) =>
-  (request, response) => {
+  ({
+    signer,
+    onFailure,
+  }: {
+    readonly signer: DiscordSigner
+    readonly onFailure: (cause: unknown) => void
+  }): ((input: { readonly request: IncomingMessage; readonly response: ServerResponse }) => void) =>
+  ({ request, response }) => {
     if (request.method !== 'POST') {
       response.writeHead(405).end()
       return
@@ -28,7 +31,7 @@ export const makeInteractionHttpHandler =
     const fail = (status: number) => {
       clearTimeout(deadline)
       finished = true
-      if (!response.headersSent) response.writeHead(status).end()
+      if (response.headersSent === false) response.writeHead(status).end()
     }
     request.on('error', () => fail(400))
     request.on('data', (chunk: Buffer) => {
@@ -41,7 +44,7 @@ export const makeInteractionHttpHandler =
       chunks.push(chunk)
     })
     request.on('end', () => {
-      if (finished) return
+      if (finished === true) return
       if (performance.now() - startedAt >= 2500) {
         fail(408)
         return
@@ -58,8 +61,8 @@ export const makeInteractionHttpHandler =
           signature,
           timestamp,
           nowMs: Date.now(),
-          acknowledge: (status, body) => {
-            if (finished) return false
+          acknowledge: ({ status, body }) => {
+            if (finished === true) return false
             if (performance.now() - startedAt >= 2500) {
               fail(408)
               return false
@@ -73,7 +76,7 @@ export const makeInteractionHttpHandler =
           },
         }),
       ).catch((cause: unknown) => {
-        if (!finished) fail(401)
+        if (finished === false) fail(401)
         onFailure(cause)
       })
     })
