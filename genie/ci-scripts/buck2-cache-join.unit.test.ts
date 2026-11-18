@@ -581,7 +581,7 @@ const occurrences = (artifacts: ActionArtifact[], evidenceGaps: string[] = []) =
 
 describe('exact execute-once occurrence scorecard', () => {
   it('deduplicates transport and attributes global repeats across roots, hosts and CI chronologically', () => {
-    const first = occurrenceArtifact('first', 'host-a', 200)
+    const first = occurrenceArtifact('first', 'host-a', 200, { configuration: null })
     const repeat = occurrenceArtifact('repeat', 'host-b', 299, { executionOutcome: 'remote-exec' })
     repeat.header.metadata.runId = '2'
     const report = occurrences([
