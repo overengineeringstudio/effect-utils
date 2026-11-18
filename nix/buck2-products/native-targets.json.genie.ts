@@ -1,11 +1,15 @@
+import { posix } from 'node:path'
+
 import {
   productBuildCapabilities,
   productLinuxBuildCapabilities,
 } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
+import { cargoPathDependencyClosure } from '../../genie/buck2/stage0-workspace.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
 import geniePkg from '../../packages/@overeng/genie/package.json.genie.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { inputReadFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 /** Build-product targets distributed as substituted native Nix store paths. */
 const products = [
@@ -16,11 +20,18 @@ const products = [
     outputName: 'artifact.tar',
     ...('shellCompletions' in pkg ? { shellCompletions: pkg.shellCompletions } : {}),
     sourcePaths: [
-      pkg.cratePath,
+      ...cargoPathDependencyClosure({
+        manifest: inputReadFileSync('rust/Cargo.toml', 'utf8'),
+        member: posix.relative('rust', pkg.cratePath),
+      }).map((member) => posix.normalize(posix.join('rust', member))),
       'rust/Cargo.toml',
       'rust/Cargo.lock',
       'rust/third-party',
-    ].toSorted(),
+    ]
+      .filter((path, _, paths) =>
+        paths.every((parent) => parent === path || !path.startsWith(`${parent}/`)),
+      )
+      .toSorted(),
     target: `effect_utils//${pkg.cratePath}:${pkg.name}-product`,
     version: '0.0.0',
   })),

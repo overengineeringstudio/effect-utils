@@ -15,7 +15,6 @@ mod target;
 mod theme;
 mod timeline;
 mod uptime;
-mod version;
 
 use std::io::{IsTerminal, Write};
 use std::os::unix::net::UnixStream;
@@ -25,6 +24,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
+use cli_build_identity::{build_identity_from_env, BuildIdentity};
 
 use crate::probe::{Failure, Family, ProbeConfig, ProbeEvent};
 use crate::render::{fmt_ms, Layout};
@@ -75,11 +75,17 @@ struct Cli {
     no_history: bool,
 }
 
-static VERSION: LazyLock<String> =
-    LazyLock::new(|| version::resolve(env!("CARGO_PKG_VERSION"), option_env!("CLI_BUILD_STAMP")));
+static BUILD_IDENTITY: LazyLock<BuildIdentity> = LazyLock::new(|| {
+    build_identity_from_env(env!("CARGO_PKG_VERSION"), option_env!("CLI_BUILD_STAMP"))
+});
+static ERROR_SUFFIX: LazyLock<String> = LazyLock::new(|| BUILD_IDENTITY.error_suffix("pingping"));
 
 fn version() -> &'static str {
-    &VERSION
+    &BUILD_IDENTITY.display_version
+}
+
+fn error_suffix() -> &'static str {
+    &ERROR_SUFFIX
 }
 
 fn parse_secs(value: &str) -> Result<f64, String> {
@@ -110,7 +116,17 @@ fn parse_host(value: &str) -> Result<String, String> {
 )]
 fn main() -> ExitCode {
     completion::activate();
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) => {
+            if err.use_stderr() {
+                let _ = err.print();
+                eprintln!("{}", error_suffix());
+                return ExitCode::from(2);
+            }
+            err.exit();
+        }
+    };
     let config = ProbeConfig {
         interval: Duration::from_secs_f64(cli.interval),
         timeout: Duration::from_secs_f64(cli.timeout),
@@ -135,7 +151,10 @@ fn main() -> ExitCode {
         }) {
             Ok(pair) => Some(pair),
             Err(err) => {
-                eprintln!("pingping: terminal notification error: {err}");
+                eprintln!(
+                    "pingping: terminal notification error: {err} {}",
+                    error_suffix()
+                );
                 return ExitCode::from(2);
             }
         }
@@ -146,7 +165,7 @@ fn main() -> ExitCode {
         match history::Store::open(&cli.hosts, config.interval) {
             Ok(history) => Some(history),
             Err(err) => {
-                eprintln!("pingping: history error: {err}");
+                eprintln!("pingping: history error: {err} {}", error_suffix());
                 return ExitCode::from(2);
             }
         }
@@ -189,7 +208,7 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if let Err(err) = result {
-        eprintln!("pingping: terminal error: {err}");
+        eprintln!("pingping: terminal error: {err} {}", error_suffix());
         return ExitCode::from(2);
     }
 
@@ -199,8 +218,9 @@ fn main() -> ExitCode {
                 Failure::NotPermitted => print_not_permitted(reason),
                 Failure::Socket => {
                     eprintln!(
-                        "CRITICAL: cannot open an ICMP socket for {} ({reason})",
-                        host.host
+                        "CRITICAL: cannot open an ICMP socket for {} ({reason}) {}",
+                        host.host,
+                        error_suffix()
                     );
                 }
                 Failure::Resolve => {}
@@ -261,7 +281,9 @@ fn print_plain(
                         host.path.note = Some(note);
                     }
                 }
-                ProbeEvent::Failed { reason, .. } => writeln!(out, "{name} failed: {reason}")?,
+                ProbeEvent::Failed { reason, .. } => {
+                    writeln!(out, "{name} failed: {reason} {}", error_suffix())?;
+                }
                 ProbeEvent::Reply { seq, rtt, .. } => {
                     writeln!(out, "{name} seq={seq} time={}", fmt_ms(*rtt))?;
                 }
@@ -328,7 +350,10 @@ fn print_plain(
 }
 
 fn print_not_permitted(reason: &str) {
-    eprintln!("CRITICAL: unprivileged ICMP sockets are not permitted for this user ({reason})");
+    eprintln!(
+        "CRITICAL: unprivileged ICMP sockets are not permitted for this user ({reason}) {}",
+        error_suffix()
+    );
     if cfg!(target_os = "linux") {
         eprintln!("  net.ipv4.ping_group_range must include one of your group ids");
         eprintln!(

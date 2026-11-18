@@ -7,10 +7,55 @@ args@{
   capabilities,
   pnpmArchives,
   repositoryRoot ? ../..,
+  sourceInfo,
 }:
 
 let
   inventory = builtins.fromJSON (builtins.readFile ./native-targets.json);
+  cliBuildStamp = import ../workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
+  stampCli =
+    product: nativeProduct:
+    # Dependency closure is the opt-in: no wrapper for tools without identity surfaces.
+    if product.kind != "native" || !(builtins.elem "rust/cli-build-identity" product.sourcePaths) then
+      nativeProduct
+    else
+      pkgs.runCommand "${product.name}-versioned"
+        {
+          nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
+          passthru = (nativeProduct.passthru or { }) // {
+            unwrapped = nativeProduct;
+          };
+          meta = (nativeProduct.meta or { }) // {
+            mainProgram = product.name;
+          };
+        }
+        ''
+          mkdir -p "$out/bin"
+          for entry in ${nativeProduct}/*; do
+            if [ "$(basename "$entry")" != bin ]; then
+              ln -s "$entry" "$out/$(basename "$entry")"
+            fi
+          done
+          for executable in ${nativeProduct}/bin/*; do
+            if [ "$(basename "$executable")" != ${pkgs.lib.escapeShellArg product.name} ]; then
+              ln -s "$executable" "$out/bin/$(basename "$executable")"
+            fi
+          done
+          makeBinaryWrapper ${nativeProduct}/bin/${product.name} "$out/bin/${product.name}" \
+            --inherit-argv0 \
+            --set CLI_BUILD_STAMP ${
+              pkgs.lib.escapeShellArg (
+                builtins.toJSON (
+                  cliBuildStamp.mkNixStamp {
+                    version = product.version;
+                    rev = sourceInfo.rev or null;
+                    dirtyRev = sourceInfo.dirtyRev or null;
+                    lastModified = sourceInfo.lastModified;
+                  }
+                )
+              )
+            }
+        '';
   # Native shell products are source-addressed, not HEAD-addressed. Keep the
   # ordinary repository Buck root as a separate, declared rules input; package
   # source closures come from the committed Genie inventory below.
@@ -79,7 +124,7 @@ assert
 builtins.listToAttrs (
   map (product: {
     inherit (product) name;
-    value =
+    value = stampCli product (
       let
         nativeProduct = mkBuckProductFromSource {
           inherit
@@ -179,6 +224,7 @@ builtins.listToAttrs (
           '';
         })
       else
-        nativeProduct;
+        nativeProduct
+    );
   }) inventory.products
 )

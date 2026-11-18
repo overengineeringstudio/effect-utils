@@ -15,6 +15,7 @@ name = "otel-scrape"
 path = "src/main.rs"
 
 [dependencies]
+cli-build-identity = { path = "../../../rust/cli-build-identity" }
 getrandom = "0.4"
 # Exact pin is intentionally package-local; otelite's target-conditioned libc
 # request uses Cargo's compatible range and therefore has different semantics.

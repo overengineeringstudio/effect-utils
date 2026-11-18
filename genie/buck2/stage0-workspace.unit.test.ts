@@ -1,7 +1,11 @@
 import { expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
-import { projectStage0Workspace, stage0Tools } from './stage0-workspace.ts'
+import {
+  cargoPathDependencyClosure,
+  projectStage0Workspace,
+  stage0Tools,
+} from './stage0-workspace.ts'
 
 const manifest = readFileSync('rust/Cargo.toml', 'utf8')
 for (const tool of stage0Tools) {
@@ -24,6 +28,14 @@ for (const tool of stage0Tools) {
     }
   })
 }
+it('includes the shared identity crate in each versioned native CLI source closure', () => {
+  for (const name of ['pingping', 'otel-scrape', 'otelite']) {
+    expect(
+      cargoPathDependencyClosure({ manifest, member: `../packages/@overeng/${name}` }),
+    ).toContain('cli-build-identity')
+  }
+})
+
 it('follows inherited, target-specific, build and dev path dependencies transitively', () => {
   const crates = new Map([
     [

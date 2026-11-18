@@ -15,6 +15,7 @@ name = "otelite"
 path = "src/main.rs"
 
 [dependencies]
+cli-build-identity = { path = "../../../rust/cli-build-identity" }
 # Tokio runtime shared by the HTTP (axum/hyper) and gRPC (tonic) receivers.
 tokio = { version = "1", features = [
   "rt-multi-thread",

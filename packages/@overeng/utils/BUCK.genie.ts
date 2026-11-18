@@ -30,6 +30,9 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
+      externalInputs: {
+        CLI_BUILD_IDENTITY_GOLDEN: 'rust/cli-build-identity/resources/golden.json',
+      },
       directoryInputs: {
         STYLEX_NEXT_FIXTURE: '//buck2/toolchains:stylex_next_fixture',
       },

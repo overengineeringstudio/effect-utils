@@ -1,0 +1,18 @@
+[package]
+name = "cli-build-identity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+chrono = { workspace = true, features = ["clock"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }

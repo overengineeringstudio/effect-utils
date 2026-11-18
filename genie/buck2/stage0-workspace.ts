@@ -21,16 +21,16 @@ const text = (value: unknown): string => {
 }
 const parse = (value: string) => object(Bun.TOML.parse(value))
 
-/** Keep shared workspace sections byte-identical; derive only members and their path closure. */
-export const projectStage0Workspace = ({
+/** First-party source closure, including target-conditioned and inherited path requests. */
+export const cargoPathDependencyClosure = ({
   manifest,
-  tool,
+  member,
   readManifest = (member) => inputReadFileSync(`rust/${member}/Cargo.toml`, 'utf8'),
 }: {
   manifest: string
-  tool: string
+  member: string
   readManifest?: (member: string) => string
-}): Stage0Workspace => {
+}): string[] => {
   const workspace = object(parse(manifest).workspace)
   const members = new Set<string>()
   const visit = (member: string) => {
@@ -47,13 +47,31 @@ export const projectStage0Workspace = ({
           if (typeof dependency === 'string') continue
           const path = object(dependency).path
           if (path !== undefined)
-            visit(posix.normalize(posix.join(inherited === true ? '.' : member, text(path))))
+            visit(
+              posix.relative(
+                'rust',
+                posix.join('rust', inherited === true ? '.' : member, text(path)),
+              ),
+            )
         }
       }
   }
+  visit(member)
+  return [...members].toSorted()
+}
+
+/** Keep shared workspace sections byte-identical; derive only members and their path closure. */
+export const projectStage0Workspace = ({
+  manifest,
+  tool,
+  readManifest = (member) => inputReadFileSync(`rust/${member}/Cargo.toml`, 'utf8'),
+}: {
+  manifest: string
+  tool: string
+  readManifest?: (member: string) => string
+}): Stage0Workspace => {
   const workspaceMember = `buck2-tools/${tool}`
-  visit(workspaceMember)
-  const ordered = [...members].toSorted()
+  const ordered = cargoPathDependencyClosure({ manifest, member: workspaceMember, readManifest })
   const narrowed = manifest.replace(
     /^members = \[[\s\S]*?^\]/m,
     `members = ${JSON.stringify(ordered)}`,

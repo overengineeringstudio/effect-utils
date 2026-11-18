@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config'
 
+// Shared CLI golden fixtures freeze the legacy, process-local calendar bucket in UTC.
+process.env.TZ = 'UTC'
+
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],

@@ -634,15 +634,21 @@ its Git revision is part of these recipes' identity. Unrelated commits retain
 the same per-platform derivation; edits to declared sources, pinned toolchains,
 archives or validation contracts invalidate it.
 
-Scoped Rust native products default to an embedded JSON stamp with the shared
-`type: "nix"`, `version`, `rev`, and `dirty` fields. `rev` is the first seven
-hexadecimal characters of the existing `sourceDigest`, not a Git revision;
-`dirty: false` describes the immutable source projection, not checkout
-cleanliness. No commit timestamp is invented for this source-addressed policy.
-An explicit `product.cliBuildStamp` overrides the default for callers selecting
-another identity policy. Buck rules opting into `cliBuildStamp` receive the
-stamp through `build_identity.cli_build_stamp`, so unrelated commits cannot
-change the embedded native version.
+Scoped Rust native products do not synthesize embedded VCS stamps from
+`sourceDigest`: a source-store digest is not a revision or commit timestamp.
+The shipped Nix CLI adds an argv[0]-preserving binary wrapper that sets
+`CLI_BUILD_STAMP` using the shared `mkNixStamp`, with the package version and
+flake source metadata (`rev`/`dirtyRev`, `lastModified`). This changes the thin
+distribution wrapper when provenance changes, not the source-addressed native
+payload or Buck action key. The validated unwrapped product and its descriptor
+remain available through passthru. Shell completions remain attached to that
+validated product.
+
+Consumers may explicitly supply a canonical `product.cliBuildStamp` to select
+an embedded identity policy; Buck rules opting into `cliBuildStamp` receive it
+through `build_identity.cli_build_stamp`. Embedded Nix stamps retain precedence
+over runtime stamps. Stage-zero build tools expose neither a version surface
+nor their own telemetry identity, so they remain unstamped and source-addressed.
 
 Files passed to build-time helpers must be content-scoped too. The stage-zero
 root metadata, Cargo profile reader and descriptor contract are materialized

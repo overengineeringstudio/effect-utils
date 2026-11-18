@@ -288,7 +288,10 @@ fn block(
     let address = match &host.status {
         Status::Resolving => vec![span(Role::Dim, "resolving\u{2026}")],
         Status::Running(addr) => vec![span(Role::Pill, format!(" {addr} "))],
-        Status::Failed { reason, .. } => vec![span(Role::Bad, format!("\u{2717} {reason}"))],
+        Status::Failed { reason, .. } => vec![span(
+            Role::Bad,
+            format!("\u{2717} {reason} {}", crate::error_suffix()),
+        )],
     };
     let spark_width = stacked_spark_width(width);
     let main_hover = hover
@@ -628,7 +631,10 @@ fn rows(hosts: &[HostState], timeline: &Timeline, width: usize, footer: bool) ->
         ];
         match &host.status {
             Status::Failed { reason, .. } => {
-                line.push(span(Role::Bad, format!("\u{2717} {reason}")));
+                line.push(span(
+                    Role::Bad,
+                    format!("\u{2717} {reason} {}", crate::error_suffix()),
+                ));
                 lines.push(line);
                 lines.extend(history(host));
                 continue;
@@ -750,7 +756,7 @@ fn summary(hosts: &[HostState], current_interval: Duration, width: usize) -> Lin
     if let Some(label) = egress {
         line.push(span(Role::Dim, format!(" · {label}")));
     }
-    let version = crate::VERSION.as_str();
+    let version = crate::version();
     let used: usize = line.iter().map(|span| span.text.width()).sum();
     if used + 12 + version.width() <= width {
         line.push(span(Role::Dim, format!(" · pingping {version}")));

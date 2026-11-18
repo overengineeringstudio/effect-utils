@@ -1,14 +1,16 @@
-{ pkgs }:
+{ pkgs, sourceInfo }:
 let
   lib = pkgs.lib;
   repositoryRoot = ../.;
   workspaceRoot = repositoryRoot + "/rust";
+  cliBuildStamp = import ./workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
 
   inventory = builtins.fromJSON (builtins.readFile ./stage0-cargo/inventory.json);
   sharedRootFiles = [
     (repositoryRoot + "/rust-toolchain.toml")
     (repositoryRoot + "/nix/buck2-stage0-tools.nix")
     (repositoryRoot + "/nix/stage0-cargo/inventory.json")
+    (repositoryRoot + "/nix/workspace-tools/lib/cli-build-stamp.nix")
   ];
   # Coercing a file beneath a flake store root retains that whole root's
   # context. Materialize the bytes instead, so unrelated commits do not change
@@ -58,6 +60,12 @@ let
       cargoRoot = "rust";
       buildAndTestSubdir = "rust";
       cargoLock.lockFile = builtins.toFile "Cargo.lock" definition.lock;
+      CLI_BUILD_STAMP = builtins.toJSON (cliBuildStamp.mkNixStamp {
+        version = "0.0.0";
+        rev = sourceInfo.rev or null;
+        dirtyRev = sourceInfo.dirtyRev or null;
+        lastModified = sourceInfo.lastModified;
+      });
       preBuild = ''
         export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$NIX_BUILD_TOP=/build"
       '';

@@ -74,6 +74,7 @@ rec {
             ;
           capabilities = buck2Capabilities;
           repositoryRoot = ./.;
+          sourceInfo = self.sourceInfo;
         };
         buck2 = import ./nix/buck2.nix { inherit pkgs; };
         mkBuckProductFromSource = import ./nix/buck2-products/from-source.nix {
@@ -328,6 +329,7 @@ rec {
               compiled = buckCompiledProducts;
             };
             repositoryRoot = ./.;
+            sourceInfo = self.sourceInfo;
             producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           };
         }

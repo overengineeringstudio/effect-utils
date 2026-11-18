@@ -5,18 +5,24 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::LazyLock;
 
 use otelite::inspect_cmd::{inspect, parse_attr, InspectOpts};
 use otelite::run::{capture, run, CaptureOpts, RunOpts};
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+static BUILD_IDENTITY: LazyLock<cli_build_identity::BuildIdentity> = LazyLock::new(|| {
+    cli_build_identity::build_identity_from_env(
+        env!("CARGO_PKG_VERSION"),
+        option_env!("CLI_BUILD_STAMP"),
+    )
+});
 const EX_USAGE: u8 = 64;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("--version") | Some("-V") => {
-            println!("otelite {VERSION}");
+            println!("otelite {}", BUILD_IDENTITY.display_version);
             ExitCode::SUCCESS
         }
         Some("--help") | Some("-h") | None => {
@@ -41,7 +47,10 @@ fn main() -> ExitCode {
 }
 
 fn print_help() {
-    eprintln!("otelite {VERSION} — local OTLP capture tool for tests");
+    eprintln!(
+        "otelite {} — local OTLP capture tool for tests",
+        BUILD_IDENTITY.display_version
+    );
     eprintln!();
     eprintln!("usage:");
     eprintln!(

@@ -7,6 +7,7 @@
   baseline,
   repositoryRoot,
   producerCommit,
+  sourceInfo,
 }:
 let
   lib = pkgs.lib;
@@ -37,7 +38,7 @@ let
     (variant "buck2-entrypoint.sh" "\n# launcher independence control\n")
   ];
   recipes =
-    tool:
+    tool: identity:
     let
       mkBuckProductFromSource = import ./from-source.nix {
         inherit pkgs;
@@ -63,7 +64,7 @@ let
           mkBuckProductFromSource
           ;
       };
-      native = import ./native.nix args;
+      native = import ./native.nix (args // { sourceInfo = identity; });
       compiled = import ./compiled.nix args;
     };
   nativeChanged = buck2 // {
@@ -71,7 +72,19 @@ let
       launcherIndependenceControl = "native-change";
     });
   };
-  positive = recipes nativeChanged;
+  positive = recipes nativeChanged sourceInfo;
+  identityChanged =
+    (recipes buck2 (
+      sourceInfo
+      // {
+        # Test-only source revision: changing provenance must not recompile a payload.
+        rev =
+          if (sourceInfo.rev or null) == "1111111111111111111111111111111111111111" then
+            "2222222222222222222222222222222222222222"
+          else
+            "1111111111111111111111111111111111111111";
+      }
+    )).native;
   sourceProduct = product: product.buck2Product or product;
   every =
     predicate: candidate:
@@ -96,7 +109,7 @@ assert lib.assertMsg (
 assert lib.all (
   tool:
   lib.assertMsg (tool.drvPath != buck2.drvPath) "launcher independence: edit did not change launcher"
-  && lib.assertMsg (same (recipes tool)) "launcher independence: launcher edit changed a product"
+  && lib.assertMsg (same (recipes tool sourceInfo)) "launcher independence: launcher edit changed a product"
 ) variants;
 assert lib.assertMsg (every (
   candidate: original:
@@ -105,4 +118,21 @@ assert lib.assertMsg (every (
     (sourceProduct candidate).compileProduct.drvPath != (sourceProduct original).compileProduct.drvPath
   && (sourceProduct candidate).recipeIdentity != (sourceProduct original).recipeIdentity
 ) positive) "launcher independence: native change must change every product";
+assert lib.assertMsg (lib.all
+  (
+    name:
+    let
+      original = baseline.native.${name};
+      candidate = identityChanged.${name};
+    in
+    !(original ? unwrapped)
+    || (
+      candidate.drvPath != original.drvPath
+      &&
+        (sourceProduct candidate).compileProduct.drvPath == (sourceProduct original).compileProduct.drvPath
+      && (sourceProduct candidate).recipeIdentity == (sourceProduct original).recipeIdentity
+    )
+  )
+  (builtins.attrNames baseline.native)
+) "native identity: revision must change the runtime wrapper, not the Buck compile action";
 pkgs.runCommand "buck2-launcher-independence" { } "touch $out"

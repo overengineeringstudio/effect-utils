@@ -59,6 +59,25 @@ artifact ingestion path for tests and tools that already produced a profile.
 `--adapter node-cpuprofile` discovers the Node/V8 `.cpuprofile` artifact itself
 and therefore also requires `--cas-root` or `OTEL_SCRAPE_CAS_ROOT`.
 
+### Build identity
+
+`--version` prints the shared `cli-build-identity` crate's human-facing
+`displayVersion`; wrapper error suffixes use the same resolved identity.
+Telemetry uses its stable `machineVersion` for `scope.version`,
+`telemetry.sdk.version`, and the default `service.version`. The latter is only
+added when neither environment nor flags supply a service name; an explicit
+`service.version` always wins. The structured summary's `version` field uses
+that same machine identity; the help heading uses the display version.
+
+The binary captures `option_env!("CLI_BUILD_STAMP")` and resolves identity once,
+then passes the machine version into library argument parsing and `RunConfig`.
+This boundary matters because Buck compiles the library independently of the
+product stamp. An embedded Nix stamp wins over runtime `CLI_BUILD_STAMP`;
+otherwise the runtime stamp is used. An embedded local stamp is not the binary's
+identity. Without a valid stamp, the shared fallback is the bare package version,
+not a tool-specific `+dev` suffix. Local and Nix display versions include
+commit/run-age details when available; telemetry never includes that prose.
+
 ## Summary And Export Modes
 
 When `--summary-out <file>` or `OTEL_SCRAPE_SUMMARY_OUT` is set, the wrapper

@@ -1,0 +1,700 @@
+[
+  {
+    "name": "package fallback",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "malformed embedded and runtime",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{",
+    "runtimeStamp": "not-json",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "runtime local legacy",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1739999700
+    }
+  },
+  {
+    "name": "runtime local commit age",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true,\"commitTs\":1739740800}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, committed 3 days ago, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1739999700,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "runtime nix",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456 — committed 3 days ago",
+      "machineVersion": "1.2.3+def456",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": false,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "embedded nix overrides runtime local",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false}",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456 — committed 3 days ago",
+      "machineVersion": "1.2.3+def456",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": false,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "embedded nix overrides runtime nix",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false}",
+    "runtimeStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"runtime\",\"commitTs\":1739740800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456 — committed 3 days ago",
+      "machineVersion": "1.2.3+def456",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": false,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "embedded local is ignored",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "embedded local uses runtime nix",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}",
+    "runtimeStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456 — committed 3 days ago",
+      "machineVersion": "1.2.3+def456",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": false,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "nix dirty",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456-dirty — committed 3 days ago, with uncommitted changes",
+      "machineVersion": "1.2.3+def456-dirty",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": true,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "nix already dirty",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456-dirty\",\"commitTs\":1739740800,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456-dirty — committed 3 days ago, with uncommitted changes",
+      "machineVersion": "1.2.3+def456-dirty",
+      "sourceKind": "nix",
+      "rev": "def456-dirty",
+      "dirty": true,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "nix dirty rev clean flag",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456-dirty\",\"commitTs\":1739740800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456-dirty — committed 3 days ago",
+      "machineVersion": "1.2.3+def456-dirty",
+      "sourceKind": "nix",
+      "rev": "def456-dirty",
+      "dirty": false,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "nix build timestamp",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false,\"buildTs\":1739999700}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456 — built 5 min ago",
+      "machineVersion": "1.2.3+def456",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": false,
+      "commitTs": 1739740800,
+      "buildTs": 1739999700
+    }
+  },
+  {
+    "name": "nix dirty build timestamp",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":true,\"buildTs\":1739999700}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456-dirty — built 5 min ago, with uncommitted changes",
+      "machineVersion": "1.2.3+def456-dirty",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": true,
+      "commitTs": 1739740800,
+      "buildTs": 1739999700
+    }
+  },
+  {
+    "name": "age 0",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1740000000,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, just now)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1740000000
+    }
+  },
+  {
+    "name": "age 59",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999941,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, just now)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739999941
+    }
+  },
+  {
+    "name": "age 60",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999940,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 1 min ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739999940
+    }
+  },
+  {
+    "name": "age 3599",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739996401,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 59 min ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739996401
+    }
+  },
+  {
+    "name": "age 3600",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739996400,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 1 hour ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739996400
+    }
+  },
+  {
+    "name": "age 7200",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739992800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 2 hours ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739992800
+    }
+  },
+  {
+    "name": "age 86399",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739913601,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 23 hours ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739913601
+    }
+  },
+  {
+    "name": "age 86400",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739913600,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 1 day ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739913600
+    }
+  },
+  {
+    "name": "age 172800",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739827200,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 2 days ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739827200
+    }
+  },
+  {
+    "name": "age 604800",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739395200,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 1 week ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1739395200
+    }
+  },
+  {
+    "name": "age 1209600",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1738790400,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 2 weeks ago)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1738790400
+    }
+  },
+  {
+    "name": "age 2592000",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1737408000,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, Jan 20)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1737408000
+    }
+  },
+  {
+    "name": "age 31536000",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1708464000,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, Feb 20)",
+      "machineVersion": "0.1.0+local.abc123",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": false,
+      "buildTs": 1708464000
+    }
+  },
+  {
+    "name": "future timestamp",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1740000300,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, just now, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1740000300
+    }
+  },
+  {
+    "name": "fractional timestamp",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999939.9,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 1 min ago, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1739999939.9
+    }
+  },
+  {
+    "name": "whitespace runtime",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "  {\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}\n",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1739999700
+    }
+  },
+  {
+    "name": "optional malformed local timestamp",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true,\"commitTs\":\"invalid\"}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1739999700
+    }
+  },
+  {
+    "name": "optional malformed nix timestamp",
+    "baseVersion": "0.1.0",
+    "buildStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false,\"buildTs\":\"invalid\"}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "1.2.3",
+      "displayVersion": "1.2.3+def456 — committed 3 days ago",
+      "machineVersion": "1.2.3+def456",
+      "sourceKind": "nix",
+      "rev": "def456",
+      "dirty": false,
+      "commitTs": 1739740800
+    }
+  },
+  {
+    "name": "invalid required 32",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "null",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 33",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "[]",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 34",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "3",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 35",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 36",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":\"true\"}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 37",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 38",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":\"1\",\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 39",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"local\",\"rev\":3,\"ts\":1739999700,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 40",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 41",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"nix\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "invalid required 42",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "{\"type\":\"other\"}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "runtime ECMAScript whitespace",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "\ufeff\u00a0\u000b{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}\f\u2028",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0 — running from local source (abc123, 5 min ago, with uncommitted changes)",
+      "machineVersion": "0.1.0+local.abc123.dirty",
+      "sourceKind": "local",
+      "rev": "abc123",
+      "dirty": true,
+      "buildTs": 1739999700
+    }
+  },
+  {
+    "name": "runtime NEL is not ECMAScript whitespace",
+    "baseVersion": "0.1.0",
+    "buildStamp": "__CLI_BUILD_STAMP__",
+    "runtimeStamp": "\u0085{\"type\":\"local\",\"rev\":\"abc123\",\"ts\":1739999700,\"dirty\":true}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  },
+  {
+    "name": "embedded BOM is not JSON whitespace",
+    "baseVersion": "0.1.0",
+    "buildStamp": "\ufeff{\"type\":\"nix\",\"version\":\"1.2.3\",\"rev\":\"def456\",\"commitTs\":1739740800,\"dirty\":false}",
+    "now": 1740000000,
+    "expected": {
+      "baseVersion": "0.1.0",
+      "displayVersion": "0.1.0",
+      "machineVersion": "0.1.0",
+      "sourceKind": "package",
+      "dirty": false
+    }
+  }
+]

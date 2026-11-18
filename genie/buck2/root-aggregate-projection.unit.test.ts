@@ -38,6 +38,7 @@ describe('root Buck aggregate projection', () => {
         '//buck2/toolchains:archive_tool',
         '//buck2/toolchains:product_tool',
         '//rust/work-storage:conformance-receipt',
+        '//rust/cli-build-identity:golden-receipt',
         '//rust/ci-storage:tests-receipt',
         '//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-node',
         '//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-bun',

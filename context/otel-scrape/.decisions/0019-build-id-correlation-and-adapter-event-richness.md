@@ -63,17 +63,11 @@ M25 (see the SOTA re-critique), both cheap and both observable in fresh OTLP.
   `dirty` into the otel-scrape build (`flake.nix` → `nix/build.nix`), which builds
   a NixStamp JSON with `builtins.toJSON` and exposes it as the `CLI_BUILD_STAMP`
   build-env var.
-- Rust reads it at compile time (`option_env!("CLI_BUILD_STAMP")`) and resolves
-  `machineVersion` with the fleet precedence: a compile-time **NixStamp** (the
-  binary's own build) wins; else a runtime `CLI_BUILD_STAMP` (a devenv-shell
-  LocalStamp, or a NixStamp) is honored; else the fallback. A compile-time
-  _LocalStamp_ — captured when the crate is built inside a devenv shell — is
-  deliberately **not** honored as the binary's identity (it describes the shell).
-- **Fallback marks a dev build**: with no honored stamp, `machineVersion` is
-  `<baseVersion>+dev`, never bare `<baseVersion>`. A deliberate local divergence
-  from the TS `package` sourceKind (which returns the bare base): otel-scrape has
-  no package-registry distribution, so a stampless build is always a local dev
-  build, and a bare `0.0.0` discriminates no build. Version resolution never fails.
+- The binary captures `option_env!("CLI_BUILD_STAMP")` and passes it to the shared
+  `rust/cli-build-identity` resolver. The shared library is compiled independently
+  of product stamps. Embedded Nix stamps win over runtime stamps; embedded local
+  stamps describe the build shell and are ignored. Without a valid stamp, both
+  version forms fall back to the package base version, matching TypeScript.
 - **`schemaUrl`** (`https://opentelemetry.io/schemas/1.37.0`, the targeted semconv
   version) is emitted on both the OTLP ResourceSpans and the ScopeSpans.
 - `telemetry.sdk.version` carries otel-scrape's **`machineVersion`** too: it names
@@ -89,13 +83,11 @@ M25 (see the SOTA re-critique), both cheap and both observable in fresh OTLP.
   `service.version` in `OTEL_RESOURCE_ATTRIBUTES` always wins). Stamping earlier —
   gated only on env — let the flag path smuggle otel-scrape's build onto a
   harness-named service.
-- `--version` prints the `machineVersion` (not the bare crate `0.0.0`), so the
-  human-facing version names the actual build like the telemetry does. A full
-  relative-time `displayVersion` renderer is a documented follow-up.
-- `parse_build_stamp` (the Rust reader) is deliberately lenient vs. the TS
-  contract: it accepts a NixStamp missing `commitTs` and defaults `dirty=false`,
-  where the TS parser rejects. Harmless here — only `version`/`rev`/`dirty` feed
-  `machineVersion`, and `commitTs` is unused by the Rust reader.
+- `--version` prints the shared `displayVersion`; telemetry uses the corresponding
+  stable `machineVersion`. Error suffixes derive from that same resolved identity.
+- The shared Rust parser accepts the canonical local/Nix shapes with the same
+  required fields and optional-timestamp handling as the TypeScript resolver.
+  Both implementations consume the same golden parity fixtures.
 
 ### Adapter-event richness
 

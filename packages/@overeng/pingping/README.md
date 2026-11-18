@@ -35,6 +35,11 @@ received none, and 2 for a setup error. If Linux refuses ICMP datagram sockets,
 configure `net.ipv4.ping_group_range` for the user's group; pingping does not
 fall back to a privileged implementation.
 
+`pingping --version` displays the shared build identity, including source revision
+and age when available. User-facing errors carry the same identity as
+`(pingping <displayVersion>)`, including argument errors, probe failures, and
+interactive prompt errors. `--help` and `--version` remain successful exits.
+
 ## Interactive View
 
 | Input                                    | Effect                                                      |

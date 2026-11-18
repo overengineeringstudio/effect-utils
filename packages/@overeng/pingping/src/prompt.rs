@@ -85,8 +85,8 @@ impl Prompt {
         self.error = Some(Cow::Borrowed(error));
     }
 
-    /// The footer line with a visible insertion caret. Any error precedes the
-    /// key hints so it stays within an ordinary 80-column terminal.
+    /// The footer line with a visible insertion caret. Any error and its build
+    /// identity precede the key hints.
     #[must_use]
     pub fn line(&self) -> String {
         let mut line = String::with_capacity(self.input.len() + 80);
@@ -111,6 +111,8 @@ impl Prompt {
             (Some(error), mode) => {
                 line.push_str(" — ");
                 line.push_str(error);
+                line.push(' ');
+                line.push_str(crate::error_suffix());
                 if !matches!(mode, Mode::Remove(..)) {
                     line.push_str(" [Esc cancel]");
                 }
@@ -416,7 +418,9 @@ mod tests {
         let mut prompt = Prompt::remove(9, "host");
         assert_eq!(prompt.handle(&key(KeyCode::Enter)), PromptAction::None);
         assert_eq!(prompt.handle(&key(KeyCode::Char('q'))), PromptAction::None);
-        assert!(prompt.line().ends_with("— press y or n"));
+        assert!(prompt
+            .line()
+            .ends_with(&format!("— press y or n {}", crate::error_suffix())));
         for c in ['y', 'Y'] {
             assert_eq!(
                 prompt.handle(&key(KeyCode::Char(c))),

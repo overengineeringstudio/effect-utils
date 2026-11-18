@@ -39,11 +39,6 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 // Emitted as schemaUrl on the OTLP resource and instrumentation scope so a
 // consumer can resolve attribute semantics deterministically.
 const SEMCONV_SCHEMA_URL: &str = "https://opentelemetry.io/schemas/1.37.0";
-// Build stamp baked at compile time by Nix (decision 0019): a NixStamp JSON in
-// the shared build-versioning contract. `None` for a plain `cargo build`; in a
-// devenv shell `option_env!` instead captures the exported LocalStamp, which is
-// deliberately NOT honored as the binary's own identity (see resolve_machine_version).
-pub const BUILD_STAMP: Option<&str> = option_env!("CLI_BUILD_STAMP");
 const EX_USAGE: u8 = 64;
 const TRACE_FLAGS_SAMPLED: &str = "01";
 const SUMMARY_ENV: &str = "OTEL_SCRAPE_SUMMARY_OUT";
@@ -135,6 +130,8 @@ const PROCESS_OBSERVATION_DEGRADED_REASONS: &[ProcessObservationDegradedReason] 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunConfig {
+    /// Resolved by the binary and shared by all telemetry version fields.
+    pub machine_version: String,
     pub summary_out: Option<PathBuf>,
     pub adapter: String,
     pub cas_root: Option<PathBuf>,
@@ -240,9 +237,9 @@ pub struct TraceContext {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Summary {
+pub struct Summary<'a> {
     schema: &'static str,
-    version: &'static str,
+    version: &'a str,
     command: CommandSummary,
     output: OutputSummary,
     resources: ResourceSummary,
@@ -617,12 +614,12 @@ struct DegradedSummary {
     otlp_export: bool,
 }
 
-pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
+pub fn parse_args(args: &[String], machine_version: &str) -> Result<CommandRequest, UsageError> {
     let mut summary_out: Option<PathBuf> = std::env::var_os(SUMMARY_ENV).map(PathBuf::from);
     let mut adapter = String::from("none");
     let mut cas_root: Option<PathBuf> = std::env::var_os(CAS_ROOT_ENV).map(PathBuf::from);
     let mut cas_pin: Option<String> = None;
-    let otlp_env = otlp_env_config();
+    let otlp_env = otlp_env_config(machine_version);
     let mut otlp_endpoint = otlp_env.endpoint;
     let otlp_headers = otlp_env.headers;
     let otlp_timeout = otlp_env.timeout;
@@ -828,14 +825,11 @@ pub fn parse_args(args: &[String]) -> Result<CommandRequest, UsageError> {
         && !service_name_from_flag
         && !otlp_env.service_version_from_env
     {
-        set_resource_attribute(
-            &mut resource_attributes,
-            "service.version",
-            &build_machine_version(),
-        );
+        set_resource_attribute(&mut resource_attributes, "service.version", machine_version);
     }
 
     Ok(CommandRequest::Run(Box::new(RunConfig {
+        machine_version: machine_version.to_owned(),
         summary_out,
         adapter,
         cas_root,
@@ -908,8 +902,8 @@ fn parse_trace_link_toggle(value: &str) -> Option<bool> {
     }
 }
 
-pub fn print_help() {
-    eprintln!("otel-scrape {VERSION} — process wrapper for command telemetry");
+pub fn print_help(display_version: &str) {
+    eprintln!("otel-scrape {display_version} — process wrapper for command telemetry");
     eprintln!();
     eprintln!("usage:");
     eprintln!(
@@ -917,134 +911,6 @@ pub fn print_help() {
         adapter_choices().join("|")
     );
     eprintln!("  otel-scrape --version | --help");
-}
-
-pub fn print_version() {
-    // Emit the build machineVersion (decision 0019), not the bare crate `0.0.0`,
-    // so `--version` names the actual build like the telemetry does — one
-    // consistent identity. A full relative-time displayVersion renderer is a
-    // documented follow-up.
-    println!("otel-scrape {}", build_machine_version());
-}
-
-/// Resolve the machine-readable build version for telemetry (decision 0019),
-/// mirroring the shared build-versioning contract
-/// (`@overeng/utils/node/cli-version` `resolveCliMachineVersion`). Precedence:
-///   1. a compile-time Nix build stamp (`option_env!`) — the binary's own build;
-///   2. else a runtime `CLI_BUILD_STAMP` (a devenv-shell LocalStamp or a NixStamp);
-///   3. else `<baseVersion>+dev`.
-///
-/// The step-3 `+dev` marker is a deliberate local divergence from the TS
-/// `package` case (which returns the bare base): otel-scrape has no
-/// package-registry distribution, so a stampless build is always a local dev
-/// build, and a bare `0.0.0` discriminates no build — the exact gap H5 closes.
-fn build_machine_version() -> String {
-    resolve_machine_version(
-        BUILD_STAMP,
-        std::env::var("CLI_BUILD_STAMP").ok().as_deref(),
-        VERSION,
-    )
-}
-
-/// Whether this binary was compiled with a baked NixStamp (decision 0019) — the
-/// case where a runtime `CLI_BUILD_STAMP` is overridden by the binary's own
-/// build identity. Lets an integration test skip the runtime-stamp/fallback
-/// assertions that only hold for a stampless (plain `cargo`/devenv) build.
-pub fn compiled_with_nix_stamp() -> bool {
-    matches!(
-        BUILD_STAMP.and_then(parse_build_stamp),
-        Some(BuildStamp::Nix { .. })
-    )
-}
-
-/// Pure resolution of the machine version from the compile-time and runtime
-/// stamps (decision 0019). Kept side-effect-free so every precedence branch is
-/// unit-testable without touching the process environment.
-fn resolve_machine_version(
-    compile_stamp: Option<&str>,
-    runtime_stamp: Option<&str>,
-    base: &str,
-) -> String {
-    // A compile-time stamp is honored ONLY when it is a NixStamp: in a devenv
-    // shell `option_env!` also captures the exported LocalStamp, which describes
-    // the shell, not this binary, and must not masquerade as its build identity.
-    // The Nix build path always bakes a NixStamp.
-    if let Some(BuildStamp::Nix {
-        version,
-        rev,
-        dirty,
-    }) = compile_stamp.and_then(parse_build_stamp)
-    {
-        return nix_machine_version(&version, &rev, dirty);
-    }
-    match runtime_stamp.and_then(parse_build_stamp) {
-        Some(BuildStamp::Nix {
-            version,
-            rev,
-            dirty,
-        }) => nix_machine_version(&version, &rev, dirty),
-        Some(BuildStamp::Local { rev, dirty }) => local_machine_version(base, &rev, dirty),
-        None => format!("{base}+dev"),
-    }
-}
-
-/// machineVersion for a NixStamp — `<version>+<rev>[-dirty]` (mirrors the TS
-/// `nixMachineVersion`). The rev already carries `-dirty` when the flake saw a
-/// dirty tree (`dirtyShortRev`), so the suffix is not doubled.
-fn nix_machine_version(version: &str, rev: &str, dirty: bool) -> String {
-    let dirty_suffix = if dirty && !rev.ends_with("-dirty") {
-        "-dirty"
-    } else {
-        ""
-    };
-    format!("{version}+{rev}{dirty_suffix}")
-}
-
-/// machineVersion for a LocalStamp — `<base>+local.<rev>[.dirty]` (mirrors the
-/// TS `localMachineVersion`).
-fn local_machine_version(base: &str, rev: &str, dirty: bool) -> String {
-    let dirty_suffix = if dirty { ".dirty" } else { "" };
-    format!("{base}+local.{rev}{dirty_suffix}")
-}
-
-/// Parsed build stamp in the shared build-versioning contract (decision 0019).
-enum BuildStamp {
-    Nix {
-        version: String,
-        rev: String,
-        dirty: bool,
-    },
-    Local {
-        rev: String,
-        dirty: bool,
-    },
-}
-
-/// Parse a `CLI_BUILD_STAMP` JSON string. Defensive: any missing/mistyped field
-/// yields `None` so a malformed stamp degrades to the `+dev` fallback rather
-/// than failing the run (decision 0019: never fail on version resolution).
-fn parse_build_stamp(raw: &str) -> Option<BuildStamp> {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return None;
-    }
-    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
-    let dirty = value
-        .get("dirty")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    match value.get("type").and_then(|v| v.as_str())? {
-        "nix" => Some(BuildStamp::Nix {
-            version: value.get("version")?.as_str()?.to_owned(),
-            rev: value.get("rev")?.as_str()?.to_owned(),
-            dirty,
-        }),
-        "local" => Some(BuildStamp::Local {
-            rev: value.get("rev")?.as_str()?.to_owned(),
-            dirty,
-        }),
-        _ => None,
-    }
 }
 
 pub fn run(config: RunConfig) -> io::Result<i32> {
@@ -2276,19 +2142,19 @@ fn tee_reader<R: Read, W: Write>(mut reader: R, mut writer: W) -> io::Result<Vec
     Ok(captured)
 }
 
-fn summary_for_status(
-    config: &RunConfig,
+fn summary_for_status<'a>(
+    config: &'a RunConfig,
     trace: &TraceContext,
     child_traceparent: &str,
     child: &ChildRun,
     duration_ms: u128,
     artifacts: &ArtifactSummary,
     adapter: &AdapterRun,
-) -> io::Result<Summary> {
+) -> io::Result<Summary<'a>> {
     let cwd = std::env::current_dir()?;
     Ok(Summary {
         schema: telemetry_registry::schemas::SUMMARY_V1,
-        version: VERSION,
+        version: &config.machine_version,
         command: CommandSummary {
             program: program_basename(config.argv.first().map(String::as_str)),
             argv_hash: stable_hash_lines(&config.argv),
@@ -2560,7 +2426,7 @@ fn export_command_span(
     // tied to a specific build/commit — not the bare crate `0.0.0`, which
     // discriminated no build. schemaUrl pins the semconv version on both the
     // resource and the scope so attribute semantics resolve deterministically.
-    let scope_version = build_machine_version();
+    let scope_version = &config.machine_version;
     let body = json!({
         "resourceSpans": [{
             "resource": {
@@ -2825,7 +2691,7 @@ fn endpoint_for_warning(value: &str) -> String {
         .unwrap_or_else(|_| String::from("<invalid http endpoint>"))
 }
 
-fn otlp_env_config() -> OtlpEnvConfig {
+fn otlp_env_config(machine_version: &str) -> OtlpEnvConfig {
     let sdk_disabled = env_bool(OTEL_SDK_DISABLED_ENV);
     let exporter_enabled = otlp_trace_exporter_enabled();
     let protocol = signal_env_string(OTLP_TRACES_PROTOCOL_ENV, OTLP_PROTOCOL_ENV)
@@ -2880,14 +2746,12 @@ fn otlp_env_config() -> OtlpEnvConfig {
         "telemetry.sdk.name",
         "otel-scrape",
     );
-    // telemetry.sdk.version names this instrumentation artifact; it is the same
-    // otel-scrape binary that scope.version identifies, so it carries the build
-    // machineVersion too (decision 0019) — one consistent build identity, never a
-    // bare `0.0.0` that discriminates no build.
+    // The binary resolves this once, keeping SDK, scope, and default service
+    // identity aligned even when Buck compiles the library separately.
     set_resource_attribute(
         &mut resource_attributes,
         "telemetry.sdk.version",
-        &build_machine_version(),
+        machine_version,
     );
     // Resolve service.name: OTEL_SERVICE_NAME wins, then a service.name supplied
     // via OTEL_RESOURCE_ATTRIBUTES, else otel-scrape's own default.
@@ -3467,7 +3331,7 @@ fn validate_pin_name(name: &str) -> Result<(), UsageError> {
     })
 }
 
-fn write_summary(path: &Path, summary: &Summary) -> io::Result<()> {
+fn write_summary(path: &Path, summary: &Summary<'_>) -> io::Result<()> {
     let mut bytes = serde_json::to_vec(summary)?;
     bytes.push(b'\n');
     write_bytes_atomic(path, &bytes)
@@ -3738,65 +3602,17 @@ mod tests {
         assert_eq!(parse_trace_link_toggle(""), None);
     }
 
-    // Build-id correlation (H5, decision 0019): the pure precedence resolver is
-    // exercised branch-by-branch so it is independent of the process environment
-    // and of whether the crate was compiled with a baked NixStamp.
     #[test]
-    fn machine_version_prefers_compile_time_nix_stamp() {
-        // A compile-time NixStamp is the binary's own build and wins over any
-        // runtime stamp.
-        let compile =
-            r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":42,"dirty":false}"#;
-        let runtime = r#"{"type":"local","rev":"ffff","ts":1,"dirty":true}"#;
+    fn threads_resolved_machine_version_into_telemetry_config() {
+        let machine_version = "1.2.3+binary7";
+        let args = vec!["--".to_owned(), "true".to_owned()];
+        let CommandRequest::Run(config) = parse_args(&args, machine_version).unwrap() else {
+            panic!("expected run request");
+        };
+        assert_eq!(config.machine_version, machine_version);
         assert_eq!(
-            resolve_machine_version(Some(compile), Some(runtime), "0.0.0"),
-            "0.0.0+abc1234"
-        );
-    }
-
-    #[test]
-    fn machine_version_nix_stamp_marks_dirty_without_doubling() {
-        let clean = r#"{"type":"nix","version":"0.0.0","rev":"abc1234","commitTs":1,"dirty":true}"#;
-        assert_eq!(
-            resolve_machine_version(Some(clean), None, "0.0.0"),
-            "0.0.0+abc1234-dirty"
-        );
-        // The flake supplies dirtyShortRev already carrying `-dirty`; the suffix
-        // must not be doubled.
-        let already =
-            r#"{"type":"nix","version":"0.0.0","rev":"abc1234-dirty","commitTs":1,"dirty":true}"#;
-        assert_eq!(
-            resolve_machine_version(Some(already), None, "0.0.0"),
-            "0.0.0+abc1234-dirty"
-        );
-    }
-
-    #[test]
-    fn machine_version_uses_runtime_local_stamp_when_no_compile_stamp() {
-        // In a devenv shell option_env! captures a LocalStamp — it describes the
-        // shell, not the binary, so a compile-time LocalStamp is NOT honored and
-        // resolution falls through to the runtime path.
-        let local = r#"{"type":"local","rev":"deadbee","ts":1,"dirty":false}"#;
-        assert_eq!(
-            resolve_machine_version(Some(local), Some(local), "0.0.0"),
-            "0.0.0+local.deadbee"
-        );
-        let dirty = r#"{"type":"local","rev":"deadbee","ts":1,"dirty":true}"#;
-        assert_eq!(
-            resolve_machine_version(None, Some(dirty), "0.0.0"),
-            "0.0.0+local.deadbee.dirty"
-        );
-    }
-
-    #[test]
-    fn machine_version_falls_back_to_dev_marker_when_unstamped() {
-        // Plain `cargo build` with no stamp anywhere: never bare `0.0.0` (which
-        // discriminates no build), always the honest `+dev` marker.
-        assert_eq!(resolve_machine_version(None, None, "0.0.0"), "0.0.0+dev");
-        // A malformed stamp degrades to the same fallback rather than failing.
-        assert_eq!(
-            resolve_machine_version(Some("not json"), Some("{}"), "0.0.0"),
-            "0.0.0+dev"
+            resource_attribute(&config.resource_attributes, "telemetry.sdk.version").as_deref(),
+            Some(machine_version)
         );
     }
 
@@ -3810,34 +3626,31 @@ mod tests {
             "hi".to_owned(),
         ];
 
-        let request = parse_args(&args).unwrap();
+        let request = parse_args(&args, VERSION).unwrap();
 
         assert_eq!(
             request,
             CommandRequest::Run(Box::new(RunConfig {
+                machine_version: VERSION.to_owned(),
                 summary_out: Some(PathBuf::from("summary.json")),
                 adapter: "none".to_owned(),
                 cas_root: None,
                 cas_pin: None,
-                otlp_endpoint: otlp_env_config().endpoint,
-                otlp_headers: otlp_env_config().headers,
-                otlp_timeout: otlp_env_config().timeout,
-                otlp_export_enabled: otlp_env_config().export_enabled,
-                service_name: otlp_env_config().service_name,
+                otlp_endpoint: otlp_env_config(VERSION).endpoint,
+                otlp_headers: otlp_env_config(VERSION).headers,
+                otlp_timeout: otlp_env_config(VERSION).timeout,
+                otlp_export_enabled: otlp_env_config(VERSION).export_enabled,
+                service_name: otlp_env_config(VERSION).service_name,
                 resource_attributes: {
                     // Mirror parse_args exactly: with no --service-name flag it
                     // stamps the default service.version after the flag loop only
                     // when service.name is otel-scrape's own default (decision
                     // 0019). Gate on the same env flags so this holds whether or
                     // not the ambient env supplies a service.name.
-                    let otlp_env = otlp_env_config();
+                    let otlp_env = otlp_env_config(VERSION);
                     let mut attrs = otlp_env.resource_attributes;
                     if !otlp_env.service_name_from_env && !otlp_env.service_version_from_env {
-                        set_resource_attribute(
-                            &mut attrs,
-                            "service.version",
-                            &build_machine_version(),
-                        );
+                        set_resource_attribute(&mut attrs, "service.version", VERSION);
                     }
                     attrs
                 },
@@ -3868,34 +3681,31 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let request = parse_args(&args).unwrap();
+        let request = parse_args(&args, VERSION).unwrap();
 
         assert_eq!(
             request,
             CommandRequest::Run(Box::new(RunConfig {
+                machine_version: VERSION.to_owned(),
                 summary_out: None,
                 adapter: "none".to_owned(),
                 cas_root: Some(PathBuf::from("cas")),
                 cas_pin: Some("runs/run-1".to_owned()),
-                otlp_endpoint: otlp_env_config().endpoint,
-                otlp_headers: otlp_env_config().headers,
-                otlp_timeout: otlp_env_config().timeout,
-                otlp_export_enabled: otlp_env_config().export_enabled,
-                service_name: otlp_env_config().service_name,
+                otlp_endpoint: otlp_env_config(VERSION).endpoint,
+                otlp_headers: otlp_env_config(VERSION).headers,
+                otlp_timeout: otlp_env_config(VERSION).timeout,
+                otlp_export_enabled: otlp_env_config(VERSION).export_enabled,
+                service_name: otlp_env_config(VERSION).service_name,
                 resource_attributes: {
                     // Mirror parse_args exactly: with no --service-name flag it
                     // stamps the default service.version after the flag loop only
                     // when service.name is otel-scrape's own default (decision
                     // 0019). Gate on the same env flags so this holds whether or
                     // not the ambient env supplies a service.name.
-                    let otlp_env = otlp_env_config();
+                    let otlp_env = otlp_env_config(VERSION);
                     let mut attrs = otlp_env.resource_attributes;
                     if !otlp_env.service_name_from_env && !otlp_env.service_version_from_env {
-                        set_resource_attribute(
-                            &mut attrs,
-                            "service.version",
-                            &build_machine_version(),
-                        );
+                        set_resource_attribute(&mut attrs, "service.version", VERSION);
                     }
                     attrs
                 },
@@ -3927,7 +3737,7 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let request = parse_args(&args).unwrap();
+        let request = parse_args(&args, VERSION).unwrap();
 
         let CommandRequest::Run(config) = request else {
             panic!("expected run request");
@@ -3948,7 +3758,7 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let CommandRequest::Run(config) = parse_args(&args).unwrap() else {
+        let CommandRequest::Run(config) = parse_args(&args, VERSION).unwrap() else {
             panic!("expected run request");
         };
 
@@ -3969,7 +3779,7 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let CommandRequest::Run(config) = parse_args(&args).unwrap() else {
+        let CommandRequest::Run(config) = parse_args(&args, VERSION).unwrap() else {
             panic!("expected run request");
         };
 
@@ -3992,7 +3802,7 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let err = parse_args(&args).unwrap_err();
+        let err = parse_args(&args, VERSION).unwrap_err();
 
         assert_eq!(
             err.message(),
@@ -4009,7 +3819,7 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let err = parse_args(&args).unwrap_err();
+        let err = parse_args(&args, VERSION).unwrap_err();
 
         assert_eq!(
             err.message(),
@@ -4028,7 +3838,7 @@ mod tests {
             "console.log('hi')".to_owned(),
         ];
 
-        let err = parse_args(&args).unwrap_err();
+        let err = parse_args(&args, VERSION).unwrap_err();
 
         assert_eq!(
             err.message(),
@@ -4049,7 +3859,7 @@ mod tests {
             "true".to_owned(),
         ];
 
-        let err = parse_args(&args).unwrap_err();
+        let err = parse_args(&args, VERSION).unwrap_err();
 
         assert_eq!(
             err.message(),
@@ -4070,7 +3880,7 @@ mod tests {
                 "true".to_owned(),
             ];
 
-            let err = parse_args(&args).unwrap_err();
+            let err = parse_args(&args, VERSION).unwrap_err();
 
             assert_eq!(
                 err.message(),
@@ -4233,6 +4043,7 @@ mod tests {
 
     fn node_cpuprofile_config(cas_root: PathBuf) -> RunConfig {
         RunConfig {
+            machine_version: VERSION.to_owned(),
             summary_out: None,
             adapter: NODE_CPUPROFILE_ADAPTER.to_owned(),
             cas_root: Some(cas_root),
@@ -4245,7 +4056,7 @@ mod tests {
             resource_attributes: vec![
                 ("telemetry.sdk.language".to_owned(), "rust".to_owned()),
                 ("telemetry.sdk.name".to_owned(), "otel-scrape".to_owned()),
-                ("telemetry.sdk.version".to_owned(), build_machine_version()),
+                ("telemetry.sdk.version".to_owned(), VERSION.to_owned()),
                 ("service.name".to_owned(), "otel-scrape".to_owned()),
             ],
             process_backend: ProcessBackendSelection::DirectChild,

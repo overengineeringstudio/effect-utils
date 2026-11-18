@@ -151,23 +151,10 @@ let
       builtins.pathExists file && projection.filter (toString file) "regular"
     );
   sourceDigest = builtins.hashString "sha256" (toString source);
-  # Rust projections rendered with `cliBuildStamp` read this JSON through
-  # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
-  # provenance: default to their existing source identity, never repository HEAD.
-  # Explicit stamps still belong to the caller's selected identity policy.
-  cliBuildStamp =
-    product.cliBuildStamp or (
-      if sourcePaths != null && product.kind == "native" && cargoWorkspaceRoot != null then
-        builtins.toJSON {
-          type = "nix";
-          version = product.version;
-          rev = builtins.substring 0 7 sourceDigest;
-          # This is an immutable source projection, not a Git cleanliness claim.
-          dirty = false;
-        }
-      else
-        null
-    );
+  # Native source-addressed builds carry no invented VCS identity. The shipped
+  # Nix CLI wrapper supplies a canonical runtime stamp without changing Buck's
+  # compile action. Explicit embedded stamps remain available to consumers.
+  cliBuildStamp = product.cliBuildStamp or null;
 
   target = product.target;
   productName = product.name;

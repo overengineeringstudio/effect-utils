@@ -16,6 +16,10 @@ nix run github:overengineeringstudio/effect-utils#otelite -- --version
 # or in a flake: inputs.effect-utils.packages.<system>.otelite
 ```
 
+`--version` and the help heading use the shared Rust build identity: the package
+version plus source revision and build context from `CLI_BUILD_STAMP`. This
+identifies otelite itself; captured child telemetry keeps its original identity.
+
 Inside this repo's `devenv` shell, `otelite` is already on `PATH` for
 `@overeng/utils-dev/otelite` tests. From a plain shell, either run the app
 directly with `nix run .#otelite -- ...`, prepend the built package to `PATH`,

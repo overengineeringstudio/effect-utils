@@ -83,7 +83,7 @@ fn summary_drops_build_identity_before_other_fields_at_the_width_boundary() {
     let interval = Duration::from_secs(1);
     let wide = summary(&hosts, interval, 400);
     let text = plain(std::slice::from_ref(&wide));
-    let suffix = format!(" · pingping {}", crate::VERSION.as_str());
+    let suffix = format!(" · pingping {}", crate::version());
     assert!(text.ends_with(&suffix));
     assert_eq!(wide.last().unwrap().role, Role::Dim);
     let exact_width = text.width();

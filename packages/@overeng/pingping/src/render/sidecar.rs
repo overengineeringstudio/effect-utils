@@ -128,7 +128,10 @@ fn identity(host: &HostState, merged: bool) -> Vec<Line> {
     let address = match &host.status {
         Status::Running(addr) => span(Role::Pill, format!(" {addr} ")),
         Status::Resolving => span(Role::Dim, "resolving…"),
-        Status::Failed { reason, .. } => span(Role::Bad, format!("✗ {reason}")),
+        Status::Failed { reason, .. } => span(
+            Role::Bad,
+            format!("✗ {reason} {}", crate::error_suffix()),
+        ),
     };
     if merged {
         vec![vec![

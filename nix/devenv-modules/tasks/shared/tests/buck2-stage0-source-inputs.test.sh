@@ -20,7 +20,7 @@ inputs="$(nix eval --impure --json --expr "
   let
     flake = builtins.getFlake \"$NIX_FLAKE_REF\";
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    tools = import $ROOT/nix/buck2-stage0-tools.nix { inherit pkgs; };
+    tools = import $ROOT/nix/buck2-stage0-tools.nix { inherit pkgs; sourceInfo = flake.sourceInfo; };
   in builtins.mapAttrs (_: paths: map (path: pkgs.lib.removePrefix \"$ROOT/\" (toString path)) paths) tools.source-inputs
 ")"
 
@@ -48,6 +48,7 @@ assert_excludes() {
 
 for tool in archive-tool events fingerprint product; do
   assert_contains "$tool" nix/stage0-cargo/inventory.json
+  assert_contains "$tool" nix/workspace-tools/lib/cli-build-stamp.nix
   assert_excludes "$tool" rust/Cargo.toml
   assert_excludes "$tool" rust/Cargo.lock
   assert_contains "$tool" rust-toolchain.toml

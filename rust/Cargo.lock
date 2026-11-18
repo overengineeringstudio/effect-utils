@@ -512,6 +512,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "cli-build-identity"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2054,6 +2063,7 @@ dependencies = [
 name = "otel-scrape"
 version = "0.0.0"
 dependencies = [
+ "cli-build-identity",
  "getrandom 0.4.3",
  "libc",
  "serde",
@@ -2067,6 +2077,7 @@ name = "otelite"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "cli-build-identity",
  "libc",
  "opentelemetry-proto",
  "proptest",
@@ -2147,6 +2158,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "cli-build-identity",
  "crossterm",
  "nix",
  "pingping-netinfo-macos",

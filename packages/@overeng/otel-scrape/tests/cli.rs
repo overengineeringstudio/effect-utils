@@ -2083,26 +2083,22 @@ fn service_version_default_is_gated_when_service_name_flag_supplied() {
     assert!(scope["version"].as_str().is_some_and(|v| !v.is_empty()));
 }
 
-// Build-id trace correlation (H5, decision 0019): scope.version is a
-// build-correlated machineVersion (not the bare crate `0.0.0`, which
-// discriminated no build), and schemaUrl pins the semconv version on both the
-// scope and the resource. This run uses the DEFAULT-service path (no service.name
-// from env or flag), so the resource service.version is stamped and equals
-// scope.version — both the build machineVersion. The exact precedence/fallback
-// logic is covered by the pure unit tests in the library crate; this proves the
-// end-to-end wiring.
+// The binary resolves one identity for display output and all telemetry fields.
+// Runtime NixStamp and embedded NixStamp builds both expose a machine-version
+// prefix in their displayVersion. Shared-crate goldens cover precedence.
 #[test]
 fn scope_version_is_build_correlated_and_schema_url_present() {
     let collector = TestCollector::start(200);
-    // A distinctive runtime NixStamp. On a stampless build (plain cargo / devenv)
-    // it is honored verbatim; on a nix build the baked flake rev wins by
-    // contract. Either way scope.version must be a machineVersion, not `0.0.0`.
+    let temp = tempfile::tempdir().unwrap();
+    let summary_path = temp.path().join("summary.json");
+    // An embedded Nix stamp may override this runtime stamp.
     let out = otel_scrape()
         .env(
             "CLI_BUILD_STAMP",
             r#"{"type":"nix","version":"0.0.0","rev":"beefca7","commitTs":7,"dirty":false}"#,
         )
         .args(["--otlp-endpoint", &collector.endpoint])
+        .args(["--summary-out", summary_path.to_str().unwrap()])
         .args(["--", "sh", "-c", "printf child"])
         .output()
         .unwrap();
@@ -2112,14 +2108,24 @@ fn scope_version_is_build_correlated_and_schema_url_present() {
     let resource_span = &body["resourceSpans"][0];
     let scope = &resource_span["scopeSpans"][0]["scope"];
     let scope_version = scope["version"].as_str().unwrap();
+    assert!(!scope_version.chars().any(char::is_whitespace));
     assert!(
         scope_version.starts_with("0.0.0+") && scope_version != "0.0.0",
         "scope.version must be a build-correlated machineVersion, got {scope_version}"
     );
-    // Without a baked NixStamp, the injected runtime stamp is reflected exactly.
-    if !otel_scrape::compiled_with_nix_stamp() {
-        assert_eq!(scope_version, "0.0.0+beefca7");
-    }
+    let version = otel_scrape()
+        .env(
+            "CLI_BUILD_STAMP",
+            r#"{"type":"nix","version":"0.0.0","rev":"beefca7","commitTs":7,"dirty":false}"#,
+        )
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(version.status.success());
+    let display = String::from_utf8(version.stdout).unwrap();
+    assert!(display
+        .trim()
+        .starts_with(&format!("otel-scrape {scope_version}")));
     // Default-service path: service.name is otel-scrape's own default and the
     // resource service.version is stamped, equal to scope.version — the trace ties
     // to a build on the service resource too (decision 0016 §6, decision 0019).
@@ -2132,6 +2138,13 @@ fn scope_version_is_build_correlated_and_schema_url_present() {
         attr_value(resource_attrs, "service.version"),
         Some(scope_version.to_owned())
     );
+    assert_eq!(
+        attr_value(resource_attrs, "telemetry.sdk.version"),
+        Some(scope_version.to_owned())
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(summary_path).unwrap()).unwrap();
+    assert_eq!(summary["version"], scope_version);
     // schemaUrl pins the semconv version on both the ScopeSpans (the
     // instrumentation scope's schema, a sibling of `scope`) and the ResourceSpans.
     assert_eq!(
@@ -2144,14 +2157,10 @@ fn scope_version_is_build_correlated_and_schema_url_present() {
     );
 }
 
-// The stampless fallback (H5, decision 0019): with no honored stamp anywhere,
-// scope.version is the honest `0.0.0+dev` marker — never bare `0.0.0`. Skipped
-// on a nix build, whose baked NixStamp leaves no unstamped path to exercise.
+// With runtime stamping removed, an embedded Nix identity still wins; otherwise
+// the shared contract returns the bare base version (not a private +dev marker).
 #[test]
-fn scope_version_falls_back_to_dev_when_unstamped() {
-    if otel_scrape::compiled_with_nix_stamp() {
-        return;
-    }
+fn scope_version_matches_display_when_runtime_unstamped() {
     let collector = TestCollector::start(200);
     let out = otel_scrape()
         .env_remove("CLI_BUILD_STAMP")
@@ -2164,7 +2173,18 @@ fn scope_version_falls_back_to_dev_when_unstamped() {
 
     let body: serde_json::Value = serde_json::from_slice(&collector.request().body).unwrap();
     let scope = &body["resourceSpans"][0]["scopeSpans"][0]["scope"];
-    assert_eq!(scope["version"], "0.0.0+dev");
+    let scope_version = scope["version"].as_str().unwrap();
+    let version = otel_scrape()
+        .env_remove("CLI_BUILD_STAMP")
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(version.status.success());
+    let display = String::from_utf8(version.stdout).unwrap();
+    assert!(display
+        .trim()
+        .starts_with(&format!("otel-scrape {scope_version}")));
+    assert!(!scope_version.contains("+dev"));
 }
 
 #[test]
