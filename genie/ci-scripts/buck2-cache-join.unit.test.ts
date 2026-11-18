@@ -319,46 +319,46 @@ describe('cache join', () => {
     ).toMatchInlineSnapshot(`
         "# HELP buck2_cache_lane_eligible_actions Window exact action identities observed by complete trusted main writers before reader invocation start, by cache lane and platform.
         # TYPE buck2_cache_lane_eligible_actions gauge
-        buck2_cache_lane_eligible_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 1 1000000
+        buck2_cache_lane_eligible_actions{repo="public/test",lane="main-reader",platform="linux"} 1 1000000
         # HELP buck2_cache_lane_remote_hit_actions Window remote hit actions by cache lane and platform.
         # TYPE buck2_cache_lane_remote_hit_actions gauge
-        buck2_cache_lane_remote_hit_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 1 1000000
+        buck2_cache_lane_remote_hit_actions{repo="public/test",lane="main-reader",platform="linux"} 1 1000000
         # HELP buck2_cache_lane_avoidable_miss_actions Window avoidable miss actions by cache lane and platform.
         # TYPE buck2_cache_lane_avoidable_miss_actions gauge
-        buck2_cache_lane_avoidable_miss_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_avoidable_miss_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_local_actions Window local actions by cache lane and platform.
         # TYPE buck2_cache_lane_local_actions gauge
-        buck2_cache_lane_local_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_local_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_cold_actions Window cold actions by cache lane and platform.
         # TYPE buck2_cache_lane_cold_actions gauge
-        buck2_cache_lane_cold_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_cold_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_changed_actions Window changed actions by cache lane and platform.
         # TYPE buck2_cache_lane_changed_actions gauge
-        buck2_cache_lane_changed_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_changed_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_noncacheable_actions Window noncacheable actions by cache lane and platform.
         # TYPE buck2_cache_lane_noncacheable_actions gauge
-        buck2_cache_lane_noncacheable_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_noncacheable_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_excluded_actions Window policy-excluded actions, deliberate cache-read-disabled controls and nonfresh repetitions by cache lane and platform.
         # TYPE buck2_cache_lane_excluded_actions gauge
-        buck2_cache_lane_excluded_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_excluded_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_upload_failure_actions Window upload failure actions by cache lane and platform.
         # TYPE buck2_cache_lane_upload_failure_actions gauge
-        buck2_cache_lane_upload_failure_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_upload_failure_actions{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_lane_evidence_gaps Window evidence gaps by cache lane and platform.
         # TYPE buck2_cache_lane_evidence_gaps gauge
-        buck2_cache_lane_evidence_gaps{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        buck2_cache_lane_evidence_gaps{repo="public/test",lane="main-reader",platform="linux"} 0 1000000
         # HELP buck2_cache_join_artifacts Window join artifacts.
         # TYPE buck2_cache_join_artifacts gauge
-        buck2_cache_join_artifacts{repo=\"public/test\"} 2 1000000
+        buck2_cache_join_artifacts{repo="public/test"} 2 1000000
         # HELP buck2_cache_join_runs Window join runs.
         # TYPE buck2_cache_join_runs gauge
-        buck2_cache_join_runs{repo=\"public/test\"} 5 1000000
+        buck2_cache_join_runs{repo="public/test"} 5 1000000
         # HELP buck2_cache_join_window_end_timestamp_seconds Window join window end timestamp seconds.
         # TYPE buck2_cache_join_window_end_timestamp_seconds gauge
-        buck2_cache_join_window_end_timestamp_seconds{repo=\"public/test\"} 1000 1000000
+        buck2_cache_join_window_end_timestamp_seconds{repo="public/test"} 1000 1000000
         # HELP buck2_cache_join_evidence_gaps Window join evidence gaps.
         # TYPE buck2_cache_join_evidence_gaps gauge
-        buck2_cache_join_evidence_gaps{repo=\"public/test\"} 0 1000000
+        buck2_cache_join_evidence_gaps{repo="public/test"} 0 1000000
         # HELP buck2_cache_join_runs_seen Window join runs seen by cache lane.
         # TYPE buck2_cache_join_runs_seen gauge
         # HELP buck2_cache_join_runs_selected Window join runs selected by cache lane.

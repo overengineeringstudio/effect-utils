@@ -159,7 +159,7 @@ export const aggregate = ({
         row.evidence_gaps += gap.count ?? 1
     }
     if (readers.length === 0) continue
-    const reference = (artifact: ActionArtifact, index: number) => ({
+    const reference = ({ artifact, index }: { artifact: ActionArtifact; index: number }) => ({
       lane: artifact.header.metadata.lane ?? row.lane,
       summary: `summary-${index}`,
       actions: `actions-${index}`,
@@ -176,8 +176,8 @@ export const aggregate = ({
       const observation: Observation = {
         id: 'reader',
         sequence: 0,
-        writers: writers.map(reference),
-        readers: [reference(artifact, 0)],
+        writers: writers.map((writer, index) => reference({ artifact: writer, index })),
+        readers: [reference({ artifact, index: 0 })],
         nixSubstitution: { substituted: 0, built: 0 },
       }
       const report = evaluateWarm99({
@@ -207,7 +207,7 @@ export const aggregate = ({
               invocation.buildId === action.buildId &&
               invocation.freshRoot === true &&
               invocation.cacheReadPolicy !== 'disabled-by-design',
-          )
+          ) === true
         ) {
           const key = identity(action)
           if (key !== undefined) local.add(key)
@@ -263,6 +263,10 @@ const emptyOccurrenceCounts = (): OccurrenceCounts => ({
   unavailableBytesCount: 0,
 })
 
+const nonempty = (value: string | null | undefined): value is string =>
+  typeof value === 'string' && value.length > 0
+const measurement = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isSafeInteger(value) === true && value >= 0 ? value : null
 /** Exact completion-window census; callers must declare sampling/retention gaps. */
 export const aggregateOccurrences = ({
   artifacts,
@@ -290,10 +294,6 @@ export const aggregateOccurrences = ({
   }
   const rows = new Map<string, Row>()
   const conflicts = new Set<string>()
-  const nonempty = (value: string | null | undefined): value is string =>
-    typeof value === 'string' && value.length > 0
-  const measurement = (value: number | null | undefined): number | null =>
-    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
   for (const artifact of artifacts) {
     const { header } = artifact
     if (
@@ -308,16 +308,16 @@ export const aggregateOccurrences = ({
     if (header.missingDigestCount !== 0) reasons.add('missing-digest')
     if (header.missingIdentityCount !== 0) reasons.add('missing-occurrence-identity')
     if (header.missingTimestampCount !== 0) reasons.add('missing-native-time')
-    if (!nonempty(header.metadata.runId)) reasons.add('missing-run')
+    if (nonempty(header.metadata.runId) === false) reasons.add('missing-run')
     if (header.metadata.lane === null) reasons.add('missing-lane')
-    if (!nonempty(header.metadata.repo)) reasons.add('missing-repo')
+    if (nonempty(header.metadata.repo) === false) reasons.add('missing-repo')
     for (const invocation of header.invocations) {
       if (invocation.complete !== true) reasons.add('incomplete-invocation')
-      if (!nonempty(invocation.rootId)) reasons.add('missing-root')
+      if (nonempty(invocation.rootId) === false) reasons.add('missing-root')
     }
     for (const action of artifact.actions) {
       const time = action.completedAt
-      if (time === null || !Number.isFinite(time)) {
+      if (time === null || Number.isFinite(time) === false) {
         reasons.add('missing-native-time')
         continue
       }
@@ -325,22 +325,28 @@ export const aggregateOccurrences = ({
       const invocation = header.invocations.find((entry) => entry.buildId === action.buildId)
       const host = action.host ?? header.metadata.host
       let valid = true
-      const requireField = (present: boolean, reason: string) => {
+      const requireField = ({ present, reason }: { present: boolean; reason: string }) => {
         if (present !== true) {
           reasons.add(reason)
           valid = false
         }
       }
-      requireField(nonempty(action.occurrenceId), 'missing-occurrence-identity')
-      requireField(nonempty(action.buildId), 'missing-build-identity')
-      requireField(nonempty(invocation?.rootId), 'missing-root')
-      requireField(nonempty(host), 'missing-host')
-      requireField(nonempty(action.digest), 'missing-digest')
-      requireField(nonempty(action.configuration), 'missing-configuration')
-      requireField(
-        action.startedAt !== null && Number.isFinite(action.startedAt) && action.startedAt <= time,
-        'missing-native-time',
-      )
+      requireField({
+        present: nonempty(action.occurrenceId),
+        reason: 'missing-occurrence-identity',
+      })
+      requireField({ present: nonempty(action.buildId), reason: 'missing-build-identity' })
+      requireField({ present: nonempty(invocation?.rootId), reason: 'missing-root' })
+      requireField({ present: nonempty(host), reason: 'missing-host' })
+      requireField({ present: nonempty(action.digest), reason: 'missing-digest' })
+      requireField({ present: nonempty(action.configuration), reason: 'missing-configuration' })
+      requireField({
+        present:
+          action.startedAt !== null &&
+          Number.isFinite(action.startedAt) === true &&
+          action.startedAt <= time,
+        reason: 'missing-native-time',
+      })
       const outcome = action.executionOutcome
       if (outcome === undefined || outcome === 'unknown') {
         reasons.add('missing-execution-outcome')
@@ -350,10 +356,10 @@ export const aggregateOccurrences = ({
         reasons.add('unlinked-worker-attempt')
       if (
         valid !== true ||
-        !nonempty(action.occurrenceId) ||
-        !nonempty(action.buildId) ||
-        !nonempty(invocation?.rootId) ||
-        !nonempty(host)
+        nonempty(action.occurrenceId) === false ||
+        nonempty(action.buildId) === false ||
+        nonempty(invocation?.rootId) === false ||
+        nonempty(host) === false
       )
         continue
       const row: Row = {
@@ -379,10 +385,10 @@ export const aggregateOccurrences = ({
   const totals = emptyOccurrenceCounts()
   const hosts = new Map<string, OccurrenceCounts>()
   const executed = new Set<string>()
-  for (const row of [...rows.values()].sort(
+  for (const row of [...rows.values()].toSorted(
     (left, right) => left.time - right.time || left.id.localeCompare(right.id),
   )) {
-    if (conflicts.has(row.id)) continue
+    if (conflicts.has(row.id) === true) continue
     let host = hosts.get(row.host)
     if (host === undefined) {
       host = emptyOccurrenceCounts()
@@ -390,14 +396,14 @@ export const aggregateOccurrences = ({
     }
     const execution = row.outcome === 'local-exec' || row.outcome === 'remote-exec'
     const repeat = execution && executed.has(row.key)
-    if (execution) executed.add(row.key)
+    if (execution === true) executed.add(row.key)
     for (const counts of [totals, host]) {
       counts.occurrences++
       if (row.outcome === 'local-exec') counts.localExecutions++
       if (row.outcome === 'remote-exec') counts.remoteExecutions++
       if (row.outcome === 'cache-hit') counts.cacheHits++
       if (row.outcome === 'coalesced') counts.coalesced++
-      if (repeat) counts.repeatExecutions++
+      if (repeat === true) counts.repeatExecutions++
       for (const [key, unavailable, overflow] of [
         ['durationNs', 'unavailableDurationCount', 'duration-total-overflow'],
         ['totalBytes', 'unavailableBytesCount', 'byte-total-overflow'],
@@ -409,7 +415,7 @@ export const aggregateOccurrences = ({
           counts[key] = null
         } else if (current !== null) {
           const sum = current + value
-          counts[key] = Number.isSafeInteger(sum) ? sum : null
+          counts[key] = Number.isSafeInteger(sum) === true ? sum : null
           if (counts[key] === null) reasons.add(overflow)
         }
       }
@@ -417,13 +423,13 @@ export const aggregateOccurrences = ({
   }
   return {
     proof: reasons.size === 0 ? 'known' : 'unknown',
-    reasons: [...reasons].sort(),
+    reasons: [...reasons].toSorted(),
     windowStartMs,
     windowEndMs,
     totals,
     perHost: [...hosts]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([host, counts]) => ({ host, ...counts })),
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(([host, counts]) => Object.assign({ host }, counts)),
   }
 }
 
@@ -487,22 +493,20 @@ const escapeLabel = (value: string): string =>
   value.replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll('"', '\\"')
 
 /** Prometheus gauges describe one bounded window, not process-lifetime counters. */
-export const renderPrometheus = (report: JoinReport): string =>
-  `${metrics(report)
-    .flatMap((metric) => {
-      const name = metric.name.replaceAll('.', '_')
-      return [
-        `# HELP ${name} ${metric.description}`,
-        `# TYPE ${name} gauge`,
-        ...metric.points.map(
-          ({ labels, value }) =>
-            `${name}{${Object.entries(labels)
-              .map(([key, label]) => `${key}="${escapeLabel(label)}"`)
-              .join(',')}} ${value} ${report.window_end_timestamp_seconds * 1000}`,
-        ),
-      ]
-    })
-    .join('\n')}\n`
+export const renderPrometheus = (report: JoinReport): string => {
+  const lines: string[] = []
+  for (const metric of metrics(report)) {
+    const name = metric.name.replaceAll('.', '_')
+    lines.push(`# HELP ${name} ${metric.description}`, `# TYPE ${name} gauge`)
+    for (const { labels, value } of metric.points) {
+      const dimensions = Object.entries(labels)
+        .map(([key, label]) => `${key}="${escapeLabel(label)}"`)
+        .join(',')
+      lines.push(`${name}{${dimensions}} ${value} ${report.window_end_timestamp_seconds * 1000}`)
+    }
+  }
+  return `${lines.join('\n')}\n`
+}
 
 type OtlpAttribute = { key: string; value: { stringValue: string } }
 export type OtlpChunk = {
@@ -526,10 +530,10 @@ export type OtlpChunk = {
   }[]
 }
 
+const attributes = (labels: Record<string, string>): OtlpAttribute[] =>
+  Object.entries(labels).map(([key, stringValue]) => ({ key, value: { stringValue } }))
 /** OTLP JSON gauge payload; the CLI owns spool publication, not this pure renderer. */
 export const renderOtlp = (report: JoinReport): OtlpChunk => {
-  const attributes = (labels: Record<string, string>): OtlpAttribute[] =>
-    Object.entries(labels).map(([key, stringValue]) => ({ key, value: { stringValue } }))
   const timeUnixNano = BigInt(Math.round(report.window_end_timestamp_seconds * 1e9)).toString()
   return {
     resourceMetrics: [
@@ -546,7 +550,7 @@ export const renderOtlp = (report: JoinReport): OtlpChunk => {
             metrics: metrics(report).map((metric) => ({
               name: metric.name,
               description: metric.description,
-              unit: metric.name.endsWith('_seconds') ? 's' : '1',
+              unit: metric.name.endsWith('_seconds') === true ? 's' : '1',
               gauge: {
                 dataPoints: metric.points.map(({ labels, value }) => ({
                   attributes: attributes(labels),
