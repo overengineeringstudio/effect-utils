@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:548dca1b7bac8f4206307bc85f51a0fb01e773ecb4e149e5d66cb83f34655a77
+# Semantic fingerprint: sha256:dce0cdad047ef33b46f6cd3d310587c0e85f735e76623cd6bd0ffe06a2836842
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -192,6 +192,7 @@ export_materialization_inputs([
     "src/cli/worktree-lease.integration.test.ts",
     "src/core/config.ts",
     "src/core/config.unit.test.ts",
+    "src/core/git-common-config.integration.test.ts",
     "src/core/git-memory.integration.test.ts",
     "src/core/git-reflog.integration.test.ts",
     "src/core/git-streaming-parsers.integration.test.ts",
@@ -305,6 +306,7 @@ export_materialization_inputs([
     "src/test-utils/memory-probe.ts",
     "src/test-utils/mod.ts",
     "src/test-utils/rehome-fixture.ts",
+    "src/test-utils/setup.integration.test.ts",
     "src/test-utils/setup.ts",
     "src/test-utils/setup.unit.test.ts",
     "src/test-utils/store-setup.integration.test.ts",
@@ -519,6 +521,7 @@ package_view(
         "src/cli/worktree-lease.integration.test.ts": "src/cli/worktree-lease.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
         "src/core/config.unit.test.ts": "src/core/config.unit.test.ts",
+        "src/core/git-common-config.integration.test.ts": "src/core/git-common-config.integration.test.ts",
         "src/core/git-memory.integration.test.ts": "src/core/git-memory.integration.test.ts",
         "src/core/git-reflog.integration.test.ts": "src/core/git-reflog.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts": "src/core/git-streaming-parsers.integration.test.ts",
@@ -632,6 +635,7 @@ package_view(
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
         "src/test-utils/mod.ts": "src/test-utils/mod.ts",
         "src/test-utils/rehome-fixture.ts": "src/test-utils/rehome-fixture.ts",
+        "src/test-utils/setup.integration.test.ts": "src/test-utils/setup.integration.test.ts",
         "src/test-utils/setup.ts": "src/test-utils/setup.ts",
         "src/test-utils/setup.unit.test.ts": "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts": "src/test-utils/store-setup.integration.test.ts",
@@ -848,6 +852,7 @@ package_view(
         "src/cli/worktree-lease.integration.test.ts": "src/cli/worktree-lease.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
         "src/core/config.unit.test.ts": "src/core/config.unit.test.ts",
+        "src/core/git-common-config.integration.test.ts": "src/core/git-common-config.integration.test.ts",
         "src/core/git-memory.integration.test.ts": "src/core/git-memory.integration.test.ts",
         "src/core/git-reflog.integration.test.ts": "src/core/git-reflog.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts": "src/core/git-streaming-parsers.integration.test.ts",
@@ -961,6 +966,7 @@ package_view(
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
         "src/test-utils/mod.ts": "src/test-utils/mod.ts",
         "src/test-utils/rehome-fixture.ts": "src/test-utils/rehome-fixture.ts",
+        "src/test-utils/setup.integration.test.ts": "src/test-utils/setup.integration.test.ts",
         "src/test-utils/setup.ts": "src/test-utils/setup.ts",
         "src/test-utils/setup.unit.test.ts": "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts": "src/test-utils/store-setup.integration.test.ts",
@@ -1172,6 +1178,7 @@ package_view(
         "src/cli/worktree-lease.integration.test.ts": "src/cli/worktree-lease.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
         "src/core/config.unit.test.ts": "src/core/config.unit.test.ts",
+        "src/core/git-common-config.integration.test.ts": "src/core/git-common-config.integration.test.ts",
         "src/core/git-memory.integration.test.ts": "src/core/git-memory.integration.test.ts",
         "src/core/git-reflog.integration.test.ts": "src/core/git-reflog.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts": "src/core/git-streaming-parsers.integration.test.ts",
@@ -1285,6 +1292,7 @@ package_view(
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
         "src/test-utils/mod.ts": "src/test-utils/mod.ts",
         "src/test-utils/rehome-fixture.ts": "src/test-utils/rehome-fixture.ts",
+        "src/test-utils/setup.integration.test.ts": "src/test-utils/setup.integration.test.ts",
         "src/test-utils/setup.ts": "src/test-utils/setup.ts",
         "src/test-utils/setup.unit.test.ts": "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts": "src/test-utils/store-setup.integration.test.ts",
@@ -1388,6 +1396,7 @@ vitest_test(
         "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
+        "src/core/git-common-config.integration.test.ts",
         "src/core/git-memory.integration.test.ts",
         "src/core/git-reflog.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
@@ -1413,6 +1422,7 @@ vitest_test(
         "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
+        "src/test-utils/setup.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
     tools = {
@@ -1437,6 +1447,7 @@ vitest_collect(
         "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
+        "src/core/git-common-config.integration.test.ts",
         "src/core/git-memory.integration.test.ts",
         "src/core/git-reflog.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
@@ -1462,6 +1473,7 @@ vitest_collect(
         "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
+        "src/test-utils/setup.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
     tools = {

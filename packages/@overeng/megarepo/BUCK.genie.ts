@@ -75,6 +75,7 @@ export const buck2TypeScriptAdmission = {
         'src/cli/store-rehome.integration.test.ts',
         'src/cli/store.integration.test.ts',
         'src/cli/sync.integration.test.ts',
+        'src/core/git-common-config.integration.test.ts',
         'src/core/git-memory.integration.test.ts',
         'src/core/git-reflog.integration.test.ts',
         'src/core/git-streaming-parsers.integration.test.ts',
@@ -100,6 +101,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-rehome.integration.test.ts',
         'src/store/store-workspace-activity.integration.test.ts',
         'src/store/store-worktree-remove.integration.test.ts',
+        'src/test-utils/setup.integration.test.ts',
         'src/test-utils/store-setup.integration.test.ts',
       ],
       sourceOwners: {

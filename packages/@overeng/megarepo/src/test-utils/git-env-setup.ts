@@ -11,6 +11,8 @@
  * maintenance racing scoped temp-directory cleanup on macOS. We write a private
  * gitconfig and point git at it via `GIT_CONFIG_GLOBAL`, pin `GIT_CONFIG_SYSTEM`
  * to `/dev/null`, and export the author/committer identity directly.
+ * Repository-location overrides inherited from hooks or worktrees are removed
+ * before any fixture initializes a repository.
  *
  * OTLP needs no handling here: the bulk tests run `mrCommand` WITHOUT providing
  * `makeOtelCliLayer`, so no exporter is ever built and no `OtelConfig` is in
@@ -56,6 +58,10 @@ writeFileSync(
     '',
   ].join('\n'),
 )
+
+for (const key of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) {
+  delete process.env[key]
+}
 
 process.env.GIT_CONFIG_GLOBAL = configPath
 process.env.GIT_CONFIG_SYSTEM = '/dev/null'

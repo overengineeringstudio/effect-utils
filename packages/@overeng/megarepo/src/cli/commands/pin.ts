@@ -171,6 +171,14 @@ export const pinCommand = Cli.Command.make(
               return yield* new CannotUseLocalPathError({ message: 'Cannot pin local path' })
             }
 
+            // Acquisition must refuse before manifest/lock writes or fetch, even when
+            // an existing worktree would otherwise make the operation a no-op.
+            if ((yield* store.hasBareRepo(source)) === true) {
+              yield* Git.assertNoCommonBareWithWorktreeConfig({
+                repoPath: store.getBareRepoPath(source),
+              })
+            }
+
             // Load or create lock file
             const configOwner =
               EffectPath.ops.parent(

@@ -545,6 +545,9 @@ export const syncMember = <R = never>({
 
     const bareRepoPath = store.getBareRepoPath(source)
     const bareExists = yield* store.hasBareRepo(source)
+    if (bareExists === true) {
+      yield* Git.assertNoCommonBareWithWorktreeConfig({ repoPath: bareRepoPath })
+    }
 
     // Determine which ref to use
     let targetRef: string
