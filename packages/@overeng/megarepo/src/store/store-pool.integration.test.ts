@@ -8,7 +8,7 @@ import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, deletionLeasePath } from './store-deletion-lease.ts'
 import { type PoolSlot, reservePoolSlot, withPoolState } from './store-pool-state.ts'
-import { claimPool, completePool, inspectPool, quarantinePool } from './store-pool.ts'
+import { claimPool, completePool, inspectPool, quarantinePool, releasePool } from './store-pool.ts'
 
 const fixture = Effect.gen(function* () {
   const f = yield* createStoreFixture([
@@ -159,6 +159,22 @@ describe('native pool ownership safety', () => {
         owner: 'test',
       }).pipe(Effect.flip)
       expect(String(failure)).toContain('history retained')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('a stale release cannot drain, mutate or return another generation', () =>
+    Effect.gen(function* () {
+      const { storePath, slot } = yield* fixture
+      const failure = yield* releasePool({
+        base: storePath,
+        id: slot.id,
+        token: 'stale',
+        generation: 1,
+      }).pipe(Effect.flip)
+      expect(String(failure)).toContain('Stale')
+      expect(
+        (yield* withPoolState(storePath, (state) => Effect.succeed(state.slots[0])))?.state,
+      ).toBe('ready')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

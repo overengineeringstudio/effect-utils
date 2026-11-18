@@ -392,6 +392,11 @@ without removing the deletion barrier. A provider records successful completion
 before exiting; inspection quarantines abandoned or uncertain providers instead
 of returning their roots to readiness.
 
+Release first fences its owner and persists quarantine, then invokes the packaged
+teardown and existing process-visibility proofs. Only clean, unpublished source
+with unchanged installed identity may be cleaned and normally reinstalled.
+Failed proof or teardown retains protection; no slot is automatically removed.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
