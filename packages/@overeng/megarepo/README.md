@@ -382,6 +382,11 @@ resolved tool/platform identity. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
 
+Preparation reserves host-store-wide count and logical-byte capacity before
+creating a fixed-path detached root with an atomic native Git lock. It publishes
+readiness only after installation and source/process proofs; failed preparation
+retains the locked root and reconciles partial growth into its charged bytes.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
