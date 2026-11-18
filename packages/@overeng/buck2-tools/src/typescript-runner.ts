@@ -182,7 +182,9 @@ export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
     packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
     ...declared,
-    ...(args.includes('--darwin-isolation') ? { darwinIsolation: emitIsolation.value } : {}),
+    ...(args.includes('--darwin-isolation') === true
+      ? { darwinIsolation: emitIsolation.value }
+      : {}),
     project: requireNormalizedRelativePath({
       name: 'project',
       value: requireArgument({ args, index: 2, name: 'project' }),
