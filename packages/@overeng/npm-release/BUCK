@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/npm-release/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4d04c617b0a062b4af34fd1e909b17109bd11d5a63582407c4b7985876f23946
+# Semantic fingerprint: sha256:a1c761b359375a24b121a085219932332a72fc399910ae99f34b14841d592c43
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -80,11 +80,14 @@ package_view(
     workspace_dist = {
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -106,11 +109,13 @@ package_view(
     },
     workspace_dist = {
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -135,11 +140,14 @@ package_view(
     workspace_dist = {
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
+        "node_modules/@overeng/utils/dist": "//packages/@overeng/utils:dist",
+        "node_modules/@overeng/utils/package.json": "//packages/@overeng/utils:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
+        "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -175,6 +183,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/utils:package.json",
         "//packages/@overeng/utils-dev:package.json",
     ],
     output = "overeng-npm-release.tgz",

@@ -6,8 +6,9 @@ import * as Cli from 'effect/cli'
 
 import { compactFormatError, runTuiMain } from '@overeng/tui-react/node'
 import { rewriteHelpSubcommand } from '@overeng/utils/node/cli-help-rewrite'
-import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { CliVersion, resolveCliBuildIdentity } from '@overeng/utils/node/cli-version'
 
+import packageJson from '../package.json' with { type: 'json' }
 import { ghCiUtilsCommand } from '../src/cli.ts'
 import { GitHubAuthConfigTag, loadAuthConfig } from '../src/node/Config.ts'
 import { GitHubClient } from '../src/node/GitHubClient.ts'
@@ -20,8 +21,8 @@ import {
 import { flushUsageLedger } from '../src/node/UsageLedger.ts'
 
 const buildStamp = '__CLI_BUILD_STAMP__'
-const version = resolveCliVersion({
-  baseVersion: '0.1.0',
+const { displayVersion: version, machineVersion } = resolveCliBuildIdentity({
+  baseVersion: packageJson.version,
   buildStamp,
 })
 
@@ -55,6 +56,9 @@ const baseLayer = Layer.mergeAll(
 const cli = Cli.Command.runWith(ghCiUtilsCommand, { version })
 const program = cli(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
   Effect.scoped,
+  Effect.provide(CliVersion.formatterLayer),
+  Effect.provideService(CliVersion, { name: 'gh-ci-utils', version }),
+  Effect.annotateLogs({ 'service.version': machineVersion }),
   Effect.provide(baseLayer),
 )
 
@@ -69,17 +73,19 @@ const program = cli(rewriteHelpSubcommand(process.argv.slice(2))).pipe(
  */
 program.pipe(
   Effect.catchCause((cause) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
+      const suffix = yield* CliVersion.suffix
       if (Cause.hasInterruptsOnly(cause) === true) {
         process.exitCode = 130
         return
       }
       process.stderr.write(
-        renderToolFailure({ cause, routedFrom: process.env[ROUTED_FROM_ENV_VAR] }) + '\n',
+        renderToolFailure({ cause, routedFrom: process.env[ROUTED_FROM_ENV_VAR] }) + suffix + '\n',
       )
       process.exitCode = TOOL_FAILURE_EXIT_CODE
     }),
   ),
   Effect.ensuring(flushUsageLedger),
+  Effect.provideService(CliVersion, { name: 'gh-ci-utils', version }),
   runTuiMain(NodeRuntime, { formatError: compactFormatError }),
 )

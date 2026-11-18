@@ -1,12 +1,29 @@
 import { type Dirent, existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
+// This command runs before install: keep its identity resolver dependency-free.
+import {
+  formatCliVersionSuffix,
+  resolveCliBuildIdentity,
+} from '@overeng/utils/node/cli-build-identity'
+
+import packageJson from '../../../package.json' with { type: 'json' }
 import { parseGeneratorPhase } from '../../core/phase.ts'
 import type { BootstrapClosureViolation } from './bootstrap-closure.ts'
 import { checkBootstrapClosure, formatViolationChain } from './bootstrap-closure.ts'
 
+const cliIdentity = resolveCliBuildIdentity({
+  baseVersion: packageJson.version,
+  buildStamp: '__CLI_BUILD_STAMP__',
+})
+const versionSuffix = formatCliVersionSuffix({
+  name: 'genie-bootstrap-closure-check',
+  version: cliIdentity.displayVersion,
+})
+
 const usage = `Usage:
   genie-bootstrap-closure-check [--root <repo-root>] [--analysis-files <json-array>]
+  genie-bootstrap-closure-check --version
   genie-bootstrap-closure-check [--root <repo-root>] \\
     --editor-view-root-package-path <workspace-path> \\
     --editor-view-package-paths <json-array>
@@ -286,6 +303,10 @@ export const bootstrapClosureCheckMain = async ({
   defaultRepoRoot: string
 }): Promise<void> => {
   try {
+    if (argv.length === 1 && argv[0] === '--version') {
+      console.log(cliIdentity.displayVersion)
+      return
+    }
     const { analysisFiles, repoRoot, help, editorViewPackagePaths, editorViewRootPackagePath } =
       parseArgs({
         argv,
@@ -312,7 +333,7 @@ export const bootstrapClosureCheckMain = async ({
       })
       if (closureViolations.length > 0) {
         console.error(
-          `✗ editor-view-closure: ${closureViolations.length} generator import(s) require an unpublished workspace package view:\n`,
+          `✗ editor-view-closure: ${closureViolations.length} generator import(s) require an unpublished workspace package view:${versionSuffix}\n`,
         )
         for (const closureViolation of closureViolations) {
           console.error(
@@ -344,7 +365,7 @@ export const bootstrapClosureCheckMain = async ({
 
     if (violations.length > 0) {
       console.error(
-        `✗ bootstrap-closure: ${violations.length} bootstrap-phase generator(s) reach a runtime-only package:\n`,
+        `✗ bootstrap-closure: ${violations.length} bootstrap-phase generator(s) reach a runtime-only package:${versionSuffix}\n`,
       )
       for (const violation of violations) {
         console.error(`  ${formatViolationChain({ violation, repoRoot })}\n`)
@@ -364,7 +385,7 @@ export const bootstrapClosureCheckMain = async ({
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.error(`bootstrap-closure: ${message}`)
+    console.error(`bootstrap-closure: ${message}${versionSuffix}`)
     process.exit(1)
   }
 }

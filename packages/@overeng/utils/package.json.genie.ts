@@ -118,6 +118,13 @@ export default packageJson(
         },
         { environment: 'node' },
       ),
+      './node/cli-build-identity': exportEntry(
+        {
+          types: './src/node/cli-build-identity.js',
+          default: './src/node/cli-build-identity.js',
+        },
+        { environment: 'node' },
+      ),
       './node/vite-build-identity': exportEntry(
         {
           types: './src/node/vite-build-identity-types.d.ts',
@@ -227,6 +234,10 @@ export default packageJson(
         './node/cli-version': {
           types: './dist/src/node/cli-version.d.ts',
           default: './dist/src/node/cli-version.js',
+        },
+        './node/cli-build-identity': {
+          types: './src/node/cli-build-identity.js',
+          default: './src/node/cli-build-identity.js',
         },
         './node/vite-build-identity': {
           types: './src/node/vite-build-identity-types.d.ts',

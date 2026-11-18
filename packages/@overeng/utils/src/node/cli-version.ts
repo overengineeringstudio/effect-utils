@@ -1,16 +1,42 @@
 import { Console as NodeConsole } from 'node:console'
 
-import { Console, Context, Effect, Layer, Option } from 'effect'
+import { Console, Context, Effect, Layer, Option, Schema } from 'effect'
 import { CliOutput } from 'effect/cli'
+
+import { ServiceIdentity } from '@overeng/otel-contract'
+
+import {
+  formatCliVersionSuffix as versionSuffix,
+  resolveCliBuildIdentity,
+  type CliBuildIdentity,
+} from './cli-build-identity.js'
+
+/**
+ * Resolve once at the CLI boundary: human output and diagnostics use
+ * displayVersion, while telemetry and structured logs use serviceIdentity.
+ */
+export const resolveCliIdentity = (
+  options: Parameters<typeof resolveCliBuildIdentity>[0] & {
+    readonly name: string
+    readonly namespace: string
+  },
+): CliBuildIdentity & { readonly serviceIdentity: ServiceIdentity } => {
+  const identity = resolveCliBuildIdentity(options)
+  return {
+    ...identity,
+    serviceIdentity: Schema.decodeSync(ServiceIdentity)({
+      name: options.name,
+      namespace: options.namespace,
+      version: identity.machineVersion,
+    }),
+  }
+}
 
 /** CLI name and version pair, provided at startup for error diagnostics. */
 export interface CliVersionInfo {
   readonly name: string
   readonly version: string
 }
-
-/** Version stamp appended to rendered diagnostics, e.g. `" (genie 0.1.0+abc123)"`. */
-const versionSuffix = ({ name, version }: CliVersionInfo): string => ` (${name} ${version})`
 
 /**
  * Wrap an upstream `CliOutput.Formatter` (rc.111) so rendered CLI errors carry
@@ -124,6 +150,7 @@ export const handlerConsoleLayer: Layer.Layer<never> = Layer.succeed(
 
 // One formatter for CLI runtime and Node-loaded browser build integrations.
 export {
+  formatCliVersionSuffix,
   parseCliBuildStamp,
   resolveCliBuildIdentity,
   resolveCliMachineVersion,

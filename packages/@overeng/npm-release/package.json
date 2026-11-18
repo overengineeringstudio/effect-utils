@@ -3,7 +3,13 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/content-address",
+      "packages/@overeng/effect-distributed-lock",
+      "packages/@overeng/effect-rust",
       "packages/@overeng/npm-release",
+      "packages/@overeng/otel-contract",
+      "packages/@overeng/stylex-tokens",
+      "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]
   },
@@ -22,9 +28,14 @@
       "default": "./src/cli.ts"
     }
   },
+  "dependencies": {
+    "@overeng/utils": "workspace:^"
+  },
   "devDependencies": {
+    "@effect/opentelemetry": "4.1.0",
     "@effect/platform-node": "4.1.0",
     "@overeng/utils-dev": "workspace:^",
+    "@playwright/test": "1.64.1",
     "@types/node": "26.5.0",
     "effect": "4.1.0",
     "typescript": "7.0.2",

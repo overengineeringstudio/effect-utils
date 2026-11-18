@@ -39,10 +39,12 @@ rec {
     }:
     let
       gitRev =
-        self.sourceInfo.dirtyShortRev or self.sourceInfo.shortRev or self.sourceInfo.rev or "unknown";
-      # lastModified is the git commit timestamp (Unix seconds)
-      commitTs = self.sourceInfo.lastModified or 0;
-      dirty = self.sourceInfo ? dirtyShortRev;
+        self.sourceInfo.shortRev or self.sourceInfo.rev or self.sourceInfo.dirtyShortRev
+          or self.sourceInfo.dirtyRev or (throw "CLI build identity requires a Git source revision");
+      # lastModified is the source commit timestamp (Unix seconds).
+      commitTs =
+        self.sourceInfo.lastModified or (throw "CLI build identity requires a source commit timestamp");
+      dirty = self.sourceInfo ? dirtyShortRev || self.sourceInfo ? dirtyRev;
     in
     flake-utils.lib.eachDefaultSystem (
       system:

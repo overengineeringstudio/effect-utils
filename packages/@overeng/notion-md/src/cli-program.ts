@@ -25,8 +25,9 @@ import {
   type NmdSyncStateV1,
 } from '@overeng/notion-effect-client'
 import { parseNotionUuid } from '@overeng/notion-effect-schema'
-import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { CliVersion, resolveCliIdentity } from '@overeng/utils/node/cli-version'
 
+import packageJson from '../package.json' with { type: 'json' }
 import { resolveNmdTargets, runBatchWatch, type BatchFailure } from './batch.ts'
 import {
   catEditorPage,
@@ -68,7 +69,6 @@ import {
 } from './state-store.ts'
 import type { SyncOptions } from './sync.ts'
 import type { TreeSyncResult } from './tree.ts'
-import { NOTION_MD_VERSION } from './version.ts'
 
 const NonEmptyCliText = Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())).annotate({
   identifier: 'NotionMd.Cli.NonEmptyText',
@@ -188,12 +188,15 @@ const jsonOption = Options.Boolean('json').pipe(
   Options.withDefault(false),
 )
 
-const buildStamp = '__CLI_BUILD_STAMP__'
-/** Resolved CLI build-version identity, reused by the binary edge to stamp telemetry. */
-export const cliVersion = resolveCliVersion({
-  baseVersion: NOTION_MD_VERSION,
-  buildStamp,
+/** Shared build identity for human diagnostics and machine-readable telemetry. */
+export const cliIdentity = resolveCliIdentity({
+  name: 'notion-md-cli',
+  namespace: 'overeng',
+  baseVersion: packageJson.version,
+  buildStamp: '__CLI_BUILD_STAMP__',
 })
+
+const cliVersionInfo = { name: 'notion-md', version: cliIdentity.displayVersion }
 
 const resolveToken = resolveNotionToken().pipe(
   Effect.mapError(
@@ -1140,13 +1143,21 @@ export const notionMdCommand = makeNotionMdCommand('notion-md')
 export const notionMdDispatchCommand = makeNotionMdCommand('md')
 
 /** Process argv runner for the notion-md command tree. */
-export const cli = Command.runWith(notionMdCommand, { version: cliVersion })
+export const cli = (args: ReadonlyArray<string>) =>
+  Command.runWith(notionMdCommand, { version: cliIdentity.displayVersion })(args).pipe(
+    Effect.provide(CliVersion.formatterLayer),
+    Effect.provideService(CliVersion, cliVersionInfo),
+  )
 
 /** Render expected CLI failures without duplicating Effect's defect reporter. */
 export const renderCliError = (cause: Cause.Cause<unknown>) =>
-  Cause.hasInterruptsOnly(cause) === true
+  (Cause.hasInterruptsOnly(cause) === true
     ? Effect.void
-    : Option.match(Cause.findErrorOption(cause), {
-        onNone: () => Effect.logError(cause),
-        onSome: (error) => Effect.logError(error),
+    : Effect.gen(function* () {
+        const suffix = yield* CliVersion.suffix
+        yield* Option.match(Cause.findErrorOption(cause), {
+          onNone: () => Effect.logError(cause, suffix),
+          onSome: (error) => Effect.logError(error, suffix),
+        })
       })
+  ).pipe(Effect.provideService(CliVersion, cliVersionInfo))

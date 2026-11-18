@@ -25,10 +25,10 @@ import {
   NotionMdGateway,
   NotionMdGatewayLive,
 } from '@overeng/notion-md'
-import { ServiceIdentity } from '@overeng/otel-contract'
-import { resolveCliVersion } from '@overeng/utils/node/cli-version'
+import { formatCliVersionSuffix, resolveCliIdentity } from '@overeng/utils/node/cli-version'
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
+import packageJson from '../../package.json' with { type: 'json' }
 import { makeUnsupportedPageBodySyncPort } from '../body/adapter.ts'
 import {
   makeNotionMdMaterializingLocalWorkspacePort,
@@ -174,12 +174,6 @@ import {
   type WebhookRelayExposure,
 } from '../webhook/tailscale.ts'
 import { renderDatasourceSyncCompletions, type CompletionShell } from './effect-command.ts'
-
-const buildStamp = '__CLI_BUILD_STAMP__'
-const cliVersion = resolveCliVersion({
-  baseVersion: '0.1.0',
-  buildStamp,
-})
 
 /**
  * Body path for a page within a tracked source's page directory
@@ -1610,12 +1604,13 @@ export const renderCliErrorJson = (error: unknown): string => {
             ? error.name
             : 'CliError',
       message:
-        typeof error === 'object' &&
+        (typeof error === 'object' &&
         error !== null &&
         'message' in error &&
         typeof error.message === 'string'
           ? error.message
-          : String(error),
+          : String(error)) +
+        formatCliVersionSuffix({ name: 'notion db', version: cliIdentity.displayVersion }),
     },
   }
   return `${JSON.stringify(errorEnvelope, cliJsonReplacer, 2)}\n`
@@ -3245,7 +3240,7 @@ export const runCliMain = ({
     }
 
     if (isVersionArgv(argv) === true) {
-      yield* Effect.sync(() => process.stdout.write(`${cliVersion}\n`))
+      yield* Effect.sync(() => process.stdout.write(`${cliIdentity.displayVersion}\n`))
       return
     }
 
@@ -3289,17 +3284,20 @@ const serviceNameForArgv = (argv: ReadonlyArray<string>): string => {
   }
 }
 
+const cliIdentity = resolveCliIdentity({
+  name: serviceNameForArgv(process.argv.slice(2)),
+  namespace: 'overeng',
+  baseVersion: packageJson.version,
+  buildStamp: '__CLI_BUILD_STAMP__',
+})
+
 if (import.meta.main) {
   const argv = process.argv.slice(2)
   // The CLI vs daemon service NAME is chosen per-subcommand (sync --watch ⇒
-  // daemon), then decoded into a branded ServiceIdentity at the edge. The
+  // daemon), then resolved into a branded ServiceIdentity at the edge. The
   // process SHAPE stays `cli` regardless of the name — name is identity, shape
   // is export/flush mechanics.
-  const identity = Schema.decodeSync(ServiceIdentity)({
-    name: serviceNameForArgv(argv),
-    namespace: 'overeng',
-    version: cliVersion,
-  })
+  const identity = cliIdentity.serviceIdentity
   Effect.gen(function* () {
     const endpoint = yield* otelEndpointFromConfig()
     yield* runCliMain({ argv }).pipe(
@@ -3307,6 +3305,7 @@ if (import.meta.main) {
         Effect.sync(() => process.stderr.write(renderCliErrorJson(error))),
       ),
       Effect.scoped,
+      Effect.annotateLogs({ 'service.version': cliIdentity.machineVersion }),
       Effect.provide(withTelemetry({ identity, shape: 'cli', endpoint })),
     )
   }).pipe(NodeRuntime.runMain({ disableErrorReporting: true }))

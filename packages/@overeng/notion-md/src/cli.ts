@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect, type Exit, Layer, Schema } from 'effect'
+import { Effect, type Exit, Layer } from 'effect'
 
-import { ServiceIdentity } from '@overeng/otel-contract'
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
-import { cli, cliVersion, renderCliError } from './cli-program.ts'
+import { cli, cliIdentity, renderCliError } from './cli-program.ts'
 import { editorExitCode } from './exit-codes.ts'
 
 /** Run the notion-md CLI from user-facing arguments. */
@@ -21,6 +20,7 @@ export const runCliMain = ({
     yield* cli(args).pipe(
       Effect.tapCause(renderCliError),
       Effect.scoped,
+      Effect.annotateLogs({ 'service.version': cliIdentity.machineVersion }),
       Effect.provide(
         Layer.mergeAll(NodeServices.layer, withTelemetry({ identity, shape: 'cli', endpoint })),
       ),
@@ -36,11 +36,7 @@ const editorTeardown = <E, A>(exit: Exit.Exit<E, A>, onExit: (code: number) => v
   onExit(editorExitCode(exit))
 }
 
-const identity = Schema.decodeSync(ServiceIdentity)({
-  name: 'notion-md-cli',
-  namespace: 'overeng',
-  version: cliVersion,
-})
+const identity = cliIdentity.serviceIdentity
 
 if (import.meta.main) {
   NodeRuntime.runMain({ disableErrorReporting: true, teardown: editorTeardown })(runCliMain())

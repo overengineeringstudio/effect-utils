@@ -8,15 +8,24 @@ import {
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import conformancePkg from '../ai-gateway-conformance/package.json.genie.ts'
+import utilsPkg from '../utils/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/ai-gateway-edge' }),
   dependencies: {
+    workspace: [utilsPkg],
     external: catalog.pick('effect', '@effect/platform-node'),
   },
   devDependencies: {
     workspace: [conformancePkg],
-    external: catalog.pick('@types/node', 'typescript', 'vite', 'vitest'),
+    external: catalog.pick(
+      '@effect/opentelemetry',
+      '@playwright/test',
+      '@types/node',
+      'typescript',
+      'vite',
+      'vitest',
+    ),
   },
 })
 

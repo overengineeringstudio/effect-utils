@@ -44,6 +44,17 @@ Downstream package consumers should make their root `nixpkgs` and `flake-utils`
 follow `effect-utils/nixpkgs` and `effect-utils/flake-utils` to share the canonical
 build graph.
 
+Every shipped JavaScript CLI wrapper receives `CLI_BUILD_STAMP`, constructed by
+`cli-build-stamp.nix`'s validating `mkNixStamp` from its owning package's
+`package.json` version and the selected Git revision, source commit timestamp,
+and dirty state. The bootstrap closure checker uses Genie's package version;
+the Notion database runtime uses `notion-datasource-sync`'s package version. Public package
+helpers default provenance to this effect-utils flake's source metadata;
+explicit callers must supply real metadata, never `unknown` or epoch defaults.
+Current Buck product entries expose a producer revision but not a selected
+closure-revision timestamp, so these wrappers use the flake source identity
+rather than inventing product-specific closure provenance.
+
 Source JavaScript recipes expose `importJavaScript` on the derivation returned
 by `nix/buck2-products/from-source.nix`. Consumers supply the product name/kind,
 module path, runtime kind/contract/version and exact external capability/module

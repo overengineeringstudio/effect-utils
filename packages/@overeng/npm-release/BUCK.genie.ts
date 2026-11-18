@@ -11,6 +11,11 @@ export const buck2TypeScriptAdmission = {
   sourceRoots: ['src'],
   workspaceSiblings: [
     {
+      packageName: '@overeng/utils',
+      packagePath: 'packages/@overeng/utils',
+      distTarget: '//packages/@overeng/utils:dist',
+    },
+    {
       packageName: '@overeng/utils-dev',
       packagePath: 'packages/@overeng/utils-dev',
       distTarget: '//packages/@overeng/utils-dev:dist',

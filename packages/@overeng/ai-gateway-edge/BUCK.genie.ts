@@ -15,6 +15,11 @@ export const buck2TypeScriptAdmission = {
       packagePath: 'packages/@overeng/ai-gateway-conformance',
       distTarget: '//packages/@overeng/ai-gateway-conformance:dist',
     },
+    {
+      packageName: '@overeng/utils',
+      packagePath: 'packages/@overeng/utils',
+      distTarget: '//packages/@overeng/utils:dist',
+    },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
   tests: [{ name: 'test', runner: 'vitest' }],
