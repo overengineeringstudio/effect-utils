@@ -60,7 +60,7 @@ const runCli = (endpoint: string, shutdownTimeout: number, fail = false) =>
           fixture,
           endpoint,
           String(shutdownTimeout),
-          fail ? 'fail' : 'ok',
+          fail === true ? 'fail' : 'ok',
         ]),
       )
       return yield* Effect.all(
@@ -111,7 +111,7 @@ Vitest.describe('makeOtelCliLayer delivery outcomes', () => {
       for (const fail of [false, true]) {
         const result = yield* runCli(`${endpoint}/private-token`, 5000, fail)
         expect(result.stdout).toBe('{"ok":true}\n')
-        expect(result.code).toBe(fail ? 1 : 0)
+        expect(result.code).toBe(fail === true ? 1 : 0)
         expect(result.stderr).toContain('OTEL warning: traces batch lost (Transport).')
         expect(result.stderr).not.toContain('private-token')
         expect(result.stderr).not.toContain(endpoint)

@@ -339,7 +339,7 @@ export const makeOtelCliLayer = (config: OtelCliLayerConfig): Layer.Layer<OtelCo
       } else {
         const error = event.exit.cause.reasons.find((reason) => reason._tag === 'Fail')
         const failure: Extract<OtelDeliveryEvent, { _tag: 'BatchFailed' }>['failure'] =
-          error?._tag === 'Fail' && HttpClientError.isHttpClientError(error.error)
+          error?._tag === 'Fail' && HttpClientError.isHttpClientError(error.error) === true
             ? error.error.reason._tag === 'StatusCodeError'
               ? { _tag: 'HttpStatus', status: error.error.reason.response.status }
               : { _tag: 'Transport' }
