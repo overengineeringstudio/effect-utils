@@ -79,6 +79,13 @@ export type OutputTinyDigests = {
 }
 export type ActionRecord = {
   type: 'action'
+  /** Immutable native build/span identity; absent in historical evidence. */
+  occurrenceId?: string
+  host?: string | null
+  executionOutcome?: 'local-exec' | 'cache-hit' | 'remote-exec' | 'coalesced' | 'unknown'
+  /** Span elapsed time and logical output bytes, never physical writes. */
+  durationNs?: number | null
+  totalBytes?: number | null
   buildId: string | null
   context: string | null
   category: string | null
@@ -125,6 +132,7 @@ export type ActionArtifactHeader = {
   cacheOutcomeMapping: typeof cacheOutcomeMapping
   metadata: {
     repo: string | null
+    host?: string | null
     runId: string | null
     runAttempt: string | null
     job: string | null
