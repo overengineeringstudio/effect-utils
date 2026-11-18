@@ -130,6 +130,6 @@ invariants named in its own document:
   identities are equal (BUILD.BUCK-R05), and execution never widens a cache trust
   tier (decision 0033).
   Which compatible workers and remote-execution posture a consumer fleet runs is
-  a consumer deployment profile recorded in that consumer's VRS (for example,
-  the maintainers' dotfiles `context/builds/05-execution`); R17 remains a
-  capability requirement, not a mandate to deploy remote execution everywhere.
+  a consumer deployment profile recorded in the consumer's own build-execution
+  VRS; R17 remains a capability requirement, not a mandate to deploy remote
+  execution everywhere.
