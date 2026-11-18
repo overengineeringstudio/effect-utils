@@ -317,6 +317,27 @@ const runProjectionHash = () => {
       continue
     }
 
+    // Executable projections are root-owned realization state too. Package-only
+    // evidence missed deleted or modified .bin wrappers while reporting healthy.
+    const binDir = path.join(nodeModulesDir, '.bin')
+    if (!fs.existsSync(binDir)) {
+      appendLine(`bin missing ${binDir}`)
+    } else {
+      appendLine(`bin dir ${binDir}`)
+      for (const name of fs.readdirSync(binDir).sort()) {
+        const entryPath = path.join(binDir, name)
+        const stat = fs.lstatSync(entryPath)
+        appendLine(`bin mode ${entryPath} ${stat.mode}`)
+        if (stat.isSymbolicLink()) {
+          appendSymlinkEvidence(entryPath)
+        } else if (stat.isFile()) {
+          appendLine(`bin file ${entryPath} ${crypto.createHash('sha256').update(fs.readFileSync(entryPath)).digest('hex')}`)
+        } else {
+          throw new Error(`Unexpected executable projection entry: ${entryPath}`)
+        }
+      }
+    }
+
     for (const entryPath of collectProjectionEntryPaths(nodeModulesDir)) {
       let stat
       try {
