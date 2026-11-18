@@ -1,5 +1,6 @@
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
+import { setImmediate } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
@@ -67,6 +68,7 @@ const fixture = Effect.gen(function* () {
   let executions = 0
   let decisions = 0
   let time = now
+  let executorBarrier: Promise<void> = Promise.resolve()
   const options: AuthorityOptions = {
     dbPath: `${directory}/authority.sqlite`,
     authority: { keyId: 'authority', privateKey: keys.authority.privateKey },
@@ -86,6 +88,7 @@ const fixture = Effect.gen(function* () {
     },
     executor: async () => {
       executions += 1
+      await executorBarrier
       return { state: 'succeeded', result: 'synthetic-calendar' }
     },
   }
@@ -192,6 +195,15 @@ const fixture = Effect.gen(function* () {
     authority: () => authority,
     executions: () => executions,
     decisions: () => decisions,
+    delayExecution: () => {
+      const gate = Promise.withResolvers<void>()
+      executorBarrier = gate.promise
+      return () => gate.resolve()
+    },
+    restartSigner: () => {
+      store.close()
+      store = new DiscordStore(`${directory}/discord.sqlite`)
+    },
     setTime: (value: number) => {
       time = value
     },
@@ -447,5 +459,48 @@ it.effect('an elapsed HTTP ACK deadline never becomes a decision after restart',
     yield* f.signer().recover()
     expect(f.decisions()).toBe(0)
     expect(f.executions()).toBe(0)
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.effect('reserved cards survive restart and failed final delivery until the delayed executor finishes', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture
+    const release = f.delayExecution()
+    const card = f.track()
+    yield* f.signer().handle(f.request(card))
+    const reserved = yield* f.client.status(card.record.payload.executionId)
+    expect(reserved.state).toBe('reserved')
+    expect(f.store().cards()).toHaveLength(1)
+    expect(JSON.stringify(f.messages.at(-1))).toContain('running')
+    f.restartSigner()
+    yield* f.signer().recover()
+    expect(f.store().cards()).toHaveLength(1)
+    release()
+    yield* Effect.tryPromise({
+      try: async () => {
+        for (let turn = 0; turn < 1_000; turn += 1) {
+          if (f.authority().signerStatus(signerIdentity, card.record.payload.executionId).state !== 'reserved') return
+          await setImmediate()
+        }
+        throw new Error('Executor did not finish')
+      },
+      catch: (cause) => new DiscordError({ operation: 'await-test-executor', cause }),
+    })
+    const client: SyncAuthorityClient = {
+      ...f.client,
+      sync: () => Effect.succeed({ cursor: 7, pending: [], terminal: [] }),
+    }
+    f.rejectEdits(true)
+    expect(Exit.isFailure(yield* Effect.exit(syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')))).toBe(true)
+    expect(f.store().cards()).toHaveLength(1)
+    expect(f.store().cursor()).toBe(0)
+    f.rejectEdits(false)
+    yield* syncDiscordSurface(f.signer(), f.store(), client, 'test-channel')
+    expect(f.store().cards()).toHaveLength(0)
+    expect(f.store().cursor()).toBe(7)
+    const finalMessage = f.messages.at(-1)
+    yield* f.signer().close(card, reserved, false)
+    expect(f.messages.at(-1)).toEqual(finalMessage)
+    expect(f.executions()).toBe(1)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )

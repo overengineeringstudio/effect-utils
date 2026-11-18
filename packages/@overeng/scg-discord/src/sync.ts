@@ -27,11 +27,10 @@ export const syncDiscordSurface = Effect.fn('scg.discord.sync')(function* (
     try: () => store.cards(),
     catch: (cause) => new DiscordError({ operation: 'load-cards', cause }),
   })
-  for (const terminal of updates.terminal) {
-    const card = cards.find((item) => item.record.payload.executionId === terminal.executionId)
-    if (card !== undefined)
-      yield* signer.close(card, yield* authority.status(terminal.executionId), true)
-  }
+  // Reserved cards remain tracked even after their sync event/candidate is
+  // consumed. Poll their durable status until the final PATCH succeeds.
+  for (const card of cards)
+    yield* signer.close(card, yield* authority.status(card.record.payload.executionId), true)
   yield* Effect.try({
     try: () => {
       store.advance(updates.cursor)

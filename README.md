@@ -105,6 +105,13 @@ headers to its private Unix listener at `/interactions`. The listener reconciles
 the durable outbox and stale original cards before accepting traffic. The parent
 socket directory and its shared proxy group are provisioned separately; the
 signer's database and signing key remain private to its UID.
+The socket parent must be canonical, signer-owned and not group/world writable.
+A persistent private SQLite lifecycle-lock inode is held exclusively for the
+listener's scoped lifetime; never delete or replace it while a signer may run.
+After a crash releases the OS lock, only an owned socket with a refused connection
+and unchanged inode is reclaimed. Live listeners, symlinks, regular files and
+foreign-owned paths fail closed. The host must retain the private directory and
+lock inode across restarts (or remove them only after proving the service stopped).
 
 Cards name exactly the statements offered by the authority. Similar-lease controls
 appear only for signed offers with explicit scope, absolute expiry and guardrails.
@@ -116,6 +123,11 @@ only non-sensitive Discord-origin words may be quoted publicly.
 Recovering an accepted decision consults its durable winner digest rather than
 resubmitting or dispatching again. Unacknowledged candidates are discarded on
 restart; failed terminal edits are retried before the terminal cursor advances.
+An accepted reservation removes controls but retains its durable message mapping
+until a final execution outcome has been PATCHed successfully. Sync polls these
+tracked outcomes even after consuming their reservation event. Status selection
+and message editing share one lock, preventing stale reserved edits from replacing
+the final outcome.
 Card and decision-job journal JSON uses the same `Schema.fromJsonString` codec
 for encoding and decoding.
 Delivery failure never signs a synthetic global deny. A create-before-journal
