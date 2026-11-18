@@ -711,7 +711,7 @@ export const collectWorkflowPolicyViolations = ({
     checkRunner({ runner: config['runs-on'], resolveMatrix: true })
     const bounded = policy.boundedPublicRunner
     const runnerLabels = config['runs-on']
-    if (bounded !== undefined && boundedRunnerJobs.has(job)) {
+    if (bounded !== undefined && boundedRunnerJobs.has(job) === true) {
       const credentials = JSON.stringify({
         env: workflow.env,
         defaults: workflow.defaults,
@@ -720,17 +720,17 @@ export const collectWorkflowPolicyViolations = ({
       const permissions = config.permissions ?? workflow.permissions
       if (
         config.if !== '${{ github.event.repository.private == false }}' ||
-        (Array.isArray(runnerLabels) && runnerLabels.length !== 1) ||
+        (Array.isArray(runnerLabels) === true && runnerLabels.length !== 1) ||
         (runnerLabels !== bounded.label &&
           JSON.stringify(runnerLabels) !== JSON.stringify([bounded.label])) ||
         typeof config.concurrency !== 'object' ||
         config.concurrency.group !== bounded.concurrencyGroup ||
         config.concurrency['cancel-in-progress'] !== false ||
         JSON.stringify(permissions) !== JSON.stringify({ contents: 'read' }) ||
-        /secrets/i.test(credentials) ||
+        /secrets/i.test(credentials) === true ||
         /(?:ACTIONS_ID_TOKEN_REQUEST|ACTIONS_RUNTIME_TOKEN|(?:CACHE|CACHIX|ATTIC|NIX)[A-Z0-9_]*(?:TOKEN|KEY)|(?:TOKEN|KEY)[A-Z0-9_]*CACHE)/i.test(
           credentials,
-        ) ||
+        ) === true ||
         config.strategy !== undefined
       )
         add({
