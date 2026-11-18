@@ -56,6 +56,23 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 - **Cache-hit classification:** each action's first end sets `buck2.execution_kind`
   and `buck2.cache_hit`; the same classification produces the command summary
   hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
+  `buck2.execution_outcome` separately describes native execution evidence:
+  local/local-worker → `local-exec`, remote/remote-worker → `remote-exec`,
+  action-cache/local-action-cache/remote-dep-file-cache/local-dep-file →
+  `cache-hit`; all other kinds and any failed action → `unknown`. Local
+  dep-file reuse does not change the existing action-cache summary counters.
+  Neither cache reuse nor
+  deferred execution proves coalescing, so this writer emits no `coalesced`
+  outcome.
+- **Occurrence evidence:** `buck2.occurrence_id` is `occurrence-sha256-v1:<lowercase SHA-256 hex of "<log-uuid>:<native-span-id>">`, independent of view/context.
+  `buck2.action_digest` is the last nonempty native command-attempt digest (local, omitted-local, worker or remote), never derived from a label/action key.
+  Native end evidence supplies writer `buck2.action_host`, wall `buck2.duration_ns`, execution/queue timings and logical output `buck2.total_bytes`.
+  Execution prefers native execution time, then action wall time; bytes mirror `output_size`, never network traffic or input-plus-output size.
+  Missing optional evidence stays absent (explicit zero survives); unfinished actions get identity, not invented end evidence.
+- **Opaque checkout identity:** nonempty native `working_dir` supplies resource `buck2.root_id = lowercase-hex(SHA-256(UTF-8(working_dir)))`.
+  Paths/argv are not exported; missing directory means missing identity. This is the native invocation directory, not an independently discovered repository root.
+- **View evidence boundary:** summaries/producer metrics precede critical pruning; retained actions have identical evidence across views, and full retains every decoded span.
+  Critical pruning, truncation, decoder limits and mandatory overflow remain explicit gaps; none certify gap-free cross-invocation history.
 - **Command outcome:** `buck2.is_success` comes from the final `CommandResult`,
   not the deprecated `CommandEnd.is_success` (unset by current writers).
   Top-level errors fail; build/BXL responses succeed only with no errors;
