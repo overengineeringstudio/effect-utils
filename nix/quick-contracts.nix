@@ -1,5 +1,5 @@
 # Transitional execution projection: devenv still owns evaluated task definitions;
-# Buck owns the bounded check invocation. No task runner is called at test time.
+# Buck owns the bounded check invocation. No task runner is called at check time.
 { baseCapabilities }:
 {
   config,
@@ -149,7 +149,7 @@ let
     ${validateSource}
     if ! printf '%s\n%s\n' ${taskAuthority} "$WORKTREE_CAPABILITIES_PROFILE" | \
       cmp -s - .devenv/quick-contracts-prepared; then
-      echo 'quick-contracts: source views are not prepared for this authority/profile; run the selected quick-contracts capability bin/quick-contracts-prepare before buck2 test //:check-quick' >&2
+      echo 'quick-contracts: source views are not prepared for this authority/profile; run the selected quick-contracts capability bin/quick-contracts-prepare before buck2 run //:check-quick' >&2
       exit 78
     fi
     export EFFECT_UTILS_CI_TEST=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_CI_TEST")}
