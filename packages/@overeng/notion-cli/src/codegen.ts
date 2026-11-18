@@ -894,12 +894,15 @@ export const generateSchemaCode = (opts: GenerateSchemaCodeOptions): string => {
   return lines.join('\n')
 }
 
+const isPropertyTransformType = (u: string): u is NotionPropertyType =>
+  Object.hasOwn(PROPERTY_TRANSFORMS, u)
+
+const isDefaultTransformType = (u: string): u is NotionPropertyType =>
+  Object.hasOwn(DEFAULT_TRANSFORMS, u)
+
 /** Get available transforms for a property type */
 export const getAvailableTransforms = (propertyType: string): readonly string[] => {
-  const isNotionPropertyType = (u: string): u is NotionPropertyType =>
-    Object.hasOwn(PROPERTY_TRANSFORMS, u)
-
-  if (isNotionPropertyType(propertyType) === true) {
+  if (isPropertyTransformType(propertyType) === true) {
     return PROPERTY_TRANSFORMS[propertyType] ?? ['raw']
   }
   return ['raw']
@@ -907,10 +910,7 @@ export const getAvailableTransforms = (propertyType: string): readonly string[] 
 
 /** Get the default transform for a property type */
 export const getDefaultTransform = (propertyType: string): string => {
-  const isNotionPropertyType = (u: string): u is NotionPropertyType =>
-    Object.hasOwn(DEFAULT_TRANSFORMS, u)
-
-  if (isNotionPropertyType(propertyType) === true) {
+  if (isDefaultTransformType(propertyType) === true) {
     return DEFAULT_TRANSFORMS[propertyType] ?? 'raw'
   }
   return 'raw'

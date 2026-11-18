@@ -56,6 +56,15 @@ const transportError = ({ operation, cause }: { operation: string; cause: unknow
     message: `iroh ${operation} failed`,
     cause,
   })
+const protocolError = ({
+  operation,
+  message,
+  cause,
+}: {
+  operation: string
+  message: string
+  cause?: unknown
+}) => new IrohProtocolError({ operation, message, cause })
 const closeConnection = (connection: Native.Connection) => connection.close(0n, [])
 
 /**
@@ -235,15 +244,6 @@ const makeBi = ({
       const json = Schema.fromJsonString(schema)
       const decode = Schema.decodeUnknownEffect(json)
       const encode = Schema.encodeEffect(json)
-      const protocolError = ({
-        operation,
-        message,
-        cause,
-      }: {
-        operation: string
-        message: string
-        cause?: unknown
-      }) => new IrohProtocolError({ operation, message, cause })
       const checkSize = (size: number) =>
         size > 0 && size <= maxFrameBytes
           ? Effect.void
@@ -349,6 +349,13 @@ const makeConnection = (connection: Native.Connection): IrohConnection => {
   }
 }
 
+const own = (acquire: Effect.Effect<Native.Connection, IrohTransportError>) =>
+  Effect.acquireRelease(
+    acquire,
+    (connection) => Effect.sync(() => closeConnection(connection)),
+    { interruptible: true },
+  ).pipe(Effect.map(makeConnection))
+
 /** Endpoint service: its Layer owns bind/close, callers own connection scopes. */
 export class IrohEndpoint extends Context.Service<
   IrohEndpoint,
@@ -393,12 +400,6 @@ export class IrohEndpoint extends Context.Service<
       (boundEndpoint) => Effect.promise(() => boundEndpoint.close()),
     )
     const close = Effect.promise(() => endpoint.close())
-    const own = (acquire: Effect.Effect<Native.Connection, IrohTransportError>) =>
-      Effect.acquireRelease(
-        acquire,
-        (connection) => Effect.sync(() => closeConnection(connection)),
-        { interruptible: true },
-      ).pipe(Effect.map(makeConnection))
     const connect = Effect.fn('Iroh.connect')(function* ({
       addr: nodeAddr,
       alpn,

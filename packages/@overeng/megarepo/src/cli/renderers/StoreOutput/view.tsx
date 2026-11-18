@@ -337,6 +337,17 @@ const getIssueHint = ({
   }
 }
 
+const getSeveritySymbol = (severity: 'error' | 'warning' | 'info') => {
+  switch (severity) {
+    case 'error':
+      return <Text color="red">{SYMBOLS.cross}</Text>
+    case 'warning':
+      return <Text color="yellow">{SYMBOLS.warning}</Text>
+    case 'info':
+      return <Text dim>{SYMBOLS.circle}</Text>
+  }
+}
+
 /** Single worktree with issues */
 const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus }) => {
   // Get highest severity for the header
@@ -346,21 +357,10 @@ const StoreStatusWorktreeRow = ({ worktree }: { worktree: StoreWorktreeStatus })
     return acc
   }, 'info')
 
-  const getSymbol = (severity: 'error' | 'warning' | 'info') => {
-    switch (severity) {
-      case 'error':
-        return <Text color="red">{SYMBOLS.cross}</Text>
-      case 'warning':
-        return <Text color="yellow">{SYMBOLS.warning}</Text>
-      case 'info':
-        return <Text dim>{SYMBOLS.circle}</Text>
-    }
-  }
-
   return (
     <Box flexDirection="column">
       <Box flexDirection="row">
-        {getSymbol(highestSeverity)}
+        {getSeveritySymbol(highestSeverity)}
         <Text> </Text>
         <Text>{worktree.repo}</Text>
         <Text dim>/refs/{worktree.refType}/</Text>

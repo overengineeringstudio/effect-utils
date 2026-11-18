@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:e4b4982b75040d5a68e635400e2f1539c73afc507a53f782dddb8041bf5eb7f7",
-  "generatedAt": "2026-11-18T17:59:07.452Z",
+  "inputFingerprint": "sha256:f6d122abb6ef8baacf9bdd52d51590aed744230ddeececcca908c1b6984e6749",
+  "generatedAt": "2026-11-18T23:55:26.756Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.4"
@@ -33,7 +33,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/import-rust.ts",
-      "sha256": "d337679cce0ffedae0457fab14ab67f430df9825147976e3a2921a7a24c988b6"
+      "sha256": "6da5ba637219519cd8a85091c8cecaefc47ccb9de9d6a53de7bf2065816c071a"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/ir.ts",
@@ -45,7 +45,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/lower.ts",
-      "sha256": "a2c442a0e73f85e5c73570bf24f8597faafc11b1bc4616be28512946029c2cbc"
+      "sha256": "956a26b8e69e181c4dc2659a75f485a97f52ca3c6ba3cb65cd3ac7cb6396bad0"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/mod.ts",

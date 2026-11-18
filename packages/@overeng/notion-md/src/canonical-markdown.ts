@@ -38,6 +38,14 @@ const splitFences = (
   return segments
 }
 
+const compact = (s: string): string =>
+  splitFences(canonicalizeBlockMarkdown(s))
+    .map((segment) =>
+      segment.kind === 'code' ? segment.content : segment.content.replace(/\s+/gu, ' ').trim(),
+    )
+    .join('\n')
+    .trim()
+
 /**
  * Post-push integrity check: did Notion store what we sent?
  *
@@ -52,12 +60,5 @@ const splitFences = (
  * all whitespace globally and would have masked those real diffs.
  */
 export const semanticEquivalent = (opts: { readonly a: string; readonly b: string }): boolean => {
-  const compact = (s: string): string =>
-    splitFences(canonicalizeBlockMarkdown(s))
-      .map((segment) =>
-        segment.kind === 'code' ? segment.content : segment.content.replace(/\s+/gu, ' ').trim(),
-      )
-      .join('\n')
-      .trim()
   return compact(opts.a) === compact(opts.b)
 }

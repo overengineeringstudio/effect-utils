@@ -203,6 +203,17 @@ const paintStatusBand = (options: {
   return reconnects
 }
 
+const statusText = (input: {
+  readonly history: SeriesView<StatusValue>
+  readonly compact: boolean
+}): string => {
+  const latest = input.history.latest
+  if (latest === undefined) return 'n/a (NoSamples)'
+  if (latest._tag === 'Unavailable') return `n/a (${latest.reason})`
+  if (latest._tag === 'Gap') return `n/a (${latest.reason} gap)`
+  return input.compact === true ? compactStatus(latest.value.state) : latest.value.label
+}
+
 /** WebSocket health over time: live/retry/offline band with reconnect markers. */
 const statusBlock = (options: {
   readonly id: string
@@ -210,22 +221,12 @@ const statusBlock = (options: {
   readonly shortLabel: string
   readonly widthPx: number
 }): CanvasBlockSpec => {
-  const text = (input: {
-    readonly history: SeriesView<StatusValue>
-    readonly compact: boolean
-  }): string => {
-    const latest = input.history.latest
-    if (latest === undefined) return 'n/a (NoSamples)'
-    if (latest._tag === 'Unavailable') return `n/a (${latest.reason})`
-    if (latest._tag === 'Gap') return `n/a (${latest.reason} gap)`
-    return input.compact === true ? compactStatus(latest.value.state) : latest.value.label
-  }
   return block({
     id: options.id,
     series: options.series,
     shortLabel: options.shortLabel,
     widthPx: options.widthPx,
-    describe: ({ history }) => text({ history, compact: false }),
+    describe: ({ history }) => statusText({ history, compact: false }),
     draw: ({ ctx, rect, history, nowMs, historyMs: horizonMs, theme }) => {
       ctx.save()
       ctx.beginPath()
@@ -243,14 +244,14 @@ const statusBlock = (options: {
       })
       ctx.font = theme.font
       ctx.textBaseline = 'top'
-      const value = text({ history, compact: false })
+      const value = statusText({ history, compact: false })
       const header = layoutBlockText({
         rect,
         label: options.series.label,
         shortLabel: options.shortLabel,
         value: reconnects > 0 ? `${value} · ${reconnects}↻` : value,
-        compactValue: text({ history, compact: true }),
-        numberValue: text({ history, compact: true }),
+        compactValue: statusText({ history, compact: true }),
+        numberValue: statusText({ history, compact: true }),
         measure: (run) => ctx.measureText(run).width,
       })
       ctx.fillStyle = theme.muted

@@ -194,6 +194,11 @@ type MeasurementState =
     }
   | { readonly _tag: 'Ended' | 'Released' | 'Invalidated' }
 
+const validateSettlement = (count: number) =>
+  Schema.decodeEffect(SettlementFrames)(count).pipe(
+    Effect.mapError(() => measurementError('InvalidOptions')),
+  )
+
 /** Build the session-owned headless view without installing a bridge or collector. */
 export const makeHeadless = (options: {
   readonly sessionId: string
@@ -291,10 +296,6 @@ export const makeHeadless = (options: {
       data,
     } satisfies MeasureResult
   }
-  const validateSettlement = (count: number) =>
-    Schema.decodeEffect(SettlementFrames)(count).pipe(
-      Effect.mapError(() => measurementError('InvalidOptions')),
-    )
   const measurement: Headless['measurement'] = Effect.uninterruptibleMask(() =>
     Effect.gen(function* () {
       if (options.session.running === false) return yield* measurementError('NotRunning')

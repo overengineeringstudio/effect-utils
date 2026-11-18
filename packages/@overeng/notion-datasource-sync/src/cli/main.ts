@@ -2234,6 +2234,30 @@ const readSelfContainedBinding = ({
   }
 }
 
+const assertObjects = ({
+  path,
+  objects,
+}: {
+  readonly path: string
+  readonly objects: ReadonlyArray<readonly [string, string]>
+}): void => {
+  const db = new DatabaseSync(path, { readOnly: true })
+  try {
+    for (const [type, name] of objects) {
+      const found = db
+        .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
+        .get(type, name)
+      if (found === undefined) {
+        throw new CliArgumentError({
+          message: `SQLite file ${path} is missing required ${type} ${name}; refusing to open`,
+        })
+      }
+    }
+  } finally {
+    db.close()
+  }
+}
+
 /**
  * Fail closed on an established but corrupt store. The control plane lives in
  * `storePath` (`.notion/v1/state.sqlite` for a tracked workspace) and the public
@@ -2280,29 +2304,6 @@ const validateSelfContainedSqlite = ({
     ['trigger', '_nds_pages_insert'],
     ['trigger', '_nds_pages_delete'],
   ] as const
-  const assertObjects = ({
-    path,
-    objects,
-  }: {
-    readonly path: string
-    readonly objects: ReadonlyArray<readonly [string, string]>
-  }): void => {
-    const db = new DatabaseSync(path, { readOnly: true })
-    try {
-      for (const [type, name] of objects) {
-        const found = db
-          .prepare(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
-          .get(type, name)
-        if (found === undefined) {
-          throw new CliArgumentError({
-            message: `SQLite file ${path} is missing required ${type} ${name}; refusing to open`,
-          })
-        }
-      }
-    } finally {
-      db.close()
-    }
-  }
   assertObjects({ path: storePath, objects: controlPlaneObjects })
   assertObjects({ path: dataFileSqlitePath, objects: dataFileObjects })
   // The CDC trigger floor is on the data file (where write-intent triggers live).

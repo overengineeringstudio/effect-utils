@@ -292,6 +292,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       /** @param {string} path */
       const subscribe = (path) => {
         if (watched.has(path) === true || isStopped() === true) return
+        // oxlint-disable-next-line unicorn/consistent-function-scoping -- Per-file watcher identity captures this server's refresh and error reporter.
         const listener = () => {
           void refresh().catch(reportError)
         }

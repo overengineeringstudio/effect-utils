@@ -597,6 +597,7 @@ const followEvents = (spec: PtyFollowEventsSpec): Stream.Stream<PtyEvent, PtyErr
         }
       }
 
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- Captures the enclosing Stream.callback queue across Effect.gen.
       const onEvent = (event: EventRecord) => {
         try {
           Queue.offerUnsafe(queue, decodePtyEvent(event))

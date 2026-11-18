@@ -142,18 +142,19 @@ const manifestPathsByRealPath = new Map(
 const selected = metadata.packages.filter((entry) => entry.source !== null)
 const featuresById = new Map(metadata.resolve.nodes.map((node) => [node.id, node.features]))
 const nodesById = new Map(metadata.resolve.nodes.map((node) => [node.id, node]))
+const getPackagePriority = (pkg: Package) =>
+  pkg.id === metadata.resolve.root
+    ? 0
+    : metadata.workspace_members.includes(pkg.id) === true
+      ? 1
+      : 2
+
 // Consumer manifests own canonical aliases, including virtual workspace members.
 // Cargo's resolved edges identify the exact version; package-ID ordering cannot.
 const localPackages = metadata.packages
   .filter((pkg) => pkg.source === null)
   .toSorted((a, b) => {
-    const priority = (pkg: Package) =>
-      pkg.id === metadata.resolve.root
-        ? 0
-        : metadata.workspace_members.includes(pkg.id) === true
-          ? 1
-          : 2
-    return priority(a) - priority(b) || a.manifest_path.localeCompare(b.manifest_path)
+    return getPackagePriority(a) - getPackagePriority(b) || a.manifest_path.localeCompare(b.manifest_path)
   })
 const resolvedDependencies = localPackages.flatMap((declaring) =>
   (nodesById.get(declaring.id)?.deps ?? [])

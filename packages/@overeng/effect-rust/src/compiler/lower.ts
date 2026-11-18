@@ -14,6 +14,176 @@ import {
   type Width,
 } from './ir.ts'
 
+const scalar = ({ ast, path }: { ast: SchemaAST.AST; path: string }): Type | undefined => {
+  const annotations = Schema.resolveAnnotations(Schema.make(ast))
+  if (EffectRust.isF32AST(ast) === true) {
+    if (
+      ast.context?.constructorDefault !== undefined ||
+      (annotations?.[EffectRust.width] !== undefined && annotations[EffectRust.width] !== 'f32')
+    )
+      return reject(
+        path,
+        'Modified binary32 contract policy',
+        'Use EffectRust.F32 without defaults, encoded checks or a conflicting width',
+      )
+    return { kind: 'f32' }
+  }
+  if (
+    (ast._tag === 'Declaration' ||
+      ast._tag === 'Arrays' ||
+      ast._tag === 'Objects' ||
+      ast._tag === 'Union') &&
+    ast.encodingChecks !== undefined
+  )
+    return reject(
+      path,
+      'Encoded-side refinements are not admitted',
+      'Put supported checks on the portable domain schema',
+    )
+  if (
+    annotations?.[EffectRust.width] !== undefined &&
+    ast._tag !== 'Number' &&
+    ast._tag !== 'BigInt'
+  )
+    return reject(
+      path,
+      'Storage width on a non-integer schema',
+      'Pin widths only on bounded Schema.Int or Schema.BigInt',
+    )
+  const precision = annotations?.[EffectRust.timestampPrecision]
+  if (precision !== undefined) {
+    if (
+      precision !== 'millis' ||
+      isTimestampAST(ast) === false ||
+      ast.checks !== undefined ||
+      ast.context?.constructorDefault !== undefined
+    )
+      return reject(
+        path,
+        'Unsupported timestamp declaration',
+        'Annotate unmodified Schema.DateTimeUtc with millisecond precision',
+      )
+    return { kind: 'dateTime' }
+  }
+  if (ast.encoding !== undefined)
+    reject(
+      path,
+      'Unregistered transformation',
+      'Use plain portable schemas; arbitrary transformations cannot cross the Rust boundary',
+    )
+  const constructorDefault = ast.context?.constructorDefault
+  if (
+    constructorDefault !== undefined &&
+    !(
+      ast._tag === 'Literal' &&
+      typeof ast.literal === 'string' &&
+      ast.checks === undefined &&
+      Exit.isExit(constructorDefault) === true &&
+      Exit.isSuccess(constructorDefault) === true &&
+      constructorDefault.value === ast.literal
+    )
+  )
+    reject(
+      path,
+      'Constructor default is not a portable wire contract',
+      'Use a required tagged literal with its constant constructor default, or an explicit optional field',
+    )
+  if (ast._tag === 'Boolean') {
+    if (ast.checks !== undefined) portableChecks({ ast, path })
+    return { kind: 'bool' }
+  }
+  if (ast._tag === 'Null') {
+    if (ast.checks !== undefined) portableChecks({ ast, path })
+    return { kind: 'null' }
+  }
+  if (ast._tag === 'Number') {
+    const constraints = portableChecks({ ast, path })
+    const { minimum, maximum } = constraints
+    if (
+      constraints.integer !== true ||
+      minimum === undefined ||
+      maximum === undefined ||
+      Number.isSafeInteger(minimum) === false ||
+      Number.isSafeInteger(maximum) === false ||
+      minimum > maximum
+    )
+      return reject(
+        path,
+        'Number requires a nonempty bounded integer interval',
+        'Use Schema.Int with safe integer minimum and maximum checks',
+      )
+    const pin = annotations?.[EffectRust.width]
+    const width =
+      pin ??
+      (Object.keys(integerRanges) as Width[]).find((candidate) => {
+        const [lo, hi] = integerRanges[candidate]
+        return minimum >= lo && maximum <= hi
+      })
+    if (typeof width !== 'string' || Object.hasOwn(integerRanges, width) === false)
+      return reject(
+        path,
+        'Integer interval has no admitted number storage width',
+        'Use bounds within the safe-number range and a fitting u8/u16/u32/i8/i16/i32/u64/i64 width',
+      )
+    const storage = width as Width
+    const [lo, hi] = integerRanges[storage]
+    if (minimum < lo || maximum > hi)
+      return reject(
+        path,
+        'Integer bounds exceed pinned width',
+        'Remove the width pin or choose a storage width containing the complete interval',
+      )
+    return {
+      kind: 'int',
+      width: storage,
+      ...(minimum === lo && maximum === hi ? {} : { minimum, maximum }),
+    }
+  }
+  if (ast._tag === 'BigInt') {
+    const constraints = portableChecks({ ast, path })
+    const minimum = constraints.minimumBigInt
+    const maximum = constraints.maximumBigInt
+    if (minimum === undefined || maximum === undefined || minimum > maximum)
+      return reject(
+        path,
+        'BigInt requires a nonempty bounded interval',
+        'Use inclusive or exclusive BigInt minimum and maximum checks',
+      )
+    const pin = annotations?.[EffectRust.width]
+    const width = pin ?? (minimum >= 0n ? 'u64' : 'i64')
+    if (width !== 'u64' && width !== 'i64')
+      return reject(path, 'BigInt width must be u64 or i64', 'Choose a fitting 64-bit width')
+    const lo = width === 'u64' ? 0n : -(2n ** 63n)
+    const hi = width === 'u64' ? 2n ** 64n - 1n : 2n ** 63n - 1n
+    if (minimum < lo || maximum > hi)
+      return reject(
+        path,
+        'BigInt bounds exceed storage width',
+        'Use bounds fitting the pinned or inferred 64-bit width',
+      )
+    return {
+      kind: width,
+      ...(minimum === lo && maximum === hi
+        ? {}
+        : { minimum: minimum.toString(), maximum: maximum.toString() }),
+    }
+  }
+  if (ast._tag === 'Literal' && ast.checks !== undefined)
+    return reject(
+      path,
+      'Refined literal is not admitted',
+      'Use an unrefined literal or a supported named string schema',
+    )
+  if (ast._tag === 'Union' && (ast.checks !== undefined || ast.options?.mode === 'oneOf'))
+    return reject(
+      path,
+      'Refined union is not admitted',
+      'Use a disjoint literal, nullable or tagged union without additional checks',
+    )
+  if (ast._tag === 'String' && ast.checks === undefined) return { kind: 'string' }
+  return undefined
+}
+
 /** Lowers live Effect schemas into the portable contract IR, rejecting lossy constructs. */
 // eslint-disable-next-line overeng/named-args -- Preserve the public lower positional SDK signature.
 export const lower = (
@@ -76,175 +246,6 @@ export const lower = (
     }
     defs[name] = definition({ ast: resolved, name, path })
     return { kind: 'ref', name }
-  }
-  const scalar = ({ ast, path }: { ast: SchemaAST.AST; path: string }): Type | undefined => {
-    const annotations = Schema.resolveAnnotations(Schema.make(ast))
-    if (EffectRust.isF32AST(ast) === true) {
-      if (
-        ast.context?.constructorDefault !== undefined ||
-        (annotations?.[EffectRust.width] !== undefined && annotations[EffectRust.width] !== 'f32')
-      )
-        return reject(
-          path,
-          'Modified binary32 contract policy',
-          'Use EffectRust.F32 without defaults, encoded checks or a conflicting width',
-        )
-      return { kind: 'f32' }
-    }
-    if (
-      (ast._tag === 'Declaration' ||
-        ast._tag === 'Arrays' ||
-        ast._tag === 'Objects' ||
-        ast._tag === 'Union') &&
-      ast.encodingChecks !== undefined
-    )
-      return reject(
-        path,
-        'Encoded-side refinements are not admitted',
-        'Put supported checks on the portable domain schema',
-      )
-    if (
-      annotations?.[EffectRust.width] !== undefined &&
-      ast._tag !== 'Number' &&
-      ast._tag !== 'BigInt'
-    )
-      return reject(
-        path,
-        'Storage width on a non-integer schema',
-        'Pin widths only on bounded Schema.Int or Schema.BigInt',
-      )
-    const precision = annotations?.[EffectRust.timestampPrecision]
-    if (precision !== undefined) {
-      if (
-        precision !== 'millis' ||
-        isTimestampAST(ast) === false ||
-        ast.checks !== undefined ||
-        ast.context?.constructorDefault !== undefined
-      )
-        return reject(
-          path,
-          'Unsupported timestamp declaration',
-          'Annotate unmodified Schema.DateTimeUtc with millisecond precision',
-        )
-      return { kind: 'dateTime' }
-    }
-    if (ast.encoding !== undefined)
-      reject(
-        path,
-        'Unregistered transformation',
-        'Use plain portable schemas; arbitrary transformations cannot cross the Rust boundary',
-      )
-    const constructorDefault = ast.context?.constructorDefault
-    if (
-      constructorDefault !== undefined &&
-      !(
-        ast._tag === 'Literal' &&
-        typeof ast.literal === 'string' &&
-        ast.checks === undefined &&
-        Exit.isExit(constructorDefault) === true &&
-        Exit.isSuccess(constructorDefault) === true &&
-        constructorDefault.value === ast.literal
-      )
-    )
-      reject(
-        path,
-        'Constructor default is not a portable wire contract',
-        'Use a required tagged literal with its constant constructor default, or an explicit optional field',
-      )
-    if (ast._tag === 'Boolean') {
-      if (ast.checks !== undefined) portableChecks({ ast, path })
-      return { kind: 'bool' }
-    }
-    if (ast._tag === 'Null') {
-      if (ast.checks !== undefined) portableChecks({ ast, path })
-      return { kind: 'null' }
-    }
-    if (ast._tag === 'Number') {
-      const constraints = portableChecks({ ast, path })
-      const { minimum, maximum } = constraints
-      if (
-        constraints.integer !== true ||
-        minimum === undefined ||
-        maximum === undefined ||
-        Number.isSafeInteger(minimum) === false ||
-        Number.isSafeInteger(maximum) === false ||
-        minimum > maximum
-      )
-        return reject(
-          path,
-          'Number requires a nonempty bounded integer interval',
-          'Use Schema.Int with safe integer minimum and maximum checks',
-        )
-      const pin = annotations?.[EffectRust.width]
-      const width =
-        pin ??
-        (Object.keys(integerRanges) as Width[]).find((candidate) => {
-          const [lo, hi] = integerRanges[candidate]
-          return minimum >= lo && maximum <= hi
-        })
-      if (typeof width !== 'string' || Object.hasOwn(integerRanges, width) === false)
-        return reject(
-          path,
-          'Integer interval has no admitted number storage width',
-          'Use bounds within the safe-number range and a fitting u8/u16/u32/i8/i16/i32/u64/i64 width',
-        )
-      const storage = width as Width
-      const [lo, hi] = integerRanges[storage]
-      if (minimum < lo || maximum > hi)
-        return reject(
-          path,
-          'Integer bounds exceed pinned width',
-          'Remove the width pin or choose a storage width containing the complete interval',
-        )
-      return {
-        kind: 'int',
-        width: storage,
-        ...(minimum === lo && maximum === hi ? {} : { minimum, maximum }),
-      }
-    }
-    if (ast._tag === 'BigInt') {
-      const constraints = portableChecks({ ast, path })
-      const minimum = constraints.minimumBigInt
-      const maximum = constraints.maximumBigInt
-      if (minimum === undefined || maximum === undefined || minimum > maximum)
-        return reject(
-          path,
-          'BigInt requires a nonempty bounded interval',
-          'Use inclusive or exclusive BigInt minimum and maximum checks',
-        )
-      const pin = annotations?.[EffectRust.width]
-      const width = pin ?? (minimum >= 0n ? 'u64' : 'i64')
-      if (width !== 'u64' && width !== 'i64')
-        return reject(path, 'BigInt width must be u64 or i64', 'Choose a fitting 64-bit width')
-      const lo = width === 'u64' ? 0n : -(2n ** 63n)
-      const hi = width === 'u64' ? 2n ** 64n - 1n : 2n ** 63n - 1n
-      if (minimum < lo || maximum > hi)
-        return reject(
-          path,
-          'BigInt bounds exceed storage width',
-          'Use bounds fitting the pinned or inferred 64-bit width',
-        )
-      return {
-        kind: width,
-        ...(minimum === lo && maximum === hi
-          ? {}
-          : { minimum: minimum.toString(), maximum: maximum.toString() }),
-      }
-    }
-    if (ast._tag === 'Literal' && ast.checks !== undefined)
-      return reject(
-        path,
-        'Refined literal is not admitted',
-        'Use an unrefined literal or a supported named string schema',
-      )
-    if (ast._tag === 'Union' && (ast.checks !== undefined || ast.options?.mode === 'oneOf'))
-      return reject(
-        path,
-        'Refined union is not admitted',
-        'Use a disjoint literal, nullable or tagged union without additional checks',
-      )
-    if (ast._tag === 'String' && ast.checks === undefined) return { kind: 'string' }
-    return undefined
   }
   const type = ({ ast, path }: { ast: SchemaAST.AST; path: string }): Type => {
     // optionalKey clones the AST only to change key context. Reuse the original
@@ -556,6 +557,18 @@ const portableChecks = ({
     maximumBigInt?: bigint
     integer?: boolean
   } = {}
+  const lowerBigInt = (value: bigint) => {
+    result.minimumBigInt =
+      result.minimumBigInt === undefined || value > result.minimumBigInt
+        ? value
+        : result.minimumBigInt
+  }
+  const upperBigInt = (value: bigint) => {
+    result.maximumBigInt =
+      result.maximumBigInt === undefined || value < result.maximumBigInt
+        ? value
+        : result.maximumBigInt
+  }
   const visit = (check: SchemaAST.Check<unknown>) => {
     if (check._tag === 'FilterGroup') {
       check.checks.forEach(visit)
@@ -582,18 +595,6 @@ const portableChecks = ({
       if (typeof value !== 'string' || /^(0|-?[1-9][0-9]*)$/.test(value) === false)
         return reject(path, `Invalid ${key} bound`, 'Use a canonical bigint bound')
       return BigInt(value)
-    }
-    const lowerBigInt = (value: bigint) => {
-      result.minimumBigInt =
-        result.minimumBigInt === undefined || value > result.minimumBigInt
-          ? value
-          : result.minimumBigInt
-    }
-    const upperBigInt = (value: bigint) => {
-      result.maximumBigInt =
-        result.maximumBigInt === undefined || value < result.maximumBigInt
-          ? value
-          : result.maximumBigInt
     }
     const numeric =
       String(representation.id).startsWith('effect/schema/is') &&

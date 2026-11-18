@@ -205,6 +205,7 @@ export const makeRpcSource = Effect.fn('RpcDevtools.makeSource')(function* (
           if (metric === 'inFlight') {
             yield* Effect.acquireRelease(
               Effect.sync(() => {
+                // oxlint-disable-next-line unicorn/consistent-function-scoping -- Acquisition-local identity captures metric, writer, and clock for listener removal.
                 const listener = () =>
                   writer.append({ sample: sample({ metric, atMs: clock.now() }) })
                 listeners.add(listener)

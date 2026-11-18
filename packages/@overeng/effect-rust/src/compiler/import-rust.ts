@@ -192,6 +192,22 @@ const reserved: Readonly<Record<string, true>> = {
   undefined: true,
 }
 
+const validateName = ({ value, path }: { value: string; path: string }): void => {
+  const emitted = value.length === 0 ? value : value[0]!.toUpperCase() + value.slice(1)
+  if (
+    namePattern.test(value) === false ||
+    Object.hasOwn(reserved, value) === true ||
+    emitted === 'Schema' ||
+    emitted === 'EffectRust' ||
+    emitted === 'ContractJson'
+  )
+    reject(
+      path,
+      `invalid Effect export identifier ${value}`,
+      'Use a JavaScript identifier that is not a reserved word or generated import name',
+    )
+}
+
 /** Strict schemars admission with path/remedy failures, followed by Effect's representation renderer.
  * Generated modules export plain Effect schemas and strict ContractJson decode/encode entry points.
  * Recursive decoded types and portable validation constraints are preserved.
@@ -207,21 +223,6 @@ export const importRustSchema = (
   const inputDefs: Record<string, unknown> = Object.create(null)
   const names = new Set<string>()
   const discriminatorDefinitions = new Set<string>()
-  const validateName = ({ value, path }: { value: string; path: string }): void => {
-    const emitted = value.length === 0 ? value : value[0]!.toUpperCase() + value.slice(1)
-    if (
-      namePattern.test(value) === false ||
-      Object.hasOwn(reserved, value) === true ||
-      emitted === 'Schema' ||
-      emitted === 'EffectRust' ||
-      emitted === 'ContractJson'
-    )
-      reject(
-        path,
-        `invalid Effect export identifier ${value}`,
-        'Use a JavaScript identifier that is not a reserved word or generated import name',
-      )
-  }
   validateName({ value: rootName, path: '$/title' })
   names.add(rootName)
   for (const container of ['$defs', 'definitions']) {

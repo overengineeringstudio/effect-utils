@@ -791,6 +791,7 @@ const applyDiff = (
   priorHashById: ReadonlyMap<string, string>,
 ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
   Effect.gen(function* () {
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- Captures applyDiff's idMap across the Effect.gen boundary.
     const resolve = (id: string): string => idMap.get(id) ?? id
     const { plan: ops, absorbed } = foldAtomicContainers(rawOps)
     let i = 0

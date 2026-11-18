@@ -179,6 +179,7 @@ const watchStore = ({
       const wireDescriptors = makeWireDescriptors(descriptors)
       const subscription = yield* Effect.acquireRelease(
         Effect.sync(() => {
+          // oxlint-disable-next-line unicorn/consistent-function-scoping -- Acquisition-local listener captures this watch's signal queue.
           const onFrames = (): void => {
             Queue.offerUnsafe(signal, undefined)
           }

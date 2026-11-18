@@ -83,6 +83,7 @@ export const reactCommitsSource = (options: {
     start: ({ sink, clock }) =>
       Effect.acquireRelease(
         Effect.sync(() => {
+          // oxlint-disable-next-line unicorn/consistent-function-scoping -- Captures this acquisition's sink and clock; removal requires the same listener.
           const publish = (commit: ReactCommit | undefined): void => {
             sink.append({
               sample:

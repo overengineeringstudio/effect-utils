@@ -2324,6 +2324,21 @@ const loopReferences = (input: LoopInput): readonly RunReference[] => [
     : referencesInText(input.onExhausted.attention.title)),
 ]
 
+// A loop round is its own native mission. Equal IDs or membership in the
+// outer declaration must not let an attempt-bound product escape that scope.
+const validateProductScope = ({
+  references,
+  handles,
+}: {
+  readonly references: readonly RunReference[]
+  readonly handles: readonly object[]
+}): void => {
+  for (const ref of references) {
+    if (isInputHandle(ref) === false && handles.includes(productOwners.get(ref)!) === false)
+      throw new TypeError('Product reference belongs to a step outside this mission scope')
+  }
+}
+
 const assembleMission = <const TMission extends string>(
   input: MissionInput<TMission>,
 ): typeof MissionSchema.Type => {
@@ -2360,20 +2375,6 @@ const assembleMission = <const TMission extends string>(
         throw new TypeError(`Input ${ref.name} is not declared by this mission`)
     } else if (allHandles.some((handle) => handle === productOwners.get(ref)) === false) {
       throw new TypeError('Product reference belongs to a step outside this mission')
-    }
-  }
-  // A loop round is its own native mission. Equal IDs or membership in the
-  // outer declaration must not let an attempt-bound product escape that scope.
-  const validateProductScope = ({
-    references,
-    handles,
-  }: {
-    readonly references: readonly RunReference[]
-    readonly handles: readonly object[]
-  }): void => {
-    for (const ref of references) {
-      if (isInputHandle(ref) === false && handles.includes(productOwners.get(ref)!) === false)
-        throw new TypeError('Product reference belongs to a step outside this mission scope')
     }
   }
   const outerSteps = [...input.steps, ...(input.finally ?? [])]
