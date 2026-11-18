@@ -1370,7 +1370,13 @@ const extraJobs: Record<string, any> = {
   'published-status': {
     needs: ['publish-products', 'consumer-smoke', 'promote-published'],
     if: `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
-    'runs-on': linuxX64Runner,
+    // API-only reporting must not wait for the self-hosted Nix build pool.
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+      privileged: 'never',
+      priority: deliveryJobPriority,
+    }),
     'timeout-minutes': 3,
     permissions: { statuses: 'write' },
     defaults: bashShellDefaults,
