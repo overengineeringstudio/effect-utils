@@ -1,11 +1,29 @@
 # Immutable shared composition for agents/CI. Callers retain their own guarded
 # Buck, capability/root publisher and explicit non-secret environment contract.
-{ pkgs, buck2, events, otelSpan, tools, prepare, preflight, environment ? { } }:
+{
+  pkgs,
+  buck2,
+  events,
+  otelSpan,
+  tools,
+  prepare,
+  preflight,
+  environment ? { },
+}:
 let
   publication = ../scripts/worktree-env.py;
-  bridge = import ./worktree-buck-trace.nix { inherit pkgs buck2 events otelSpan; };
+  bridge = import ./worktree-buck-trace.nix {
+    inherit
+      pkgs
+      buck2
+      events
+      otelSpan
+      ;
+  };
   exports = pkgs.lib.concatStringsSep "\n" (
-    pkgs.lib.mapAttrsToList (name: value: "export ${name}=${pkgs.lib.escapeShellArg (toString value)}") environment
+    pkgs.lib.mapAttrsToList (
+      name: value: "export ${name}=${pkgs.lib.escapeShellArg (toString value)}"
+    ) environment
   );
   check = pkgs.writeShellScript "worktree-tools-preflight" preflight;
   launcher = pkgs.writeShellScript "worktree-buck2" ''

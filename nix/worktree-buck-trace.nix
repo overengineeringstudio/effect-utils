@@ -1,6 +1,11 @@
 # Runner-independent capture boundary. The existing identity helper and native
 # converter remain the sole trace authorities; telemetry never changes a verdict.
-{ pkgs, buck2, events, otelSpan }:
+{
+  pkgs,
+  buck2,
+  events,
+  otelSpan,
+}:
 pkgs.writeShellScript "worktree-buck-trace" ''
   set -euo pipefail
   buck_args=("$@")
