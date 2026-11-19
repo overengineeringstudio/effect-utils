@@ -9,6 +9,7 @@ const Nonce = Schema.String.check(Schema.isPattern(/^[0-9a-f]{32}$/u))
 const U64 = Schema.String.check(Schema.makeFilter((value) =>
   /^(?:0|[1-9][0-9]{0,19})$/u.test(value) && BigInt(value) <= U64_MAX,
 ))
+const NonzeroU64 = U64.check(Schema.makeFilter((value) => value !== '0'))
 const U32 = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 4294967295 }))
 const UUID = Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u))
 const canonicalParts = (value: string) => value.split('/').every((part) =>
@@ -17,7 +18,7 @@ const canonicalParts = (value: string) => value.split('/').every((part) =>
 const validText = (value: string) =>
   !/[\u0000\r\n\uD800-\uDFFF]/u.test(value) && Buffer.byteLength(value, 'utf8') <= 4096
 const canonicalPath = (value: string) =>
-  validText(value) && value.startsWith('/') && (value === '/' || canonicalParts(value.slice(1)))
+  validText(value) && value.startsWith('/') && value !== '/' && canonicalParts(value.slice(1))
 const Path = Schema.String.check(Schema.makeFilter(canonicalPath))
 const RelativePath = Schema.String.check(Schema.makeFilter((value) =>
   validText(value) && (value === '.' || canonicalParts(value)),
@@ -34,12 +35,12 @@ export const WorktreeHolderEvidenceClientConfigSchema = Schema.Struct({
 ))
 export type WorktreeHolderEvidenceClientConfig = typeof WorktreeHolderEvidenceClientConfigSchema.Type
 
-const Identity = Schema.Struct({ dev: U64, ino: U64, mountId: U64 })
+const Identity = Schema.Struct({ dev: U64, ino: NonzeroU64, mountId: NonzeroU64 })
 const Reference = Schema.Struct({
   tgid: U32.check(Schema.isGreaterThan(0)),
-  leaderStart: U64,
+  leaderStart: NonzeroU64,
   tid: U32.check(Schema.isGreaterThan(0)),
-  taskStart: U64,
+  taskStart: NonzeroU64,
   uid: Schema.Tuple([U32, U32, U32, U32]),
   reference: Schema.Literals(['root', 'cwd', 'exe', 'fd', 'map', 'mount']),
   relativePath: RelativePath,
@@ -81,7 +82,7 @@ export const WorktreeHolderEvidenceSchema = Schema.Struct({
     allTasks: Schema.Literal(true),
     processCount: U32,
     taskCount: U32,
-    namespaces: Schema.Struct({ user: U64, pid: U64, mnt: U64, net: U64 }),
+    namespaces: Schema.Struct({ user: NonzeroU64, pid: NonzeroU64, mnt: NonzeroU64, net: NonzeroU64 }),
     requestedPathsDigest: Digest,
     // Opaque authenticated receipt: hidden census bytes cannot be reconstructed here.
     digest: Digest,

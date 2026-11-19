@@ -74,21 +74,39 @@ describe('native holder evidence Rust codec authority', () => {
         { ...clear, scope: { ...clear.scope, allUids: false } },
         { ...clear, scope: { ...clear.scope, taskCount: 4294967296 } },
         { ...clear, scope: { ...clear.scope, digest: 'not-a-digest' } },
+        ...(['user', 'pid', 'mnt', 'net'] as const).map((field) => ({
+          ...clear, scope: { ...clear.scope, namespaces: { ...clear.scope.namespaces, [field]: '0' } },
+        })),
         { ...clear, bootId: 'not-a-uuid' },
         { ...clear, roots: [{ ...root, complete: false }] },
         { ...clear, roots: [{ ...root, referencesComplete: false }] },
         { ...clear, roots: [{ ...root, identity: null }] },
         { ...clear, roots: [{ ...root, unknownReasons: ['permission'] }] },
         { ...clear, roots: [{ ...root, identity: { ...root.identity, ino: 1 } }] },
+        ...(['ino', 'mountId'] as const).map((field) => ({
+          ...clear, roots: [{ ...root, identity: { ...root.identity, [field]: '0' } }],
+        })),
+        { ...clear, roots: [{ ...root, path: '/' }] },
         { ...clear, roots: [{ ...root, path: '/work/../tree' }] },
         { ...clear, roots: [{ ...root, status: 'in-use' }] },
         { ...held, roots: [{ ...held.roots[0]!, references: [{ ...reference, uid: [0, 0, 0] }] }] },
         { ...held, roots: [{ ...held.roots[0]!, references: [{ ...reference, tid: 4294967296 }] }] },
         { ...held, roots: [{ ...held.roots[0]!, references: [{ ...reference, relativePath: '../outside' }] }] },
         { ...held, roots: [{ ...held.roots[0]!, references: Array.from({ length: 4097 }, () => reference) }] },
+        ...(['leaderStart', 'taskStart'] as const).map((field) => ({
+          ...held, roots: [{ ...held.roots[0]!, references: [{ ...reference, [field]: '0' }] }],
+        })),
+        ...(['ino', 'mountId'] as const).map((field) => ({
+          ...held, roots: [{ ...held.roots[0]!, references: [{ ...reference, identity: { ...reference.identity, [field]: '0' } }] }],
+        })),
       ]
       for (const value of mutations) {
-        expect(yield* decodeWorktreeHolderEvidence({ ...binding(clear), json: encodeJson(value) })).toBeUndefined()
+        const json = encodeJson(value)
+        const structural = yield* Schema.decodeEffect(Schema.fromJsonString(WorktreeHolderEvidenceSchema), {
+          onExcessProperty: 'error',
+        })(json).pipe(Effect.exit)
+        expect(structural._tag).toBe('Failure')
+        expect(yield* decodeWorktreeHolderEvidence({ ...binding(clear), json })).toBeUndefined()
       }
       expect(yield* decodeWorktreeHolderEvidence({ ...binding(clear), json: '{' })).toBeUndefined()
       expect(yield* decodeWorktreeHolderEvidence({ ...binding(clear), json: ' '.repeat(16 * 1024 * 1024 + 1) })).toBeUndefined()
