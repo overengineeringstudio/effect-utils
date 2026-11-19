@@ -804,6 +804,10 @@ which can contain isolation-looking options. Lifecycle resolution conservatively
 supports `run TARGET [-- payload]` with Buck options before `run`; other run
 forms retain daemons with the same fail-closed warning rather than guessing
 where Buck options end.
+CI cache admission separately uses the native arity-aware resolver for declared
+`run` trace flags; unknown arity and unsafe isolation/argfiles still fail closed.
+The ordinary-clone runtime CAS is ignored state, not source; other untracked
+sources refuse with at most ten JSON-escaped paths.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
 At exit it invokes native `buck2 kill` only when a fresh status identifies the

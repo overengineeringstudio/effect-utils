@@ -40,7 +40,33 @@ class Publication(unittest.TestCase):
         subprocess.run(["git", "add", "source"], check=True)
         self.assertEqual(after, module.identity(self.root))
         (self.root / "new-source").write_text("new\n")
-        with self.assertRaisesRegex(RuntimeError, "Stage new source"):
+        with self.assertRaisesRegex(RuntimeError, "Stage new source") as refused:
+            module.identity(self.root)
+        self.assertIn('paths=["new-source"]', str(refused.exception))
+
+    def test_untracked_diagnostic_is_bounded_and_escaped(self):
+        names = [f"new-{index:02}" + ("\n\x1b" if index == 0 else "") for index in range(12)]
+        for name in names:
+            (self.root / name).write_text("new\n")
+        with self.assertRaisesRegex(RuntimeError, "Stage new source") as refused:
+            module.identity(self.root)
+        message = str(refused.exception)
+        self.assertIn(f"paths={json.dumps(names[:10])}; limit=10", message)
+        self.assertNotIn(json.dumps(names[10]), message)
+        self.assertNotIn("\n", message)
+        self.assertNotIn("\x1b", message)
+
+    def test_ordinary_clone_cas_is_runtime_state_not_source(self):
+        (self.root / ".gitignore").write_text(Path(os.environ["WORKTREE_TEST_GITIGNORE"]).read_text())
+        subprocess.run(["git", "add", ".gitignore"], check=True)
+        before = module.identity(self.root)
+        cas = self.root / ".editor-view-content"
+        (cas / "v1" / "00").mkdir(parents=True)
+        (cas / "v1.flock").write_text("lease\n")
+        (cas / "v1" / "00" / "digest-0444").write_text("blob\n")
+        self.assertEqual(before, module.identity(self.root))
+        (self.root / "new-source.ts").write_text("export {}\n")
+        with self.assertRaisesRegex(RuntimeError, "new-source.ts"):
             module.identity(self.root)
 
     def test_immutable_selection_and_stale_manifest(self):

@@ -26,7 +26,11 @@ def identity(root):
     # a closure that appears to include them; staging is sufficient, no commit.
     untracked = git("ls-files", "--others", "--exclude-standard", "-z")
     if untracked:
-        raise RuntimeError("Stage new source files with git add before preparing worktree tools")
+        paths = [os.fsdecode(path) for path in untracked.split(b"\0", 10)[:10] if path]
+        raise RuntimeError(
+            "Stage new source files with git add before preparing worktree tools "
+            f"(paths={json.dumps(paths)}; limit=10)"
+        )
     digest = hashlib.sha256(b"effect-utils/worktree-tools/v1\0" + os.fsencode(root))
     digest.update(git("rev-parse", "HEAD"))
     digest.update(git("diff", "HEAD", "--binary", "--no-ext-diff", "--", "."))
