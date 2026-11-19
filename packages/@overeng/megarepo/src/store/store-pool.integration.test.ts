@@ -85,6 +85,8 @@ describe('native pool ownership safety', () => {
         const fs = yield* FileSystem.FileSystem
         const { storePath, slot } = yield* fixture
         yield* fs.writeFileString(`${slot.path}/partial-install`, 'x'.repeat(16384))
+        yield* fs.writeFileString(`${slot.path}/sparse-install`, '')
+        yield* fs.truncate(`${slot.path}/sparse-install`, 16 * 1024 * 1024)
         yield* withPoolState(storePath, (state, save) =>
           save({
             ...state,
@@ -96,7 +98,7 @@ describe('native pool ownership safety', () => {
         yield* quarantinePool(storePath, slot.id, 'partial', 'install failed')
         const state = yield* withPoolState(storePath, (state) => Effect.succeed(state))
         expect(state.slots[0]?.state).toBe('quarantined')
-        expect(state.slots[0]!.charge).toBeGreaterThan(16384)
+        expect(state.slots[0]!.charge).toBeGreaterThan(16 * 1024 * 1024 + 16384)
         expect(yield* fs.readFileString(`${slot.path}/partial-install`)).toHaveLength(16384)
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
