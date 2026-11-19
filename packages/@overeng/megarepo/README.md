@@ -375,6 +375,9 @@ when their provider exits. Unknown records remain protected; ordinary version-1
 lease recovery is unchanged. Detached worktree creation can acquire its native Git
 lock atomically. Durable pool records serialize host-store capacity and generation
 claims, and retain unknown accounting rather than allocating around uncertainty.
+Writable claims invalidate measured accounting until a safe remeasure; new reservations
+wait, while other already-reserved ready roots remain claimable. Execution can expand
+files, so this accounting ledger is not a hard filesystem quota.
 
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
