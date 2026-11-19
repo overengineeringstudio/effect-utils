@@ -56,15 +56,18 @@ const fixture = Effect.gen(function* () {
 })
 
 describe('native pool ownership safety', () => {
-  it.effect('successful completion survives status with a lost provider identity', () =>
+  it.effect('status preserves live and completed ownership', () =>
     Effect.gen(function* () {
       const { storePath, slot } = yield* fixture
       yield* withPoolState(storePath, (state, save) =>
         save({
           ...state,
-          slots: [{ ...slot, state: 'leased', token: 'task', generation: 1 }],
+          slots: [{ ...slot, state: 'leased', token: 'task', generation: 1, chargeKnown: false }],
         }),
       )
+      const live = yield* inspectPool(storePath)
+      expect(live.slots[0]?.state).toBe('leased')
+      expect(live.slots[0]?.chargeKnown).toBe(false)
       yield* completePool(storePath, slot.id, 'task', 1)
       const fs = yield* FileSystem.FileSystem
       const lease = deletionLeasePath({ storeBasePath: storePath, ownerPath: slot.path })
@@ -72,6 +75,9 @@ describe('native pool ownership safety', () => {
       yield* fs.writeFileString(lease, record.replace(`"pid":${process.pid}`, '"pid":2147483647'))
       const observed = yield* inspectPool(storePath)
       expect(observed.slots[0]?.state).toBe('completed')
+      expect(observed.slots[0]?.chargeKnown).toBe(false)
+      expect(observed.slots[0]?.token).toBe('task')
+      expect(observed.slots[0]?.generation).toBe(1)
       expect(yield* completePool(storePath, slot.id, 'stale', 1).pipe(Effect.exit)).toSatisfy(
         Exit.isFailure,
       )
@@ -101,6 +107,29 @@ describe('native pool ownership safety', () => {
         expect(state.slots[0]!.charge).toBeGreaterThan(16 * 1024 * 1024 + 16384)
         expect(yield* fs.readFileString(`${slot.path}/partial-install`)).toHaveLength(16384)
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('a missing root does not clear accounting for retained open files', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      yield* fs.writeFileString(`${slot.path}/retained`, 'held')
+      const file = yield* fs.open(`${slot.path}/retained`, { flag: 'r' })
+      yield* withPoolState(storePath, (state, save) =>
+        save({
+          ...state,
+          slots: [{ ...slot, token: 'lost', state: 'completed', chargeKnown: false }],
+        }),
+      )
+      // External pathname loss does not release the real open file description.
+      yield* fs.remove(slot.path, { recursive: true })
+      const state = yield* inspectPool(storePath)
+      expect(state.slots[0]?.state).toBe('quarantined')
+      expect(state.slots[0]?.chargeKnown).toBe(false)
+      const retained = new Uint8Array(4)
+      expect(yield* file.read(retained)).toBe(4)
+      expect(new TextDecoder().decode(retained)).toBe('held')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect('registers detached with a native Git lock which refuses ordinary removal', () =>

@@ -396,6 +396,8 @@ Claims atomically fence one exact generation and adopt its persistent ownership
 without removing the deletion barrier. A provider records successful completion
 before exiting; inspection quarantines abandoned or uncertain providers instead
 of returning their roots to readiness.
+Live and completed receipts survive inspection while mutable accounting is unknown.
+Missing/unknown root paths remain quarantined, including retained open-file accounting.
 
 ### Process activity snapshot
 

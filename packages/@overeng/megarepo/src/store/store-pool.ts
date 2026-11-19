@@ -192,6 +192,8 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
           (yield* poolBytes(slot.path)) > slot.charge
         )
           return yield* new PoolError({ message: 'Pool install identity or byte charge changed' })
+        yield* cleanSource(slot)
+        yield* free(slot)
         const next = yield* claimPoolGeneration(slot, args.identity, args.owner)
         yield* update(next)
         return next
@@ -218,7 +220,7 @@ export const completePool = (
       yield* save({
         ...state,
         slots: state.slots.map((item) =>
-          item.id === id ? { ...item, state: 'completed' as const } : item,
+          item.id === id ? { ...item, state: 'completed' as const, chargeKnown: false } : item,
         ),
       })
     }),
@@ -240,15 +242,24 @@ export const quarantinePool = (base: AbsoluteDirPath, id: string, token: string,
 export const inspectPool = (base: AbsoluteDirPath) =>
   withPoolState(base, (state, save) =>
     Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
       const slots: Array<PoolSlot> = []
       for (const slot of state.slots) {
+        const pathKnown = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => false))
         const uncertain =
+          !pathKnown ||
           slot.state === 'preparing' ||
           (slot.state === 'leased' &&
             !(yield* persistentDeletionLeaseOwnerAlive(barrier(base, slot))))
+        const mutable = slot.state === 'leased' || slot.state === 'completed'
+        const reason = !pathKnown
+          ? 'Root path lost or unknown'
+          : uncertain
+            ? 'Provider lost or unknown'
+            : slot.reason
         slots.push(
-          uncertain || slot.chargeKnown !== true
-            ? yield* retainPoolSlot(slot, uncertain ? 'Provider lost or unknown' : slot.reason)
+          uncertain || (slot.chargeKnown !== true && !mutable)
+            ? yield* retainPoolSlot(slot, reason)
             : slot,
         )
       }
