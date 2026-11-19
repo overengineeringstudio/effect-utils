@@ -145,7 +145,11 @@ export const requirePoolLease = ({ slot, token, generation }: PoolLeaseCheck) =>
     : Effect.fail(new PoolError({ message: 'Stale or non-leased pool generation' }))
 
 /** Transition is published only under withPoolState after real root proofs. */
-export const claimPoolGeneration = ({ slot, identity, owner }: PoolClaim) => {
+export const claimPoolGeneration = ({
+  slot,
+  identity,
+  owner,
+}: PoolClaim): Effect.Effect<PoolSlot, PoolError> => {
   if (slot.state !== 'ready' || slot.identity !== identity)
     return Effect.fail(
       new PoolError({ message: 'Generation is not ready for this install identity' }),
