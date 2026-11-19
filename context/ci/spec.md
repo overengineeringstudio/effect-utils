@@ -115,6 +115,13 @@ body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
 this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
 retry signature.
 
+Terminal Nix download errors reporting curl send, receive, or timeout failures
+also retry, even with HTTP 200 or 206. Nix's terminal `some substitutes for the
+outputs of derivation '…' failed (usually happens due to networking issues)`
+diagnostic is likewise transient. A download retry warning or generic
+`1 dependency failed` alone is insufficient: ordinary build and lint failures
+must preserve their original exit code without consuming the retry budget.
+
 `Resolve devenv` overlaps pinned executable resolution with two locked-source
 prefetch workers. They traverse the checkout's `devenv.lock` shell graph,
 including follows edges, but exclude the root executable branch, local inputs,

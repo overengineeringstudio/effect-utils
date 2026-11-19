@@ -104,7 +104,7 @@ describe('short persistent Watchman location', () => {
   })
 
   it.skipIf(Bun.which('watchman') === null)(
-    'bootstraps real Watchman with a long HOME and concurrent admission clients',
+    'runs real Watchman without restored state and automatically cancels deleted roots',
     async () => {
       const root = fixture()
       writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
@@ -126,7 +126,7 @@ describe('short persistent Watchman location', () => {
       if (directory === undefined) throw new Error('managed directory expected')
       const tuple = [
         `--sockname=${env['WATCHMAN_SOCK']}`,
-        `--statefile=${join(directory, 'state')}`,
+        '--no-save-state',
         `--pidfile=${join(directory, 'pid')}`,
         `--logfile=${join(directory, 'log')}`,
       ]
@@ -162,6 +162,23 @@ describe('short persistent Watchman location', () => {
         )
         expect((await command(['--no-spawn', '--no-local', 'get-pid'])).pid).toBe(pid.pid)
         expect(prepareWatchmanEnvironment({ HOME: home })).toBe(directory)
+        const kept = realpathSync(fixture())
+        const deleted = realpathSync(fixture())
+        await command(['--no-spawn', '--no-local', 'watch', kept])
+        await command(['--no-spawn', '--no-local', 'watch', deleted])
+        expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toContain(deleted)
+        rmSync(deleted, { recursive: true })
+        // Query only: no launcher admission or watch-del participates in cancellation.
+        const cancellationDeadline = performance.now() + 2500
+        let listed = await command(['--no-spawn', '--no-local', 'watch-list'])
+        while (listed.roots.includes(deleted) === true && performance.now() < cancellationDeadline)
+          listed = await command(['--no-spawn', '--no-local', 'watch-list'])
+        expect(listed.roots).not.toContain(deleted)
+        expect(listed.roots).toContain(kept)
+        expect(listed.roots).toContain(realpathSync(root))
+        await command(['--no-spawn', '--no-local', 'shutdown-server'])
+        await command(['--no-site-spawner', '--no-local', 'version'])
+        expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toEqual([])
       } finally {
         try {
           await command(['--no-spawn', '--no-local', 'shutdown-server'])
@@ -218,7 +235,7 @@ describe('short persistent Watchman location', () => {
         '--no-local',
         `--sockname=${socket}`,
         '--no-site-spawner',
-        `--statefile=${join(directory, 'state')}`,
+        '--no-save-state',
         `--pidfile=${pidfile}`,
         `--logfile=${join(directory, 'log')}`,
         '--output-encoding=json',
