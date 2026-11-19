@@ -197,7 +197,7 @@ subprocess that does not reliably inherit the direnv environment.
 
 - Use `DEVENV_TUI=false devenv tasks run check:quick` in the hook entry.
 
-**Current workaround:** none; the hook should use native devenv task execution.
+**Current behavior:** the hook uses native devenv task execution and runs only at the manual stage (`devenv shell -- prek run check-quick --stage manual`). `devenv tasks run check:quick` must pass before committing; CI also enforces it.
 
 ---
 

@@ -20,7 +20,7 @@ Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
 - **Testing**: `devenv tasks run test:run` (all) or `devenv tasks run test:<pkg>` (single package) or `devenv tasks run test:watch`
 - **Dependencies**: `devenv tasks run buck2:editor:publish`
 - **Genie**: `devenv tasks run genie:run` or `devenv tasks run genie:watch` or `devenv tasks run genie:check`
-- **Check all**: `devenv tasks run check:quick` or `devenv tasks run check:all`
+- **Check all**: `devenv tasks run check:quick` must pass before committing; CI also enforces it. The `check-quick` hook runs only at the manual stage: `devenv shell -- prek run check-quick --stage manual`. Use `devenv tasks run check:all` for the full suite.
 
 Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, enter the dev environment first with `devenv shell`.
 

@@ -2284,7 +2284,7 @@ in
   git-hooks.hooks.check-quick = {
     enable = true;
     entry = "${pkgs.bash}/bin/bash ${./scripts/without-git-local-env.sh} env DEVENV_TUI=false devenv tasks run check:quick";
-    stages = [ "pre-commit" ];
+    stages = [ "manual" ];
     always_run = true;
     pass_filenames = false;
   };
