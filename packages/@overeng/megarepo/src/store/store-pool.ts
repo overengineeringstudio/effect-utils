@@ -62,7 +62,7 @@ const cleanSource = (slot: PoolSlot) =>
     const registration = registrations.find((entry) => entry.path.replace(/\/$/u, '') === slot.path)
     if (
       registration === undefined ||
-      Option.isSome(registration.symbolicRef) ||
+      Option.isSome(registration.symbolicRef) === true ||
       Option.getOrUndefined(registration.lockReason) !== `mr-pool:${slot.id}:preparing`
     )
       return yield* new PoolError({ message: 'Native pool worktree protection is missing' })
