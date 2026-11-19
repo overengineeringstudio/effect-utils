@@ -24,6 +24,11 @@ export const passingReceipt = (receipt, head) =>
   JSON.stringify(receipt.cmd) === JSON.stringify(command) &&
   Array.isArray(receipt.failedTasks) &&
   receipt.failedTasks.length === 0 &&
+  receipt.failedTasksTruncated === false &&
+  Array.isArray(receipt.incompleteTasks) &&
+  receipt.incompleteTasks.length === 0 &&
+  receipt.incompleteTasksTruncated === false &&
+  receipt.taskTraceTruncated === false &&
   receipt.notRunTasks === 0 &&
   Number.isFinite(Date.parse(receipt.startedAt)) &&
   Date.parse(receipt.endedAt) >= Date.parse(receipt.startedAt)
@@ -103,6 +108,8 @@ export function main(args) {
     headEnd: receipt.headEnd, cleanStart: true, cleanEnd: true, exact: true,
     startedAt: receipt.startedAt, endedAt: receipt.endedAt, exit: 0,
     failedTasks: [], notRunTasks: 0,
+    failedTasksTruncated: false, incompleteTasks: [],
+    incompleteTasksTruncated: false, taskTraceTruncated: false,
   }
   const payload = JSON.stringify(publicReceipt)
   const digest = createHash('sha256').update(payload).digest('hex')

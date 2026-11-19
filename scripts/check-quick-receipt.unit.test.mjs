@@ -9,6 +9,8 @@ const receipt = {
   treeStart: 'b'.repeat(40), route: { execution: 'local' }, reroutedFrom: null,
   cmd: ['devenv', 'tasks', 'run', 'check:quick', '--no-tui', '--show-output'],
   failedTasks: [], notRunTasks: 0,
+  failedTasksTruncated: false, incompleteTasks: [], incompleteTasksTruncated: false,
+  taskTraceTruncated: false,
   startedAt: '2026-11-19T10:02:16Z', endedAt: '2026-11-19T10:19:39Z',
 }
 
@@ -22,9 +24,17 @@ for (const [field, value] of Object.entries({
   headEnd: 'c'.repeat(40), treeStart: '', route: { execution: 'remote' },
   reroutedFrom: 'gate', cmd: ['devenv', 'tasks', 'run', 'check:small-diff'],
   failedTasks: ['lint'], notRunTasks: 1, startedAt: 'invalid', endedAt: '2020-01-01',
+  failedTasksTruncated: true, incompleteTasks: ['unfinished'],
+  incompleteTasksTruncated: true, taskTraceTruncated: true,
 })) {
   test(`rejects invalid ${field}`, () => {
     assert.equal(passingReceipt({ ...receipt, [field]: value }, head), false)
+  })
+}
+
+for (const field of ['failedTasksTruncated', 'incompleteTasks', 'incompleteTasksTruncated', 'taskTraceTruncated']) {
+  test(`rejects unknown ${field}`, () => {
+    assert.equal(passingReceipt({ ...receipt, [field]: null }, head), false)
   })
 }
 
