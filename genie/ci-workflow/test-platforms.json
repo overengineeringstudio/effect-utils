@@ -138,6 +138,10 @@
         "rationale": "Bun Vitest integration tests open real on-disk SQLite databases and exercise durable authority state, reopen recovery and scoped temporary filesystem cleanup on Darwin."
       },
       {
+        "task": "test:scg-discord",
+        "rationale": "Bun Vitest signer integration tests exercise real on-disk authority and Discord SQLite persistence, close/reopen restart receipts and local HTTP lifecycle on Darwin."
+      },
+      {
         "task": "test:utils",
         "rationale": "Host filesystem backing, FileLogger and native filesystem/process utilities execute against the Darwin runner. Vite identity metadata fixtures cover linked-worktree gitdir/commondir resolution, packed-to-loose ref precedence and detached HEAD object readability."
       },
