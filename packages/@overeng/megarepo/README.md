@@ -478,6 +478,10 @@ Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.
 The barrier's v2 record is deliberately not PID-death-recoverable; older readers
 reject it and retain the root. Ordinary v1 lease recovery is unchanged.
+Source proofs reuse canonical linked-worktree admission: the regular `.git`, admin
+backlink, common-directory and HEAD records must bind this exact root to its bare
+repository's native admin namespace. Foreign or symlinked metadata is retained,
+never repaired or followed into another checkout during pool cleanup.
 Preparation consumes its bounded reservation before creating the protected path,
 atomically refuses an already occupied path and uses normal root-owned `pnpm:install`.
 Readiness consumes `pnpm:doctor` installation/projection/storage

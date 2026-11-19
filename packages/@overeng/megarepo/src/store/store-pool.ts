@@ -1,6 +1,6 @@
 import { dirname } from 'node:path'
 
-import { Clock, Effect, Option, Schema } from 'effect'
+import { type Cause, Clock, Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -41,6 +41,8 @@ type PoolOperationError =
   | PlatformError
   | Schema.SchemaError
   | Git.GitCommandError
+  | Git.LinkedWorktreeAdmissionError
+  | Cause.UnknownError
   | GitWriterLockError
   | DeletionLeaseUnavailableError
 
@@ -83,6 +85,7 @@ const cleanSource = (slot: PoolSlot) =>
       slot.path !== `${dirname(slot.bare)}/pool/${slot.id}`
     )
       return yield* new PoolError({ message: 'Pool root is not its fixed detached execution path' })
+    yield* Git.readLinkedWorktreeAdmission({ owner: slot.path, barePath: slot.bare })
     if ((yield* Git.resolveRef({ repoPath: slot.path, ref: 'HEAD' })) !== slot.commit)
       return yield* new PoolError({ message: 'Committed work retained; source HEAD changed' })
     const history = yield* Git.runCommand({

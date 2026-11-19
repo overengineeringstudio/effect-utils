@@ -231,3 +231,66 @@ describe('common bare config with worktree config', () => {
     )
   }
 })
+
+describe('canonical linked-worktree admission', () => {
+  const linked = Effect.gen(function* () {
+    const f = yield* fixture
+    const owner = `${f.root}/owner`
+    const sibling = `${f.root}/sibling`
+    for (const path of [owner, sibling])
+      yield* Git.runCommand({ cwd: f.bare, args: ['worktree', 'add', '--detach', path, 'HEAD'] })
+    const admission = yield* Git.readLinkedWorktreeAdmission({ owner, barePath: f.bare })
+    return { ...f, owner, sibling, admission }
+  })
+  it.effect('captures the native admin and the existing admission fingerprint inputs without writes', () =>
+    Effect.gen(function* () {
+      const f = yield* linked
+      const again = yield* Git.readLinkedWorktreeAdmission({ owner: f.owner, barePath: f.bare })
+      expect(again.gitdir).toBe(f.admission.gitdir)
+      expect(again.bareIdentity).toBe(f.admission.bareIdentity)
+      expect(again.evidence.map(({ path, content }) => ({ path, content }))).toEqual(
+        f.admission.evidence.map(({ path, content }) => ({ path, content })),
+      )
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+  for (const damage of [
+    'foreign-pointer', 'foreign-backlink', 'foreign-common',
+    'symlink-marker', 'symlink-head', 'outside-admin',
+  ]) {
+    it.effect(`refuses ${damage} without rewriting native metadata or work`, () =>
+      Effect.gen(function* () {
+        const f = yield* linked
+        const admin = f.admission.gitdir
+        yield* f.fs.writeFileString(`${f.owner}/retained-work`, 'unpublished data\n')
+        if (damage === 'foreign-pointer')
+          yield* f.fs.writeFileString(`${f.owner}/.git`, yield* f.fs.readFileString(`${f.sibling}/.git`))
+        else if (damage === 'foreign-backlink')
+          yield* f.fs.writeFileString(`${admin}/gitdir`, `${f.sibling}/.git\n`)
+        else if (damage === 'foreign-common') {
+          yield* f.fs.makeDirectory(`${f.root}/foreign-common`)
+          yield* f.fs.writeFileString(`${admin}/commondir`, `${f.root}/foreign-common\n`)
+        } else if (damage === 'symlink-marker' || damage === 'symlink-head') {
+          const path = damage === 'symlink-marker' ? `${f.owner}/.git` : `${admin}/HEAD`
+          const retained = `${f.root}/retained-metadata`
+          yield* f.fs.writeFileString(retained, yield* f.fs.readFileString(path))
+          yield* f.fs.remove(path)
+          yield* f.fs.symlink(retained, path)
+        } else {
+          const moved = `${f.root}/outside-admin`
+          yield* f.fs.rename(admin, moved)
+          yield* f.fs.writeFileString(`${moved}/commondir`, `${f.bare}\n`)
+          yield* f.fs.writeFileString(`${f.owner}/.git`, `gitdir: ${moved}\n`)
+        }
+        const marker = yield* f.fs.readFileString(`${f.owner}/.git`)
+        const sibling = yield* f.fs.readFileString(`${f.sibling}/.git`)
+        const error = yield* Git.readLinkedWorktreeAdmission({
+          owner: f.owner, barePath: f.bare,
+        }).pipe(Effect.flip)
+        expect(error).toBeInstanceOf(Git.LinkedWorktreeAdmissionError)
+        expect(yield* f.fs.readFileString(`${f.owner}/.git`)).toBe(marker)
+        expect(yield* f.fs.readFileString(`${f.sibling}/.git`)).toBe(sibling)
+        expect(yield* f.fs.readFileString(`${f.owner}/retained-work`)).toBe('unpublished data\n')
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+})
