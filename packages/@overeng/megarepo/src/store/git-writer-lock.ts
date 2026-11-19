@@ -274,7 +274,8 @@ export const withGitContainerLock =
  * Pool physical-root action fence. The control is outside the removable root and
  * never unlinked, renamed or replaced, including after root removal or a crash.
  * This supplies no writer descriptor and does not transfer ownership to children.
- * Order: ROOT operation -> short GLOBAL state epochs -> container -> native pins.
+ * Partial order: ROOT -> container/native pins -> short GLOBAL epochs.
+ * An initial GLOBAL epoch releases before acquiring container/pins; never the reverse.
  */
 export const withPoolWorktreeOperationLock =
   ({ storeBasePath, barePath, path, id }: {

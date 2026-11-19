@@ -431,6 +431,30 @@ export const withPoolState = <A, E, R>({
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })
 
+const equivalentPoolSlot = Schema.toEquivalence(PoolSlot)
+
+/** One short CAS epoch; callers retain the root action fence while physical work runs outside it. */
+export const replacePoolSlot = <Next extends PoolSlot | undefined>({
+  base, expected, next,
+}: { base: AbsoluteDirPath; expected: PoolSlot; next: Next }): Effect.Effect<
+  Next, PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError | DeletionLeaseUnavailableError,
+  FileSystem.FileSystem | ChildProcessSpawner
+> =>
+  withPoolState({
+    base,
+    use: (state, save) => Effect.gen(function* () {
+      const current = state.slots.find((slot) => slot.id === expected.id)
+      if (current === undefined || equivalentPoolSlot(current, expected) === false ||
+        (next !== undefined && (next.id !== expected.id || next.path !== expected.path || next.bare !== expected.bare)))
+        return yield* new PoolError({ message: 'Stale pool slot epoch; current authority retained' })
+      // Always merge into this epoch's authoritative ledger, never a previously captured array.
+      yield* save({ ...state, slots: next === undefined
+        ? state.slots.filter((slot) => slot.id !== expected.id)
+        : state.slots.map((slot) => slot.id === expected.id ? next : slot) })
+      return next
+    }),
+  })
+
 type PoolLeaseCheck = { slot: PoolSlot; token: string; generation: number }
 type PoolClaim = { slot: PoolSlot; identity: string; owner: string }
 

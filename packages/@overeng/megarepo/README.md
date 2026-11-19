@@ -530,15 +530,23 @@ is a typed refusal, not successful admission or a waiting promise.
 Never unlink, rename or replace this control during reset, retirement, finalization
 or crash recovery: the persistent inode also protects existing kernel waiters.
 
-Lifecycle integration must use one order on every claim, preparation, reset,
-retirement and recovery path: **ROOT operation → short GLOBAL current-ledger CAS
-epochs → container → native identity pins**. No physical proof, doctor or install
-holds the global ledger fence. Reset/retarget uses a shared container fence because
+Lifecycle integration must use one acquisition partial order on every claim,
+preparation, reset, retirement and recovery path: **ROOT operation → container/native
+pins → short GLOBAL current-ledger CAS epochs**. A short initial GLOBAL read or
+intent epoch may precede container acquisition only when it is released first.
+No GLOBAL holder acquires container locks, pins, another root action lock, or does
+physical work. Final publication is inside native pins; no doctor or install holds
+the global ledger fence. Reset/retarget uses a shared container fence because
 normal worktree activation takes its shared container lock before ancestor lease
 borrowing; an exclusive outer container would prevent that normal preparation.
 Retirement keeps its continuous exclusive container fence. Durable mutation intent
 and the root action lock are required before the first write through completion.
 A crash retains/quarantines the intent, never returns ready automatically.
+`replacePoolSlot` provides the short compare-and-swap epoch: it rereads canonical
+authority, rejects a stale source/generation/token/intent/provenance observation,
+and merges only that slot into the current ledger. Other slots and host-wide limits
+are never overwritten from a captured pre-install snapshot. Callers must retain
+the native root operation lock across these otherwise independent epochs.
 This primitive alone does not establish caller integration, concurrency/crash test
 results, holder SDK qualification or permission to activate physical operations.
 

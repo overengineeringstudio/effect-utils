@@ -20,6 +20,7 @@ import {
   requirePoolLease,
   markPoolRootAuthored,
   requireDisposablePoolRoot,
+  replacePoolSlot,
   reservePoolGeneration,
   reservePoolSlot,
   withPoolState,
@@ -44,6 +45,31 @@ const historicalSlot = {
 const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
 
 describe('pool authoritative lifecycle', () => {
+  it.effect('short CAS epochs preserve another slot and refuse stale generation overwrites', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const other: PoolSlot = { ...slot, id: 'other', path: '/source/pool/other' }
+      yield* withPoolState({
+        base, limits: { maxSlots: 2, maxBytes: 128 },
+        use: (state, save) => save({ ...state, slots: [slot, other] }),
+      })
+      const advanced = { ...other, generation: other.generation + 1 }
+      yield* replacePoolSlot({ base, expected: other, next: advanced })
+      const retained: PoolSlot = { ...slot, state: 'quarantined', chargeKnown: false }
+      yield* replacePoolSlot({ base, expected: slot, next: retained }).pipe(
+        Effect.tap((next) => Effect.sync(() => expect(next).toEqual(retained))),
+      )
+      const state = yield* withPoolState({ base, use: Effect.succeed })
+      expect(state.slots).toEqual([retained, advanced])
+      const before = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      expect(Exit.isFailure(yield* replacePoolSlot({
+        base, expected: other, next: { ...other, reason: 'stale overwrite' },
+      }).pipe(Effect.exit))).toBe(true)
+      expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(before)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('grants disposal only at fresh reservation and cannot erase an authoring marker', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
