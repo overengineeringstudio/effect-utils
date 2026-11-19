@@ -2305,14 +2305,14 @@ importers:
         version: link:../scg-protocol
       effect:
         specifier: 4.1.0
-        version: 4.1.0
+        version: 4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.0
-        version: 4.1.0(effect@4.1.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: 4.1.0(effect@4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815))(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.1.0
-        version: 4.1.0(effect@4.1.0)(vitest@5.0.3)
+        version: 4.1.0(effect@4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815))(vitest@5.0.3)
       '@types/bun':
         specifier: 1.4.2
         version: 1.4.2
@@ -2333,14 +2333,14 @@ importers:
         version: link:../scg-protocol
       effect:
         specifier: 4.1.0
-        version: 4.1.0
+        version: 4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.0
-        version: 4.1.0(effect@4.1.0)(redis@6.2.1(@opentelemetry/api@1.9.1))
+        version: 4.1.0(effect@4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815))(redis@6.2.1(@opentelemetry/api@1.9.1))
       '@effect/vitest':
         specifier: 4.1.0
-        version: 4.1.0(effect@4.1.0)(vitest@5.0.3)
+        version: 4.1.0(effect@4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815))(vitest@5.0.3)
       '@overeng/scg-authority':
         specifier: workspace:^
         version: link:../scg-authority
@@ -2361,11 +2361,11 @@ importers:
     dependencies:
       effect:
         specifier: 4.1.0
-        version: 4.1.0
+        version: 4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815)
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.0
-        version: 4.1.0(effect@4.1.0)(vitest@5.0.3)
+        version: 4.1.0(effect@4.1.0(patch_hash=69c00e9aaee14e07e25b19745b344724563c7e17bd744e9e41089b40e7435815))(vitest@5.0.3)
       '@types/bun':
         specifier: 1.4.2
         version: 1.4.2
