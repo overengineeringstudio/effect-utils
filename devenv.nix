@@ -1184,6 +1184,9 @@ in
     description = "Publish compiler dependencies for the standalone staging guard";
     packagePaths = [ "packages/@overeng/genie" ];
     traceScope = "standalone-staging";
+    # Measured cold preparation takes 203s before the staging payload starts.
+    # Keep a separate 300s payload allowance, rounded to the next 300s boundary.
+    deadlineSeconds = 600;
   };
 
   # PR lint CI checks every standalone-staged source and inventory completeness.
