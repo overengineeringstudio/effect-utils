@@ -980,7 +980,46 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // retained source summaries, and also proves every lane's recorded census exactly matches its
   // actual collection. CI must not shard this lane: the gate needs both partitions in one job.
   test: unitTestJob({ runner: 'namespace-profile-linux-x86-64', privileged: 'always' }),
-  'test-macos': unitTestJob({ runner: 'namespace-profile-macos-arm64', privileged: 'always' }),
+  // Branch-only #2606 diagnostic scaffold. Never include in the permanent fix PR.
+  'test-macos': {
+    ...unitTestJob({ runner: 'namespace-profile-macos-arm64', privileged: 'always' }),
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      prepareCiScriptsStep,
+      preparePinnedDevenvStep,
+      validateNixStoreStep,
+      {
+        name: 'Run exactly 20 instrumented shared-store proofs',
+        run: [
+          'set -euo pipefail',
+          'export NIX_FLAKE_REF="path:$PWD"',
+          'toolchain="$(nix build --no-link --print-out-paths --impure --expr \'let flake = builtins.getFlake (builtins.getEnv "NIX_FLAKE_REF"); pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; }; in pkgs.symlinkJoin { name = "shared-store-diagnostic-toolchain"; paths = [ (flake.lib.mkPnpm { inherit pkgs; }) pkgs.nodejs ]; }\')"',
+          'export PNPM_SHARED_STORE_FIXTURE_PREBUILT_OUT="$toolchain"',
+          'export PATH="$toolchain/bin:$PATH"',
+          'printf "head=%s pnpm=%s node=%s\\n" "$GITHUB_SHA" "$(pnpm --version)" "$(node --version)"',
+          'mkdir -p "$RUNNER_TEMP/shared-store-n20"',
+          'statuses="$RUNNER_TEMP/shared-store-n20/statuses.tsv"',
+          'printf "attempt\\texit_status\\n" | tee "$statuses"',
+          'failures=0',
+          'for attempt in {1..20}; do',
+          '  echo "::group::shared-store attempt $attempt/20"',
+          '  set +e',
+          '  bash nix/devenv-modules/tasks/shared/tests/pnpm-shared-store-reuse.test.sh 2>&1 | tee "$RUNNER_TEMP/shared-store-n20/attempt-$attempt.log"',
+          '  status=${PIPESTATUS[0]}',
+          '  set -e',
+          '  printf "%s\\t%s\\n" "$attempt" "$status" | tee -a "$statuses"',
+          '  if [ "$status" -ne 0 ]; then failures=$((failures + 1)); fi',
+          '  echo "::endgroup::"',
+          'done',
+          'echo "SHARED_STORE_N20 completed=20 successes=$((20 - failures)) failures=$failures"',
+          'cat "$statuses"',
+          '{ echo "## Shared-store N=20 diagnostic"; echo "Head: $GITHUB_SHA"; echo "Successes: $((20 - failures)); failures: $failures"; echo \'```tsv\'; cat "$statuses"; echo \'```\'; } >> "$GITHUB_STEP_SUMMARY"',
+          'test "$failures" -eq 0',
+        ].join('\n'),
+      },
+    ],
+  },
   'test-playwright-utils': job({
     privileged: 'always',
     priority: deliveryJobPriority,

@@ -23,14 +23,19 @@ report_failure() {
 }
 trap 'report_failure "$?" "$LINENO" "$BASH_COMMAND"' ERR
 
-PNPM_OUT="$({
-  nix build --no-link --print-out-paths --impure --expr "
-    let
-      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
-      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
-    in flake.lib.mkPnpm { inherit pkgs; }
-  "
-})"
+# Branch-only diagnostic fixture override: the remote job resolves the pinned
+# toolchain once, then runs independent instrumented proofs without Nix rebuilds.
+PNPM_OUT="${PNPM_SHARED_STORE_FIXTURE_PREBUILT_OUT:-}"
+if [ -z "$PNPM_OUT" ]; then
+  PNPM_OUT="$({
+    nix build --no-link --print-out-paths --impure --expr "
+      let
+        flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+        pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      in flake.lib.mkPnpm { inherit pkgs; }
+    "
+  })"
+fi
 PNPM="$PNPM_OUT/bin/pnpm"
 EXPECTED_PNPM_VERSION="$(node -e 'const packageManager=require(process.argv[1]).packageManager; process.stdout.write(packageManager.slice(packageManager.lastIndexOf("@") + 1))' "$ROOT/package.json")"
 ACTUAL_PNPM_VERSION="$($PNPM --version)"
