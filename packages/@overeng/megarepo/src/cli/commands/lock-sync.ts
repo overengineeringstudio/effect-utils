@@ -64,7 +64,7 @@ export const lockSyncCommand = Cli.Command.make(
         yield* Console.log(`${write === true ? 'Updated' : 'Drift'}: ${path}`)
       }
       yield* Console.log(
-        `${result.checked.length} ${Option.isSome(member) || Option.isSome(ref) ? 'file(s)' : 'lock(s)'} checked; ${result.changed.length} ${write === true ? 'updated' : 'out of sync'}`,
+        `${result.checked.length} ${Option.isSome(member) === true || Option.isSome(ref) === true ? 'file(s)' : 'lock(s)'} checked; ${result.changed.length} ${write === true ? 'updated' : 'out of sync'}`,
       )
       if (write === false && result.changed.length > 0) {
         return yield* new StandaloneLockSyncError({

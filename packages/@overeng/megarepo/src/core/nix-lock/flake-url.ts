@@ -199,7 +199,7 @@ export const updateNixFlakeUrl = ({
   if (parsed._tag === 'github') {
     let newRef = parsed.ref
     if ('ref' in updates) {
-      if (parsed.params.has('ref')) {
+      if (parsed.params.has('ref') === true) {
         if (updates.ref != null) newParams.set('ref', updates.ref)
         else newParams.delete('ref')
         // A query ref remains query-based; never leave a conflicting path selector.

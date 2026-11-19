@@ -103,17 +103,18 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     ref !== undefined &&
     (rev === undefined ||
       ref === '@' ||
-      isCommitSha(ref) ||
-      ref.startsWith('-') ||
-      ref.startsWith('refs/') ||
+      isCommitSha(ref) === true ||
+      ref.startsWith('-') === true ||
+      ref.startsWith('refs/') === true ||
       /^[A-Za-z0-9._/-]+$/.test(ref) === false ||
-      /[\x00-\x20\x7f~^:?*\[\\]/.test(ref) ||
-      ref.includes('..') ||
-      ref.includes('@{') ||
+      ref.includes('..') === true ||
+      ref.includes('@{') === true ||
       ref
         .split('/')
-        .some((part) => part === '' || part.startsWith('.') || part.endsWith('.lock')) ||
-      ref.endsWith('.'))
+        .some(
+          (part) => part === '' || part.startsWith('.') === true || part.endsWith('.lock') === true,
+        ) === true ||
+      ref.endsWith('.') === true)
   ) {
     return yield* new StandaloneLockSyncError({
       path: root,
@@ -155,7 +156,7 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     ] as const) {
       const path = `${directory}/${name}`
       if ((yield* fs.exists(path)) === false) continue
-      if (declarationPaths.has(path)) continue
+      if (declarationPaths.has(path) === true) continue
       declarationPaths.add(path)
       const content = yield* fs.readFileString(path)
       const updates = new Map<string, SourceUrlUpdate>()
@@ -176,7 +177,7 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
             urlsMatch({
               url1: `https://github.com/${parsed.owner}/${parsed.repo}`,
               url2: sourceRepository,
-            }) &&
+            }) === true &&
             declarations.filter((declaration) => declaration.url === url).length < count
           ) {
             return yield* new StandaloneLockSyncError({
@@ -199,17 +200,20 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
         )
           continue
         const expected =
-          ref ?? (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)
+          ref ??
+          (Schema.is(InputMetadata)(sourceOriginal) === true ? sourceOriginal['ref'] : undefined)
         if (
           typeof expected !== 'string' ||
           parsed === undefined ||
           (getRef(parsed) !== expected &&
             getRef(parsed) !==
-              (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)) ||
+              (Schema.is(InputMetadata)(sourceOriginal) === true
+                ? sourceOriginal['ref']
+                : undefined)) ||
           getRev(parsed) !== undefined ||
           (parsed?._tag === 'github' &&
             parsed.ref !== undefined &&
-            parsed.params.has('ref') &&
+            parsed.params.has('ref') === true &&
             parsed.params.get('ref') !== parsed.ref) ||
           urlsMatch({
             url1: `https://github.com/${parsed.owner}/${parsed.repo}`,
@@ -404,11 +408,12 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     const parsed = memberSource === undefined ? undefined : parseSourceString(memberSource)
     const url = parsed === undefined ? undefined : getSourceUrl(parsed)
     const targetRef =
-      ref ?? (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)
+      ref ?? (Schema.is(InputMetadata)(sourceOriginal) === true ? sourceOriginal['ref'] : undefined)
     const targetRev = sourceLocked['rev']
     const configuredRef =
       parsed === undefined ? undefined : Option.getOrUndefined(getSourceRef(parsed))
-    const previousRef = Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined
+    const previousRef =
+      Schema.is(InputMetadata)(sourceOriginal) === true ? sourceOriginal['ref'] : undefined
     if (
       memberSource === undefined ||
       parsed === undefined ||
@@ -436,8 +441,9 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       const declaredRef =
         parsedSource === undefined ? undefined : Option.getOrUndefined(getSourceRef(parsedSource))
       const pinnedRevision = declaredRef !== undefined && isCommitSha(declaredRef)
-      const nextRef = name !== member && pinnedRevision ? targetRev : targetRef
-      const oldRef = Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined
+      const nextRef = name !== member && pinnedRevision === true ? targetRev : targetRef
+      const oldRef =
+        Schema.is(InputMetadata)(sourceOriginal) === true ? sourceOriginal['ref'] : undefined
       if (
         name !== member &&
         pinnedRevision === false &&
