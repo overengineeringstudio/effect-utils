@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:17228c40dae2d928608b4d33e1912ffd09e7cbea85be7795488f69a297284e71
+# Semantic fingerprint: sha256:65d9f0a79b8fd16438485bd86a07ddeb3fe3e9105b4fc90bd600c7fdff3d2ad4
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -404,6 +404,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool.ts": "//packages/@overeng/megarepo:src/store/store-pool.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.basic.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.basic.integration.test.ts",
@@ -811,6 +813,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool.ts": "//packages/@overeng/megarepo:src/store/store-pool.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.basic.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.basic.integration.test.ts",
@@ -1218,6 +1222,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool.ts": "//packages/@overeng/megarepo:src/store/store-pool.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.basic.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.basic.integration.test.ts",
