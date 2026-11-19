@@ -434,8 +434,8 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     const path = `${root}/megarepo.lock`
     const lock = yield* decodeLockFileContent(yield* fs.readFileString(path))
     let next = lock
-    for (const [name, source] of Object.entries(members)) {
-      const parsedSource = parseSourceString(source)
+    for (const [name, memberSourceString] of Object.entries(members)) {
+      const parsedSource = parseSourceString(memberSourceString)
       const sourceUrl = parsedSource === undefined ? undefined : getSourceUrl(parsedSource)
       if (sourceUrl === undefined || urlsMatch({ url1: sourceUrl, url2: url }) === false) continue
       const declaredRef =
@@ -456,7 +456,10 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
           message: `Same-repository member '${name}' declares a different tracking branch; no locks written`,
         })
       }
-      members[name] = buildSourceStringWithRef({ sourceString: source, newRef: nextRef })
+      members[name] = buildSourceStringWithRef({
+        sourceString: memberSourceString,
+        newRef: nextRef,
+      })
       next = upsertLockedMember({
         lockFile: next,
         memberName: name,
@@ -486,8 +489,9 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
         content: `${yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(next)}\n`,
       })
     }
-    for (const path of ['devenv.lock', 'flake.lock']) {
-      if (path !== rootLock && (yield* fs.exists(`${root}/${path}`)) === true) files.push(path)
+    for (const rootLockPath of ['devenv.lock', 'flake.lock']) {
+      if (rootLockPath !== rootLock && (yield* fs.exists(`${root}/${rootLockPath}`)) === true)
+        files.push(rootLockPath)
     }
   }
   if (rev !== undefined && member === undefined && ref === undefined) {
