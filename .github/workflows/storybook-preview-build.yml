@@ -278,4 +278,4 @@ jobs:
         run: ':'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code' }}-build-storybooks"
-      cancel-in-progress: true
+      cancel-in-progress: ${{ github.event_name != 'merge_group' }}

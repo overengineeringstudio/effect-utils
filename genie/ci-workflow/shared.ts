@@ -115,6 +115,9 @@ export const standardCIEnv = ({ trustTier }: { readonly trustTier: CiTrustTier }
  * older code-triggered pull_request jobs alive can consume scarce runners after
  * a newer head exists, so jobs with the same id still cancel superseded work.
  *
+ * Merge-group jobs must not cancel earlier jobs in the same group: a cancelled
+ * required check ejects its entry from the merge queue, even while still queued.
+ *
  * Measurement baseline backfills are keyed by their subject ref and do not
  * cancel in-progress runs so several historical refs can be backfilled without
  * canceling each other.
@@ -152,12 +155,12 @@ const ciCancelInProgress = (
 ) => {
   if (opts?.labelEvents === false) {
     return opts.measurementBaselineBackfill === true
-      ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
-      : true
+      ? "${{ github.event_name != 'merge_group' && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
+      : "${{ github.event_name != 'merge_group' }}"
   }
   return opts?.measurementBaselineBackfill === true
-    ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
-    : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+    ? "${{ github.event_name != 'merge_group' && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
+    : "${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
 }
 
 export const ciJobConcurrency = ({ jobId, ...opts }: { jobId: string } & CiConcurrencyOptions) =>

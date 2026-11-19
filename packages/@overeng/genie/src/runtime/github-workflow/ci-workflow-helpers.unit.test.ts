@@ -1916,7 +1916,39 @@ describe('ci workflow devenv perf helpers', () => {
       process.env.BUN_BIN ?? 'bun',
       [
         '-e',
-        `import workflow from './.github/workflows/ci.yml.genie.ts';
+        `import assert from 'node:assert/strict';
+         import workflow from './.github/workflows/ci.yml.genie.ts';
+         import { ciJobConcurrency } from './genie/ci-workflow/shared.ts';
+         for (const labelEvents of [false, true]) {
+           for (const measurementBaselineBackfill of [false, true]) {
+             const concurrency = ciJobConcurrency({
+               jobId: 'fixture', labelEvents, measurementBaselineBackfill,
+             });
+             const cancel = Function('github', 'inputs',
+               'return (' + concurrency['cancel-in-progress'].slice(3, -2) + ')');
+             for (const eventName of ['merge_group', 'pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+               for (const action of ['synchronize', 'labeled', 'unlabeled']) {
+                 for (const baselineRef of ['', 'refs/heads/main']) {
+                   const expected = eventName !== 'merge_group'
+                     && !(measurementBaselineBackfill && eventName === 'workflow_dispatch' && baselineRef !== '')
+                     && !(labelEvents && eventName === 'pull_request' && action !== 'synchronize');
+                   assert.equal(
+                     cancel({ event_name: eventName, event: { action } }, { measurement_baseline_ref: baselineRef }),
+                     expected,
+                     JSON.stringify({ labelEvents, measurementBaselineBackfill, eventName, action, baselineRef }),
+                   );
+                 }
+               }
+             }
+           }
+         }
+         for (const job of Object.values(workflow.data.jobs)) {
+           const expression = job.concurrency?.['cancel-in-progress'];
+           if (typeof expression !== 'string') continue;
+           assert.equal(Function('github', 'inputs', 'return (' + expression.slice(3, -2) + ')')(
+             { event_name: 'merge_group', event: {} }, { measurement_baseline_ref: '' },
+           ), false);
+         }
          console.log(JSON.stringify([
            workflow.data.jobs.test.concurrency,
            workflow.data.jobs['test-macos'].concurrency,
