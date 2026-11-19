@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Effect, Exit, Option } from 'effect'
+import { Cause, Clock, Effect, Exit, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -138,6 +138,93 @@ describe('native pool ownership safety', () => {
       expect(Exit.isFailure(stale)).toBe(true)
       expect((yield* inspectPool(f.storePath)).slots[0]).toEqual(f.reserved)
       expect(yield* fs.exists(f.reserved.path)).toBe(false)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('refuses fresh authority over unknown roots, stale native registrations or durable barriers', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      for (const scenario of [
+        'unregistered-root', 'stale-native', 'persistent-barrier', 'unknown-lease',
+        'persistent-staging', 'unknown-staging',
+      ]) {
+        const f = yield* createStoreFixture([
+          { host: 'github.com', owner: 'test-owner', repo: 'pool-old', branches: ['main'] },
+          { host: 'github.com', owner: 'test-owner', repo: 'pool-fresh', branches: ['main'] },
+        ])
+        const oldBare = f.bareRepoPaths['github.com/test-owner/pool-old']!
+        const bare = f.bareRepoPaths['github.com/test-owner/pool-fresh']!
+        const commit = yield* Git.getCurrentCommit(f.worktreePaths['github.com/test-owner/pool-fresh#main']!)
+        const namespace = `${oldBare.replace(/\/\.bare\/?$/u, '')}/pool`
+        const orphan = `${namespace}/orphan`
+        let marker: string | undefined
+        let leaseSnapshot: { path: string; bytes: string } | undefined
+        if (scenario === 'unregistered-root' || scenario === 'stale-native') {
+          if (scenario === 'stale-native') yield* Git.createWorktreeDetached({
+            repoPath: oldBare, worktreePath: orphan, lockReason: 'mr-pool:orphan:preparing',
+            commit: yield* Git.getCurrentCommit(f.worktreePaths['github.com/test-owner/pool-old#main']!),
+          })
+          else yield* fs.makeDirectory(orphan, { recursive: true })
+          marker = `${orphan}/preserved`
+          yield* fs.writeFileString(marker, 'keep unknown work')
+          if (scenario === 'stale-native') {
+            const retained = `${f.storePath}retained-pool`
+            yield* fs.rename(namespace, retained)
+            marker = `${retained}/orphan/preserved`
+          }
+        } else {
+          const lease = yield* acquireDeletionLease({
+            storeBasePath: f.storePath, ownerPath: orphan, now: 1,
+            persistent: scenario === 'persistent-barrier' || scenario === 'persistent-staging',
+          })
+          const path = scenario.endsWith('staging') === true
+            ? `${lease.leasePath}.${lease.token}.staging` : lease.leasePath
+          if (path !== lease.leasePath) yield* fs.rename(lease.leasePath, path)
+          let bytes = yield* fs.readFileString(path)
+          if (scenario === 'unknown-lease' || scenario === 'unknown-staging') {
+            const unsupported = bytes.replace('"version":1', '"version":3')
+            expect(unsupported).not.toBe(bytes)
+            bytes = unsupported
+            yield* fs.writeFileString(path, bytes)
+          }
+          leaseSnapshot = { path, bytes }
+        }
+        const result = yield* reservePool({
+          base: f.storePath, bare, commit, charge: 1048576, maxSlots: 1, maxBytes: 1048576,
+        }).pipe(Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        expect(yield* fs.exists(`${f.storePath}.state/pool/state.json`)).toBe(false)
+        expect(yield* fs.exists(`${bare.replace(/\/\.bare\/?$/u, '')}/pool`)).toBe(false)
+        if (marker !== undefined) expect(yield* fs.readFileString(marker)).toBe('keep unknown work')
+        if (leaseSnapshot !== undefined)
+          expect(yield* fs.readFileString(leaseSnapshot.path)).toBe(leaseSnapshot.bytes)
+        if (scenario === 'stale-native' && Exit.isFailure(result) === true) {
+          expect(Cause.pretty(result.cause)).toContain('native pool registrations retained')
+          expect(yield* fs.exists(namespace)).toBe(false)
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('retains real native work and barriers when an existing authoritative ledger is lost', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const f = yield* fixture
+      const ledger = `${f.storePath}.state/pool/state.json`
+      const lease = deletionLeasePath({ storeBasePath: f.storePath, ownerPath: f.slot.path })
+      const barrierBytes = yield* fs.readFileString(lease)
+      yield* fs.writeFileString(`${f.slot.path}/preserved`, 'keep unpublished work')
+      yield* fs.remove(ledger)
+      const rejected = yield* reservePool({
+        base: f.storePath, bare: f.slot.bare, commit: f.slot.commit,
+        charge: f.slot.charge, maxSlots: 1, maxBytes: f.slot.charge,
+      }).pipe(Effect.exit)
+      expect(Exit.isFailure(rejected)).toBe(true)
+      expect(yield* fs.exists(ledger)).toBe(false)
+      expect(yield* fs.readFileString(`${f.slot.path}/preserved`)).toBe('keep unpublished work')
+      expect(yield* fs.readFileString(lease)).toBe(barrierBytes)
+      const native = (yield* Git.listWorktrees(f.slot.bare)).find((entry) => entry.path === f.slot.path)
+      expect(Option.getOrUndefined(native!.lockReason)).toBe(`mr-pool:${f.slot.id}:preparing`)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 

@@ -432,6 +432,12 @@ claims exclusive bytes reclaimable from shared, reflinked or deduplicated storag
 The packaged Nix CLI supplies GNU coreutils for consistent accounting on each platform.
 Limits cannot be changed while authoritative records exist.
 
+The ledger is authoritative, never an expendable cache. Missing state initializes
+only after a one-time census under the pool fence finds no pool namespace contents,
+native pool registrations, persistent or unclassifiable deletion barriers.
+Unknown inventory fails closed; no roots are adopted, reset, removed or reconstructed.
+Existing state skips this initialization census; read-only provenance never runs it.
+
 The authoritative ledger writes version 2. Its canonical decoder converts version 1,
 preserving every generation, owner/token, barrier and unknown charge; allowed source
 history starts with exactly the old commit. Mutating operations checkpoint that

@@ -40,6 +40,7 @@ type PoolOperationError =
   | PoolError
   | PlatformError
   | Schema.SchemaError
+  | Git.GitCommandError
   | GitWriterLockError
   | DeletionLeaseUnavailableError
 
@@ -184,7 +185,7 @@ export const prewarmPool = (args: {
   generation: number
 }): Effect.Effect<
   PoolSlot,
-  PoolOperationError | Git.GitCommandError | Git.CommonBareWorktreeConfigError,
+  PoolOperationError | Git.CommonBareWorktreeConfigError,
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   withPoolState({

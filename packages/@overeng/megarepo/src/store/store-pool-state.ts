@@ -2,13 +2,19 @@ import { randomUUID } from 'node:crypto'
 import { open, rename } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
-import { type AbsoluteDirPath } from '@overeng/effect-path'
+import { type AbsoluteDirPath, EffectPath } from '@overeng/effect-path'
 
-import { DeletionLeaseProviderObservation, withDeletionLease } from './store-deletion-lease.ts'
+import * as Git from '../core/git.ts'
+import {
+  DeletionLeaseProviderObservation, type DeletionLeaseUnavailableError,
+  hasPersistentDeletionLeases, withDeletionLease,
+} from './store-deletion-lease.ts'
+import { isStoreDirectory, makeStoreLayer, Store } from './store.ts'
 
 /** Historical authority is decoded only at the single canonical read boundary. */
 const PoolSlotV1 = Schema.Struct({
@@ -243,6 +249,35 @@ export const readPoolState = ({ base }: { base: AbsoluteDirPath }): Effect.Effec
     return state
   })
 
+/** Missing authority is not permission to forget roots, native registrations or durable barriers. */
+const assertInitialPoolInventory = (base: AbsoluteDirPath): Effect.Effect<
+  void, PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError,
+  FileSystem.FileSystem | ChildProcessSpawner
+> => Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  if ((yield* hasPersistentDeletionLeases({ storeBasePath: base })) === true)
+    return yield* new PoolError({ message: 'Missing pool authority: persistent or unknown deletion barriers retained' })
+  const repos = yield* Effect.flatMap(Store, (store) => store.listRepos).pipe(
+    Effect.provide(makeStoreLayer({ basePath: base })),
+  )
+  for (const repo of repos) {
+    const poolDirectory = resolve(yield* fs.realPath(repo.fullPath), 'pool')
+    if ((yield* fs.readDirectory(repo.fullPath)).includes('pool') === true &&
+      ((yield* isStoreDirectory({ fs, path: poolDirectory })) === false ||
+        (yield* fs.readDirectory(poolDirectory)).length !== 0))
+      return yield* new PoolError({ message: `Missing pool authority: existing or unknown roots retained at ${poolDirectory}` })
+    const registrations = yield* Git.listWorktrees(
+      EffectPath.ops.join(repo.fullPath, EffectPath.unsafe.relativeDir('.bare/')),
+    )
+    if (registrations.some((entry) => {
+      const path = entry.path.replace(/\/+$/u, '')
+      return path === poolDirectory || path.startsWith(`${poolDirectory}/`) ||
+        Option.getOrUndefined(entry.lockReason)?.startsWith('mr-pool:') === true
+    }) === true)
+      return yield* new PoolError({ message: 'Missing pool authority: native pool registrations retained' })
+  }
+})
+
 /** One host-store-wide exclusion point, including capacity reservation. No TTL takeover. */
 export const withPoolState = <A, E, R>({
   base,
@@ -255,7 +290,10 @@ export const withPoolState = <A, E, R>({
     save: (next: PoolState) => Effect.Effect<void, PoolError>,
   ) => Effect.Effect<A, E, R>
   limits?: { maxSlots: number; maxBytes: number }
-}) =>
+}): Effect.Effect<
+  A, E | PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError | DeletionLeaseUnavailableError,
+  R | FileSystem.FileSystem | ChildProcessSpawner
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     yield* fs.makeDirectory(`${base}/.state/pool`, { recursive: true })
@@ -283,6 +321,7 @@ export const withPoolState = <A, E, R>({
         })
       if (stored.version === 1) yield* persist({ path, state })
       else yield* validatePoolState(state)
+      if (exists === false) yield* assertInitialPoolInventory(base)
       return yield* use(state, (next) => persist({ path, state: next }))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })

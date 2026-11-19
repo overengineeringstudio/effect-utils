@@ -31,6 +31,7 @@ import { dirname } from 'node:path'
 
 import { Clock, Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -113,6 +114,28 @@ export const deletionLeasePath = ({
   const digest = createHash('sha256').update(normalizeOwnerPath(ownerPath), 'utf8').digest('hex')
   return `${deletionLeaseDirectory(storeBasePath)}${digest}.lease`
 }
+
+/** Initialization-only observation; persistent or unclassifiable barriers are never recovered. */
+export const hasPersistentDeletionLeases = ({
+  storeBasePath,
+}: {
+  storeBasePath: AbsoluteDirPath
+}): Effect.Effect<boolean, PlatformError | Schema.SchemaError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const directory = deletionLeaseDirectory(storeBasePath)
+    if ((yield* fs.exists(directory)) === false) return false
+    for (const entry of yield* fs.readDirectory(directory)) {
+      const staging = entry.endsWith('.staging')
+      if (staging === false && entry.endsWith('.lease') === false) return true
+      const path = `${directory}${entry}`
+      const record = yield* decodeLeaseRecord(yield* fs.readFileString(path), { onExcessProperty: 'error' })
+      const leasePath = deletionLeasePath({ storeBasePath, ownerPath: record.ownerPath })
+      const expectedPath = staging === true ? `${leasePath}.${record.token}.staging` : leasePath
+      if (record.version === 2 || expectedPath !== path) return true
+    }
+    return false
+  })
 
 /**
  * Canonical lease identity for an owner worktree path.
