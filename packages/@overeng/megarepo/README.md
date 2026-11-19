@@ -542,6 +542,18 @@ ownership freshly under the existing deletion lease, retaining the Git, root, se
 daemon identity and client safety gates. A holder or foreign owner arriving after
 output measurement still vetoes maintenance.
 
+### Historical Buck maintenance checkpoint contract
+
+`src/store/store-buck-maintain-progress-schema.ts` owns the serialized manifest and
+record schemas, inferred capture/manifest/record types, strict JSON decoders,
+`BuckMaintainProgressError`, canonical JSON encoding and dry-run input validation.
+Unknown fields and versions fail closed. This contract compares caller-supplied
+runtime digests; it does not attest runtimes, derive configuration, grant apply
+authority, or provide durable storage.
+Canonical encoding rejects non-finite numbers, unsupported JSON values and non-plain
+objects rather than silently replacing invalid observations with null or empty objects.
+Undefined object properties remain deliberately omitted; undefined array elements refuse.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical
