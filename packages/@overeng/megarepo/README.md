@@ -586,6 +586,8 @@ through the existing fd-based evidence owner, without another mount census.
 Unknown, stale, aliased or replaced roots remain unknown, without an implicit
 recapture. An action must create its source under its own deletion lease.
 All descriptor, executable, mapping and mount references veto worktree removal.
+The shared process-reference contract retains the `mount` kind; activity routing
+uses the mounted directory itself, never its parent as though it were a file.
 Only an exact own-UID daemon leader and matching leader/task lifetime may defer
 a cwd/root reference to shutdown and the final probe; nonleader references veto.
 Temporary identity-read descriptors are closed before return: this API does not

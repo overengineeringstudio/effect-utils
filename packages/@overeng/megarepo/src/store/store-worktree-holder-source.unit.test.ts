@@ -26,6 +26,22 @@ const actualFrames = Effect.gen(function* () {
 
 // Pure policy over actual codec bytes, not a substituted successful native capture.
 describe('scoped worktree holder policy', () => {
+  it.effect('preserves the real mounted-directory kind and its complete protected path', () =>
+    Effect.gen(function* () {
+      const frame = (yield* actualFrames)[1]!
+      const root = frame.roots[0]!
+      const mounted = root.references.find((reference) => reference.reference === 'mount')!
+      expect(mounted.relativePath).toBe('lib/mounted')
+      const observed = classifyWorktreeHolderEvidence({
+        evidence: frame, worktreePath: root.path, admitted: true, ownUid: undefined,
+      })
+      expect(observed.references.find((reference) => reference.kind === 'mount')).toEqual({
+        pid: mounted.tgid, kind: 'mount', path: `${root.path}/lib/mounted`,
+      })
+      expect(observed.inUse._tag).toBe('in-use')
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
   it.effect('vetoes actual retained fd, map and executable references even when native status is clear', () =>
     Effect.gen(function* () {
       const frame = (yield* actualFrames)[7]!

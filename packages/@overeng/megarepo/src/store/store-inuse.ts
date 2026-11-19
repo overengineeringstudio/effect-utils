@@ -336,7 +336,7 @@ export const readWorktreeInUse = ({
   })
 
 /** Kernel reference kinds that can hold a path below a worktree. */
-export type ProcessReferenceKind = 'cwd' | 'root' | 'fd' | 'map'
+export type ProcessReferenceKind = 'cwd' | 'root' | 'fd' | 'map' | 'mount'
 
 /** One kernel-reported path a live process holds. */
 export interface ProcessReference {

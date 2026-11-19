@@ -1067,7 +1067,7 @@ export const captureProcessActivityManifest = Effect.fn('store.captureProcessAct
     } else {
       for (const reference of scan.references) {
         const workspace =
-          reference.kind === 'cwd' || reference.kind === 'root'
+          reference.kind === 'cwd' || reference.kind === 'root' || reference.kind === 'mount'
             ? reference.path
             : dirname(reference.path)
         if (
