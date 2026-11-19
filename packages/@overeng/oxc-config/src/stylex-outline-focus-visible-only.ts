@@ -28,6 +28,9 @@
  * which covers both the native `:focus-visible` pseudo-class and the accessible-
  * component library's `[data-focus-visible]` attribute state. Plain `:focus` does
  * NOT count: that is the mistake this rule exists to catch.
+ * Observed sibling focus is also allowed when an imported StyleX
+ * `when.siblingBefore` call has exactly the literal `':focus-visible'` predicate.
+ * Other computed keys remain states unless that proof is available.
  *
  * See stylex spec "State styling" and requirement R06.
  *
@@ -55,6 +58,7 @@ import {
   staticKeyName,
   stylexCreateArgument,
   trackStylexImport,
+  type StylexImports,
   type StylexRuleContext,
 } from './stylex-shared.ts'
 
@@ -79,8 +83,46 @@ const isStateCondition = (name: string): boolean => {
   return isConditionKey(name) === true
 }
 
+/**
+ * Prove the supported observed-focus shape without interpreting arbitrary CSS.
+ * The exact predicate excludes negation and selector lists with non-focus arms;
+ * dynamic arguments, unknown methods and untracked namespaces fail closed.
+ * Unlike create-call detection, the bare name `stylex` is not import evidence.
+ */
+const isObservedFocusVisible = (imports: StylexImports, node: TSESTree.Node): boolean => {
+  if (node.type !== 'CallExpression' || node.optional === true || node.arguments.length !== 1) {
+    return false
+  }
+  const predicate = node.arguments[0]
+  if (predicate?.type !== 'Literal' || predicate.value !== ':focus-visible') return false
+
+  const callee = node.callee
+  if (
+    callee.type !== 'MemberExpression' ||
+    callee.computed === true ||
+    callee.optional === true ||
+    callee.property.type !== 'Identifier' ||
+    callee.property.name !== 'siblingBefore'
+  ) {
+    return false
+  }
+
+  const when = callee.object
+  if (when.type === 'Identifier') return imports.whens.has(when.name)
+  return (
+    when.type === 'MemberExpression' &&
+    when.computed === false &&
+    when.optional === false &&
+    when.property.type === 'Identifier' &&
+    when.property.name === 'when' &&
+    when.object.type === 'Identifier' &&
+    imports.namespaces.has(when.object.name)
+  )
+}
+
 type ConditionWalk = {
   readonly context: StylexRuleContext
+  readonly imports: StylexImports
   readonly node: TSESTree.Node
   /** Focus-ring property already on the path, if any. */
   readonly focusRingProperty: string | undefined
@@ -99,13 +141,14 @@ type ConditionWalk = {
  */
 const walkConditions = ({
   context,
+  imports,
   node,
   focusRingProperty,
   stateCondition,
 }: ConditionWalk): void => {
   // A dynamic style is an arrow returning the style object; unwrap to reach it.
   if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
-    walkConditions({ context, node: node.body, focusRingProperty, stateCondition })
+    walkConditions({ context, imports, node: node.body, focusRingProperty, stateCondition })
     return
   }
   if (
@@ -113,7 +156,7 @@ const walkConditions = ({
     node.type === 'TSSatisfiesExpression' ||
     node.type === 'TSNonNullExpression'
   ) {
-    walkConditions({ context, node: node.expression, focusRingProperty, stateCondition })
+    walkConditions({ context, imports, node: node.expression, focusRingProperty, stateCondition })
     return
   }
   if (node.type !== 'ObjectExpression') return
@@ -123,9 +166,10 @@ const walkConditions = ({
 
     const key = staticKeyName(member)
     if (key === undefined) {
-      // A computed key is a `when.*` observed condition: a state, and never
-      // focus-visible.
-      if (focusRingProperty !== undefined) {
+      // Unknown computed keys remain competing states; only the imported,
+      // literal observed-focus call above establishes the focus-visible state.
+      const isFocusVisible = isObservedFocusVisible(imports, member.key)
+      if (isFocusVisible === false && focusRingProperty !== undefined) {
         context.report({
           node: member,
           messageId: 'outlineOutsideFocusVisible',
@@ -134,9 +178,13 @@ const walkConditions = ({
       }
       walkConditions({
         context,
+        imports,
         node: member.value,
         focusRingProperty,
-        stateCondition: stateCondition ?? 'an observed `when.*` condition',
+        stateCondition:
+          isFocusVisible === true
+            ? stateCondition
+            : (stateCondition ?? 'an observed `when.*` condition'),
       })
       continue
     }
@@ -152,6 +200,7 @@ const walkConditions = ({
       }
       walkConditions({
         context,
+        imports,
         node: member.value,
         focusRingProperty,
         stateCondition: isState === true ? (stateCondition ?? key) : stateCondition,
@@ -169,6 +218,7 @@ const walkConditions = ({
     }
     walkConditions({
       context,
+      imports,
       node: member.value,
       focusRingProperty: isFocusRing === true ? key : focusRingProperty,
       stateCondition,
@@ -209,6 +259,7 @@ export const stylexOutlineFocusVisibleOnlyRule = {
           if (member.type !== 'Property') continue
           walkConditions({
             context,
+            imports,
             node: member.value,
             focusRingProperty: undefined,
             stateCondition: undefined,

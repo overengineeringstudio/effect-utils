@@ -94,6 +94,22 @@ The `overeng/exports-first`, `overeng/named-args`, and `overeng/jsdoc-require-ex
 
 An upstream feature request for a native `import/exports-first` rule has been filed: https://github.com/oxc-project/oxc/issues/17706
 
+## StyleX-only consumers
+
+Reuse `stylexOxlintRules()` from `genie/oxlint-base.ts` with the shared plugin entry
+points rather than weakening or independently copying its policy.
+
+The focus-ring rule reserves `outline`, `outlineColor` and `outlineOffset` for
+keyboard focus. Alongside native focus-visible conditions, it recognizes an imported
+`when.siblingBefore(':focus-visible')` with exactly one literal argument, including
+supported namespace/default/named aliases. This supports hidden controls whose
+visible sibling draws the ring. Other observed states—hover, selection, plain focus,
+negated/mixed selectors, dynamic predicates and unknown methods—remain competing
+states; nesting them around focus does not exempt their outline declarations.
+
+The shared compatibility work is tracked in
+https://github.com/overengineeringstudio/effect-utils/issues/2684.
+
 ## Future
 
 TypeScript config support (`oxlint.config.ts`) is planned for Q1 2026.
