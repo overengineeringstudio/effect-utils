@@ -257,6 +257,33 @@ const decodeAction = (value: unknown): ActionRecord => {
     uploadCompletedAt: timestamp(field({ value: value, key: 'uploadCompletedAt' })),
     commandAction: boolean(field({ value: value, key: 'commandAction' })),
   }
+  const occurrenceId = field({ value, key: 'occurrenceId' })
+  if (occurrenceId !== undefined)
+    action.occurrenceId =
+      nullableText({
+        value: occurrenceId,
+        grammar: /^occurrence-sha256-v1:[a-f0-9]{64}$/,
+      }) ?? invalid()
+  const host = field({ value, key: 'host' })
+  if (host !== undefined) action.host = nullableText({ value: host, grammar: /^[a-zA-Z0-9_.-]+$/ })
+  const executionOutcome = field({ value, key: 'executionOutcome' })
+  if (executionOutcome !== undefined) {
+    switch (executionOutcome) {
+      case 'local-exec':
+      case 'cache-hit':
+      case 'remote-exec':
+      case 'coalesced':
+      case 'unknown':
+        action.executionOutcome = executionOutcome
+        break
+      default:
+        return invalid()
+    }
+  }
+  for (const key of ['durationNs', 'totalBytes'] as const) {
+    const amount = field({ value, key })
+    if (amount !== undefined) action[key] = amount === null ? null : integer(amount)
+  }
   const uploadErrors = decodeCacheUploadErrors(field({ value: value, key: 'uploadErrors' }))
   if (uploadErrors !== undefined) action.uploadErrors = uploadErrors
   const outputTinyDigests = decodeOutputTinyDigests(field({ value, key: 'outputTinyDigests' }))
@@ -343,6 +370,9 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
         value: field({ value: metadata, key: 'repo' }),
         grammar: /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/,
       }),
+      ...(field({ value: metadata, key: 'host' }) === undefined
+        ? {}
+        : { host: nullableText({ value: field({ value: metadata, key: 'host' }) }) }),
       runId: nullableText({ value: field({ value: metadata, key: 'runId' }), grammar: /^[0-9]+$/ }),
       runAttempt: nullableText({
         value: field({ value: metadata, key: 'runAttempt' }),
