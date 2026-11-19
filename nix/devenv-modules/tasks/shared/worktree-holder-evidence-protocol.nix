@@ -9,7 +9,8 @@ let
     "worktree-holder-evidence-digest.rs"
     "worktree-holder-evidence-codec.rs"
   ];
-  fixture = ../../../../. + "/packages/@overeng/megarepo/src/store/fixtures/worktree-holder-evidence-v1.jsonl";
+  fixture =
+    ../../../../. + "/packages/@overeng/megarepo/src/store/fixtures/worktree-holder-evidence-v1.jsonl";
 in
 pkgs.runCommand "holder-evidence-protocol-v1"
   {
@@ -46,5 +47,7 @@ pkgs.runCommand "holder-evidence-protocol-v1"
     "$out/bin/holder-evidence-codec" > actual-codec-fixtures-v1.jsonl
     cmp ${fixture} actual-codec-fixtures-v1.jsonl
     cp actual-codec-fixtures-v1.jsonl "$out/share/holder-evidence-protocol/worktree-holder-evidence-v1.jsonl"
-    cp ${lib.concatMapStringsSep " " lib.escapeShellArg sources} "$out/share/holder-evidence-protocol/src/"
+    cp ${
+      lib.concatMapStringsSep " " lib.escapeShellArg sources
+    } "$out/share/holder-evidence-protocol/src/"
   ''
