@@ -1189,8 +1189,7 @@ export const admitCacheDaemonCommand = async ({
 }): Promise<string[]> => {
   const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
   // Validation precedes lock/state creation, including on cache-less roots.
-  if (routedReader === true)
-    standaloneCachePostureConfig({ current: '', env, base: {} })
+  if (routedReader === true) standaloneCachePostureConfig({ current: '', env, base: {} })
   const local = readConfig({ path: join(root, '.buckconfig.local') })
   const previousReaderRoute =
     buckConfigValues(withoutManagedBlock(local).managed)['buck2_re_client.http_headers'] ===

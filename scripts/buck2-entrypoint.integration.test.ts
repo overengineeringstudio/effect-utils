@@ -1859,11 +1859,13 @@ for (let attempt = 0; attempt < 2; attempt++) {
       })
       return service
     })
-    await Promise.all(services.map((service) => {
-      const { promise, resolve } = Promise.withResolvers<void>()
-      service.listen(0, '127.0.0.1', resolve)
-      return promise
-    }))
+    await Promise.all(
+      services.map((service) => {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        service.listen(0, '127.0.0.1', resolve)
+        return promise
+      }),
+    )
     const targets = services.map((service) => {
       const bound = service.address()
       if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
@@ -1919,11 +1921,16 @@ for (let attempt = 0; attempt < 2; attempt++) {
     writeFileSync(join(root, '.buckconfig'), `${tracked}\n[buck2]\nfile_watcher = watchman\n`)
     const local = '[ui]\ncolor = true\n'
     writeFileSync(join(root, '.buckconfig.local'), local)
-    await expect(directBuckArguments({
-      ...options(root),
-      args: ['build', '//:app'],
-      env: { BUCK2_REAPI_READ_FORWARDERS: '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}' },
-    })).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+    await expect(
+      directBuckArguments({
+        ...options(root),
+        args: ['build', '//:app'],
+        env: {
+          BUCK2_REAPI_READ_FORWARDERS:
+            '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}',
+        },
+      }),
+    ).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
     expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(local)
     expect(existsSync(join(root, 'probe-cache'))).toBe(false)
   })
@@ -1945,8 +1952,10 @@ for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const root = fixture(`grpc://127.0.0.1:${bound.port}`)
       const source = 'grpc://cache.fixture.ts.net:41045'
-      writeFileSync(join(root, '.buckconfig'),
-        `${readFileSync(join(root, '.buckconfig'), 'utf8')}\n[buck2_re_client]\ncas_address = ${source}\nengine_address = ${source}\n`)
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `${readFileSync(join(root, '.buckconfig'), 'utf8')}\n[buck2_re_client]\ncas_address = ${source}\nengine_address = ${source}\n`,
+      )
       const writerConfig = join(root, 'writer.buckconfig')
       writeFileSync(writerConfig, '[buck2]\ndefault_allow_cache_upload = true\n')
       const env = {
@@ -1959,13 +1968,18 @@ for (let attempt = 0; attempt < 2; attempt++) {
         ['--config-file', writerConfig],
       ]) {
         await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
-        expect(readFileSync(join(root, '.buckconfig.local'), 'utf8'))
-          .toContain('http_headers = x-buck2-reader: read-only')
+        expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
+          'http_headers = x-buck2-reader: read-only',
+        )
         const payload = ['--', '-c', 'buck2.allow_cache_uploads=false', '@literal-payload']
         let admittedValues: Readonly<Record<string, string>> = {}
         const admitted = await directBuckArguments({
-          ...options(root), env, args: ['run', '//:app', ...writerArgs, ...payload],
-          onCachePosture: (values) => { admittedValues = values },
+          ...options(root),
+          env,
+          args: ['run', '//:app', ...writerArgs, ...payload],
+          onCachePosture: (values) => {
+            admittedValues = values
+          },
         })
         expect(admitted.slice(admitted.indexOf('--'))).toEqual(payload)
         expect(admittedValues['buck2.remote_cache_enabled']).not.toBe('false')

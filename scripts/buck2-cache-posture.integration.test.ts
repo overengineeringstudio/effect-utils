@@ -292,7 +292,11 @@ describe('standalone Buck cache posture', () => {
     const local = `[ui]\n  color = true\n`
     writeFileSync(output, local)
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '1' }, base: {} })
+    reconcileStandaloneCachePosture({
+      repoRoot: root,
+      env: { BUCK2_NO_REMOTE_CACHE: '1' },
+      base: {},
+    })
     expect(readFileSync(output, 'utf8')).toBe(`${local.trimEnd()}
 
 # effect-utils standalone cache posture: begin
@@ -314,10 +318,18 @@ describe('standalone Buck cache posture', () => {
     const root = makeRoot()
     const output = join(root, '.buckconfig.local')
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '1' }, base: {} })
+    reconcileStandaloneCachePosture({
+      repoRoot: root,
+      env: { BUCK2_NO_REMOTE_CACHE: '1' },
+      base: {},
+    })
     expect(existsSync(output)).toBeTrue()
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' }, base: {} })
+    reconcileStandaloneCachePosture({
+      repoRoot: root,
+      env: { BUCK2_NO_REMOTE_CACHE: '0' },
+      base: {},
+    })
     expect(readFileSync(output, 'utf8')).not.toContain('[archive_origin]')
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
   })
@@ -346,16 +358,20 @@ describe('standalone Buck cache posture', () => {
       expect(mapped['buck2_re_client.tls']).toBeUndefined()
       expect(mapped['buck2_re_client.instance_name']).toBeUndefined()
       const explicit = 'grpc://other.fixture.ts.net:41045'
-      const mixed = buckConfigValues(standaloneCachePostureConfig({
-        current: '',
-        base: { ...base, 'buck2_re_client.cas_address': explicit },
-        env,
-      }))
+      const mixed = buckConfigValues(
+        standaloneCachePostureConfig({
+          current: '',
+          base: { ...base, 'buck2_re_client.cas_address': explicit },
+          env,
+        }),
+      )
       expect(mixed['buck2_re_client.action_cache_address']).toBe(target)
       expect(mixed['buck2_re_client.cas_address']).toBeUndefined()
-      expect({ ...base, 'buck2_re_client.cas_address': explicit, ...mixed }[
-        'buck2_re_client.cas_address'
-      ]).toBe(explicit)
+      expect(
+        { ...base, 'buck2_re_client.cas_address': explicit, ...mixed }[
+          'buck2_re_client.cas_address'
+        ],
+      ).toBe(explicit)
       for (const lane of [
         { CI: '1' },
         { GITHUB_ACTIONS: 'true' },
@@ -398,7 +414,10 @@ describe('standalone Buck cache posture', () => {
     const local = '[buck2_re_client]\nhttp_headers = authorization: Basic inherited\n'
     writeFileSync(output, local)
     for (const encoded of [
-      '{', '[]', 'null', '"text"',
+      '{',
+      '[]',
+      'null',
+      '"text"',
       JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://localhost:41045' }),
       JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://192.168.1.1:41045' }),
       JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://user:secret@127.0.0.1:41045' }),
@@ -411,11 +430,13 @@ describe('standalone Buck cache posture', () => {
       JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://127.0.0.1:41045?auth=secret' }),
       JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 41045 }),
     ]) {
-      expect(() => reconcileStandaloneCachePosture({
-        base: {},
-        repoRoot: root,
-        env: { BUCK2_REAPI_READ_FORWARDERS: encoded },
-      })).toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+      expect(() =>
+        reconcileStandaloneCachePosture({
+          base: {},
+          repoRoot: root,
+          env: { BUCK2_REAPI_READ_FORWARDERS: encoded },
+        }),
+      ).toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
       expect(readFileSync(output, 'utf8')).toBe(local)
       expect(readdirSync(root).some((name) => name.includes('.candidate-'))).toBe(false)
     }

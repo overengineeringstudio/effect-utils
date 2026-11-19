@@ -709,22 +709,37 @@ if(await launcher.exited!==0) throw new Error(launcherStderr);
     const args = ['build', '//:fixture']
     try {
       writeFileSync(join(root, '.buckconfig'), '[buck2]\nremote_cache_enabled = true\n')
-      writeFileSync(join(root, '.buckconfig.local'),
+      writeFileSync(
+        join(root, '.buckconfig.local'),
         '[buck2_re_client]\nhttp_headers = x-buck2-reader: read-only\n' +
-        '# effect-utils standalone cache posture: begin\n' +
-        '# effect-utils standalone cache posture: end\n')
-      expect(await admitCacheDaemonCommand({
-        native: '/unused-native', root, args, env: {}, admit: async () => args,
-      })).toEqual(args)
+          '# effect-utils standalone cache posture: begin\n' +
+          '# effect-utils standalone cache posture: end\n',
+      )
+      expect(
+        await admitCacheDaemonCommand({
+          native: '/unused-native',
+          root,
+          args,
+          env: {},
+          admit: async () => args,
+        }),
+      ).toEqual(args)
       expect(existsSync(join(root, 'buck-out'))).toBe(false)
-      await expect(admitCacheDaemonCommand({
-        native: '/unused-native', root, args,
-        env: {
-          GITHUB_ACTIONS: 'true',
-          BUCK2_REAPI_READ_FORWARDERS: '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41045"}',
-        },
-        admit: async () => { throw new Error('GitHub job reached admission without declaration') },
-      })).rejects.toThrow('GitHub Actions job without BUCK2_CI_POSTURE declaration')
+      await expect(
+        admitCacheDaemonCommand({
+          native: '/unused-native',
+          root,
+          args,
+          env: {
+            GITHUB_ACTIONS: 'true',
+            BUCK2_REAPI_READ_FORWARDERS:
+              '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41045"}',
+          },
+          admit: async () => {
+            throw new Error('GitHub job reached admission without declaration')
+          },
+        }),
+      ).rejects.toThrow('GitHub Actions job without BUCK2_CI_POSTURE declaration')
       expect(existsSync(join(root, 'buck-out'))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -748,22 +763,31 @@ if(await launcher.exited!==0) throw new Error(launcherStderr);
       })
       return service
     })
-    await Promise.all(services.map((service) => {
-      const { promise, resolve } = Promise.withResolvers<void>()
-      service.listen(0, '127.0.0.1', resolve)
-      return promise
-    }))
+    await Promise.all(
+      services.map((service) => {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        service.listen(0, '127.0.0.1', resolve)
+        return promise
+      }),
+    )
     try {
       writeFileSync(join(root, '.buckroot'), '')
-      writeFileSync(join(root, '.buckconfig'),
-        `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = ${source}\ncas_address = ${source}\nengine_address = ${source}\ntls = false\ninstance_name = fixture\n`)
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = ${source}\ncas_address = ${source}\nengine_address = ${source}\ntls = false\ninstance_name = fixture\n`,
+      )
       const initial = {
-        project_root: root, isolation_dir: 'v2', active_commands: [],
-        process_info: { pid: 12345 }, start_time: 'original-direct-daemon',
+        project_root: root,
+        isolation_dir: 'v2',
+        active_commands: [],
+        process_info: { pid: 12345 },
+        start_time: 'original-direct-daemon',
         address: source,
       }
       writeFileSync(state, JSON.stringify(initial))
-      writeFileSync(native, `#!${process.execPath}
+      writeFileSync(
+        native,
+        `#!${process.execPath}
 import {appendFileSync,existsSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
 import {buckConfigValues,readConfig} from ${JSON.stringify(join(import.meta.dir, 'buck2-cache-posture.ts'))};
 const command=process.argv[4];
@@ -778,31 +802,51 @@ else if(command==='audit') {
   address:values['buck2_re_client.action_cache_address'],header:values['buck2_re_client.http_headers']
  }));
 } else process.exit(9);
-`, { mode: 0o700 })
+`,
+        { mode: 0o700 },
+      )
       const targets = services.map((service) => {
         const address = service.address()
-        if (address === null || typeof address === 'string') throw new Error('expected TCP listener')
+        if (address === null || typeof address === 'string')
+          throw new Error('expected TCP listener')
         return `grpc://127.0.0.1:${address.port}`
       })
       const env: Record<string, string | undefined> = {
         BUCK2_REAPI_READ_FORWARDERS: JSON.stringify({ [source]: targets[0] }),
       }
       const args = ['build', '//:fixture']
-      const reconcile = () => admitCacheDaemonCommand({
-        native, root, args, env,
-        admit: (beforeCachePosture) => directBuckArguments({
-          cwd: root, args, env, cacheDirectory: join(root, 'cache'), beforeCachePosture,
-        }),
-      })
+      const reconcile = () =>
+        admitCacheDaemonCommand({
+          native,
+          root,
+          args,
+          env,
+          admit: (beforeCachePosture) =>
+            directBuckArguments({
+              cwd: root,
+              args,
+              env,
+              cacheDirectory: join(root, 'cache'),
+              beforeCachePosture,
+            }),
+        })
       await reconcile()
       await reconcile()
-      expect(readFileSync(calls, 'utf8').split('\n').filter((call) => call === 'kill')).toHaveLength(1)
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(1)
       expect(JSON.parse(readFileSync(state, 'utf8')).address).toBe(targets[0])
       expect(JSON.parse(readFileSync(state, 'utf8')).header).toBe('x-buck2-reader: read-only')
       env.BUCK2_REAPI_READ_FORWARDERS = JSON.stringify({ [source]: targets[1] })
       await reconcile()
       await reconcile()
-      expect(readFileSync(calls, 'utf8').split('\n').filter((call) => call === 'kill')).toHaveLength(2)
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(2)
       expect(JSON.parse(readFileSync(state, 'utf8')).address).toBe(targets[1])
       const active = JSON.parse(readFileSync(state, 'utf8'))
       active.active_commands = [{ trace_id: 'concurrent-command' }]
@@ -811,24 +855,44 @@ else if(command==='audit') {
       env.BUCK2_REAPI_READ_FORWARDERS = JSON.stringify({ [source]: targets[0] })
       await expect(reconcile()).rejects.toThrow('refusing to stop it')
       expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(overlay)
-      expect(readFileSync(calls, 'utf8').split('\n').filter((call) => call === 'kill')).toHaveLength(2)
-      expect(readdirSync(join(root, 'buck-out', '.cache-daemon-posture'))
-        .some((name) => name.startsWith('reapi-job-'))).toBe(false)
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(2)
+      expect(
+        readdirSync(join(root, 'buck-out', '.cache-daemon-posture')).some((name) =>
+          name.startsWith('reapi-job-'),
+        ),
+      ).toBe(false)
       active.active_commands = []
       writeFileSync(state, JSON.stringify(active))
       env.BUCK2_REAPI_READ_FORWARDERS = ''
       env.BUCK2_NO_REMOTE_CACHE = '1'
       await reconcile()
-      expect(readFileSync(calls, 'utf8').split('\n').filter((call) => call === 'kill')).toHaveLength(3)
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(3)
       expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).not.toContain('x-buck2-reader')
       expect(JSON.parse(readFileSync(state, 'utf8')).address).toBe(source)
       const invalidRoot = createTestTempDirectory('buck2-invalid-host-reader-')
       try {
-        await expect(admitCacheDaemonCommand({
-          native, root: invalidRoot, args,
-          env: { BUCK2_REAPI_READ_FORWARDERS: '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}' },
-          admit: async () => { throw new Error('invalid map reached admission') },
-        })).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+        await expect(
+          admitCacheDaemonCommand({
+            native,
+            root: invalidRoot,
+            args,
+            env: {
+              BUCK2_REAPI_READ_FORWARDERS:
+                '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}',
+            },
+            admit: async () => {
+              throw new Error('invalid map reached admission')
+            },
+          }),
+        ).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
         expect(existsSync(join(invalidRoot, 'buck-out'))).toBe(false)
         expect(existsSync(join(invalidRoot, '.buckconfig.local'))).toBe(false)
       } finally {
