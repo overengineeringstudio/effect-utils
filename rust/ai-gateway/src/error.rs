@@ -26,6 +26,19 @@ impl std::error::Error for ToolRunError {
     }
 }
 
+/// Caller-visible evidence for malformed JSON or original-schema violations.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StructuredOutputError {
+    pub errors: Vec<String>,
+    pub usage: Option<Usage>,
+    pub finish_reason: Option<String>,
+    /// UTF-8 prefix, at most 2048 bytes including the truncation marker.
+    pub raw_text: String,
+    /// Byte length of the complete response text, before truncation.
+    pub raw_text_bytes: usize,
+    pub truncated: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     Http {
@@ -44,6 +57,9 @@ pub enum Error {
         errors: Vec<String>,
         usage: Option<Usage>,
     },
+    /// Structured response rejected after parsing or original-schema validation.
+    /// Raw text is caller-visible only; Display and telemetry omit the excerpt.
+    StructuredOutput(Box<StructuredOutputError>),
     Transport {
         message: String,
     },
@@ -76,6 +92,33 @@ impl Error {
             *billed = usage;
         }
         self
+    }
+
+    pub(crate) fn structured_output(
+        errors: Vec<String>,
+        usage: Option<Usage>,
+        finish_reason: Option<String>,
+        mut raw_text: String,
+    ) -> Self {
+        const LIMIT: usize = 2048;
+        const MARKER: &str = "\n[truncated]";
+        let raw_text_bytes = raw_text.len();
+        let truncated = raw_text_bytes > LIMIT;
+        if truncated {
+            let mut end = LIMIT - MARKER.len();
+            while !raw_text.is_char_boundary(end) {
+                end -= 1;
+            }
+            raw_text = format!("{}{MARKER}", &raw_text[..end]);
+        }
+        Self::StructuredOutput(Box::new(StructuredOutputError {
+            errors,
+            usage,
+            finish_reason,
+            raw_text,
+            raw_text_bytes,
+            truncated,
+        }))
     }
 
     pub(crate) fn http(status: u16, raw_body: String, retry_after: Option<String>) -> Self {
@@ -125,7 +168,7 @@ impl Error {
         match self {
             Self::Http { r#type, .. } => r#type.as_deref().unwrap_or("http_error"),
             Self::Stream { .. } => "stream_error",
-            Self::Validation { .. } => "validation_error",
+            Self::Validation { .. } | Self::StructuredOutput(_) => "validation_error",
             Self::Transport { .. } => "transport_error",
             Self::Config { .. } => "config_error",
         }
@@ -139,6 +182,9 @@ impl fmt::Display for Error {
                 status, message, ..
             } => write!(formatter, "HTTP {status}: {message}"),
             Self::Stream { message, .. } => write!(formatter, "stream: {message}"),
+            Self::StructuredOutput(error) => {
+                write!(formatter, "validation: {}", error.errors.join("; "))
+            }
             Self::Validation { errors, .. } => {
                 write!(formatter, "validation: {}", errors.join("; "))
             }
