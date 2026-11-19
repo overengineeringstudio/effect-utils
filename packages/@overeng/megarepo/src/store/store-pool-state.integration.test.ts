@@ -10,12 +10,15 @@ import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-dele
 import {
   beginPoolRetarget,
   claimPoolGeneration,
+  consumePoolReservation,
   finishPoolRetarget,
   type PoolSlot,
   requirePoolLease,
+  reservePoolGeneration,
   reservePoolSlot,
   withPoolState,
 } from './store-pool-state.ts'
+import { inspectPool } from './store-pool.ts'
 
 const historicalSlot = {
   id: 'slot',
@@ -35,6 +38,118 @@ const historicalSlot = {
 const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
 
 describe('pool authoritative lifecycle', () => {
+  it.effect('persists an unborn bounded reservation unchanged across actual inspection', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const reserved = yield* withPoolState({
+        base,
+        limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) =>
+          reservePoolGeneration({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+            .pipe(Effect.tap(save)),
+      })
+      const unborn = reserved.slots[0]!
+      expect(unborn.state).toBe('reserved')
+      expect(unborn.reservation).toMatch(/^[0-9a-f-]{36}$/u)
+      expect(unborn.owner).toBe('')
+      expect(yield* fs.exists(unborn.path)).toBe(false)
+      expect((yield* inspectPool(base)).slots[0]).toEqual(unborn)
+      const reopened = yield* withPoolState({ base, use: Effect.succeed })
+      expect(reopened.slots[0]).toEqual(unborn)
+      const full = yield* reservePoolGeneration({
+        state: reopened, bare: `${base}other.git`, commit: slot.commit, charge: 1,
+      }).pipe(Effect.flip)
+      expect(full.message).toContain('capacity')
+      const bytes = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      const invalid = yield* withPoolState({
+        base,
+        use: (state, save) => save({
+          ...state, slots: [{ ...unborn, reservation: undefined }],
+        }),
+      }).pipe(Effect.exit)
+      expect(Exit.isFailure(invalid)).toBe(true)
+      expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(bytes)
+      const incompatible = { ...reopened, futureProof: true }
+      const unknownWriter = yield* withPoolState({
+        base, use: (_state, save) => save(incompatible),
+      }).pipe(Effect.exit)
+      expect(Exit.isFailure(unknownWriter)).toBe(true)
+      expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(bytes)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('consumes one exact reservation epoch atomically and never resumes preparation', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const state = yield* withPoolState({
+        base,
+        limits: { maxSlots: 2, maxBytes: 128 },
+        use: (state, save) =>
+          reservePoolGeneration({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+            .pipe(Effect.tap(save)),
+      })
+      const reserved = state.slots[0]!
+      const receipt = {
+        id: reserved.id, reservation: reserved.reservation!, generation: reserved.generation,
+        bare: reserved.bare, commit: reserved.commit, charge: reserved.charge,
+      }
+      for (const mismatch of [
+        { id: 'other' }, { reservation: 'stale' }, { generation: 1 },
+        { bare: `${base}other.git` }, { commit: 'b'.repeat(40) }, { charge: 65 },
+      ]) {
+        const rejected = yield* consumePoolReservation({
+          slot: reserved, ...receipt, ...mismatch,
+        }).pipe(Effect.exit)
+        expect(Exit.isFailure(rejected)).toBe(true)
+      }
+      const consume = withPoolState({
+        base,
+        use: (state, save) => consumePoolReservation({ slot: state.slots[0]!, ...receipt })
+          .pipe(Effect.tap((next) => save({ ...state, slots: [next] }))),
+      }).pipe(Effect.exit)
+      const results = yield* Effect.all([consume, consume], { concurrency: 2 })
+      expect(results.filter(Exit.isSuccess)).toHaveLength(1)
+      const prepared = yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]!) })
+      expect(prepared).toMatchObject({
+        state: 'preparing', generation: 1, chargeKnown: false, reservation: undefined,
+      })
+      const retained = yield* inspectPool(base)
+      expect(retained.slots[0]).toMatchObject({ state: 'quarantined', chargeKnown: false })
+      expect(Exit.isFailure(yield* consumePoolReservation({
+        slot: retained.slots[0]!, ...receipt,
+      }).pipe(Effect.exit))).toBe(true)
+      expect((yield* reservePoolGeneration({
+        state: retained, bare: `${base}other.git`, commit: slot.commit, charge: 64,
+      }).pipe(Effect.flip)).message).toContain('unknown')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('quarantines unexpected reservation paths without adopting or deleting their bytes', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const state = yield* withPoolState({
+        base,
+        limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) =>
+          reservePoolGeneration({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+            .pipe(Effect.tap(save)),
+      })
+      const reserved = state.slots[0]!
+      yield* fs.makeDirectory(reserved.path, { recursive: true })
+      yield* fs.writeFileString(`${reserved.path}/unowned`, 'retain')
+      const inspected = yield* inspectPool(base)
+      expect(inspected.slots[0]).toMatchObject({
+        id: reserved.id, state: 'quarantined', chargeKnown: false, reservation: undefined,
+      })
+      expect(yield* fs.readFileString(`${reserved.path}/unowned`)).toBe('retain')
+      const reopened = yield* withPoolState({ base, use: Effect.succeed })
+      expect(reopened).toEqual(inspected)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('publishes exactly one atomic claim for a ready generation', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem

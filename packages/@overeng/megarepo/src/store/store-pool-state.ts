@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { open, rename } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -33,6 +33,8 @@ const RetargetIntent = Schema.Struct({
 /** Authoritative records: uncertain generations are never implicitly recovered. */
 export const PoolSlot = Schema.Struct({
   ...PoolSlotV1.fields,
+  state: Schema.Union([PoolSlotV1.fields.state, Schema.Literal('reserved')]),
+  reservation: Schema.optional(Schema.String),
   sourceHistory: Schema.NonEmptyArray(Schema.String),
   retarget: Schema.optional(RetargetIntent),
 })
@@ -79,6 +81,23 @@ const validatePoolState = (state: PoolState) =>
           Number.isSafeInteger(slot.generation) === false ||
           slot.generation < 0 ||
           slot.sourceHistory.at(-1) !== slot.commit ||
+          (slot.state === 'reserved'
+            ? slot.reservation === undefined ||
+              slot.reservation === '' ||
+              slot.generation !== 0 ||
+              slot.chargeKnown !== true ||
+              slot.identity !== '' ||
+              slot.token !== '' ||
+              slot.barrierToken !== '' ||
+              slot.owner !== '' ||
+              slot.retarget !== undefined ||
+              slot.sourceHistory.length !== 1 ||
+              slot.bare.startsWith('/') === false ||
+              resolve(slot.bare) !== slot.bare ||
+              resolve(slot.path) !== slot.path ||
+              /^[0-9a-f]{40}$/u.test(slot.commit) === false ||
+              slot.path !== `${dirname(slot.bare)}/pool/${slot.id}`
+            : slot.reservation !== undefined) ||
           (slot.retarget !== undefined &&
             (['preparing', 'quarantined'].includes(slot.state) === false ||
               slot.identity !== '' ||
@@ -98,7 +117,9 @@ const validatePoolState = (state: PoolState) =>
 const persist = ({ path, state }: { path: string; state: PoolState }) =>
   Effect.gen(function* () {
     yield* validatePoolState(state)
-    const contents = yield* Schema.encodeEffect(Schema.fromJsonString(PoolState))(state)
+    const contents = yield* Schema.encodeEffect(Schema.fromJsonString(PoolState), {
+      onExcessProperty: 'error',
+    })(state)
     yield* Effect.tryPromise(async () => {
       const temporary = `${path}.${randomUUID()}`
       const file = await open(temporary, 'wx', 0o600)
@@ -232,6 +253,86 @@ export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolS
     )
   return Effect.succeed({ ...state, slots: [...state.slots, slot] })
 }
+
+/** Reserve an unborn, bounded path for explicit owner enrollment; no filesystem mutation. */
+export const reservePoolGeneration = ({
+  state,
+  bare,
+  commit,
+  charge,
+}: {
+  state: PoolState
+  bare: string
+  commit: string
+  charge: number
+}): Effect.Effect<PoolState, PoolError> => {
+  if (
+    bare.startsWith('/') === false ||
+    resolve(bare) !== bare ||
+    /^[0-9a-f]{40}$/u.test(commit) === false
+  )
+    return Effect.fail(new PoolError({ message: 'Reservation requires canonical bare path and SHA' }))
+  const id = randomUUID()
+  return reservePoolSlot({
+    state,
+    slot: {
+      id,
+      bare,
+      commit,
+      charge,
+      path: `${dirname(bare)}/pool/${id}`,
+      sourceHistory: [commit],
+      state: 'reserved',
+      chargeKnown: true,
+      generation: 0,
+      reservation: randomUUID(),
+      identity: '',
+      token: '',
+      barrierToken: '',
+      owner: '',
+      reason: '',
+    },
+  })
+}
+
+/** Consume exactly once under the durable lease before any native path creation. */
+export const consumePoolReservation = ({
+  slot,
+  id,
+  reservation,
+  generation,
+  bare,
+  commit,
+  charge,
+}: {
+  slot: PoolSlot
+  id: string
+  reservation: string
+  generation: number
+  bare: string
+  commit: string
+  charge: number
+}): Effect.Effect<PoolSlot, PoolError> =>
+  slot.state === 'reserved' &&
+  slot.chargeKnown === true &&
+  slot.generation === 0 &&
+  slot.id === id &&
+  slot.reservation === reservation &&
+  reservation !== '' &&
+  slot.generation === generation &&
+  slot.bare === bare &&
+  slot.commit === commit &&
+  slot.charge === charge &&
+  slot.path === `${dirname(bare)}/pool/${id}`
+    ? Effect.succeed<PoolSlot>({
+        ...slot,
+        reservation: undefined,
+        generation: generation + 1,
+        state: 'preparing',
+        chargeKnown: false,
+        reason: 'Reserved root preparation',
+      })
+    : Effect.fail(new PoolError({ message: 'Stale or mismatched pool reservation' }))
 
 /** Pure intent transition; the owner must persist it before any checkout mutation. */
 export const beginPoolRetarget = ({

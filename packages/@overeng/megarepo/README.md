@@ -438,6 +438,13 @@ State-only retarget intent advances the generation and revokes install/lease ide
 before mutation; failure retains intent and unknown bytes. These transitions do not
 provide holder evidence or enable a retarget CLI: qualified teardown, fresh authenticated
 holder SDK evidence and normal installation/doctor integration remain required.
+Unborn reservations count against the same host-wide slot and planned-byte limits.
+They carry a one-use nonce and generation, but no provider owner, native root or ready
+identity. Inspection preserves an absent reserved path; an occupied or unknown path
+is quarantined with unknown bytes and its nonce revoked, never adopted or cleaned.
+The state owner consumes the exact source/bare/path/charge/nonce/epoch receipt before
+any creation. These state transitions do not register privileged roots or yet expose
+the reserve/prewarm CLI; canonical lifecycle callers must migrate as one cutover.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.

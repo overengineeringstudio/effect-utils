@@ -88,16 +88,18 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
     const bytes =
       exists === false ? 0 : yield* poolBytes(slot.path).pipe(Effect.orElseSucceed(() => undefined))
     const holders =
-      exists === false || slot.retarget !== undefined
+      exists === false || slot.retarget !== undefined || slot.reservation !== undefined
         ? undefined
         : yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
     const next: PoolSlot = {
       ...slot,
       state: 'quarantined',
+      reservation: undefined,
       reason,
       charge: Math.max(slot.charge, bytes ?? slot.charge),
       chargeKnown:
         slot.retarget === undefined &&
+        slot.reservation === undefined &&
         exists === true &&
         bytes !== undefined &&
         holders?._tag === 'free',
@@ -380,19 +382,27 @@ export const inspectPool = (base: AbsoluteDirPath) =>
         const fs = yield* FileSystem.FileSystem
         const slots: Array<PoolSlot> = []
         for (const slot of state.slots) {
-          const pathKnown = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => false))
+          const pathExists = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => undefined))
+          if (slot.state === 'reserved' && pathExists === false) {
+            slots.push(slot)
+            continue
+          }
+          const pathKnown = pathExists === true
           const uncertain =
             pathKnown === false ||
             slot.state === 'preparing' ||
+            slot.state === 'reserved' ||
             (slot.state === 'leased' &&
               (yield* persistentDeletionLeaseOwnerAlive(barrier({ base, slot }))) === false)
           const mutable = slot.state === 'leased' || slot.state === 'completed'
           const reason =
-            pathKnown === false
-              ? 'Root path lost or unknown'
-              : uncertain === true
-                ? 'Provider lost or unknown'
-                : slot.reason
+            slot.state === 'reserved'
+              ? 'Reserved path unexpectedly exists or is unknown'
+              : pathKnown === false
+                ? 'Root path lost or unknown'
+                : uncertain === true
+                  ? 'Provider lost or unknown'
+                  : slot.reason
           slots.push(
             uncertain === true || (slot.chargeKnown !== true && mutable === false)
               ? yield* retainPoolSlot({ slot, reason })
