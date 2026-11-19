@@ -384,6 +384,8 @@ machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
+Its curated GNU coreutils provider measures apparent logical size, including sparse
+and compressed payloads; allocated disk usage and exclusive reclamation are separate.
 
 ### Process activity snapshot
 
