@@ -69,7 +69,9 @@ export const captureWorktreeHolderEvidence = ({ client, paths }: {
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
   Effect.gen(function* () {
-    yield* Schema.decodeEffect(WorktreeHolderEvidenceClientConfigSchema, { onExcessProperty: 'error' })(client)
+    const boundClient = yield* Schema.decodeEffect(WorktreeHolderEvidenceClientConfigSchema, {
+      onExcessProperty: 'error',
+    })(client)
     const nonce = randomBytes(16).toString('hex')
     const request = yield* Schema.decodeEffect(WorktreeHolderEvidenceRequestSchema, {
       onExcessProperty: 'error',
@@ -77,7 +79,7 @@ export const captureWorktreeHolderEvidence = ({ client, paths }: {
     const stdin = new TextEncoder().encode(encodeRequest(request))
     if (stdin.byteLength > MAX_REQUEST) return undefined
     const spawner = yield* ChildProcessSpawner
-    const child = yield* spawner.spawn(ChildProcess.make(client.path, ['--client-v1'], {
+    const child = yield* spawner.spawn(ChildProcess.make(boundClient.path, ['--client-v1'], {
       cwd: '/',
       env: {},
       extendEnv: false,
@@ -101,7 +103,9 @@ export const captureWorktreeHolderEvidence = ({ client, paths }: {
     ], { concurrency: 3 })
     if (exitCode !== 0) return undefined
     const json = yield* Effect.try(() => new TextDecoder('utf-8', { fatal: true }).decode(stdout))
-    const evidence = yield* decodeWorktreeHolderEvidence({ client, paths, nonce, json })
+    const evidence = yield* decodeWorktreeHolderEvidence({
+      client: boundClient, paths: request.paths, nonce: request.nonce, json,
+    })
     if (evidence === undefined || !(yield* isWorktreeHolderEvidenceFresh(evidence))) return undefined
     return evidence
   }).pipe(
