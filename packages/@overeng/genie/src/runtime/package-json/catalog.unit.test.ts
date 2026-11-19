@@ -97,7 +97,9 @@ describe('defineCatalog', () => {
       })
       const sibling = defineCatalog({ extends: base, packages: {} })
 
-      expectTypeOf(consumer.pick('oxc-parser')).toEqualTypeOf<{ 'oxc-parser': '0.149.0' }>()
+      expectTypeOf(consumer.pick('oxc-parser')).toEqualTypeOf<{
+        readonly 'oxc-parser': '0.149.0'
+      }>()
       expect(consumer.pick('oxc-parser', 'shared', 'local')).toEqual({
         'oxc-parser': '0.149.0',
         shared: '1.0.0',
