@@ -84,7 +84,7 @@ const retainPoolSlot = (slot: PoolSlot, reason: string) =>
       state: 'quarantined',
       reason,
       charge: Math.max(slot.charge, bytes ?? slot.charge),
-      chargeKnown: bytes !== undefined && (exists === false || holders?._tag === 'free'),
+      chargeKnown: exists === true && bytes !== undefined && holders?._tag === 'free',
     }
     return next
   })
@@ -154,6 +154,8 @@ export const prewarmPool = (args: {
             slot = { ...slot, charge: bytes }
             return yield* new PoolError({ message: 'Prepared root exceeds reserved charge' })
           }
+          yield* cleanSource(slot)
+          yield* free(slot)
           slot = { ...slot, state: 'ready', chargeKnown: true }
           yield* update()
           return slot

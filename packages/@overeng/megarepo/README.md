@@ -375,12 +375,17 @@ when their provider exits. Unknown records remain protected; ordinary version-1
 lease recovery is unchanged. Detached worktree creation can acquire its native Git
 lock atomically. Durable pool records serialize host-store capacity and generation
 claims, and retain unknown accounting rather than allocating around uncertainty.
+Writable claims invalidate measured accounting until a safe remeasure; new reservations
+wait, while other already-reserved ready roots remain claimable. Execution can expand
+files, so this accounting ledger is not a hard filesystem quota.
 
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
+Its curated GNU coreutils provider measures apparent logical size, including sparse
+and compressed payloads; allocated disk usage and exclusive reclamation are separate.
 
 Preparation reserves host-store-wide count and logical-byte capacity before
 creating a fixed-path detached root with an atomic native Git lock. It publishes

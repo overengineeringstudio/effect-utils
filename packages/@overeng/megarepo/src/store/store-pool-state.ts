@@ -139,6 +139,7 @@ export const claimPoolGeneration = (slot: PoolSlot, identity: string, owner: str
   const next: PoolSlot = {
     ...slot,
     state: 'leased',
+    chargeKnown: false,
     generation: slot.generation + 1,
     token: randomUUID(),
     owner,

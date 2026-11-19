@@ -79,21 +79,28 @@ describe('pool authoritative lifecycle', () => {
 
   it.effect('charges bytes across repositories, not per seat or source revision', () =>
     Effect.gen(function* () {
-      const state = { version: 1 as const, maxSlots: 10, maxBytes: 100, slots: [slot] }
+      const ready = { ...slot, state: 'ready' as const }
+      const state = { version: 1 as const, maxSlots: 10, maxBytes: 100, slots: [ready] }
       const failure = yield* reservePoolSlot(state, {
         ...slot,
         id: 'next',
         bare: '/other/.bare',
       }).pipe(Effect.flip)
       expect(failure.message).toContain('capacity')
-      expect(
-        (yield* reservePoolSlot(state, { ...slot, id: 'next', charge: 36 })).slots,
-      ).toHaveLength(2)
+      const leased = yield* claimPoolGeneration(ready, 'installed', 'task')
+      expect(leased.chargeKnown).toBe(false)
       const unknown = yield* reservePoolSlot(
-        { ...state, slots: [{ ...slot, chargeKnown: false }] },
+        { ...state, slots: [leased] },
         slot,
       ).pipe(Effect.flip)
       expect(unknown.message).toContain('unknown')
+      const remeasured = { ...leased, state: 'ready' as const, chargeKnown: true }
+      expect(
+        (yield* reservePoolSlot(
+          { ...state, slots: [remeasured] },
+          { ...slot, id: 'next', charge: 36 },
+        )).slots,
+      ).toHaveLength(2)
       const historical = yield* reservePoolSlot(
         { ...state, slots: [{ ...slot, chargeKnown: undefined }] },
         slot,
