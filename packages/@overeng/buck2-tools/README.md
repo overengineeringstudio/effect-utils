@@ -29,6 +29,25 @@ an existing mismatched file fails closed rather
 than being silently repaired. Remove only the reported invalid preload after
 investigating its provenance, then launch again.
 
+## Configured affected-check selection
+
+`selectConfiguredChecks` consumes complete configured snapshots from two pinned
+revisions and a complete, rename-blind changed-path list. Each snapshot records
+its execution-configuration identity, required configured check IDs, transitive
+dependency-graph digests, file/package reverse closure, and ownership coverage.
+The selector unions old and new ownership (including deleted inputs), selects
+changed configured graphs, and returns candidate configured targets with explicit
+full-set fallback reasons. Empty selection requires complete equal graphs and no
+affected owner. Unknown ownership, failed queries, required-inventory changes,
+lockfiles, toolchains, BUCK/macros, or changed configuration select the full set.
+
+This is a selection, **not passing evidence**. The caller verifies the evidence
+base, required inventory/policy and complete delta before using it; non-Buck
+checks remain explicit obligations. Removed required targets are reported, not
+silently considered passed. Package ownership/reverse closure continues to use
+`affectedPackagePaths` and `buildTargetsFor`; file-query decoding continues to
+use `parseBuckOwnershipQuery`, rather than a second package convention.
+
 ## Opt-in NativeLink TypeScript pilot
 
 The default remains local execution with the existing cache policy. On Linux,
