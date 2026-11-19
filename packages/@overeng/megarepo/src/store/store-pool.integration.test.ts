@@ -227,9 +227,11 @@ describe('native pool ownership safety', () => {
         generation: 1,
       }).pipe(Effect.flip)
       expect(String(failure)).toContain('Stale')
-      expect(
-        (yield* withPoolState(storePath, (state) => Effect.succeed(state.slots[0])))?.state,
-      ).toBe('ready')
+      const preserved = yield* withPoolState({
+        base: storePath,
+        use: (state) => Effect.succeed(state.slots[0]),
+      })
+      expect(preserved?.state).toBe('ready')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })
