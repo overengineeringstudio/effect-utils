@@ -602,6 +602,8 @@ source files, rebuild the profile, republish it, and prepare again. All existing
 devenv tasks remain available; removing their evaluated authority requires a
 separate contract replacement, not deleting these guards.
 
+CI cache-posture admission accepts the declared tracing wrapper's native run options while retaining isolation and argument-file validation. The teardown regression binds its existing `DEVENV_BIN` explicitly to the pinned tool; it never relies on an ambient devenv executable in the Buck check PATH.
+
 Preparation reports up to ten untracked paths, JSON-escaped, and still refuses
 to publish them. The editor publisher's default content-addressed store is
 `.editor-view-content/v1` beside the common Git directory; in ordinary clones
