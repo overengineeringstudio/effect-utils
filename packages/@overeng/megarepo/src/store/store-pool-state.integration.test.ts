@@ -18,6 +18,8 @@ import {
   type PoolActivity,
   type PoolSlot,
   requirePoolLease,
+  markPoolRootAuthored,
+  requireDisposablePoolRoot,
   reservePoolGeneration,
   reservePoolSlot,
   withPoolState,
@@ -42,6 +44,31 @@ const historicalSlot = {
 const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
 
 describe('pool authoritative lifecycle', () => {
+  it.effect('grants disposal only at fresh reservation and cannot erase an authoring marker', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const state = yield* withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) => reservePoolGeneration({
+          state, bare: `${base}.bare`, commit: slot.commit, charge: 64,
+        }).pipe(Effect.tap(save)),
+      })
+      const fresh = state.slots[0]!
+      yield* requireDisposablePoolRoot(fresh)
+      expect(Exit.isFailure(yield* requireDisposablePoolRoot(slot).pipe(Effect.exit))).toBe(true)
+      const authored = yield* markPoolRootAuthored(fresh)
+      yield* withPoolState({
+        base, use: (state, save) => save({ ...state, slots: [authored] }),
+      })
+      expect(Exit.isFailure(yield* requireDisposablePoolRoot(authored).pipe(Effect.exit))).toBe(true)
+      expect(Exit.isFailure(yield* withPoolState({
+        base, use: (state, save) => save({ ...state, slots: [fresh] }),
+      }).pipe(Effect.exit))).toBe(true)
+      expect((yield* withPoolState({ base, use: Effect.succeed })).slots[0]?.executionRoot?.authored).toBe(true)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('reports the actual current provider without inventing Linux lifetime or seat authority', () =>
     Effect.gen(function* () {
       const provider = yield* readCurrentDeletionLeaseProvider

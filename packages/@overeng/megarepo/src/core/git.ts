@@ -5,11 +5,13 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import type { Stats } from 'node:fs'
+import type { BigIntStats, Stats } from 'node:fs'
 import { link, lstat, open, readFile, rename, unlink } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
-import { Duration, Effect, Option, Schedule, Schema, Sink, Stream } from 'effect'
+import { type Cause, Duration, Effect, Option, Schedule, Schema, Sink, Stream } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 
 import {
   resolveGitCommonDir,
@@ -646,6 +648,63 @@ export const isGitRepo = (path: string) =>
 // =============================================================================
 // Git Worktree Operations
 // =============================================================================
+
+/** Missing or inconsistent linked-worktree ownership is not permission to mutate it. */
+export class LinkedWorktreeAdmissionError extends Schema.TaggedError<LinkedWorktreeAdmissionError>()(
+  'LinkedWorktreeAdmissionError',
+  { message: Schema.String },
+) {}
+
+export interface LinkedWorktreeAdmission {
+  readonly bare: string
+  readonly gitdir: string
+  readonly bareIdentity: string
+  readonly evidence: ReadonlyArray<{
+    readonly path: string
+    readonly content: string
+    readonly info: BigIntStats
+  }>
+}
+
+/** Recapture canonical Git ownership; callers still hold their native action fence. */
+export const readLinkedWorktreeAdmission = Effect.fn('git.readLinkedWorktreeAdmission')(function* ({
+  owner, barePath,
+}: {
+  owner: string
+  barePath: string
+}): Effect.fn.Return<
+  LinkedWorktreeAdmission, LinkedWorktreeAdmissionError | PlatformError | Cause.UnknownError,
+  FileSystem.FileSystem
+> {
+  const fs = yield* FileSystem.FileSystem
+  const bare = yield* fs.realPath(barePath)
+  const dotGit = `${owner}/.git`
+  const pointer = yield* fs.readFileString(dotGit)
+  if (pointer.startsWith('gitdir: ') === false)
+    return yield* new LinkedWorktreeAdmissionError({ message: 'Missing worktree gitdir' })
+  const gitdir = yield* fs.realPath(NodePath.resolve(owner, pointer.slice(8).trim()))
+  const backlink = yield* fs.readFileString(`${gitdir}/gitdir`)
+  const common = yield* fs.readFileString(`${gitdir}/commondir`)
+  if (
+    NodePath.dirname(gitdir) !== NodePath.join(bare, 'worktrees') ||
+    (yield* fs.realPath(NodePath.resolve(gitdir, backlink.trim()))) !== dotGit ||
+    (yield* fs.realPath(NodePath.resolve(gitdir, common.trim()))) !== bare
+  )
+    return yield* new LinkedWorktreeAdmissionError({ message: 'Worktree admission ownership changed' })
+  const evidence = yield* Effect.forEach([
+    { path: dotGit, content: pointer },
+    { path: `${gitdir}/gitdir`, content: backlink },
+    { path: `${gitdir}/commondir`, content: common },
+    { path: `${gitdir}/HEAD`, content: yield* fs.readFileString(`${gitdir}/HEAD`) },
+  ], (entry) => Effect.gen(function* () {
+    const info = yield* Effect.tryPromise(() => lstat(entry.path, { bigint: true }))
+    if (info.isFile() === false)
+      return yield* new LinkedWorktreeAdmissionError({ message: 'Worktree admission is not a regular file' })
+    return { ...entry, info }
+  }))
+  const info = yield* Effect.tryPromise(() => lstat(bare, { bigint: true }))
+  return { bare, gitdir, bareIdentity: `${info.dev}:${info.ino}:${info.birthtimeNs}`, evidence }
+})
 
 /**
  * Create a git worktree

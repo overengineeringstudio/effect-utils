@@ -334,37 +334,18 @@ const worktreeAdmissionIdentity = Effect.fn('store.worktreeAdmissionIdentity')(f
   owner: string
   barePath: string
 }) {
-  const fs = yield* FileSystem.FileSystem
-  const bare = yield* fs.realPath(barePath)
-  const dotGit = `${owner}/.git`
-  const pointer = yield* fs.readFileString(dotGit)
-  if (pointer.startsWith('gitdir: ') === false) return yield* fail('Missing worktree gitdir')
-  const gitdir = yield* fs.realPath(resolve(owner, pointer.slice(8).trim()))
-  const backlink = yield* fs.readFileString(`${gitdir}/gitdir`)
-  const common = yield* fs.readFileString(`${gitdir}/commondir`)
-  if (
-    (yield* fs.realPath(resolve(gitdir, backlink.trim()))) !== dotGit ||
-    (yield* fs.realPath(resolve(gitdir, common.trim()))) !== bare
+  const admission = yield* Git.readLinkedWorktreeAdmission({ owner, barePath }).pipe(
+    Effect.catchTag('LinkedWorktreeAdmissionError', (error) => Effect.fail(fail(error.message))),
   )
-    return yield* fail('Worktree admission ownership changed')
-  const evidence = yield* Effect.forEach(
-    [dotGit, `${gitdir}/gitdir`, `${gitdir}/commondir`, `${gitdir}/HEAD`],
-    (path) =>
-      Effect.gen(function* () {
-        const content = yield* fs.readFileString(path)
-        const info = yield* Effect.tryPromise(() => lstat(path, { bigint: true }))
-        if (info.isFile() === false) return yield* fail('Worktree admission is not a regular file')
-        return { path, content, identity: fingerprint({ path, info }) }
-      }),
-  )
-  const info = yield* Effect.tryPromise(() => lstat(bare, { bigint: true }))
   return createHash('sha256')
     .update(
       encode({
-        bare,
-        gitdir,
-        bareIdentity: `${info.dev}:${info.ino}:${info.birthtimeNs}`,
-        evidence,
+        bare: admission.bare,
+        gitdir: admission.gitdir,
+        bareIdentity: admission.bareIdentity,
+        evidence: admission.evidence.map(({ path, content, info }) => ({
+          path, content, identity: fingerprint({ path, info }),
+        })),
       }),
     )
     .digest('hex')

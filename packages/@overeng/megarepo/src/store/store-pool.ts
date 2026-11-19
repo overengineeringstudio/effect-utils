@@ -1,6 +1,6 @@
 import { dirname } from 'node:path'
 
-import { Clock, Effect, Option, Schema } from 'effect'
+import { type Cause, Clock, Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -31,6 +31,8 @@ import {
   type PoolActivity,
   type PoolActivityEvent,
   type PoolSlot,
+  markPoolRootAuthored,
+  requireDisposablePoolRoot,
   requirePoolLease,
   reservePoolGeneration,
   withPoolState,
@@ -41,6 +43,8 @@ type PoolOperationError =
   | PlatformError
   | Schema.SchemaError
   | Git.GitCommandError
+  | Git.LinkedWorktreeAdmissionError
+  | Cause.UnknownError
   | GitWriterLockError
   | DeletionLeaseUnavailableError
 
@@ -83,6 +87,7 @@ const cleanSource = (slot: PoolSlot) =>
       slot.path !== `${dirname(slot.bare)}/pool/${slot.id}`
     )
       return yield* new PoolError({ message: 'Pool root is not its fixed detached execution path' })
+    yield* Git.readLinkedWorktreeAdmission({ owner: slot.path, barePath: slot.bare })
     if ((yield* Git.resolveRef({ repoPath: slot.path, ref: 'HEAD' })) !== slot.commit)
       return yield* new PoolError({ message: 'Committed work retained; source HEAD changed' })
     const history = yield* Git.runCommand({
@@ -111,6 +116,7 @@ const cleanSource = (slot: PoolSlot) =>
     )
       return yield* new PoolError({ message: 'Native pool worktree protection is missing' })
   })
+
 const free = (slot: PoolSlot) =>
   Effect.gen(function* () {
     const proof = yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
@@ -276,6 +282,7 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
           save({ ...state, slots: state.slots.map((item) => (item.id === slot.id ? next : item)) })
         return yield* Effect.gen(function* () {
           yield* adoptPersistentDeletionLease(barrier({ base: args.base, slot }))
+          yield* requireDisposablePoolRoot(slot)
           yield* cleanSource(slot)
           yield* free(slot)
           if (
@@ -305,6 +312,20 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
       }),
   })
 
+/** Persist authoring before handing this physical root to an arbitrary child. */
+export const authorPoolRoot = (args: {
+  base: AbsoluteDirPath; id: string; token: string; generation: number
+}): Effect.Effect<void, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> => withPoolState({
+  base: args.base,
+  use: (state, save) => Effect.gen(function* () {
+    const slot = state.slots.find((item) => item.id === args.id)
+    if (slot === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
+    yield* requirePoolLease({ slot, token: args.token, generation: args.generation })
+    const marked = yield* markPoolRootAuthored(slot)
+    yield* save({ ...state, slots: state.slots.map((item) => item.id === slot.id ? marked : item) })
+  }),
+})
+
 /** Teardown is the existing owner. Dirty, committed, crashed or uncertain roots stay locked. */
 export const releasePool = (args: {
   base: AbsoluteDirPath
@@ -330,6 +351,7 @@ export const releasePool = (args: {
         })
         return yield* Effect.gen(function* () {
           yield* adoptPersistentDeletionLease(barrier({ base: args.base, slot }))
+          yield* requireDisposablePoolRoot(slot)
           const teardown = process.env.WORKTREE_TEARDOWN_BIN
           if (teardown === undefined || teardown.startsWith('/') === false)
             return yield* new PoolError({
@@ -348,6 +370,7 @@ export const releasePool = (args: {
             return yield* new PoolError({ message: 'Installed projection changed; retained' })
           yield* cleanSource(slot)
           yield* free(slot)
+          yield* requireDisposablePoolRoot(slot)
           // Only this detached slot is cleaned; preserved node_modules was validated above.
           yield* Git.runCommand({ cwd: slot.path, args: ['clean', '-fdx', '-e', '/node_modules/'] })
           yield* Git.runCommand({ cwd: slot.path, args: ['checkout', '--detach', slot.commit] })

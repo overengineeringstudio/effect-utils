@@ -9,6 +9,7 @@ import * as Git from '../../../core/git.ts'
 import { preparePoolInstall, runPoolCommand } from '../../../store/store-pool-install.ts'
 import { PoolError } from '../../../store/store-pool-state.ts'
 import {
+  authorPoolRoot,
   claimPool,
   completePool,
   inspectPool,
@@ -82,15 +83,23 @@ const claim = Cli.Command.make(
   {
     identity: Cli.Flag.String('identity'),
     owner: Cli.Flag.String('owner'),
+    executionOnly: Cli.Flag.Boolean('execution-only').pipe(
+      Cli.Flag.withDescription('Declared disposable-output contract, not a sandbox; no in-place authoring'),
+      Cli.Flag.withDefault(false),
+    ),
     command: Cli.Argument.String('command').pipe(Cli.Argument.atLeast(1)),
   },
-  ({ identity, owner, command }) =>
+  ({ identity, owner, command, executionOnly }) =>
     Effect.gen(function* () {
       const store = yield* Store
       const slot = yield* claimPool({ base: store.basePath, identity, owner })
       const retain = (reason: string) =>
         quarantinePool({ base: store.basePath, id: slot.id, token: slot.token, reason })
       yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(slot))
+      if (executionOnly === false)
+        yield* authorPoolRoot({
+          base: store.basePath, id: slot.id, token: slot.token, generation: slot.generation,
+        })
       // The live provider is the activation ancestor for ordinary install/check wrappers.
       const code = yield* Effect.scoped(
         Effect.gen(function* () {

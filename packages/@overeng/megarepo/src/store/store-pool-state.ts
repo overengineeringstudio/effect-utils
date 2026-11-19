@@ -76,6 +76,10 @@ export const PoolSlot = Schema.Struct({
   retarget: Schema.optional(RetargetIntent),
   activity: Schema.optional(PoolActivity),
   retirement: Schema.optional(RetirementIntent),
+  executionRoot: Schema.optional(Schema.Struct({
+    origin: Schema.Literal('fresh-reserved-uuid'),
+    authored: Schema.Boolean,
+  })),
 })
 /** Durable identity, accounting and lifecycle of one protected detached path. */
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
@@ -200,6 +204,21 @@ export const beginPoolRetirement = ({
     },
   })
 }
+
+/** Disposal authority follows this physical root, never a copied canonical destination. */
+export const requireDisposablePoolRoot = (slot: PoolSlot): Effect.Effect<void, PoolError> =>
+  slot.executionRoot?.origin === 'fresh-reserved-uuid' && slot.executionRoot.authored === false
+    ? Effect.void
+    : Effect.fail(new PoolError({ message: 'Authored or unproven pool root retained; reset forbidden' }))
+
+/** Persist this irreversible marker before any in-place authoring or promotion handoff. */
+export const markPoolRootAuthored = (slot: PoolSlot): Effect.Effect<PoolSlot, PoolError> =>
+  slot.executionRoot === undefined
+    ? Effect.fail(new PoolError({ message: 'Unproven pool root cannot gain execution provenance' }))
+    : Effect.succeed<PoolSlot>({
+        ...slot, executionRoot: { ...slot.executionRoot, authored: true },
+        reason: 'Root entered authoring; reset forbidden',
+      })
 
 const validatePoolState = (state: PoolState) =>
   Effect.gen(function* () {
@@ -389,7 +408,26 @@ export const withPoolState = <A, E, R>({
       if (stored.version === 1) yield* persist({ path, state })
       else yield* validatePoolState(state)
       if (exists === false) yield* assertInitialPoolInventory(base)
-      return yield* use(state, (next) => persist({ path, state: next }))
+      let current = state
+      return yield* use(state, (next) => Effect.gen(function* () {
+        for (const slot of next.slots) {
+          const previous = current.slots.find((item) => item.id === slot.id)
+          if (
+            (previous !== undefined && previous.executionRoot === undefined && slot.executionRoot !== undefined) ||
+            (previous?.executionRoot !== undefined &&
+              (slot.executionRoot === undefined ||
+                slot.executionRoot.origin !== previous.executionRoot.origin ||
+                slot.path !== previous.path ||
+                slot.bare !== previous.bare ||
+                (previous.executionRoot.authored === true && slot.executionRoot.authored !== true))) ||
+            (previous === undefined && slot.executionRoot !== undefined &&
+              (slot.state !== 'reserved' || slot.generation !== 0 || slot.executionRoot.authored !== false))
+          )
+            return yield* new PoolError({ message: 'Execution-root provenance is immutable and authoring is irreversible' })
+        }
+        yield* persist({ path, state: next })
+        current = next
+      }))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })
 
@@ -473,6 +511,7 @@ export const reservePoolGeneration = ({
       charge,
       path: `${dirname(bare)}/pool/${id}`,
       sourceHistory: [commit],
+      executionRoot: { origin: 'fresh-reserved-uuid', authored: false },
       state: 'reserved',
       chargeKnown: true,
       generation: 0,
