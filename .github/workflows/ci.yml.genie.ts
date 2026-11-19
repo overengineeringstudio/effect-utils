@@ -1040,6 +1040,24 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       },
       afterSteps: [
         {
+          name: 'Authenticated privileged census socket and controller tests',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            [
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -c \'',
+              'set -euo pipefail',
+              'source nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh',
+              'report="$PWD/tmp/otel-scrape/summaries/test-megarepo-demand-census-root.vitest.json"',
+              'mkdir -p "$(dirname "$report")"',
+              'cd packages/@overeng/megarepo',
+              'runner="$(resolve_package_bin vitest vitest)"',
+              'sudo -E env "PATH=$PATH" TMPDIR=/var/tmp bun --bun "$runner" run src/store/store-demand-census-socket.integration.test.ts src/store/store-demand-census.integration.test.ts --testTimeout 30000 --reporter verbose --reporter json "--outputFile.json=$report"',
+              'jq -e "select(.success and .numPassedTests > 0 and .numFailedTests == 0 and .numPendingTests == 0)" "$report"',
+              "'",
+            ].join('\n'),
+          ),
+        },
+        {
           name: 'Complete native megarepo test receipt',
           if: '${{ always() }}',
           run: `jq -e '{numTotalTests, numPassedTests, numFailedTests, numPendingTests, success, testResults: [.testResults[] | {name, status, assertionResults: [.assertionResults[] | {fullName, status}]}]} | select(.success and .numTotalTests > 0)' tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json`,

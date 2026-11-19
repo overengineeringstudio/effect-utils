@@ -543,6 +543,20 @@ Native seat capture restarts from the first page after an expired cursor, at mos
 attempts sharing the original deadline and byte budget; it never combines pages from
 different captures. Continued churn remains a veto with its terminal capture reason.
 
+An unreadable process lifetime can request a new privileged census through the
+root-authenticated local `census-v1.sock` protocol. This requires the collector's
+on-demand responder; a periodic manifest never substitutes for the requested capture.
+The client binds the reply to the boot ID, fresh nonce, canonical store roots and
+CLOCK_MONOTONIC request/capture interval, validates the existing v2 manifest and exact
+lifetime coverage, then scans holders again. At most three connections share a single
+35-second run deadline; refused or failed requests are not retried. Only a newly uncovered
+lifetime after an admitted capture can request another capture. Captures are shared
+across worktrees, replacing identity grants while retaining observed protective claims.
+Each native destructive action still requires a fresh free holder scan under its lease,
+plus the existing Git, ownership, native seat/PTY and daemon gates. A missing/untrusted
+socket, incomplete evidence or continued churn remains `holder-census-incomplete`;
+receipts retain structured `demandFailure` evidence when available.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical

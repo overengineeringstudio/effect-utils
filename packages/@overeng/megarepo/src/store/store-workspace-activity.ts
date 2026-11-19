@@ -623,14 +623,14 @@ export const WORKSPACE_ACTIVITY_MAX_TTL_MS = 5 * 60 * 1000
 const MANIFEST_BYTES = 4 * 1024 * 1024
 
 /** Additive process attribution: old snapshots omit it and continue to protect their paths. */
-const ActivityProcess = Schema.Struct({
+export const ActivityProcess = Schema.Struct({
   pid: Schema.Int.check(Schema.isGreaterThan(0)),
   startTime: NonEmpty.check(Schema.makeFilter((value) => /^[0-9]+$/.test(value))),
   executableClass: Schema.Literals(['buck2-daemon', 'buck2-forkserver', 'other']),
 })
 export type WorkspaceActivityProcess = typeof ActivityProcess.Type
 
-const ActivityManifest = Schema.Struct({
+export const ActivityManifest = Schema.Struct({
   schemaVersion: Schema.Literal(WORKSPACE_ACTIVITY_V2_SCHEMA),
   producer: Schema.Struct({ name: NonEmpty, version: NonEmpty }),
   epoch: Schema.Struct({ host: NonEmpty, snapshotId: NonEmpty, storeIndex: Count }),
@@ -833,7 +833,7 @@ const readActivityProcess = Effect.fn('store.readActivityProcess')(
   Effect.orElseSucceed(() => undefined),
 )
 
-/** Admit a configured producer's manifest without also requiring a native process snapshot. */
+/** File authentication precedes the shared v2 value admission. */
 export const readActivityManifest = Effect.fn('store.readActivityManifest')(function* ({
   fs,
   path,
@@ -846,12 +846,36 @@ export const readActivityManifest = Effect.fn('store.readActivityManifest')(func
   ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }) {
   const info = yield* fs.stat(path)
-  if (info.type !== 'File' || Number(info.size) > MANIFEST_BYTES) {
+  if (info.type !== 'File' || Number(info.size) > MANIFEST_BYTES)
     return yield* unavailable('Activity manifest is not a bounded regular file')
-  }
   const manifest = yield* Schema.decodeEffect(Schema.fromJsonString(ActivityManifest))(
     yield* fs.readFileString(path),
   )
+  if (manifest.processCoverage === 'all-uids') {
+    const after = yield* fs.stat(path)
+    if (
+      (yield* canonicalExisting({ fs, path })) !== normalize(path) ||
+      isRootControlled(info) === false ||
+      sameFile({ before: info, after }) === false ||
+      (yield* isRootControlledDirectory({ fs, path: dirname(path) })) === false
+    )
+      return yield* unavailable('All-uid activity manifest is not root-controlled')
+  }
+  return yield* admitActivityManifest({ fs, manifest, producers, ignoredProcesses })
+})
+
+/** Shared value admission; callers must authenticate the file or connected peer first. */
+export const admitActivityManifest = Effect.fn('store.admitActivityManifest')(function* ({
+  fs,
+  manifest,
+  producers,
+  ignoredProcesses,
+}: {
+  fs: FileSystem.FileSystem
+  manifest: WorkspaceActivityManifest
+  producers: ReadonlyArray<string>
+  ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+}) {
   if (producers.includes(manifest.producer.name) === false) {
     return yield* unavailable('Activity producer is not admitted')
   }
@@ -889,19 +913,7 @@ export const readActivityManifest = Effect.fn('store.readActivityManifest')(func
   }
   let processCoverage: BudgetWorkspaceActivity['processCoverage']
   if (manifest.processCoverage === 'all-uids') {
-    // Foreign-UID and unreadable own-UID coverage waive part of the owner's
-    // probe, so a file anyone but root could have written or swapped must not
-    // grant it: no symlink in the path, a root-controlled file and directory
-    // chain, and the same inode before and after the read.
-    const after = yield* fs.stat(path)
-    if (
-      (yield* canonicalExisting({ fs, path })) !== normalize(path) ||
-      isRootControlled(info) === false ||
-      sameFile({ before: info, after }) === false ||
-      (yield* isRootControlledDirectory({ fs, path: dirname(path) })) === false
-    ) {
-      return yield* unavailable('All-uid activity manifest is not root-controlled')
-    }
+    // Authentication belongs to the file/socket boundary, not the value format.
     const roots = manifest.processRoots ?? []
     if (roots.length === 0) return yield* unavailable('All-uid activity manifest has no roots')
     for (const root of roots) {

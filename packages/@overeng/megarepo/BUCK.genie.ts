@@ -89,6 +89,8 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-buck-maintain-safety.integration.test.ts',
         'src/store/store-buck-maintain.integration.test.ts',
         'src/store/store-deletion-lease.integration.test.ts',
+        'src/store/store-demand-census.integration.test.ts',
+        'src/store/store-demand-census-socket.integration.test.ts',
         'src/store/store-fetch-refspec.integration.test.ts',
         'src/store/store-fetch.integration.test.ts',
         'src/store/store-gc-receipts.integration.test.ts',
