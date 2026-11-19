@@ -174,6 +174,28 @@ pub fn same_own_descriptor(number: c_int, expected: &impl AsRawFd) -> io::Result
     let current = duplicate_own_descriptor(number)?;
     same_open_file(&current, expected)
 }
+
+/// The caller binds numeric IDs to these retained pidfds and rechecks generation.
+/// Both table sharing and the exact same descriptor's OFD are mandatory.
+pub fn shared_task_descriptor(leader: u32, task: u32, number: u32,
+    leader_pin: &OwnedFd, task_pin: &OwnedFd) -> io::Result<bool>
+{
+    if leader==task || number<3 || pidfd_terminated(leader_pin)? || pidfd_terminated(task_pin)? {
+        return Ok(false);
+    }
+    let compare = |kind: c_int, fd: u32| -> io::Result<bool> {
+        // SAFETY: kcmp is read-only; all arguments are scalar kernel IDs/FD
+        // numbers. Retained, live pidfds and caller generation checks prevent
+        // numeric-ID reuse from manufacturing a positive proof.
+        let result=unsafe { syscall(SYS_KCMP,c_long::from(leader),c_long::from(task),
+            kind,c_long::from(fd),c_long::from(fd)) };
+        if result<0 { return Err(io::Error::last_os_error()); }
+        Ok(result==0)
+    };
+    // KCMP_FILES=2 compares files_struct, KCMP_FILE=0 compares open descriptions.
+    Ok(compare(2,0)? && compare(0,number)? && compare(2,0)?
+        && !pidfd_terminated(leader_pin)? && !pidfd_terminated(task_pin)?)
+}
 /// Read-only readiness on a genuine pidfd: no signal, wait/reap or PID lookup.
 pub fn pidfd_terminated(process: &impl AsRawFd) -> io::Result<bool> {
     if filesystem_type(process)? != 0x50494446 {

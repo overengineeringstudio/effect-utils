@@ -45,6 +45,35 @@ struct References {
     foreign: bool,
     memberships: Vec<MatchOutcome>,
     mounted: Option<MountCoverage>,
+    aliases: Option<AliasPins>,
+    alias_fds: Vec<u32>,
+}
+struct AliasPins {
+    leader: std::os::fd::OwnedFd,
+    task: std::os::fd::OwnedFd,
+}
+impl AliasPins {
+    fn pin(process: &ProcessScope, task: &TaskScope) -> io::Result<Self> {
+        let pins=Self {leader:linux::pin_process(process.identity.pid)?,
+            task:linux::pin_task(task.identity.pid)?};
+        pins.check_generation(process,task)?;
+        Ok(pins)
+    }
+    fn check_generation(&self, process: &ProcessScope, task: &TaskScope) -> io::Result<()> {
+        if !client::process(process.identity.pid)?.same_identity(&process.identity)
+            || !client::process(task.identity.pid)?.same_identity(&task.identity)
+            || linux::pidfd_terminated(&self.leader)? || linux::pidfd_terminated(&self.task)? {
+            return Err(io::Error::other("thread alias generation changed"));
+        }
+        Ok(())
+    }
+    fn proves(&self, process: &ProcessScope, task: &TaskScope, fd: u32) -> io::Result<bool> {
+        self.check_generation(process,task)?;
+        let same=linux::shared_task_descriptor(process.identity.pid,task.identity.pid,fd,
+            &self.leader,&self.task)?;
+        self.check_generation(process,task)?;
+        Ok(same)
+    }
 }
 fn whole_group_terminal(tasks: &[TaskScope]) -> bool {
     !tasks.is_empty() && tasks.iter().all(|task| matches!(task.identity.state, b'Z' | b'X'))
@@ -91,7 +120,8 @@ fn exempt_descriptor(client: Option<&Client>, request: &protocol::Request, pid: 
 }
 
 fn append_matches(observation: &mut protocol::Observation, matches: &[super::candidates::MatchedReference],
-    pid: &Process, task: &TaskScope, kind: ReferenceKind, fd: Option<u32>, total: &mut usize)
+    pid: &Process, task: &TaskScope, kind: ReferenceKind, fd: Option<u32>, total: &mut usize,
+    leader_fd_alias: Option<&protocol::LeaderFdAlias>)
 {
     for matched in matches {
         let root = &mut observation.roots[matched.root_index];
@@ -108,7 +138,7 @@ fn append_matches(observation: &mut protocol::Observation, matches: &[super::can
         root.references.push(Reference { tgid: pid.pid, leader_start: pid.start,
             tid: task.identity.pid, task_start: task.identity.start, uid: task.uids,
             reference: kind, relative_path: matched.relative_path.clone(), identity: matched.identity.clone(),
-            effect: matched.effect, fd });
+            effect: matched.effect, fd, leader_fd_alias:leader_fd_alias.cloned() });
         *total += 1;
     }
 }
@@ -148,6 +178,8 @@ impl References {
             (pins.root(), pins.cwd(), pins.exe(), pins.descriptors(), pins.mappings());
         let mut foreign = false;
         let mut memberships = Vec::new();
+        let mut aliases=None;
+        let mut alias_fds=Vec::new();
         for (kind, fd, held) in root.iter().map(|held| (ReferenceKind::Root, None, held))
             .chain(cwd.iter().map(|held| (ReferenceKind::Cwd, None, held)))
             .chain(exe.iter().map(|held| (ReferenceKind::Exe, None, held)))
@@ -165,7 +197,19 @@ impl References {
             let outcome = candidates.matches(&held.file, &task.scope, kind, deadline)?;
             match &outcome {
                 MatchOutcome::Native(matches) => {
-                    if !exempt { append_matches(observation, matches, pid, task, kind, fd, reference_count); }
+                    if !exempt {
+                        let alias=fd.filter(|_| kind==ReferenceKind::Fd && !matches.is_empty()
+                            && pid.pid!=task.identity.pid).and_then(|number| {
+                            if aliases.is_none() { aliases=AliasPins::pin(process,task).ok(); }
+                            if !aliases.as_ref().is_some_and(|pins| pins.proves(process,task,number).unwrap_or(false)) {
+                                return None;
+                            }
+                            alias_fds.push(number);
+                            Some(protocol::LeaderFdAlias {tgid:pid.pid,leader_start:pid.start,
+                                tid:task.identity.pid,task_start:task.identity.start,fd:number})
+                        });
+                        append_matches(observation,matches,pid,task,kind,fd,reference_count,alias.as_ref());
+                    }
                 }
                 MatchOutcome::NeedsProxy => foreign = true,
             }
@@ -189,10 +233,10 @@ impl References {
         let mounted = if root.is_some() {
             let coverage = candidates.capture_mounts(&task.scope, deadline)?;
             append_matches(observation, coverage.references(), pid, task, ReferenceKind::Mount,
-                None, reference_count);
+                None, reference_count, None);
             Some(coverage)
         } else { None };
-        Ok(Self { pins, foreign, memberships, mounted })
+        Ok(Self { pins, foreign, memberships, mounted, aliases, alias_fds })
     }
 
     fn recheck(&self, process: &ProcessScope, index: usize, candidates: &CandidateSet,
@@ -223,6 +267,13 @@ impl References {
         }
         for (number, held) in self.pins.descriptors() {
             exempt_descriptor(store_client, request, pid, task, *number, held)?;
+        }
+        if let Some(aliases)=&self.aliases {
+            for fd in &self.alias_fds {
+                if !aliases.proves(process,task,*fd)? {
+                    return Err(io::Error::other("thread descriptor alias did not close"));
+                }
+            }
         }
         if let Some(mounted) = &self.mounted { mounted.recheck(candidates, deadline)?; }
         for (index, (kind, held)) in self.pins.root().iter().map(|held| (ReferenceKind::Root, held))
