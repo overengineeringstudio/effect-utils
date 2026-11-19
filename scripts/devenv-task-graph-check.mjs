@@ -856,10 +856,16 @@ for (const name of editorPublishers) {
         actualDeadline === 'none' && body.includes('# editor-view-batch-budget:') === false,
       name: `${name} has no total publication deadline or unused budget metadata`,
     })
+  } else if (/editor-view-authority\.ts"\s+bootstrap\s/u.test(body) === true) {
+    const expectedDeadline = 300 * (1 + packages.length)
+    ok({
+      condition: Number(actualDeadline) === expectedDeadline,
+      name: `${name} reserves 300s startup plus 300s per bootstrap package (${expectedDeadline}s)`,
+    })
   } else {
     ok({
       condition: actualDeadline === '300',
-      name: `${name} retains the 300s scoped/bootstrap publication cap`,
+      name: `${name} retains the 300s scoped publication cap`,
     })
   }
   publisherStateRoots.set(
