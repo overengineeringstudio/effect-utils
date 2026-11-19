@@ -9,8 +9,8 @@ import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { withDeletionLease } from './store-deletion-lease.ts'
 
-/** Authoritative records: uncertain generations are never implicitly recovered. */
-export const PoolSlot = Schema.Struct({
+/** Historical authority is decoded only at the single canonical read boundary. */
+const PoolSlotV1 = Schema.Struct({
   id: Schema.String,
   path: Schema.String,
   bare: Schema.String,
@@ -25,14 +25,31 @@ export const PoolSlot = Schema.Struct({
   owner: Schema.String,
   reason: Schema.String,
 })
+const RetargetIntent = Schema.Struct({
+  from: Schema.String,
+  to: Schema.String,
+  token: Schema.String,
+})
+/** Authoritative records: uncertain generations are never implicitly recovered. */
+export const PoolSlot = Schema.Struct({
+  ...PoolSlotV1.fields,
+  sourceHistory: Schema.NonEmptyArray(Schema.String),
+  retarget: Schema.optional(RetargetIntent),
+})
 /** Durable identity, accounting and lifecycle of one protected detached path. */
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
 const PoolState = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   maxSlots: Schema.Finite,
   maxBytes: Schema.Finite,
   slots: Schema.Array(PoolSlot),
 })
+const HistoricalPoolState = Schema.Struct({
+  ...PoolState.fields,
+  version: Schema.Literal(1),
+  slots: Schema.Array(PoolSlotV1),
+})
+const PoolStateReader = Schema.Union([HistoricalPoolState, PoolState])
 /** Host-wide authoritative pool ledger and immutable retention limits. */
 export type PoolState = Schema.Schema.Type<typeof PoolState>
 
@@ -87,17 +104,27 @@ export const withPoolState = <A, E, R>({
     return yield* Effect.gen(function* () {
       const path = `${directory}/state.json`
       const exists = yield* fs.exists(path)
-      const state =
+      const stored =
         exists === true
           ? yield* fs
               .readFileString(path)
-              .pipe(Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(PoolState))))
+              .pipe(Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(PoolStateReader))))
           : {
-              version: 1 as const,
+              version: 2 as const,
               maxSlots: limits?.maxSlots ?? 0,
               maxBytes: limits?.maxBytes ?? 0,
               slots: [],
             }
+      const state: PoolState =
+        stored.version === 1
+          ? {
+              ...stored,
+              version: 2,
+              slots: stored.slots.map(
+                (slot): PoolSlot => ({ ...slot, sourceHistory: [slot.commit] }),
+              ),
+            }
+          : stored
       if (
         limits !== undefined &&
         exists === true &&
@@ -123,12 +150,22 @@ export const withPoolState = <A, E, R>({
             Number.isSafeInteger(slot.charge) === false ||
             slot.charge <= 0 ||
             Number.isSafeInteger(slot.generation) === false ||
-            slot.generation < 0,
+            slot.generation < 0 ||
+            slot.sourceHistory.at(-1) !== slot.commit ||
+            (slot.retarget !== undefined &&
+              (['preparing', 'quarantined'].includes(slot.state) === false ||
+                slot.identity !== '' ||
+                slot.token !== '' ||
+                slot.chargeKnown !== false ||
+                slot.retarget.to !== slot.commit ||
+                slot.sourceHistory.at(-2) !== slot.retarget.from ||
+                slot.retarget.token === '')),
         ) === true
       )
         return yield* new PoolError({
           message: 'Invalid authoritative pool ownership/accounting records',
         })
+      if (stored.version === 1) yield* persist({ path, state })
       return yield* use(state, (next) => persist({ path, state: next }))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })

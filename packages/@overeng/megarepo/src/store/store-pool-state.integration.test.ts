@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -15,7 +15,7 @@ import {
   withPoolState,
 } from './store-pool-state.ts'
 
-const slot: PoolSlot = {
+const historicalSlot = {
   id: 'slot',
   path: '/source/pool/slot',
   bare: '/source/.bare',
@@ -23,13 +23,14 @@ const slot: PoolSlot = {
   identity: 'installed',
   charge: 64,
   generation: 1,
-  state: 'leased',
+  state: 'leased' as const,
   token: 'claim',
   barrierToken: 'barrier',
   owner: 'task',
   reason: '',
   chargeKnown: true,
 }
+const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
 
 describe('pool authoritative lifecycle', () => {
   it.effect('publishes exactly one atomic claim for a ready generation', () =>
@@ -80,7 +81,7 @@ describe('pool authoritative lifecycle', () => {
   it.effect('charges bytes across repositories, not per seat or source revision', () =>
     Effect.gen(function* () {
       const ready = { ...slot, state: 'ready' as const }
-      const state = { version: 1 as const, maxSlots: 10, maxBytes: 100, slots: [ready] }
+      const state = { version: 2 as const, maxSlots: 10, maxBytes: 100, slots: [ready] }
       const failure = yield* reservePoolSlot({
         state,
         slot: { ...slot, id: 'next', bare: '/other/.bare' },
@@ -169,6 +170,46 @@ describe('pool authoritative lifecycle', () => {
           use: () => Effect.void,
           limits: { maxSlots: 1, maxBytes: 1 },
         }).pipe(Effect.exit),
+      ).toSatisfy(Exit.isFailure)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('converts every historical lifecycle and unknown charge without dropping fences', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const states = ['preparing', 'ready', 'leased', 'completed', 'quarantined'] as const
+      const records = states.flatMap((state) =>
+        [undefined, false, true].map((chargeKnown, index) => ({
+          ...historicalSlot,
+          id: `${state}-${index}`,
+          path: `/source/pool/${state}-${index}`,
+          state,
+          chargeKnown,
+        })),
+      )
+      yield* fs.makeDirectory(`${base}.state/pool`, { recursive: true })
+      yield* fs.writeFileString(
+        `${base}.state/pool/state.json`,
+        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+          version: 1,
+          maxSlots: 16,
+          maxBytes: 1024,
+          slots: records,
+        }),
+      )
+      const converted = yield* withPoolState({ base, use: Effect.succeed })
+      expect(converted.version).toBe(2)
+      expect(converted.slots).toEqual(
+        records.map((record) => ({ ...record, sourceHistory: [record.commit] })),
+      )
+      expect(yield* withPoolState({ base, use: Effect.succeed })).toEqual(converted)
+      const bytes = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      expect(bytes).toContain('"version":2')
+      expect(
+        yield* Schema.decodeEffect(
+          Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(1) })),
+        )(bytes).pipe(Effect.exit),
       ).toSatisfy(Exit.isFailure)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )

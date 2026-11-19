@@ -48,7 +48,9 @@ const cleanSource = (slot: PoolSlot) =>
       cwd: slot.path,
       args: ['reflog', 'show', '--format=%H', 'HEAD'],
     })
-    if (history.split('\n').some((commit) => commit !== slot.commit) === true)
+    if (
+      history.split('\n').some((commit) => slot.sourceHistory.includes(commit) === false) === true
+    )
       return yield* new PoolError({
         message: 'Detached commit history retained; slot is not recyclable',
       })
@@ -122,6 +124,7 @@ export const prewarmPool = (args: {
           path,
           bare,
           commit: args.commit,
+          sourceHistory: [args.commit],
           identity: '',
           charge: args.charge,
           generation: 0,

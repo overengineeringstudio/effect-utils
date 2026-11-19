@@ -37,6 +37,7 @@ const fixture = Effect.gen(function* () {
     path,
     bare,
     commit,
+    sourceHistory: [commit],
     identity: 'receipt',
     charge: 1048576,
     state: 'ready',
