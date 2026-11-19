@@ -286,6 +286,7 @@ rec {
             tui-stories
             ;
           cli-build-stamp = cliBuildStamp.package;
+          reindeer = import ./nix/reindeer.nix { inherit pkgs; };
           otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
         };
         githubRepoSettingsGenie = import ./nix/gh-settings-genie.nix {
