@@ -17,6 +17,7 @@ export type RootBuckAggregatePlan = {
 }
 const weaverTargets = [':weaver_check', ':weaver_version_smoke'] as const
 const repositoryStaticTarget = '//buck2/static:check' as const
+const resourceParityTarget = '//buck2/static:work_storage_resources_check' as const
 const fixtureTypecheckTarget = '//rust/effect-rust-fixtures:typecheck' as const
 const fullAuthorityTargets = [
   '//buck2/toolchains:archive_tool',
@@ -39,7 +40,13 @@ export const planRootBuckAggregates = ({
   readonly distTargets?: readonly string[]
   readonly testTargets?: readonly string[]
 } = {}): RootBuckAggregatePlan => ({
-  quick: [...typecheckTargets, fixtureTypecheckTarget, ...weaverTargets, repositoryStaticTarget],
+  quick: [
+    ...typecheckTargets,
+    fixtureTypecheckTarget,
+    ...weaverTargets,
+    repositoryStaticTarget,
+    resourceParityTarget,
+  ],
   all: [':quick', ...distTargets, ...testTargets, ...fullAuthorityTargets],
 })
 
@@ -60,6 +67,9 @@ const rootBuckBase =
 
 export const rootRepositoryValidationSourceGlobs = [
   '**/*.ts',
+  '**/*.sh',
+  '**/*.mjs',
+  '**/*.bzl',
   'nix/**/*.json',
   'nix/**/*.nix',
   'rust/*.lock',
@@ -133,6 +143,9 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         '',
         '# Complete repository authority, including emitted declarations, tests, and archive/product toolchains.',
         renderAggregate({ name: 'all', targets: data.all }),
+        '',
+        '# Full quick parity includes live, uncached checkout contracts after //:quick.',
+        'alias(name = "check-quick", actual = "//buck2/static:check_quick", visibility = ["PUBLIC"])',
         '',
       ].join('\n'),
   })

@@ -5,6 +5,7 @@ load("//buck2/rust:toolchains.bzl", "native_rust_toolchains")
 load(":configured.bzl", "store_directory", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
 load(":ts_sandbox.bzl", "ts_sandbox_toolchain")
+load("//buck2:quick_contracts.bzl", "quick_contracts_runtime")
 
 ts_sandbox_toolchain(
     name = "ts_sandbox",
@@ -69,6 +70,12 @@ store_directory(
     name = "stylex_next_fixture",
     protocol = "effect-utils/stylex-next-fixture/v1",
     input_id = "stylex-next-fixture",
+    visibility = ["PUBLIC"],
+)
+
+# Stage-zero authority: ordinary source queries work before profile preparation.
+quick_contracts_runtime(
+    name = "quick_contracts",
     visibility = ["PUBLIC"],
 )
 
