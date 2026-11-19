@@ -267,6 +267,10 @@ export const withGitContainerLock =
       ),
     )
 
+/** Exclusive checkpoint admission without resolving an unrelated Git repository. */
+export const withExclusiveDirectoryLock = (path: string) =>
+  withGitLock({ path, create: true, containerMode: 'exclusive' })
+
 /** Minimal process handle shared by the standard and descriptor-inheriting spawners. */
 export interface GitWriterProcess {
   readonly stdout: Stream.Stream<Uint8Array, GitWriterLockError | PlatformError>
