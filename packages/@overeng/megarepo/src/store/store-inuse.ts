@@ -16,7 +16,7 @@
  * completeness (with bounded lsof fallback). Unsupported scans keep the tree.
  */
 
-import { Effect, Stream } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
@@ -30,6 +30,24 @@ export interface InUseHolder {
   readonly path: string
 }
 
+/** The exact native evidence location that prevented a complete census. */
+export const ProcessCensusProbe = Schema.Struct({
+  kind: Schema.Literals([
+    'proc',
+    'stat',
+    'status',
+    'cwd',
+    'root',
+    'fd',
+    'maps',
+    'map_files',
+    'worktree',
+    'lsof',
+  ]),
+  path: Schema.String,
+}).annotate({ identifier: 'Store.ProcessCensusProbe' })
+export type ProcessCensusProbe = typeof ProcessCensusProbe.Type
+
 /** Probe outcome. `unknown` MUST be treated as in-use by callers. */
 export type InUseResult = (
   | { readonly _tag: 'free' }
@@ -37,6 +55,8 @@ export type InUseResult = (
   | {
       readonly _tag: 'unknown'
       readonly reason: 'no-proc' | 'scan-failed' | 'inaccessible-process' | 'own-uid-unreadable'
+      readonly pid?: number | undefined
+      readonly probe?: ProcessCensusProbe | undefined
     }
 ) & {
   readonly ignoredForeignProcesses?: number | undefined
@@ -380,6 +400,7 @@ export type ProcessReferenceScan = (
       readonly _tag: 'unknown'
       readonly reason: 'no-proc' | 'scan-failed' | 'inaccessible-process' | 'own-uid-unreadable'
       readonly pid?: number | undefined
+      readonly probe?: ProcessCensusProbe | undefined
       /** Partial readable evidence is retained for the GC-owner policy only. */
       readonly references?: ReadonlyArray<ProcessReference> | undefined
     }
@@ -457,7 +478,7 @@ const procRead = <TValue>(
 
 type ProcessEntry =
   | { readonly _tag: 'gone' }
-  | { readonly _tag: 'denied'; readonly pid: number }
+  | { readonly _tag: 'denied'; readonly pid: number; readonly probe: ProcessCensusProbe }
   | {
       readonly _tag: 'process'
       readonly pid: number
@@ -465,6 +486,7 @@ type ProcessEntry =
       readonly references: ReadonlyArray<ProcessReference>
       readonly identity: ProcessIdentity | undefined
       readonly incomplete?: boolean | undefined
+      readonly probe?: ProcessCensusProbe | undefined
       readonly foreign?: boolean | undefined
       exempt?: ExemptProcess | undefined
       readonly systemdUserManager?: boolean | undefined
@@ -492,12 +514,12 @@ const readProcessReferencePaths = Effect.fn('store.readProcessReferencePaths')(f
   retainPartial?: boolean
 }) {
   const references: Array<ProcessReference> = []
-  let complete = true
+  let probe: ProcessCensusProbe | undefined
   for (const kind of ['cwd', 'root'] as const) {
     const link = yield* procRead(fs.readLink(`/proc/${pid}/${kind}`))
     if (link._tag === 'denied') {
-      if (retainPartial === false) return { references, complete: false }
-      complete = false
+      probe ??= { kind, path: `/proc/${pid}/${kind}` }
+      if (retainPartial === false) return { references, complete: false, probe }
     }
     if (link._tag === 'value') {
       references.push({ pid, kind, path: withoutDeletedMarker(link.value) })
@@ -505,18 +527,19 @@ const readProcessReferencePaths = Effect.fn('store.readProcessReferencePaths')(f
   }
   const fds = yield* procRead(fs.readDirectory(`/proc/${pid}/fd`))
   if (fds._tag === 'denied') {
-    if (retainPartial === false) return { references, complete: false }
-    complete = false
+    probe ??= { kind: 'fd', path: `/proc/${pid}/fd` }
+    if (retainPartial === false) return { references, complete: false, probe }
   }
   const fdLinks = yield* Effect.forEach(
     fds._tag === 'value' ? fds.value : [],
-    (fd) => procRead(fs.readLink(`/proc/${pid}/fd/${fd}`)),
+    (fd) =>
+      procRead(fs.readLink(`/proc/${pid}/fd/${fd}`)).pipe(Effect.map((link) => ({ fd, link }))),
     { concurrency: 32 },
   )
-  for (const link of fdLinks) {
+  for (const { fd, link } of fdLinks) {
     if (link._tag === 'denied') {
-      if (retainPartial === false) return { references, complete: false }
-      complete = false
+      probe ??= { kind: 'fd', path: `/proc/${pid}/fd/${fd}` }
+      if (retainPartial === false) return { references, complete: false, probe }
     }
     // Sockets, pipes and anonymous inodes are not filesystem paths.
     if (link._tag === 'value' && link.value.startsWith('/') === true) {
@@ -524,13 +547,13 @@ const readProcessReferencePaths = Effect.fn('store.readProcessReferencePaths')(f
     }
   }
   const maps = yield* procRead(fs.readFileString(`/proc/${pid}/maps`))
-  if (maps._tag === 'denied') complete = false
+  if (maps._tag === 'denied') probe ??= { kind: 'maps', path: `/proc/${pid}/maps` }
   if (maps._tag === 'value') {
     for (const path of new Set(parseProcMapsPaths(maps.value))) {
       references.push({ pid, kind: 'map', path })
     }
   }
-  return { references, complete }
+  return { references, complete: probe === undefined, probe }
 })
 
 /** Mutable process names only identify an SSH role when its live parent is root-owned SSH. */
@@ -594,7 +617,7 @@ const readProcessEntry = ({
           : undefined
       const paths =
         parsed?.kernelThread === true
-          ? { references: [], complete: true }
+          ? { references: [], complete: true, probe: undefined }
           : yield* readProcessReferencePaths({ fs, pid, retainPartial: true })
       const after = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
       if (after._tag === 'gone') return { _tag: 'gone' } as const
@@ -643,6 +666,12 @@ const readProcessEntry = ({
         foreign,
         exempt,
         systemdUserManager,
+        probe:
+          stable === false
+            ? { kind: 'stat', path: `/proc/${pid}/stat` }
+            : uids === undefined
+              ? { kind: 'status', path: `/proc/${pid}/status` }
+              : paths.probe,
         incomplete:
           parsed?.kernelThread === true
             ? stable === false
@@ -651,14 +680,17 @@ const readProcessEntry = ({
       } as const
     }
     // Coverage cannot waive an unknown process lifetime.
-    if (parsed === undefined) return { _tag: 'denied', pid } as const
+    if (parsed === undefined)
+      return { _tag: 'denied', pid, probe: { kind: 'stat', path: `/proc/${pid}/stat` } } as const
     let references: ReadonlyArray<ProcessReference> | undefined = []
+    let probe: ProcessCensusProbe | undefined
     let readReferences = parsed.kernelThread === false
     if (readReferences === true && ownUid !== undefined) {
       const status = yield* procRead(fs.readFileString(`/proc/${pid}/status`))
       const uids = status._tag === 'value' ? parseProcUids(status.value) : undefined
       if (uids === undefined) {
         references = undefined
+        probe = { kind: 'status', path: `/proc/${pid}/status` }
         readReferences = false
       } else if (uids.some((uid) => uid !== ownUid) === true) {
         // Foreign identities (setuid included) stay in the ancestor table,
@@ -670,12 +702,13 @@ const readProcessEntry = ({
     if (readReferences === true) {
       const paths = yield* readProcessReferencePaths({ fs, pid })
       references = paths.complete === true ? paths.references : undefined
+      probe = paths.probe
     }
     const after = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
     if (after._tag === 'gone') return { _tag: 'gone' } as const
     const checked = after._tag === 'value' ? parseProcStat(after.value) : undefined
     if (checked === undefined || checked.startTime !== parsed.startTime) {
-      return { _tag: 'denied', pid } as const
+      return { _tag: 'denied', pid, probe: { kind: 'stat', path: `/proc/${pid}/stat` } } as const
     }
     // Only an own-UID probe may rely on the exact lifetime a root snapshot read.
     // Its claims are merged by the caller; unavailable paths add no references.
@@ -683,7 +716,11 @@ const readProcessEntry = ({
       references === undefined &&
       (ownUid === undefined || coveredStartTime !== parsed.startTime)
     ) {
-      return { _tag: 'denied', pid } as const
+      return {
+        _tag: 'denied',
+        pid,
+        probe: probe ?? { kind: 'stat', path: `/proc/${pid}/stat` },
+      } as const
     }
     return {
       _tag: 'process',
@@ -785,7 +822,12 @@ export const readProcessReferences = ({
       return { _tag: 'unknown', reason: 'no-proc' } as const
     }
     const listing = yield* procRead(fs.readDirectory('/proc'))
-    if (listing._tag !== 'value') return { _tag: 'unknown', reason: 'scan-failed' } as const
+    if (listing._tag !== 'value')
+      return {
+        _tag: 'unknown',
+        reason: 'scan-failed',
+        probe: { kind: 'proc', path: '/proc' },
+      } as const
     const pids = listing.value.flatMap((entry) => {
       const pid = parsePidField(entry)
       return pid === undefined ? [] : [pid]
@@ -810,7 +852,12 @@ export const readProcessReferences = ({
     const processes: Array<Extract<ProcessEntry, { _tag: 'process' }>> = []
     for (const entry of entries) {
       if (entry._tag === 'denied') {
-        return { _tag: 'unknown', reason: 'inaccessible-process', pid: entry.pid } as const
+        return {
+          _tag: 'unknown',
+          reason: 'inaccessible-process',
+          pid: entry.pid,
+          probe: entry.probe,
+        } as const
       }
       if (entry._tag === 'process') processes.push(entry)
     }
@@ -870,7 +917,7 @@ export const readProcessReferences = ({
           }
         : {}
     if (scope === 'gc-owner') {
-      let unreadablePid: number | undefined
+      let unreadable: { readonly pid: number; readonly probe: ProcessCensusProbe } | undefined
       const fallbackPids = inScope
         .filter(
           (entry) =>
@@ -891,7 +938,10 @@ export const readProcessReferences = ({
         if (entry.incomplete !== true || entry.foreign === true || entry.exempt !== undefined)
           continue
         if (spawner._tag === 'None' || entry.identity === undefined) {
-          unreadablePid ??= entry.pid
+          unreadable ??= {
+            pid: entry.pid,
+            probe: entry.probe ?? { kind: 'stat', path: `/proc/${entry.pid}/stat` },
+          }
           continue
         }
         const after = yield* procRead(fs.readFileString(`/proc/${entry.pid}/stat`))
@@ -902,14 +952,20 @@ export const readProcessReferences = ({
           fallback.coveredPids.has(entry.pid) === false ||
           checked?.startTime !== entry.identity.startTime
         ) {
-          unreadablePid ??= entry.pid
+          unreadable ??= {
+            pid: entry.pid,
+            probe:
+              checked?.startTime !== entry.identity.startTime
+                ? { kind: 'stat', path: `/proc/${entry.pid}/stat` }
+                : (entry.probe ?? { kind: 'lsof', path: 'lsof' }),
+          }
         }
       }
-      if (unreadablePid !== undefined) {
+      if (unreadable !== undefined) {
         return {
           _tag: 'unknown',
           reason: 'own-uid-unreadable',
-          pid: unreadablePid,
+          ...unreadable,
           references,
           ...metadata,
         } as const
@@ -949,7 +1005,12 @@ export const readWorktreeReferencesInUse = ({
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const canonical = yield* procRead(fs.realPath(worktreePath))
-    if (canonical._tag !== 'value') return { _tag: 'unknown', reason: 'scan-failed' } as const
+    if (canonical._tag !== 'value')
+      return {
+        _tag: 'unknown',
+        reason: 'scan-failed',
+        probe: { kind: 'worktree', path: worktreePath },
+      } as const
     const scan = yield* readProcessReferences({ fs, selfPid, scope, coveredProcesses })
     const metadata =
       scan.ignoredForeignProcesses === undefined
@@ -977,6 +1038,12 @@ export const readWorktreeReferencesInUse = ({
       } as const
     }
     return scan._tag === 'unknown'
-      ? ({ _tag: 'unknown', reason: scan.reason, ...metadata } as const)
+      ? ({
+          _tag: 'unknown',
+          reason: scan.reason,
+          pid: scan.pid,
+          probe: scan.probe,
+          ...metadata,
+        } as const)
       : ({ _tag: 'free', ...metadata } as const)
   })

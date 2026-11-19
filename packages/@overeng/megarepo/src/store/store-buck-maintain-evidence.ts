@@ -1,7 +1,7 @@
 import { lstat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
 // FileSystem.stat follows links; discovery must inspect the directory entry itself.
@@ -70,7 +70,6 @@ export const discoverBuckMaintainWorktrees = Effect.fn('store.discoverBuckMainta
 )
 
 const operationStates: Readonly<Record<string, true>> = {
-  locked: true,
   MERGE_HEAD: true,
   'rebase-apply': true,
   'rebase-merge': true,
@@ -83,19 +82,36 @@ const operationStates: Readonly<Record<string, true>> = {
   REVERT_HEAD: true,
   sequencer: true,
 }
+export const BuckMaintainGitActivityFailure = Schema.TaggedStruct('git-activity-file', {
+  file: Schema.Literals(['HEAD', 'index', 'logs/HEAD']),
+  reason: Schema.Literals(['missing', 'unreadable', 'mtime-unavailable']),
+}).annotate({ identifier: 'BuckMaintain.GitActivityFailure' })
+
+export interface BuckMaintainGitEvidence {
+  readonly locked: boolean | undefined
+  readonly lastActivityMs: number | undefined
+  readonly lockPaths: ReadonlyArray<string>
+  readonly lockScanComplete: boolean
+  readonly activityFailures: ReadonlyArray<typeof BuckMaintainGitActivityFailure.Type>
+}
+
 const scanGitLocks: (args: {
   directory: string
   adminRoot: boolean
   allDirectLocks?: boolean
-}) => Effect.Effect<boolean | undefined, never, FileSystem.FileSystem> = Effect.fn(
-  'store.buckMaintain.scanGitLocks',
-)(function* ({ directory, adminRoot, allDirectLocks = false }) {
-  const fs = yield* FileSystem.FileSystem
-  const entries = yield* fs.readDirectory(directory).pipe(Effect.option)
-  if (Option.isNone(entries) === true) return undefined
-  if (
-    entries.value.some(
-      (name) =>
+}) => Effect.Effect<{ paths: string[]; complete: boolean }, never, FileSystem.FileSystem> =
+  Effect.fn('store.buckMaintain.scanGitLocks')(function* ({
+    directory,
+    adminRoot,
+    allDirectLocks = false,
+  }) {
+    const fs = yield* FileSystem.FileSystem
+    const paths: string[] = []
+    let complete = true
+    const entries = yield* fs.readDirectory(directory).pipe(Effect.option)
+    if (Option.isNone(entries) === true) return { paths, complete: false }
+    for (const name of entries.value) {
+      if (
         (name.endsWith('.lock') === true &&
           (allDirectLocks === true ||
             /^[A-Z][A-Z_]*$/u.test(name.slice(0, -5)) === true ||
@@ -106,41 +122,57 @@ const scanGitLocks: (args: {
           (operationStates[name] === true ||
             name.startsWith('BISECT') === true ||
             name.startsWith('REBASE') === true ||
-            name.startsWith('CHERRY_PICK') === true)),
-    ) === true
-  )
-    return true
-  // Only Git's refs namespace is traversed. In particular, common directories
-  // may contain millions of unrelated gate checkouts and persistent tool locks.
-  const pending = entries.value.includes('refs') === true ? [join(directory, 'refs')] : []
-  while (pending.length > 0) {
-    const refs = pending.pop()
-    if (refs === undefined) break
-    const root = yield* readEntry(refs)
-    if (
-      Option.isNone(root) === true ||
-      root.value.isDirectory() === false ||
-      root.value.isSymbolicLink() === true
-    )
-      return undefined
-    const names = yield* fs.readDirectory(refs).pipe(Effect.option)
-    if (Option.isNone(names) === true) return undefined
-    for (const name of names.value) {
-      if (name.endsWith('.lock') === true) return true
-      const path = join(refs, name)
-      const entry = yield* readEntry(path)
-      if (Option.isNone(entry) === true || entry.value.isSymbolicLink() === true) return undefined
-      if (entry.value.isDirectory() === true) pending.push(path)
+            name.startsWith('CHERRY_PICK') === true))
+      )
+        paths.push(join(directory, name))
     }
-  }
-  return false
-})
+    // Only Git's refs namespace is traversed, never unrelated tool locks/checkouts.
+    const pending = entries.value.includes('refs') === true ? [join(directory, 'refs')] : []
+    while (pending.length > 0) {
+      const refs = pending.pop()
+      if (refs === undefined) break
+      const root = yield* readEntry(refs)
+      if (
+        Option.isNone(root) === true ||
+        root.value.isDirectory() === false ||
+        root.value.isSymbolicLink() === true
+      ) {
+        complete = false
+        continue
+      }
+      const names = yield* fs.readDirectory(refs).pipe(Effect.option)
+      if (Option.isNone(names) === true) {
+        complete = false
+        continue
+      }
+      for (const name of names.value) {
+        const path = join(refs, name)
+        if (name.endsWith('.lock') === true) {
+          paths.push(path)
+          continue
+        }
+        const entry = yield* readEntry(path)
+        if (Option.isNone(entry) === true || entry.value.isSymbolicLink() === true) {
+          complete = false
+          continue
+        }
+        if (entry.value.isDirectory() === true) pending.push(path)
+      }
+    }
+    return { paths, complete }
+  })
 
 /** Read Git lock/operation vetoes and complete HEAD/index/reflog activity; uncertainty never proves idleness. */
 export const readBuckMaintainGitEvidence = Effect.fn('store.buckMaintain.readGitEvidence')(
   function* (worktree: string) {
     const fs = yield* FileSystem.FileSystem
-    const unknown = { locked: undefined, lastActivityMs: undefined }
+    const unknown = {
+      locked: undefined,
+      lastActivityMs: undefined,
+      lockPaths: [],
+      lockScanComplete: false,
+      activityFailures: [],
+    }
     const marker = join(worktree, '.git')
     const markerInfo = yield* fs.stat(marker).pipe(Effect.option)
     if (Option.isNone(markerInfo) === true) return unknown
@@ -162,7 +194,7 @@ export const readBuckMaintainGitEvidence = Effect.fn('store.buckMaintain.readGit
       ),
       Effect.option,
     )
-    let locked = yield* scanGitLocks({
+    const local = yield* scanGitLocks({
       directory: gitDir,
       adminRoot: true,
       allDirectLocks:
@@ -171,44 +203,56 @@ export const readBuckMaintainGitEvidence = Effect.fn('store.buckMaintain.readGit
         common.value.content.trim().length > 0 &&
         resolve(gitDir, common.value.content.trim()) !== gitDir,
     })
-    if (Option.isNone(common) === true) {
-      if (locked !== true) locked = undefined
-    } else if (common.value.present === true) {
-      const shared =
-        common.value.content.trim().length === 0
-          ? undefined
-          : yield* scanGitLocks({
-              directory: resolve(gitDir, common.value.content.trim()),
-              adminRoot: false,
-            })
-      locked =
-        locked === true || shared === true
-          ? true
-          : locked === undefined || shared === undefined
-            ? undefined
-            : false
-    }
+    const commonDir =
+      Option.isSome(common) === true &&
+      common.value.present === true &&
+      common.value.content.trim().length > 0
+        ? resolve(gitDir, common.value.content.trim())
+        : gitDir
+    const shared =
+      Option.isSome(common) === true && common.value.present === true
+        ? common.value.content.trim().length === 0
+          ? { paths: [], complete: false }
+          : yield* scanGitLocks({ directory: commonDir, adminRoot: false })
+        : { paths: [], complete: Option.isSome(common) }
+    const lockPaths = [...new Set([...local.paths, ...shared.paths])]
+      .map((path) => relative(commonDir, path))
+      .toSorted()
+    const lockScanComplete = local.complete && shared.complete
+    const locked = lockPaths.length > 0 ? true : lockScanComplete === true ? false : undefined
     let lastActivityMs: number | undefined
-    let complete = true
-    for (const name of ['HEAD', 'index', 'logs/HEAD']) {
+    const activityFailures: Array<typeof BuckMaintainGitActivityFailure.Type> = []
+    for (const name of ['HEAD', 'index', 'logs/HEAD'] as const) {
       const path = join(gitDir, name)
-      const readable = yield* fs
-        .open(path, { flag: 'r' })
-        .pipe(Effect.as(true), Effect.scoped, Effect.option)
+      const readable = yield* fs.open(path, { flag: 'r' }).pipe(
+        Effect.as('readable' as const),
+        Effect.scoped,
+        Effect.catch((error) =>
+          Effect.succeed(
+            error.reason._tag === 'NotFound' ? ('missing' as const) : ('unreadable' as const),
+          ),
+        ),
+      )
       const stat = yield* fs.stat(path).pipe(Effect.option)
       const mtime =
         Option.isSome(stat) === true
           ? Option.getOrUndefined(stat.value.mtime)?.getTime()
           : undefined
-      if (
-        Option.isNone(readable) === true ||
-        mtime === undefined ||
-        Number.isFinite(mtime) === false
-      )
-        complete = false
+      if (readable !== 'readable' || mtime === undefined || Number.isFinite(mtime) === false)
+        activityFailures.push({
+          _tag: 'git-activity-file',
+          file: name,
+          reason: readable !== 'readable' ? readable : 'mtime-unavailable',
+        })
       else lastActivityMs = Math.max(lastActivityMs ?? mtime, mtime)
     }
-    return { locked, lastActivityMs: complete === true ? lastActivityMs : undefined }
+    return {
+      locked,
+      lockPaths,
+      lockScanComplete,
+      activityFailures,
+      lastActivityMs: activityFailures.length === 0 ? lastActivityMs : undefined,
+    }
   },
 )
 

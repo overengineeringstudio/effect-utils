@@ -4,12 +4,16 @@ import { join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { encodeJson } from '../test-utils/mod.ts'
-import { type BuckMaintainReceipt, runBuckMaintain } from './store-buck-maintain.ts'
+import {
+  BuckMaintainVetoEvidence,
+  type BuckMaintainReceipt,
+  runBuckMaintain,
+} from './store-buck-maintain.ts'
 import { WORKSPACE_ACTIVITY_V2_SCHEMA } from './store-workspace-activity.ts'
 
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
@@ -309,9 +313,12 @@ it.live(
       const locked = yield* fixture.addWorktree('locked')
       const foreign = yield* fixture.addWorktree('foreign')
       const active = yield* fixture.addWorktree('active')
-      yield* Effect.sync(() =>
-        execFileSync('git', ['-C', fixture.source, 'worktree', 'lock', locked]),
+      const gitDir = yield* Effect.sync(() =>
+        execFileSync('git', ['-C', locked, 'rev-parse', '--absolute-git-dir'], {
+          encoding: 'utf8',
+        }).trim(),
       )
+      yield* fixture.fs.writeFileString(join(gitDir, 'index.lock'), '')
       yield* fixture.writeManifest([
         { workspace: foreign, owner: 'seat/foreign', active: false },
         { workspace: active, owner: 'seat/a', active: true },
@@ -334,8 +341,72 @@ it.live(
           bytesAfter: null,
         })
       }
+      const lockEvidence = receipt.entries.find((entry) => entry.worktree === locked)?.vetoEvidence
+      expect(lockEvidence).toEqual([
+        {
+          _tag: 'git-locked',
+          lockPaths: [gitDir.slice(join(fixture.source, '.git').length + 1) + '/index.lock'],
+          scanComplete: true,
+        },
+      ])
+      yield* Schema.decodeUnknownEffect(Schema.Array(BuckMaintainVetoEvidence))(lockEvidence)
       yield* fixture.expectNoCommands()
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('admits a worktree with only a Git retention lock', () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture()
+    const worktree = yield* fixture.addWorktree('retained')
+    yield* Effect.sync(() =>
+      execFileSync('git', ['-C', fixture.source, 'worktree', 'lock', worktree]),
+    )
+    const receipt = yield* fixture.run()
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
+    expect(receipt.entries[0]).toMatchObject({
+      action: 'clean-stale',
+      reason: 'completed',
+      vetoEvidence: [],
+    })
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('retains census probe failure and activity admission status in receipts', () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture()
+    const worktree = yield* fixture.addWorktree('census-unavailable')
+    const boundary: FileSystem.FileSystem = {
+      ...fixture.idleFs,
+      readDirectory: (path, options) =>
+        path === '/proc'
+          ? fixture.fs.readDirectory(join(fixture.store, 'missing-proc'))
+          : fixture.fs.readDirectory(path, options),
+    }
+    const receipt = yield* fixture.run(boundary)
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
+    expect(receipt.entries[0]).toMatchObject({
+      action: 'none',
+      reason: 'holder-census-incomplete',
+      vetoEvidence: [
+        {
+          _tag: 'holder-census-incomplete',
+          reason: 'scan-failed',
+          probe: { kind: 'proc', path: '/proc' },
+          activityAdmissionFailed: false,
+        },
+      ],
+    })
+    yield* Schema.decodeUnknownEffect(Schema.Array(BuckMaintainVetoEvidence))(
+      receipt.entries[0]?.vetoEvidence,
+    )
+    yield* fixture.expectNoCommands()
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
 it.live('treats a missing Git activity file as unknown before measuring output', () =>
@@ -360,6 +431,12 @@ it.live('treats a missing Git activity file as unknown before measuring output',
       reason: 'git-activity-unknown',
       bytesBefore: null,
       bytesAfter: null,
+      vetoEvidence: [
+        {
+          _tag: 'git-activity-unknown',
+          files: [{ _tag: 'git-activity-file', file: 'logs/HEAD', reason: 'missing' }],
+        },
+      ],
     })
     yield* fixture.expectNoCommands()
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -408,6 +485,9 @@ it.live(
         bytesBefore: null,
         bytesAfter: null,
       })
+      expect(receipt.entries[0]?.vetoEvidence).toEqual([
+        expect.objectContaining({ _tag: 'seat-claims-incomplete', failure: expect.any(Object) }),
+      ])
       yield* fixture.expectNoCommands()
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )

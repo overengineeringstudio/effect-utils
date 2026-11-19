@@ -4,6 +4,7 @@ import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
 import { Effect, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import { systemError } from 'effect/PlatformError'
 import { expect } from 'vitest'
 
 import {
@@ -83,17 +84,60 @@ it.live('requires all three readable Git activity files, including index and log
     expect(yield* readBuckMaintainGitEvidence(complete)).toEqual({
       locked: false,
       lastActivityMs: old.getTime(),
+      lockPaths: [],
+      lockScanComplete: true,
+      activityFailures: [],
     })
     for (const missing of ['HEAD', 'index', 'logs/HEAD']) {
       const worktree = join(temp, missing.replaceAll('/', '-'))
       const gitDir = yield* makeGitWorktree(worktree)
       yield* fs.remove(join(gitDir, missing))
-      expect((yield* readBuckMaintainGitEvidence(worktree)).lastActivityMs).toBeUndefined()
+      const evidence = yield* readBuckMaintainGitEvidence(worktree)
+      expect(evidence.lastActivityMs).toBeUndefined()
+      expect(evidence.activityFailures).toEqual([
+        { _tag: 'git-activity-file', file: missing, reason: 'missing' },
+      ])
     }
     expect(yield* readBuckMaintainGitEvidence(join(temp, 'missing'))).toEqual({
       locked: undefined,
       lastActivityMs: undefined,
+      lockPaths: [],
+      lockScanComplete: false,
+      activityFailures: [],
     })
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('identifies unreadable activity files without admitting incomplete timestamps', () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const worktree = yield* fs.makeTempDirectoryScoped()
+    const gitDir = yield* makeGitWorktree(worktree)
+    for (const file of ['HEAD', 'index', 'logs/HEAD'] as const) {
+      const path = join(gitDir, file)
+      const boundary: FileSystem.FileSystem = {
+        ...fs,
+        open: (candidate, options) =>
+          candidate === path
+            ? Effect.fail(
+                systemError({
+                  _tag: 'PermissionDenied',
+                  module: 'FileSystem',
+                  method: 'open',
+                  pathOrDescriptor: candidate,
+                }),
+              )
+            : fs.open(candidate, options),
+      }
+      const evidence = yield* readBuckMaintainGitEvidence(worktree).pipe(
+        Effect.provideService(FileSystem.FileSystem, boundary),
+      )
+      expect(evidence.locked).toBe(false)
+      expect(evidence.lastActivityMs).toBeUndefined()
+      expect(evidence.activityFailures).toEqual([
+        { _tag: 'git-activity-file', file, reason: 'unreadable' },
+      ])
+    }
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
@@ -102,7 +146,6 @@ it.live('vetoes known Git locks, refs locks and every Git operation state', () =
     const fs = yield* FileSystem.FileSystem
     const temp = yield* fs.makeTempDirectoryScoped()
     const markers = [
-      'locked',
       'index.lock',
       'HEAD.lock',
       'refs/heads/topic.lock',
@@ -134,9 +177,24 @@ it.live('vetoes known Git locks, refs locks and every Git operation state', () =
         yield* fs.makeDirectory(path)
       } else yield* fs.writeFileString(path, 'stale')
       yield* fs.utimes(path, old, old)
-      expect((yield* readBuckMaintainGitEvidence(worktree)).locked).toBe(true)
+      const evidence = yield* readBuckMaintainGitEvidence(worktree)
+      expect(evidence.locked).toBe(true)
+      expect(evidence.lockPaths).toEqual([marker])
       expect(yield* fs.exists(path)).toBe(true)
     }
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('does not treat a worktree retention lock as Git activity', () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const temp = yield* fs.makeTempDirectoryScoped()
+    const gitDir = yield* makeGitWorktree(temp)
+    yield* fs.writeFileString(join(gitDir, 'locked'), 'retain this worktree')
+    const evidence = yield* readBuckMaintainGitEvidence(temp)
+    expect(evidence.locked).toBe(false)
+    expect(evidence.lockPaths).toEqual([])
+    expect(evidence.lastActivityMs).toBe(old.getTime())
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 
@@ -155,7 +213,10 @@ it.live('resolves linked gitdirs and relative common directories for shared ref 
     expect((yield* readBuckMaintainGitEvidence(worktree)).locked).toBe(false)
     const sharedLock = join(common, 'refs/heads/topic.lock')
     yield* fs.writeFileString(sharedLock, '')
-    expect((yield* readBuckMaintainGitEvidence(worktree)).locked).toBe(true)
+    yield* fs.writeFileString(join(gitDir, 'index.lock'), '')
+    const evidence = yield* readBuckMaintainGitEvidence(worktree)
+    expect(evidence.locked).toBe(true)
+    expect(evidence.lockPaths).toEqual(['../admin-owner/.git/index.lock', 'refs/heads/topic.lock'])
     expect(yield* fs.exists(sharedLock)).toBe(true)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
@@ -291,7 +352,13 @@ it.live('bounds common-dir scans and ignores foreign locks and nested checkouts'
       yield* readBuckMaintainGitEvidence(temp).pipe(
         Effect.provideService(FileSystem.FileSystem, boundedFs),
       ),
-    ).toEqual({ locked: false, lastActivityMs: old.getTime() })
+    ).toEqual({
+      locked: false,
+      lastActivityMs: old.getTime(),
+      lockPaths: [],
+      lockScanComplete: true,
+      activityFailures: [],
+    })
     expect(statCalls).toBe(5)
     expect(directories).toEqual([
       gitDir,
