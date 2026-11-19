@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:815c7294162c4b72fa2e76c69d9fff54cf6a2dc52fb723b9b6f6c494b00993ae
+# Semantic fingerprint: sha256:17228c40dae2d928608b4d33e1912ffd09e7cbea85be7795488f69a297284e71
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -401,6 +401,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-path.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-path.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-state.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
@@ -806,6 +808,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-path.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-path.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-state.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
@@ -1211,6 +1215,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-path.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-path.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-state.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
