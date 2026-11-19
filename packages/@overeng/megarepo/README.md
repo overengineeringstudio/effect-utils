@@ -432,9 +432,10 @@ claims exclusive bytes reclaimable from shared, reflinked or deduplicated storag
 The packaged Nix CLI supplies GNU coreutils for consistent accounting on each platform.
 Limits cannot be changed while authoritative records exist.
 
-The authoritative ledger writes version 2. Its one reader converts version 1 under
-the existing durable exclusion, preserving every generation, owner/token, barrier
-and unknown charge; allowed source history starts with exactly the old commit.
+The authoritative ledger writes version 2. Its canonical decoder converts version 1,
+preserving every generation, owner/token, barrier and unknown charge; allowed source
+history starts with exactly the old commit. Mutating operations checkpoint that
+conversion under the existing durable exclusion; readonly observations do not.
 Unknown versions or fields fail closed. Keep this reader arm until a census of every
 store proves no v1 records/writers remain and the no-old-record regression passes.
 State-only retarget intent advances the generation and revokes install/lease identity
@@ -480,6 +481,15 @@ and reruns normal installation. Missing teardown, unknown processes, dirty/untra
 source, changed commits or failed preparation retain the root; no automatic dirty
 cleanup, expiry, removal or force-unlock exists. Removal remains the existing
 hygiene owner's operation with full consumer proof.
+
+`readPoolProvenance` exports bearer-free observations through that same decoder,
+without initialization, migration writes, recovery, unlocks or removal. Missing or
+unsupported state fails closed, never fabricating an empty inventory. Current records
+do not retain last-owner/seat activity: every observation therefore remains `HOLD`
+with `authorizesRemoval: false`, even when ready/unclaimed. Owner labels are unauthenticated.
+A future hygiene consumer must reread the same generation under its action lease and
+the shared pool lifecycle fence before its own fresh Git/all-UID/consumer checks;
+the snapshot grants no eligibility or cleanup authority.
 Per-root qualification and provisioning-caller adoption are separate from this API.
 ### Process activity snapshot
 

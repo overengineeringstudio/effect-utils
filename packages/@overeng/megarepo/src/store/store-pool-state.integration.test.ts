@@ -7,6 +7,7 @@ import { expect } from 'vitest'
 import { EffectPath } from '@overeng/effect-path'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
+import { projectPoolProvenance, readPoolProvenance } from './store-pool-provenance.ts'
 import {
   beginPoolRetarget,
   claimPoolGeneration,
@@ -38,6 +39,78 @@ const historicalSlot = {
 const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
 
 describe('pool authoritative lifecycle', () => {
+  it.effect('observes historical authority without initialization, migration writes or recovery', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      expect(Exit.isFailure(yield* readPoolProvenance({ base }).pipe(Effect.exit))).toBe(true)
+      expect(yield* fs.exists(`${base}.state`)).toBe(false)
+      const directory = `${base}.state/pool`
+      yield* fs.makeDirectory(directory, { recursive: true })
+      const historical = { version: 1, maxSlots: 2, maxBytes: 128, slots: [{
+        ...historicalSlot, token: 'secret-claim-capability', barrierToken: 'secret-barrier-capability',
+      }] }
+      const bytes = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(historical)
+      yield* fs.writeFileString(`${directory}/state.json`, bytes)
+      const observations = yield* readPoolProvenance({ base }).pipe(Effect.tap((roots) =>
+        Effect.sync(() => expect(roots).toHaveLength(1)),
+      ))
+      expect(observations[0]?.claim).toEqual({ state: 'leased', tokenPresent: true })
+      expect(observations[0]?.sourceHistory).toEqual([historicalSlot.commit])
+      expect(observations[0]?.ownerLabel).toBe(historicalSlot.owner)
+      const serialized = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(observations)
+      expect(serialized).not.toContain('secret-claim-capability')
+      expect(serialized).not.toContain('secret-barrier-capability')
+      expect(yield* fs.readFileString(`${directory}/state.json`)).toBe(bytes)
+      expect(yield* fs.readDirectory(directory)).toEqual(['state.json'])
+      for (const invalid of [{ ...historical, version: 3 }, { ...historical, futureAuthority: true }]) {
+        const invalidBytes = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(invalid)
+        yield* fs.writeFileString(`${directory}/state.json`, invalidBytes)
+        expect(Exit.isFailure(yield* readPoolProvenance({ base }).pipe(Effect.exit))).toBe(true)
+        expect(yield* fs.readFileString(`${directory}/state.json`)).toBe(invalidBytes)
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('exports only bearer-free HOLD observations, including ready roots and every pending intent', () =>
+    Effect.gen(function* () {
+      const leased: PoolSlot = { ...slot, token: 'secret-claim-capability', barrierToken: 'secret-barrier-capability' }
+      const ready: PoolSlot = { ...leased, state: 'ready', token: '', owner: '' }
+      const reserved = (yield* reservePoolGeneration({
+        state: { version: 2, maxSlots: 1, maxBytes: 64, slots: [] },
+        bare: slot.bare, commit: slot.commit, charge: 64,
+      })).slots[0]!
+      const birth = yield* consumePoolReservation({
+        slot: reserved, id: reserved.id, reservation: reserved.reservation!,
+        generation: 0, bare: reserved.bare, commit: reserved.commit, charge: reserved.charge,
+      })
+      const retarget = yield* beginPoolRetarget({
+        slot: ready, generation: ready.generation, identity: ready.identity,
+        commit: 'b'.repeat(40), owner: 'retarget-caller',
+      })
+      const roots: ReadonlyArray<PoolSlot> = [
+        ready, leased, { ...leased, state: 'completed' }, { ...leased, state: 'quarantined' },
+        { ...ready, chargeKnown: undefined }, reserved, birth, { ...birth, state: 'quarantined' }, retarget,
+      ]
+      for (const root of roots) {
+        const observed = projectPoolProvenance(root)
+        expect(observed.authorizesRemoval).toBe(false)
+        expect(observed.disposition).toBe('HOLD')
+        expect(observed.ownerActivity).toEqual({ _tag: 'Unrecorded', source: 'canonical-pool-state-v2' })
+        expect(observed.holdReasons).toContain('owner-seat-activity-unrecorded')
+        expect(observed.id).toBe(root.id)
+        expect(observed.path).toBe(root.path)
+        expect(observed.generation).toBe(root.generation)
+        const serialized = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(observed)
+        for (const secret of [
+          'secret-claim-capability', 'secret-barrier-capability', reserved.reservation!, retarget.retarget!.token,
+        ]) expect(serialized).not.toContain(secret)
+      }
+      expect(projectPoolProvenance(ready).readyUnclaimed).toBe(true)
+      expect(roots.slice(1).every((root) => projectPoolProvenance(root).readyUnclaimed === false)).toBe(true)
+    }),
+  )
+
   it.effect('persists an unborn bounded reservation unchanged across actual inspection', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem

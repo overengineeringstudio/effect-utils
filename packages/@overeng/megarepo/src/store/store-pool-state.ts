@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -155,6 +156,25 @@ const persist = ({ path, state }: { path: string; state: PoolState }) =>
     Effect.uninterruptible,
   )
 
+const decodePoolState = Schema.decodeEffect(Schema.fromJsonString(PoolStateReader), {
+  onExcessProperty: 'error',
+})
+const currentPoolState = (stored: Schema.Schema.Type<typeof PoolStateReader>): PoolState =>
+  stored.version === 1
+    ? { ...stored, version: 2, slots: stored.slots.map((slot): PoolSlot => ({ ...slot, sourceHistory: [slot.commit] })) }
+    : stored
+
+/** Atomic observation only; no initialization, migration writes, recovery or lifecycle exclusion. */
+export const readPoolState = ({ base }: { base: AbsoluteDirPath }): Effect.Effect<
+  PoolState, PoolError | PlatformError | Schema.SchemaError, FileSystem.FileSystem
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const state = currentPoolState(yield* fs.readFileString(`${base}/.state/pool/state.json`).pipe(Effect.flatMap(decodePoolState)))
+    yield* validatePoolState(state)
+    return state
+  })
+
 /** One host-store-wide exclusion point, including capacity reservation. No TTL takeover. */
 export const withPoolState = <A, E, R>({
   base,
@@ -177,31 +197,14 @@ export const withPoolState = <A, E, R>({
       const exists = yield* fs.exists(path)
       const stored =
         exists === true
-          ? yield* fs
-              .readFileString(path)
-              .pipe(
-                Effect.flatMap(
-                  Schema.decodeEffect(Schema.fromJsonString(PoolStateReader), {
-                    onExcessProperty: 'error',
-                  }),
-                ),
-              )
+          ? yield* fs.readFileString(path).pipe(Effect.flatMap(decodePoolState))
           : {
               version: 2 as const,
               maxSlots: limits?.maxSlots ?? 0,
               maxBytes: limits?.maxBytes ?? 0,
               slots: [],
             }
-      const state: PoolState =
-        stored.version === 1
-          ? {
-              ...stored,
-              version: 2,
-              slots: stored.slots.map(
-                (slot): PoolSlot => ({ ...slot, sourceHistory: [slot.commit] }),
-              ),
-            }
-          : stored
+      const state = currentPoolState(stored)
       if (
         limits !== undefined &&
         exists === true &&
