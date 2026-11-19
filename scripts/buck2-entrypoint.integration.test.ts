@@ -2441,7 +2441,10 @@ describe('direct pinned Buck watcher admission', () => {
     ])
     expect(exitCode).toBe(0)
     expect(stdout).toBe('')
-    const events = stderr.trim().split('\n').map((line) => JSON.parse(line))
+    const events = stderr
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
     expect(events[0]).toMatchObject({
       event: 'buck2.watchman.crawl',
       phase: 'start',
@@ -2455,6 +2458,55 @@ describe('direct pinned Buck watcher admission', () => {
       outcome: 'ok',
     })
     expect(events[1].durationMs).toBeGreaterThanOrEqual(0)
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(1)
+    expect(watcherLocal(root)).toBe('')
+  })
+
+  it('routes installed-wrapper root initialization outside native gate and launch caching', async () => {
+    const { root, env, calls } = watcherFixture()
+    const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
+    if (packaged === null || packaged === undefined) throw new Error('pinned Buck wrapper required')
+    const bash = /^#!(\/\S+)\n/u.exec(readFileSync(packaged, 'utf8'))?.[1]
+    if (bash === undefined) throw new Error('expected pinned Buck wrapper interpreter')
+    const launcher = join(root, 'launcher')
+    const wrapper = join(root, 'buck2')
+    writeFileSync(
+      launcher,
+      `#!${bash}\nexec '${process.execPath}' '${join(import.meta.dir, 'buck2-entrypoint.ts')}' "$@"\n`,
+      { mode: 0o700 },
+    )
+    writeFileSync(
+      wrapper,
+      readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
+        .replaceAll('@shell@', bash)
+        .replaceAll('@native@', join(root, 'native-must-not-run'))
+        .replaceAll('@launcher@', launcher)
+        .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
+      { mode: 0o700 },
+    )
+    const child = Bun.spawn([wrapper, '--initialize-watchman-root', '10000'], {
+      cwd: root,
+      env: {
+        ...process.env,
+        ...env,
+        GATE_SLOT_CLASS: 'eval',
+        BUCK2_GATE_WRAPPER_ACTIVE: undefined,
+        XDG_CACHE_HOME: join(root, 'cache'),
+      },
+      detached: true,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    launchProcesses.add(child)
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect(exitCode, stderr).toBe(0)
+    expect(stdout).toBe('')
+    expect(stderr).toContain('"event":"buck2.watchman.crawl"')
+    expect(stderr).toContain('"outcome":"ok"')
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(1)
     expect(watcherLocal(root)).toBe('')
   })
