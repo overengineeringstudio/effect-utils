@@ -627,11 +627,13 @@ describe('rotation-independent native evidence shards', () => {
         const [stderr, exitCode] = await Promise.all([
           new Response(child.stderr).text(), child.exited,
         ])
-        expect(exitCode).toBe(failure === null ? 0 : 2)
         const header = JSON.parse(gunzipSync(
           await Bun.file(join(directory, 'buck2-cache-actions.jsonl.gz')).arrayBuffer(),
         ).toString('utf8').split('\n')[0]!)
         expect(header.complete).toBe(false)
+        expect(exitCode, JSON.stringify({
+          stderr, gaps: header.evidenceGaps, metadata: header.metadata,
+        })).toBe(failure === null ? 0 : 2)
         if (failure === null) expect(stderr).toContain('original action evidence remains incomplete')
       } finally {
         await rm(directory, { recursive: true, force: true })
