@@ -256,7 +256,8 @@ export const selectConfiguredChecks = ({
   }
   if (base.configuration !== candidate.configuration) reasons.add('configuration-changed')
   if (
-    Object.keys(base.checks).some((target) => Object.hasOwn(candidate.checks, target) === false) === true ||
+    Object.keys(base.checks).some((target) => Object.hasOwn(candidate.checks, target) === false) ===
+      true ||
     fullTargets.some((target) => Object.hasOwn(base.checks, target) === false) === true
   )
     reasons.add('required-inventory-changed')
