@@ -422,6 +422,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     and defer reclaimed bytes rather than invalidating existing holders.
     Adversarial queued directory-FD smuggling is outside this contract; mere
     absence of a candidate mount does not prove absence of directory capabilities.
+    The isolated bind-alias test closes inherited non-stdio gate/Nix
+    descriptors before its namespace exec: cloned mount IDs cannot attest
+    descriptors retained from the parent mount namespace. Production keeps
+    that unobservable-reference veto unchanged.
     Other-UID processes are outside the normal
     user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
     own-UID processes fail closed, except the explicit Linux privileged-broker
