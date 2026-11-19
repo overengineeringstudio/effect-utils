@@ -10,12 +10,18 @@ import { type AbsoluteDirPath } from '@overeng/effect-path'
 import * as Git from '../core/git.ts'
 import { PoolError } from './store-pool-state.ts'
 
-export const runPoolCommand = (
-  cwd: string,
-  command: string,
-  args: ReadonlyArray<string>,
-  env?: Record<string, string>,
-) =>
+/** Run a declared tool with its real exit status and captured stdout. */
+export const runPoolCommand = ({
+  cwd,
+  command,
+  args,
+  env,
+}: {
+  cwd: string
+  command: string
+  args: ReadonlyArray<string>
+  env?: Record<string, string>
+}) =>
   Effect.scoped(
     Effect.gen(function* () {
       const child = yield* ChildProcess.make(command, args, {
@@ -32,6 +38,7 @@ export const runPoolCommand = (
     }),
   )
 
+/** Prepare through the root-owned install task with inherited task output. */
 export const preparePoolInstall = (path: string) =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -50,7 +57,15 @@ export const preparePoolInstall = (path: string) =>
 /** The root-owned pnpm doctor validates the complete projection and install receipts.
  * Pool code adds source/platform and actual GVS path binding, not a second graph validator.
  */
-export const poolInstallIdentity = (path: string, commit: string, base: AbsoluteDirPath) =>
+export const poolInstallIdentity = ({
+  path,
+  commit,
+  base,
+}: {
+  path: string
+  commit: string
+  base: AbsoluteDirPath
+}) =>
   Effect.scoped(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
@@ -63,13 +78,13 @@ export const poolInstallIdentity = (path: string, commit: string, base: Absolute
         prefix: 'doctor-',
       })
       const report = `${reportDirectory}/readiness.json`
-      yield* runPoolCommand(
-        path,
-        'devenv',
-        ['tasks', 'run', '--mode', 'single', 'pnpm:doctor', '--no-tui'],
-        { PNPM_DOCTOR_OUTPUT_FILE: report },
-      )
-      const proof = yield* Schema.decodeUnknownEffect(
+      yield* runPoolCommand({
+        cwd: path,
+        command: 'devenv',
+        args: ['tasks', 'run', '--mode', 'single', 'pnpm:doctor', '--no-tui'],
+        env: { PNPM_DOCTOR_OUTPUT_FILE: report },
+      })
+      const proof = yield* Schema.decodeEffect(
         Schema.fromJsonString(
           Schema.Struct({
             phase: Schema.Literal('doctor'),
@@ -94,8 +109,20 @@ export const poolInstallIdentity = (path: string, commit: string, base: Absolute
           message: 'Root-owned pnpm readiness evidence is stale or unhealthy',
         })
       const hash = createHash('sha256')
-      hash.update(JSON.stringify([1, commit, process.platform, process.arch]))
-      hash.update(JSON.stringify(proof))
+      hash.update(
+        yield* Schema.encodeEffect(
+          Schema.fromJsonString(
+            Schema.Tuple([Schema.Literal(1), Schema.String, Schema.String, Schema.String]),
+          ),
+        )([1, commit, process.platform, process.arch]),
+      )
+      hash.update(
+        yield* Schema.encodeEffect(
+          Schema.fromJsonString(
+            Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Finite])),
+          ),
+        )(proof),
+      )
       hash.update(yield* fs.realPath(proof.pnpm))
       hash.update(yield* fs.realPath(proof.node))
       for (const name of [
@@ -112,15 +139,15 @@ export const poolInstallIdentity = (path: string, commit: string, base: Absolute
       ]) {
         const file = `${path}/${name}`
         hash.update(name)
-        if (yield* fs.exists(file)) hash.update(yield* fs.readFile(file))
-        else if (['pnpm-lock.yaml', 'node_modules/.modules.yaml'].includes(name))
+        if ((yield* fs.exists(file)) === true) hash.update(yield* fs.readFile(file))
+        else if (['pnpm-lock.yaml', 'node_modules/.modules.yaml'].includes(name) === true)
           return yield* new PoolError({ message: `Missing installed input ${name}` })
         else hash.update('absent')
       }
       // Pinned pnpm 12 writes JSON into .modules.yaml (shared pnpm-gvs.test.sh).
       const modules = yield* fs.readFileString(`${path}/node_modules/.modules.yaml`).pipe(
         Effect.flatMap(
-          Schema.decodeUnknownEffect(
+          Schema.decodeEffect(
             Schema.fromJsonString(
               Schema.Struct({
                 storeDir: Schema.String,
@@ -130,18 +157,30 @@ export const poolInstallIdentity = (path: string, commit: string, base: Absolute
           ),
         ),
       )
-      if (!isAbsolute(modules.storeDir))
+      if (isAbsolute(modules.storeDir) === false)
         return yield* new PoolError({ message: 'Installed store path must be absolute' })
       const realStore = yield* fs.realPath(modules.storeDir)
       const realVirtual = yield* fs.realPath(resolve(path, 'node_modules', modules.virtualStoreDir))
       const realModules = yield* fs.realPath(`${path}/node_modules`)
-      if (realVirtual !== `${realStore}/links` || realStore.startsWith(`${path}/`))
+      if (realVirtual !== `${realStore}/links` || realStore.startsWith(`${path}/`) === true)
         return yield* new PoolError({ message: 'Installed root is not a shared GVS projection' })
-      hash.update(JSON.stringify([realStore, realVirtual, realModules]))
-      hash.update(JSON.stringify(process.versions))
-      hash.update(yield* runPoolCommand(path, 'uname', ['-srmp']))
+      hash.update(
+        yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)))([
+          realStore,
+          realVirtual,
+          realModules,
+        ]),
+      )
+      hash.update(
+        yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Record(Schema.String, Schema.UndefinedOr(Schema.String))),
+        )(process.versions),
+      )
+      hash.update(yield* runPoolCommand({ cwd: path, command: 'uname', args: ['-srmp'] }))
       if (process.platform === 'linux')
-        hash.update(yield* runPoolCommand(path, 'getconf', ['GNU_LIBC_VERSION']))
+        hash.update(
+          yield* runPoolCommand({ cwd: path, command: 'getconf', args: ['GNU_LIBC_VERSION'] }),
+        )
       return hash.digest('hex')
     }),
   )
@@ -149,9 +188,13 @@ export const poolInstallIdentity = (path: string, commit: string, base: Absolute
 /** Logical bytes are charged conservatively; no claim of physical/exclusive reclamation. */
 export const poolBytes = (path: string) =>
   Effect.gen(function* () {
-    const output = yield* runPoolCommand(path, 'du', ['--apparent-size', '-sk', '.'])
+    const output = yield* runPoolCommand({
+      cwd: path,
+      command: 'du',
+      args: ['--apparent-size', '-sk', '.'],
+    })
     const kib = Number(output.split(/\s+/u)[0])
-    if (!Number.isSafeInteger(kib) || kib < 0)
+    if (Number.isSafeInteger(kib) === false || kib < 0)
       return yield* new PoolError({ message: 'Cannot account pool bytes' })
     return kib * 1024
   })
