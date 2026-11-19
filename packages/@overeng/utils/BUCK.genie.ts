@@ -44,6 +44,7 @@ export const buck2TypeScriptAdmission = {
       // source-side complement visible under `test:utils:unbounded` (decision 0026).
       excludes: [
         'src/browser/__tests__/BroadcastLogger.pw.test.ts',
+        'src/isomorphic/otlp-producer.integration.test.ts',
         'src/node/cmd.unit.test.ts',
         // Real loopback HTTP servers and transport disconnects require the source-side host lane.
         'src/node/github-app.integration.test.ts',

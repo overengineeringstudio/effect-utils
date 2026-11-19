@@ -539,3 +539,17 @@ export const sampleGauge = (
     ...(interval === undefined ? {} : { interval }),
   })
 }
+
+export {
+  producerTelemetryLayer,
+  producerEndpoint,
+  producerHeaders,
+  type ProducerConfig,
+  type ProducerTelemetryConfig,
+  type ProducerTransport,
+} from '../isomorphic/otlp-producer.ts'
+export {
+  declareCloudflareProducer,
+  cloudflareDestinationProps,
+  type ObservabilityDestinationProps,
+} from '../isomorphic/otlp-cloudflare.ts'

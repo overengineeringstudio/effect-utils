@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:e88e8f1de1cf7385ab75e08b186e743dadf0412f85f1c415c67dfb96abe86824
+# Semantic fingerprint: sha256:d9ddb940761049e3ad2f87d755845b1586e910f4546fabe18563914044c522e6
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -70,6 +70,10 @@ export_materialization_inputs([
     "src/isomorphic/object/mod.ts",
     "src/isomorphic/object/omit.ts",
     "src/isomorphic/object/pick.ts",
+    "src/isomorphic/otlp-cloudflare.ts",
+    "src/isomorphic/otlp-producer.integration.test.ts",
+    "src/isomorphic/otlp-producer.ts",
+    "src/isomorphic/otlp-producer.unit.test.ts",
     "src/isomorphic/single-item.ts",
     "src/isomorphic/string.ts",
     "src/isomorphic/string.unit.test.ts",
@@ -219,6 +223,10 @@ package_view(
         "src/isomorphic/object/mod.ts": "src/isomorphic/object/mod.ts",
         "src/isomorphic/object/omit.ts": "src/isomorphic/object/omit.ts",
         "src/isomorphic/object/pick.ts": "src/isomorphic/object/pick.ts",
+        "src/isomorphic/otlp-cloudflare.ts": "src/isomorphic/otlp-cloudflare.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts": "src/isomorphic/otlp-producer.integration.test.ts",
+        "src/isomorphic/otlp-producer.ts": "src/isomorphic/otlp-producer.ts",
+        "src/isomorphic/otlp-producer.unit.test.ts": "src/isomorphic/otlp-producer.unit.test.ts",
         "src/isomorphic/single-item.ts": "src/isomorphic/single-item.ts",
         "src/isomorphic/string.ts": "src/isomorphic/string.ts",
         "src/isomorphic/string.unit.test.ts": "src/isomorphic/string.unit.test.ts",
@@ -355,6 +363,10 @@ package_view(
         "src/isomorphic/object/mod.ts": "src/isomorphic/object/mod.ts",
         "src/isomorphic/object/omit.ts": "src/isomorphic/object/omit.ts",
         "src/isomorphic/object/pick.ts": "src/isomorphic/object/pick.ts",
+        "src/isomorphic/otlp-cloudflare.ts": "src/isomorphic/otlp-cloudflare.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts": "src/isomorphic/otlp-producer.integration.test.ts",
+        "src/isomorphic/otlp-producer.ts": "src/isomorphic/otlp-producer.ts",
+        "src/isomorphic/otlp-producer.unit.test.ts": "src/isomorphic/otlp-producer.unit.test.ts",
         "src/isomorphic/single-item.ts": "src/isomorphic/single-item.ts",
         "src/isomorphic/string.ts": "src/isomorphic/string.ts",
         "src/isomorphic/string.unit.test.ts": "src/isomorphic/string.unit.test.ts",
@@ -490,6 +502,10 @@ package_view(
         "src/isomorphic/object/mod.ts": "src/isomorphic/object/mod.ts",
         "src/isomorphic/object/omit.ts": "src/isomorphic/object/omit.ts",
         "src/isomorphic/object/pick.ts": "src/isomorphic/object/pick.ts",
+        "src/isomorphic/otlp-cloudflare.ts": "src/isomorphic/otlp-cloudflare.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts": "src/isomorphic/otlp-producer.integration.test.ts",
+        "src/isomorphic/otlp-producer.ts": "src/isomorphic/otlp-producer.ts",
+        "src/isomorphic/otlp-producer.unit.test.ts": "src/isomorphic/otlp-producer.unit.test.ts",
         "src/isomorphic/single-item.ts": "src/isomorphic/single-item.ts",
         "src/isomorphic/string.ts": "src/isomorphic/string.ts",
         "src/isomorphic/string.unit.test.ts": "src/isomorphic/string.unit.test.ts",
@@ -634,6 +650,7 @@ vitest_test(
     },
     excludes = [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
@@ -657,6 +674,7 @@ vitest_collect(
     },
     excludes = [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
         "src/node/otel-identity.test.ts",
