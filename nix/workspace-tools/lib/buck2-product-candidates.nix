@@ -145,6 +145,7 @@ let
         [
           "coreutils"
           "git"
+          "mr"
           "nix"
           "worktree-lease"
           "worktree-teardown"
@@ -159,6 +160,10 @@ let
       git = {
         capability = "git";
         pathPackages = [ pkgs.git ];
+      };
+      mr = {
+        capability = "mr";
+        environment.MR_CANONICAL_BIN = "${placeholder "out"}/bin/mr";
       };
       nix = {
         capability = "nix";
@@ -182,7 +187,11 @@ let
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
     pathPackages = megarepoProviders.pathPackages;
-    smokeTestArgs = [ "--help" ];
+    smokeTestArgs = [
+      "store"
+      "pool"
+      "--help"
+    ];
   };
   tui-stories = mk "tui-stories" {
     binaryName = "tui-stories";

@@ -1,3 +1,5 @@
+import { isAbsolute } from 'node:path'
+
 import { Console, Effect } from 'effect'
 import * as Cli from 'effect/cli'
 import * as ChildProcess from 'effect/process/ChildProcess'
@@ -152,8 +154,11 @@ const promote = Cli.Command.make(
   ({ repo, commit, branch }) =>
     Effect.gen(function* () {
       yield* exactCommit(commit)
+      const canonicalMr = process.env.MR_CANONICAL_BIN
+      if (canonicalMr === undefined || !isAbsolute(canonicalMr))
+        return yield* new PoolError({ message: 'Packaged absolute MR_CANONICAL_BIN is required' })
       const { store } = yield* resolveRepository(repo)
-      const path = yield* runPoolCommand(store.basePath, 'mr', [
+      const path = yield* runPoolCommand(store.basePath, canonicalMr, [
         'store',
         'worktree',
         'new',

@@ -102,6 +102,8 @@ validated `node_modules`, and reruns normal installation. Missing teardown,
 unknown processes, dirty/untracked source, changed commits or failed preparation
 retain the root; no automatic dirty cleanup, expiry, removal or force-unlock exists.
 Removal remains the existing hygiene owner's operation with full consumer proof.
+Promotion invokes the packaged absolute `MR_CANONICAL_BIN` self-provider; an
+ambient `mr` on PATH is never substituted, and a missing provider fails closed.
 Per-root qualification and provisioning-caller adoption are separate from this API.
 
 ## Typical Flow
