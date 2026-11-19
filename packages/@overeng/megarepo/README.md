@@ -542,6 +542,21 @@ Unknown fields and versions fail closed. This contract compares caller-supplied
 runtime digests; it does not attest runtimes, derive configuration, grant apply
 authority, or provide durable storage.
 
+`src/store/store-buck-maintain-progress-store.ts` owns durable storage and the session,
+selection and receipt APIs. Callers retain `withExclusiveDirectoryLock(directory)`
+throughout open, root selection, append and receipt generation. Supply an owned canonical
+directory without shared-write permissions, attested immutable source/runtime identity,
+normalized configuration and sorted unique absolute canonical-form discovered roots.
+
+`openBuckMaintainProgress` freezes the initial inventory and compares runtime/configuration
+bindings on resume. New roots are excluded and disclosed as `newlyDiscovered`; unfinished
+frozen roots remain selectable even after disappearing. Appends publish checksummed,
+manifest-bound records through fsynced temporary files, atomic rename and directory fsync.
+Unknown/corrupt state, unsafe files, changed bytes or stopped daemons refuse progress.
+`selectBuckMaintainProgressRoots` defaults to one unfinished root; the receipt includes
+capture intervals and `authorizesApply: false`. Its `complete` means decision coverage of
+the frozen inventory only, never current-fleet coverage or safety clearance.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical
