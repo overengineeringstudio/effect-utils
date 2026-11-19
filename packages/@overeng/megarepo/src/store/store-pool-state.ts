@@ -35,6 +35,7 @@ export const PoolSlot = Schema.Struct({
   ...PoolSlotV1.fields,
   state: Schema.Union([PoolSlotV1.fields.state, Schema.Literal('reserved')]),
   reservation: Schema.optional(Schema.String),
+  initialPreparation: Schema.optional(Schema.Struct({ generation: Schema.Finite, commit: Schema.String })),
   sourceHistory: Schema.NonEmptyArray(Schema.String),
   retarget: Schema.optional(RetargetIntent),
 })
@@ -98,6 +99,18 @@ const validatePoolState = (state: PoolState) =>
               /^[0-9a-f]{40}$/u.test(slot.commit) === false ||
               slot.path !== `${dirname(slot.bare)}/pool/${slot.id}`
             : slot.reservation !== undefined) ||
+          (slot.initialPreparation !== undefined &&
+            (['preparing', 'quarantined'].includes(slot.state) === false ||
+              slot.initialPreparation.generation !== slot.generation ||
+              slot.initialPreparation.commit !== slot.commit ||
+              slot.generation !== 1 ||
+              slot.sourceHistory.length !== 1 ||
+              slot.reservation !== undefined ||
+              slot.retarget !== undefined ||
+              slot.identity !== '' ||
+              slot.token !== '' ||
+              slot.owner !== '' ||
+              slot.chargeKnown !== false)) ||
           (slot.retarget !== undefined &&
             (['preparing', 'quarantined'].includes(slot.state) === false ||
               slot.identity !== '' ||
@@ -328,6 +341,7 @@ export const consumePoolReservation = ({
         ...slot,
         reservation: undefined,
         generation: generation + 1,
+        initialPreparation: { generation: generation + 1, commit },
         state: 'preparing',
         chargeKnown: false,
         reason: 'Reserved root preparation',

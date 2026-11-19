@@ -445,6 +445,9 @@ is quarantined with unknown bytes and its nonce revoked, never adopted or cleane
 The state owner consumes the exact source/bare/path/charge/nonce/epoch receipt before
 any creation. These state transitions do not register privileged roots or yet expose
 the reserve/prewarm CLI; canonical lifecycle callers must migrate as one cutover.
+Consumed reservations retain an initial-preparation intent through any failure.
+Inspection may raise its measured byte lower bound but cannot declare its charge
+known; only qualified successful preparation clears the intent atomically with ready.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.

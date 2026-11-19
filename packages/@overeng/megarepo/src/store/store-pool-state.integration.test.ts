@@ -115,8 +115,17 @@ describe('pool authoritative lifecycle', () => {
       expect(prepared).toMatchObject({
         state: 'preparing', generation: 1, chargeKnown: false, reservation: undefined,
       })
+      expect(prepared.initialPreparation).toEqual({ generation: 1, commit: slot.commit })
+      const invalidCharge = yield* withPoolState({
+        base, use: (state, save) => save({
+          ...state, slots: [{ ...prepared, chargeKnown: true }],
+        }),
+      }).pipe(Effect.exit)
+      expect(Exit.isFailure(invalidCharge)).toBe(true)
       const retained = yield* inspectPool(base)
       expect(retained.slots[0]).toMatchObject({ state: 'quarantined', chargeKnown: false })
+      expect(retained.slots[0]?.initialPreparation).toEqual(prepared.initialPreparation)
+      expect(yield* withPoolState({ base, use: Effect.succeed })).toEqual(retained)
       expect(Exit.isFailure(yield* consumePoolReservation({
         slot: retained.slots[0]!, ...receipt,
       }).pipe(Effect.exit))).toBe(true)

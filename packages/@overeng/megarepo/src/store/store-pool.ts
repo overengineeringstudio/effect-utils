@@ -88,7 +88,10 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
     const bytes =
       exists === false ? 0 : yield* poolBytes(slot.path).pipe(Effect.orElseSucceed(() => undefined))
     const holders =
-      exists === false || slot.retarget !== undefined || slot.reservation !== undefined
+      exists === false ||
+      slot.retarget !== undefined ||
+      slot.reservation !== undefined ||
+      slot.initialPreparation !== undefined
         ? undefined
         : yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
     const next: PoolSlot = {
@@ -100,6 +103,7 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
       chargeKnown:
         slot.retarget === undefined &&
         slot.reservation === undefined &&
+        slot.initialPreparation === undefined &&
         exists === true &&
         bytes !== undefined &&
         holders?._tag === 'free',
