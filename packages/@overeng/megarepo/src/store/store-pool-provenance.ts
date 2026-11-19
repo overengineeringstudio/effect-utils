@@ -3,7 +3,11 @@ import type { FileSystem } from 'effect/FileSystem'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
-import { type PoolActivity, type PoolActivityEvent, type PoolSlot, readPoolState, validPoolActivity } from './store-pool-state.ts'
+import {
+  isPoolReadyUnclaimed, poolActivityProviderRecorded, poolTerminalRootActivity,
+  type PoolActivity, type PoolActivityEvent, type PoolSlot, type PoolTerminalRootActivity,
+  readPoolState, validPoolActivity,
+} from './store-pool-state.ts'
 
 /** Public observations never forward private ledger diagnostics or capability-bearing causes. */
 export class PoolProvenanceUnavailableError extends Schema.TaggedError<PoolProvenanceUnavailableError>()(
@@ -23,15 +27,9 @@ type RecordedRootActivity = Readonly<Pick<PoolActivity, 'generation' | 'commit' 
   readonly claimed: PublicActivityEvent | undefined
   readonly completed: PublicActivityEvent | undefined
 }
-type TerminalRootActivity = {
-  readonly kind: 'birth' | 'claim-release'
-  readonly observedAtUtc: string
-}
 type HoldReason = 'owner-seat-activity-unrecorded' | 'not-ready-unclaimed' |
   'root-activity-invalid' | 'terminal-root-history-incomplete'
 
-const providerRecorded = (event: PoolActivityEvent) =>
-  event.provider.uid !== undefined && event.provider.processStartTime !== undefined
 const projectActivityEvent = (event: PoolActivityEvent): PublicActivityEvent => ({
   observedAtUtc: event.observedAtUtc,
   ownerLabel: event.ownerLabel,
@@ -39,7 +37,14 @@ const projectActivityEvent = (event: PoolActivityEvent): PublicActivityEvent => 
   provider: {
     pid: event.provider.pid, uid: event.provider.uid, processStartTime: event.provider.processStartTime,
   },
-  providerIdentityComplete: providerRecorded(event),
+  providerIdentityComplete: poolActivityProviderRecorded(event),
+})
+const projectRecordedActivity = (activity: PoolActivity): RecordedRootActivity => ({
+  _tag: 'Recorded', source: 'canonical-pool-state-v2', authenticatedSeat: false,
+  generation: activity.generation, commit: activity.commit, identity: activity.identity, phase: activity.phase,
+  event: projectActivityEvent(activity.event),
+  claimed: activity.claimed === undefined ? undefined : projectActivityEvent(activity.claimed),
+  completed: activity.completed === undefined ? undefined : projectActivityEvent(activity.completed),
 })
 
 /** Recorded observation, never an action lease, cleanup proof or bearer capability. */
@@ -52,33 +57,25 @@ export type PoolRootProvenance = Readonly<Pick<PoolSlot,
   readonly ownerLabel: PoolSlot['owner']
   readonly ownerActivity: RecordedRootActivity |
     { readonly _tag: 'Unrecorded'; readonly source: 'canonical-pool-state-v2' }
-  readonly terminalRootActivity: TerminalRootActivity | undefined
+  readonly terminalRootActivity: PoolTerminalRootActivity | undefined
   readonly claim: { readonly state: PoolSlot['state']; readonly tokenPresent: boolean }
   readonly reservationPresent: boolean
   readonly birth: Pick<NonNullable<PoolSlot['initialPreparation']>, 'generation' | 'commit'> | undefined
   readonly retarget: Pick<NonNullable<PoolSlot['retarget']>, 'from' | 'to'> | undefined
+  readonly retirement: (Readonly<Pick<NonNullable<PoolSlot['retirement']>, 'fromGeneration' | 'identity' | 'status'>> & {
+    readonly adminRecorded: boolean
+    readonly previousActivity: RecordedRootActivity
+  }) | undefined
   readonly holdReasons: ReadonlyArray<HoldReason>
 }
 
 /** Candidates have recorded terminal root history, never authenticated seat or deletion authority. */
 export const projectPoolProvenance = (slot: PoolSlot): PoolRootProvenance => {
-  const readyUnclaimed = slot.state === 'ready' && slot.chargeKnown === true &&
-    slot.identity !== '' && slot.owner === '' && slot.token === '' &&
-    slot.reservation === undefined && slot.initialPreparation === undefined && slot.retarget === undefined
+  const readyUnclaimed = isPoolReadyUnclaimed(slot)
   const activity = slot.activity
   const activityValid = validPoolActivity(slot)
-  let terminalRootActivity: TerminalRootActivity | undefined
-  if (activity !== undefined && activityValid === true && providerRecorded(activity.event) === true) {
-    if (activity.phase === 'birth-ready') {
-      terminalRootActivity = { kind: 'birth', observedAtUtc: activity.event.observedAtUtc }
-    } else if (activity.phase === 'release-ready' &&
-      activity.claimed !== undefined && activity.completed !== undefined &&
-      providerRecorded(activity.claimed) === true && providerRecorded(activity.completed) === true &&
-      Date.parse(activity.claimed.observedAtUtc) <= Date.parse(activity.completed.observedAtUtc) &&
-      Date.parse(activity.completed.observedAtUtc) <= Date.parse(activity.event.observedAtUtc)) {
-      terminalRootActivity = { kind: 'claim-release', observedAtUtc: activity.event.observedAtUtc }
-    }
-  }
+  const terminalRootActivity = activity === undefined || activityValid === false
+    ? undefined : poolTerminalRootActivity(activity)
   const holdReasons: Array<HoldReason> = []
   if (readyUnclaimed === false) holdReasons.push('not-ready-unclaimed')
   if (activity === undefined) holdReasons.push('owner-seat-activity-unrecorded')
@@ -98,13 +95,8 @@ export const projectPoolProvenance = (slot: PoolSlot): PoolRootProvenance => {
     disposition: holdReasons.length === 0 ? 'CANDIDATE' : 'HOLD',
     readyUnclaimed,
     ownerLabel: slot.owner,
-    ownerActivity: activity === undefined ? { _tag: 'Unrecorded', source: 'canonical-pool-state-v2' } : {
-      _tag: 'Recorded', source: 'canonical-pool-state-v2', authenticatedSeat: false,
-      generation: activity.generation, commit: activity.commit, identity: activity.identity, phase: activity.phase,
-      event: projectActivityEvent(activity.event),
-      claimed: activity.claimed === undefined ? undefined : projectActivityEvent(activity.claimed),
-      completed: activity.completed === undefined ? undefined : projectActivityEvent(activity.completed),
-    },
+    ownerActivity: activity === undefined
+      ? { _tag: 'Unrecorded', source: 'canonical-pool-state-v2' } : projectRecordedActivity(activity),
     terminalRootActivity,
     claim: {
       state: slot.state,
@@ -115,6 +107,11 @@ export const projectPoolProvenance = (slot: PoolSlot): PoolRootProvenance => {
       generation: slot.initialPreparation.generation, commit: slot.initialPreparation.commit,
     },
     retarget: slot.retarget === undefined ? undefined : { from: slot.retarget.from, to: slot.retarget.to },
+    retirement: slot.retirement === undefined ? undefined : {
+      fromGeneration: slot.retirement.fromGeneration, identity: slot.retirement.identity,
+      status: slot.retirement.status, adminRecorded: slot.retirement.adminDir !== undefined,
+      previousActivity: projectRecordedActivity(slot.retirement.activity),
+    },
     holdReasons,
   }
 }

@@ -133,7 +133,8 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
       exists === false ||
       slot.retarget !== undefined ||
       slot.reservation !== undefined ||
-      slot.initialPreparation !== undefined
+      slot.initialPreparation !== undefined ||
+      slot.retirement !== undefined
         ? undefined
         : yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
     const next: PoolSlot = {
@@ -146,6 +147,7 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
         slot.retarget === undefined &&
         slot.reservation === undefined &&
         slot.initialPreparation === undefined &&
+        slot.retirement === undefined &&
         exists === true &&
         bytes !== undefined &&
         holders?._tag === 'free',

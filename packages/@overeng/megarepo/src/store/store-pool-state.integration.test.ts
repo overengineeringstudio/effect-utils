@@ -7,9 +7,11 @@ import { expect } from 'vitest'
 import { EffectPath } from '@overeng/effect-path'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
+import { poolBytes } from './store-pool-install.ts'
 import { projectPoolProvenance, readPoolProvenance } from './store-pool-provenance.ts'
 import {
   beginPoolRetarget,
+  beginPoolRetirement,
   claimPoolGeneration,
   consumePoolReservation,
   finishPoolRetarget,
@@ -275,6 +277,67 @@ describe('pool authoritative lifecycle', () => {
         expect(JSON.stringify(observation)).not.toContain(root.barrierToken)
       }
     }),
+  )
+
+  it.effect('persists retirement revocation and keeps both pending and failed real-root measurements unknown', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      // State-model input only; no native install, birth qualification or removal is fabricated.
+      const activity: PoolActivity = {
+        generation: 1, commit: slot.commit, identity: slot.identity, phase: 'birth-ready',
+        event: {
+          observedAtUtc: '2026-11-19T12:00:00.000Z',
+          provider: { pid: 123, uid: 456, processStartTime: '789' },
+          ownerLabel: '', ownerLabelOrigin: 'none',
+        },
+      }
+      const ready: PoolSlot = {
+        ...slot, path: `${base}repo/pool/slot`, bare: `${base}repo/.bare`,
+        state: 'ready', token: '', owner: '', activity, barrierToken: 'retirement-barrier-sentinel',
+      }
+      const persist = (next: PoolSlot) => withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 1048576 },
+        use: (current, save) => save({ ...current, slots: [next] }),
+      })
+      yield* persist(ready)
+      const retired = yield* beginPoolRetirement({
+        slot: ready, generation: ready.generation, identity: ready.identity,
+      })
+      expect(retired.generation).toBe(ready.generation + 1)
+      expect(retired.identity).toBe('')
+      expect(retired.activity).toBeUndefined()
+      expect(retired.retirement?.activity).toEqual(activity)
+      yield* fs.makeDirectory(ready.path, { recursive: true })
+      yield* fs.writeFileString(`${ready.path}/preserved`, 'unknown retirement work remains')
+      expect(yield* poolBytes(ready.path)).toBeGreaterThan(0)
+      for (const status of ['pending', 'failed'] as const) {
+        yield* persist({ ...retired, retirement: { ...retired.retirement!, status } })
+        yield* inspectPool(base)
+        const current = yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]!) })
+        expect(current.chargeKnown).toBe(false)
+        expect(current.retirement?.status).toBe(status)
+        expect(current.retirement?.nonce).toBe(retired.retirement!.nonce)
+        expect(yield* fs.readFileString(`${ready.path}/preserved`)).toBe('unknown retirement work remains')
+        const observed = (yield* readPoolProvenance({ base }))[0]!
+        expect(observed.disposition).toBe('HOLD')
+        expect(observed.retirement?.previousActivity.phase).toBe('birth-ready')
+        expect(JSON.stringify(observed)).not.toContain(retired.retirement!.nonce)
+        expect(JSON.stringify(observed)).not.toContain(ready.barrierToken)
+        const bytes = yield* fs.readFileString(`${base}.state/pool/state.json`)
+        for (const invalid of [
+          { ...current, chargeKnown: true }, { ...current, state: 'ready' as const },
+          { ...current, retirement: { ...current.retirement!, nonce: '' } },
+          { ...current, retirement: { ...current.retirement!, fromGeneration: 999 } },
+        ]) {
+          expect(Exit.isFailure(yield* persist(invalid).pipe(Effect.exit))).toBe(true)
+          expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(bytes)
+        }
+        expect(Exit.isFailure(yield* beginPoolRetirement({
+          slot: current, generation: current.generation, identity: current.identity,
+        }).pipe(Effect.exit))).toBe(true)
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect('persists an unborn bounded reservation unchanged across actual inspection', () =>

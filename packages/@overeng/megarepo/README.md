@@ -448,6 +448,11 @@ State-only retarget intent advances the generation and revokes install/lease ide
 before mutation; failure retains intent and unknown bytes. These transitions do not
 provide holder evidence or enable a retarget CLI: qualified teardown, fresh authenticated
 holder SDK evidence and normal installation/doctor integration remain required.
+State-only retirement likewise advances the epoch and revokes ready/install identity,
+retaining the previous terminal activity and a private one-use intent nonce. Pending
+or failed retirement stays quarantined with unknown charge even when inspection can
+measure its remaining files. No retry, expiry, adoption or physical deletion follows
+from this transition. Read-only observations expose historical metadata, never its nonce.
 Unborn reservations count against the same host-wide slot and planned-byte limits.
 They carry a one-use nonce and generation, but no provider owner, native root or ready
 identity. Inspection preserves an absent reserved path; an occupied or unknown path

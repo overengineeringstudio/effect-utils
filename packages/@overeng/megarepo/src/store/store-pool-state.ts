@@ -58,6 +58,14 @@ export const PoolActivity = Schema.Struct({
   completed: Schema.optional(PoolActivityEvent),
 })
 export type PoolActivity = Schema.Schema.Type<typeof PoolActivity>
+const RetirementIntent = Schema.Struct({
+  fromGeneration: Schema.Finite,
+  identity: Schema.String,
+  nonce: Schema.String,
+  activity: PoolActivity,
+  status: Schema.Literals(['pending', 'failed']),
+  adminDir: Schema.optional(Schema.String),
+})
 /** Authoritative records: uncertain generations are never implicitly recovered. */
 export const PoolSlot = Schema.Struct({
   ...PoolSlotV1.fields,
@@ -67,6 +75,7 @@ export const PoolSlot = Schema.Struct({
   sourceHistory: Schema.NonEmptyArray(Schema.String),
   retarget: Schema.optional(RetargetIntent),
   activity: Schema.optional(PoolActivity),
+  retirement: Schema.optional(RetirementIntent),
 })
 /** Durable identity, accounting and lifecycle of one protected detached path. */
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
@@ -135,6 +144,63 @@ export const validPoolActivity = (slot: PoolSlot) => {
   return true
 }
 
+export const poolActivityProviderRecorded = (event: PoolActivityEvent) =>
+  event.provider.uid !== undefined && event.provider.processStartTime !== undefined
+export type PoolTerminalRootActivity = {
+  readonly kind: 'birth' | 'claim-release'
+  readonly observedAtUtc: string
+}
+/** Derive observations only after the caller validates canonical source/epoch/install binding. */
+export const poolTerminalRootActivity = (activity: PoolActivity): PoolTerminalRootActivity | undefined => {
+  if (poolActivityProviderRecorded(activity.event) === false) return undefined
+  if (activity.phase === 'birth-ready')
+    return { kind: 'birth', observedAtUtc: activity.event.observedAtUtc }
+  if (activity.phase === 'release-ready' && activity.claimed !== undefined && activity.completed !== undefined &&
+    poolActivityProviderRecorded(activity.claimed) === true && poolActivityProviderRecorded(activity.completed) === true &&
+    Date.parse(activity.claimed.observedAtUtc) <= Date.parse(activity.completed.observedAtUtc) &&
+    Date.parse(activity.completed.observedAtUtc) <= Date.parse(activity.event.observedAtUtc))
+    return { kind: 'claim-release', observedAtUtc: activity.event.observedAtUtc }
+  return undefined
+}
+export const isPoolReadyUnclaimed = (slot: PoolSlot) =>
+  slot.state === 'ready' && slot.chargeKnown === true && slot.identity !== '' && slot.barrierToken !== '' &&
+  slot.owner === '' && slot.token === '' && slot.reservation === undefined &&
+  slot.initialPreparation === undefined && slot.retarget === undefined && slot.retirement === undefined
+
+const validPoolRetirement = (slot: PoolSlot) => {
+  const intent = slot.retirement
+  if (intent === undefined) return true
+  return slot.state === 'quarantined' && slot.chargeKnown === false &&
+    slot.identity === '' && slot.token === '' && slot.owner === '' && slot.barrierToken !== '' &&
+    slot.reservation === undefined && slot.initialPreparation === undefined && slot.retarget === undefined &&
+    slot.activity === undefined && Number.isSafeInteger(intent.fromGeneration) &&
+    intent.fromGeneration >= 1 && slot.generation === intent.fromGeneration + 1 &&
+    intent.identity !== '' && intent.nonce !== '' &&
+    (intent.adminDir === undefined || intent.adminDir.startsWith('/') && resolve(intent.adminDir) === intent.adminDir) &&
+    validPoolActivity({
+      ...slot, generation: intent.fromGeneration, identity: intent.identity, chargeKnown: true,
+      state: 'ready', retirement: undefined, activity: intent.activity,
+    }) === true && poolTerminalRootActivity(intent.activity) !== undefined
+}
+
+/** Pure one-generation revocation; only the owner may persist it before calling its remover. */
+export const beginPoolRetirement = ({
+  slot, generation, identity,
+}: { slot: PoolSlot; generation: number; identity: string }): Effect.Effect<PoolSlot, PoolError> => {
+  const activity = slot.activity
+  if (isPoolReadyUnclaimed(slot) === false || activity === undefined ||
+    validPoolActivity(slot) === false || poolTerminalRootActivity(activity) === undefined || slot.generation !== generation ||
+    slot.identity !== identity || generation < 1 || Number.isSafeInteger(generation + 1) === false)
+    return Effect.fail(new PoolError({ message: 'Stale, unrecorded or non-ready retirement target' }))
+  return Effect.succeed<PoolSlot>({
+    ...slot, generation: generation + 1, state: 'quarantined', chargeKnown: false,
+    identity: '', token: '', owner: '', activity: undefined, reason: 'retirement incomplete',
+    retirement: {
+      fromGeneration: generation, identity, nonce: randomUUID(), activity, status: 'pending',
+    },
+  })
+}
+
 const validatePoolState = (state: PoolState) =>
   Effect.gen(function* () {
     if (
@@ -157,6 +223,7 @@ const validatePoolState = (state: PoolState) =>
           slot.generation < 0 ||
           slot.sourceHistory.at(-1) !== slot.commit ||
           validPoolActivity(slot) === false ||
+          validPoolRetirement(slot) === false ||
           (slot.state === 'reserved'
             ? slot.reservation === undefined ||
               slot.reservation === '' ||
