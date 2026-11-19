@@ -1,16 +1,22 @@
-{ pkgs, processEvidenceCommand ? null }:
+{
+  pkgs,
+  processEvidenceCommand ? null,
+}:
 assert processEvidenceCommand == null || pkgs.lib.isDerivation processEvidenceCommand;
 let
   collector =
     pkgs.runCommand "pnpm-store-gc-engine"
-      ({
-        nativeBuildInputs = [
-          pkgs.rustc
-          pkgs.stdenv.cc
-        ];
-      } // pkgs.lib.optionalAttrs (processEvidenceCommand != null) {
-        PNPM_GC_PROCESS_EVIDENCE_COMMAND = pkgs.lib.getExe processEvidenceCommand;
-      })
+      (
+        {
+          nativeBuildInputs = [
+            pkgs.rustc
+            pkgs.stdenv.cc
+          ];
+        }
+        // pkgs.lib.optionalAttrs (processEvidenceCommand != null) {
+          PNPM_GC_PROCESS_EVIDENCE_COMMAND = pkgs.lib.getExe processEvidenceCommand;
+        }
+      )
       ''
         mkdir -p "$out/bin"
         cp ${./pnpm-store-gc.rs} pnpm-store-gc.rs
