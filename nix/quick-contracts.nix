@@ -61,7 +61,6 @@ let
       pkgs.gzip
       pkgs.curl
       pkgs.python3
-
       pkgs.stdenv.cc
     ]
     ++ config.packages
