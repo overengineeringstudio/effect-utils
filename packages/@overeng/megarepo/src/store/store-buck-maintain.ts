@@ -287,7 +287,10 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       }
       // Ownership is monotonic within a run: a later scan must not erase an earlier owner
       // or uncertainty, and one unknown source must never hide a known foreign owner.
-      ownerEvidence.push(...(yield* processOwners(worktree, daemons, initialPreflight)), ...seatEvidence)
+      ownerEvidence.push(
+        ...(yield* processOwners(worktree, daemons, initialPreflight)),
+        ...seatEvidence,
+      )
       // Refresh filesystem and holder gates after the potentially slow native
       // claim and owner captures, not before them.
       const git = yield* readBuckMaintainGitEvidence(worktree)

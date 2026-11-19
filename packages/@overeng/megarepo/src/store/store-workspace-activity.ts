@@ -945,6 +945,8 @@ export interface BudgetActivityPreflight {
   >
 }
 
+const encodeBudgetPreflightKey = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
 /** Exact scope/coverage keys preserve the scanner's UID/manifest contract. */
 export const makeBudgetActivityPreflight = Effect.fn('store.makeBudgetActivityPreflight')(
   function* (
@@ -969,7 +971,7 @@ export const makeBudgetActivityPreflight = Effect.fn('store.makeBudgetActivityPr
       scope: ProcessScanScope
       coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
     }) {
-      const key = JSON.stringify([scope, coveredProcesses])
+      const key = encodeBudgetPreflightKey([scope, coveredProcesses])
       const previous = scans.get(key)
       if (previous !== undefined) return previous
       const captured = yield* readProcessReferences({
@@ -1007,7 +1009,14 @@ export const readBudgetWorkspaceActivity: (options: {
   readonly preflight?: BudgetActivityPreflight | undefined
 }) => Effect.Effect<BudgetWorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
   'store.readBudgetWorkspaceActivity',
-)(function* ({ fs, config, admittedEpoch, ignoredOwnProcesses, ignoredManifestProcesses, preflight }) {
+)(function* ({
+  fs,
+  config,
+  admittedEpoch,
+  ignoredOwnProcesses,
+  ignoredManifestProcesses,
+  preflight,
+}) {
   const builtin = config.builtin ?? true
   if (config.manifestPath === undefined && builtin === false) return undefined
   const read = Effect.gen(function* () {
@@ -1117,9 +1126,7 @@ export const readBudgetWorktreeInUse = ({
       scope,
       coveredProcesses,
       preflightScan:
-        preflight === undefined
-          ? undefined
-          : yield* preflight.scan({ scope, coveredProcesses }),
+        preflight === undefined ? undefined : yield* preflight.scan({ scope, coveredProcesses }),
       ignoredProcesses,
     })
   })
