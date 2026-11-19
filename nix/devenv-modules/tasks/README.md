@@ -110,6 +110,30 @@ The isolated bind/detached-mount fixture additionally requires an isolated mount
 namespace with `CAP_SYS_ADMIN`; a skipped privileged fixture is not live census
 qualification. Library or codec success never authorizes deletion.
 
+## Privileged holder server (inactive)
+
+`shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,
+non-root `ownerUid`, and optional `managedPolicy` (default `null`, fail closed).
+It builds the actual privileged server and Rust unit runner, but installs no
+socket/service, unprivileged client adapter, or consumer binding. Its executable
+accepts only `--serve-once`; every other mode or additional argument fails closed.
+An inherited authenticated fixed-endpoint socket is required for a live request.
+
+The server links the protocol/digest, proc, and mounted-membership libraries.
+The mounted constructor receives the exact same `allowedRoots` as the server
+policy digest. Ordinary process/task generations, credentials, namespaces,
+resource pins, and closure rechecks belong to the proc library; root membership,
+original collector EX-FLOCK authentication, mounted-source vetoes, and managed
+runtime policy remain in the server assembly. The sole source-authenticated
+bootstrap role still classifies its actual root/cwd/exe/stdio and mappings.
+
+`HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
+not any linked library's identity. Peer executable authentication remains bound
+to that same output's `bin/worktree-holder-evidence`. A later combined client
+package must compile both roles in that final package environment; this
+server-only artifact does not authenticate an independently packaged client.
+The package exports neither `holderEvidenceClient` nor `processEvidenceCommand`.
+
 ## Observability
 
 Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
