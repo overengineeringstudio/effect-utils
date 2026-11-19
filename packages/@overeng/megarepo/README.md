@@ -569,6 +569,14 @@ Unknown/corrupt state, unsafe files, changed bytes or stopped daemons refuse pro
 capture intervals and `authorizesApply: false`. Its `complete` means decision coverage of
 the frozen inventory only, never current-fleet coverage or safety clearance.
 
+`runBuckMaintain` owns the optional `BuckMaintainProgressHooks` native integration.
+Hooks require explicit `dryRun: true` before policy or checkpoint access. Selection
+rejects duplicate, noncanonical or out-of-policy roots; each returned decision awaits
+`onEntry` before entering the native receipt. A disappeared or replaced frozen root
+produces an unknown, non-action decision instead of being silently omitted. Existing
+stateless action callers keep the same lease and fresh-evidence gates; historical
+entries never supply action authority.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical

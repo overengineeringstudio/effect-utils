@@ -1,5 +1,16 @@
+import { resolve } from 'node:path'
+
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+
+/** Normalize scope identity, not liveness; a missing root still needs an unknown receipt. */
+export const canonicalBuckMaintainRoot = (fs: FileSystem.FileSystem, root: string) =>
+  fs.realPath(root).pipe(
+    Effect.catchIf(
+      (error) => error.reason._tag === 'NotFound',
+      () => Effect.succeed(resolve(root)),
+    ),
+  )
 
 const DURATION = /^(\d+(?:\.\d+)?)(ms|s|m|h|d|w)$/u
 const DURATION_UNITS: Readonly<Record<string, number>> = {

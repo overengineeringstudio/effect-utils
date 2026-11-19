@@ -16,7 +16,7 @@ import {
   stopWorktreeBuckDaemons,
   type WorktreeBuckDaemon,
 } from './store-buck-daemons.ts'
-import { buckDurationMs, loadStoreBuckMaintainConfig } from './store-buck-maintain-config.ts'
+import { buckDurationMs, canonicalBuckMaintainRoot, loadStoreBuckMaintainConfig, type StoreBuckMaintainConfig } from './store-buck-maintain-config.ts'
 import {
   discoverBuckMaintainWorktrees,
   readBuckMaintainGitEvidence,
@@ -28,6 +28,7 @@ import {
   fullCleanLastActivityMs,
   isInBlackout,
 } from './store-buck-maintain-policy.ts'
+import { BuckMaintainProgressError, type BuckMaintainCaptureTimes } from './store-buck-maintain-progress-schema.ts'
 import {
   acquireDeletionLease,
   deletionLeasePath,
@@ -176,13 +177,26 @@ const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
   return evidence
 })
 
+/** Optional native loop hooks; existing stateless callers do not need to provide them. */
+export interface BuckMaintainProgressHooks {
+  readonly selectWorktrees: (input: {
+    readonly worktrees: readonly string[]
+    readonly config: StoreBuckMaintainConfig
+    readonly storeBase: string
+    readonly activityConfig: unknown
+  }) => Effect.Effect<readonly string[], BuckMaintainProgressError, FileSystem.FileSystem>
+  readonly onEntry: (entry: BuckMaintainEntry, capture: BuckMaintainCaptureTimes) => Effect.Effect<void, BuckMaintainProgressError, FileSystem.FileSystem>
+}
+
 /** Maintain scoped worktrees through native Buck commands, gated by ownership, activity and leases. */
 export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
   configPath,
   dryRun,
+  progress,
 }: {
   configPath: string | undefined
   dryRun: boolean
+  progress?: BuckMaintainProgressHooks
 }) {
   const fs = yield* FileSystem.FileSystem
   const config = yield* loadStoreBuckMaintainConfig(
@@ -197,13 +211,68 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
   const reportOnly = dryRun || (currentAgent === undefined && config.maintainOwners.length === 0)
   const blackout = isInBlackout({ now: Date.now(), blackout: config.blackout })
   const entries: BuckMaintainEntry[] = []
+  const discovered = yield* discoverBuckMaintainWorktrees(roots)
+  const worktrees =
+    progress === undefined
+      ? discovered
+      : yield* progress.selectWorktrees({
+          worktrees: discovered,
+          config,
+          storeBase,
+          activityConfig,
+        })
+  const discoveredSet = progress === undefined ? undefined : new Set(discovered)
+  if (progress !== undefined) {
+    const allowedRoots = yield* Effect.forEach(roots, (root) => canonicalBuckMaintainRoot(fs, root))
+    const selected = new Set<string>()
+    for (const worktree of worktrees) {
+      if (selected.has(worktree) || resolve(worktree) !== worktree ||
+          !allowedRoots.some((root) => isInsideWorktree({ candidate: worktree, worktreePath: root })))
+        return yield* new BuckMaintainProgressError({
+          message: 'Progress selection contains a duplicate or out-of-policy root',
+        })
+      selected.add(worktree)
+    }
+  }
+  let preflightStartedAt: number | undefined
+  let rootStartedAt = 0
+  let rootStartedMonotonic = 0
+  const record = Effect.fn('store.buckMaintain.record')(function* (entry: BuckMaintainEntry) {
+    if (progress !== undefined)
+      yield* progress.onEntry(entry, {
+        startedAt: preflightStartedAt ?? rootStartedAt,
+        completedAt: Date.now(),
+        elapsedMs: performance.now() - rootStartedMonotonic,
+      })
+    entries.push(entry)
+  })
   // Shared observations select candidates only. capture() without an argument
   // always takes fresh evidence under the lease before EACH native action.
   let preflight: BudgetActivityPreflight | undefined
   let daemonCensus: ReadonlyArray<WorktreeBuckDaemon> | undefined
-  for (const worktree of yield* discoverBuckMaintainWorktrees(roots)) {
+  for (const worktree of worktrees) {
+    if (progress !== undefined) {
+      rootStartedAt = Date.now()
+      rootStartedMonotonic = performance.now()
+    }
+    if (discoveredSet !== undefined) {
+      const canonical = yield* fs.realPath(worktree).pipe(Effect.option)
+      if (!discoveredSet.has(worktree) || Option.isNone(canonical) || canonical.value !== worktree) {
+        yield* record({
+          worktree,
+          action: 'none',
+          reason: Option.isSome(canonical) && canonical.value !== worktree
+            ? 'worktree-identity-changed' : 'worktree-unavailable',
+          bytesBefore: null,
+          bytesAfter: null,
+          daemon: [],
+          ownerEvidence: [{ source: 'process', owner: null }],
+        })
+        continue
+      }
+    }
     if (process.platform !== 'linux') {
-      entries.push({
+      yield* record({
         worktree,
         action: 'none',
         reason: BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON,
@@ -214,6 +283,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       })
       continue
     }
+    if (progress !== undefined) preflightStartedAt ??= Date.now()
     preflight ??= yield* makeBudgetActivityPreflight(fs)
     daemonCensus ??= yield* readBuckDaemonCensus()
     let daemons = yield* findWorktreeBuckDaemons({
@@ -365,7 +435,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       ownerEvidence: initial?.evidence ?? ownerEvidence,
     }
     if (blackout === true || initial?.reason !== undefined) {
-      entries.push({
+      yield* record({
         ...base,
         action: 'none',
         reason: blackout === true ? 'blackout' : (initial?.reason ?? 'active-claim'),
@@ -377,12 +447,12 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       homeDirectory: process.env['HOME'],
     }).pipe(Effect.orElseSucceed(() => undefined))
     if (root !== worktree) {
-      entries.push({ ...base, action: 'none', reason: 'project-root-mismatch' })
+      yield* record({ ...base, action: 'none', reason: 'project-root-mismatch' })
       continue
     }
     const binary = yield* nativeBinary(daemons)
     if (Option.isNone(binary) === true) {
-      entries.push({ ...base, action: 'none', reason: 'native-binary-unavailable' })
+      yield* record({ ...base, action: 'none', reason: 'native-binary-unavailable' })
       continue
     }
     const lease =
@@ -399,7 +469,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
           true) ||
       (reportOnly === false && Option.isNone(lease) === true)
     ) {
-      entries.push({ ...base, action: 'none', reason: 'lease-held' })
+      yield* record({ ...base, action: 'none', reason: 'lease-held' })
       continue
     }
     const maintained = yield* Effect.gen(function* () {
@@ -609,7 +679,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         Option.isSome(lease) === true ? releaseDeletionLease(lease.value) : Effect.void,
       ),
     )
-    entries.push(maintained)
+    yield* record(maintained)
   }
   const actions = entries.filter((entry) => entry.action !== 'none').length
   return {
@@ -618,4 +688,12 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
     entries,
     summary: { worktrees: entries.length, actions, skipped: entries.length - actions },
   } satisfies BuckMaintainReceipt
-}, Effect.provide(StoreLayer))
+}, (effect, { dryRun, progress }) =>
+  progress !== undefined && dryRun !== true
+    ? Effect.fail(
+        new BuckMaintainProgressError({
+          message: 'Progress hooks require explicit dry-run; historical observations cannot authorize apply',
+        }),
+      )
+    : effect.pipe(Effect.provide(StoreLayer)),
+)
