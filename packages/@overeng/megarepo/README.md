@@ -533,6 +533,15 @@ measurement, cleanup, daemon shutdown, or deletion lease. Decision tests assert 
 fail-closed result on Darwin rather than skipping. Native Darwin census support is tracked
 in [#1955](https://github.com/overengineeringstudio/effect-utils/issues/1955).
 
+Maintenance candidate selection lazily shares one run-local host daemon census, native
+agent/PTY capture, and raw process-reference scans keyed by exact scope and manifest
+coverage. Unknown observations remain unknown; per-worktree ignored daemon lifetimes
+are applied only after the raw cache. These observations are advisory, not action
+authority: before each native action, maintenance recaptures activity, holders and
+ownership freshly under the existing deletion lease, retaining the Git, root, seat,
+daemon identity and client safety gates. A holder or foreign owner arriving after
+output measurement still vetoes maintenance.
+
 ### Historical Buck maintenance checkpoint contract
 
 `src/store/store-buck-maintain-progress-schema.ts` owns the serialized manifest and
