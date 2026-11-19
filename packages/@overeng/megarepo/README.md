@@ -547,6 +547,9 @@ selection and receipt APIs. Callers retain `withExclusiveDirectoryLock(directory
 throughout open, root selection, append and receipt generation. Supply an owned canonical
 directory without shared-write permissions, attested immutable source/runtime identity,
 normalized configuration and sorted unique absolute canonical-form discovered roots.
+Admission also checks every ancestor protecting the persistent sibling lock: ownership
+must be the caller or root, and shared-write requires sticky-directory protection.
+An unsafe ancestor refuses before lock creation or entering the writer; it is never repaired.
 
 `openBuckMaintainProgress` freezes the initial inventory and compares runtime/configuration
 bindings on resume. New roots are excluded and disclosed as `newlyDiscovered`; unfinished

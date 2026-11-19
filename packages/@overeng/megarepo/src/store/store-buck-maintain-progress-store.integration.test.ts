@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
@@ -212,6 +212,60 @@ it.live('refuses a concurrent checkpoint writer and releases admission after int
     expect((yield* lock(f.open()).pipe(Effect.result))._tag).toBe('Success')
     expect((yield* lock(Effect.interrupt).pipe(Effect.exit))._tag).toBe('Failure')
     expect((yield* lock(f.open()).pipe(Effect.result))._tag).toBe('Success')
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('refuses replaceable lock ancestors before entering a checkpoint writer', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture
+    const parent = dirname(f.directory)
+    const original = (yield* f.fs.stat(parent)).mode & 0o7777
+    let entered = false
+    yield* f.fs.chmod(parent, 0o777)
+    const result = yield* withExclusiveDirectoryLock(f.directory)(Effect.sync(() => {
+      entered = true
+    })).pipe(Effect.result, Effect.ensuring(f.fs.chmod(parent, original)))
+    expect(result._tag).toBe('Failure')
+    expect(entered).toBe(false)
+    expect(yield* f.fs.exists(`${f.directory}.mr-container.lock`)).toBe(false)
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('refuses a shared-writable grandparent even when the immediate parent is private', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture
+    const shared = join(dirname(f.directory), 'shared')
+    const nested = join(shared, 'private', 'checkpoint')
+    yield* f.fs.makeDirectory(nested, { recursive: true, mode: 0o700 })
+    yield* f.fs.chmod(shared, 0o777)
+    const result = yield* withExclusiveDirectoryLock(nested)(Effect.succeed('entered')).pipe(Effect.result)
+    expect(result._tag).toBe('Failure')
+    expect(yield* f.fs.exists(`${nested}.mr-container.lock`)).toBe(false)
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('accepts a trusted sticky parent without relaxing checkpoint directory permissions', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture
+    const parent = dirname(f.directory)
+    const original = (yield* f.fs.stat(parent)).mode & 0o7777
+    yield* f.fs.chmod(parent, 0o1777)
+    const result = yield* withExclusiveDirectoryLock(f.directory)(f.open()).pipe(
+      Effect.result,
+      Effect.ensuring(f.fs.chmod(parent, original)),
+    )
+    expect(result._tag).toBe('Success')
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
+it.live('rejects a symlinked directory before creating admission at its resolved target', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture
+    const alias = `${f.directory}-lock-alias`
+    yield* f.fs.symlink(f.directory, alias)
+    const result = yield* withExclusiveDirectoryLock(alias)(Effect.succeed('entered')).pipe(Effect.result)
+    expect(result._tag).toBe('Failure')
+    expect(yield* f.fs.exists(`${f.directory}.mr-container.lock`)).toBe(false)
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
 

@@ -267,9 +267,37 @@ export const withGitContainerLock =
       ),
     )
 
-/** Exclusive checkpoint admission without resolving an unrelated Git repository. */
-export const withExclusiveDirectoryLock = (path: string) =>
-  withGitLock({ path, create: true, containerMode: 'exclusive' })
+/** Exclusive checkpoint admission; every ancestor must protect the sibling lock. */
+export const withExclusiveDirectoryLock =
+  (path: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const directory = yield* io(path)(() => realpath(path))
+      const root = yield* io(directory)(() => lstat(directory))
+      if (directory !== resolve(path) || root.isDirectory() === false ||
+        root.uid !== process.getuid?.() || (root.mode & 0o022) !== 0) {
+        return yield* new GitWriterLockError({
+          path,
+          cause: 'Expected an existing owned canonical non-shared-writable checkpoint directory',
+        })
+      }
+      let parent = dirname(directory)
+      while (true) {
+        const info = yield* io(parent)(() => lstat(parent))
+        const trustedOwner = info.uid === 0 || info.uid === process.getuid?.()
+        const replaceable = (info.mode & 0o022) !== 0 && (info.mode & 0o1000) === 0
+        if (info.isDirectory() === false || trustedOwner === false || replaceable) {
+          return yield* new GitWriterLockError({
+            path: parent,
+            cause: 'Checkpoint lock requires trusted non-shared-writable or sticky ancestors',
+          })
+        }
+        const next = dirname(parent)
+        if (next === parent) break
+        parent = next
+      }
+      return yield* effect.pipe(withGitLock({ path, create: true, containerMode: 'exclusive' }))
+    })
 
 /** Minimal process handle shared by the standard and descriptor-inheriting spawners. */
 export interface GitWriterProcess {
