@@ -375,7 +375,11 @@ fn queue_snapshot(
     if last != b'\n' {
         return Err(io::Error::other("coverage UNKNOWN: missing final LF"));
     }
-    let snapshot = format!("{:x}", digest.finalize());
+    use std::fmt::Write as _;
+    let mut snapshot = String::with_capacity(64);
+    for byte in digest.finalize() {
+        write!(&mut snapshot, "{byte:02x}").expect("writing to String cannot fail");
+    }
     file.rewind()?;
     let mut reader = BufReader::new(file);
     let mut line = Vec::new();
