@@ -2,16 +2,18 @@ import { dirname } from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
+import { type GitWriterLockError, resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
 import {
   acquireDeletionLease,
   adoptPersistentDeletionLease,
   deletionLeasePath,
+  type DeletionLeaseUnavailableError,
   persistentDeletionLeaseOwnerAlive,
 } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
@@ -30,6 +32,13 @@ import {
   reservePoolGeneration,
   withPoolState,
 } from './store-pool-state.ts'
+
+type PoolOperationError =
+  | PoolError
+  | PlatformError
+  | Schema.SchemaError
+  | GitWriterLockError
+  | DeletionLeaseUnavailableError
 
 const barrier = ({ base, slot }: { base: AbsoluteDirPath; slot: PoolSlot }) => ({
   leasePath: deletionLeasePath({ storeBasePath: base, ownerPath: slot.path }),
@@ -120,7 +129,7 @@ export const reservePool = (args: {
   maxSlots: number
   maxBytes: number
   charge: number
-}): Effect.Effect<PoolSlot, PoolError, FileSystem.FileSystem> =>
+}): Effect.Effect<PoolSlot, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> =>
   withPoolState({
     base: args.base,
     limits: { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
@@ -142,7 +151,11 @@ export const prewarmPool = (args: {
   id: string
   reservation: string
   generation: number
-}): Effect.Effect<PoolSlot, PoolError, FileSystem.FileSystem | ChildProcessSpawner> =>
+}): Effect.Effect<
+  PoolSlot,
+  PoolOperationError | Git.GitCommandError | Git.CommonBareWorktreeConfigError,
+  FileSystem.FileSystem | ChildProcessSpawner
+> =>
   withPoolState({
     base: args.base,
     use: (state, save) =>
