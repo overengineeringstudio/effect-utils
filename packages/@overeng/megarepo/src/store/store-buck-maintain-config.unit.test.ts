@@ -55,11 +55,53 @@ describe('Buck maintenance config', () => {
     }),
   )
 
+  it.effect('preserves the explicit immutable native holder binding without enabling a default', () =>
+    Effect.gen(function* () {
+      const producerId = `/nix/store/${'0'.repeat(32)}-holder-evidence-config-fixture`
+      const holderEvidenceClient = {
+        path: `${producerId}/bin/worktree-holder-evidence`,
+        producerId,
+        policyId: 'a'.repeat(64),
+      }
+      const result = yield* decodeStoreBuckMaintainConfig(
+        encodeJson({ version: 1, holderEvidenceClient }),
+      )
+      expect(result.holderEvidenceClient).toEqual(holderEvidenceClient)
+      expect(DEFAULT_STORE_BUCK_MAINTAIN_CONFIG.holderEvidenceClient).toBeUndefined()
+    }),
+  )
+
   for (const [name, value] of Object.entries({
     'missing version': {},
     'unknown version': { version: 2 },
     'unknown field': { version: 1, extra: true },
     'unknown nested field': { version: 1, buckOut: { extra: true } },
+    'incomplete native holder binding': {
+      version: 1, holderEvidenceClient: { path: '/bin/helper' },
+    },
+    'mutable native holder producer': {
+      version: 1,
+      holderEvidenceClient: {
+        path: '/bin/helper', producerId: 'current', policyId: 'a'.repeat(64),
+      },
+    },
+    'different native holder executable': {
+      version: 1,
+      holderEvidenceClient: {
+        path: `/nix/store/${'0'.repeat(32)}-helper/bin/other`,
+        producerId: `/nix/store/${'0'.repeat(32)}-helper`,
+        policyId: 'a'.repeat(64),
+      },
+    },
+    'unknown native holder socket override': {
+      version: 1,
+      holderEvidenceClient: {
+        path: `/nix/store/${'0'.repeat(32)}-helper/bin/worktree-holder-evidence`,
+        producerId: `/nix/store/${'0'.repeat(32)}-helper`,
+        policyId: 'a'.repeat(64),
+        socket: '/untrusted/helper.sock',
+      },
+    },
     'negative bytes': { version: 1, buckOut: { budgetBytes: -1 } },
     'fractional bytes': { version: 1, buckOut: { budgetBytes: 0.5 } },
     'unsafe bytes': { version: 1, buckOut: { budgetBytes: Number.MAX_SAFE_INTEGER + 1 } },

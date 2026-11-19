@@ -3,7 +3,7 @@ import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, normalize, sep } from 'node:path'
 
 import { Clock, DateTime, Effect, Option, Schema, Stream } from 'effect'
-import type * as FileSystem from 'effect/FileSystem'
+import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -20,6 +20,7 @@ import {
   type ProcessScanScope,
   type ProcessReferenceScan,
 } from './store-inuse.ts'
+import type { WorktreeHolderSource } from './store-worktree-holder-source.ts'
 
 /** Host admission survives fresh captures; store indices naturally advance during work. */
 export interface WorkspaceActivityEpoch {
@@ -858,12 +859,16 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   coveredProcesses,
   ignoredOwnProcesses,
   preflight,
+  holderSource,
+  holderWorktree,
 }: {
   fs: FileSystem.FileSystem
   scope: ProcessScanScope
   coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   ignoredOwnProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   preflight?: BudgetActivityPreflight | undefined
+  holderSource?: WorktreeHolderSource | undefined
+  holderWorktree?: string | undefined
 }) {
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
   if (ptyBinary.length === 0) return yield* unavailable('PTY activity source is disabled')
@@ -903,6 +908,25 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
       ),
     )
     if (canonical !== undefined) activePaths.add(canonical)
+  }
+  if (holderSource !== undefined) {
+    if (holderWorktree === undefined) return yield* unavailable('Holder scope is missing')
+    const observation = yield* holderSource.read({
+      worktreePath: holderWorktree,
+      ignoredProcesses: ignoredOwnProcesses,
+    }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+    if (observation.complete === false)
+      return yield* unavailable('Scoped holder evidence is incomplete')
+    return {
+      activePaths,
+      processPaths: new Set(observation.references.map((reference) => reference.path)),
+      epoch: {
+        host: hostname(),
+        producer: BUILTIN_ACTIVITY_PRODUCER,
+        snapshotId: bootId,
+        storeIndex: 0,
+      },
+    }
   }
   const scan =
     preflight === undefined
@@ -1007,6 +1031,9 @@ export const readBudgetWorkspaceActivity: (options: {
   readonly ignoredManifestProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   /** Candidate selection only; omit for every authoritative per-action capture. */
   readonly preflight?: BudgetActivityPreflight | undefined
+  /** Evidence is complete only for this exact selected root, never the whole host. */
+  readonly holderSource?: WorktreeHolderSource | undefined
+  readonly holderWorktree?: string | undefined
 }) => Effect.Effect<BudgetWorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
   'store.readBudgetWorkspaceActivity',
 )(function* ({
@@ -1016,6 +1043,8 @@ export const readBudgetWorkspaceActivity: (options: {
   ignoredOwnProcesses,
   ignoredManifestProcesses,
   preflight,
+  holderSource,
+  holderWorktree,
 }) {
   const builtin = config.builtin ?? true
   if (config.manifestPath === undefined && builtin === false) return undefined
@@ -1037,9 +1066,13 @@ export const readBudgetWorkspaceActivity: (options: {
             coveredProcesses: manifest.processCoverage.processIdentities,
             ignoredOwnProcesses,
             preflight,
+            holderSource,
+            holderWorktree,
           })
         : builtin === true
-          ? yield* readOwnerActivity({ fs, scope: 'all-uids', ignoredOwnProcesses, preflight })
+          ? yield* readOwnerActivity({
+              fs, scope: 'all-uids', ignoredOwnProcesses, preflight, holderSource, holderWorktree,
+            })
           : undefined
     const activity: BudgetWorkspaceActivity | undefined =
       manifest === undefined
@@ -1105,14 +1138,42 @@ export const readBudgetWorktreeInUse = ({
   activity,
   ignoredProcesses,
   preflight,
+  holderSource,
 }: {
   worktreePath: string
   activity: BudgetWorkspaceActivity | undefined
   ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   /** Candidate selection only; a deletion-time caller must omit this. */
   preflight?: BudgetActivityPreflight | undefined
+  holderSource?: WorktreeHolderSource | undefined
 }): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
+    if (holderSource !== undefined) {
+      const observation = yield* holderSource.read({ worktreePath, ignoredProcesses })
+      if (observation.inUse._tag !== 'free') return observation.inUse
+      const fs = yield* FileSystem.FileSystem
+      // A local positive is an additional veto, not another completeness requirement.
+      const scan =
+        preflight === undefined
+          ? yield* readProcessReferences({ fs, selfPid: process.pid, scope: 'all-uids' })
+          : yield* preflight.scan({ scope: 'all-uids' })
+      for (const reference of scan.references ?? []) {
+        if (isInsideWorktree({ candidate: reference.path, worktreePath }) === false) continue
+        // Never transfer a daemon cwd/root exemption to an fd, map or mount.
+        const exempt =
+          reference.kind === 'cwd' || reference.kind === 'root'
+            ? observation.excludedProcesses.find((identity) => identity.pid === reference.pid)
+            : undefined
+        if (exempt !== undefined) {
+          const stat = yield* fs.readFileString(`/proc/${reference.pid}/stat`).pipe(Effect.option)
+          if (Option.isSome(stat) === true &&
+              parseProcStat(stat.value)?.startTime === exempt.startTime) continue
+        }
+        return { _tag: 'in-use', holder: { pid: reference.pid, path: reference.path } } as const
+      }
+      // Scanning may itself outlive the admitted native capture.
+      return (yield* holderSource.read({ worktreePath, ignoredProcesses })).inUse
+    }
     const coverage = activity?.processCoverage
     const covered =
       coverage !== undefined &&

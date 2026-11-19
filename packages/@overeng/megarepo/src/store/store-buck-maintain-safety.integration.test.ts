@@ -236,6 +236,45 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
   }
 })
 
+it.live('holds an unavailable configured native client instead of trusting a free local census', () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture()
+    const worktree = yield* fixture.addWorktree('missing-native-holder-client')
+    const producerId = `/nix/store/${'0'.repeat(32)}-holder-evidence-unavailable-fixture`
+    const clientPath = `${producerId}/bin/worktree-holder-evidence`
+    expect(yield* fixture.fs.exists(clientPath)).toBe(false)
+    yield* fixture.fs.writeFileString(
+      fixture.configPath,
+      encodeJson({
+        version: 1,
+        worktreeRoots: [fixture.roots],
+        buckOut: { budgetBytes: 0, keepSince: '0s' },
+        maintainOwners: ['seat/a'],
+        maintainUnowned: true,
+        holderEvidenceClient: {
+          path: clientPath,
+          producerId,
+          policyId: '0'.repeat(64),
+        },
+      }),
+    )
+    // No successful native helper is substituted: the real client path is absent.
+    const receipt = yield* fixture.run()
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
+    expect(receipt.entries[0]).toMatchObject({
+      worktree,
+      action: 'none',
+      reason: 'holder-census-incomplete',
+    })
+    yield* fixture.expectNoCommands()
+    expect(yield* fixture.fs.readFileString(join(worktree, 'buck-out', 'v2', 'retained-output')))
+      .toBe('must survive')
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
+
 for (const complete of [true, false]) {
   it.live(
     `shares initial host censuses across no-op roots while retaining ${complete === true ? 'complete' : 'unknown'} evidence`,

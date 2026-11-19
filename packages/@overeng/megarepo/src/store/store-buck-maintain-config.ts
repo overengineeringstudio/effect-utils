@@ -1,6 +1,11 @@
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
+import {
+  WorktreeHolderEvidenceClientConfigSchema,
+  type WorktreeHolderEvidenceClientConfig,
+} from './store-worktree-holder-codec.ts'
+
 const DURATION = /^(\d+(?:\.\d+)?)(ms|s|m|h|d|w)$/u
 const DURATION_UNITS: Readonly<Record<string, number>> = {
   ms: 1,
@@ -40,6 +45,7 @@ const OwnerPattern = Schema.NonEmptyString.check(
 export const StoreBuckMaintainConfigFile = Schema.Struct({
   version: Schema.Literal(1),
   worktreeRoots: Schema.optionalKey(Schema.Array(WorktreeRoot)),
+  holderEvidenceClient: Schema.optionalKey(WorktreeHolderEvidenceClientConfigSchema),
   buckOut: Schema.optionalKey(
     Schema.Struct({
       budgetBytes: Schema.optionalKey(Bytes),
@@ -58,6 +64,7 @@ export type StoreBuckMaintainConfigFile = typeof StoreBuckMaintainConfigFile.Typ
 export interface StoreBuckMaintainConfig {
   readonly version: 1
   readonly worktreeRoots: readonly string[]
+  readonly holderEvidenceClient?: WorktreeHolderEvidenceClientConfig
   readonly buckOut: {
     readonly budgetBytes: number
     readonly keepSince: string
@@ -102,6 +109,9 @@ export const decodeStoreBuckMaintainConfig = Effect.fn('store.decodeStoreBuckMai
     const config: StoreBuckMaintainConfig = {
       version: 1,
       worktreeRoots: value.worktreeRoots ?? [],
+      ...(value.holderEvidenceClient === undefined
+        ? {}
+        : { holderEvidenceClient: value.holderEvidenceClient }),
       buckOut: {
         budgetBytes:
           value.buckOut?.budgetBytes ?? DEFAULT_STORE_BUCK_MAINTAIN_CONFIG.buckOut.budgetBytes,

@@ -584,8 +584,9 @@ not a TypeScript socket reader, authenticates the fixed privileged endpoint.
 Every error, oversized stream, mismatched identity or stale capture is unknown.
 Freshness checks actual Linux machine/boot identity and conservative boot-time
 bounds; callers must recheck freshness and root identity under their action lease.
-No service, activation, cleanup wiring or positive runtime qualification is
-introduced by these APIs. Decoded or captured evidence is not deletion permission.
+These APIs do not install or activate a service, and source-level protocol tests
+do not qualify a privileged runtime. Decoded or captured evidence is not deletion
+permission.
 Worktree consumers must veto every fd, executable, mapping and mount reference,
 including retained bytes; store-specific retained-byte policy does not apply.
 
@@ -601,6 +602,21 @@ Only an exact own-UID daemon leader and matching leader/task lifetime may defer
 a cwd/root reference to shutdown and the final probe; nonleader references veto.
 Temporary identity-read descriptors are closed before return: this API does not
 claim descriptors held through deletion, atomic exclusion or live qualification.
+
+`buck-maintain` accepts an optional strict `holderEvidenceClient` policy binding
+from the native package's immutable client constructor. It has no enabled default
+and cannot register roots or widen their enrollment. A reserved path must exist
+and pass fresh directory-identity admission before it can provide evidence.
+Candidate selection captures its selected roots once; each action creates a new
+scoped source under the existing deletion lease and rechecks it after the remaining
+root/daemon/client gates. A configured unavailable, stale or incomplete client is
+a hold, never a reason to fall back to an unprivileged negative census.
+Local positive references remain additional vetoes: an exact live daemon cwd/root
+exemption never covers its open descriptors, mappings or mounts.
+The policy remains version 1 with an optional field; older strict readers reject
+that field, so publish the matching reader before deploying the configured binding.
+Enabling this path requires qualification of the actual immutable native client
+against its authenticated service; an absent-client regression is not that proof.
 
 ## Documentation
 
