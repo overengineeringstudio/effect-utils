@@ -1749,7 +1749,8 @@ console.log(JSON.stringify({admitted, attempt}));`,
         setSystemTime(new Date(completedAt + ttl))
         const refreshed = await directBuckArguments(invocation)
         expect(requests).toBe(2)
-        expect(effective(refreshed)['buck2.remote_cache_enabled'] === 'false').toBe(initialAvailable)
+        const refreshedUnavailable = effective(refreshed)['buck2.remote_cache_enabled'] === 'false'
+        expect(refreshedUnavailable).toBe(initialAvailable)
       } finally {
         setSystemTime()
         const closed = Promise.withResolvers<void>()
