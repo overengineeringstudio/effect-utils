@@ -8,6 +8,30 @@ use std::process::{Command, Stdio};
 
 const VERSION: &str = "pnpm-store-evidence-v1";
 const COMMAND: Option<&str> = option_env!("PNPM_GC_PROCESS_EVIDENCE_COMMAND");
+const PROOF_TTL_NS: u64 = 30_000_000_000;
+
+fn boot_time_ns() -> Result<u64, String> {
+    #[repr(C)]
+    struct Timespec { seconds: std::ffi::c_long, nanoseconds: std::ffi::c_long }
+    unsafe extern "C" { fn clock_gettime(clock: std::ffi::c_int, value: *mut Timespec) -> std::ffi::c_int; }
+    let mut value = Timespec { seconds: 0, nanoseconds: 0 };
+    // Linux CLOCK_BOOTTIME includes suspend, unlike Instant/CLOCK_MONOTONIC.
+    // SAFETY: exact libc timespec layout and a valid writable output pointer.
+    if unsafe { clock_gettime(7, &mut value) } != 0 {
+        return Err(format!("process evidence boot clock: {}", std::io::Error::last_os_error()));
+    }
+    let seconds = u64::try_from(value.seconds).map_err(|_| "negative process evidence boot clock")?;
+    let nanos = u64::try_from(value.nanoseconds).map_err(|_| "negative process evidence boot nanos")?;
+    if nanos >= 1_000_000_000 { return Err("invalid process evidence boot nanos".into()); }
+    seconds.checked_mul(1_000_000_000).and_then(|seconds| seconds.checked_add(nanos))
+        .ok_or_else(|| "process evidence boot clock overflow".into())
+}
+
+fn fresh(started: u64, now: u64) -> Result<(), String> {
+    if now < started || now - started >= PROOF_TTL_NS {
+        Err("process evidence expired".into())
+    } else { Ok(()) }
+}
 
 pub(super) fn configured() -> bool { COMMAND.is_some() }
 
@@ -53,16 +77,28 @@ pub(super) fn prove(root: &Path, directory: &fs::File, lease: Option<&fs::File>)
     let mut nonce = String::with_capacity(32);
     for byte in random { write!(&mut nonce, "{byte:02x}").expect("writing to String"); }
     let metadata = directory.metadata().map_err(|error| error.to_string())?;
+    let requested_at = boot_time_ns()?;
     let bytes = run(command, &[
         std::ffi::OsStr::new("--pnpm-store-evidence-v1"), root.as_os_str(),
         std::ffi::OsStr::new(&metadata.dev().to_string()), std::ffi::OsStr::new(&metadata.ino().to_string()),
         std::ffi::OsStr::new(&directory.as_raw_fd().to_string()), std::ffi::OsStr::new(&lease.as_raw_fd().to_string()),
         std::ffi::OsStr::new(&nonce), std::ffi::OsStr::new(start),
     ])?;
-    validate(&bytes, &nonce, metadata.dev(), metadata.ino(), start)
+    validate(&bytes, &nonce, metadata.dev(), metadata.ino(), start)?;
+    // Launch predates the privileged capture, so this conservatively expires
+    // no later than capture-start+30s, even after collector suspend/descheduling.
+    fresh(requested_at, boot_time_ns()?)
 }
 
 fn run(command: &str, args: &[&std::ffi::OsStr]) -> Result<Vec<u8>, String> {
+    let started = boot_time_ns()?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    run_with_lifetime(command, args, started, deadline)
+}
+
+fn run_with_lifetime(command: &str, args: &[&std::ffi::OsStr], started: u64,
+    deadline: std::time::Instant) -> Result<Vec<u8>, String>
+{
     let mut child = Command::new(command).args(args)
         .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn().map_err(|error| format!("fixed process evidence command: {error}"))?;
@@ -85,20 +121,26 @@ fn run(command: &str, args: &[&std::ffi::OsStr]) -> Result<Vec<u8>, String> {
     }
     reader(stdout, 256, true, send.clone());
     reader(stderr, 4096, false, send);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let within_deadline = || -> Result<(), String> {
+        if std::time::Instant::now() >= deadline { return Err("process evidence command timed out".into()); }
+        fresh(started, boot_time_ns()?)
+    };
     let result = (|| {
         let mut output = Vec::new();
         for _ in 0..2 {
+            within_deadline()?;
             let (is_output, bytes) = receive.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
                 .map_err(|_| "process evidence command timed out")?;
+            within_deadline()?;
             let bytes = bytes?;
             if is_output { output = bytes; }
         }
         loop {
+            within_deadline()?;
             if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+                within_deadline()?;
                 return if status.success() { Ok(output) } else { Err("process evidence command failed".into()) };
             }
-            if std::time::Instant::now() >= deadline { return Err("process evidence command timed out".into()); }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     })();
@@ -112,6 +154,29 @@ fn run(command: &str, args: &[&std::ffi::OsStr]) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queued_success_expires_on_boot_clock_even_without_monotonic_progress() {
+        let started = 123_000_000_000;
+        assert!(fresh(started, started + PROOF_TTL_NS - 1).is_ok());
+        assert!(fresh(started, started + PROOF_TTL_NS).is_err());
+        assert!(fresh(started, started + PROOF_TTL_NS + 1).is_err());
+        assert!(fresh(started, started - 1).is_err());
+        let actual = boot_time_ns().unwrap();
+        assert!(fresh(actual, boot_time_ns().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn successful_child_cannot_override_expired_boot_or_command_deadline() {
+        let args = [std::ffi::OsStr::new("-c"), std::ffi::OsStr::new("printf fixture")];
+        let now = boot_time_ns().unwrap();
+        let future = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        assert!(run_with_lifetime("/bin/sh", &args, now.saturating_sub(PROOF_TTL_NS), future).is_err());
+        assert!(run_with_lifetime("/bin/sh", &args, now, std::time::Instant::now()).is_err());
+        let delayed = [std::ffi::OsStr::new("-c"), std::ffi::OsStr::new("sleep 0.05; printf fixture")];
+        assert!(run_with_lifetime("/bin/sh", &delayed, boot_time_ns().unwrap(),
+            std::time::Instant::now() + std::time::Duration::from_millis(1)).is_err());
+    }
 
     #[test]
     fn strict_protocol_scope_and_verdict() {

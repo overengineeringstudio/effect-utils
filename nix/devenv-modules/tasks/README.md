@@ -412,7 +412,11 @@ for outer tasks that must complete before the nested devenv process can evaluate
     record: `pnpm-store-evidence-v1`, nonce, device, inode, `absent`, 64-lowercase-hex
     manifest digest, start time. Nonzero exit, mismatches, malformed records,
     stdout over 256 bytes, stderr over 4096 bytes or a 30-second invocation
-    deadline fail closed. Both output pipes are drained concurrently. No production
+    deadline fail closed. The consumer also records Linux `CLOCK_BOOTTIME` before
+    launch and refuses acceptance at or after that start plus 30 seconds, including
+    queued output and successful exits after collector suspend/descheduling.
+    It rechecks freshness after strict record validation; the lease cannot extend
+    proof lifetime. Both output pipes are drained concurrently. No production
     helper is supplied or enabled here; deployment requires independent security
     review and actual namespace/IPC qualification.
     This is a cooperative accidental-breakage contract: direct directory
