@@ -47,10 +47,12 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
     const loaderOverrides = Object.fromEntries(
       loaderControls.map((name) => [name, action.runs.steps[0].env[name]]),
     )
-    const nix = (await Bun.file('/nix/var/nix/profiles/default/bin/nix').exists())
-      ? '/nix/var/nix/profiles/default/bin/nix'
-      : '/run/current-system/sw/bin/nix'
+    const nix =
+      (await Bun.file('/nix/var/nix/profiles/default/bin/nix').exists()) === true
+        ? '/nix/var/nix/profiles/default/bin/nix'
+        : '/run/current-system/sw/bin/nix'
     const packageSelector = join(root, '.github/actions/ci-policy/bun-package.nix')
+    console.error('ci-policy-isolation: selecting runtime')
     const bunPackage = (
       await Bun.$`${nix} eval --impure --raw --file ${packageSelector}`.text()
     ).trim()
@@ -73,6 +75,7 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
       }
     `,
     )
+    console.error('ci-policy-isolation: preparing loader-injection proof')
     await Bun.$`${nix} shell --option builders ${''} --option max-jobs 0 ${compilerPackage} --command cc -shared -fPIC -o ${library} ${source}`.quiet()
     // Prove the fixture can bypass a native launcher before env -i executes.
     const vulnerable = Bun.spawnSync(['/usr/bin/env', '-i', '/bin/sh', '-c', 'exit 42'], {
@@ -97,7 +100,8 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
         join(fixture, '.github/workflows/ci.yml'),
         `on: push\njobs:\n  check:\n    runs-on: ${runner}\n    if: true\n    steps:\n      - run: echo compliant\n`,
       )
-      const process = Bun.spawn(shellArgs, {
+      console.error(`ci-policy-isolation: running real action for ${runner}`)
+      const child = Bun.spawn(shellArgs, {
         cwd: fixture,
         env: {
           ...Bun.env,
@@ -131,10 +135,20 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
         stdout: 'pipe',
         stderr: 'pipe',
       })
+      // Forward diagnostics immediately: a test timeout must not hide the active phase.
+      const [stderrForLog, stderrForAssertion] = child.stderr.tee()
+      const forwardStderr = stderrForLog.pipeTo(
+        new WritableStream<Uint8Array>({
+          write(chunk) {
+            process.stderr.write(chunk)
+          },
+        }),
+      )
       const [actualExitCode, stdout, stderr] = await Promise.all([
-        process.exited,
-        new Response(process.stdout).text(),
-        new Response(process.stderr).text(),
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(stderrForAssertion).text(),
+        forwardStderr,
       ])
       expect(actualExitCode, stdout + stderr).toBe(exitCode)
       expect(await Bun.file(marker).exists()).toBe(false)

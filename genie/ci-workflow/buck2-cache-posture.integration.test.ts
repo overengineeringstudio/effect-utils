@@ -564,6 +564,9 @@ describe('generated CI cache trust behavior', () => {
     expect(flake).toContain(
       'inherit (nativeProductPackages) otelite otel-scrape typescript-api-server;',
     )
+    expect(flake).toContain('reindeer = import ./nix/reindeer.nix { inherit pkgs; };')
+    const devenv = await Bun.file(new URL('../../devenv.nix', import.meta.url)).text()
+    expect(devenv).toContain('reindeer = import ./nix/reindeer.nix { pkgs = previous; };')
   })
 
   it('roundtrips libraries during preparation, then smokes outputs and publishes only on request', () => {
