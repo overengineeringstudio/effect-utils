@@ -1,4 +1,4 @@
-# Inactive library only: no executable adapter, socket, unit or service export.
+# Inactive library and test runner only: no adapter, socket, unit or service.
 { pkgs }:
 let
   sources = map (suffix: "worktree-holder-proc${suffix}.rs") [
@@ -30,7 +30,8 @@ pkgs.runCommand "worktree-holder-proc"
     ) sources}
     rustc --edition=2024 -D warnings --test worktree-holder-proc.rs -o proc-tests
     ./proc-tests
-    mkdir -p "$out/lib" "$out/share/worktree-holder-proc"
+    mkdir -p "$out/lib" "$out/libexec" "$out/share/worktree-holder-proc"
     rustc --edition=2024 -D warnings --crate-name worktree_holder_proc --crate-type rlib worktree-holder-proc.rs -o "$out/lib/libworktree_holder_proc.rlib"
     cp worktree-holder-proc*.rs "$out/share/worktree-holder-proc/"
+    cp proc-tests "$out/libexec/worktree-holder-proc-tests"
   ''
