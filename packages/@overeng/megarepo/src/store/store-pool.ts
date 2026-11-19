@@ -2,6 +2,7 @@ import { dirname } from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -119,7 +120,7 @@ export const reservePool = (args: {
   maxSlots: number
   maxBytes: number
   charge: number
-}) =>
+}): Effect.Effect<PoolSlot, PoolError, FileSystem.FileSystem> =>
   withPoolState({
     base: args.base,
     limits: { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
@@ -141,7 +142,7 @@ export const prewarmPool = (args: {
   id: string
   reservation: string
   generation: number
-}) =>
+}): Effect.Effect<PoolSlot, PoolError, FileSystem.FileSystem | ChildProcessSpawner> =>
   withPoolState({
     base: args.base,
     use: (state, save) =>
