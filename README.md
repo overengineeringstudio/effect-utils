@@ -65,7 +65,11 @@ epochs reject before restart. This is not publisher verification or permission
 to promote arbitrary releases: consumers own that human-controlled boundary.
 The Linux nested-KVM proof is
 `nix build ./nix/immutable-microvm#checks.x86_64-linux.lifecycle`.
-It needs a KVM-capable admitted lane, not an unapproved new hosted CI job.
+The `Immutable Authority Lifecycle` same-repository PR workflow runs that proof on
+the admitted public Namespace KVM selector, serialized across public heavy jobs.
+It builds both immutable image/runner closures first, then exercises cold boot,
+update, automatic rollback, restart and persistent state with no enrollment,
+provider credentials, deployment or cache publishing.
 
 ## Standalone Nix-staged JavaScript and TypeScript
 
