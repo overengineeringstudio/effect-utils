@@ -58,7 +58,8 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         if (
           !('run' in taskStep) ||
           typeof taskStep.run !== 'string' ||
-          taskStep.run.includes('tasks run ') === false
+          (taskStep.run.includes('tasks run ') === false &&
+            taskStep.run.includes('${PIPELINE_RUN_PREFIX') === false)
         )
           continue
         steps[index] = {

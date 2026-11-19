@@ -12,22 +12,46 @@ The fleet policy is maintained in the maintainers' dotfiles.
 
 # Development Commands
 
-Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
+Use Buck for check verdicts; retained devenv tasks handle setup and the broader suites:
 
-- **TypeScript**: `devenv tasks run buck2:quick`
+- **TypeScript**: `python3 scripts/worktree-env.py run -- buck2 build //:quick` after the explicit preparation below.
 - **Declaration publication**: `devenv tasks run buck2:typescript:materialize-dist`
 - **Linting**: `devenv tasks run lint:check` or `devenv tasks run lint:fix`
 - **Testing**: `devenv tasks run test:run` (all) or `devenv tasks run test:<pkg>` (single package) or `devenv tasks run test:watch`
 - **Dependencies**: `devenv tasks run buck2:editor:publish`
 - **Genie**: `devenv tasks run genie:run` or `devenv tasks run genie:watch` or `devenv tasks run genie:check`
-- **Check all**: `devenv tasks run check:quick` or `devenv tasks run check:all`
+- **Quick check**: `python3 scripts/worktree-env.py run -- buck2 run //:check-quick` after full-profile preparation below. Broader checks still use `devenv tasks run check:all`.
 
-Use the `--no-tui` flag to see all output. If tools aren't directly in `$PATH`, enter the dev environment first with `devenv shell`.
+For devenv commands, `--no-tui` shows all output. Buck uses the explicit Nix-built PATH preparation below rather than entering `devenv shell` for each command.
 
 We're using megarepo for repo management. We're using `pnpm` temporarily for installs (bun is still used to run scripts) and `devenv` to manage the development environment.
 
-Buck owns checking for every TypeScript project and declaration production for every emitting project. The checkout itself is the standalone Buck root; CI and devenv invoke the `//:quick` aggregate through the pinned `BUCK2_BIN`. `buck2:typescript:materialize-dist` publishes declarations atomically when source-side tools or editors need package `dist` trees.
+Buck owns checking for every TypeScript project and declaration production for every emitting project. The checkout itself is the standalone Buck root: `//:quick` is the deterministic aggregate and `//:check-quick` adds the full local checkout contracts. Option D and retained devenv callers use the pinned guarded Buck. `buck2:typescript:materialize-dist` publishes declarations atomically when source-side tools or editors need package `dist` trees.
 
+Agents/CI can prepare the narrow Nix-built PATH with
+`python3 scripts/worktree-env.py prepare` under normal build admission, then use
+`python3 scripts/worktree-env.py run -- buck2 build //:quick`, or the published
+`.worktree-tools/v1/current/tools/bin/buck2` directly. New source files must
+be staged first because Nix's Git source excludes untracked files. Dirty tracked
+changes are supported. Missing, stale or GC'd projections refuse with the repair
+command rather than falling back to ambient tools. Preparation is explicit and
+does not install dependencies, hooks, secrets or services. The existing devenv
+tasks remain available; `build //:quick` alone is not full `check:quick` parity.
+For the complete quick contract, evaluate the retained task/tool authority once:
+`WORKTREE_CAPABILITIES_PROFILE="$(devenv build effectUtils.quickContracts.capabilities --no-tui | python3 -c 'import json,sys; print(json.load(sys.stdin)["effectUtils.quickContracts.capabilities"])')"`
+then `export WORKTREE_CAPABILITIES_PROFILE` and run `python3 scripts/worktree-env.py prepare`.
+This full-profile setup explicitly runs the retained standalone source-staging
+task; the subsequent `buck2 run //:check-quick` owns all check verdicts and
+reuses the authenticated published profile in fresh terminals. Refresh after
+source changes. The legacy `devenv tasks run check:quick` remains available until
+full cross-platform parity is proved; no devenv tasks are removed.
+This live run retains caller-owned policy/identity/trace context. Its real admission
+lifecycle guard requires the operator's Nix-installed `gate-slot`; only that immutable
+package and agent-policy guard directories are retained, never ambient compiler paths.
+Build/test/run retain the existing Buck identity/converter/export boundary and
+emit a real environment entry span when OTLP delivery is configured. Pipeline
+spools remain pipeline-owned; standalone evidence is retained under `.worktree-tools/otel`.
+Immutable tool generations are rooted until normal safe worktree teardown.
 # Worktree removal
 
 Before removing a worktree, close its editors/builds and run the installed `worktree-teardown <worktree-path>` command from outside it, then run `git worktree remove`. The command is exported as the effect-utils flake's `worktree-teardown` package; it does not realize the retiring checkout's shell. Only editor-free checkouts skip editor release without explicit `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` (Nix builds remain disabled).

@@ -54,6 +54,48 @@ describe('Buck package-tree dependency boundaries', () => {
     expect(statSync(join(fixture.output, 'node_modules')).isDirectory()).toBe(true)
   })
 
+  it('assembles root and nested importer closures around original workspace source paths', () => {
+    const fixture = createAssemblyFixture()
+    symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
+    const source = join(fixture.packageDirectory, 'package.json')
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--empty-node-modules',
+      'true',
+      '--file',
+      'apps/one/package.json',
+      source,
+      '--file',
+      'flakes/two/package.json',
+      source,
+      '--dependency-root',
+      'node_modules',
+      fixture.nodeModules,
+      '--dependency-root',
+      'apps/one/node_modules',
+      fixture.nodeModules,
+      '--dependency-root',
+      'flakes/two/node_modules',
+      fixture.nodeModules,
+      '--workspace-source',
+      '@workspace/one',
+      'apps/one',
+      '--workspace-source',
+      '@workspace/two',
+      'flakes/two',
+    ])
+    for (const boundary of ['node_modules', 'apps/one/node_modules', 'flakes/two/node_modules']) {
+      expect(readFileSync(join(fixture.output, boundary, 'safe/package.json'), 'utf8')).toBe(
+        '{"name":"safe"}\n',
+      )
+      expect(
+        readFileSync(join(fixture.output, boundary, '@workspace/two/package.json'), 'utf8'),
+      ).toBe('{"name":"safe"}\n')
+    }
+    expect(readFileSync(source, 'utf8')).toBe('{"name":"safe"}\n')
+  })
+
   it('retains a pre-existing output root while removing stale entries without following symlinks', () => {
     const fixture = createAssemblyFixture()
     const abandoned = join(fixture.output, 'abandoned')

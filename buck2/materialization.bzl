@@ -4,6 +4,7 @@ load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_
 load("//buck2/dependencies:defs.bzl", "PnpmDeclaredClosureInfo")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "ts_action_admission_status")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+load("//buck2:static_checks.bzl", "StaticSourceSetInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 
 PackageTreeInfo = provider(fields = {
@@ -93,7 +94,16 @@ def _package_tree_impl(ctx):
     # closure, so a sibling `./module.ts` import resolves inside the action.
     # Only the declared modules are present: an undeclared one fails closed.
     runtime_tree = ctx.attrs.runtime[DefaultInfo].default_outputs[0]
-    inputs = [runtime_tree] + ctx.attrs.files.values() + ctx.attrs.workspace_files.values()
+    inputs = [runtime_tree] + ctx.attrs.workspace_files.values()
+    files = dict(ctx.attrs.files)
+    for target in ctx.attrs.source_sets:
+        source_set = target[StaticSourceSetInfo]
+        for source in source_set.files:
+            destination = source.short_path if not source_set.prefix else source_set.prefix + "/" + source.short_path
+            if destination in files:
+                fail("duplicate workspace source: {}".format(destination))
+            files[destination] = source
+    inputs.extend(files.values())
     args = cmd_args([
         hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
         cmd_args(runtime_tree, format = "{}/" + ctx.attrs.runtime_entry),
@@ -122,7 +132,7 @@ def _package_tree_impl(ctx):
             for project in ctx.attrs.project_files:
                 _require_relative_path(project, "authority project")
                 args.add("--project", project)
-    _add_mapped_sources(args, "--file", ctx.attrs.files)
+    _add_mapped_sources(args, "--file", files)
     _add_mapped_sources(args, "--workspace-file", ctx.attrs.workspace_files)
     for destination in sorted(ctx.attrs.workspace_dependency_views.keys()):
         _require_relative_path(destination, "workspace dependency view")
@@ -131,6 +141,17 @@ def _package_tree_impl(ctx):
         args.add(cmd_args(hidden = package_tree.read_roots))
         read_roots = _unique_artifacts(read_roots + package_tree.read_roots)
         inputs.extend(package_tree.read_roots)
+    for destination in sorted(ctx.attrs.dependency_roots.keys()):
+        _require_relative_path(destination, "dependency root")
+        dependency = ctx.attrs.dependency_roots[destination][PnpmDeclaredClosureInfo]
+        args.add("--dependency-root", destination, dependency.node_modules)
+        args.add(cmd_args(hidden = dependency.read_roots))
+        read_roots = _unique_artifacts(read_roots + dependency.read_roots)
+        inputs.extend(dependency.read_roots)
+    for package_name, source_root in ctx.attrs.workspace_sources.items():
+        _require_relative_path(package_name, "workspace package name")
+        _require_relative_path(source_root, "workspace source root")
+        args.add("--workspace-source", package_name, source_root)
     for package_name in sorted(ctx.attrs.generated_dependencies.keys()):
         _require_relative_path(package_name, "generated package name")
         product = ctx.attrs.generated_dependencies[package_name][GeneratedPackageInfo]
@@ -181,6 +202,7 @@ _package_tree = cache_guarded_rule(
             default = None,
         ),
         "files": attrs.dict(key = attrs.string(), value = attrs.source()),
+        "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo]), default = []),
         "workspace_files": attrs.dict(
             key = attrs.string(),
             value = attrs.source(),
@@ -191,6 +213,12 @@ _package_tree = cache_guarded_rule(
             value = attrs.dep(providers = [PackageTreeInfo]),
             default = {},
         ),
+        "dependency_roots": attrs.dict(
+            key = attrs.string(),
+            value = attrs.dep(providers = [PnpmDeclaredClosureInfo]),
+            default = {},
+        ),
+        "workspace_sources": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "generated_dependencies": attrs.dict(
             key = attrs.string(),
             value = attrs.dep(providers = [GeneratedPackageInfo]),
