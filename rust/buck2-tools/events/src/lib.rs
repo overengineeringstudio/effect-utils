@@ -91,7 +91,8 @@ pub fn main_entry() -> Result<(), Box<dyn std::error::Error>> {
 }
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
-        Command::Census(args) => Ok(retained::census(args)?),
+        Command::Census(args) => Ok(retained::census(args)
+            .map_err(|error| format!("coverage UNKNOWN: census capture/queue: {error}"))?),
         Command::Ingest {
             logs,
             sidecar,
@@ -169,7 +170,8 @@ fn ingest(
         let model = decode(log)?;
         // Publish compact authoritative input before acknowledging conversion.
         // Failure leaves the native input and independent census for recovery.
-        retained::capture(&model, records_dir)?;
+        retained::capture(&model, records_dir, spool_dir)
+            .map_err(|error| format!("coverage UNKNOWN: compact capture/queue: {error}"))?;
         let parent = sidecars.get(&model.uuid);
         let views = make_views(&model, parent);
         for (kind, trace_id, spans) in views {
@@ -481,7 +483,10 @@ fn drain_to_url(dir: &Path, url: &str, request_timeout: Duration, budget: Durati
                     std::thread::sleep(Duration::from_millis(100));
                 }
                 Err(error) => {
-                    eprintln!("buck2-events: retaining {}: {error}", path.display());
+                    eprintln!(
+                        "buck2-events: coverage UNKNOWN; retaining {}: {error}",
+                        path.display()
+                    );
                     break;
                 }
             }

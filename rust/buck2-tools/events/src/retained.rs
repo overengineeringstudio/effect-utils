@@ -1,5 +1,5 @@
 //! Host-owned compact evidence, independent of OTLP acknowledgement and worktrees.
-use super::{attr, identity_attributes, sha256_hex, spool_chunk, Model};
+use super::{attr, identity_attributes, sha256_hex, spool_chunk, spool_directory, Model};
 use clap::{Args, ValueEnum};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -35,6 +35,8 @@ pub(super) struct Census {
     capture_error: bool,
     #[arg(long)]
     records_dir: Option<PathBuf>,
+    #[arg(long)]
+    spool_dir: Option<PathBuf>,
 }
 
 pub(super) fn directory(explicit: Option<PathBuf>) -> io::Result<PathBuf> {
@@ -81,13 +83,13 @@ fn publish(
     dir: &Path,
     key: &str,
     write: impl FnOnce(&mut File) -> io::Result<()>,
-) -> io::Result<()> {
+) -> io::Result<PathBuf> {
     durable_directory(dir)?;
     let temporary = dir.join(format!(".{}.{}.tmp", std::process::id(), now_ns()?));
     let content_addressed = key.starts_with("build:");
     let mut target = dir.join(format!("{}.jsonl", sha256_hex(key.as_bytes())));
     if !content_addressed && target.exists() {
-        return Ok(());
+        return Ok(target);
     }
     let result = (|| {
         let mut file = OpenOptions::new()
@@ -130,13 +132,13 @@ fn publish(
         File::open(dir)?.sync_all()
     })();
     let _ = fs::remove_file(temporary);
-    result
+    result.map(|()| target)
 }
 fn line(file: &mut File, value: &Value) -> io::Result<()> {
     serde_json::to_writer(&mut *file, value)?;
     file.write_all(b"\n")
 }
-fn manifest(dir: &Path, host: &str) -> io::Result<()> {
+fn manifest(dir: &Path, host: &str) -> io::Result<PathBuf> {
     publish(dir, &format!("manifest:{host}"), |file| {
         line(
             file,
@@ -202,7 +204,8 @@ pub(super) fn census(args: Census) -> io::Result<()> {
         ));
     }
     let dir = directory(args.records_dir)?;
-    manifest(&dir, &args.host)?;
+    let spool = spool_directory(args.spool_dir);
+    let enrollment = manifest(&dir, &args.host)?;
     let phase = match args.phase {
         Phase::Open => "open",
         Phase::Terminal => "terminal",
@@ -214,7 +217,7 @@ pub(super) fn census(args: Census) -> io::Result<()> {
         .as_deref()
         .filter(|id| id.starts_with("ci/"))
         .map_or(Some("supported-entrypoint/local"), |_| None);
-    publish(
+    let snapshot = publish(
         &dir,
         &format!("census:{}:{phase}", args.invocation_id),
         |file| {
@@ -230,6 +233,8 @@ pub(super) fn census(args: Census) -> io::Result<()> {
             )
         },
     )?;
+    queue_snapshot(&enrollment, &spool, &mut 0, None)?;
+    queue_snapshot(&snapshot, &spool, &mut 0, None)?;
     prune(&dir)
 }
 fn allowed(attribute: &Value, resource: bool) -> bool {
@@ -269,7 +274,7 @@ fn allowed(attribute: &Value, resource: bool) -> bool {
         )
     }
 }
-pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
+pub(super) fn capture(model: &Model, dir: &Path, spool: &Path) -> io::Result<()> {
     if model.uuid.is_empty() {
         return Err(io::Error::other(
             "cannot retain evidence without native build ID",
@@ -282,13 +287,12 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
         .chain(identity.iter())
         .filter(|attr| allowed(attr, true))
         .collect();
-    if let Some(host) = resource
+    let enrollment = resource
         .iter()
         .find(|attr| attr["key"] == "host.name")
         .and_then(|attr| attr["value"]["stringValue"].as_str())
-    {
-        manifest(dir, host)?;
-    }
+        .map(|host| manifest(dir, host))
+        .transpose()?;
     let root_id = model
         .resource_attrs
         .iter()
@@ -301,7 +305,7 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
         )
         .find(|attr| attr["key"] == "buck2.root_id")
         .and_then(|attr| attr["value"]["stringValue"].as_str());
-    publish(dir, &format!("build:{}", model.uuid), |file| {
+    let snapshot = publish(dir, &format!("build:{}", model.uuid), |file| {
         line(
             file,
             &json!({"type":"conversion", "build_id":model.uuid,
@@ -325,6 +329,10 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
         }
         Ok(())
     })?;
+    if let Some(enrollment) = enrollment {
+        queue_snapshot(&enrollment, spool, &mut 0, None)?;
+    }
+    queue_snapshot(&snapshot, spool, &mut 0, None)?;
     prune(dir)
 }
 
