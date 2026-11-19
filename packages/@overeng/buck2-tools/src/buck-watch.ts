@@ -256,21 +256,21 @@ export const selectConfiguredChecks = ({
   }
   if (base.configuration !== candidate.configuration) reasons.add('configuration-changed')
   if (
-    Object.keys(base.checks).some((target) => Object.hasOwn(candidate.checks, target) === false) ||
-    fullTargets.some((target) => Object.hasOwn(base.checks, target) === false)
+    Object.keys(base.checks).some((target) => Object.hasOwn(candidate.checks, target) === false) === true ||
+    fullTargets.some((target) => Object.hasOwn(base.checks, target) === false) === true
   )
     reasons.add('required-inventory-changed')
   for (const path of changed) {
     const parts = path.split('/')
     const name = parts.at(-1)!
     if (
-      name.endsWith('.lock') ||
+      name.endsWith('.lock') === true ||
       name === 'pnpm-lock.yaml' ||
-      name.endsWith('.bzl') ||
-      name.startsWith('BUCK') ||
-      name.startsWith('.buckconfig') ||
-      name.startsWith('rust-toolchain') ||
-      parts.some((part) => part === 'toolchain' || part === 'toolchains') ||
+      name.endsWith('.bzl') === true ||
+      name.startsWith('BUCK') === true ||
+      name.startsWith('.buckconfig') === true ||
+      name.startsWith('rust-toolchain') === true ||
+      parts.some((part) => part === 'toolchain' || part === 'toolchains') === true ||
       name === '.buckroot' ||
       name === 'megarepo.kdl'
     )
@@ -285,7 +285,7 @@ export const selectConfiguredChecks = ({
     // Configuration is part of the ID: a new configured instance must run even
     // when the unconfigured label and the changed-file owner set are unchanged.
     if (
-      affectedLabels.has(target.split(' (')[0]) ||
+      affectedLabels.has(target.split(' (')[0]) === true ||
       base.checks[target] === undefined ||
       base.checks[target] !== candidate.checks[target]
     )
