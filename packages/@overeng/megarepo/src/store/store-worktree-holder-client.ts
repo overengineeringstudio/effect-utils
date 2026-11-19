@@ -28,16 +28,25 @@ export const isWorktreeHolderEvidenceFresh = (
     if (
       !/^[0-9a-f]{32}\n?$/u.test(new TextDecoder().decode(machineId)) ||
       createHash('sha256').update(machineId).digest('hex') !== evidence.hostId
-    ) return false
-    const bootBefore = (yield* fs.readFileString('/proc/sys/kernel/random/boot_id')).replace(/\n$/u, '')
+    )
+      return false
+    const bootBefore = (yield* fs.readFileString('/proc/sys/kernel/random/boot_id')).replace(
+      /\n$/u,
+      '',
+    )
     const uptime = yield* fs.readFileString('/proc/uptime')
-    const bootAfter = (yield* fs.readFileString('/proc/sys/kernel/random/boot_id')).replace(/\n$/u, '')
+    const bootAfter = (yield* fs.readFileString('/proc/sys/kernel/random/boot_id')).replace(
+      /\n$/u,
+      '',
+    )
     const match = /^([0-9]{1,20})\.([0-9]{2}) [0-9]+\.[0-9]{2}\n?$/u.exec(uptime)
     if (match === null || bootBefore !== evidence.bootId || bootAfter !== bootBefore) return false
     const lower = BigInt(match[1]!) * 1000000000n + BigInt(match[2]!) * 10000000n
     const upper = lower + 10000000n
-    return BigInt(evidence.capture.finishedBootNs) <= lower &&
+    return (
+      BigInt(evidence.capture.finishedBootNs) <= lower &&
       upper < BigInt(evidence.capture.expiresBootNs)
+    )
   }).pipe(Effect.catch(() => Effect.succeed(false)))
 
 const collectBounded = (stream: Stream.Stream<Uint8Array, PlatformError>, limit: number) =>
@@ -60,7 +69,10 @@ const collectBounded = (stream: Stream.Stream<Uint8Array, PlatformError>, limit:
   })
 
 /** The immutable native client alone authenticates the fixed socket; every failure is unknown. */
-export const captureWorktreeHolderEvidence = ({ client, paths }: {
+export const captureWorktreeHolderEvidence = ({
+  client,
+  paths,
+}: {
   readonly client: WorktreeHolderEvidenceClientConfig
   readonly paths: ReadonlyArray<string>
 }): Effect.Effect<
@@ -79,34 +91,43 @@ export const captureWorktreeHolderEvidence = ({ client, paths }: {
     const stdin = new TextEncoder().encode(encodeRequest(request))
     if (stdin.byteLength > MAX_REQUEST) return undefined
     const spawner = yield* ChildProcessSpawner
-    const child = yield* spawner.spawn(ChildProcess.make(boundClient.path, ['--client-v1'], {
-      cwd: '/',
-      env: {},
-      extendEnv: false,
-      shell: false,
-      stdin: Stream.make(stdin),
-      stdout: 'pipe',
-      stderr: 'pipe',
-      killSignal: 'SIGKILL',
-      forceKillAfter: '100 millis',
-    }))
-    let stderrLength = 0
-    const [stdout, , exitCode] = yield* Effect.all([
-      collectBounded(child.stdout, MAX_RESPONSE),
-      Stream.runForEach(child.stderr, (chunk) => {
-        stderrLength += chunk.byteLength
-        return stderrLength > 64 * 1024
-          ? Effect.fail(new Error('holder evidence stderr exceeds bound'))
-          : Effect.void
+    const child = yield* spawner.spawn(
+      ChildProcess.make(boundClient.path, ['--client-v1'], {
+        cwd: '/',
+        env: {},
+        extendEnv: false,
+        shell: false,
+        stdin: Stream.make(stdin),
+        stdout: 'pipe',
+        stderr: 'pipe',
+        killSignal: 'SIGKILL',
+        forceKillAfter: '100 millis',
       }),
-      child.exitCode,
-    ], { concurrency: 3 })
+    )
+    let stderrLength = 0
+    const [stdout, , exitCode] = yield* Effect.all(
+      [
+        collectBounded(child.stdout, MAX_RESPONSE),
+        Stream.runForEach(child.stderr, (chunk) => {
+          stderrLength += chunk.byteLength
+          return stderrLength > 64 * 1024
+            ? Effect.fail(new Error('holder evidence stderr exceeds bound'))
+            : Effect.void
+        }),
+        child.exitCode,
+      ],
+      { concurrency: 3 },
+    )
     if (exitCode !== 0) return undefined
     const json = yield* Effect.try(() => new TextDecoder('utf-8', { fatal: true }).decode(stdout))
     const evidence = yield* decodeWorktreeHolderEvidence({
-      client: boundClient, paths: request.paths, nonce: request.nonce, json,
+      client: boundClient,
+      paths: request.paths,
+      nonce: request.nonce,
+      json,
     })
-    if (evidence === undefined || !(yield* isWorktreeHolderEvidenceFresh(evidence))) return undefined
+    if (evidence === undefined || !(yield* isWorktreeHolderEvidenceFresh(evidence)))
+      return undefined
     return evidence
   }).pipe(
     Effect.scoped,

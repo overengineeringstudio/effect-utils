@@ -48,7 +48,9 @@ describe('native holder evidence worktree request', () => {
       const actual = decoded[0]!
       const paths = actual.roots.map((root) => root.path)
       const request = { version: 1, nonce: actual.nonce, kind: 'worktree', paths }
-      expect(yield* Schema.decodeEffect(WorktreeHolderEvidenceRequestSchema)(request)).toEqual(request)
+      expect(yield* Schema.decodeEffect(WorktreeHolderEvidenceRequestSchema)(request)).toEqual(
+        request,
+      )
       const invalid: ReadonlyArray<unknown> = [
         { ...request, version: 2 },
         { ...request, nonce: 'f'.repeat(31) },
