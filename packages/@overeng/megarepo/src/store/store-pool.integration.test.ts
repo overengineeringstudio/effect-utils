@@ -7,7 +7,15 @@ import { expect } from 'vitest'
 import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, deletionLeasePath } from './store-deletion-lease.ts'
-import { type PoolSlot, reservePoolSlot, withPoolState } from './store-pool-state.ts'
+import { readWorktreeReferencesInUse } from './store-inuse.ts'
+import { poolBytes } from './store-pool-install.ts'
+import {
+  beginPoolRetarget,
+  finishPoolRetarget,
+  type PoolSlot,
+  reservePoolSlot,
+  withPoolState,
+} from './store-pool-state.ts'
 import { claimPool, completePool, inspectPool, quarantinePool, releasePool } from './store-pool.ts'
 
 const fixture = Effect.gen(function* () {
@@ -233,6 +241,56 @@ describe('native pool ownership safety', () => {
         use: (state) => Effect.succeed(state.slots[0]),
       })
       expect(preserved?.state).toBe('ready')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('inspection retains preparing and failed intents without poisoning a free root ledger', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      for (const failure of [false, true]) {
+        const { storePath, slot } = yield* fixture
+        expect(yield* fs.exists(slot.path)).toBe(true)
+        expect(yield* poolBytes(slot.path)).toBeGreaterThan(0)
+        const proof = yield* readWorktreeReferencesInUse({
+          worktreePath: slot.path,
+          scope: 'gc-owner',
+        })
+        expect(proof._tag).toBe('free')
+        const intent = yield* beginPoolRetarget({
+          slot,
+          generation: slot.generation,
+          identity: slot.identity,
+          commit: 'b'.repeat(40),
+          owner: 'retarget-task',
+        })
+        const record =
+          failure === true
+            ? yield* finishPoolRetarget({
+                slot: intent,
+                generation: intent.generation,
+                token: intent.retarget!.token,
+                result: { _tag: 'Failed', reason: 'doctor failed' },
+              })
+            : intent
+        yield* withPoolState({
+          base: storePath,
+          use: (state, save) => save({ ...state, slots: [record] }),
+        })
+        const inspected = yield* inspectPool(storePath)
+        expect(inspected.slots[0]).toMatchObject({
+          state: 'quarantined',
+          chargeKnown: false,
+          identity: '',
+          generation: intent.generation,
+          barrierToken: slot.barrierToken,
+          retarget: intent.retarget,
+        })
+        const reopened = yield* withPoolState({
+          base: storePath,
+          use: (state) => Effect.succeed(state),
+        })
+        expect(reopened).toEqual(inspected)
+      }
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

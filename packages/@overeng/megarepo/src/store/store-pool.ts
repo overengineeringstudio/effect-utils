@@ -86,7 +86,7 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
     const bytes =
       exists === false ? 0 : yield* poolBytes(slot.path).pipe(Effect.orElseSucceed(() => undefined))
     const holders =
-      exists === false
+      exists === false || slot.retarget !== undefined
         ? undefined
         : yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
     const next: PoolSlot = {
@@ -94,7 +94,11 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
       state: 'quarantined',
       reason,
       charge: Math.max(slot.charge, bytes ?? slot.charge),
-      chargeKnown: exists === true && bytes !== undefined && holders?._tag === 'free',
+      chargeKnown:
+        slot.retarget === undefined &&
+        exists === true &&
+        bytes !== undefined &&
+        holders?._tag === 'free',
     }
     return next
   })
