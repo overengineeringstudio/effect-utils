@@ -23,7 +23,7 @@ const fixtures = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const jsonl = yield* fs.readFileString(fixturePath)
   const lines = jsonl.trimEnd().split('\n')
-  expect(lines).toHaveLength(9)
+  expect(lines).toHaveLength(10)
   const decoded = yield* Effect.forEach(lines, (line) =>
     Schema.decodeEffect(Schema.fromJsonString(WorktreeHolderEvidenceSchema), {
       onExcessProperty: 'error',
@@ -267,8 +267,13 @@ describe('native holder evidence Rust codec authority', () => {
         { ...thread, leaderFdAlias: { ...alias, leaderStart: `${thread.leaderStart}9` } },
         { ...thread, leaderFdAlias: { ...alias, proof: 'fd-equality-v0' } },
         { ...thread, fd: null, leaderFdAlias: alias },
-        // The leader itself never needs or admits an alias.
-        { ...base, reference: 'fd', fd: 3, leaderFdAlias: alias },
+        // A fully bound alias on a true leader row: only the nonleader clause rejects it.
+        {
+          ...thread,
+          tid: thread.tgid,
+          taskStart: thread.leaderStart,
+          leaderFdAlias: { ...alias, tid: thread.tgid, taskStart: thread.leaderStart },
+        },
       ]
       for (const reference of invalid) {
         const value = {
@@ -282,6 +287,33 @@ describe('native holder evidence Rust codec authority', () => {
           }),
         ).toBeUndefined()
       }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
+  it.effect('decodes the actual producer-emitted thread alias fixture bytes', () =>
+    Effect.gen(function* () {
+      const { lines, decoded } = yield* fixtures
+      const aliased = decoded[9]!
+      const reference = aliased.roots[0]!.references[0]!
+      expect(reference).toMatchObject({
+        tgid: 61,
+        leaderStart: '700',
+        tid: 62,
+        taskStart: '701',
+        reference: 'fd',
+        fd: 20,
+        leaderFdAlias: {
+          proof: 'pidfd-kcmp-files-and-file-v1',
+          tgid: 61,
+          leaderStart: '700',
+          tid: 62,
+          taskStart: '701',
+          fd: 20,
+        },
+      })
+      expect(yield* decodeWorktreeHolderEvidence({ ...binding(aliased), json: lines[9]! })).toEqual(
+        aliased,
+      )
     }).pipe(Effect.provide(NodeServices.layer)),
   )
 
