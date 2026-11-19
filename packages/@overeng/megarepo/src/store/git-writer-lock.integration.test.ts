@@ -20,7 +20,9 @@ import {
   withGitWriterLock,
   withPoolWorktreeOperationLock,
 } from './git-writer-lock.ts'
-import { consumePoolReservation, readPoolState, withPoolSlotOperation } from './store-pool-state.ts'
+import {
+  consumePoolReservation, PoolDirectorySyncObserver, readPoolState, withPoolSlotOperation,
+} from './store-pool-state.ts'
 import { reservePool } from './store-pool.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
@@ -112,6 +114,52 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('retains actual post-rename sync failure custody without converting it to success', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const root = yield* f.fs.realPath(f.root)
+      const base = EffectPath.unsafe.absoluteDir(`${root}/store/`)
+      const repository = `${base}github.com/test/pool`
+      const bare = `${repository}/.bare`
+      yield* f.fs.makeDirectory(repository, { recursive: true })
+      yield* git(root, 'clone', '--bare', f.source, bare)
+      const commit = yield* git(bare, 'rev-parse', 'HEAD')
+      const reserved = yield* reservePool({ base, bare, commit, charge: 64, maxSlots: 1, maxBytes: 64 })
+      let failSync = true
+      const result = yield* withPoolSlotOperation({
+        base, select: reserved.id,
+        use: (state, save, selected) => Effect.gen(function* () {
+          const intent = yield* consumePoolReservation({
+            slot: selected, id: selected.id, reservation: selected.reservation!,
+            generation: selected.generation, bare, commit, charge: selected.charge,
+          })
+          const attempted = yield* save({ ...state, slots: [intent] }).pipe(Effect.result)
+          expect(attempted._tag).toBe('Failure')
+          if (attempted._tag !== 'Failure') return yield* Effect.die('Expected actual directory sync failure')
+          expect((yield* readPoolState({ base })).slots[0]).toEqual(intent)
+          yield* save({ ...state, slots: [{
+            ...intent, state: 'quarantined', reason: 'post-rename sync failed; retained',
+          }] })
+          return yield* Effect.fail(attempted.failure)
+        }),
+      }).pipe(
+        Effect.provideService(PoolDirectorySyncObserver, async (directory) => {
+          if (failSync === true) {
+            failSync = false
+            // Actual write and rename happened; syncing this real closed directory must fail.
+            await directory.close()
+          }
+        }),
+        Effect.result,
+      )
+      expect(result).toMatchObject({ _tag: 'Failure', failure: { _tag: 'PoolError' } })
+      expect((yield* readPoolState({ base })).slots[0]).toMatchObject({
+        state: 'quarantined', chargeKnown: false, generation: 1,
+        initialPreparation: { generation: 1, commit },
+      })
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.live('allows another slot epoch during a held action and retains birth intent after provider death', () =>
     Effect.gen(function* () {
       const f = yield* fixture

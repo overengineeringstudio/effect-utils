@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { open, rename } from 'node:fs/promises'
+import { type FileHandle, open, rename } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
-import { Effect, Option, Schema } from 'effect'
+import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -288,6 +288,11 @@ const validatePoolState = (state: PoolState) =>
       })
   })
 
+/** Internal real-filesystem fault seam, after rename and before the actual directory sync. */
+export class PoolDirectorySyncObserver extends Context.Service<
+  PoolDirectorySyncObserver, (directory: FileHandle) => Promise<void>
+>()('megarepo/PoolDirectorySyncObserver') {}
+
 /** Fsync both contents and rename: readiness/ownership must survive process loss. */
 const persist = ({ path, state }: { path: string; state: PoolState }) =>
   Effect.gen(function* () {
@@ -295,6 +300,7 @@ const persist = ({ path, state }: { path: string; state: PoolState }) =>
     const contents = yield* Schema.encodeEffect(Schema.fromJsonString(PoolState), {
       onExcessProperty: 'error',
     })(state)
+    const observer = yield* Effect.serviceOption(PoolDirectorySyncObserver)
     yield* Effect.tryPromise(async () => {
       const temporary = `${path}.${randomUUID()}`
       const file = await open(temporary, 'wx', 0o600)
@@ -307,6 +313,7 @@ const persist = ({ path, state }: { path: string; state: PoolState }) =>
       await rename(temporary, path)
       const directory = await open(dirname(path), 'r')
       try {
+        if (Option.isSome(observer)) await observer.value(directory)
         await directory.sync()
       } finally {
         await directory.close()
@@ -499,7 +506,24 @@ export const withPoolSlotOperation = <A, E, R>({
           next.slots.some((slot) => slot.id !== selected.id && others.get(slot.id) !== slot))
           return yield* new PoolError({ message: 'Root action cannot alter other slots or host limits' })
         const replacement = next.slots.find((slot) => slot.id === selected.id)
-        yield* replacePoolSlot({ base, expected, next: replacement })
+        const previous = expected
+        yield* replacePoolSlot({ base, expected, next: replacement }).pipe(
+          Effect.catchCause((original) => Effect.gen(function* () {
+            // Rename may have committed before directory fsync failed. Recover custody,
+            // not success, and never assume a missing record authorizes resurrection.
+            const reconciled = yield* withPoolState({
+              base, use: (current) => Effect.succeed(current.slots.find((slot) => slot.id === selected.id)),
+            }).pipe(Effect.exit)
+            if (Exit.isFailure(reconciled))
+              return yield* Effect.failCause(Cause.combine(original, reconciled.cause))
+            const current = reconciled.value
+            expected = current !== undefined &&
+              (equivalentPoolSlot(current, previous) ||
+                (replacement !== undefined && equivalentPoolSlot(current, replacement)))
+              ? current : undefined
+            return yield* Effect.failCause(original)
+          }).pipe(Effect.uninterruptible)),
+        )
         expected = replacement
       })
       return yield* use(state, save, current)
