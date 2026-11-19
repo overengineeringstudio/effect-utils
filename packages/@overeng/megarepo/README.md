@@ -562,6 +562,17 @@ host. An additional real-`pty` test skips only when the executable is absent fro
 `PATH`; other probe failures fail the test. Empty native projections also require PTY
 capture: unavailable PTY evidence is unknown, not proof of no owners.
 
+## Native holder protocol decoding
+
+`store-worktree-holder-codec.ts` strictly decodes the scoped Rust protocol and binds
+the response to its immutable client, compiled policy, nonce and ordered roots.
+Its bounded tests read the sole producer-owned JSONL asset; the protocol Nix
+builder compares that asset with actual Rust codec output. No handwritten
+positive fixtures, second collector or privileged runtime is introduced.
+Decoded evidence is not deletion permission: host/boot freshness, authenticated
+transport and consumer-specific vetoes remain required. Worktree consumers must
+veto every fd, executable, mapping and mount reference, including retained bytes.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
