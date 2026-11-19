@@ -502,7 +502,7 @@ devenv tasks run buck2:editor:publish:all
 
 Authority and default scoped-publication invocations retain a **300-second execution
 deadline**. Standalone-staging publication explicitly reserves **600 seconds**:
-300 seconds for preparation plus the existing 300-second payload allowance. A cold
+300 seconds for preparation plus a 300-second payload allowance. A cold
 run spent 202.793 seconds preparing its single Genie view before the payload
 started; its successful total duration is unknown because the old 300-second cap
 expired. This is a bounded allowance, not a measured completion guarantee.
