@@ -41,6 +41,15 @@ export const LEGACY_RUNNER_PROFILES = [
 export const RUNNER_PROFILES = LEGACY_RUNNER_PROFILES
 export type RunnerProfile = (typeof LEGACY_RUNNER_PROFILES)[number]
 
+/** Shell selectors shared by unit-test consumers and protected cache publication. */
+export const unitTestShellEnv = (platform: string) => ({
+  EFFECT_UTILS_CI_TEST: '1',
+  EFFECT_UTILS_TEST_PLATFORM: platform,
+})
+
+export const testPlatformForRunner = (runner: RunnerProfile) =>
+  runner === 'namespace-profile-macos-arm64' ? 'darwin' : 'linux'
+
 /** Legacy Namespace Linux machine for paired base/head Nix closures. */
 export const LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER =
   'nscloud-ubuntu-24.04-amd64-16x64-with-features'

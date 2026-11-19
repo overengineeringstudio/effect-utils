@@ -63,7 +63,11 @@ import {
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import readerComposition from '../../genie/ci-workflow/reader-composition.json'
-import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
+import {
+  linuxX64Runner,
+  testPlatformForRunner,
+  unitTestShellEnv,
+} from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
@@ -558,10 +562,7 @@ const unitTestJob = ({
   'timeout-minutes': 90,
   defaults: bashShellDefaults,
   // Keep one shell configuration across telemetry, tests and product smoke.
-  env: {
-    EFFECT_UTILS_CI_TEST: '1',
-    EFFECT_UTILS_TEST_PLATFORM: runner === 'namespace-profile-macos-arm64' ? 'darwin' : 'linux',
-  },
+  env: unitTestShellEnv(testPlatformForRunner(runner)),
   steps: [
     ...(runner === 'namespace-profile-macos-arm64'
       ? withMacosNixSubstituter(baseSteps)
@@ -1046,10 +1047,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
         },
       ],
     }),
-    env: {
-      EFFECT_UTILS_CI_TEST: '1',
-      EFFECT_UTILS_TEST_PLATFORM: 'linux',
-    },
+    env: unitTestShellEnv('linux'),
   },
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',

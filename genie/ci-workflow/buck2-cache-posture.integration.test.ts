@@ -25,6 +25,7 @@ type GeneratedWorkflow = {
       'runs-on'?: string | string[]
       if?: string
       needs?: string[]
+      strategy?: { matrix: { include: Array<{ testPlatform: string }> } }
       env?: Record<string, string>
       steps: Array<{
         name?: string
@@ -32,6 +33,7 @@ type GeneratedWorkflow = {
         if?: string
         env?: Record<string, string>
         'continue-on-error'?: boolean
+        'timeout-minutes'?: number
         run?: string
         with?: Record<string, string | number>
       }>
@@ -567,21 +569,38 @@ describe('generated CI cache trust behavior', () => {
     expect(flake).toContain('reindeer = import ./nix/reindeer.nix { inherit pkgs; };')
     const devenv = await Bun.file(new URL('../../devenv.nix', import.meta.url)).text()
     expect(devenv).toContain('reindeer = import ./nix/reindeer.nix { pkgs = previous; };')
-    const bootstrap = publisher.steps.find(
-      (step) => step.name === 'Realize source generator bootstrap shell',
-    )!
-    const shellPublication = publisher.steps.find(
-      (step) => step.name === 'Publish realized bootstrap shell closure',
-    )!
-    expect(bootstrap.run).toContain('buck2:editor:bootstrap')
-    expect(bootstrap.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
-    expect(shellPublication.run).toContain('shell=$(readlink .devenv/gc/shell)')
-    expect(shellPublication.run).toContain('nix-store --check-validity "$shell"')
-    expect(shellPublication.run).toContain('cachix push overeng-effect-utils "$shell"')
-    expect(shellPublication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
-    expect(evaluate(shellPublication.if!, 'push', 'refs/heads/main')).toBe(true)
-    for (const event of ['pull_request', 'merge_group', 'workflow_dispatch']) {
-      expect(evaluate(shellPublication.if!, event, 'refs/heads/main')).toBe(false)
+    expect(publisher.strategy?.matrix.include.map((row) => row.testPlatform)).toEqual([
+      'linux',
+      'darwin',
+    ])
+    for (const variant of ['full', 'unit']) {
+      const bootstrap = publisher.steps.find(
+        (step) => step.name === `Realize source generator bootstrap shell (${variant})`,
+      )!
+      const shellPublication = publisher.steps.find(
+        (step) => step.name === `Publish realized bootstrap shell closure (${variant})`,
+      )!
+      expect(bootstrap.run).toContain('buck2:editor:bootstrap')
+      expect(bootstrap.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+      expect(bootstrap['timeout-minutes']).toBe(30)
+      expect(shellPublication['timeout-minutes']).toBe(15)
+      expect(bootstrap.env?.EFFECT_UTILS_CI_TEST).toBe(variant === 'unit' ? '1' : '')
+      expect(bootstrap.env?.EFFECT_UTILS_TEST_PLATFORM).toBe(
+        variant === 'unit' ? '${{ matrix.testPlatform }}' : '',
+      )
+      expect(shellPublication.run).toContain('shell=$(readlink .devenv/gc/shell)')
+      expect(shellPublication.run).toContain('nix-store --check-validity "$shell"')
+      expect(shellPublication.run).toContain('cachix push overeng-effect-utils "$shell"')
+      expect(shellPublication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
+      // Actions permits bare step conditions; normalize them for this evaluator.
+      const condition = shellPublication.if!.startsWith('${{')
+        ? shellPublication.if!
+        : `\${{ ${shellPublication.if} }}`
+      expect(evaluate(condition, 'push', 'refs/heads/main')).toBe(true)
+      expect(evaluate(condition, 'push', 'refs/heads/topic')).toBe(false)
+      for (const event of ['pull_request', 'merge_group', 'workflow_dispatch']) {
+        expect(evaluate(condition, event, 'refs/heads/main')).toBe(false)
+      }
     }
   })
 

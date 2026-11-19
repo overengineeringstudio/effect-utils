@@ -23,8 +23,10 @@ jobs:
       matrix:
         include:
           - runner: namespace-profile-linux-x86-64
+            testPlatform: linux
             runnerLabel: namespace-profile-linux-x86-64;github.run-id={0};container.privileged=true;job.priority=1
           - runner: namespace-profile-macos-arm64
+            testPlatform: darwin
             runnerLabel: namespace-profile-macos-arm64;github.run-id={0};job.priority=1
     runs-on: ['${{ format(matrix.runnerLabel, github.run_id) }}']
     timeout-minutes: 120
@@ -115,13 +117,21 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Realize source generator bootstrap shell
+      - name: Realize source generator bootstrap shell (full)
         if: github.event_name == 'push'
+        timeout-minutes: 30
+        env:
+          EFFECT_UTILS_CI_TEST: ''
+          EFFECT_UTILS_TEST_PLATFORM: ''
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
-      - name: Publish realized bootstrap shell closure
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push') && (github.event_name == 'push')
+      - name: Publish realized bootstrap shell closure (full)
+        timeout-minutes: 15
+        env:
+          EFFECT_UTILS_CI_TEST: ''
+          EFFECT_UTILS_TEST_PLATFORM: ''
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           shell=$(readlink .devenv/gc/shell)
@@ -131,8 +141,32 @@ jobs:
           esac
           nix-store --check-validity "$shell"
           cachix push overeng-effect-utils "$shell"
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push')
+      - name: Realize source generator bootstrap shell (unit)
+        if: github.event_name == 'push'
+        timeout-minutes: 30
         env:
+          EFFECT_UTILS_CI_TEST: '1'
+          EFFECT_UTILS_TEST_PLATFORM: ${{ matrix.testPlatform }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+      - name: Publish realized bootstrap shell closure (unit)
+        timeout-minutes: 15
+        env:
+          EFFECT_UTILS_CI_TEST: '1'
+          EFFECT_UTILS_TEST_PLATFORM: ${{ matrix.testPlatform }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          shell=$(readlink .devenv/gc/shell)
+          case "$shell" in
+            /nix/store/*-devenv-shell) ;;
+            *) echo "::error::Missing realized bootstrap shell GC root" >&2; exit 1 ;;
+          esac
+          nix-store --check-validity "$shell"
+          cachix push overeng-effect-utils "$shell"
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push')
       - name: Publish Buck rules, retained shell, native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
