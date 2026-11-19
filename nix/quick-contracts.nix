@@ -69,6 +69,7 @@ let
     [
       pkgs.bash
       pkgs.coreutils
+      pkgs.unixtools.ps
       pkgs.findutils
       pkgs.gnused
       pkgs.gnugrep
@@ -83,7 +84,6 @@ let
       pkgs.gzip
       pkgs.curl
       pkgs.python3
-      pkgs.unixtools.ps
       pkgs.stdenv.cc
     ]
     ++ config.packages
@@ -111,7 +111,8 @@ let
     export WORKTREE_CAPABILITIES_PROFILE
     ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
       export SDKROOT=${lib.escapeShellArg pkgs.apple-sdk.sdkroot}
-      export NIX_LDFLAGS=${lib.escapeShellArg "-L${pkgs.libiconv}/lib"}
+      # Outside stdenv setup, the pinned wrapper consumes its target-suffixed flags.
+      export NIX_LDFLAGS_${pkgs.stdenv.cc.suffixSalt}=${lib.escapeShellArg "-L${pkgs.libiconv}/lib"}
     ''}
   '';
   validateSource = ''
