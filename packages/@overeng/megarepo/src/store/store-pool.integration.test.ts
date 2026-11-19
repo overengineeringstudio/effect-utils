@@ -10,6 +10,7 @@ import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, deletionLeasePath, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
+import { captureDeletionIdentity, withPinnedDirectoryPins } from './store-pinned-deletion.ts'
 import { poolBytes } from './store-pool-install.ts'
 import { withPoolRetirement } from './store-pool-retirement.ts'
 import {
@@ -17,6 +18,7 @@ import {
   claimPoolGeneration,
   consumePoolReservation,
   finishPoolRetarget,
+  failedPoolRetarget,
   PoolError,
   type PoolActivityEvent,
   type PoolSlot,
@@ -674,6 +676,72 @@ describe('native pool ownership safety', () => {
         })
         expect(reopened).toEqual(inspected)
       }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+})
+
+describe.skipIf(process.platform !== 'linux')('retarget native publication failure', () => {
+  it.effect('quarantines the exact publication when post-callback native verification fails', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const f = yield* fixture
+      const branchRoot = f.worktreePaths['github.com/test-owner/pool-test#main']!
+      yield* Git.runCommand({
+        cwd: branchRoot,
+        args: ['-c', 'user.name=Pool Test', '-c', 'user.email=pool@example.invalid',
+          'commit', '--allow-empty', '-m', 'source advance'],
+      })
+      const commit = yield* Git.getCurrentCommit(branchRoot)
+      const intent = yield* beginPoolRetarget({
+        slot: f.slot, generation: f.slot.generation, identity: f.slot.identity, commit, owner: 'fixture',
+      })
+      const target = { rootPath: f.storePath, path: f.slot.path }
+      const identity = yield* captureDeletionIdentity(target)
+      let published: PoolSlot | undefined
+      yield* withPoolState({
+        base: f.storePath,
+        use: (state, save) => Effect.gen(function* () {
+          yield* save({ ...state, slots: [intent] })
+          const result = yield* withPinnedDirectoryPins({
+            ...target, identity,
+            use: () => Effect.gen(function* () {
+              // An explicitly unqualified ledger fixture, not an install or SDK proof.
+              const prepared = yield* finishPoolRetarget({
+                slot: intent, generation: intent.generation, token: intent.retarget!.token,
+                result: { _tag: 'Prepared', identity: 'unqualified-retarget-fixture', charge: intent.charge },
+              })
+              published = { ...prepared, activity: {
+                generation: prepared.generation, commit, identity: prepared.identity, phase: 'retarget-ready',
+                event: {
+                  observedAtUtc: new Date(yield* Clock.currentTimeMillis).toISOString(),
+                  provider: yield* readCurrentDeletionLeaseProvider,
+                  ownerLabel: 'fixture', ownerLabelOrigin: 'retarget-argument',
+                },
+              } }
+              yield* save({ ...state, slots: [published] })
+              yield* fs.rename(target.path, `${target.path}-retained`)
+              yield* fs.makeDirectory(target.path)
+            }),
+          }).pipe(Effect.exit)
+          expect(Exit.isFailure(result)).toBe(true)
+          const current = (yield* readPoolState({ base: f.storePath })).slots[0]!
+          const failed = failedPoolRetarget({ current, intent, published, reason: 'native pin verification failed' })
+          expect(failed).toBeDefined()
+          if (failed === undefined) return yield* Effect.die('Missing exact publication retention')
+          yield* save({ ...state, slots: [failed] })
+          expect(failedPoolRetarget({
+            current: { ...current, generation: current.generation + 1 }, intent, published, reason: 'stale',
+          })).toBeUndefined()
+          expect(failedPoolRetarget({
+            current: { ...intent, retarget: { ...intent.retarget!, token: 'superseding' } },
+            intent, published, reason: 'stale',
+          })).toBeUndefined()
+        }),
+      })
+      expect((yield* readPoolState({ base: f.storePath })).slots[0]).toMatchObject({
+        state: 'quarantined', chargeKnown: false, generation: intent.generation, retarget: intent.retarget,
+      })
+      expect(yield* fs.exists(`${target.path}-retained/.git`)).toBe(true)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

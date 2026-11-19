@@ -652,3 +652,30 @@ export const finishPoolRetarget = ({
     activity: undefined,
   })
 }
+
+/** Restore only this operation's intent or exact ready publication after a late native failure. */
+export const failedPoolRetarget = ({
+  current, intent, published, reason,
+}: {
+  current: PoolSlot
+  intent: PoolSlot
+  published?: PoolSlot
+  reason: string
+}): PoolSlot | undefined => {
+  if (intent.retarget === undefined || current.id !== intent.id ||
+    current.generation !== intent.generation || current.path !== intent.path ||
+    current.bare !== intent.bare || current.commit !== intent.commit ||
+    current.barrierToken !== intent.barrierToken) return undefined
+  const pending = current.retarget?.token === intent.retarget.token
+  const ownPublication = published !== undefined && current.state === 'ready' &&
+    current.retarget === undefined && current.identity === published.identity &&
+    current.activity?.phase === 'retarget-ready' &&
+    current.activity.event.observedAtUtc === published.activity?.event.observedAtUtc &&
+    current.activity.event.provider.pid === published.activity?.event.provider.pid &&
+    current.activity.event.provider.processStartTime === published.activity?.event.provider.processStartTime
+  if (pending === false && ownPublication === false) return undefined
+  return {
+    ...intent, charge: Math.max(intent.charge, current.charge),
+    state: 'quarantined', chargeKnown: false, reason,
+  }
+}

@@ -32,6 +32,7 @@ import {
 import {
   beginPoolRetarget,
   finishPoolRetarget,
+  failedPoolRetarget,
   readPoolState,
   claimPoolGeneration,
   consumePoolReservation,
@@ -491,6 +492,7 @@ export const retargetPool = (args: {
         // Durable source/epoch revocation precedes teardown, cleanup and checkout.
         yield* update()
         const intent = slot
+        let published: PoolSlot | undefined
         const execute = Effect.gen(function* () {
           yield* withFreshProof(runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] }))
           yield* cleanSource(original)
@@ -529,6 +531,7 @@ export const retargetPool = (args: {
                 ownerLabel: args.owner, ownerLabelOrigin: 'retarget-argument' as const,
               },
             } }
+            published = slot
             yield* update()
             return slot
           }))
@@ -536,9 +539,10 @@ export const retargetPool = (args: {
         return yield* execute.pipe(Effect.tapError((error) => Effect.gen(function* () {
           // Never overwrite a superseding nonce or lose the unresolved mutation intent.
           const current = (yield* readPoolState({ base: args.base })).slots.find((item) => item.id === intent.id)
-          if (current?.generation !== intent.generation || current.retarget?.token !== intent.retarget?.token)
-            return
-          slot = yield* retainPoolSlot({ slot: intent, reason: String(error) })
+          if (current === undefined) return
+          const failed = failedPoolRetarget({ current, intent, published, reason: String(error) })
+          if (failed === undefined) return
+          slot = yield* retainPoolSlot({ slot: failed, reason: String(error) })
           yield* update()
         })))
       }).pipe(withGitContainerLock({ path: original.bare, mode: 'shared' }))
