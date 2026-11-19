@@ -1738,3 +1738,149 @@ fn occurrence_wire_bound_accounts_for_json_escaping_without_dropping_source() {
         assert!(log.is_file());
     }
 }
+
+#[test]
+fn retained_replay_restores_exact_snapshot_envelopes_after_ingress_ack() {
+    let dir = tempfile::tempdir().unwrap();
+    let records = dir.path().join("records");
+    let spool = dir.path().join("pending");
+    let log = write_log(
+        &dir,
+        "ledger.pb.zst",
+        &compress_to_vec(
+            synthetic_log(2, true, Some("fixture-host")).as_slice(),
+            CompressionLevel::Fastest,
+        ),
+    );
+    ingest(&[log], None, None, &spool, &records).unwrap();
+    run(Cli::parse_from([
+        "buck2-events",
+        "census",
+        "--invocation-id",
+        "fixture-invocation",
+        "--phase",
+        "open",
+        "--host",
+        "fixture-host",
+        "--records-dir",
+        records.to_str().unwrap(),
+        "--spool-dir",
+        spool.to_str().unwrap(),
+    ]))
+    .unwrap();
+    // Acknowledged transport chunks are disposable; retained source is not.
+    for entry in fs::read_dir(&spool).unwrap() {
+        fs::remove_file(entry.unwrap().path()).unwrap();
+    }
+    retained::replay(&records, &spool, Instant::now() + Duration::from_secs(5)).unwrap();
+    let mut reconstructed: BTreeMap<String, BTreeMap<u64, (u64, String)>> = BTreeMap::new();
+    for entry in fs::read_dir(&spool).unwrap() {
+        let payload: Value =
+            serde_json::from_slice(&read_chunk(&entry.unwrap().path()).unwrap()).unwrap();
+        let resource = &payload["resourceLogs"][0];
+        assert_eq!(
+            resource["resource"]["attributes"],
+            json!([
+                attr("service.name", "buck2-events"),
+                attr("host.name", "fixture-host")
+            ])
+        );
+        let scope = &resource["scopeLogs"][0];
+        assert_eq!(scope["scope"]["name"], "buck2-events.occurrence-ledger");
+        for log in scope["logRecords"].as_array().unwrap() {
+            assert!(
+                log["timeUnixNano"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<u128>()
+                    .unwrap()
+                    > 0
+            );
+            let body = log["body"]["stringValue"].as_str().unwrap();
+            assert!(body.len() <= 8 * 1024);
+            assert!(serde_json::to_vec(log).unwrap().len() <= 12 * 1024);
+            let envelope: Value = serde_json::from_str(body).unwrap();
+            assert_eq!(envelope["type"], "buck2.occurrence.ledger");
+            assert_eq!(envelope["version"], 1);
+            reconstructed
+                .entry(envelope["snapshotSha256"].as_str().unwrap().into())
+                .or_default()
+                .insert(
+                    envelope["ordinal"].as_u64().unwrap(),
+                    (
+                        envelope["recordCount"].as_u64().unwrap(),
+                        envelope["line"].as_str().unwrap().to_owned(),
+                    ),
+                );
+        }
+    }
+    let mut kinds = HashSet::new();
+    for entry in fs::read_dir(&records).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|ext| ext != "jsonl") {
+            continue;
+        }
+        let bytes = fs::read(path).unwrap();
+        let rows = reconstructed.remove(&sha256_hex(&bytes)).unwrap();
+        let mut restored = String::new();
+        for (ordinal, (count, line)) in &rows {
+            assert!(*ordinal < *count);
+            assert_eq!(*count as usize, rows.len());
+            restored.push_str(line);
+            restored.push('\n');
+        }
+        assert_eq!(restored.as_bytes(), bytes);
+        kinds.insert(
+            serde_json::from_str::<Value>(restored.lines().next().unwrap()).unwrap()["type"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        );
+    }
+    assert!(reconstructed.is_empty());
+    assert_eq!(
+        kinds,
+        HashSet::from(["conversion".into(), "manifest".into(), "invocation".into()])
+    );
+}
+
+#[test]
+fn retained_replay_rejects_non_lf_oversize_and_exhausted_budget_without_loss() {
+    let dir = tempfile::tempdir().unwrap();
+    let spool = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snapshot.jsonl");
+    for bytes in [
+        br#"{"type":"manifest","host":"fixture"}"#.to_vec(),
+        format!(
+            "{{\"type\":\"manifest\",\"host\":\"fixture\",\"padding\":\"{}\"}}\n",
+            "x".repeat(128 * 1024)
+        )
+        .into_bytes(),
+    ] {
+        fs::write(&path, &bytes).unwrap();
+        let error = retained::replay(
+            dir.path(),
+            spool.path(),
+            Instant::now() + Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("UNKNOWN"));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+    assert!(retained::replay(dir.path(), spool.path(), Instant::now()).is_err());
+    File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(512 * 1024 * 1024 + 1)
+        .unwrap();
+    assert!(retained::replay(
+        dir.path(),
+        spool.path(),
+        Instant::now() + Duration::from_secs(5)
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("512 MiB"));
+    assert!(path.is_file());
+}
