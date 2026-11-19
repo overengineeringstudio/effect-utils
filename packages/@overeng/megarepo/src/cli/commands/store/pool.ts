@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path'
 
-import { Console, Effect, Schema } from 'effect'
+import { Console, Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as ChildProcess from 'effect/process/ChildProcess'
 
@@ -83,16 +83,22 @@ const claim = Cli.Command.make(
   {
     identity: Cli.Flag.String('identity'),
     owner: Cli.Flag.String('owner'),
+    id: Cli.Flag.String('id').pipe(
+      Cli.Flag.withDescription('Require this exact ready slot and its matching install identity; no fallback'),
+      Cli.Flag.optional,
+    ),
     executionOnly: Cli.Flag.Boolean('execution-only').pipe(
       Cli.Flag.withDescription('Declared disposable-output contract, not a sandbox; no in-place authoring'),
       Cli.Flag.withDefault(false),
     ),
     command: Cli.Argument.String('command').pipe(Cli.Argument.atLeast(1)),
   },
-  ({ identity, owner, command, executionOnly }) =>
+  ({ identity, owner, id, command, executionOnly }) =>
     Effect.gen(function* () {
       const store = yield* Store
-      const slot = yield* claimPool({ base: store.basePath, identity, owner })
+      const slot = yield* claimPool({
+        base: store.basePath, identity, owner, ...(Option.isSome(id) === true ? { id: id.value } : {}),
+      })
       const retain = (reason: string) =>
         quarantinePool({ base: store.basePath, id: slot.id, token: slot.token, reason })
       yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(slot))

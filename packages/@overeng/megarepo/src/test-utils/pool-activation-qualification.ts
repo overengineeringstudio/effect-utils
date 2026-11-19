@@ -53,7 +53,7 @@ console.log(hash.digest('hex'))
 const inner = [
   'umask 077',
   '"$1" -e "$2" "$3" "$4" > "$5"',
-  '"$6" store pool claim --identity "$7" --owner activation-qualification --execution-only -- "$8" "$9" "${10}" inside-claim "${11}"',
+  '"$6" store pool claim --identity "$7" --id "${13}" --owner activation-qualification --execution-only -- "$8" "$9" "${10}" inside-claim "${11}"',
   '"$1" -e "$2" "$3" "$4" > "${12}"',
 ].join('\n')
 
@@ -130,7 +130,7 @@ const program = Effect.gen(function* () {
       `${evidence}/full.log`, config.devenv, 'shell', '--', config.bash, '-euc', inner, 'activation-fixture',
       config.node, snapshot, config.callerRoot, caller.gitdir, `${evidence}/caller-before`,
       config.mr, config.identity, process.execPath, fileURLToPath(import.meta.url), configFile, evidence,
-      `${evidence}/caller-after`] })
+      `${evidence}/caller-after`, config.slotId] })
   const before = yield* fs.readFileString(`${evidence}/caller-before`)
   yield* check(before === (yield* fs.readFileString(`${evidence}/caller-after`)),
     'Caller root/admin changed during claimed execution; retained evidence, no exclusions')

@@ -412,6 +412,9 @@ protected only by the process veto; lease wrapping of activations is tracked in
 ### Durable pool ownership primitives
 
 Claims atomically fence one generation and adopt its persistent barrier without unlinking it.
+`claim --id SLOT --identity IDENTITY` restricts atomic selection to that exact ready
+root and full identity; a missing, busy or mismatched target never falls back to a
+different root. Without `--id`, selection remains the first matching ready root.
 Providers record completion before exiting; inspection quarantines abandoned/uncertain providers.
 
 Host-store-wide count and charged-byte limits include preparing, leased and
@@ -501,8 +504,9 @@ member-pin, holder, root-activation or removal qualification.
 No adapter, copied Buck state or scripts-disabled preparation is used.
 
 The manual Linux fixture `src/test-utils/pool-activation-qualification.ts` exercises
-a **real different canonical caller's normal activation**, then claims a ready slot
-and runs normal doctor/identity collection inside its live provider ancestry.
+a **real different canonical caller's normal activation**, then claims its exact
+configured ready slot with `--id` and runs normal doctor/identity collection inside
+its live provider ancestry. Equivalent slots cannot redirect the claim.
 Run it only after separate SDK/service/root qualification and normal admission:
 `devenv shell -- bun packages/@overeng/megarepo/src/test-utils/pool-activation-qualification.ts /absolute/private/config.json`.
 The explicit JSON config follows that file's `Config`: exact store/slot/source/install

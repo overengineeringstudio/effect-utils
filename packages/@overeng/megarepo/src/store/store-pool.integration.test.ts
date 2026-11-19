@@ -138,6 +138,23 @@ const reservationFixture = (missingCommit = false) =>
   })
 
 describe('native pool ownership safety', () => {
+  it.effect('an exact claim never falls back to another ready identity or touches its root', () =>
+    Effect.gen(function* () {
+      const { storePath: base, slot } = yield* fixture
+      const fs = yield* FileSystem.FileSystem
+      const before = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      for (const request of [
+        { id: 'not-the-ready-slot', identity: slot.identity },
+        { id: slot.id, identity: 'not-the-ready-identity' },
+      ]) {
+        expect(yield* claimPool({ base, owner: 'exact-negative', ...request }).pipe(Effect.result))
+          .toMatchObject({ _tag: 'Failure', failure: { _tag: 'PoolError' } })
+        expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(before)
+        expect(yield* fs.exists(`${slot.path}.mr-pool-operation.mr-container.lock`)).toBe(false)
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('all lifecycle callers refuse the same held native root before their bodies run', () =>
     Effect.gen(function* () {
       // Real Git/root/control, deliberately unqualified install fixture: negative custody only.
@@ -152,6 +169,7 @@ describe('native pool ownership safety', () => {
       yield* Effect.gen(function* () {
         const lease = { base, id: slot.id, generation: slot.generation, token: 'never-issued' }
         yield* blocked(claimPool({ base, identity: slot.identity, owner: 'negative-lock-test' }))
+        yield* blocked(claimPool({ base, id: slot.id, identity: slot.identity, owner: 'exact-lock-test' }))
         yield* blocked(prewarmPool({
           base, id: slot.id, generation: slot.generation, bare: slot.bare,
           commit: slot.commit, charge: slot.charge, reservation: 'never-issued',
