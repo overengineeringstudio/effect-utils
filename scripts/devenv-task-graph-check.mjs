@@ -762,6 +762,7 @@ if (ciUnitTest === false) {
 const editorPublishers = [...dependencies.keys()].filter(
   (name) =>
     name === 'buck2:editor:bootstrap' ||
+    name === 'content-address:contract:prepare' ||
     name === 'buck2:editor:publish' ||
     name.startsWith('buck2:editor:publish:'),
 )
