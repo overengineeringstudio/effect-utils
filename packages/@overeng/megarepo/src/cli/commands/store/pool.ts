@@ -45,7 +45,9 @@ const prewarm = Cli.Command.make(
     Effect.gen(function* () {
       const { store, bare } = yield* resolveRepository(repo)
       yield* Console.log(
-        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* prewarmPool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge })),
+        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(
+          yield* prewarmPool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge }),
+        ),
       )
     }),
 ).pipe(
@@ -63,7 +65,8 @@ const claim = Cli.Command.make(
     Effect.gen(function* () {
       const store = yield* Store
       const slot = yield* claimPool({ base: store.basePath, identity, owner })
-      const retain = (reason: string) => quarantinePool({ base: store.basePath, id: slot.id, token: slot.token, reason })
+      const retain = (reason: string) =>
+        quarantinePool({ base: store.basePath, id: slot.id, token: slot.token, reason })
       yield* Console.log(yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(slot))
       // The live provider is the activation ancestor for ordinary install/check wrappers.
       const code = yield* Effect.scoped(
@@ -86,7 +89,13 @@ const claim = Cli.Command.make(
         yield* retain(`Task exited ${code}`)
         process.exitCode = code
       }
-      if (code === 0) yield* completePool({ base: store.basePath, id: slot.id, token: slot.token, generation: slot.generation })
+      if (code === 0)
+        yield* completePool({
+          base: store.basePath,
+          id: slot.id,
+          token: slot.token,
+          generation: slot.generation,
+        })
     }),
 ).pipe(
   Cli.Command.withDescription(
@@ -105,7 +114,9 @@ const release = Cli.Command.make(
     Effect.gen(function* () {
       const store = yield* Store
       yield* Console.log(
-        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* releasePool({ base: store.basePath, id, token, generation })),
+        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(
+          yield* releasePool({ base: store.basePath, id, token, generation }),
+        ),
       )
     }),
 ).pipe(
@@ -117,7 +128,9 @@ const release = Cli.Command.make(
 const status = Cli.Command.make('status', {}, () =>
   Effect.gen(function* () {
     const store = yield* Store
-    yield* Console.log(yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* inspectPool(store.basePath)))
+    yield* Console.log(
+      yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* inspectPool(store.basePath)),
+    )
   }),
 )
 
@@ -151,18 +164,22 @@ const promote = Cli.Command.make(
     Effect.gen(function* () {
       yield* exactCommit(commit)
       const { store } = yield* resolveRepository(repo)
-      const path = yield* runPoolCommand({ cwd: store.basePath, command: 'mr', args: [
-        'store',
-        'worktree',
-        'new',
-        repo,
-        '--ref',
-        branch,
-        '--base',
-        commit,
-        '--no-fetch',
-        '--porcelain',
-      ] })
+      const path = yield* runPoolCommand({
+        cwd: store.basePath,
+        command: 'mr',
+        args: [
+          'store',
+          'worktree',
+          'new',
+          repo,
+          '--ref',
+          branch,
+          '--base',
+          commit,
+          '--no-fetch',
+          '--porcelain',
+        ],
+      })
       yield* preparePoolInstall(path)
       yield* Console.log(path)
     }),
