@@ -19,12 +19,20 @@ import {
 } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import {
+  captureDeletionIdentity, type PinnedDeletionError, withPinnedDirectoryPins,
+} from './store-pinned-deletion.ts'
+import type { WorktreeHolderEvidenceClientConfig } from './store-worktree-holder-codec.ts'
+import { makeWorktreeHolderSource } from './store-worktree-holder-source.ts'
+import {
   poolBytes,
   poolInstallIdentity,
   preparePoolInstall,
   runPoolCommand,
 } from './store-pool-install.ts'
 import {
+  beginPoolRetarget,
+  finishPoolRetarget,
+  readPoolState,
   claimPoolGeneration,
   consumePoolReservation,
   PoolError,
@@ -47,6 +55,7 @@ type PoolOperationError =
   | Cause.UnknownError
   | GitWriterLockError
   | DeletionLeaseUnavailableError
+  | PinnedDeletionError
 
 const barrier = ({ base, slot }: { base: AbsoluteDirPath; slot: PoolSlot }) => ({
   leasePath: deletionLeasePath({ storeBasePath: base, ownerPath: slot.path }),
@@ -408,6 +417,126 @@ export const releasePool = (args: {
           ),
         )
       }),
+  })
+
+/** Source-integration prototype: no CLI or production activation until SDK/root qualification. */
+export const retargetPool = (args: {
+  base: AbsoluteDirPath
+  id: string
+  generation: number
+  identity: string
+  commit: string
+  owner: string
+  holderClient: WorktreeHolderEvidenceClientConfig
+}): Effect.Effect<PoolSlot, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> =>
+  withPoolState({
+    base: args.base,
+    use: (state, save) => Effect.gen(function* () {
+      const original = state.slots.find((item) => item.id === args.id)
+      if (original === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
+      yield* requireDisposablePoolRoot(original)
+      let slot = yield* beginPoolRetarget({ ...args, slot: original })
+      const update = () => save({
+        ...state, slots: state.slots.map((item) => item.id === slot.id ? slot : item),
+      })
+      return yield* Effect.gen(function* () {
+        yield* adoptPersistentDeletionLease(barrier({ base: args.base, slot: original }))
+        const admission = yield* Git.readLinkedWorktreeAdmission({
+          owner: original.path, barePath: original.bare,
+        })
+        const rootTarget = { rootPath: args.base, path: original.path }
+        const adminTarget = { rootPath: args.base, path: admission.gitdir }
+        const rootIdentity = yield* captureDeletionIdentity(rootTarget)
+        const adminIdentity = yield* captureDeletionIdentity(adminTarget)
+        const teardown = process.env.WORKTREE_TEARDOWN_BIN
+        if (teardown === undefined || teardown.startsWith('/') === false)
+          return yield* new PoolError({ message: 'Packaged WORKTREE_TEARDOWN_BIN provider is required' })
+        const assertCurrent = Effect.gen(function* () {
+          const current = (yield* readPoolState({ base: args.base })).slots.find((item) => item.id === slot.id)
+          if (current?.generation !== slot.generation || current.retarget?.token !== slot.retarget?.token ||
+            current.path !== slot.path || current.bare !== slot.bare || current.commit !== slot.commit ||
+            current.barrierToken !== slot.barrierToken)
+            return yield* new PoolError({ message: 'Stale retarget authority retained' })
+          yield* requireDisposablePoolRoot(current)
+          const linked = yield* Git.readLinkedWorktreeAdmission({ owner: slot.path, barePath: slot.bare })
+          if (linked.gitdir !== admission.gitdir)
+            return yield* new PoolError({ message: 'Retarget administrative identity changed' })
+        })
+        const withFreshProof = <A, E, R>(use: Effect.Effect<A, E, R>) =>
+          withPinnedDirectoryPins({
+            ...rootTarget, identity: rootIdentity,
+            use: (rootPins) => withPinnedDirectoryPins({
+              ...adminTarget, identity: adminIdentity,
+              use: (adminPins) => Effect.gen(function* () {
+                yield* assertCurrent
+                // Capture inside both current pin scopes, never reuse a startup census.
+                const source = yield* makeWorktreeHolderSource({
+                  client: args.holderClient, paths: [slot.path, admission.gitdir],
+                })
+                for (const [worktreePath, ownedPins] of [
+                  [slot.path, rootPins], [admission.gitdir, adminPins],
+                ] as const) {
+                  const proof = yield* source.read({ worktreePath, ownedPins })
+                  if (proof.complete !== true || proof.inUse._tag !== 'free')
+                    return yield* new PoolError({ message: 'Qualified retarget holders not proven absent' })
+                }
+                yield* assertCurrent
+                return yield* use
+              }),
+            }),
+          })
+        // Durable source/epoch revocation precedes teardown, cleanup and checkout.
+        yield* update()
+        const intent = slot
+        const execute = Effect.gen(function* () {
+          yield* runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] })
+          yield* cleanSource(original)
+          if ((yield* poolInstallIdentity({
+            path: original.path, commit: original.commit, base: args.base,
+          })) !== original.identity)
+            return yield* new PoolError({ message: 'Retarget installed projection changed; retained' })
+          yield* withFreshProof(Effect.gen(function* () {
+            yield* cleanSource(original)
+            yield* Git.runCommand({ cwd: slot.path, args: ['clean', '-fdx', '-e', '/node_modules/'] })
+            yield* Git.runCommand({ cwd: slot.path, args: ['checkout', '--detach', slot.commit] })
+          }))
+          yield* preparePoolInstall(slot.path)
+          yield* runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] })
+          const ready = yield* withFreshProof(Effect.gen(function* () {
+            yield* cleanSource(slot)
+            const identity = yield* poolInstallIdentity({ path: slot.path, commit: slot.commit, base: args.base })
+            const charge = yield* poolBytes(slot.path)
+            if (charge > slot.charge)
+              return yield* new PoolError({ message: 'Retarget exceeds reserved byte charge; retained' })
+            yield* assertCurrent
+            const prepared = yield* finishPoolRetarget({
+              slot, generation: slot.generation, token: slot.retarget!.token,
+              result: { _tag: 'Prepared', identity, charge },
+            })
+            return { ...prepared, activity: {
+              generation: prepared.generation, commit: prepared.commit, identity: prepared.identity,
+              phase: 'retarget-ready' as const,
+              event: {
+                observedAtUtc: new Date(yield* Clock.currentTimeMillis).toISOString(),
+                provider: yield* readCurrentDeletionLeaseProvider,
+                ownerLabel: args.owner, ownerLabelOrigin: 'retarget-argument' as const,
+              },
+            } }
+          }))
+          slot = ready
+          yield* update()
+          return slot
+        })
+        return yield* execute.pipe(Effect.tapError((error) => Effect.gen(function* () {
+          // Never overwrite a superseding nonce or lose the unresolved mutation intent.
+          const current = (yield* readPoolState({ base: args.base })).slots.find((item) => item.id === intent.id)
+          if (current?.generation !== intent.generation || current.retarget?.token !== intent.retarget?.token)
+            return
+          slot = yield* retainPoolSlot({ slot: intent, reason: String(error) })
+          yield* update()
+        })))
+      }).pipe(withGitContainerLock({ path: original.bare, mode: 'exclusive' }))
+    }),
   })
 
 /** A successful provider publishes completion before exiting; it remains non-reusable. */
