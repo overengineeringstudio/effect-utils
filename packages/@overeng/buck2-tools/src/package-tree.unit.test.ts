@@ -56,7 +56,9 @@ describe('Buck package-tree dependency boundaries', () => {
     const manifest = join(fixture.root, 'arguments.json')
     for (const value of [{}, ['--output', 1]]) {
       writeFileSync(manifest, JSON.stringify(value))
-      expect(() => runPackageTreeCli(manifest)).toThrow('argument manifest must be an array of strings')
+      expect(() => runPackageTreeCli(manifest)).toThrow(
+        'argument manifest must be an array of strings',
+      )
     }
     expect(existsSync(fixture.output)).toBe(false)
   })
@@ -72,7 +74,9 @@ describe('Buck package-tree dependency boundaries', () => {
     }
     expect(JSON.stringify(args).length).toBeGreaterThan(1_000_000)
     assembleFromArguments(args)
-    expect(readFileSync(join(fixture.output, prefix, '7999.ts'), 'utf8')).toBe('export const value = 1\n')
+    expect(readFileSync(join(fixture.output, prefix, '7999.ts'), 'utf8')).toBe(
+      'export const value = 1\n',
+    )
   })
 
   it('materializes an explicit empty node_modules boundary', () => {
