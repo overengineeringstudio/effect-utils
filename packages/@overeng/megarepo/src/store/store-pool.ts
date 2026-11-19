@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { dirname } from 'node:path'
 
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
@@ -50,7 +50,7 @@ const free = (slot: PoolSlot) =>
     const proof = yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
     if (proof._tag !== 'free')
       return yield* new PoolError({
-        message: `Pool holders not proven absent: ${JSON.stringify(proof)}`,
+        message: `Pool holders not proven absent: ${yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(proof)}`,
       })
   })
 
