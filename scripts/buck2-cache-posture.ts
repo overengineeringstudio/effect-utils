@@ -172,7 +172,8 @@ const readerForwarderCacheBlock = ({
   } catch {
     return invalid()
   }
-  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) return invalid()
+  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded) === true)
+    return invalid()
   // Require canonical origins, not URL normalization (userinfo, paths, escapes,
   // whitespace, query strings and fragments must never become config text).
   const origin = (value: unknown): URL => {

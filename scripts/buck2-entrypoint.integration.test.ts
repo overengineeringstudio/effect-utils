@@ -1985,7 +1985,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
         expect(admittedValues['buck2.remote_cache_enabled']).not.toBe('false')
         const key =
           writerArgs[0] === '--config-file' ||
-          writerArgs.includes('buck2.default_allow_cache_upload=true')
+          writerArgs.includes('buck2.default_allow_cache_upload=true') === true
             ? 'buck2.default_allow_cache_upload'
             : 'buck2.allow_cache_uploads'
         expect(admittedValues[key]).toBe('true')
