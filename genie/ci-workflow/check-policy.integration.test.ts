@@ -241,3 +241,29 @@ for (const runner of [
     expect(result.exitCode).toBe(0)
   })
 }
+
+test('isolation diagnostics stream before waiting for child exit and identify action phases', async () => {
+  const isolation = await Bun.file(
+    new URL('./check-policy-action.integration.test.ts', import.meta.url),
+  ).text()
+  const forward = isolation.indexOf('const forwardStderr = stderrForLog.pipeTo(')
+  const wait = isolation.indexOf('await Promise.all([', forward)
+  expect(forward).toBeGreaterThan(-1)
+  expect(wait).toBeGreaterThan(forward)
+  expect(isolation.slice(forward, wait)).toContain('process.stderr.write(chunk)')
+  expect(isolation.slice(wait)).toContain('new Response(stderrForAssertion).text()')
+  expect(isolation.slice(wait)).toContain('forwardStderr,')
+
+  const action = Bun.YAML.parse(
+    await Bun.file(new URL('../../.github/actions/ci-policy/action.yml', import.meta.url)).text(),
+  ).runs.steps[0].run as string
+  const selection = action.indexOf("printf 'ci-policy: selecting pinned runtime")
+  const realization = action.indexOf("printf 'ci-policy: realizing pinned runtime")
+  const validation = action.indexOf("printf 'ci-policy: checking consumer workflows")
+  expect(selection).toBeGreaterThan(-1)
+  expect(action.indexOf('"$nix_bin" eval')).toBeGreaterThan(selection)
+  expect(realization).toBeGreaterThan(selection)
+  expect(action.indexOf('"$nix_bin" build')).toBeGreaterThan(realization)
+  expect(validation).toBeGreaterThan(realization)
+  expect(action.indexOf('"$bun_root/bin/bun"')).toBeGreaterThan(validation)
+})
