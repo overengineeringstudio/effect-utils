@@ -56,6 +56,8 @@ export const internalPackages = [
   'pty-effect',
   'react-inspector',
   'restate-effect',
+  'scg-authority',
+  'scg-protocol',
   'tui-core',
   'tui-react',
   'tui-stories',

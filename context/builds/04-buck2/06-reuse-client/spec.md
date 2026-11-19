@@ -597,6 +597,27 @@ exemption is asserted regardless of the runner's own priority.
 The exemption never reaches a shared default service. Source authority:
 [`WatchmanConfig.cpp` global loading](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/WatchmanConfig.cpp#L27-L68)
 and [`main.cpp` priority refusal](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/main.cpp#L87-L107).
+
+Root lifecycle owners prepare a new or reused checkout outside the check's
+critical path with `WATCHMAN_SOCK=<persistent-user-socket> buck2
+--initialize-watchman-root <crawl-budget-ms>`. This registers the exact root
+and waits for its initial crawl; an already watched root reuses the service's
+watch. The caller sets the crawl budget from measured root initialization
+under its admission/load conditions, with headroom. Start/end
+`buck2.watchman.crawl` events include the root, budget, outcome and elapsed
+milliseconds; initialization failures have reason `crawl`, retaining the
+underlying admission error as their cause. All initialization attempts share
+one total deadline. No managed service is spawned by this command: the
+explicit socket selects an existing persistent service and is also exported
+to subsequent checks. Ordinary admission retains its short deadline and
+exact-root validation; neither phase admits `notify`.
+For admission queues that can outlive Watchman's idle-watch retention, the
+owner additionally exports `BUCK2_WATCHMAN_CRAWL_BUDGET_MS=<crawl-budget-ms>`.
+A cache-miss admission then completes the separately logged, bounded root
+registration before its unchanged short liveness probe. Positive cached
+admission still avoids both calls. This opt-in does not alter other consumers'
+deadlines, service priority, root identity or watcher provider.
+
 Each Watchman attempt uses the caller's flat probe deadline (2500 ms by
 default), replacing the former 900 ms cap. Only a timeout gets one retry; total
 Watchman probing is bounded to two caller deadlines (5000 ms by default). REAPI
