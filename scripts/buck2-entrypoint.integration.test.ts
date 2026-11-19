@@ -1710,7 +1710,7 @@ console.log(JSON.stringify({admitted, attempt}));`,
   })
 
   for (const initialAvailable of [true, false]) {
-    it(`ages ${initialAvailable ? 'healthy' : 'read-only negative'} REAPI admission from probe completion`, async () => {
+    it(`ages ${String(initialAvailable)} REAPI admission from probe completion`, async () => {
       let available = initialAvailable
       let requests = 0
       const grpc = createServer()

@@ -86,7 +86,7 @@ if (args.at(-1) === 'status') {
     argv,
     env,
     killCalls: () =>
-      existsSync(killed)
+      existsSync(killed) === true
         ? readFileSync(killed, 'utf8')
             .trim()
             .split('\n')
