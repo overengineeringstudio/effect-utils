@@ -203,6 +203,16 @@ Reconstruction restores every LF, checks the complete hash, excludes conflicting
 snapshots and applies the same retained-file caps before strict reconciliation.
 Replay does not create additional occurrences; missing lines remain gaps.
 
+The backend reader accepts only a governed full query endpoint, exact nanosecond
+start/end, optional restrictive host, forward direction and a limit of at most
+5,000 rows. The server owns the fixed stream selector; the reader sends no LogQL
+or credentials and follows no redirects. Saturated host/time partitions bisect
+at exact nanoseconds rather than advancing past the last timestamp. A saturated
+one-nanosecond bucket, warning, malformed row, query failure or resource cap is
+an explicit gap. Enumeration has an 800-request ceiling, shared caller budget,
+250 ms pacing and 120-second deadline. Even exhaustive backend enumeration
+cannot prove transport/census closure or absence of later arrivals.
+
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
 run. Expired evidence artifacts are not downloaded and contribute evidence
