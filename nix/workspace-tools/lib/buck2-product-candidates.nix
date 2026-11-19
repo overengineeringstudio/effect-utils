@@ -170,7 +170,9 @@ let
       };
       worktree-teardown = {
         capability = "worktree-teardown";
-        environment.WORKTREE_TEARDOWN_BIN = "${import ../../worktree-teardown.nix { inherit pkgs; }}/bin/worktree-teardown";
+        environment.WORKTREE_TEARDOWN_BIN = "${
+          import ../../worktree-teardown.nix { inherit pkgs; }
+        }/bin/worktree-teardown";
       };
     };
   };

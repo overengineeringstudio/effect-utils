@@ -47,11 +47,11 @@ const fixture = Effect.gen(function* () {
     owner: '',
     reason: '',
   }
-  yield* withPoolState(
-    f.storePath,
-    (state, save) => Effect.flatMap(reservePoolSlot(state, slot), save),
-    { maxSlots: 1, maxBytes: 1048576 },
-  )
+  yield* withPoolState({
+    base: f.storePath,
+    use: (state, save) => Effect.flatMap(reservePoolSlot({ state, slot }), save),
+    limits: { maxSlots: 1, maxBytes: 1048576 },
+  })
   return { ...f, slot }
 })
 
@@ -59,16 +59,15 @@ describe('native pool ownership safety', () => {
   it.effect('status preserves live and completed ownership', () =>
     Effect.gen(function* () {
       const { storePath, slot } = yield* fixture
-      yield* withPoolState(storePath, (state, save) =>
+      yield* withPoolState({ base: storePath, use: (state, save) =>
         save({
           ...state,
           slots: [{ ...slot, state: 'leased', token: 'task', generation: 1, chargeKnown: false }],
-        }),
-      )
+        }) })
       const live = yield* inspectPool(storePath)
       expect(live.slots[0]?.state).toBe('leased')
       expect(live.slots[0]?.chargeKnown).toBe(false)
-      yield* completePool(storePath, slot.id, 'task', 1)
+      yield* completePool({ base: storePath, id: slot.id, token: 'task', generation: 1 })
       const fs = yield* FileSystem.FileSystem
       const lease = deletionLeasePath({ storeBasePath: storePath, ownerPath: slot.path })
       const record = yield* fs.readFileString(lease)
@@ -78,7 +77,7 @@ describe('native pool ownership safety', () => {
       expect(observed.slots[0]?.chargeKnown).toBe(false)
       expect(observed.slots[0]?.token).toBe('task')
       expect(observed.slots[0]?.generation).toBe(1)
-      expect(yield* completePool(storePath, slot.id, 'stale', 1).pipe(Effect.exit)).toSatisfy(
+      expect(yield* completePool({ base: storePath, id: slot.id, token: 'stale', generation: 1 }).pipe(Effect.exit)).toSatisfy(
         Exit.isFailure,
       )
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -93,16 +92,15 @@ describe('native pool ownership safety', () => {
         yield* fs.writeFileString(`${slot.path}/partial-install`, 'x'.repeat(16384))
         yield* fs.writeFileString(`${slot.path}/sparse-install`, '')
         yield* fs.truncate(`${slot.path}/sparse-install`, 16 * 1024 * 1024)
-        yield* withPoolState(storePath, (state, save) =>
+        yield* withPoolState({ base: storePath, use: (state, save) =>
           save({
             ...state,
             slots: [
               { ...slot, charge: 1, token: 'partial', state: 'preparing', chargeKnown: false },
             ],
-          }),
-        )
-        yield* quarantinePool(storePath, slot.id, 'partial', 'install failed')
-        const state = yield* withPoolState(storePath, (state) => Effect.succeed(state))
+          }) })
+        yield* quarantinePool({ base: storePath, id: slot.id, token: 'partial', reason: 'install failed' })
+        const state = yield* withPoolState({ base: storePath, use: (state) => Effect.succeed(state) })
         expect(state.slots[0]?.state).toBe('quarantined')
         expect(state.slots[0]!.charge).toBeGreaterThan(16 * 1024 * 1024 + 16384)
         expect(yield* fs.readFileString(`${slot.path}/partial-install`)).toHaveLength(16384)
@@ -115,12 +113,11 @@ describe('native pool ownership safety', () => {
       const { storePath, slot } = yield* fixture
       yield* fs.writeFileString(`${slot.path}/retained`, 'held')
       const file = yield* fs.open(`${slot.path}/retained`, { flag: 'r' })
-      yield* withPoolState(storePath, (state, save) =>
+      yield* withPoolState({ base: storePath, use: (state, save) =>
         save({
           ...state,
           slots: [{ ...slot, token: 'lost', state: 'completed', chargeKnown: false }],
-        }),
-      )
+        }) })
       // External pathname loss does not release the real open file description.
       yield* fs.remove(slot.path, { recursive: true })
       const state = yield* inspectPool(storePath)
@@ -155,7 +152,7 @@ describe('native pool ownership safety', () => {
         yield* claimPool({ base: storePath, identity: 'receipt', owner: 'test' }).pipe(Effect.exit),
       ).toSatisfy(Exit.isFailure)
       expect(yield* fs.readFileString(`${slot.path}/unpublished.txt`)).toBe('user work')
-      const state = yield* withPoolState(storePath, (state) => Effect.succeed(state))
+      const state = yield* withPoolState({ base: storePath, use: (state) => Effect.succeed(state) })
       expect(state.slots[0]?.state).toBe('quarantined')
       expect(
         yield* claimPool({ base: storePath, identity: 'receipt', owner: 'next' }).pipe(Effect.exit),
