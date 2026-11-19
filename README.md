@@ -949,11 +949,14 @@ Configured REAPI roots use endpoint admission; an omitted
 
 `BUCK2_NO_REMOTE_CACHE=1` disables reads and uploads, and public read-only posture
 wins over either writer credential. The entrypoint probes REAPI capabilities
-with a 900 ms deadline, caches endpoint outcomes for five seconds in the user's
-cache directory, and emits a warning on every fail-open invocation. An
-unavailable read-only REAPI endpoint selects local execution. Writers still
-fail closed on REAPI outages. Outage overrides are invocation-local and do not
-change tracked configuration. Archive availability does not participate in
+under split connect/TLS and response budgets with an eight-second total ceiling.
+Endpoint cache lifetimes begin when the probe completes: healthy outcomes and
+writer failures last five seconds; unavailable read-only outcomes last sixty
+seconds to avoid repeating a slow connection timeout on every warm invocation.
+CI's first job admission still probes freshly. Every fail-open invocation warns;
+unavailable read-only REAPI selects local execution, while writers fail closed.
+Outage overrides are invocation-local and do not change tracked configuration.
+Archive availability does not participate in
 REAPI admission.
 
 Identical healthy read-only invocations reuse a shell fast path within the
