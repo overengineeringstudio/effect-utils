@@ -1733,6 +1733,7 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
   let fatal = false
   let buildFailed = false
   const failedTargets = new Set<string>()
+  let testFooter: 'targets' | 'count' | 'summary' | 'done' | undefined
   let block: { action: string; phase: 'internal' | 'error' | 'details' } | undefined
   const finishBlock = (): boolean => {
     if (block === undefined) return true
@@ -1750,6 +1751,29 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
       .trim()
       .replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+(?=WARN )/u, '')
     if (line === '') continue
+    // A native test build failure has its own ordered footer, not BUILD FAILED.
+    // No test may have run or failed: every non-build test count must be zero.
+    if (testFooter === 'done') return false
+    if (testFooter === 'count') {
+      if (
+        line !==
+        `Tests finished: Pass 0. Fail 0. Timeout 0. Fatal 0. Skip 0. Omit 0. Infra Failure 0. Build failure ${failedTargets.size}`
+      )
+        return false
+      testFooter = 'summary'
+      continue
+    }
+    if (testFooter === 'summary') {
+      if (line !== 'NO TESTS RAN') return false
+      testFooter = 'done'
+      continue
+    }
+    if (
+      testFooter === 'targets' &&
+      /^Failed to build '\S+ \([^)]+\)'$/u.test(line) === false &&
+      /^[1-9]\d* BUILDS FAILED$/u.test(line) === false
+    )
+      return false
     if (/^Remote action digest: '[a-f0-9]+:\d+'$/u.test(line) === true) {
       if (block?.phase !== 'details') return false
       continue
@@ -1802,14 +1826,22 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
     }
     // Native build footers repeat already validated action targets, not new failures.
     if (line === 'BUILD FAILED') {
-      if (expected === undefined || summaryHeading === false || buildFailed === true) return false
+      if (
+        expected === undefined ||
+        summaryHeading === false ||
+        buildFailed === true ||
+        testFooter !== undefined
+      )
+        return false
       buildFailed = true
       continue
     }
     const failedTarget = /^Failed to build '(\S+ \([^)]+\))'$/u.exec(line)?.[1]
     if (failedTarget !== undefined) {
       if (
-        buildFailed === false ||
+        expected === undefined ||
+        summaryHeading === false ||
+        summary.size !== expected ||
         failedTargets.has(failedTarget) === true ||
         [...summary].some(
           (action) => action === failedTarget || action.startsWith(`${failedTarget} (`),
@@ -1817,6 +1849,22 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
       )
         return false
       failedTargets.add(failedTarget)
+      if (buildFailed === false) testFooter = 'targets'
+      continue
+    }
+    const testBuildCount = /^([1-9]\d*) BUILDS FAILED$/u.exec(line)?.[1]
+    if (testBuildCount !== undefined) {
+      if (
+        testFooter !== 'targets' ||
+        Number(testBuildCount) !== failedTargets.size ||
+        [...summary].every((action) =>
+          [...failedTargets].some(
+            (target) => action === target || action.startsWith(`${target} (`),
+          ),
+        ) === false
+      )
+        return false
+      testFooter = 'count'
       continue
     }
     if (informational.some((pattern) => pattern.test(line)) === true) continue
@@ -1829,7 +1877,12 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
     if (scope.test(line) === false || unavailable.test(line) === false) return false
     fatal = true
   }
-  if (finishBlock() === false || fatal === false) return false
+  if (
+    finishBlock() === false ||
+    fatal === false ||
+    (testFooter !== undefined && testFooter !== 'done')
+  )
+    return false
   if (expected === undefined) return live.size === 0
   return (
     summaryHeading === true &&

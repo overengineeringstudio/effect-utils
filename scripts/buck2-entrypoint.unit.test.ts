@@ -166,6 +166,76 @@ it('classifies the captured editor publisher incident with multi-action progress
     expect(isOnlyReapiUnavailable(output)).toBe(false)
 })
 
+// Retained dev3 real-native reader-test receipt 3eYerr, 2026-11-19:
+// native stderr verbatim; only launcher preflight lines are excluded.
+const testBuildIncidentOutput = readFileSync(
+  new URL('./fixtures/buck2-test-build-re-unavailable.txt', import.meta.url),
+  'utf8',
+)
+
+it('classifies only the complete zero-tests native test-build unavailable footer', async () => {
+  expect(isOnlyReapiUnavailable(testBuildIncidentOutput)).toBe(true)
+  const attempts: string[] = []
+  expect(
+    await runWithCacheLocalFallback({
+      eligible: true,
+      command: { subcommand: 'test', argumentCount: 2 },
+      run: async () => {
+        attempts.push('remote')
+        return { exitCode: 2, output: testBuildIncidentOutput }
+      },
+      local: async () => {
+        attempts.push('local')
+        return 0
+      },
+      onFallback: () => {},
+    }),
+  ).toBe(0)
+  expect(attempts).toEqual(['remote', 'local'])
+})
+
+it('rejects real test failures, nonzero test counts, mixed failures and incomplete test-build footers', async () => {
+  for (const output of [
+    ...['Pass', 'Fail', 'Timeout', 'Fatal', 'Skip', 'Omit', 'Infra Failure'].map((count) =>
+      testBuildIncidentOutput.replace(`${count} 0`, `${count} 1`),
+    ),
+    testBuildIncidentOutput.replace('Build failure 1', 'Build failure 0'),
+    testBuildIncidentOutput.replace('Build failure 1', 'Build failure 2'),
+    testBuildIncidentOutput.replace('1 BUILDS FAILED', '2 BUILDS FAILED'),
+    testBuildIncidentOutput.replace('1 BUILDS FAILED\n', ''),
+    testBuildIncidentOutput.replace('NO TESTS RAN', ''),
+    testBuildIncidentOutput.replace('NO TESTS RAN', 'TESTS FAILED: assertion failed'),
+    testBuildIncidentOutput.replace('BUILD ERRORS (1)', 'BUILD ERRORS (2)'),
+    testBuildIncidentOutput.replaceAll('The service is currently unavailable', 'Unauthenticated'),
+    testBuildIncidentOutput.replaceAll('The service is currently unavailable', 'PermissionDenied'),
+    testBuildIncidentOutput.replaceAll('fixture transient unavailable', 'digest mismatch'),
+    testBuildIncidentOutput.replace('Stderr: <empty>', 'Stderr: compiler crashed'),
+    testBuildIncidentOutput.replace('Stdout: <empty>', 'Stdout: assertion failed'),
+    testBuildIncidentOutput.replace('NO TESTS RAN', 'NO TESTS RAN\nError: unknown failure'),
+    testBuildIncidentOutput.replace(
+      "Failed to build 'fixture//:probe (fixture//:target-platform#80c8f40843f6fe27)'",
+      "Failed to build 'fixture//:other (fixture//:target-platform#80c8f40843f6fe27)'",
+    ),
+    `${testBuildIncidentOutput}\nerror[E0308]: mismatched types`,
+    `${testBuildIncidentOutput}\nTESTS FAILED: assertion failed`,
+  ]) {
+    expect(isOnlyReapiUnavailable(output)).toBe(false)
+    expect(
+      await runWithCacheLocalFallback({
+        eligible: true,
+        command: { subcommand: 'test', argumentCount: 2 },
+        run: async () => ({ exitCode: 2, output }),
+        local: async () => {
+          throw new Error('non-transient test diagnostic must not execute locally')
+        },
+        onFallback: () => {
+          throw new Error('non-transient test diagnostic must not be classified')
+        },
+      }),
+    ).toBe(2)
+  }
+})
+
 it('rejects real-incident mutations rather than masking another action failure', async () => {
   for (const output of [
     `${incidentOutput}\nAction failed: root//:compile (root//:platform) (compile app)\nerror[E0308]: mismatched types\n`,

@@ -219,6 +219,11 @@ admitted remote build/test -> native failure retained -> strict RE classifier
 After a successful admission, an effective reader or explicit optional writer
 may re-execute `build`/`test` once only when every captured diagnostic is an
 enumerated RE-client initialization/capabilities/connect unavailable failure.
+Native `test` build-failure footers are accepted only after matching classified
+action summaries and failed targets: the `N BUILDS FAILED` count must match those
+targets, every non-build count in `Tests finished` must be zero, its build-failure
+count must match, and the footer must end with `NO TESTS RAN`. Any executed,
+failed, skipped, incomplete or unknown test diagnostic remains fatal.
 The replay uses the original expanded command, removes `--reuse-current-config`,
 and adds `--local-only --no-remote-cache`. Existing explicit build-ID/event-log
 sinks receive a `.local-<UUID>` suffix so the original evidence is not overwritten.
