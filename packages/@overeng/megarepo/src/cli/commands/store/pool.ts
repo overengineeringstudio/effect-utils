@@ -45,7 +45,7 @@ const prewarm = Cli.Command.make(
     Effect.gen(function* () {
       const { store, bare } = yield* resolveRepository(repo)
       yield* Console.log(
-        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(
+        yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
           yield* prewarmPool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge }),
         ),
       )
@@ -67,7 +67,7 @@ const claim = Cli.Command.make(
       const slot = yield* claimPool({ base: store.basePath, identity, owner })
       const retain = (reason: string) =>
         quarantinePool({ base: store.basePath, id: slot.id, token: slot.token, reason })
-      yield* Console.log(yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(slot))
+      yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(slot))
       // The live provider is the activation ancestor for ordinary install/check wrappers.
       const code = yield* Effect.scoped(
         Effect.gen(function* () {
@@ -114,7 +114,7 @@ const release = Cli.Command.make(
     Effect.gen(function* () {
       const store = yield* Store
       yield* Console.log(
-        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(
+        yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
           yield* releasePool({ base: store.basePath, id, token, generation }),
         ),
       )
@@ -129,7 +129,7 @@ const status = Cli.Command.make('status', {}, () =>
   Effect.gen(function* () {
     const store = yield* Store
     yield* Console.log(
-      yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* inspectPool(store.basePath)),
+      yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(yield* inspectPool(store.basePath)),
     )
   }),
 )
