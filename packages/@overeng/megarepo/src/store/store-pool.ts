@@ -72,7 +72,9 @@ const free = (slot: PoolSlot) =>
     const proof = yield* readWorktreeReferencesInUse({ worktreePath: slot.path, scope: 'gc-owner' })
     if (proof._tag !== 'free')
       return yield* new PoolError({
-        message: `Pool holders not proven absent: ${yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(proof)}`,
+        message: `Pool holders not proven absent: ${yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Unknown),
+        )(proof)}`,
       })
   })
 

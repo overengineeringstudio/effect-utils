@@ -1,7 +1,27 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
+
+report_failure() {
+  local status="$1"
+  local line="$2"
+  local command="$3"
+  local log_file
+
+  printf 'FAIL: shared-store proof status=%s line=%s command=%s\n' "$status" "$line" "$command" >&2
+  printf 'pnpm=%s expectedVersion=%s actualVersion=%s\n' \
+    "${PNPM:-unresolved}" "${EXPECTED_PNPM_VERSION:-unknown}" "${ACTUAL_PNPM_VERSION:-unknown}" >&2
+  if [ -n "${tmpdir:-}" ]; then
+    printf 'sharedStore=%s concurrentStore=%s\n' "$tmpdir/shared-store" "$tmpdir/concurrent-store" >&2
+    for log_file in "$tmpdir"/*.log; do
+      [ -f "$log_file" ] || continue
+      printf '%s\n' "--- ${log_file##*/} ---" >&2
+      cat "$log_file" >&2 || :
+    done
+  fi
+}
+trap 'report_failure "$?" "$LINENO" "$BASH_COMMAND"' ERR
 
 PNPM_OUT="$({
   nix build --no-link --print-out-paths --impure --expr "
