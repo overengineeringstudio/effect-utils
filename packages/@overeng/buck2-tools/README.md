@@ -101,6 +101,11 @@ declared dependency closure without reading an installed checkout. Source snapsh
 may deliberately use the shared static source globs/exclusions for conservative
 workspace-wide cache identity; this does not promise per-project invalidation.
 
+Package-tree actions pass exactly one declared JSON argument-manifest path to the
+runtime. Buck retains every mapped source and dependency root as an explicit input;
+only argument transport changes, so full-workspace snapshots do not exceed host
+command-line limits. Expanded argv is not a supported alternate entrypoint.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.

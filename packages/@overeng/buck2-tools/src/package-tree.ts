@@ -562,14 +562,19 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
   }
 }
 
-/** Runs the package-tree command-line interface used by the Buck action. */
-export const runPackageTreeCli = (args: readonly string[]): void => {
+/** Runs the Buck action from its declared JSON argument manifest, never ambient argv expansion. */
+export const runPackageTreeCli = (manifestPath: string): void => {
+  const args: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  if (Array.isArray(args) === false || args.some((value) => typeof value !== 'string') === true) {
+    return invalidArguments('argument manifest must be an array of strings')
+  }
   assemblePackageTree(parseOptions(args))
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    runPackageTreeCli(process.argv.slice(2))
+    if (process.argv.length !== 3) invalidArguments('expected exactly one argument manifest path')
+    runPackageTreeCli(process.argv[2]!)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

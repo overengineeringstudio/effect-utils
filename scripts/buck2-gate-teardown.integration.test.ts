@@ -86,10 +86,12 @@ if (args.at(-1) === 'status') {
     argv,
     env,
     killCalls: () =>
-      readFileSync(killed, 'utf8')
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line)),
+      existsSync(killed) === true
+        ? readFileSync(killed, 'utf8')
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line))
+        : [],
   }
 }
 
@@ -133,7 +135,7 @@ const dispose = async (
 
 describe('gate wrapper native-only death and real gate-slot expiry', () => {
   for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
-    it(`cleans exactly once when only the native client receives ${signal}`, async () => {
+    it(`preserves native ${signal} with Linux-only idle cleanup`, async () => {
       const fixture = teardownFixture()
       const child = Bun.spawn(fixture.argv, {
         cwd: fixture.root,
@@ -154,14 +156,16 @@ describe('gate wrapper native-only death and real gate-slot expiry', () => {
         process.kill(pid, signal)
         expect(await child.exited, await stderr).toBe(signal === 'SIGTERM' ? 0 : 137)
         assertLifecycleOutput(await stdout, await stderr)
-        expect(fixture.killCalls()).toEqual([['--isolation-dir', 'owned', 'kill']])
+        expect(fixture.killCalls()).toEqual(
+          process.platform === 'linux' ? [['--isolation-dir', 'owned', 'kill']] : [],
+        )
       } finally {
         await dispose(fixture, child)
       }
     }, 60000)
   }
 
-  it('preserves real gate-slot max-hold expiry and runs the wrapper cleanup exactly once', async () => {
+  it('preserves real gate-slot max-hold expiry with Linux-only daemon teardown', async () => {
     const gate = Bun.which('gate-slot')
     if (gate === null) throw new Error('actual gate-slot required for the max-hold regression')
     const fixture = teardownFixture()
@@ -232,7 +236,9 @@ describe('gate wrapper native-only death and real gate-slot expiry', () => {
       expect(output).toMatch(/admitted class=heavy .*max-hold=8s lane=build/u)
       expect(output).toContain('max hold 8s reached; exit=124 (max hold expired); SIGTERM to pgid')
       expect(output).toContain('command-exited exit=143')
-      expect(fixture.killCalls()).toEqual([['--isolation-dir', 'owned', 'kill']])
+      expect(fixture.killCalls()).toEqual(
+        process.platform === 'linux' ? [['--isolation-dir', 'owned', 'kill']] : [],
+      )
     } finally {
       await dispose(fixture, child)
     }
