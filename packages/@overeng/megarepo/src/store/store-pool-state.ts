@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { open, rename } from 'node:fs/promises'
+import { type FileHandle, open, rename } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 
-import { Effect, Option, Schema } from 'effect'
+import { Cause, Context, Effect, Exit, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -10,6 +10,7 @@ import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { type AbsoluteDirPath, EffectPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import { type GitWriterLockError, PoolStateEpoch, withPoolWorktreeOperationLock } from './git-writer-lock.ts'
 import {
   DeletionLeaseProviderObservation, type DeletionLeaseUnavailableError,
   hasPersistentDeletionLeases, withDeletionLease,
@@ -287,6 +288,11 @@ const validatePoolState = (state: PoolState) =>
       })
   })
 
+/** Internal real-filesystem fault seam, after rename and before the actual directory sync. */
+export class PoolDirectorySyncObserver extends Context.Service<
+  PoolDirectorySyncObserver, (directory: FileHandle) => Promise<void>
+>()('megarepo/PoolDirectorySyncObserver') {}
+
 /** Fsync both contents and rename: readiness/ownership must survive process loss. */
 const persist = ({ path, state }: { path: string; state: PoolState }) =>
   Effect.gen(function* () {
@@ -294,6 +300,7 @@ const persist = ({ path, state }: { path: string; state: PoolState }) =>
     const contents = yield* Schema.encodeEffect(Schema.fromJsonString(PoolState), {
       onExcessProperty: 'error',
     })(state)
+    const observer = yield* Effect.serviceOption(PoolDirectorySyncObserver)
     yield* Effect.tryPromise(async () => {
       const temporary = `${path}.${randomUUID()}`
       const file = await open(temporary, 'wx', 0o600)
@@ -306,6 +313,7 @@ const persist = ({ path, state }: { path: string; state: PoolState }) =>
       await rename(temporary, path)
       const directory = await open(dirname(path), 'r')
       try {
+        if (Option.isSome(observer)) await observer.value(directory)
         await directory.sync()
       } finally {
         await directory.close()
@@ -427,9 +435,113 @@ export const withPoolState = <A, E, R>({
         }
         yield* persist({ path, state: next })
         current = next
-      }))
+      })).pipe(Effect.provideService(PoolStateEpoch, true))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })
+
+const equivalentPoolSlot = Schema.toEquivalence(PoolSlot)
+
+/** One short CAS epoch; callers retain the root action fence while physical work runs outside it. */
+export const replacePoolSlot = <Next extends PoolSlot | undefined>({
+  base, expected, next,
+}: { base: AbsoluteDirPath; expected: PoolSlot; next: Next }): Effect.Effect<
+  Next, PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError | DeletionLeaseUnavailableError,
+  FileSystem.FileSystem | ChildProcessSpawner
+> =>
+  withPoolState({
+    base,
+    use: (state, save) => Effect.gen(function* () {
+      const current = state.slots.find((slot) => slot.id === expected.id)
+      if (current === undefined || equivalentPoolSlot(current, expected) === false ||
+        (next !== undefined && (next.id !== expected.id || next.path !== expected.path || next.bare !== expected.bare)))
+        return yield* new PoolError({ message: 'Stale pool slot epoch; current authority retained' })
+      // Always merge into this epoch's authoritative ledger, never a previously captured array.
+      yield* save({ ...state, slots: next === undefined
+        ? state.slots.filter((slot) => slot.id !== expected.id)
+        : state.slots.map((slot) => slot.id === expected.id ? next : slot) })
+      return next
+    }),
+  })
+
+/**
+ * Retain one native root action lock across physical work, never the global ledger lock.
+ * The callback is invoked once; conflict never replays a subprocess or mutation.
+ */
+export const withPoolSlotOperation = <A, E, R>({
+  base, select, use,
+}: {
+  base: AbsoluteDirPath
+  select: string | ((slot: PoolSlot) => boolean)
+  use: (
+    state: PoolState,
+    save: (next: PoolState) => Effect.Effect<
+      void, PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError | DeletionLeaseUnavailableError,
+      FileSystem.FileSystem | ChildProcessSpawner
+    >,
+    selected: PoolSlot,
+  ) => Effect.Effect<A, E, R>
+}): Effect.Effect<
+  A, E | PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError |
+    DeletionLeaseUnavailableError | GitWriterLockError,
+  R | FileSystem.FileSystem | ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const before = yield* readPoolState({ base })
+    const selected = before.slots.find(
+      typeof select === 'string' ? (slot) => slot.id === select : select,
+    )
+    if (selected === undefined) return yield* new PoolError({ message: 'No matching pool slot' })
+    return yield* Effect.gen(function* () {
+      const state = yield* readPoolState({ base })
+      const current = state.slots.find((slot) => slot.id === selected.id)
+      if (current === undefined || equivalentPoolSlot(current, selected) === false)
+        return yield* new PoolError({ message: 'Selected pool root changed before action admission' })
+      let expected: PoolSlot | undefined = current
+      const others = new Map(state.slots.filter((slot) => slot.id !== selected.id).map((slot) => [slot.id, slot]))
+      const save = (next: PoolState) => Effect.gen(function* () {
+        yield* validatePoolState(next)
+        if (expected === undefined || next.version !== state.version ||
+          next.maxSlots !== state.maxSlots || next.maxBytes !== state.maxBytes ||
+          next.slots.filter((slot) => slot.id !== selected.id).length !== others.size ||
+          next.slots.some((slot) => slot.id !== selected.id && others.get(slot.id) !== slot))
+          return yield* new PoolError({ message: 'Root action cannot alter other slots or host limits' })
+        const replacement = next.slots.find((slot) => slot.id === selected.id)
+        const previous = expected
+        yield* replacePoolSlot({ base, expected, next: replacement }).pipe(
+          Effect.catchCause((original) => Effect.gen(function* () {
+            // Rename may have committed before directory fsync failed. Recover custody,
+            // not success, and never assume a missing record authorizes resurrection.
+            const reconciled = yield* withPoolState({
+              base, use: (current) => Effect.succeed(current.slots.find((slot) => slot.id === selected.id)),
+            }).pipe(Effect.exit)
+            if (Exit.isFailure(reconciled))
+              return yield* Effect.failCause(Cause.combine(original, reconciled.cause))
+            const current = reconciled.value
+            expected = current !== undefined &&
+              (equivalentPoolSlot(current, previous) ||
+                (replacement !== undefined && equivalentPoolSlot(current, replacement)))
+              ? current : undefined
+            return yield* Effect.failCause(original)
+          }).pipe(Effect.uninterruptible)),
+        )
+        expected = replacement
+      })
+      return yield* use(state, save, current)
+    }).pipe(withPoolWorktreeOperationLock({
+      storeBasePath: base, barePath: selected.bare, path: selected.path, id: selected.id,
+    }))
+  })
+
+/** Failure retention must never replace the operation's original failure. */
+export const retainPoolFailure =
+  <E2, R2>(retain: (reason: string) => Effect.Effect<void, E2, R2>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E | E2, R | R2> =>
+    effect.pipe(Effect.catchCause((original) => Effect.gen(function* () {
+      const retained = yield* retain(Cause.pretty(original)).pipe(Effect.exit)
+      if (Exit.isFailure(retained))
+        return yield* Effect.failCause(Cause.combine(original, retained.cause))
+      return yield* Effect.failCause(original)
+    }).pipe(Effect.uninterruptible)))
 
 type PoolLeaseCheck = { slot: PoolSlot; token: string; generation: number }
 type PoolClaim = { slot: PoolSlot; identity: string; owner: string }

@@ -14,8 +14,18 @@ import * as Observability from '../core/observability.ts'
 /** A failed lock acquisition is never downgraded to an unlocked write. */
 export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()(
   'GitWriterLockError',
-  { path: Schema.String, cause: Schema.Defect() },
+  { path: Schema.String, cause: Schema.Defect(), contention: Schema.optional(Schema.Literal(true)) },
 ) {}
+
+/** Diagnostic acquisition-rank context; never an admission capability or another lock. */
+export class PoolStateEpoch extends Context.Service<PoolStateEpoch, true>()('megarepo/PoolStateEpoch') {}
+export const assertOutsidePoolStateEpoch = (path: string) => Effect.gen(function* () {
+  if (Option.isSome(yield* Effect.serviceOption(PoolStateEpoch)))
+    return yield* new GitWriterLockError({
+      path, cause: 'Native acquisition inside a GLOBAL pool epoch is forbidden',
+    })
+})
+
 /** Internal deterministic contention seam; ordinary callers need no observer. */
 export class CommitTreePreparationObserver extends Context.Service<
   CommitTreePreparationObserver,
@@ -124,6 +134,7 @@ const withGitLock =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
+      yield* assertOutsidePoolStateEpoch(path)
       const common =
         literalPrivateControl === true ? path : create === true
           ? yield* io(path)(async () => {
@@ -179,7 +190,11 @@ const withGitLock =
             )
               return Effect.as(errno === 4 ? Effect.void : onContention, false)
             return Effect.fail(
-              new GitWriterLockError({ path: lockPath, cause: `flock errno=${errno}` }),
+              new GitWriterLockError({
+                path: lockPath, cause: `flock errno=${errno}`,
+                ...(literalPrivateControl === true && errno === (process.platform === 'darwin' ? 35 : 11)
+                  ? { contention: true as const } : {}),
+              }),
             )
           }).pipe(
             Effect.repeat({
@@ -274,7 +289,8 @@ export const withGitContainerLock =
  * Pool physical-root action fence. The control is outside the removable root and
  * never unlinked, renamed or replaced, including after root removal or a crash.
  * This supplies no writer descriptor and does not transfer ownership to children.
- * Order: ROOT operation -> short GLOBAL state epochs -> container -> native pins.
+ * Partial order: ROOT -> container/native pins -> short GLOBAL epochs.
+ * An initial GLOBAL epoch releases before acquiring container/pins; never the reverse.
  */
 export const withPoolWorktreeOperationLock =
   ({ storeBasePath, barePath, path, id }: {
@@ -282,6 +298,7 @@ export const withPoolWorktreeOperationLock =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
+      yield* assertOutsidePoolStateEpoch(path)
       const parent = dirname(path)
       const control = `${path}.mr-pool-operation`
       const identity = yield* io(control)(async () => {

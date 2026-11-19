@@ -12,7 +12,7 @@ import {
   type DeletionLeaseUnavailableError, releaseDeletionLease,
 } from './store-deletion-lease.ts'
 import { type PoolRootProvenance, projectPoolProvenance } from './store-pool-provenance.ts'
-import { beginPoolRetirement, PoolError, type PoolSlot, readPoolState, withPoolState } from './store-pool-state.ts'
+import { beginPoolRetirement, PoolError, type PoolSlot, readPoolState, withPoolSlotOperation } from './store-pool-state.ts'
 
 export type PoolRetirementExpected = Readonly<Pick<PoolSlot,
   'id' | 'path' | 'bare' | 'generation' | 'commit' | 'identity'
@@ -38,8 +38,8 @@ export const withPoolRetirement = <E, R>({
     readonly assertCurrent: Effect.Effect<void, RetirementError, FileSystem.FileSystem>
   }) => Effect.Effect<void, E, R>
 }): Effect.Effect<void, E | RetirementError, R | FileSystem.FileSystem | ChildProcessSpawner> =>
-  withPoolState({
-    base,
+  withPoolSlotOperation({
+    base, select: expected.id,
     use: (state, save) => Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const slot = state.slots.find((item) => item.id === expected.id)
@@ -112,7 +112,7 @@ export const withPoolRetirement = <E, R>({
             const owned = current.slots.find((item) => item.id === slot.id)
             if (owned === undefined || matches(owned) === false || owned.retirement === undefined) return
             const failed: PoolSlot = { ...owned, retirement: { ...owned.retirement, status: 'failed' } }
-            yield* save({ ...current, slots: current.slots.map((item) => item.id === slot.id ? failed : item) })
+            yield* update(failed)
           }).pipe(Effect.exit)
           return yield* Effect.failCause(Exit.isFailure(retained) === true
             ? Cause.combine(action.cause, retained.cause) : action.cause)

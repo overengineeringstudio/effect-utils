@@ -557,17 +557,43 @@ is a typed refusal, not successful admission or a waiting promise.
 Never unlink, rename or replace this control during reset, retirement, finalization
 or crash recovery: the persistent inode also protects existing kernel waiters.
 
-Lifecycle integration must use one order on every claim, preparation, reset,
-retirement and recovery path: **ROOT operation → short GLOBAL current-ledger CAS
-epochs → container → native identity pins**. No physical proof, doctor or install
-holds the global ledger fence. Reset/retarget uses a shared container fence because
+Lifecycle integration must use one acquisition partial order on every claim,
+preparation, reset, retirement and recovery path: **ROOT operation → container/native
+pins → short GLOBAL current-ledger CAS epochs**. A short initial GLOBAL read or
+intent epoch may precede container acquisition only when it is released first.
+No GLOBAL holder acquires container locks, pins, another root action lock, or does
+physical work. Final publication is inside native pins; no doctor or install holds
+the global ledger fence. Reset/retarget uses a shared container fence because
 normal worktree activation takes its shared container lock before ancestor lease
 borrowing; an exclusive outer container would prevent that normal preparation.
 Retirement keeps its continuous exclusive container fence. Durable mutation intent
 and the root action lock are required before the first write through completion.
 A crash retains/quarantines the intent, never returns ready automatically.
-This primitive alone does not establish caller integration, concurrency/crash test
-results, holder SDK qualification or permission to activate physical operations.
+`replacePoolSlot` provides the short compare-and-swap epoch: it rereads canonical
+authority, rejects a stale source/generation/token/intent/provenance observation,
+and merges only that slot into the current ledger. Other slots and host-wide limits
+are never overwritten from a captured pre-install snapshot. Callers must retain
+the native root operation lock across these otherwise independent epochs.
+`withPoolSlotOperation` selects by an initial observation, takes that physical root's
+kernel lock, then rereads and validates the exact selected record before invoking
+its callback once. Physical work holds no GLOBAL lock. Each supplied `save` validates
+the canonical schema and CASes only the selected slot; it cannot alter another root
+or host limits. Concurrent changes to other slots are preserved, not rejected due
+to the callback's older inventory. Conflict never retries or replays physical work.
+If rename commits but directory sync fails, the save still fails. Under the retained
+ROOT lock it reconciles only an exact prior or attempted current record so failure
+retention can CAS that same owned generation. It never reports persistence success,
+overwrites a superseding record, or resurrects a missing removed record. Original
+and reconciliation failures are retained together.
+Preparation, claim, release, authoring, completion, quarantine, retirement and
+inspection use that root-scoped coordinator. Reservation remains a globally atomic
+count/byte decision, without acquiring a root/container/pin lock inside its epoch.
+Inspection reconciles one root at a time; native operation contention yields a typed
+`PoolSlotBusy` / `HOLD` observation without changing that busy root's authority.
+The diagnostic epoch context rejects reversed native writer/container/root/pin
+acquisitions before they run. It enforces Effect acquisition order only, not child
+process safety or holder evidence. Caller integration is not evidence of executed
+concurrency/crash tests, holder SDK qualification or permission to activate roots.
 
 `readPoolProvenance` exports bearer-free observations through that same decoder,
 without initialization, migration writes, recovery, unlocks or removal. Missing or

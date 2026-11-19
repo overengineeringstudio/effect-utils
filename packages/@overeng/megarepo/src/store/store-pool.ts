@@ -44,6 +44,9 @@ import {
   requireDisposablePoolRoot,
   requirePoolLease,
   reservePoolGeneration,
+  readPoolState,
+  retainPoolFailure,
+  withPoolSlotOperation,
   withPoolState,
 } from './store-pool-state.ts'
 
@@ -206,8 +209,8 @@ export const prewarmPool = (args: {
   PoolOperationError | Git.CommonBareWorktreeConfigError,
   FileSystem.FileSystem | ChildProcessSpawner
 > =>
-  withPoolState({
-    base: args.base,
+  withPoolSlotOperation({
+    base: args.base, select: args.id,
     use: (state, save) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
@@ -226,6 +229,7 @@ export const prewarmPool = (args: {
         const { id, path } = slot
         const storePath = (yield* fs.realPath(args.base)).replace(/\/$/u, '')
         yield* update()
+        let preparing = slot
         const prepare = Effect.gen(function* () {
           yield* fs.makeDirectory(dirname(path), { recursive: true })
           const lease = yield* acquireDeletionLease({
@@ -236,6 +240,7 @@ export const prewarmPool = (args: {
             activationIdentity: { storePath, containerPath: bare },
           })
           slot = { ...slot, barrierToken: lease.token }
+          preparing = slot
           yield* update()
           yield* fs.makeDirectory(path)
           yield* Git.ensureBareRefLogging({ repoPath: bare })
@@ -264,10 +269,10 @@ export const prewarmPool = (args: {
           return slot
         }).pipe(withGitContainerLock({ path: bare, mode: 'shared' }))
         return yield* prepare.pipe(
-          Effect.tapError((error) =>
+          retainPoolFailure((reason) =>
             Effect.gen(function* () {
               slot = yield* observePoolActivity({
-                slot: { ...(yield* retainPoolSlot({ slot, reason: String(error) })), chargeKnown: false },
+                slot: { ...(yield* retainPoolSlot({ slot: preparing, reason })), chargeKnown: false },
                 phase: 'birth-failed',
               })
               yield* update()
@@ -279,17 +284,14 @@ export const prewarmPool = (args: {
 
 /** Claim is serialized with capacity and generations; it never resets a root. */
 export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner: string }) =>
-  withPoolState({
+  withPoolSlotOperation({
     base: args.base,
-    use: (state, save) =>
+    select: (slot) => slot.state === 'ready' && slot.identity === args.identity,
+    use: (state, save, slot) =>
       Effect.gen(function* () {
-        const slot = state.slots.find(
-          (item) => item.state === 'ready' && item.identity === args.identity,
-        )
-        if (slot === undefined)
-          return yield* new PoolError({ message: 'No matching ready pool generation' })
         const update = (next: PoolSlot) =>
           save({ ...state, slots: state.slots.map((item) => (item.id === slot.id ? next : item)) })
+        let attempted = slot
         return yield* Effect.gen(function* () {
           yield* adoptPersistentDeletionLease(barrier({ base: args.base, slot }))
           yield* requireDisposablePoolRoot(slot)
@@ -311,12 +313,13 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
             identity: args.identity,
             owner: args.owner,
           }).pipe(Effect.flatMap((claimed) => observePoolActivity({ slot: claimed, phase: 'claim-active' })))
+          attempted = next
           yield* update(next)
           return next
         }).pipe(
           withGitContainerLock({ path: slot.bare, mode: 'shared' }),
-          Effect.tapError((error) =>
-            Effect.flatMap(retainPoolSlot({ slot, reason: String(error) }), update),
+          retainPoolFailure((reason) =>
+            Effect.flatMap(retainPoolSlot({ slot: attempted, reason }), update),
           ),
         )
       }),
@@ -325,8 +328,8 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
 /** Persist authoring before handing this physical root to an arbitrary child. */
 export const authorPoolRoot = (args: {
   base: AbsoluteDirPath; id: string; token: string; generation: number
-}): Effect.Effect<void, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> => withPoolState({
-  base: args.base,
+}): Effect.Effect<void, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> => withPoolSlotOperation({
+  base: args.base, select: args.id,
   use: (state, save) => Effect.gen(function* () {
     const slot = state.slots.find((item) => item.id === args.id)
     if (slot === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
@@ -343,8 +346,8 @@ export const releasePool = (args: {
   token: string
   generation: number
 }) =>
-  withPoolState({
-    base: args.base,
+  withPoolSlotOperation({
+    base: args.base, select: args.id,
     use: (state, save) =>
       Effect.gen(function* () {
         const slot = state.slots.find((item) => item.id === args.id)
@@ -412,8 +415,8 @@ export const releasePool = (args: {
           return ready
         }).pipe(
           withGitContainerLock({ path: slot.bare, mode: 'shared' }),
-          Effect.tapError((error) =>
-            Effect.flatMap(retainPoolSlot({ slot, reason: String(error) }), (retained) =>
+          retainPoolFailure((reason) =>
+            Effect.flatMap(retainPoolSlot({ slot, reason }), (retained) =>
               observePoolActivity({ slot: retained, phase: 'release-failed' }).pipe(Effect.flatMap(update))),
           ),
         )
@@ -561,8 +564,8 @@ export const completePool = ({
   token: string
   generation: number
 }) =>
-  withPoolState({
-    base,
+  withPoolSlotOperation({
+    base, select: id,
     use: (state, save) =>
       Effect.gen(function* () {
         const slot = state.slots.find((item) => item.id === id)
@@ -592,8 +595,8 @@ export const quarantinePool = ({
   token: string
   reason: string
 }) =>
-  withPoolState({
-    base,
+  withPoolSlotOperation({
+    base, select: id,
     use: (state, save) =>
       Effect.gen(function* () {
         const slots: Array<PoolSlot> = []
@@ -611,44 +614,39 @@ export const quarantinePool = ({
       }),
   })
 
-/** Inspection reconciles abandoned providers only toward retention, never readiness. */
+export const PoolSlotBusy = Schema.TaggedStruct('PoolSlotBusy', {
+  id: Schema.String,
+  state: Schema.Literal('HOLD'),
+})
+
+/** Reconcile each root independently; a busy action is an observation, never a ready grant. */
 export const inspectPool = (base: AbsoluteDirPath) =>
-  withPoolState({
-    base,
-    use: (state, save) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const slots: Array<PoolSlot> = []
-        for (const slot of state.slots) {
+  Effect.gen(function* () {
+    const observed = yield* readPoolState({ base })
+    const busy: Array<Schema.Schema.Type<typeof PoolSlotBusy>> = []
+    for (const observedSlot of observed.slots) {
+      yield* withPoolSlotOperation({
+        base, select: observedSlot.id,
+        use: (state, save, slot) => Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
           const pathExists = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => undefined))
-          if (slot.state === 'reserved' && pathExists === false) {
-            slots.push(slot)
-            continue
-          }
+          if (slot.state === 'reserved' && pathExists === false) return
           const pathKnown = pathExists === true
-          const uncertain =
-            pathKnown === false ||
-            slot.state === 'preparing' ||
-            slot.state === 'reserved' ||
+          const uncertain = pathKnown === false || slot.state === 'preparing' || slot.state === 'reserved' ||
             (slot.state === 'leased' &&
               (yield* persistentDeletionLeaseOwnerAlive(barrier({ base, slot }))) === false)
           const mutable = slot.state === 'leased' || slot.state === 'completed'
-          const reason =
-            slot.state === 'reserved'
-              ? 'Reserved path unexpectedly exists or is unknown'
-              : pathKnown === false
-                ? 'Root path lost or unknown'
-                : uncertain === true
-                  ? 'Provider lost or unknown'
-                  : slot.reason
-          slots.push(
-            uncertain === true || (slot.chargeKnown !== true && mutable === false)
-              ? yield* retainPoolSlot({ slot, reason })
-              : slot,
-          )
-        }
-        const next = { ...state, slots }
-        yield* save(next)
-        return next
-      }),
+          const reason = slot.state === 'reserved' ? 'Reserved path unexpectedly exists or is unknown' :
+            pathKnown === false ? 'Root path lost or unknown' :
+            uncertain === true ? 'Provider lost or unknown' : slot.reason
+          const retained = uncertain === true || (slot.chargeKnown !== true && mutable === false)
+            ? yield* retainPoolSlot({ slot, reason }) : slot
+          yield* save({ ...state, slots: state.slots.map((item) => item.id === slot.id ? retained : item) })
+        }),
+      }).pipe(Effect.catchTag('GitWriterLockError', (error) =>
+        error.contention === true
+          ? Effect.sync(() => { busy.push({ _tag: 'PoolSlotBusy', id: observedSlot.id, state: 'HOLD' }) })
+          : Effect.fail(error)))
+    }
+    return { ...(yield* readPoolState({ base })), ...(busy.length === 0 ? {} : { busy }) }
   })

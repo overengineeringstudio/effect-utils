@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Stream } from 'effect'
+import { Cause, Effect, Exit, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -20,6 +20,11 @@ import {
   withGitWriterLock,
   withPoolWorktreeOperationLock,
 } from './git-writer-lock.ts'
+import { captureDeletionIdentity } from './store-pinned-deletion.ts'
+import {
+  consumePoolReservation, PoolDirectorySyncObserver, readPoolState, retainPoolFailure, withPoolSlotOperation, withPoolState,
+} from './store-pool-state.ts'
+import { inspectPool, reservePool } from './store-pool.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
 const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
@@ -69,7 +74,7 @@ const fixture = Effect.gen(function* () {
 const startWorker = Effect.fn('test/writer-lock/startWorker')(function* (
   repo: string,
   marker: string,
-  mode: 'primitive' | 'clone' | 'cli' | 'pool-operation' = 'primitive',
+  mode: 'primitive' | 'clone' | 'cli' | 'pool-operation' | 'pool-ledger' = 'primitive',
   exitCode = 0,
   extraArgs: ReadonlyArray<string> = [],
   cloneTarget = false,
@@ -110,6 +115,147 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('rejects reversed native acquisition and clears the diagnostic epoch after interruption', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const root = yield* f.fs.realPath(f.root)
+      const base = EffectPath.unsafe.absoluteDir(`${root}/store/`)
+      const repository = `${base}github.com/test/pool`
+      const barePath = `${repository}/.bare`
+      yield* f.fs.makeDirectory(repository, { recursive: true })
+      yield* git(root, 'clone', '--bare', f.source, barePath)
+      const id = randomUUID()
+      const path = `${repository}/pool/${id}`
+      const target = { storeBasePath: base, barePath, path, id }
+      const reversed = <A, E, R>(operation: Effect.Effect<A, E, R>) => withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 64 }, use: () => operation,
+      }).pipe(Effect.result)
+      const container = yield* reversed(Effect.void.pipe(withGitContainerLock({ path: barePath, mode: 'shared' })))
+      const writer = yield* reversed(Effect.void.pipe(withGitWriterLock({ path: barePath })))
+      const action = yield* reversed(Effect.void.pipe(withPoolWorktreeOperationLock(target)))
+      expect([container._tag, writer._tag, action._tag]).toEqual(['Failure', 'Failure', 'Failure'])
+      expect(yield* f.fs.exists(`${path}.mr-pool-operation.mr-container.lock`)).toBe(false)
+      if (process.platform === 'linux') {
+        expect(yield* reversed(captureDeletionIdentity({ rootPath: base, path: repository }))).toMatchObject({
+          _tag: 'Failure', failure: {
+            _tag: 'PinnedDeletionError',
+            message: 'Native pin acquisition inside a GLOBAL pool epoch is forbidden',
+          },
+        })
+      }
+      yield* withPoolState({ base, use: () => Effect.interrupt }).pipe(Effect.exit)
+      expect(yield* withPoolState({
+        base, use: (state) => Effect.succeed(state.slots.length),
+      }).pipe(withPoolWorktreeOperationLock(target))).toBe(0)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+  for (const failRetention of [false, true]) {
+    it.live(`retains post-rename sync failure custody (retention also fails: ${failRetention})`, () =>
+      Effect.gen(function* () {
+        const f = yield* fixture
+        const root = yield* f.fs.realPath(f.root)
+        const base = EffectPath.unsafe.absoluteDir(`${root}/store/`)
+        const repository = `${base}github.com/test/pool`
+        const bare = `${repository}/.bare`
+        yield* f.fs.makeDirectory(repository, { recursive: true })
+        yield* git(root, 'clone', '--bare', f.source, bare)
+        const commit = yield* git(bare, 'rev-parse', 'HEAD')
+        const reserved = yield* reservePool({ base, bare, commit, charge: 64, maxSlots: 1, maxBytes: 64 })
+        let failSync = true
+        const result = yield* withPoolSlotOperation({
+          base, select: reserved.id,
+          use: (state, save, selected) => Effect.gen(function* () {
+            const intent = yield* consumePoolReservation({
+              slot: selected, id: selected.id, reservation: selected.reservation!,
+              generation: selected.generation, bare, commit, charge: selected.charge,
+            })
+            return yield* save({ ...state, slots: [intent] }).pipe(retainPoolFailure((reason) =>
+              Effect.gen(function* () {
+                expect((yield* readPoolState({ base })).slots[0]).toEqual(intent)
+                yield* save({ ...state, slots: [{ ...intent, state: 'quarantined', reason }] })
+              }),
+            ))
+          }),
+        }).pipe(
+          Effect.provideService(PoolDirectorySyncObserver, async (directory) => {
+            if (failSync === true || failRetention === true) {
+              failSync = false
+              // Actual write and rename happened; syncing this real closed directory must fail.
+              await directory.close()
+            }
+          }),
+          Effect.exit,
+        )
+        expect(Exit.isFailure(result)).toBe(true)
+        if (Exit.isFailure(result))
+          expect(Cause.pretty(result.cause).match(/Pool persistence failed:/gu)?.length)
+            .toBe(failRetention === true ? 2 : 1)
+        expect((yield* readPoolState({ base })).slots[0]).toMatchObject({
+          state: 'quarantined', chargeKnown: false, generation: 1,
+          initialPreparation: { generation: 1, commit },
+        })
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+
+  it.live('allows another slot epoch during a held action and retains birth intent after provider death', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const root = yield* f.fs.realPath(f.root)
+      const base = EffectPath.unsafe.absoluteDir(`${root}/store/`)
+      const repository = `${base}github.com/test/pool`
+      const bare = `${repository}/.bare`
+      yield* f.fs.makeDirectory(repository, { recursive: true })
+      yield* git(root, 'clone', '--bare', f.source, bare)
+      const commit = yield* git(bare, 'rev-parse', 'HEAD')
+      const reserve = () => reservePool({ base, bare, commit, charge: 64, maxSlots: 2, maxBytes: 128 })
+      const first = yield* reserve()
+      const second = yield* reserve()
+      const marker = `${root}/pool-ledger`
+      const provider = yield* startWorker(
+        first.path, marker, 'pool-ledger', 0, [base, bare, first.id],
+      )
+      yield* awaitMarker(`${marker}.entered`)
+      const busy = yield* withPoolSlotOperation({
+        base, select: first.id, use: () => Effect.die('Busy callback must not execute'),
+      }).pipe(Effect.result)
+      expect((yield* inspectPool(base)).busy).toEqual([
+        { _tag: 'PoolSlotBusy', id: first.id, state: 'HOLD' },
+      ])
+      expect(busy._tag).toBe('Failure')
+      yield* withPoolSlotOperation({
+        base, select: second.id,
+        use: (state, save, selected) => Effect.gen(function* () {
+          const preparing = yield* consumePoolReservation({
+            slot: selected, id: selected.id, reservation: selected.reservation!,
+            generation: selected.generation, bare, commit, charge: selected.charge,
+          })
+          yield* save({ ...state, slots: state.slots.map((slot) => slot.id === second.id ? preparing : slot) })
+        }),
+      })
+      const concurrent = yield* readPoolState({ base })
+      expect(concurrent.slots.map((slot) => slot.state)).toEqual(['preparing', 'preparing'])
+      yield* Effect.sync(() => process.kill(provider.pid, 'SIGKILL'))
+      yield* provider.exitCode.pipe(Effect.ignore)
+      yield* withPoolSlotOperation({
+        base, select: first.id,
+        use: (state, save, selected) => Effect.gen(function* () {
+          expect(selected).toMatchObject({
+            state: 'preparing', chargeKnown: false, reservation: undefined,
+            initialPreparation: { generation: 1, commit },
+          })
+          yield* save({ ...state, slots: state.slots.map((slot) => slot.id === first.id
+            ? { ...selected, state: 'quarantined', reason: 'crashed preparation retained' } : slot) })
+        }),
+      })
+      const retained = yield* readPoolState({ base })
+      expect(retained.slots[0]).toMatchObject({ state: 'quarantined', chargeKnown: false })
+      expect(retained.slots[1]).toEqual(concurrent.slots[1])
+      expect(yield* f.fs.exists(first.path)).toBe(false)
+      expect(yield* f.fs.exists(`${first.path}.mr-pool-operation.mr-container.lock`)).toBe(true)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.live('refuses the same physical pool operation while another slot proceeds and survives provider death', () =>
     Effect.gen(function* () {
       const f = yield* fixture
