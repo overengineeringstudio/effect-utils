@@ -254,3 +254,59 @@ pub fn pid_namespace_parent(namespace: &File) -> io::Result<Option<File>> {
     let parent = descriptor(c_long::from(unsafe { ioctl(namespace.as_raw_fd(), 0xb702, 0) }))?;
     require_cloexec(parent).map(|parent| Some(File::from(parent)))
 }
+
+#[cfg(test)]
+mod alias_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    #[ignore = "requires isolated Linux root with CAP_SYS_PTRACE and pidfd-thread support"]
+    fn actual_worker_shared_unshared_and_reopened_descriptions() {
+        unsafe extern "C" {
+            fn gettid() -> c_int;
+            fn unshare(flags: c_int) -> c_int;
+            fn dup2(old: c_int, new: c_int) -> c_int;
+        }
+        let leader=std::process::id();
+        let directory=File::open("/").unwrap();
+        let number=u32::try_from(directory.as_raw_fd()).unwrap();
+        let (report,receive)=mpsc::channel();
+        let (resume,commands)=mpsc::channel();
+        let worker=std::thread::spawn(move || {
+            // SAFETY: gettid has no arguments; it identifies this actual worker.
+            let tid=u32::try_from(unsafe { gettid() }).unwrap();
+            report.send((tid,0)).unwrap();
+            commands.recv().unwrap();
+            // SAFETY: CLONE_FILES detaches only this disposable worker's table.
+            assert_eq!(unsafe { unshare(0x400) },0);
+            report.send((tid,1)).unwrap();
+            commands.recv().unwrap();
+            let reopened=File::open("/").unwrap();
+            // SAFETY: the worker owns a private table; dup2 replaces only its
+            // inherited test descriptor with a distinct OFD for the same inode.
+            assert_eq!(unsafe { dup2(reopened.as_raw_fd(),number as c_int) },number as c_int);
+            report.send((tid,2)).unwrap();
+            commands.recv().unwrap();
+        });
+        let (tid,stage)=receive.recv().unwrap();
+        assert_eq!(stage,0);
+        let leader_pin=pin_process(leader).unwrap();
+        let task_pin=pin_task(tid).unwrap();
+        assert!(shared_task_descriptor(leader,tid,number,&leader_pin,&task_pin).unwrap());
+        resume.send(()).unwrap();
+        assert_eq!(receive.recv().unwrap(),(tid,1));
+        // The inherited OFD is still identical, but the table is no longer shared.
+        let inherited=duplicate_process_fd(&task_pin,number as i32).unwrap();
+        assert!(same_open_file(&directory,&inherited).unwrap());
+        assert!(!shared_task_descriptor(leader,tid,number,&leader_pin,&task_pin).unwrap());
+        resume.send(()).unwrap();
+        assert_eq!(receive.recv().unwrap(),(tid,2));
+        let different=duplicate_process_fd(&task_pin,number as i32).unwrap();
+        assert!(!same_open_file(&directory,&different).unwrap());
+        assert!(!shared_task_descriptor(leader,tid,number,&leader_pin,&task_pin).unwrap());
+        resume.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(!shared_task_descriptor(leader,tid,number,&leader_pin,&task_pin).unwrap());
+    }
+}

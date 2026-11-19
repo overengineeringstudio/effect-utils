@@ -552,4 +552,24 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn alias_is_optional_strict_and_bound_to_the_exact_nonleader_fd() {
+        let cases=codec_fixtures().unwrap();
+        let raw=String::from_utf8(cases[9].clone()).unwrap();
+        let parsed=Response::parse(raw.as_bytes()).unwrap();
+        assert!(parsed.roots[0].references[0].leader_fd_alias.is_some());
+        for (from,to) in [
+            ("\"proof\":\"pidfd-kcmp-files-and-file-v1\"","\"proof\":\"inode-equality\""),
+            ("\"fd\":20}}","\"fd\":21}}"),
+            ("\"taskStart\":\"701\",\"fd\":20}","\"taskStart\":\"702\",\"fd\":20}"),
+            ("\"tid\":62,\"taskStart\":\"701\",\"fd\":20}","\"tid\":61,\"taskStart\":\"701\",\"fd\":20}"),
+            ("\"leaderStart\":\"700\",\"tid\":62,\"taskStart\":\"701\",\"fd\":20}","\"leaderStart\":\"701\",\"tid\":62,\"taskStart\":\"701\",\"fd\":20}"),
+            ("\"proof\":\"pidfd-kcmp-files-and-file-v1\"","\"extra\":true,\"proof\":\"pidfd-kcmp-files-and-file-v1\""),
+        ] {
+            assert!(raw.contains(from),"directed invalid-frame mutation must actually apply");
+            assert!(Response::parse(raw.replace(from,to).as_bytes()).is_err());
+        }
+        // Existing producer frames carry no alias and remain protective.
+        assert!(Response::parse(&cases[2]).unwrap().roots[0].references[0].leader_fd_alias.is_none());
+    }
 }
