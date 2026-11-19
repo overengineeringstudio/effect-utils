@@ -3,6 +3,7 @@
   allowedRoots,
   ownerUid,
   managedPolicy ? null,
+  withClients ? false,
 }:
 let
   inherit (pkgs) lib;
@@ -17,11 +18,11 @@ let
   protocol = import ./worktree-holder-evidence-protocol.nix { inherit pkgs; };
   kernel = import ./worktree-holder-proc.nix { inherit pkgs; };
   mounted = import ./worktree-holder-evidence-mounted.nix { inherit pkgs allowedRoots; };
-  sources = map (suffix: "worktree-holder-evidence${suffix}.rs") [
+  sources = map (suffix: "worktree-holder-evidence${suffix}.rs") ([
     "-server" "-server-auth" "-privileged-syscalls" "-server-decode"
     "-server-census" "-server-transport" "-server-host-ipc"
     "-listener" "-daemon" "-runtime"
-  ];
+  ] ++ lib.optionals withClients [ "-cli-client" "-client-transport" ]);
   evidence =
     pkgs.runCommand "worktree-holder-evidence-server"
       {
@@ -74,6 +75,7 @@ let
           -L dependency=${protocol}/lib
           -L dependency=${kernel}/lib
           -L dependency=${mounted}/lib
+          ${lib.optionalString withClients "--cfg holder_evidence_clients"}
         )
         rustc --edition=2024 -D warnings "''${externs[@]}" --test worktree-holder-evidence-server.rs -o server-tests
         ./server-tests

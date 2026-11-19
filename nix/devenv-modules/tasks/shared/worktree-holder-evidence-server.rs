@@ -1,4 +1,4 @@
-//! Privileged read-only server; no unprivileged CLI modes or activation wiring.
+//! Fixed-policy server, with same-binary client modes compiled only by the client package.
 #![deny(unsafe_code)]
 #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
 compile_error!("holder evidence server requires Linux x86_64 or aarch64");
@@ -24,6 +24,12 @@ mod daemon;
 mod host_ipc;
 #[path = "worktree-holder-evidence-runtime.rs"]
 mod runtime;
+#[cfg(holder_evidence_clients)]
+#[path = "worktree-holder-evidence-cli-client.rs"]
+mod cli_client;
+#[cfg(holder_evidence_clients)]
+#[path = "worktree-holder-evidence-client-transport.rs"]
+mod client_transport;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{self, Read};
@@ -121,10 +127,20 @@ fn run() -> io::Result<()> {
     linux::bound_helper_lifetime()?;
     let deadline=Instant::now()+Duration::from_secs(25);
     let mut arguments=std::env::args_os().skip(1);
-    if arguments.next().as_deref()!=Some(OsStr::new("--serve-once")) || arguments.next().is_some() {
-        return Err(io::Error::other("usage: worktree-holder-evidence --serve-once"));
+    let mode=arguments.next();
+    #[cfg(holder_evidence_clients)]
+    if mode.as_deref()==Some(OsStr::new("--pnpm-client-v1")) {
+        return cli_client::store_client(deadline);
     }
-    serve_once(deadline)
+    if arguments.next().is_some() {
+        return Err(io::Error::other("unexpected holder-evidence arguments"));
+    }
+    match mode.as_deref() {
+        Some(mode) if mode==OsStr::new("--serve-once")=>serve_once(deadline),
+        #[cfg(holder_evidence_clients)]
+        Some(mode) if mode==OsStr::new("--client-v1")=>cli_client::worktree_client(deadline),
+        _=>Err(io::Error::other("unsupported holder-evidence mode")),
+    }
 }
 fn main() -> ExitCode {
     match run() {
