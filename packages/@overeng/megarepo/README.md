@@ -373,6 +373,18 @@ observation API grants no reset, retarget or removal authority: callers must kee
 own continuous action fence and capture fresh Git, owner, consumer and all-UID evidence
 inside the callback. A retained view or precomputed census cannot authorize a later action.
 
+For an action spanning a worktree and its exact Git administrative directory,
+`withVerifiedDirectoryPins({ targets, prepare, commit })` generalizes that same engine:
+acquire every recorded no-follow chain, await `prepare` with one opaque view per target,
+revoke the views, verify **all** chains, then await `commit(prepared)` while **all**
+native fds remain held. Only commit may publish READY; preparation must leave durable
+intent UNKNOWN/HOLD. A killed preparing process therefore cannot publish a ready slot
+before verification. Failed acquisition or verification never calls commit. The API
+does not roll back a partially published commit: the caller must quarantine its exact
+owned generation on commit/durability failure, without overwriting a newer generation.
+Keep the caller's continuous per-root action barrier through publication and cleanup;
+pins alone are neither an activity lease nor privileged-census or deletion authority.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one

@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   closeSync,
   constants,
@@ -29,6 +29,7 @@ import {
   readDirectoryEvidence,
   withPinnedDeletion,
   withPinnedDirectoryPins,
+  withVerifiedDirectoryPins,
   type OwnedDeletionPins,
 } from './store-pinned-deletion.ts'
 
@@ -710,6 +711,163 @@ process.stdin.resume()`,
         expect(result._tag === 'Failure' && result.failure).toBeInstanceOf(PinnedDeletionError)
         expect(yield* fs.readFileString(`${path}/replacement`)).toBe('replacement survives')
         expect(yield* fs.readFileString(`${detached}/nested/deeper/artifact`)).toBe('original artifact')
+      },
+      Effect.provide(NodeServices.layer), Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'commits only after all real chains verify, while both sets of descriptors remain held',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, base, rootPath, path } = yield* fixture
+        const admin = `${rootPath}/administration`
+        const state = `${base}/intent`
+        yield* fs.makeDirectory(admin)
+        yield* fs.writeFileString(state, 'HOLD')
+        const targets = [
+          { rootPath, path, identity: yield* captureDeletionIdentity({ rootPath, path }) },
+          { rootPath, path: admin, identity: yield* captureDeletionIdentity({ rootPath, path: admin }) },
+        ]
+        let retained: ReadonlyArray<OwnedDeletionPins> = []
+        const value = yield* withVerifiedDirectoryPins({
+          targets,
+          prepare: (pins) => Effect.sync(() => {
+            retained = pins
+            expect(pins).toHaveLength(2)
+            expect(pins[0]!.pins.at(-1)!.fd).not.toBe(pins[1]!.pins.at(-1)!.fd)
+            return 'prepared'
+          }),
+          commit: (...args: [string]) => Effect.gen(function* () {
+            expect(args).toHaveLength(1)
+            const [prepared] = args
+            expect(prepared).toBe('prepared')
+            for (const view of retained) {
+              const pin = view.pins.at(-1)!
+              expect(view.has({ kind: 'fd', ...pin })).toBe(false)
+              expect(fstatSync(pin.fd, { bigint: true }).ino.toString()).toBe(pin.ino)
+            }
+            yield* fs.writeFileString(state, 'READY')
+            return prepared
+          }),
+        })
+        expect(value).toBe('prepared')
+        expect(yield* fs.readFileString(state)).toBe('READY')
+        expect(yield* fs.exists(admin)).toBe(true)
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
+        for (const view of retained) expect(() => fstatSync(view.pins.at(-1)!.fd)).toThrow()
+      },
+      Effect.provide(NodeServices.layer), Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'keeps intent HOLD and never commits if the second real chain changes during prepare',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, base, rootPath, path } = yield* fixture
+        const admin = `${rootPath}/administration`
+        const state = `${base}/intent`
+        yield* fs.makeDirectory(admin)
+        yield* fs.writeFileString(`${admin}/sentinel`, 'original admin')
+        yield* fs.writeFileString(state, 'HOLD')
+        const targets = [
+          { rootPath, path, identity: yield* captureDeletionIdentity({ rootPath, path }) },
+          { rootPath, path: admin, identity: yield* captureDeletionIdentity({ rootPath, path: admin }) },
+        ]
+        let committed = false
+        const result = yield* withVerifiedDirectoryPins({
+          targets,
+          prepare: () => Effect.gen(function* () {
+            yield* fs.rename(admin, `${admin}-detached`)
+            yield* fs.makeDirectory(admin)
+            yield* fs.writeFileString(`${admin}/replacement`, 'replacement admin')
+          }),
+          commit: () => Effect.gen(function* () {
+            committed = true
+            yield* fs.writeFileString(state, 'READY')
+          }),
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        expect(result._tag === 'Failure' && result.failure).toBeInstanceOf(PinnedDeletionError)
+        expect(committed).toBe(false)
+        expect(yield* fs.readFileString(state)).toBe('HOLD')
+        expect(yield* fs.readFileString(`${admin}-detached/sentinel`)).toBe('original admin')
+        expect(yield* fs.readFileString(`${admin}/replacement`)).toBe('replacement admin')
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
+      },
+      Effect.provide(NodeServices.layer), Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'a real SIGKILL between prepare and verification leaves durable intent HOLD, never READY',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, base, rootPath, path } = yield* fixture
+        const admin = `${rootPath}/administration`
+        const state = `${base}/intent`
+        yield* fs.makeDirectory(admin)
+        const source = `
+import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
+import * as engine from ${JSON.stringify(new URL('./store-pinned-deletion.ts', import.meta.url).href)}
+import * as fs from 'node:fs'
+process.stdin.resume()
+const rootPath = ${JSON.stringify(rootPath)}
+const paths = ${JSON.stringify([path, admin])}
+const state = ${JSON.stringify(state)}
+await Effect.runPromise(Effect.gen(function* () {
+  const targets = []
+  for (const path of paths)
+    targets.push({rootPath, path, identity: yield* engine.captureDeletionIdentity({rootPath, path})})
+  return yield* engine.withVerifiedDirectoryPins({
+    targets,
+    prepare: () => Effect.gen(function* () {
+      const fd = fs.openSync(state, 'wx', 0o600)
+      try { fs.writeFileSync(fd, 'HOLD'); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
+      process.stdout.write('PREPARED\\n')
+      return yield* Effect.never
+    }),
+    commit: () => Effect.sync(() => fs.writeFileSync(state, 'READY')),
+  })
+}))`
+        const child = yield* Effect.acquireRelease(
+          Effect.sync(() => spawn(process.execPath, ['--input-type=module', '-e', source], {
+            cwd: dirname(fileURLToPath(import.meta.url)),
+            stdio: ['pipe', 'pipe', 'pipe'],
+          })),
+          (process) => Effect.promise(() => {
+            if (process.exitCode !== null || process.signalCode !== null) return Promise.resolve()
+            const { promise, resolve } = Promise.withResolvers<void>()
+            process.once('exit', () => resolve())
+            process.kill('SIGKILL')
+            return promise
+          }),
+        )
+        const ready = yield* Effect.promise(() => {
+          const { promise, resolve, reject } = Promise.withResolvers<string>()
+          let stdout = ''
+          let stderr = ''
+          child.stderr!.on('data', (data) => { stderr += String(data) })
+          child.once('error', reject)
+          child.once('exit', () => reject(new Error(`Child exited before prepare: ${stderr}`)))
+          child.stdout!.on('data', (data) => {
+            stdout += String(data)
+            if (stdout.includes('\n')) resolve(stdout.trim())
+          })
+          return promise
+        }).pipe(Effect.timeout('10 seconds'))
+        expect(ready).toBe('PREPARED')
+        const signal = yield* Effect.promise(() => {
+          const { promise, resolve, reject } = Promise.withResolvers<NodeJS.Signals | null>()
+          child.once('exit', (_code, observedSignal) => resolve(observedSignal))
+          if (child.kill('SIGKILL') === false) reject(new Error('Failed to signal owned child'))
+          return promise
+        })
+        expect(signal).toBe('SIGKILL')
+        expect(yield* fs.readFileString(state)).toBe('HOLD')
+        expect(yield* fs.exists(admin)).toBe(true)
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
       },
       Effect.provide(NodeServices.layer), Effect.scoped,
     ),

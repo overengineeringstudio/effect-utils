@@ -128,7 +128,54 @@ interface PinnedDirectoryTarget {
   readonly identity: DeletionIdentity
 }
 
-/** One pinner for read-only observations and deletion; the physical postlude stays private. */
+/** One acquisition engine; publication and deletion add only private post-verification work. */
+const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
+  targets,
+  prepare,
+  commit,
+}: {
+  readonly targets: ReadonlyArray<PinnedDirectoryTarget>
+  readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
+  readonly commit: (value: A, chains: ReadonlyArray<readonly PinnedDirectory[]>) =>
+    Effect.Effect<B, ECommit, RCommit>
+}): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> => {
+  const path = targets[0]?.path ?? ''
+  return Effect.acquireUseRelease(
+    native({
+      path,
+      operation: () => {
+        if (targets.length === 0) throw fail({ path, message: 'At least one pinned target is required' })
+        const chains: Array<readonly PinnedDirectory[]> = []
+        try {
+          for (const target of targets) chains.push(pinChain(target))
+          return chains
+        } catch (cause) {
+          for (const chain of chains.reverse()) closeChain(chain)
+          throw cause
+        }
+      },
+    }),
+    (chains) =>
+      Effect.gen(function* () {
+        const owned = chains.map(ownDeletionPins)
+        const views = Object.freeze(owned.map((entry) => entry.view))
+        const value = yield* Effect.suspend(() => prepare(views)).pipe(
+          Effect.ensuring(Effect.sync(() => {
+            for (const entry of owned) entry.revoke()
+          })),
+        )
+        yield* native({ path, operation: () => {
+          for (const chain of chains) verifyChain(chain)
+        } })
+        return yield* Effect.suspend(() => commit(value, chains))
+      }),
+    (chains) => Effect.sync(() => {
+      for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
+    }),
+  )
+}
+
+/** One target observation/deletion adapter; physical removal remains a private postlude. */
 const withPinnedDirectoryScope = <A, E, R>({
   rootPath,
   path,
@@ -139,25 +186,34 @@ const withPinnedDirectoryScope = <A, E, R>({
   readonly use: (ownedPins: OwnedDeletionPins) => Effect.Effect<A, E, R>
   readonly afterUse?: (chain: readonly PinnedDirectory[]) => void
 }): Effect.Effect<A, PinnedDeletionError | E, R> =>
-  Effect.acquireUseRelease(
-    native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
-    (chain) =>
-      Effect.gen(function* () {
-        const owned = ownDeletionPins(chain)
-        const value = yield* Effect.suspend(() => use(owned.view)).pipe(
-          Effect.ensuring(Effect.sync(owned.revoke)),
-        )
-        yield* native({
-          path,
-          operation: () => {
-            verifyChain(chain)
-            afterUse?.(chain)
-          },
-        })
+  withPinnedDirectoryTransaction({
+    targets: [{ rootPath, path, identity }],
+    prepare: (pins) => use(pins[0]!),
+    commit: (value, chains) => native({
+      path,
+      operation: () => {
+        afterUse?.(chains[0]!)
         return value
-      }),
-    (chain) => Effect.sync(() => closeChain(chain)),
-  )
+      },
+    }),
+  })
+
+/**
+ * Prepare under every target's pins, verify ALL chains, then commit while every fd remains held.
+ * Only prepare receives the scoped, engine-minted views, in target order. It must leave durable
+ * intent UNKNOWN/HOLD; publish READY only in commit. No quarantine or unlink postlude is added.
+ * Caller-owned action fences and crash recovery remain required; commit failure is not rollback.
+ */
+export const withVerifiedDirectoryPins = <A, B, E = never, R = never, ECommit = never, RCommit = never>({
+  targets,
+  prepare,
+  commit,
+}: {
+  readonly targets: ReadonlyArray<PinnedDirectoryTarget>
+  readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
+  readonly commit: (value: A) => Effect.Effect<B, ECommit, RCommit>
+}): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> =>
+  withPinnedDirectoryTransaction({ targets, prepare, commit: (value) => commit(value) })
 
 /**
  * Hold the existing no-follow identity pins for one awaited observation callback.
