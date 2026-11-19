@@ -2,6 +2,9 @@ import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Exit } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
+import { EffectPath } from '@overeng/effect-path'
+
+import { consumePoolReservation, withPoolSlotOperation } from '../store/store-pool-state.ts'
 import { withGitWriterLock, withPoolWorktreeOperationLock } from '../store/git-writer-lock.ts'
 
 /** Bun subprocess fixture: filesystem handshakes coordinate real independent runtimes. */
@@ -22,7 +25,22 @@ const program = Effect.gen(function* () {
     process.exitCode = Number(exitCode)
   })
   yield* fs.writeFileString(`${marker}.attempted`, '')
-  if (mode === 'pool-operation') {
+  if (mode === 'pool-ledger') {
+    const [storeBasePath, , id] = process.argv.slice(6)
+    if (storeBasePath === undefined || id === undefined)
+      return yield* Effect.die('Expected pool store and slot UUID')
+    yield* withPoolSlotOperation({
+      base: EffectPath.unsafe.absoluteDir(storeBasePath), select: id,
+      use: (state, save, slot) => Effect.gen(function* () {
+        const preparing = yield* consumePoolReservation({
+          slot, id, reservation: slot.reservation!, generation: slot.generation,
+          bare: slot.bare, commit: slot.commit, charge: slot.charge,
+        })
+        yield* save({ ...state, slots: state.slots.map((item) => item.id === id ? preparing : item) })
+        yield* body
+      }),
+    })
+  } else if (mode === 'pool-operation') {
     const [storeBasePath, barePath, id] = process.argv.slice(6)
     if (storeBasePath === undefined || barePath === undefined || id === undefined)
       return yield* Effect.die('Expected pool store, bare repository, and slot UUID')

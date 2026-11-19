@@ -20,6 +20,8 @@ import {
   withGitWriterLock,
   withPoolWorktreeOperationLock,
 } from './git-writer-lock.ts'
+import { consumePoolReservation, readPoolState, withPoolSlotOperation } from './store-pool-state.ts'
+import { reservePool } from './store-pool.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
 const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
@@ -69,7 +71,7 @@ const fixture = Effect.gen(function* () {
 const startWorker = Effect.fn('test/writer-lock/startWorker')(function* (
   repo: string,
   marker: string,
-  mode: 'primitive' | 'clone' | 'cli' | 'pool-operation' = 'primitive',
+  mode: 'primitive' | 'clone' | 'cli' | 'pool-operation' | 'pool-ledger' = 'primitive',
   exitCode = 0,
   extraArgs: ReadonlyArray<string> = [],
   cloneTarget = false,
@@ -110,6 +112,61 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('allows another slot epoch during a held action and retains birth intent after provider death', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const root = yield* f.fs.realPath(f.root)
+      const base = EffectPath.unsafe.absoluteDir(`${root}/store/`)
+      const repository = `${base}github.com/test/pool`
+      const bare = `${repository}/.bare`
+      yield* f.fs.makeDirectory(repository, { recursive: true })
+      yield* git(root, 'clone', '--bare', f.source, bare)
+      const commit = yield* git(bare, 'rev-parse', 'HEAD')
+      const reserve = () => reservePool({ base, bare, commit, charge: 64, maxSlots: 2, maxBytes: 128 })
+      const first = yield* reserve()
+      const second = yield* reserve()
+      const marker = `${root}/pool-ledger`
+      const provider = yield* startWorker(
+        first.path, marker, 'pool-ledger', 0, [base, bare, first.id],
+      )
+      yield* awaitMarker(`${marker}.entered`)
+      const busy = yield* withPoolSlotOperation({
+        base, select: first.id, use: () => Effect.die('Busy callback must not execute'),
+      }).pipe(Effect.result)
+      expect(busy._tag).toBe('Failure')
+      yield* withPoolSlotOperation({
+        base, select: second.id,
+        use: (state, save, selected) => Effect.gen(function* () {
+          const preparing = yield* consumePoolReservation({
+            slot: selected, id: selected.id, reservation: selected.reservation!,
+            generation: selected.generation, bare, commit, charge: selected.charge,
+          })
+          yield* save({ ...state, slots: state.slots.map((slot) => slot.id === second.id ? preparing : slot) })
+        }),
+      })
+      const concurrent = yield* readPoolState({ base })
+      expect(concurrent.slots.map((slot) => slot.state)).toEqual(['preparing', 'preparing'])
+      yield* Effect.sync(() => process.kill(provider.pid, 'SIGKILL'))
+      yield* provider.exitCode.pipe(Effect.ignore)
+      yield* withPoolSlotOperation({
+        base, select: first.id,
+        use: (state, save, selected) => Effect.gen(function* () {
+          expect(selected).toMatchObject({
+            state: 'preparing', chargeKnown: false, reservation: undefined,
+            initialPreparation: { generation: 1, commit },
+          })
+          yield* save({ ...state, slots: state.slots.map((slot) => slot.id === first.id
+            ? { ...selected, state: 'quarantined', reason: 'crashed preparation retained' } : slot) })
+        }),
+      })
+      const retained = yield* readPoolState({ base })
+      expect(retained.slots[0]).toMatchObject({ state: 'quarantined', chargeKnown: false })
+      expect(retained.slots[1]).toEqual(concurrent.slots[1])
+      expect(yield* f.fs.exists(first.path)).toBe(false)
+      expect(yield* f.fs.exists(`${first.path}.mr-pool-operation.mr-container.lock`)).toBe(true)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.live('refuses the same physical pool operation while another slot proceeds and survives provider death', () =>
     Effect.gen(function* () {
       const f = yield* fixture

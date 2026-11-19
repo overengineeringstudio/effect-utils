@@ -10,6 +10,7 @@ import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { type AbsoluteDirPath, EffectPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import { type GitWriterLockError, withPoolWorktreeOperationLock } from './git-writer-lock.ts'
 import {
   DeletionLeaseProviderObservation, type DeletionLeaseUnavailableError,
   hasPersistentDeletionLeases, withDeletionLease,
@@ -453,6 +454,58 @@ export const replacePoolSlot = <Next extends PoolSlot | undefined>({
         : state.slots.map((slot) => slot.id === expected.id ? next : slot) })
       return next
     }),
+  })
+
+/**
+ * Retain one native root action lock across physical work, never the global ledger lock.
+ * The callback is invoked once; conflict never replays a subprocess or mutation.
+ */
+export const withPoolSlotOperation = <A, E, R>({
+  base, select, use,
+}: {
+  base: AbsoluteDirPath
+  select: string | ((slot: PoolSlot) => boolean)
+  use: (
+    state: PoolState,
+    save: (next: PoolState) => Effect.Effect<
+      void, PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError | DeletionLeaseUnavailableError,
+      FileSystem.FileSystem | ChildProcessSpawner
+    >,
+    selected: PoolSlot,
+  ) => Effect.Effect<A, E, R>
+}): Effect.Effect<
+  A, E | PoolError | PlatformError | Schema.SchemaError | Git.GitCommandError |
+    DeletionLeaseUnavailableError | GitWriterLockError,
+  R | FileSystem.FileSystem | ChildProcessSpawner
+> =>
+  Effect.gen(function* () {
+    const before = yield* readPoolState({ base })
+    const selected = before.slots.find(
+      typeof select === 'string' ? (slot) => slot.id === select : select,
+    )
+    if (selected === undefined) return yield* new PoolError({ message: 'No matching pool slot' })
+    return yield* Effect.gen(function* () {
+      const state = yield* readPoolState({ base })
+      const current = state.slots.find((slot) => slot.id === selected.id)
+      if (current === undefined || equivalentPoolSlot(current, selected) === false)
+        return yield* new PoolError({ message: 'Selected pool root changed before action admission' })
+      let expected: PoolSlot | undefined = current
+      const others = new Map(state.slots.filter((slot) => slot.id !== selected.id).map((slot) => [slot.id, slot]))
+      const save = (next: PoolState) => Effect.gen(function* () {
+        yield* validatePoolState(next)
+        if (expected === undefined || next.version !== state.version ||
+          next.maxSlots !== state.maxSlots || next.maxBytes !== state.maxBytes ||
+          next.slots.filter((slot) => slot.id !== selected.id).length !== others.size ||
+          next.slots.some((slot) => slot.id !== selected.id && others.get(slot.id) !== slot))
+          return yield* new PoolError({ message: 'Root action cannot alter other slots or host limits' })
+        const replacement = next.slots.find((slot) => slot.id === selected.id)
+        yield* replacePoolSlot({ base, expected, next: replacement })
+        expected = replacement
+      })
+      return yield* use(state, save, current)
+    }).pipe(withPoolWorktreeOperationLock({
+      storeBasePath: base, barePath: selected.bare, path: selected.path, id: selected.id,
+    }))
   })
 
 type PoolLeaseCheck = { slot: PoolSlot; token: string; generation: number }

@@ -547,6 +547,12 @@ authority, rejects a stale source/generation/token/intent/provenance observation
 and merges only that slot into the current ledger. Other slots and host-wide limits
 are never overwritten from a captured pre-install snapshot. Callers must retain
 the native root operation lock across these otherwise independent epochs.
+`withPoolSlotOperation` selects by an initial observation, takes that physical root's
+kernel lock, then rereads and validates the exact selected record before invoking
+its callback once. Physical work holds no GLOBAL lock. Each supplied `save` validates
+the canonical schema and CASes only the selected slot; it cannot alter another root
+or host limits. Concurrent changes to other slots are preserved, not rejected due
+to the callback's older inventory. Conflict never retries or replays physical work.
 This primitive alone does not establish caller integration, concurrency/crash test
 results, holder SDK qualification or permission to activate physical operations.
 
