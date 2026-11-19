@@ -532,6 +532,17 @@ export const withPoolSlotOperation = <A, E, R>({
     }))
   })
 
+/** Failure retention must never replace the operation's original failure. */
+export const retainPoolFailure =
+  <E2, R2>(retain: (reason: string) => Effect.Effect<void, E2, R2>) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E | E2, R | R2> =>
+    effect.pipe(Effect.catchCause((original) => Effect.gen(function* () {
+      const retained = yield* retain(Cause.pretty(original)).pipe(Effect.exit)
+      if (Exit.isFailure(retained))
+        return yield* Effect.failCause(Cause.combine(original, retained.cause))
+      return yield* Effect.failCause(original)
+    }).pipe(Effect.uninterruptible)))
+
 type PoolLeaseCheck = { slot: PoolSlot; token: string; generation: number }
 type PoolClaim = { slot: PoolSlot; identity: string; owner: string }
 
