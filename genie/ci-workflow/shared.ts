@@ -112,6 +112,11 @@ export const standardCIEnv = ({ trustTier }: { readonly trustTier: CiTrustTier }
  * older code-triggered pull_request jobs alive can consume scarce runners after
  * a newer head exists, so jobs with the same id still cancel superseded work.
  *
+ * A rerun can replay an older PR SHA after a newer head has started. Isolate it
+ * by run id and never let it cancel another attempt. Fresh code heads use a
+ * separate scope from the former `code` group so pre-guard historical reruns
+ * cannot cancel newly generated jobs either.
+ *
  * Measurement baseline backfills are keyed by their subject ref and do not
  * cancel in-progress runs so several historical refs can be backfilled without
  * canceling each other.
@@ -135,10 +140,12 @@ const ciConcurrencyScope = (
 ) => {
   const manual =
     "github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id)"
+  const code =
+    "(github.run_attempt > 1 && format('code-rerun-{0}', github.run_id) || 'code-head')"
   const labels =
     opts?.labelEvents === false
-      ? "'code'"
-      : "(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')"
+      ? code
+      : `(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || ${code})`
   return opts?.measurementBaselineBackfill === true
     ? `\${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (${manual} || ${labels}) }}`
     : `\${{ ${manual} || ${labels} }}`
@@ -149,12 +156,12 @@ const ciCancelInProgress = (
 ) => {
   if (opts?.labelEvents === false) {
     return opts.measurementBaselineBackfill === true
-      ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
-      : true
+      ? "${{ github.run_attempt == 1 && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
+      : '${{ github.run_attempt == 1 }}'
   }
   return opts?.measurementBaselineBackfill === true
-    ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
-    : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+    ? "${{ github.run_attempt == 1 && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
+    : "${{ github.run_attempt == 1 && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
 }
 
 export const ciJobConcurrency = ({ jobId, ...opts }: { jobId: string } & CiConcurrencyOptions) =>

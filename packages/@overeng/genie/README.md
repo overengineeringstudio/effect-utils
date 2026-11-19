@@ -149,6 +149,14 @@ emitted into YAML. The generic validator is in
 `genie/ci-workflow/runners.ts`. `ciWorkflow`, `autoReviewWorkflow`, and
 `releaseWorkflow` enforce the fleet policy by default.
 
+Shared CI job concurrency separates automatic code heads from explicit reruns.
+Only first attempts may cancel superseded validation for the same event, ref,
+and job; reruns are isolated by run ID and never cancel in-progress work. The
+`code-head` scope also isolates current jobs from historical workflows using the
+retired `code` group. Before requesting a PR rerun, compare its recorded head SHA
+with the PR's current head; rerunning a superseded SHA does not validate the PR.
+Manual dispatch and measurement-baseline scopes retain their existing isolation.
+
 Policy rejects hosted, Namespace, unknown, unresolved dynamic, fallback, and
 mixed-heavy runner selections; forbidden events; Actions artifact/cache
 actions and known wrappers; setup-action caching; and Docker `type=gha`.
