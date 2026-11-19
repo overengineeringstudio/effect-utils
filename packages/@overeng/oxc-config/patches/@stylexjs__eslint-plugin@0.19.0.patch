@@ -1,0 +1,104 @@
+diff --git a/lib/stylex-valid-styles.js b/lib/stylex-valid-styles.js
+--- a/lib/stylex-valid-styles.js
++++ b/lib/stylex-valid-styles.js
+@@ -246,6 +246,7 @@
+     const styleXCreateImports = new Set();
+     const styleXKeyframesImports = new Set();
+     const styleXPositionTryImports = new Set();
++    const styleXFirstThatWorksImports = new Set();
+     const styleXWhenImports = new Set();
+     const overrides = {
+       ...(isLegacyExpandShorthands ? legacyProps : {}),
+@@ -306,6 +307,44 @@
+       return node && node.type === 'CallExpression' && isStylexCallee(node.callee) && node.arguments.length === 1;
+     }
++    function isImportedHelper(node, imports) {
++      if (!imports.has(node.name)) return false;
++      let scope = (0, _getSourceCode.default)(context).getScope(node);
++      while (scope != null) {
++        const variable = scope.set.get(node.name);
++        if (variable != null) {
++          return variable.defs.some(def => def.type === 'ImportBinding');
++        }
++        scope = scope.upper;
++      }
++      return false;
++    }
+     function validateStyleValue(valueNode, varsWithFnArgs, style, styleKey, propertyKey, ruleChecker) {
++      if (valueNode.type === 'TSAsExpression' || valueNode.type === 'TSSatisfiesExpression') {
++        return validateStyleValue(valueNode.expression, varsWithFnArgs, style, styleKey, propertyKey, ruleChecker);
++      }
++      if ((0, _isStylexResolvedVarsToken.default)(valueNode, stylexResolvedVarsTokenImports)) {
++        return null;
++      }
++      if (valueNode.type === 'CallExpression') {
++        const callee = valueNode.callee;
++        const isFirstThatWorks = callee.type === 'Identifier' && isImportedHelper(callee, styleXFirstThatWorksImports) || callee.type === 'MemberExpression' && !callee.computed && !callee.optional && callee.object.type === 'Identifier' && isImportedHelper(callee.object, styleXDefaultImports) && callee.property.type === 'Identifier' && callee.property.name === 'firstThatWorks';
++        if (isFirstThatWorks && !valueNode.optional) {
++          if (valueNode.arguments.length === 0 || valueNode.arguments.some(arg => arg.type === 'SpreadElement')) {
++            return {
++              message: 'firstThatWorks requires at least one explicit fallback value'
++            };
++          }
++          // A supported function is not an escape hatch from property limits.
++          // Validate each fallback with the same checker as the enclosing value.
++          for (const argument of valueNode.arguments) {
++            const check = validateStyleValue(argument, varsWithFnArgs, style, styleKey, propertyKey, ruleChecker);
++            if (check != null) {
++              return check;
++            }
++          }
++          return null;
++        }
++      }
+       if (valueNode.type === 'ConditionalExpression') {
+         const trueCheck = validateStyleValue(valueNode.consequent, varsWithFnArgs, style, styleKey, propertyKey, ruleChecker);
+         if (trueCheck != null) {
+@@ -664,6 +703,9 @@
+               if (specifier.type === 'ImportSpecifier' && specifier.imported.name === 'positionTry') {
+                 styleXPositionTryImports.add(specifier.local.name);
+               }
++              if (specifier.type === 'ImportSpecifier' && specifier.imported.name === 'firstThatWorks') {
++                styleXFirstThatWorksImports.add(specifier.local.name);
++              }
+               if (specifier.type === 'ImportSpecifier' && specifier.imported.name === 'when') {
+                 styleXWhenImports.add(specifier.local.name);
+               }
+diff --git a/lib/reference/cssProperties.js b/lib/reference/cssProperties.js
+--- a/lib/reference/cssProperties.js
++++ b/lib/reference/cssProperties.js
+@@ -21,2 +21,3 @@
+ var _getSourceCode = _interopRequireDefault(require("../utils/getSourceCode"));
++var _makeVariableCheckingRule = _interopRequireDefault(require("../utils/makeVariableCheckingRule"));
+ function _interopRequireDefault(e) { return e && e.__esModule ? e : { default: e }; }
+@@ -984,1 +985,26 @@
+ };
++// CSS <ident-token>, including escapes and non-ASCII identifier characters.
++const cssEscape = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\r\n\f]?|[^\n\r\f0-9a-fA-F])`;
++const cssIdentStart = String.raw`(?:[_a-zA-Z\u0080-\uFFFF]|${cssEscape})`;
++const cssIdent = String.raw`(?:--|-?${cssIdentStart})(?:[_a-zA-Z0-9\u0080-\uFFFF-]|${cssEscape})*`;
++// <pt-name-selector> = [ <custom-ident> | '*' ]? <class-selector>*
++// An omitted name still requires at least one class selector.
++const transitionSelector = String.raw`(?:(?:${cssIdent}|\*)(?:\.${cssIdent})*|(?:\.${cssIdent})+)`;
++const transitionPseudoPattern = new RegExp(String.raw`^::view-transition-(?:group|group-children|image-pair|old|new)\([ \t\r\n\f]*(${transitionSelector})[ \t\r\n\f]*\)$`, 'i');
++const parameterizedViewTransition = (0, _makeVariableCheckingRule.default)(node => {
++  const match = node.type === 'Literal' && typeof node.value === 'string' ? transitionPseudoPattern.exec(node.value) : null;
++  const failure = { message: 'a view-transition pseudo element' };
++  if (match == null) return failure;
++  const identifiers = match[1].match(new RegExp(cssIdent, 'g')) || [];
++  for (const identifier of identifiers) {
++    const decoded = identifier.replace(/\\([0-9a-f]{1,6}[ \t\r\n\f]?|[^\n\r\f])/gi, (_, escape) => {
++      if (!/^[0-9a-f]/i.test(escape)) return escape;
++      const point = parseInt(escape, 16);
++      return String.fromCodePoint(point === 0 || point > 0x10ffff || point >= 0xd800 && point <= 0xdfff ? 0xfffd : point);
++    });
++    if (/^(?:initial|inherit|unset|revert|revert-layer|default)$/i.test(decoded)) return failure;
++  }
++  return undefined;
++});
++const viewTransitionPseudoElements = (0, _makeUnionRule.default)((0, _makeLiteralRule.default)('::view-transition'), parameterizedViewTransition);
++
+@@ -987,1 +1013,2 @@
+-const allModifiers = exports.allModifiers = (0, _makeUnionRule.default)(pseudoElements, pseudoClassesAndAtRules);
++exports.pseudoElements = (0, _makeUnionRule.default)(pseudoElements, viewTransitionPseudoElements);
++const allModifiers = exports.allModifiers = (0, _makeUnionRule.default)(exports.pseudoElements, pseudoClassesAndAtRules);

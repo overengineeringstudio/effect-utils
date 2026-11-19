@@ -82,6 +82,7 @@ const expectedFiles = [
   'packages/@overeng/genie/src/runtime/repo-context/mod.ts',
   'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
   'packages/@overeng/megarepo/src/buck2-manifest.ts',
+  'packages/@overeng/oxc-config/patches/@stylexjs__eslint-plugin@0.19.0.patch',
   'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
   'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
   'packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch',

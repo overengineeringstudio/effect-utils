@@ -107,6 +107,14 @@ visible sibling draws the ring. Other observed states—hover, selection, plain 
 negated/mixed selectors, dynamic predicates and unknown methods—remain competing
 states; nesting them around focus does not exempt their outline declarations.
 
+The pinned upstream 0.19 validator has a source-owned dependency patch for
+`firstThatWorks` and parameterized view-transition pseudo-elements. Fallback calls
+must resolve to genuine StyleX imports; every argument retains the enclosing
+property's validation and limits. Transition names/classes follow CSS identifier
+syntax, including escapes, and decoded reserved keywords remain invalid. Consume
+the registered workspace patch through the owning dependency workflow; do not edit
+installed plugin files or replace fallbacks with non-equivalent legacy arrays.
+
 The shared compatibility work is tracked in
 https://github.com/overengineeringstudio/effect-utils/issues/2684.
 

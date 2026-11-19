@@ -701,6 +701,13 @@ const stylexUnpluginPatch = {
     'packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch',
 } satisfies PatchesRegistry
 
+// Keep the 0.19 validator aligned with public firstThatWorks values and
+// parameterized view-transition pseudo-elements without relaxing property rules.
+const stylexEslintPluginPatch = {
+  '@stylexjs/eslint-plugin@0.19.0':
+    'packages/@overeng/oxc-config/patches/@stylexjs__eslint-plugin@0.19.0.patch',
+} satisfies PatchesRegistry
+
 /** Patches applied in effect-utils, including the shared consumer patches below. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: '.',
@@ -715,6 +722,7 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
     ...storybookBuilderVitePatch,
     ...stylexBabelPluginPatch,
     ...stylexUnpluginPatch,
+    ...stylexEslintPluginPatch,
   },
 })
 
@@ -726,6 +734,7 @@ const patches: PatchesRegistry = {
   ...storybookBuilderVitePatch,
   ...stylexBabelPluginPatch,
   ...stylexUnpluginPatch,
+  ...stylexEslintPluginPatch,
 }
 
 /**
