@@ -589,6 +589,9 @@ Preparation uses the pinned retained task graph to publish the
 source-generator and standalone-staging views; the Buck run never calls devenv
 or performs that setup itself.
 
+Daemon lifecycle guards use platform Nix `unixtools.ps` on Darwin and Linux,
+not a host `ps` or an ambient system executable directory.
+
 Preparation and execution preserve `WORKTREE_POLICY_PATH` guard directories and
 the canonical immutable operator admission package ahead of the declared Nix runtime
 closure; no ambient executable directory is forwarded. The real gate-slot lifecycle
