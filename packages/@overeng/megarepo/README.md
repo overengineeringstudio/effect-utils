@@ -484,9 +484,9 @@ hygiene owner's operation with full consumer proof.
 
 `readPoolProvenance` exports bearer-free observations through that same decoder,
 without initialization, migration writes, recovery, unlocks or removal. Missing or
-unsupported state fails closed, never fabricating an empty inventory. Current records
-do not retain last-owner/seat activity: every observation therefore remains `HOLD`
-with `authorizesRemoval: false`, even when ready/unclaimed. Owner labels are unauthenticated.
+unsupported state fails closed, never fabricating an empty inventory. Legacy activity
+remains unrecorded; the current public projection still returns `HOLD` with
+`authorizesRemoval: false`, even when ready/unclaimed. Owner labels are unauthenticated.
 A future hygiene consumer must reread the same generation under its action lease and
 the shared pool lifecycle fence before its own fresh Git/all-UID/consumer checks;
 the snapshot grants no eligibility or cleanup authority.
@@ -501,6 +501,11 @@ missing history; source/generation transitions revoke prior activity before muta
 The provider reuses the lease owner's local Linux process-stat reader and actual UID:
 it is neither pidfd nor cross-boot identity, and missing lifetime/UID stays unknown.
 Decoding never manufactures events, mtime activity, authenticated seats or removal authority.
+Physical preparation, claim, completion, release and reported-failure controllers
+record their actual provider and tool-clock transition time. Missing historical claim
+starts/completions remain missing, including releases of legacy or incomplete claims;
+service transition times are not inferred child-exit times. Pure retarget `Prepared`
+results never manufacture physical success history.
 
 ### Process activity snapshot
 

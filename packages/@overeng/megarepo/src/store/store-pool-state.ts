@@ -123,8 +123,9 @@ const validPoolActivity = (slot: PoolSlot) => {
       ? activity.completed === undefined && activity.event.ownerLabelOrigin === 'legacy-record'
       : activity.completed !== undefined && activity.event.ownerLabelOrigin === 'claim-argument' &&
         activity.event.ownerLabel === activity.claimed.ownerLabel)
-  if (activity.phase === 'release-ready') return activity.claimed !== undefined && activity.completed !== undefined &&
-    activity.event.ownerLabelOrigin === 'claim-argument' && activity.event.ownerLabel === activity.claimed.ownerLabel
+  if (activity.phase === 'release-ready') return activity.claimed === undefined
+    ? activity.completed === undefined && activity.event.ownerLabelOrigin === 'legacy-record'
+    : activity.event.ownerLabelOrigin === 'claim-argument' && activity.event.ownerLabel === activity.claimed.ownerLabel
   return true
 }
 

@@ -1,17 +1,19 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Option } from 'effect'
+import { Clock, Effect, Exit, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
-import { acquireDeletionLease, deletionLeasePath } from './store-deletion-lease.ts'
+import { acquireDeletionLease, deletionLeasePath, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import { poolBytes } from './store-pool-install.ts'
 import {
   beginPoolRetarget,
+  claimPoolGeneration,
   finishPoolRetarget,
+  type PoolActivityEvent,
   type PoolSlot,
   reservePoolSlot,
   withPoolState,
@@ -148,10 +150,15 @@ describe('native pool ownership safety', () => {
       expect(state.slots[0]?.initialPreparation).toEqual({
         generation: 1, commit: f.receipt.commit,
       })
+      expect(state.slots[0]?.activity).toMatchObject({
+        phase: 'birth-failed', generation: 1, commit: f.receipt.commit, identity: '',
+        event: { ownerLabel: '', ownerLabelOrigin: 'none', provider: { pid: process.pid } },
+      })
       const inspected = yield* inspectPool(f.storePath)
       expect(inspected.slots[0]).toMatchObject({
         state: 'quarantined', chargeKnown: false, initialPreparation: state.slots[0]?.initialPreparation,
       })
+      expect(inspected.slots[0]?.activity).toEqual(state.slots[0]?.activity)
       expect(yield* withPoolState({ base: f.storePath, use: Effect.succeed })).toEqual(inspected)
       expect(Exit.isFailure(yield* prewarmPool(f.receipt).pipe(Effect.exit))).toBe(true)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
@@ -181,6 +188,10 @@ describe('native pool ownership safety', () => {
       expect(observed.slots[0]?.chargeKnown).toBe(false)
       expect(observed.slots[0]?.token).toBe('task')
       expect(observed.slots[0]?.generation).toBe(1)
+      expect(observed.slots[0]?.activity).toMatchObject({
+        phase: 'claim-completed', claimed: undefined, completed: undefined,
+        event: { ownerLabelOrigin: 'legacy-record', provider: { pid: process.pid } },
+      })
       expect(
         yield* completePool({ base: storePath, id: slot.id, token: 'stale', generation: 1 }).pipe(
           Effect.exit,
@@ -194,6 +205,52 @@ describe('native pool ownership safety', () => {
         generation: 1,
       }).pipe(Effect.flip)
       expect(String(refused)).not.toContain('Stale or non-leased pool generation')
+      const retained = (yield* withPoolState({ base: storePath, use: Effect.succeed })).slots[0]!
+      expect(retained.activity).toMatchObject({
+        phase: 'release-failed', claimed: undefined, completed: undefined,
+        event: { ownerLabelOrigin: 'legacy-record', provider: { pid: process.pid } },
+      })
+      expect(retained.barrierToken).toBe(slot.barrierToken)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('preserves seeded claim provenance through actual completion and failed-provider transitions', () =>
+    Effect.gen(function* () {
+      const { storePath, slot } = yield* fixture
+      const leased = yield* claimPoolGeneration({ slot, identity: slot.identity, owner: 'fixture-label' })
+      const event: PoolActivityEvent = {
+        observedAtUtc: new Date(yield* Clock.currentTimeMillis).toISOString(),
+        provider: yield* readCurrentDeletionLeaseProvider,
+        ownerLabel: leased.owner, ownerLabelOrigin: 'claim-argument',
+      }
+      yield* withPoolState({
+        base: storePath,
+        use: (state, save) => save({ ...state, slots: [{
+          ...leased,
+          activity: {
+            generation: leased.generation, commit: leased.commit, identity: leased.identity,
+            phase: 'claim-active', event, claimed: event,
+          },
+        }] }),
+      })
+      yield* completePool({ base: storePath, id: leased.id, token: leased.token, generation: leased.generation })
+      const completed = (yield* withPoolState({ base: storePath, use: Effect.succeed })).slots[0]!
+      expect(completed.activity?.phase).toBe('claim-completed')
+      expect(completed.activity?.claimed).toEqual(event)
+      expect(completed.activity?.completed).toEqual(completed.activity?.event)
+      expect(completed.activity?.event.provider.pid).toBe(process.pid)
+      expect(completed.activity?.event.ownerLabelOrigin).toBe('claim-argument')
+      for (const bearer of [leased.token, leased.barrierToken]) {
+        expect(JSON.stringify(completed.activity)).not.toContain(bearer)
+      }
+      yield* quarantinePool({ base: storePath, id: leased.id, token: leased.token, reason: 'provider reported failure' })
+      const failed = (yield* withPoolState({ base: storePath, use: Effect.succeed })).slots[0]!
+      expect(failed.activity?.phase).toBe('claim-failed')
+      expect(failed.activity?.claimed).toEqual(event)
+      expect(failed.activity?.completed).toEqual(completed.activity?.completed)
+      expect(failed.activity?.event.provider.pid).toBe(process.pid)
+      expect(failed.token).toBe(leased.token)
+      expect(failed.barrierToken).toBe(leased.barrierToken)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 

@@ -1,6 +1,6 @@
 import { dirname } from 'node:path'
 
-import { Effect, Option, Schema } from 'effect'
+import { Clock, Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
 import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -15,6 +15,7 @@ import {
   deletionLeasePath,
   type DeletionLeaseUnavailableError,
   persistentDeletionLeaseOwnerAlive,
+  readCurrentDeletionLeaseProvider,
 } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import {
@@ -27,6 +28,8 @@ import {
   claimPoolGeneration,
   consumePoolReservation,
   PoolError,
+  type PoolActivity,
+  type PoolActivityEvent,
   type PoolSlot,
   requirePoolLease,
   reservePoolGeneration,
@@ -45,6 +48,33 @@ const barrier = ({ base, slot }: { base: AbsoluteDirPath; slot: PoolSlot }) => (
   ownerPath: slot.path,
   token: slot.barrierToken,
 })
+
+/** Record service transitions, never inventing a missing historical claim or child exit. */
+const observePoolActivity = ({
+  slot, phase,
+}: {
+  slot: PoolSlot
+  phase: Exclude<PoolActivity['phase'], 'retarget-ready' | 'retarget-failed'>
+}): Effect.Effect<PoolSlot, never, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const birth = phase.startsWith('birth-')
+    const previous = slot.activity
+    const origin = birth === true ? 'none' :
+      phase === 'claim-active' || previous?.claimed !== undefined ? 'claim-argument' : 'legacy-record'
+    const event: PoolActivityEvent = {
+      observedAtUtc: new Date(yield* Clock.currentTimeMillis).toISOString(),
+      provider: yield* readCurrentDeletionLeaseProvider,
+      ownerLabel: birth === true ? '' : previous?.claimed?.ownerLabel ?? previous?.event.ownerLabel ?? slot.owner,
+      ownerLabelOrigin: origin,
+    }
+    const claimed = birth === true ? undefined : phase === 'claim-active' ? event : previous?.claimed
+    const completed = birth === true || phase === 'claim-active' ? undefined :
+      phase === 'claim-completed' && claimed !== undefined ? event : previous?.completed
+    return { ...slot, activity: {
+      generation: slot.generation, commit: slot.commit, identity: slot.identity,
+      phase, event, claimed, completed,
+    } }
+  })
 const cleanSource = (slot: PoolSlot) =>
   Effect.gen(function* () {
     if (
@@ -58,8 +88,9 @@ const cleanSource = (slot: PoolSlot) =>
       cwd: slot.path,
       args: ['reflog', 'show', '--format=%H', 'HEAD'],
     })
+    const allowedSourceHistory = new Set(slot.sourceHistory)
     if (
-      history.split('\n').some((commit) => slot.sourceHistory.includes(commit) === false) === true
+      history.split('\n').some((commit) => allowedSourceHistory.has(commit) === false) === true
     )
       return yield* new PoolError({
         message: 'Detached commit history retained; slot is not recyclable',
@@ -206,14 +237,20 @@ export const prewarmPool = (args: {
           }
           yield* cleanSource(slot)
           yield* free(slot)
-          slot = { ...slot, identity, initialPreparation: undefined, state: 'ready', chargeKnown: true }
+          slot = yield* observePoolActivity({
+            slot: { ...slot, identity, initialPreparation: undefined, state: 'ready', chargeKnown: true },
+            phase: 'birth-ready',
+          })
           yield* update()
           return slot
         }).pipe(withGitContainerLock({ path: bare, mode: 'shared' }))
         return yield* prepare.pipe(
           Effect.tapError((error) =>
             Effect.gen(function* () {
-              slot = { ...(yield* retainPoolSlot({ slot, reason: String(error) })), chargeKnown: false }
+              slot = yield* observePoolActivity({
+                slot: { ...(yield* retainPoolSlot({ slot, reason: String(error) })), chargeKnown: false },
+                phase: 'birth-failed',
+              })
               yield* update()
             }),
           ),
@@ -253,7 +290,7 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
             slot,
             identity: args.identity,
             owner: args.owner,
-          })
+          }).pipe(Effect.flatMap((claimed) => observePoolActivity({ slot: claimed, phase: 'claim-active' })))
           yield* update(next)
           return next
         }).pipe(
@@ -327,20 +364,21 @@ export const releasePool = (args: {
             })
           yield* cleanSource(slot)
           yield* free(slot)
-          const ready: PoolSlot = {
+          const ready = yield* observePoolActivity({ slot: {
             ...slot,
             state: 'ready',
             chargeKnown: true,
             token: '',
             owner: '',
             reason: '',
-          }
+          }, phase: 'release-ready' })
           yield* update(ready)
           return ready
         }).pipe(
           withGitContainerLock({ path: slot.bare, mode: 'shared' }),
           Effect.tapError((error) =>
-            Effect.flatMap(retainPoolSlot({ slot, reason: String(error) }), update),
+            Effect.flatMap(retainPoolSlot({ slot, reason: String(error) }), (retained) =>
+              observePoolActivity({ slot: retained, phase: 'release-failed' }).pipe(Effect.flatMap(update))),
           ),
         )
       }),
@@ -365,10 +403,13 @@ export const completePool = ({
         const slot = state.slots.find((item) => item.id === id)
         if (slot === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
         yield* requirePoolLease({ slot, token, generation })
+        const completed = yield* observePoolActivity({
+          slot: { ...slot, state: 'completed', chargeKnown: false }, phase: 'claim-completed',
+        })
         yield* save({
           ...state,
           slots: state.slots.map((item) =>
-            item.id === id ? { ...item, state: 'completed' as const, chargeKnown: false } : item,
+            item.id === id ? completed : item,
           ),
         })
       }),
@@ -391,10 +432,16 @@ export const quarantinePool = ({
     use: (state, save) =>
       Effect.gen(function* () {
         const slots: Array<PoolSlot> = []
-        for (const slot of state.slots)
-          slots.push(
-            slot.id === id && slot.token === token ? yield* retainPoolSlot({ slot, reason }) : slot,
-          )
+        for (const slot of state.slots) {
+          if (slot.id !== id || slot.token !== token) {
+            slots.push(slot)
+            continue
+          }
+          const retained = yield* retainPoolSlot({ slot, reason })
+          slots.push(slot.state === 'leased' || slot.state === 'completed'
+            ? yield* observePoolActivity({ slot: retained, phase: 'claim-failed' })
+            : retained)
+        }
         yield* save({ ...state, slots })
       }),
   })
