@@ -222,6 +222,17 @@ describe('standalone Buck cache posture', () => {
     ).not.toContain('allow_cache_uploads = true')
   })
 
+  it('routes optional archive seeding to the repository-private tier without enabling uploads', () => {
+    const tracked = buckConfigValues(
+      readFileSync(new URL('../.buckconfig', import.meta.url), 'utf8'),
+    )
+    const origin = new URL(tracked['archive_origin.trusted_url_prefix'] ?? '')
+    expect(origin.port).toBe('41069')
+    expect(origin.pathname).toBe('/cas/')
+    expect(tracked['archive_origin.trusted_tier']).toBe('private')
+    expect(tracked['buck2.allow_cache_uploads']).toBe('false')
+  })
+
   it('admits a private host writer without exposing credentials and removes auth on public lanes', () => {
     const credential = Buffer.from('host-a:secret').toString('base64')
     const env = {
