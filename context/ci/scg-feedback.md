@@ -37,16 +37,16 @@ The first tsgo invocation had no package build-info; subsequent commands reused
 it. Dependency archives were warm throughout; “first” is **not** a cold machine
 or cold Nix closure. Concurrent host activity produced visible variance.
 
-| Candidate | protocol | authority | discord | Failed runs / total |
-| --- | ---: | ---: | ---: | ---: |
-| Full Vitest under Bun | 1.977 / 2.253 | 3.062 / 2.130 | 5.611 / 7.252 | 0 / 6 |
-| Plain `bun test` | 1.189 / 1.697 | 1.029 / 1.203 | 10.869 / 7.615 | 4 / 6 |
-| Plain pnpm/Node Vitest | 2.327 / 1.442 | 1.251 / 1.301 | 2.616 / 3.162 | 4 / 6 |
-| Bun Vitest, one worker | 1.370 / 1.849 | 3.421 / 1.683 | 7.457 / 7.934 | 0 / 6 |
-| Bun Vitest `--changed=HEAD~1` | 2.341 / 1.710 | 1.617 / 2.017 | 5.877 / 5.109 | 0 / 6, but first two packages selected zero tests |
-| `tsgo --build` | 0.830 / 0.033 | 0.725 / 0.043 | 2.010 / 0.114 | 0 / 6 |
-| oxlint, plugin dependencies prepared | 1.027 / 0.963 | 1.026 / 0.910 | 1.029 / 1.234 | 0 / 6 |
-| Shipped complete command, build-info already warm | 4.101 / 4.774 | 5.169 / 5.986 | 12.139 / 14.801 | 0 / 6 |
+| Candidate                                         |      protocol |     authority |         discord |                               Failed runs / total |
+| ------------------------------------------------- | ------------: | ------------: | --------------: | ------------------------------------------------: |
+| Full Vitest under Bun                             | 1.977 / 2.253 | 3.062 / 2.130 |   5.611 / 7.252 |                                             0 / 6 |
+| Plain `bun test`                                  | 1.189 / 1.697 | 1.029 / 1.203 |  10.869 / 7.615 |                                             4 / 6 |
+| Plain pnpm/Node Vitest                            | 2.327 / 1.442 | 1.251 / 1.301 |   2.616 / 3.162 |                                             4 / 6 |
+| Bun Vitest, one worker                            | 1.370 / 1.849 | 3.421 / 1.683 |   7.457 / 7.934 |                                             0 / 6 |
+| Bun Vitest `--changed=HEAD~1`                     | 2.341 / 1.710 | 1.617 / 2.017 |   5.877 / 5.109 | 0 / 6, but first two packages selected zero tests |
+| `tsgo --build`                                    | 0.830 / 0.033 | 0.725 / 0.043 |   2.010 / 0.114 |                                             0 / 6 |
+| oxlint, plugin dependencies prepared              | 1.027 / 0.963 | 1.026 / 0.910 |   1.029 / 1.234 |                                             0 / 6 |
+| Shipped complete command, build-info already warm | 4.101 / 4.774 | 5.169 / 5.986 | 12.139 / 14.801 |                                             0 / 6 |
 
 The warm incremental typecheck was 25.2x / 16.9x / 17.6x faster than its first
 invocation. Keep full Bun-hosted Vitest: Node cannot execute the Bun SQLite and
@@ -59,12 +59,12 @@ precludes realizing an uncached task shell. CI provides the observed baseline.
 
 ## CI preparation: coordinate through #2605
 
-| Preparation lane | Observed wall seconds | Outcome |
-| --- | ---: | --- |
-| Cold whole-devenv preparation, two independent runners | 1573, 1572 | 2 / 2 timed out before editor bootstrap |
-| Retry of the first job | 961 | Prep passed; later quality failed |
-| Pinned minimal `nix develop` closure | Not measured | Proposed replacement, not a demonstrated speedup |
-| Protected-published cached minimal toolchain closure | Not measured | Preferred experiment, not yet CI rollout evidence |
+| Preparation lane                                       | Observed wall seconds | Outcome                                           |
+| ------------------------------------------------------ | --------------------: | ------------------------------------------------- |
+| Cold whole-devenv preparation, two independent runners |            1573, 1572 | 2 / 2 timed out before editor bootstrap           |
+| Retry of the first job                                 |                   961 | Prep passed; later quality failed                 |
+| Pinned minimal `nix develop` closure                   |          Not measured | Proposed replacement, not a demonstrated speedup  |
+| Protected-published cached minimal toolchain closure   |          Not measured | Preferred experiment, not yet CI rollout evidence |
 
 Receipts: [first cold timeout](https://github.com/overengineeringstudio/effect-utils/actions/runs/44336501265/job/134914631385),
 [second cold timeout](https://github.com/overengineeringstudio/effect-utils/actions/runs/44334725265/job/134908272326),
