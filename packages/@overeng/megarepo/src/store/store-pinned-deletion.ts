@@ -211,7 +211,7 @@ export const withVerifiedDirectoryPins = <A, B, E = never, R = never, ECommit = 
   readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
   readonly commit: (value: A) => Effect.Effect<B, ECommit, RCommit>
 }): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> =>
-  withPinnedDirectoryTransaction({ targets, prepare, commit })
+  withPinnedDirectoryTransaction({ targets, prepare, commit: (value) => commit(value) })
 
 /**
  * Hold the existing no-follow identity pins for one awaited observation callback.

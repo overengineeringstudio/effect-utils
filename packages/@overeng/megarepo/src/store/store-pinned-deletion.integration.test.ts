@@ -738,7 +738,9 @@ process.stdin.resume()`,
             expect(pins[0]!.pins.at(-1)!.fd).not.toBe(pins[1]!.pins.at(-1)!.fd)
             return 'prepared'
           }),
-          commit: (prepared) => Effect.gen(function* () {
+          commit: (...args: [string]) => Effect.gen(function* () {
+            expect(args).toHaveLength(1)
+            const [prepared] = args
             expect(prepared).toBe('prepared')
             for (const view of retained) {
               const pin = view.pins.at(-1)!
