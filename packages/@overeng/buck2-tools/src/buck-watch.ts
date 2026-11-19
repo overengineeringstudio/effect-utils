@@ -6,6 +6,7 @@ import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
+import { requireRepositoryRelativePath } from './owned-files.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -216,6 +217,91 @@ export const buildTargetsFor = ({
       ]
     }),
   )
+}
+/** One complete configured query at an immutable source revision. */
+export type ConfiguredCheckSnapshot = {
+  readonly revision: string
+  readonly configuration: string
+  readonly complete: boolean
+  /** Configured check label -> canonical digest of its configured dependency graph. */
+  readonly checks: Readonly<Record<string, string>>
+  /** Configured reverse closure of file owners and reverse-package products. */
+  readonly affectedTargets: readonly string[]
+  /** Changed paths covered by an owner (including directory owners) or package. */
+  readonly ownedPaths: readonly string[]
+}
+
+/** Target selection is not a passing check receipt or permission to reuse evidence. */
+export const selectConfiguredChecks = ({
+  base,
+  candidate,
+  changedPaths,
+}: {
+  readonly base: ConfiguredCheckSnapshot
+  readonly candidate: ConfiguredCheckSnapshot
+  readonly changedPaths: readonly string[]
+}) => {
+  const reasons = new Set<string>()
+  const fullTargets = sortedUnique(Object.keys(candidate.checks))
+  if (fullTargets.length === 0) fail('configured candidate check inventory is empty')
+  const selected = new Set<string>()
+  const changed = sortedUnique(changedPaths.map(requireRepositoryRelativePath))
+  for (const snapshot of [base, candidate]) {
+    if (/^[0-9a-f]{40}$/.test(snapshot.revision) === false)
+      reasons.add('invalid-revision')
+    if (snapshot.complete !== true) reasons.add('incomplete-configured-query')
+    if (snapshot.configuration.length === 0) reasons.add('missing-configuration-identity')
+    for (const target of snapshot.affectedTargets)
+      if (Object.hasOwn(snapshot.checks, target) === false)
+        reasons.add('reverse-closure-outside-inventory')
+  }
+  if (base.configuration !== candidate.configuration) reasons.add('configuration-changed')
+  if (
+    Object.keys(base.checks).some((target) => Object.hasOwn(candidate.checks, target) === false) ||
+    fullTargets.some((target) => Object.hasOwn(base.checks, target) === false)
+  )
+    reasons.add('required-inventory-changed')
+  for (const path of changed) {
+    const parts = path.split('/')
+    const name = parts.at(-1)!
+    if (
+      name.endsWith('.lock') || name === 'pnpm-lock.yaml' || name.endsWith('.bzl') ||
+      name.startsWith('BUCK') || name.startsWith('.buckconfig') ||
+      name.startsWith('rust-toolchain') ||
+      parts.some((part) => part === 'toolchain' || part === 'toolchains') ||
+      name === '.buckroot' || name === 'megarepo.kdl'
+    )
+      reasons.add(`global-change:${path}`)
+    if (base.ownedPaths.includes(path) === false && candidate.ownedPaths.includes(path) === false)
+      reasons.add(`unknown-ownership:${path}`)
+  }
+  const affectedLabels = new Set(
+    [...base.affectedTargets, ...candidate.affectedTargets].map((target) => target.split(' (')[0]),
+  )
+  for (const target of fullTargets) {
+    // Configuration is part of the ID: a new configured instance must run even
+    // when the unconfigured label and the changed-file owner set are unchanged.
+    if (
+      affectedLabels.has(target.split(' (')[0]) ||
+      base.checks[target] === undefined ||
+      base.checks[target] !== candidate.checks[target]
+    )
+      selected.add(target)
+  }
+  const mode = reasons.size === 0 ? 'affected' as const : 'full' as const
+  return {
+    schema: 'effect-utils/configured-check-selection/v1' as const,
+    base: base.revision,
+    candidate: candidate.revision,
+    mode,
+    reasons: sortedUnique(reasons),
+    targets: mode === 'full' ? fullTargets : sortedUnique(selected),
+    fullTargets,
+    baseAffectedTargets: sortedUnique(base.affectedTargets),
+    removedTargets: sortedUnique(Object.keys(base.checks).filter(
+      (target) => Object.hasOwn(candidate.checks, target) === false,
+    )),
+  }
 }
 
 const errorMessage = (error: unknown): string =>
