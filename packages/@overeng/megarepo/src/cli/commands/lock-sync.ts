@@ -28,6 +28,14 @@ export const lockSyncCommand = Cli.Command.make(
       ),
       Cli.Flag.optional,
     ),
+    ref: Cli.Flag.String('ref').pipe(
+      Cli.Flag.withDescription('Published GitHub branch containing --rev; align matching source declarations'),
+      Cli.Flag.optional,
+    ),
+    member: Cli.Flag.String('member').pipe(
+      Cli.Flag.withDescription('Align this megarepo member and both existing root locks in the transaction'),
+      Cli.Flag.optional,
+    ),
     write: Cli.Flag.Boolean('write').pipe(
       Cli.Flag.withDescription(
         'Write the complete lock cohort atomically; otherwise check without writing',
@@ -35,7 +43,7 @@ export const lockSyncCommand = Cli.Command.make(
       Cli.Flag.withDefault(false),
     ),
   },
-  ({ input, rootLock, locks, write, rev }) =>
+  ({ input, rootLock, locks, write, rev, ref, member }) =>
     Effect.gen(function* () {
       const root = yield* Cwd
       const result = yield* syncStandaloneLocks({
@@ -45,12 +53,14 @@ export const lockSyncCommand = Cli.Command.make(
         locks,
         write,
         ...(Option.isSome(rev) === true ? { rev: rev.value } : {}),
+        ...(Option.isSome(ref) === true ? { ref: ref.value } : {}),
+        ...(Option.isSome(member) === true ? { member: member.value } : {}),
       })
       for (const path of result.changed) {
         yield* Console.log(`${write === true ? 'Updated' : 'Drift'}: ${path}`)
       }
       yield* Console.log(
-        `${result.checked.length} lock(s) checked; ${result.changed.length} ${write === true ? 'updated' : 'out of sync'}`,
+        `${result.checked.length} ${Option.isSome(member) || Option.isSome(ref) ? 'file(s)' : 'lock(s)'} checked; ${result.changed.length} ${write === true ? 'updated' : 'out of sync'}`,
       )
       if (write === false && result.changed.length > 0) {
         return yield* new StandaloneLockSyncError({

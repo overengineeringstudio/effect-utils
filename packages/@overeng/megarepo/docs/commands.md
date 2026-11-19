@@ -48,6 +48,7 @@ mr lock-sync --input nixpkgs --root-lock flake.lock --write
 mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock --write
 mr lock-sync --input nixpkgs --rev <40-character-sha>   # check requested revision
 mr lock-sync --input nixpkgs --rev <40-character-sha> --lock flake.lock --write
+mr lock-sync --input library --member library --ref feature/published --rev <40-character-sha> --lock nix/tool/flake.lock --write
 ```
 
 The default authority is `devenv.lock`. Without `--lock`, discovery includes tracked
@@ -97,25 +98,44 @@ Ancestry Git commands explicitly target the temporary Git directory and discard
 repository-local Git environment overrides (including hook-provided object and
 index paths), while retaining authentication settings.
 
+`--ref <branch>` selects a published GitHub branch for `--rev`. Only short branch
+names are accepted, not `refs/*`, tags, SHA selectors or Git revision expressions.
+Git fetches the exact `refs/heads/<branch>`, so a same-named tag is not sufficient.
+Matching lock originals may track either the previous root branch or the requested
+branch; the transaction aligns them to the requested branch. Other original
+metadata must still agree. Applicable `flake.nix` and `devenv.yaml` URL declarations
+must track either the previous or requested branch without a revision override.
+The same transaction rewrites their branch while preserving URL parameters,
+quoting and surrounding formatting; third-branch or repository disagreement fails
+without writing.
+
+`--member <name>` adds the megarepo configuration, `megarepo.lock`, and both
+existing root locks to the transaction, even with explicit `--lock` paths. The
+selected member must identify the root input's repository. Its declaration and
+resolution are aligned to the selected branch and SHA, using the existing config
+and lock schemas. Same-repository member aliases join the cohort: SHA-pinned
+aliases retain SHA intent and pin status while advancing to the same commit;
+branch aliases must agree with the previous or selected tracking branch. Existing
+pin status is preserved. Without `--rev`, member mode checks or copies the current
+root resolution, including detecting member and secondary-root drift.
+
 With `--rev --write`, the authority root and selected standalone locks are staged
 and updated together in the same atomic operation. In both write modes, the
 complete cohort is staged before replacing changed locks; if a replacement fails,
 previously replaced locks are restored. Each target retains its own `dir` from
 its `original` rather than inheriting the source's directory. Writes preserve
-`original` (including the tracking `ref` and `dir`), local dependency edges and all
-unrelated nodes. Repeating a successful write does not touch any file.
+`original` (including `dir`, and `ref` unless `--ref` is supplied), local dependency
+edges and all unrelated nodes. Repeating a successful write does not touch any file.
 
 Check mode (without `--write`) never writes locks. With `--rev`, it checks both the
 authority root and the selected standalone cohort against the requested
 revision's prefetched metadata and fails on drift, even when the standalone locks
 currently agree with the existing root resolution.
 
-Unlike `mr apply --lock-sync`, this operates within one consumer repository,
-does not modify member worktrees or `megarepo.lock`, and does not require a
-megarepo config. Without `--rev`, the authoritative root resolution must already
-satisfy `mr:lock-sync-check`; copying it does not repair root drift against
-`megarepo.lock`. Updating locks with `--rev` does not update `megarepo.lock` or
-guarantee agreement with that separate authority.
+Unlike `mr apply --lock-sync`, this operates within one consumer repository and
+does not modify member worktrees. Without `--member`, it does not require a
+megarepo config or update `megarepo.lock`; agreement with that separate authority
+remains the caller's responsibility.
 
 ### `mr apply`
 
