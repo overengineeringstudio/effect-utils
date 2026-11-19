@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import type { ReaderReapiUnavailableShadow } from '../../scripts/buck2-cache-posture.ts'
 import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 import {
   classifyCacheUploadError,
@@ -22,7 +23,6 @@ import {
   finalizeNativeLogFreshness,
   maxCacheEvidenceActions,
   mergeCacheEvidence,
-  type ReaderReapiUnavailableShadow,
 } from './buck2-cache-evidence.ts'
 
 // Reduced native `buck2 log show` records from local-build.pb.zst, decoded by

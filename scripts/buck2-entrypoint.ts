@@ -24,13 +24,11 @@ import process from 'node:process'
 import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
-import type {
-  ReaderReapiUnavailableShadow,
-} from '../genie/ci-scripts/buck2-cache-evidence.ts'
-import { decodeCacheLocalFallback } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
+  decodeCacheLocalFallback,
+  type ReaderReapiUnavailableShadow,
   decodeReapiAdmissionFailure,
   probeRemoteCacheCapabilities,
   reapiAdmissionProbeBudgetMs,
@@ -1936,7 +1934,9 @@ export const localCacheReplayArguments = ({
   env: Readonly<Record<string, string | undefined>>
   buildId: string
 }): string[] | undefined => {
-  const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
+  const invocation = resolveGateInvocation({
+    args, cwd, env, strictRunArguments: false, includePayload: true,
+  })
   if (invocation === undefined) return undefined
   const command = buckSubcommand(invocation.args)?.command
   if (command !== 'build' && command !== 'test') return undefined

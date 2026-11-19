@@ -249,7 +249,8 @@ preserve the native stderr stream; interruption disables capture while draining
 and reaping the child. A normal exit does not cancel forwarding.
 
 The repository-local `${CI_BUCK2_CACHE_EVIDENCE_PATH}.local-fallbacks.jsonl`
-contract is `CacheLocalFallback`, decoded once by `decodeCacheLocalFallback`:
+contract is `CacheLocalFallback`, defined and decoded by `decodeCacheLocalFallback`
+in the already shipped `scripts/buck2-cache-posture.ts` module:
 schema version 1, distinct canonical original/local UUIDs, fixed reason, closed
 classification, actual exits/signal, `localOnly: true`, and ordered timestamps.
 The original completion independently stores the same `reapiUnavailable`

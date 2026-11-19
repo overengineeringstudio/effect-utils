@@ -500,6 +500,9 @@ describe('rotation-independent native evidence shards', () => {
     'missing-local',
     'different-root',
     'invalid-original',
+    'ineligible-command',
+    'extra-unregistered-shard',
+    'extra-invalid-shard',
     'local-failed',
     'trusted',
   ] as const) {
@@ -517,7 +520,7 @@ describe('rotation-independent native evidence shards', () => {
             connectUnavailable: false,
             transportMessage: 'tls-handshake-eof',
           },
-          command: { subcommand: 'build', argumentCount: 4 },
+          command: { subcommand: failure === 'ineligible-command' ? 'audit' : 'build', argumentCount: 4 },
           nativeExitCode: 1,
           durationMs: 1000,
           failedActionCount: 1,
@@ -572,12 +575,26 @@ describe('rotation-independent native evidence shards', () => {
         if (failure === 'missing-original') await rm(originalShard)
         if (failure === 'missing-local')
           await rm(join(`${output}.shards`, `${localBuildId}.json`))
+        const unrelatedShard =
+          failure === 'extra-unregistered-shard' || failure === 'extra-invalid-shard'
+        if (unrelatedShard === true) {
+          const extraBuildId = buildIdFor(3)
+          const contents = failure === 'extra-invalid-shard'
+            ? 'invalid\n'
+            : (await Bun.file(join(`${output}.shards`, `${localBuildId}.json`)).text())
+              .replaceAll(localBuildId, extraBuildId)
+          await Bun.write(join(`${output}.shards`, `${extraBuildId}.json`), contents)
+        }
         const result = await reconcileNativeShards({ output })
         expect(result.index.complete).toBe(false)
-        const confirmed = failure === null || failure === 'trusted'
-        expect(result.index.commandRecoveryComplete).toBe(confirmed)
+        const confirmed = failure === null || failure === 'trusted' || unrelatedShard === true
+        expect(result.index.commandRecoveryComplete).toBe(confirmed && unrelatedShard === false)
         expect(result.index.localFallbacks).toHaveLength(confirmed ? 1 : 0)
         expect(result.index.evidenceGaps.length).toBeGreaterThan(0)
+        if (unrelatedShard === true) {
+          expect(result.index.evidenceGaps).toContain('native-shard-incomplete')
+          expect(result.index.expectedBuildIds).not.toContain(buildIdFor(3))
+        }
         if (failure === null) {
           expect(result.index.evidenceGaps).toContain('incomplete-native-invocation')
           expect(result.index.evidenceGaps).not.toContain('native-shard-missing')

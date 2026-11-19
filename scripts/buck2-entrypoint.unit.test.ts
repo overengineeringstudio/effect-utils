@@ -1,7 +1,7 @@
 import { expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
-import type { ReaderReapiUnavailableShadow } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import type { ReaderReapiUnavailableShadow } from './buck2-cache-posture.ts'
 import {
   ciPostureDeclared,
   cacheLocalFallbackEligible,
@@ -432,6 +432,13 @@ it('pins local replay flags before payload and keeps original native identity si
       '--event-log=original-events', '--reuse-current-config', '--', '//:other'],
   })).toEqual(['build', '//:app', '--write-build-id', 'original-id.local-local-id',
     '--event-log=original-events.local-local-id', '--local-only', '--no-remote-cache', '--', '//:other'])
+  expect(localCacheReplayArguments({
+    ...options,
+    args: ['test', '//:tests', '--', '--event-log=literal', '--remote-only', '@literal'],
+  })).toEqual([
+    'test', '//:tests', '--local-only', '--no-remote-cache',
+    '--', '--event-log=literal', '--remote-only', '@literal',
+  ])
   for (const args of [
     ['run', '//:app'], ['install', '//:app'], ['bxl', '//:main'],
     ['build', '--remote-only', '//:app'],

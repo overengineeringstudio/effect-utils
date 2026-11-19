@@ -30,6 +30,8 @@ import { gzipSync, gunzipSync } from 'node:zlib'
 
 import {
   canonicalCacheAdmissionInvocationId,
+  decodeReaderReapiUnavailableShadow,
+  type ReaderReapiUnavailableShadow,
   decodeReapiAdmissionAttempts,
   type ReapiAdmissionAttempt,
   decodeReapiAdmissionFailure,
@@ -76,20 +78,6 @@ export const cacheEvidenceOutcomes = [
 ] as const
 export type CacheOutcome = (typeof cacheEvidenceOutcomes)[number]
 export type OutcomeCounts = Record<CacheOutcome, number>
-export type ReaderReapiUnavailableShadow = {
-  cause: {
-    capabilitiesUnavailable: boolean
-    connectRetry: boolean
-    clientInitialization: boolean
-    connectUnavailable: boolean
-    transportMessage: 'tls-handshake-eof' | 'transport-error' | 'none'
-  }
-  command: { subcommand: string; argumentCount: number }
-  nativeExitCode: number
-  durationMs: number
-  failedActionCount: number
-  wouldDisableRemoteCache: true
-}
 export type CacheAdmissionInvocation = {
   invocationId: string
   admissionFallbacks: { reapi: number; archiveOrigin: number }
@@ -215,97 +203,6 @@ const decodeAdmissionCounters = (
   reapi: count(field({ value, key: 'reapi' })),
   archiveOrigin: count(field({ value, key: 'archiveOrigin' })),
 })
-export const decodeReaderReapiUnavailableShadow = (
-  value: unknown,
-): ReaderReapiUnavailableShadow => {
-  const cause = field({ value, key: 'cause' })
-  const command = field({ value, key: 'command' })
-  const subcommand = field({ value: command, key: 'subcommand' })
-  const transportMessage = field({ value: cause, key: 'transportMessage' })
-  const capabilitiesUnavailable = field({ value: cause, key: 'capabilitiesUnavailable' })
-  const connectRetry = field({ value: cause, key: 'connectRetry' })
-  const clientInitialization = field({ value: cause, key: 'clientInitialization' })
-  const connectUnavailable = field({ value: cause, key: 'connectUnavailable' })
-  if (
-    typeof subcommand !== 'string' ||
-    ['build', 'test', 'audit', 'cquery', 'uquery', 'aquery', 'targets'].includes(subcommand) ===
-      false ||
-    typeof capabilitiesUnavailable !== 'boolean' ||
-    typeof connectRetry !== 'boolean' ||
-    typeof clientInitialization !== 'boolean' ||
-    typeof connectUnavailable !== 'boolean' ||
-    (capabilitiesUnavailable === false &&
-      clientInitialization === false &&
-      connectUnavailable === false) ||
-    (transportMessage !== 'tls-handshake-eof' &&
-      transportMessage !== 'transport-error' &&
-      transportMessage !== 'none') ||
-    field({ value, key: 'wouldDisableRemoteCache' }) !== true
-  )
-    throw new Error('Invalid reader REAPI shadow classification')
-  const nativeExitCode = count(field({ value, key: 'nativeExitCode' }))
-  if (nativeExitCode === 0 || nativeExitCode > 255)
-    throw new Error('Invalid reader REAPI shadow exit code')
-  return {
-    cause: {
-      capabilitiesUnavailable,
-      connectRetry,
-      clientInitialization,
-      connectUnavailable,
-      transportMessage,
-    },
-    command: { subcommand, argumentCount: count(field({ value: command, key: 'argumentCount' })) },
-    nativeExitCode,
-    durationMs: count(field({ value, key: 'durationMs' })),
-    failedActionCount: count(field({ value, key: 'failedActionCount' })),
-    wouldDisableRemoteCache: true,
-  }
-}
-
-/** A command recovery relationship, never proof that the failed trace was complete. */
-export type CacheLocalFallback = {
-  schemaVersion: 1
-  originalBuildId: string
-  localBuildId: string
-  reason: 'capabilities' | 'connect' | 'init'
-  classification: ReaderReapiUnavailableShadow
-  originalExitCode: number
-  localExitCode: number
-  localSignalCode: string | null
-  localOnly: true
-  startedAt: number
-  finishedAt: number
-}
-
-export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => {
-  const originalBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'originalBuildId' }))
-  const localBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'localBuildId' }))
-  const classification = decodeReaderReapiUnavailableShadow(field({ value, key: 'classification' }))
-  const reason = field({ value, key: 'reason' })
-  const originalExitCode = count(field({ value, key: 'originalExitCode' }))
-  const localExitCode = count(field({ value, key: 'localExitCode' }))
-  const localSignalCode = field({ value, key: 'localSignalCode' })
-  const startedAt = count(field({ value, key: 'startedAt' }))
-  const finishedAt = count(field({ value, key: 'finishedAt' }))
-  const expectedReason = classification.cause.capabilitiesUnavailable
-    ? 'capabilities'
-    : classification.cause.clientInitialization ? 'init' : 'connect'
-  if (
-    field({ value, key: 'schemaVersion' }) !== 1 ||
-    field({ value, key: 'localOnly' }) !== true ||
-    originalBuildId === localBuildId ||
-    originalExitCode !== classification.nativeExitCode ||
-    localExitCode > 255 ||
-    reason !== expectedReason ||
-    (localSignalCode !== null &&
-      (typeof localSignalCode !== 'string' || /^SIG[A-Z0-9]+$/u.test(localSignalCode) === false)) ||
-    finishedAt < startedAt
-  ) throw new Error('Invalid cache LOCAL fallback relationship')
-  return {
-    schemaVersion: 1, originalBuildId, localBuildId, reason, classification,
-    originalExitCode, localExitCode, localSignalCode, localOnly: true, startedAt, finishedAt,
-  }
-}
 export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionInvocation => {
   const invocationId = canonicalCacheAdmissionInvocationId(field({ value, key: 'invocationId' }))
   const admissionFallbacks = decodeAdmissionCounters(field({ value, key: 'admissionFallbacks' }))

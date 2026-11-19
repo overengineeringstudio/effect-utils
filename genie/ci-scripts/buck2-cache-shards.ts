@@ -4,6 +4,11 @@ import { createReadStream } from 'node:fs'
 import { appendFile, mkdir, readdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import {
+  decodeCacheLocalFallback,
+  decodeReaderReapiUnavailableShadow,
+  type CacheLocalFallback,
+} from '../../scripts/buck2-cache-posture.ts'
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import type { ActionRecord, CacheReadPolicy } from './buck2-action-evidence.ts'
 import {
@@ -15,12 +20,9 @@ import {
   cacheEvidenceOutcomes,
   createCacheEvidenceProjector,
   decodeCacheEvidence,
-  decodeCacheLocalFallback,
-  decodeReaderReapiUnavailableShadow,
   emptyActionArtifact,
   emptyCacheEvidence,
   mergeCacheEvidence,
-  type CacheLocalFallback,
 } from './buck2-cache-evidence.ts'
 
 // Pinned 2026-09-01: CommonEventLogOptions.event_log is an extra, nonrotating
@@ -361,9 +363,11 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
     evidenceGaps.push('native-shard-count-limit')
     names = []
   }
+  let invalidShardObserved = false
   for (const name of names.toSorted()) {
     const buildId = name.slice(0, -5)
     if (name.endsWith('.json') === false || idPattern.test(buildId) === false) {
+      invalidShardObserved = true
       evidenceGaps.push('native-shard-unfinalized')
       continue
     }
@@ -457,6 +461,7 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
       })
       if (diagnostic === true) evidenceGaps.push('native-shard-incomplete')
     } catch {
+      invalidShardObserved = true
       evidenceGaps.push('native-shard-incomplete')
     }
   }
@@ -520,6 +525,7 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
   }
   // Command recovery never changes the original action-proof completeness.
   const commandRecoveryComplete =
+    invalidShardObserved === false &&
     confirmedFallbacks.length > 0 &&
     confirmedFallbacks.length === localFallbacks.length &&
     evidenceGaps.every(
