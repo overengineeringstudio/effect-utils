@@ -1,3 +1,5 @@
+import { dirname } from 'node:path'
+
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Cause, Clock, Effect, Exit, Option } from 'effect'
@@ -18,10 +20,12 @@ import {
   PoolError,
   type PoolActivityEvent,
   type PoolSlot,
+  requireDisposablePoolRoot,
   readPoolState,
   withPoolState,
 } from './store-pool-state.ts'
 import {
+  authorPoolRoot,
   claimPool,
   completePool,
   inspectPool,
@@ -80,6 +84,7 @@ const fixture = Effect.gen(function* () {
     bare,
     commit,
     sourceHistory: [commit],
+    executionRoot: preparing.executionRoot,
     identity: 'receipt',
     charge: 1048576,
     state: 'ready',
@@ -346,6 +351,51 @@ describe('native pool ownership safety', () => {
       expect(inspected.slots[0]?.activity).toEqual(state.slots[0]?.activity)
       expect(yield* withPoolState({ base: f.storePath, use: Effect.succeed })).toEqual(inspected)
       expect(Exit.isFailure(yield* prewarmPool(f.receipt).pipe(Effect.exit))).toBe(true)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('creating a separate canonical edit root leaves the fresh physical source unchanged', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      const destination = `${dirname(slot.bare)}/refs/heads/edit-topic`
+      yield* Git.createWorktree({
+        repoPath: slot.bare, worktreePath: destination, branch: 'edit-topic',
+        createBranch: true, startPoint: slot.commit,
+      })
+      yield* fs.writeFileString(`${destination}/authored`, 'canonical edit')
+      const retained = (yield* readPoolState(storePath)).slots[0]!
+      expect(retained).toEqual(slot)
+      yield* requireDisposablePoolRoot(retained)
+      expect(yield* Git.getCurrentCommit(slot.path)).toBe(slot.commit)
+      expect(yield* fs.exists(`${slot.path}/authored`)).toBe(false)
+      expect(retained.path).not.toBe(destination)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('marks an in-place authoring root before handoff and never resets its ignored data', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath, slot } = yield* fixture
+      yield* withPoolState({
+        base: storePath,
+        use: (state, save) => save({
+          ...state, slots: [{ ...slot, state: 'leased', token: 'author', chargeKnown: false }],
+        }),
+      })
+      const receipt = { base: storePath, id: slot.id, token: 'author', generation: slot.generation }
+      yield* authorPoolRoot(receipt)
+      expect((yield* readPoolState(storePath)).slots[0]?.executionRoot?.authored).toBe(true)
+      yield* fs.writeFileString(`${slot.bare}/info/exclude`, '/authored-ignored/\n')
+      yield* fs.makeDirectory(`${slot.path}/authored-ignored`)
+      yield* fs.writeFileString(`${slot.path}/authored-ignored/keep`, 'authored data')
+      yield* completePool(receipt)
+      const failure = yield* releasePool(receipt).pipe(Effect.flip)
+      expect(String(failure)).toContain('Authored or unproven pool root retained')
+      expect(yield* fs.readFileString(`${slot.path}/authored-ignored/keep`)).toBe('authored data')
+      expect((yield* readPoolState(storePath)).slots[0]).toMatchObject({
+        state: 'quarantined', executionRoot: { authored: true }, barrierToken: slot.barrierToken,
+      })
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 

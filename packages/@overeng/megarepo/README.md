@@ -52,7 +52,7 @@ mr store pool reserve owner/repo --commit <full-sha> \
 # Owner reviews/enrolls the returned exact missing path; reserve never does this.
 mr store pool prewarm owner/repo --commit <full-sha> --id <reserved-id> \
   --reservation <one-use-nonce> --generation <reserved-generation> --charge-bytes <slot-reservation>
-mr store pool claim --identity <prewarm-receipt-identity> --owner <task-id> -- command arg
+mr store pool claim --identity <prewarm-receipt-identity> --owner <task-id> --execution-only -- command arg
 mr store pool release --slot <id> --token <claim-token> --generation <generation>
 mr store pool status
 ```
@@ -493,17 +493,30 @@ store-state directory. Pool validation reads that file after the single-task
 runner exits; it never parses devenv console output or relies on log flags.
 No adapter, copied Buck state or scripts-disabled preparation is used.
 
-Release first fences its owner and persists quarantine, then invokes the packaged
-absolute `WORKTREE_TEARDOWN_BIN` provider, not an ambient PATH command.
+Fresh reserved UUID execution roots have an explicit disposable-ignored contract:
+ignored bytes in a proven-fresh, never-authored, never-promoted root are execution
+outputs and may be reset. Only canonical reservation records establish this class;
+legacy, adopted and unrecorded roots gain no disposal authority by conversion.
+Authoring and promotion must durably mark the originating slot before handoff.
+That marker is permanent: marked or unknown-provenance roots are retained, never reset.
+This contract does not change source/history, dependency, process or lease checks.
+`claim --execution-only` declares this disposable-output contract, not read-only
+execution. Without that declaration, the CLI durably marks the root authored before
+starting an arbitrary child. Authoring callers must use that default, not opt into
+execution-only mode. The marker cannot be cleared. Copy-style `promote` instead
+creates a separate canonical branch root outside the pool: it does not mark or
+mutate the unchanged source slot, and that slot retains its existing eligibility.
+Release fences its owner and persists quarantine, then invokes the packaged absolute
+`WORKTREE_TEARDOWN_BIN` provider, not an ambient PATH command.
 It uses the existing store-owner `gc-owner` process policy: readable foreign
 references veto, unreadable foreign processes are counted, and own-UID completeness
 requires native or bounded lsof evidence. Unknown owner processes retain the root.
-After unchanged clean source/history proof, it validates the installed dependency
-view, then cleans only its own detached root preserving validated `node_modules`,
-and reruns normal installation. Missing teardown, unknown processes, dirty/untracked
-source, changed commits or failed preparation retain the root; no automatic dirty
-cleanup, expiry, removal or force-unlock exists. Removal remains the existing
-hygiene owner's operation with full consumer proof.
+After unchanged clean source/history proof and disposal-authority admission, it
+validates the installed dependency view, cleans only its own detached root preserving
+validated `node_modules`, and reruns normal installation.
+Missing teardown, unknown processes, dirty/untracked source, changed commits or failed
+preparation retain the root; no automatic dirty cleanup, expiry, removal or force-unlock
+exists. Removal remains the existing hygiene owner's operation with full consumer proof.
 
 `readPoolProvenance` exports bearer-free observations through that same decoder,
 without initialization, migration writes, recovery, unlocks or removal. Missing or
