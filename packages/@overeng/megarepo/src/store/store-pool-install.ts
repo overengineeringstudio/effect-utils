@@ -149,7 +149,7 @@ export const poolInstallIdentity = (path: string, commit: string, base: Absolute
 /** Logical bytes are charged conservatively; no claim of physical/exclusive reclamation. */
 export const poolBytes = (path: string) =>
   Effect.gen(function* () {
-    const output = yield* runPoolCommand(path, 'du', ['-sk', '.'])
+    const output = yield* runPoolCommand(path, 'du', ['--apparent-size', '-sk', '.'])
     const kib = Number(output.split(/\s+/u)[0])
     if (!Number.isSafeInteger(kib) || kib < 0)
       return yield* new PoolError({ message: 'Cannot account pool bytes' })
