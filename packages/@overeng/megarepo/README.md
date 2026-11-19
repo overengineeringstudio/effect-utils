@@ -396,7 +396,6 @@ Claims atomically fence one generation and adopt its persistent barrier without 
 Providers record completion before exiting; inspection quarantines abandoned/uncertain providers.
 Live and completed receipts survive inspection with unknown mutable accounting, never auto-ready.
 Missing/unknown roots remain quarantined, including retained open-file accounting.
-
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

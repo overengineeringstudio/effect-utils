@@ -147,7 +147,6 @@ describe('native pool ownership safety', () => {
       expect(new TextDecoder().decode(retained)).toBe('held')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
-
   it.effect('registers detached with a native Git lock which refuses ordinary removal', () =>
     Effect.gen(function* () {
       const { slot } = yield* fixture
