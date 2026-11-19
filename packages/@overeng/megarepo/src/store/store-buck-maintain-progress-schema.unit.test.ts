@@ -2,6 +2,7 @@ import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  BuckMaintainProgressError,
   BuckMaintainProgressManifestSchema,
   BuckMaintainProgressRecordSchema,
   canonicalBuckMaintainJson,
@@ -50,6 +51,19 @@ describe('Buck maintenance checkpoint options', () => {
       canonicalBuckMaintainJson({ a: [1, 2] }),
     )
   })
+
+  it.each([
+    { value: undefined },
+    { value: () => undefined },
+    { value: Symbol('unsupported') },
+    { value: 1n },
+    { value: new Date(0) },
+    { value: new Map([['key', 1]]) },
+    { value: new Set([1]) },
+    { value: new Array<unknown>(1) },
+  ])('rejects unsupported JSON values instead of erasing them: %#', ({ value }) => {
+    expect(() => canonicalBuckMaintainJson({ nested: [value] })).toThrow(BuckMaintainProgressError)
+  })
 })
 
 describe('serialized checkpoint contract', () => {
@@ -97,6 +111,16 @@ describe('serialized checkpoint contract', () => {
     expect(decodeManifest(canonicalBuckMaintainJson(manifest))).toEqual(manifest)
     expect(decodeRecord(canonicalBuckMaintainJson(record))).toEqual(record)
   })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'rejects non-finite byte observations instead of converting them to null: %s',
+    (bytes) => {
+      for (const field of ['bytesBefore', 'bytesAfter'] as const)
+        expect(() =>
+          canonicalBuckMaintainJson({ ...record, entry: { ...record.entry, [field]: bytes } }),
+        ).toThrow(BuckMaintainProgressError)
+    },
+  )
 
   it('rejects unknown versions, acting manifests, extra fields and invalid runtime digests', () => {
     for (const invalid of [
