@@ -1,4 +1,4 @@
-/** Fleet labels admitted by the workflow policy; Namespace runners remain legacy-only. */
+/** Fleet labels; public-only Namespace admission is separate and bounded below. */
 export const fleetRunnerLabels = {
   linuxX64: 'sh-linux-x64',
   linuxX64Heavy: 'sh-linux-x64-heavy',
@@ -31,6 +31,18 @@ export const linuxX64HeavyRunner = [fleetRunnerLabels.linuxX64Heavy] as const
 
 export const darwinArm64Runner = [fleetRunnerLabels.darwinArm64, nixRunnerSelector] as const
 
+/** Public Linux amd64 8 vCPU / 16 GiB profile, qualified for nested /dev/kvm guests. */
+export const publicNamespaceKvmRunner =
+  'namespace-profile-linux-x86-64;container.privileged=true' as const
+/** Sponsor-funded privileged compute accepts only trusted events and same-repo PR heads. */
+export const publicNamespaceKvmIf =
+  "${{ github.event.repository.private == false && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}" as const
+/** Shared across workflows: at most one heavy public Namespace job per repository. */
+export const publicNamespaceKvmConcurrency = {
+  group: 'namespace-public-linux-x64-8x16',
+  'cancel-in-progress': false,
+} as const
+
 /** Historical matrix values also used verbatim in required check names. Not fleet labels. */
 export const LEGACY_RUNNER_PROFILES = [
   'namespace-profile-linux-x86-64',
@@ -49,6 +61,7 @@ export const LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER =
 export const selfHostedRunnerLabels = [
   ...new Set([
     ...LEGACY_RUNNER_PROFILES,
+    publicNamespaceKvmRunner,
     ...linuxX64Runner,
     ...linuxArm64Runner,
     fleetRunnerLabels.linuxX64Publish,

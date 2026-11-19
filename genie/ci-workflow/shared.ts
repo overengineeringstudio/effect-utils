@@ -16,6 +16,9 @@ export {
   linuxArm64Runner,
   darwinArm64Runner,
   LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
+  publicNamespaceKvmRunner,
+  publicNamespaceKvmConcurrency,
+  publicNamespaceKvmIf,
 } from './runners.ts'
 
 // =============================================================================
