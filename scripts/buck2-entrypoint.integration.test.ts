@@ -2798,7 +2798,7 @@ const waitForGateCondition = async (description: string, condition: () => boolea
 
 describe('gate wrapper EXIT and signal traps', () => {
   for (const signal of ['EXIT', 'EXIT130', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-    it(`preserves ${signal} status and cleans only the selected isolation`, async () => {
+    it(`preserves ${signal} status and limits selected-isolation cleanup to Linux`, async () => {
       const root = fixture()
       const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
       if (packaged === null || packaged === undefined)
@@ -2916,7 +2916,11 @@ if (args.at(-1) === 'status') {
         signal: signaled === true ? signal : null,
       })
       expect(child.signalCode).toBe(signaled === true ? signal : null)
-      expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill\n')
+      if (process.platform === 'linux') {
+        expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill\n')
+      } else {
+        expect(existsSync(killed)).toBe(false)
+      }
       if (signaled === true) {
         expect(readFileSync(received, 'utf8')).toBe(`${signal}\n`)
         expect(readFileSync(stopped, 'utf8')).toBe('stopped')

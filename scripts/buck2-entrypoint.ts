@@ -994,6 +994,8 @@ export const reconcileGateDaemon = ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly phase: 'start' | 'exit'
 }): void => {
+  // Non-Linux daemons own no gate cgroup; retain their DICE state between jobs.
+  if (phase === 'exit' && process.platform !== 'linux') return
   const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
   if (invocation === undefined) {
     if (phase === 'start')
