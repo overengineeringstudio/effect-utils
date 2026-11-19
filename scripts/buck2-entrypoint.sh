@@ -2,6 +2,11 @@
 # Keep a warm pinned-Buck loop out of the JavaScript runtime. Cache only complete
 # read-only invocations with identical config, arguments and exported environment.
 set -euo pipefail
+# Lifecycle initialization never starts native Buck or participates in its
+# launch cache/daemon wrapper, including when called from an admitted gate.
+if [[ "${1:-}" == --initialize-watchman-root ]]; then
+  exec @launcher@ @native@ "$@"
+fi
 # Keep local actions in the gate's cgroup. Native Buck cannot route individual
 # commands back to their client's cgroup from a shared daemon-owned scope.
 if [[ -n "${GATE_SLOT_CLASS:-}" && "${BUCK2_GATE_WRAPPER_ACTIVE:-}" != 1 ]]; then

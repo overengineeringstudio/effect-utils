@@ -651,6 +651,10 @@ boundaries are:
   "shared" means shared between that script's fixtures, not between scripts.
   Smoke installs use private homes and fake providers; no repository install
   or repository node_modules mutation is scheduled.
+  The shared-store reuse proof reports the failing command and line, pinned
+  pnpm version, fixture store paths, and pnpm logs before fixture cleanup.
+  Diagnostics preserve the original nonzero exit; they do not normalize
+  failed assertions or retry installs.
 - **Genie:** `genie-compiled-staging` and `genie-module-options`. Compiled output,
   generated JSON, task receipts, and scratch Git repositories are private.
   The compiled fixture reads repository node_modules through a symlink but
