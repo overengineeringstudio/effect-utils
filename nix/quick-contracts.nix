@@ -83,6 +83,8 @@ let
       pkgs.gzip
       pkgs.curl
       pkgs.python3
+      pkgs.unixtools.ps
+      pkgs.stdenv.cc
     ]
     ++ config.packages
   );
@@ -107,6 +109,10 @@ let
     export DEVENV_ROOT="$PWD" WORKSPACE_ROOT="$PWD"
     : "''${WORKTREE_CAPABILITIES_PROFILE:?run devenv build effectUtils.quickContracts.capabilities and publish the returned profile}"
     export WORKTREE_CAPABILITIES_PROFILE
+    ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+      export SDKROOT=${lib.escapeShellArg pkgs.apple-sdk.sdkroot}
+      export NIX_LDFLAGS=${lib.escapeShellArg "-L${pkgs.libiconv}/lib"}
+    ''}
   '';
   validateSource = ''
     if ! sha256sum --check --status ${sourceIdentity}; then
