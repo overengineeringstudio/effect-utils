@@ -31,6 +31,13 @@ test('accepts a passing exact-head local canonical gate', () => {
   assert.equal(passingReceipt({ receipt: receipt, head: head }), true)
 })
 
+test('accepts summary-display overflow with complete passing task evidence', () => {
+  assert.equal(
+    passingReceipt({ receipt: { ...receipt, incompleteTasksTruncated: true }, head }),
+    true,
+  )
+})
+
 for (const [field, value] of Object.entries({
   schema: 'other',
   class: 'heavy',
@@ -50,7 +57,7 @@ for (const [field, value] of Object.entries({
   endedAt: '2020-01-01',
   failedTasksTruncated: true,
   incompleteTasks: ['unfinished'],
-  incompleteTasksTruncated: true,
+  incompleteTasksTruncated: 'unknown',
   taskTraceTruncated: true,
 })) {
   test(`rejects invalid ${field}`, () => {

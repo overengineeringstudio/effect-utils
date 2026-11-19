@@ -106,9 +106,14 @@ detects accidental modification; it is not a signature or independent proof of
 authorship. The native gate receipt and log remain in the local state directory
 printed by the command. Hostnames, local paths and logs are not published.
 The command raises the local task-trace capture bound to 256 MiB because the
-canonical check exceeds the gate's 8 MiB diagnostic default. Truncated traces,
-unknown diagnostics and unfinished tasks still refuse admission.
-A failed, dirty, moved, nonlocal or incomplete gate cannot enqueue. A head
+canonical check exceeds the gate's 8 MiB diagnostic default. Admission requires
+canonical exit zero, local clean/exact-head execution and complete failure and
+not-run diagnostics with no failures or skipped tasks. Truncated task traces,
+unknown failure diagnostics and reported unfinished tasks refuse admission.
+The bounded active-task summary can overflow during a successful concurrent
+check; `incompleteTasksTruncated` is published verbatim, not used as a new
+unfinished-work authority over a passing canonical check and complete failure
+trace. A failed, dirty, moved or nonlocal gate cannot enqueue. A head
 change during fetch or execution refuses admission; the final enqueue is also
 SHA-guarded. With an agent seat, worktrees follow the normal lease/reaping
 contract. Plain local sessions do not fabricate lease attribution: on exit,

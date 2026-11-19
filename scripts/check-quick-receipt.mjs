@@ -24,7 +24,7 @@ export const passingReceipt = ({ receipt, head }) =>
   receipt.failedTasksTruncated === false &&
   Array.isArray(receipt.incompleteTasks) &&
   receipt.incompleteTasks.length === 0 &&
-  receipt.incompleteTasksTruncated === false &&
+  typeof receipt.incompleteTasksTruncated === 'boolean' &&
   receipt.taskTraceTruncated === false &&
   receipt.notRunTasks === 0 &&
   Number.isFinite(Date.parse(receipt.startedAt)) &&
@@ -177,7 +177,7 @@ const main = (args) => {
     notRunTasks: 0,
     failedTasksTruncated: false,
     incompleteTasks: [],
-    incompleteTasksTruncated: false,
+    incompleteTasksTruncated: receipt.incompleteTasksTruncated,
     taskTraceTruncated: false,
   }
   const payload = JSON.stringify(publicReceipt)
