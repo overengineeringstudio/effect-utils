@@ -337,6 +337,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
     install/projection hashes and resolved tools. Set `PNPM_DOCTOR_OUTPUT_FILE` to
     an absent caller-owned path for an exclusive mode-0600 machine report; consumers
     must read it only after successful task completion, not parse runner logs.
+    Doctor and install must use the same evaluated module options, including
+    post-install projection hooks; a different configuration is not healthy evidence.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized

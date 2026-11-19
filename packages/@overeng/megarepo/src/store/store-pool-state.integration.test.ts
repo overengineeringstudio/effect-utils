@@ -89,10 +89,7 @@ describe('pool authoritative lifecycle', () => {
       expect(failure.message).toContain('capacity')
       const leased = yield* claimPoolGeneration(ready, 'installed', 'task')
       expect(leased.chargeKnown).toBe(false)
-      const unknown = yield* reservePoolSlot(
-        { ...state, slots: [leased] },
-        slot,
-      ).pipe(Effect.flip)
+      const unknown = yield* reservePoolSlot({ ...state, slots: [leased] }, slot).pipe(Effect.flip)
       expect(unknown.message).toContain('unknown')
       const remeasured = { ...leased, state: 'ready' as const, chargeKnown: true }
       expect(
