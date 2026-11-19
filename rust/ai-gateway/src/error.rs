@@ -27,16 +27,37 @@ impl std::error::Error for ToolRunError {
 }
 
 /// Caller-visible evidence for malformed JSON or original-schema violations.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct StructuredOutputError {
     pub errors: Vec<String>,
     pub usage: Option<Usage>,
     pub finish_reason: Option<String>,
     /// UTF-8 prefix, at most 2048 bytes including the truncation marker.
-    pub raw_text: String,
+    raw_text: String,
     /// Byte length of the complete response text, before truncation.
     pub raw_text_bytes: usize,
     pub truncated: bool,
+}
+
+impl StructuredOutputError {
+    /// Explicitly access sensitive model-generated response text.
+    pub fn raw_text(&self) -> &str {
+        &self.raw_text
+    }
+}
+
+impl fmt::Debug for StructuredOutputError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StructuredOutputError")
+            .field("errors", &self.errors)
+            .field("usage", &self.usage)
+            .field("finish_reason", &self.finish_reason)
+            .field("raw_text", &"[REDACTED]")
+            .field("raw_text_bytes", &self.raw_text_bytes)
+            .field("truncated", &self.truncated)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -199,6 +220,30 @@ impl std::error::Error for Error {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structured_output_debug_redacts_excerpt_for_payload_and_error() {
+        let text = "sensitive-response-excerpt";
+        let error = Error::structured_output(
+            vec!["expected value".into()],
+            None,
+            Some("length".into()),
+            text.into(),
+        );
+        let Error::StructuredOutput(payload) = &error else {
+            panic!("expected structured output failure");
+        };
+        assert_eq!(payload.raw_text(), text);
+        for debug in [format!("{payload:?}"), format!("{error:?}")] {
+            assert!(!debug.contains(text));
+            assert!(debug.contains("[REDACTED]"));
+            assert!(debug.contains("raw_text_bytes: 26"));
+            assert!(debug.contains("truncated: false"));
+            assert!(debug.contains("length"));
+            assert!(debug.contains("expected value"));
+            assert!(debug.contains("usage: None"));
+        }
+    }
 
     #[test]
     fn unknown_error_bodies_remain_http_failures() {

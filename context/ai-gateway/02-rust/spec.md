@@ -45,13 +45,15 @@ Send the projection as `response_format.type = json_schema` with its schema name
 Malformed JSON and original-schema violations return
 `Error::StructuredOutput(Box<StructuredOutputError>)`, whose payload has fields
 `{ errors: Vec<String>, usage: Option<Usage>, finish_reason: Option<String>,
-raw_text: String, raw_text_bytes: usize, truncated: bool }`.
+raw_text_bytes: usize, truncated: bool }` and a private `raw_text: String`.
 Box the payload to keep other success/error results small.
 Preserve the provider's finish reason and billed usage.
 `raw_text_bytes` is the complete response text's byte length; `raw_text` is
 bounded to 2048 bytes including `\n[truncated]` when truncated, with the prefix
-ending at a UTF-8 boundary. This diagnostic text is available to the caller
-through the error value only, never added to Display or default telemetry.
+ending at a UTF-8 boundary. This diagnostic text is available only through the
+explicit `StructuredOutputError::raw_text(&self) -> &str` accessor. Debug
+redacts the excerpt in both the payload and the enclosing Error; Display and
+default telemetry do not include it.
 Callers own any deliberate content disclosure. Parsing remains strict: no
 fence extraction, trailing-text acceptance, repair, or retry.
 

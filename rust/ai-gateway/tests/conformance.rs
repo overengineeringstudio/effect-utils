@@ -6,10 +6,7 @@ use std::{
     time::Duration,
 };
 
-use ai_gateway::{
-    ChatBuilder, Client, DecisionSpec, Error, Message, StreamEvent, StructuredOutputError, Tool,
-    ToolCall,
-};
+use ai_gateway::{ChatBuilder, Client, DecisionSpec, Error, Message, StreamEvent, Tool, ToolCall};
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
@@ -719,20 +716,12 @@ async fn structured_fenced_json_retains_raw_text_and_finish_reason() {
     let Error::StructuredOutput(error) = error else {
         panic!("expected structured output failure");
     };
-    let StructuredOutputError {
-        errors,
-        raw_text,
-        raw_text_bytes,
-        truncated,
-        finish_reason,
-        usage,
-    } = *error;
-    assert!(errors[0].contains("expected value"));
-    assert_eq!(raw_text, text);
-    assert_eq!(raw_text_bytes, text.len());
-    assert!(!truncated);
-    assert_eq!(finish_reason.as_deref(), Some("stop"));
-    assert!(usage.is_some());
+    assert!(error.errors[0].contains("expected value"));
+    assert_eq!(error.raw_text(), text);
+    assert_eq!(error.raw_text_bytes, text.len());
+    assert!(!error.truncated);
+    assert_eq!(error.finish_reason.as_deref(), Some("stop"));
+    assert!(error.usage.is_some());
 }
 
 #[tokio::test]
@@ -741,15 +730,9 @@ async fn structured_trailing_characters_remain_parse_failure() {
     let Error::StructuredOutput(error) = structured_output_error(text, Some("stop")).await else {
         panic!("expected structured output failure");
     };
-    let StructuredOutputError {
-        errors,
-        raw_text,
-        finish_reason,
-        ..
-    } = *error;
-    assert!(errors[0].contains("trailing characters"));
-    assert_eq!(raw_text, text);
-    assert_eq!(finish_reason.as_deref(), Some("stop"));
+    assert!(error.errors[0].contains("trailing characters"));
+    assert_eq!(error.raw_text(), text);
+    assert_eq!(error.finish_reason.as_deref(), Some("stop"));
 }
 
 #[tokio::test]
@@ -758,15 +741,9 @@ async fn structured_array_against_object_retains_validation_evidence() {
     let Error::StructuredOutput(error) = structured_output_error(text, None).await else {
         panic!("expected structured output failure");
     };
-    let StructuredOutputError {
-        errors,
-        raw_text,
-        finish_reason,
-        ..
-    } = *error;
-    assert!(errors[0].contains("not of type \"object\""));
-    assert_eq!(raw_text, text);
-    assert_eq!(finish_reason, None);
+    assert!(error.errors[0].contains("not of type \"object\""));
+    assert_eq!(error.raw_text(), text);
+    assert_eq!(error.finish_reason, None);
 }
 
 #[tokio::test]
@@ -776,22 +753,14 @@ async fn structured_long_body_bounds_utf8_excerpt_and_surfaces_length() {
     else {
         panic!("expected structured output failure");
     };
-    let StructuredOutputError {
-        errors,
-        raw_text,
-        raw_text_bytes,
-        truncated,
-        finish_reason,
-        ..
-    } = *error;
-    assert!(errors[0].contains("expected value"));
-    assert_eq!(raw_text_bytes, text.len());
-    assert!(truncated);
-    assert!(raw_text.len() <= 2048);
-    let prefix = raw_text.strip_suffix("\n[truncated]").unwrap();
+    assert!(error.errors[0].contains("expected value"));
+    assert_eq!(error.raw_text_bytes, text.len());
+    assert!(error.truncated);
+    assert!(error.raw_text().len() <= 2048);
+    let prefix = error.raw_text().strip_suffix("\n[truncated]").unwrap();
     assert!(text.starts_with(prefix));
     assert!(prefix.len() >= 2048 - "\n[truncated]".len() - 3);
-    assert_eq!(finish_reason.as_deref(), Some("length"));
+    assert_eq!(error.finish_reason.as_deref(), Some("length"));
 }
 
 #[tokio::test]

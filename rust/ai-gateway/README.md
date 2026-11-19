@@ -261,12 +261,14 @@ original-schema validation, decision integrity checks, or operation telemetry.
   decision integrity failures. `decide` validation retains billed usage when
   rejecting a successful provider response; pre-request validation has `usage: None`.
 - `Error::StructuredOutput(Box<StructuredOutputError>)` has typed fields
-  `{ errors, usage, finish_reason, raw_text, raw_text_bytes, truncated }`.
+  `{ errors, usage, finish_reason, raw_text_bytes, truncated }` and an explicit
+  `raw_text() -> &str` accessor for the private excerpt.
   It reports malformed JSON or original-schema violations, preserving billed usage
-  and the provider's optional finish reason. `raw_text` contains at most 2048 bytes,
+  and the provider's optional finish reason. `raw_text()` returns at most 2048 bytes,
   including a `\n[truncated]` marker when needed, without splitting UTF-8.
-  `raw_text_bytes` is the full response's byte length. The excerpt is exposed
-  only to the caller, not added to Display or telemetry. Treat it as sensitive.
+  `raw_text_bytes` is the full response's byte length. Debug redacts the excerpt
+  for both the payload and the enclosing Error; Display and telemetry omit it.
+  Call the accessor only when deliberately handling sensitive response text.
 - `run_tools` returns `ToolRunError`, retaining completed exchange usage separately
   from its underlying `Error`.
 - `Error::Transport` and `Error::Config` distinguish transport/configuration failures.
