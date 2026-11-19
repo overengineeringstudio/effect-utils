@@ -501,7 +501,8 @@ Authoring and promotion must durably mark the originating slot before handoff.
 That marker is permanent: marked or unknown-provenance roots are retained, never reset.
 This contract does not change source/history, dependency, process or lease checks.
 `claim --execution-only` declares this disposable-output contract, not read-only
-execution. Without that declaration, the CLI durably marks the root authored before
+execution, a sandbox or an authenticated capability. Without that declaration,
+the CLI durably marks the root authored before
 starting an arbitrary child. Authoring callers must use that default, not opt into
 execution-only mode. The marker cannot be cleared. Copy-style `promote` instead
 creates a separate canonical branch root outside the pool: it does not mark or

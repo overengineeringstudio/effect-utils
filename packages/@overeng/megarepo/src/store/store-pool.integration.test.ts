@@ -364,7 +364,7 @@ describe('native pool ownership safety', () => {
         createBranch: true, startPoint: slot.commit,
       })
       yield* fs.writeFileString(`${destination}/authored`, 'canonical edit')
-      const retained = (yield* readPoolState(storePath)).slots[0]!
+      const retained = (yield* readPoolState({ base: storePath })).slots[0]!
       expect(retained).toEqual(slot)
       yield* requireDisposablePoolRoot(retained)
       expect(yield* Git.getCurrentCommit(slot.path)).toBe(slot.commit)
@@ -385,7 +385,7 @@ describe('native pool ownership safety', () => {
       })
       const receipt = { base: storePath, id: slot.id, token: 'author', generation: slot.generation }
       yield* authorPoolRoot(receipt)
-      expect((yield* readPoolState(storePath)).slots[0]?.executionRoot?.authored).toBe(true)
+      expect((yield* readPoolState({ base: storePath })).slots[0]?.executionRoot?.authored).toBe(true)
       yield* fs.writeFileString(`${slot.bare}/info/exclude`, '/authored-ignored/\n')
       yield* fs.makeDirectory(`${slot.path}/authored-ignored`)
       yield* fs.writeFileString(`${slot.path}/authored-ignored/keep`, 'authored data')
@@ -393,7 +393,7 @@ describe('native pool ownership safety', () => {
       const failure = yield* releasePool(receipt).pipe(Effect.flip)
       expect(String(failure)).toContain('Authored or unproven pool root retained')
       expect(yield* fs.readFileString(`${slot.path}/authored-ignored/keep`)).toBe('authored data')
-      expect((yield* readPoolState(storePath)).slots[0]).toMatchObject({
+      expect((yield* readPoolState({ base: storePath })).slots[0]).toMatchObject({
         state: 'quarantined', executionRoot: { authored: true }, barrierToken: slot.barrierToken,
       })
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),

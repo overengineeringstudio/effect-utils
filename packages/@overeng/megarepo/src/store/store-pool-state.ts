@@ -417,6 +417,8 @@ export const withPoolState = <A, E, R>({
             (previous?.executionRoot !== undefined &&
               (slot.executionRoot === undefined ||
                 slot.executionRoot.origin !== previous.executionRoot.origin ||
+                slot.path !== previous.path ||
+                slot.bare !== previous.bare ||
                 (previous.executionRoot.authored === true && slot.executionRoot.authored !== true))) ||
             (previous === undefined && slot.executionRoot !== undefined &&
               (slot.state !== 'reserved' || slot.generation !== 0 || slot.executionRoot.authored !== false))

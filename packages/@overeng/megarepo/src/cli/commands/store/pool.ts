@@ -84,7 +84,7 @@ const claim = Cli.Command.make(
     identity: Cli.Flag.String('identity'),
     owner: Cli.Flag.String('owner'),
     executionOnly: Cli.Flag.Boolean('execution-only').pipe(
-      Cli.Flag.withDescription('Disposable execution outputs only; no in-place authoring or promotion'),
+      Cli.Flag.withDescription('Declared disposable-output contract, not a sandbox; no in-place authoring'),
       Cli.Flag.withDefault(false),
     ),
     command: Cli.Argument.String('command').pipe(Cli.Argument.atLeast(1)),
