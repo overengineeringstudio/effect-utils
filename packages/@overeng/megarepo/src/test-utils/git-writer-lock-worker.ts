@@ -2,7 +2,7 @@ import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Exit } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
-import { withGitWriterLock } from '../store/git-writer-lock.ts'
+import { withGitWriterLock, withPoolWorktreeOperationLock } from '../store/git-writer-lock.ts'
 
 /** Bun subprocess fixture: filesystem handshakes coordinate real independent runtimes. */
 const [mode, repoPath, marker, exitCode = '0'] = process.argv.slice(2)
@@ -22,9 +22,16 @@ const program = Effect.gen(function* () {
     process.exitCode = Number(exitCode)
   })
   yield* fs.writeFileString(`${marker}.attempted`, '')
-  yield* mode === 'primitive' || mode === 'clone'
-    ? body.pipe(withGitWriterLock({ path: repoPath, create: mode === 'clone' }))
-    : body
+  if (mode === 'pool-operation') {
+    const [storeBasePath, barePath, id] = process.argv.slice(6)
+    if (storeBasePath === undefined || barePath === undefined || id === undefined)
+      return yield* Effect.die('Expected pool store, bare repository, and slot UUID')
+    yield* body.pipe(withPoolWorktreeOperationLock({ storeBasePath, barePath, id, path: repoPath }))
+  } else {
+    yield* mode === 'primitive' || mode === 'clone'
+      ? body.pipe(withGitWriterLock({ path: repoPath, create: mode === 'clone' }))
+      : body
+  }
 })
 
 program.pipe(

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -17,6 +18,7 @@ import {
   startGitWriterProcess,
   withGitContainerLock,
   withGitWriterLock,
+  withPoolWorktreeOperationLock,
 } from './git-writer-lock.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
@@ -67,7 +69,7 @@ const fixture = Effect.gen(function* () {
 const startWorker = Effect.fn('test/writer-lock/startWorker')(function* (
   repo: string,
   marker: string,
-  mode: 'primitive' | 'clone' | 'cli' = 'primitive',
+  mode: 'primitive' | 'clone' | 'cli' | 'pool-operation' = 'primitive',
   exitCode = 0,
   extraArgs: ReadonlyArray<string> = [],
   cloneTarget = false,
@@ -108,6 +110,47 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('refuses the same physical pool operation while another slot proceeds and survives provider death', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const root = yield* f.fs.realPath(f.root)
+      const storeBasePath = `${root}/store`
+      const repository = `${storeBasePath}/github.com/test/pool`
+      const barePath = `${repository}/.bare`
+      yield* f.fs.makeDirectory(repository, { recursive: true })
+      yield* git(root, 'clone', '--bare', f.source, barePath)
+      const id = randomUUID()
+      const path = `${repository}/pool/${id}`
+      const target = { storeBasePath, barePath, id, path }
+      const marker = `${root}/pool-operation`
+      const provider = yield* startWorker(path, marker, 'pool-operation', 0, [storeBasePath, barePath, id])
+      yield* awaitMarker(`${marker}.entered`)
+      const control = `${path}.mr-pool-operation.mr-container.lock`
+      const before = yield* Effect.promise(() => stat(control))
+      const refused = yield* Effect.void.pipe(withPoolWorktreeOperationLock(target), Effect.result)
+      expect(refused._tag).toBe('Failure')
+      const other = randomUUID()
+      expect(yield* Effect.succeed('different slot progressed').pipe(withPoolWorktreeOperationLock({
+        ...target, id: other, path: `${repository}/pool/${other}`,
+      }))).toBe('different slot progressed')
+      yield* Effect.sync(() => process.kill(provider.pid, 'SIGKILL'))
+      yield* provider.exitCode.pipe(Effect.ignore)
+      yield* Effect.void.pipe(withPoolWorktreeOperationLock(target))
+      const after = yield* Effect.promise(() => stat(control))
+      expect({ dev: after.dev, ino: after.ino }).toEqual({ dev: before.dev, ino: before.ino })
+      expect(after.mode & 0o7777).toBe(0o600)
+      expect(yield* f.fs.exists(path)).toBe(false)
+      yield* f.fs.chmod(control, 0o644)
+      expect((yield* Effect.void.pipe(withPoolWorktreeOperationLock(target), Effect.result))._tag).toBe('Failure')
+      yield* f.fs.chmod(control, 0o600)
+      const alias = `${repository}/pool-alias`
+      yield* f.fs.symlink(`${repository}/pool`, alias)
+      expect((yield* Effect.void.pipe(withPoolWorktreeOperationLock({
+        ...target, path: `${alias}/${id}`,
+      }), Effect.result))._tag).toBe('Failure')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.live('shared container holders coexist and veto exclusive reclamation', () =>
     Effect.gen(function* () {
       const f = yield* fixture

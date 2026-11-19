@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
-import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, relative, resolve } from 'node:path'
 
 import { NodeStream } from '@effect/platform-node'
 import { Clock, Context, Effect, Layer, Option, Schedule, Schema, Stream } from 'effect'
@@ -114,16 +114,18 @@ const withGitLock =
     create = false,
     containerMode,
     onContention = Effect.void,
+    literalPrivateControl = false,
   }: {
     readonly path: string
     readonly create?: boolean
     readonly containerMode?: 'shared' | 'exclusive'
     readonly onContention?: Effect.Effect<void>
+    readonly literalPrivateControl?: boolean
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const common =
-        create === true
+        literalPrivateControl === true ? path : create === true
           ? yield* io(path)(async () => {
               try {
                 return await realpath(path)
@@ -157,7 +159,8 @@ const withGitLock =
           if (
             opened.isFile() === false ||
             opened.nlink !== 1 ||
-            opened.uid !== process.getuid?.()
+            opened.uid !== process.getuid?.() ||
+            (literalPrivateControl === true && (opened.mode & 0o7777) !== 0o600)
           ) {
             return yield* new GitWriterLockError({
               path: lockPath,
@@ -267,6 +270,60 @@ export const withGitContainerLock =
       ),
     )
 
+/**
+ * Pool physical-root action fence. The control is outside the removable root and
+ * never unlinked, renamed or replaced, including after root removal or a crash.
+ * This supplies no writer descriptor and does not transfer ownership to children.
+ * Order: ROOT operation -> short GLOBAL state epochs -> container -> native pins.
+ */
+export const withPoolWorktreeOperationLock =
+  ({ storeBasePath, barePath, path, id }: {
+    storeBasePath: string; barePath: string; path: string; id: string
+  }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const parent = dirname(path)
+      const control = `${path}.mr-pool-operation`
+      const identity = yield* io(control)(async () => {
+        const base = await realpath(storeBasePath)
+        const bare = await realpath(barePath)
+        const repository = dirname(bare)
+        const within = relative(base, repository)
+        if (resolve(storeBasePath) !== base || bare !== barePath || basename(bare) !== '.bare' ||
+          within === '' || within === '..' || within.startsWith('../') ||
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(id) === false ||
+          path !== `${repository}/pool/${id}`)
+          throw new Error('Pool action target is not its canonical reserved UUID namespace')
+        try { await mkdir(parent, { mode: 0o700 }) } catch (cause) {
+          if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause
+        }
+        const entry = await lstat(parent)
+        if (entry.isDirectory() === false || entry.isSymbolicLink() ||
+          entry.uid !== process.getuid?.() || (entry.mode & 0o022) !== 0 ||
+          await realpath(parent) !== parent)
+          throw new Error('Pool action parent is not an owned canonical directory')
+        return { dev: entry.dev, ino: entry.ino }
+      })
+      const assertCurrent = io(control)(async () => {
+        const entry = await lstat(parent)
+        if (entry.dev !== identity.dev || entry.ino !== identity.ino ||
+          entry.isDirectory() === false || entry.isSymbolicLink() ||
+          entry.uid !== process.getuid?.() || (entry.mode & 0o022) !== 0 ||
+          await realpath(parent) !== parent)
+          throw new Error('Pool action control parent changed')
+        try {
+          const root = await lstat(path)
+          if (root.isDirectory() === false || root.isSymbolicLink() ||
+            root.uid !== process.getuid?.() || (root.mode & 0o022) !== 0 || await realpath(path) !== path)
+            throw new Error('Pool action root is not its canonical owned directory')
+        } catch (cause) {
+          if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
+        }
+      })
+      return yield* assertCurrent.pipe(Effect.andThen(effect), withGitLock({
+        path: control, containerMode: 'exclusive', literalPrivateControl: true,
+      }))
+    })
 /** Minimal process handle shared by the standard and descriptor-inheriting spawners. */
 export interface GitWriterProcess {
   readonly stdout: Stream.Stream<Uint8Array, GitWriterLockError | PlatformError>
