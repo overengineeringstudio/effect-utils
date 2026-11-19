@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { CatalogConflictError, defineCatalog } from './catalog.ts'
 import { packageJson } from './mod.ts'
@@ -83,6 +83,71 @@ describe('defineCatalog', () => {
       })
 
       expect(Object.isFrozen(extended)).toBe(true)
+    })
+  })
+
+  describe('explicit consumer-scoped overrides', () => {
+    const base = defineCatalog({ 'oxc-parser': '0.127.0', shared: '1.0.0' })
+
+    it('retains exact consumer types without mutating the base or other consumers', () => {
+      const consumer = defineCatalog({
+        extends: base,
+        overrides: { 'oxc-parser': '0.149.0' },
+        packages: { local: '2.0.0' },
+      })
+      const sibling = defineCatalog({ extends: base, packages: {} })
+
+      expectTypeOf(consumer.pick('oxc-parser')).toEqualTypeOf<{
+        readonly 'oxc-parser': '0.149.0'
+      }>()
+      expect(consumer.pick('oxc-parser', 'shared', 'local')).toEqual({
+        'oxc-parser': '0.149.0',
+        shared: '1.0.0',
+        local: '2.0.0',
+      })
+      expect(base['oxc-parser']).toBe('0.127.0')
+      expect(sibling['oxc-parser']).toBe('0.127.0')
+      expect(Object.isFrozen(consumer)).toBe(true)
+    })
+
+    it('keeps package conflict checks strict, including overridden keys', () => {
+      const conflicts: readonly Record<string, string>[] = [
+        { shared: '2.0.0' },
+        { 'oxc-parser': '0.150.0' },
+      ]
+      for (const packages of conflicts) {
+        expect(() =>
+          defineCatalog({ extends: base, overrides: { 'oxc-parser': '0.149.0' }, packages }),
+        ).toThrow(CatalogConflictError)
+      }
+    })
+
+    it('requires bases to agree before applying a consumer override', () => {
+      expect(() =>
+        defineCatalog({
+          extends: [base, defineCatalog({ 'oxc-parser': '0.128.0' })],
+          overrides: { 'oxc-parser': '0.149.0' },
+          packages: {},
+        }),
+      ).toThrow(CatalogConflictError)
+      const consumer = defineCatalog({
+        extends: [base, defineCatalog({ another: '3.0.0' })],
+        overrides: { 'oxc-parser': '0.149.0' },
+        packages: {},
+      })
+      expect(consumer.pick('oxc-parser', 'shared', 'another')).toEqual({
+        'oxc-parser': '0.149.0',
+        shared: '1.0.0',
+        another: '3.0.0',
+      })
+    })
+
+    it('rejects unknown override keys rather than creating packages or using prototypes', () => {
+      for (const name of ['unknown', 'toString']) {
+        expect(() =>
+          defineCatalog({ extends: [base], overrides: { [name]: '1.0.0' }, packages: {} }),
+        ).toThrow(`Cannot override unknown catalog package "${name}"; add it to packages`)
+      }
     })
   })
 

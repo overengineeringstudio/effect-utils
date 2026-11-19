@@ -115,8 +115,8 @@ Lock synchronization compares repository identity case-insensitively as well.
 ### Standalone Nix lock synchronization
 
 Check or update standalone flake locks from an already resolved root input, or
-select a revision explicitly, without changing their declared ref intent. For
-example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
+select a revision explicitly. Ref intent stays unchanged unless `--ref` is supplied.
+For example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
 
 ```bash
 mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock
@@ -132,6 +132,15 @@ supplies the actual locked metadata for the revision; write mode updates the
 authority root and selected standalone locks together atomically, preserving
 `original.ref`.
 Without `--write`, no locks are written and requested-revision drift fails the check.
+
+For an atomic member repin, use
+`mr lock-sync --input library --member library --ref feature/published --rev <40-character-sha> --write`.
+`--ref` proves reachability from that exact published GitHub branch and aligns
+matching lock originals and Nix source declarations from the old or requested branch.
+`--member` includes the megarepo config, member resolutions (including same-repository
+aliases), and both existing root locks in the same validated transaction. SHA-pinned
+aliases keep SHA intent and pin status. Without `--rev`, member mode also checks
+member and secondary-root drift against the current root resolution.
 
 Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
 Git pathspecs. This lets active consumers share the root resolution while archived
@@ -345,6 +354,24 @@ a different mount inside the deletion subtree refuses recursive traversal.
 Replacing an ancestor with a symlink cannot redirect removal outside the verified tree;
 changed identities or unavailable primitives refuse deletion. The same boundary protects
 worktree and merged-worklog teardown.
+
+The native `beforeRemove` guard receives an engine-minted, immutable `OwnedDeletionPins`
+view. Capture all-UID holder evidence **inside** that guard, after pin acquisition. Only
+an `fd` reference matching an actual owned `(pid, fd, dev, ino)` is exempt from self-use;
+another fd from the same process, or any cwd/exe/map/mount reference, still vetoes.
+No caller-supplied ignore list or PID-wide exemption is accepted. The view's `has`
+predicate is revoked when the guard completes, fails, is interrupted, or throws; retained
+views do not authorize later actions. This seam is not census or deletion authorization.
+
+`withPinnedDirectoryPins({ rootPath, path, identity, use })` lends the same engine-owned
+pins to one awaited observation callback without any quarantine, rename or unlink postlude.
+It returns the callback value only after revalidating the pinned chain. The callback-scoped
+view is revoked before revalidation, failure or interruption cleanup, and all native fds
+are then closed. `withPinnedDeletion` shares this single acquisition/lifetime engine and
+adds its private physical-removal postlude after the guard's view is revoked. The
+observation API grants no reset, retarget or removal authority: callers must keep their
+own continuous action fence and capture fresh Git, owner, consumer and all-UID evidence
+inside the callback. A retained view or precomputed census cannot authorize a later action.
 
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay

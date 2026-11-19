@@ -367,6 +367,20 @@ export const readMegarepoConfig = (megarepoRoot: AbsoluteDirPath) =>
     return yield* new ConfigNotFoundError({ megarepoRoot })
   })
 
+/** Encode a validated configuration without writing, for multi-file transactions. */
+export const encodeMegarepoConfigContent = ({
+  config,
+  format,
+}: {
+  config: MegarepoConfig
+  format: ConfigFormat
+}) =>
+  format === 'kdl'
+    ? Schema.encodeEffect(MegarepoConfigFromKdl)(config)
+    : Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(config).pipe(
+        Effect.map((content) => `${content}\n`),
+      )
+
 /**
  * Write megarepo config to a file.
  * Writes in the format matching the file extension.
@@ -386,12 +400,7 @@ export const writeMegarepoConfig = ({
     const fs = yield* FileSystem.FileSystem
     const format: ConfigFormat = configPath.endsWith('.kdl') === true ? 'kdl' : 'json'
 
-    const content =
-      format === 'kdl'
-        ? yield* Schema.encodeEffect(MegarepoConfigFromKdl)(config)
-        : (yield* Schema.encodeEffect(Schema.fromJsonString(MegarepoConfig, { space: 2 }))(
-            config,
-          )) + '\n'
+    const content = yield* encodeMegarepoConfigContent({ config, format })
 
     yield* fs.writeFileString(authorizedPath, content)
   })

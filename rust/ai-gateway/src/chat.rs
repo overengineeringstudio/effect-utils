@@ -221,18 +221,28 @@ impl<'a> ChatBuilder<'a> {
             .map_err(|error| Error::validation(error.to_string()))?;
         let projected = schema::project(original)?;
         let response = self.send_in(Some(json!({"type":"json_schema","json_schema":{"name":"response","strict":true,"schema":projected}})), operation, None).await?;
-        let value: Value = serde_json::from_str(&response.text).map_err(|error| {
-            Error::validation(error.to_string()).with_usage(response.usage.clone())
-        })?;
+        let value: Value = match serde_json::from_str(&response.text) {
+            Ok(value) => value,
+            Err(error) => {
+                return Err(Error::structured_output(
+                    vec![error.to_string()],
+                    response.usage,
+                    response.finish_reason,
+                    response.text,
+                ));
+            }
+        };
         let errors: Vec<String> = validator
             .iter_errors(&value)
             .map(|error| error.to_string())
             .collect();
         if !errors.is_empty() {
-            return Err(Error::Validation {
+            return Err(Error::structured_output(
                 errors,
-                usage: response.usage,
-            });
+                response.usage,
+                response.finish_reason,
+                response.text,
+            ));
         }
         Ok(StructuredResponse {
             value,
