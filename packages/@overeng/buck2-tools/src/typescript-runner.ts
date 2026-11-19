@@ -33,6 +33,7 @@ type ForwardedSignal = keyof typeof signalNumbers
 
 type TypecheckOptions = {
   readonly packageTree: string
+  readonly darwinIsolation?: DarwinEmitIsolation
   readonly fingerprintTool: string
   readonly readRoots: readonly string[]
   readonly project: string
@@ -42,6 +43,8 @@ type TypecheckOptions = {
 
 type EmitOptions = {
   readonly declarationEntrypoint: string | undefined
+  /** Build the complete referenced workspace with its authored compiler options. */
+  readonly workspaceBuild?: boolean
   readonly darwinIsolation?: DarwinEmitIsolation
   readonly declarationSources: readonly string[]
   readonly outDir: string
@@ -168,11 +171,20 @@ const parseReadRoots = (options: {
 /** Parses the fail-closed typecheck command contract for focused rule/runner tests. */
 export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions => {
   requireMinimumArgumentCount({ args, command: 'typecheck', count: 4 })
-  const declared = parseReadRoots({ args, command: 'typecheck', from: 4 })
+  const emitIsolation: { value: DarwinEmitIsolation } = { value: 'sandbox-exec' }
+  const declared = parseReadRoots({
+    args,
+    command: 'typecheck',
+    from: 4,
+    emitIsolation,
+  })
   return {
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
     packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
     ...declared,
+    ...(args.includes('--darwin-isolation') === true
+      ? { darwinIsolation: emitIsolation.value }
+      : {}),
     project: requireNormalizedRelativePath({
       name: 'project',
       value: requireArgument({ args, index: 2, name: 'project' }),
@@ -491,6 +503,7 @@ const prepareStagedOutput = async (options: {
 export const relinkStagedDependencyView = async (options: {
   readonly packageTree: string
   readonly stagedPackageRoot: string
+  readonly wholeWorkspace?: boolean
 }): Promise<void> => {
   const packageTree = await realpath(options.packageTree)
   const sourceNodeModules = join(packageTree, 'node_modules')
@@ -523,7 +536,10 @@ export const relinkStagedDependencyView = async (options: {
     })
   }
 
-  await visit({ source: sourceNodeModules, staged: stagedNodeModules })
+  await visit({
+    source: options.wholeWorkspace === true ? packageTree : sourceNodeModules,
+    staged: options.wholeWorkspace === true ? options.stagedPackageRoot : stagedNodeModules,
+  })
 }
 
 const packageTreeArtifactDirectory = (root: string): string | undefined =>
@@ -955,60 +971,78 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
     const packageRoot = stagedEmitPackageRoot({ packageTree, readRoots, stagingRoot })
     await mkdir(dirname(packageRoot), { recursive: true })
     await copyWritableTree({ source: packageTree, destination: packageRoot })
-    await relinkStagedDependencyView({ packageTree, stagedPackageRoot: packageRoot })
+    await relinkStagedDependencyView({
+      packageTree,
+      stagedPackageRoot: packageRoot,
+      ...(options.workspaceBuild === true ? { wholeWorkspace: true } : {}),
+    })
     await linkStagedWorkspaceProjects({
       packageTree,
       readRoots,
       stagedPackageRoot: packageRoot,
       stagingRoot,
     })
-    await prepareStagedOutput({ outDir: options.outDir, output, packageRoot })
-    // The output is a symlink: no-follow hashing covers all staged inputs, not emitted bytes.
-    const stagedBefore = await hashDeclaredInputRoots({
-      roots: [stagingRoot],
-      fingerprintTool: options.fingerprintTool,
-    })
+    if (options.workspaceBuild !== true)
+      await prepareStagedOutput({ outDir: options.outDir, output, packageRoot })
+    // Ordinary emit allows writes only through its output symlink. Workspace builds
+    // intentionally write project outputs/build info throughout the private scratch copy.
+    const stagedBefore =
+      options.workspaceBuild === true
+        ? undefined
+        : await hashDeclaredInputRoots({
+            roots: [stagingRoot],
+            fingerprintTool: options.fingerprintTool,
+          })
     status = await runTsgo({
-      argv: [
-        options.tsgo,
-        '--project',
-        join(packageRoot, options.project),
-        '--outDir',
-        join(packageRoot, options.outDir),
-        '--noEmit',
-        'false',
-        '--composite',
-        'false',
-        '--incremental',
-        'false',
-        '--declaration',
-        'true',
-        // Published package products ship JavaScript runtime entries next to their
-        // declarations; Node cannot type-strip `.ts` under node_modules.
-        '--emitDeclarationOnly',
-        'false',
-        '--pretty',
-        'false',
-      ],
+      argv:
+        options.workspaceBuild === true
+          ? [options.tsgo, '--build', '--force', join(packageRoot, options.project)]
+          : [
+              options.tsgo,
+              '--project',
+              join(packageRoot, options.project),
+              '--outDir',
+              join(packageRoot, options.outDir),
+              '--noEmit',
+              'false',
+              '--composite',
+              'false',
+              '--incremental',
+              'false',
+              '--declaration',
+              'true',
+              // Published package products ship JavaScript runtime entries next to their
+              // declarations; Node cannot type-strip `.ts` under node_modules.
+              '--emitDeclarationOnly',
+              'false',
+              '--pretty',
+              'false',
+            ],
       darwinBuckOut: process.platform === 'darwin' ? emitBuckOut(packageTree) : undefined,
       darwinIsolation: options.darwinIsolation,
       readRoots,
       stagingRoot,
       cwd: packageRoot,
     })
-    const stagedAfter = await hashDeclaredInputRoots({
-      roots: [stagingRoot],
-      fingerprintTool: options.fingerprintTool,
-    })
-    if (stagedAfter !== stagedBefore)
-      fail(`staged input roots changed during emit (before ${stagedBefore}, after ${stagedAfter})`)
-    if (status === 0) {
-      await copyDeclarationSources({
-        declarationSources: options.declarationSources,
-        output,
-        packageRoot,
+    if (options.workspaceBuild !== true) {
+      const stagedAfter = await hashDeclaredInputRoots({
+        roots: [stagingRoot],
+        fingerprintTool: options.fingerprintTool,
       })
-      await validateOutput({ declarationEntrypoint: options.declarationEntrypoint, output })
+      if (stagedAfter !== stagedBefore)
+        fail(
+          `staged input roots changed during emit (before ${stagedBefore}, after ${stagedAfter})`,
+        )
+      if (status === 0) {
+        await copyDeclarationSources({
+          declarationSources: options.declarationSources,
+          output,
+          packageRoot,
+        })
+        await validateOutput({ declarationEntrypoint: options.declarationEntrypoint, output })
+      }
+    } else if (status === 0) {
+      await writeFile(output, `${options.tsgo}\n`)
     }
   } catch (error) {
     primaryError = error
@@ -1074,8 +1108,21 @@ const removeSignalForwarding = (): void => {
 export const runTypeScriptCli = async (args: readonly string[]): Promise<number> => {
   const [command, ...commandArgs] = args
   if (command === 'typecheck') return runTypecheck(parseTypecheckOptions(commandArgs))
+  if (command === 'workspace-check') {
+    const options = parseTypecheckOptions(commandArgs)
+    return runEmit({
+      ...options,
+      workspaceBuild: true,
+      output: options.verdict,
+      outDir: 'dist',
+      declarationEntrypoint: undefined,
+      declarationSources: [],
+    })
+  }
   if (command === 'emit') return runEmit(parseEmitOptions(commandArgs))
-  return fail(`expected command "typecheck" or "emit", received ${command ?? '<missing>'}`)
+  return fail(
+    `expected command "typecheck", "workspace-check" or "emit", received ${command ?? '<missing>'}`,
+  )
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

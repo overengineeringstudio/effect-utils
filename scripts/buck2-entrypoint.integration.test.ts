@@ -555,7 +555,14 @@ fi
           await admitCacheDaemonCommand({
             native,
             root,
-            args: ['--isolation-dir', 'owned', 'build', '//:app'],
+            args: [
+              '--isolation-dir',
+              'owned',
+              'run',
+              '--event-log=events',
+              '--write-build-id=id',
+              '//:app',
+            ],
             env: { BUCK2_CI_POSTURE: '1' },
             deadlineMs,
             admit: async () => ['build', '//:app'],
