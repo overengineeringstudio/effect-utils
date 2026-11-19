@@ -37,11 +37,13 @@ export const CensusRequest = Schema.Struct({
   requestedAt: CensusStamp,
   requesterUid: Count,
   authorizedRoots: Schema.Array(AbsolutePath).check(
-    Schema.isLengthBetween(1, 32),
+    Schema.isMinLength(1),
+    Schema.isMaxLength(32),
     Schema.makeFilter((roots) => new Set(roots).size === roots.length),
   ),
   namedLifetimes: Schema.Array(CensusLifetime).check(
-    Schema.isLengthBetween(1, 256),
+    Schema.isMinLength(1),
+    Schema.isMaxLength(256),
     Schema.makeFilter(
       (lifetimes) => new Set(lifetimes.map(({ pid }) => pid)).size === lifetimes.length,
     ),
@@ -75,8 +77,8 @@ const Coverage = Schema.Union([
     lifetime: CensusLifetime,
     evidence: Schema.Union([
       Schema.TaggedStruct('OwnUidDetails', {
-        cwd: Schema.Array(AbsolutePath).check(Schema.isLengthBetween(0, 1)),
-        root: Schema.Array(AbsolutePath).check(Schema.isLengthBetween(0, 1)),
+        cwd: Schema.Array(AbsolutePath).check(Schema.isMaxLength(1)),
+        root: Schema.Array(AbsolutePath).check(Schema.isMaxLength(1)),
         fdTargets: Schema.Array(AbsolutePath),
         mapTargets: Schema.Array(AbsolutePath),
       }),
