@@ -153,7 +153,7 @@ const promote = Cli.Command.make(
     Effect.gen(function* () {
       yield* exactCommit(commit)
       const canonicalMr = process.env.MR_CANONICAL_BIN
-      if (canonicalMr === undefined || !isAbsolute(canonicalMr))
+      if (canonicalMr === undefined || isAbsolute(canonicalMr) === false)
         return yield* new PoolError({ message: 'Packaged absolute MR_CANONICAL_BIN is required' })
       const { store } = yield* resolveRepository(repo)
       const path = yield* runPoolCommand({ cwd: store.basePath, command: canonicalMr, args: [
