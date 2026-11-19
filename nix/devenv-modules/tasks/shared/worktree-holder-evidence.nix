@@ -8,7 +8,12 @@
 }:
 let
   server = import ./worktree-holder-evidence-server.nix {
-    inherit pkgs allowedRoots ownerUid managedPolicy;
+    inherit
+      pkgs
+      allowedRoots
+      ownerUid
+      managedPolicy
+      ;
     withClients = true;
   };
   adapter = pkgs.writeShellScriptBin "pnpm-store-evidence" ''
