@@ -18,9 +18,16 @@ let
   kernel = import ./worktree-holder-proc.nix { inherit pkgs; };
   mounted = import ./worktree-holder-evidence-mounted.nix { inherit pkgs allowedRoots; };
   sources = map (suffix: "worktree-holder-evidence${suffix}.rs") [
-    "-server" "-server-auth" "-privileged-syscalls" "-server-decode"
-    "-server-census" "-server-transport" "-server-host-ipc"
-    "-listener" "-daemon" "-runtime"
+    "-server"
+    "-server-auth"
+    "-privileged-syscalls"
+    "-server-decode"
+    "-server-census"
+    "-server-transport"
+    "-server-host-ipc"
+    "-listener"
+    "-daemon"
+    "-runtime"
   ];
   evidence =
     pkgs.runCommand "worktree-holder-evidence-server"
@@ -58,11 +65,21 @@ let
         HOLDER_EVIDENCE_IPC_ENVIRONMENT_LINE = ipc.environmentLine or "";
         HOLDER_EVIDENCE_IPC_RUNNER_DIGEST = ipc.runnerDigest or "";
         HOLDER_EVIDENCE_IPC_RPC_DIGEST = ipc.rpcDigest or "";
-        passthru = { inherit allowedRoots ownerUid managedPolicy policyId; };
+        passthru = {
+          inherit
+            allowedRoots
+            ownerUid
+            managedPolicy
+            policyId
+            ;
+        };
         meta = {
           description = "Inactive privileged fixed-policy holder evidence server";
           mainProgram = "worktree-holder-evidence";
-          platforms = [ "x86_64-linux" "aarch64-linux" ];
+          platforms = [
+            "x86_64-linux"
+            "aarch64-linux"
+          ];
         };
       }
       ''
