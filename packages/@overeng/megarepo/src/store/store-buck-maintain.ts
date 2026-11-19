@@ -34,6 +34,8 @@ import {
   deletionLeasePath,
   releaseDeletionLease,
 } from './store-deletion-lease.ts'
+import { CensusUnavailable } from './store-demand-census-wire.ts'
+import { makeDemandCensus } from './store-demand-census.ts'
 import { loadStoreGcConfig } from './store-gc-config.ts'
 import {
   isInsideWorktree,
@@ -44,9 +46,9 @@ import {
 import {
   isWorkspaceActive,
   readBudgetWorkspaceActivity,
-  readBudgetWorktreeInUse,
   readWorkspaceActivityResult,
   WorkspaceActivityFailure,
+  type BudgetWorkspaceActivity,
 } from './store-workspace-activity.ts'
 import { Store, StoreLayer } from './store.ts'
 
@@ -77,6 +79,7 @@ export const BuckMaintainVetoEvidence = Schema.Union([
     pid: Schema.optionalKey(Schema.Int),
     probe: Schema.optionalKey(ProcessCensusProbe),
     activityAdmissionFailed: Schema.Boolean,
+    demandFailure: Schema.optionalKey(CensusUnavailable),
   }),
   Schema.TaggedStruct('seat-claims-incomplete', {
     failure: WorkspaceActivityFailure,
@@ -168,9 +171,20 @@ const nativeBinary = Effect.fn('store.buckMaintain.nativeBinary')(function* (
 const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
   worktree: string,
   daemons: ReadonlyArray<WorktreeBuckDaemon>,
+  activity: BudgetWorkspaceActivity | undefined,
 ) {
   const fs = yield* FileSystem.FileSystem
-  const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope: 'all-uids' })
+  const coverage = activity?.processCoverage
+  const covered =
+    coverage?.roots.some((root) =>
+      isInsideWorktree({ candidate: worktree, worktreePath: root }),
+    ) === true
+  const scan = yield* readProcessReferences({
+    fs,
+    selfPid: process.pid,
+    scope: covered === true ? 'own-uid' : 'all-uids',
+    coveredProcesses: covered === true ? coverage?.processIdentities : undefined,
+  })
   const references = scan._tag === 'complete' ? scan.references : []
   const pids = new Set(
     references
@@ -220,6 +234,11 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
   )
   const { basePath: storeBase } = yield* Store
   const activityConfig = (yield* loadStoreGcConfig({ storeBasePath: storeBase })).generatedArtifacts
+  const census = yield* makeDemandCensus({
+    fs,
+    roots: [storeBase],
+    producers: activityConfig.agentLivenessProducers ?? [],
+  })
   const currentAgent = process.env['ST_AGENT'] === '' ? undefined : process.env['ST_AGENT']
   const reportOnly = dryRun || (currentAgent === undefined && config.maintainOwners.length === 0)
   const blackout = isInBlackout({ now: Date.now(), blackout: config.blackout })
@@ -263,17 +282,19 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
           fullLastActivityMs: undefined,
         }
       }
-      const activity = yield* readBudgetWorkspaceActivity({
+      let activity = yield* readBudgetWorkspaceActivity({
         fs,
         config: activityConfig,
         ignoredOwnProcesses: ignoredProcesses,
         ignoredManifestProcesses: ignoredProcesses,
       })
-      const preflightHolder = yield* readBudgetWorktreeInUse({
+      const preflight = yield* census.probe({
         worktreePath: worktree,
         activity,
         ignoredProcesses,
       })
+      activity = preflight.activity
+      const preflightHolder = preflight.holder
       if (preflightHolder._tag !== 'free') {
         if (preflightHolder._tag === 'unknown')
           vetoEvidence.push({
@@ -282,6 +303,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
             ...(preflightHolder.pid === undefined ? {} : { pid: preflightHolder.pid }),
             ...(preflightHolder.probe === undefined ? {} : { probe: preflightHolder.probe }),
             activityAdmissionFailed: activity === undefined,
+            ...(preflight.failure === undefined ? {} : { demandFailure: preflight.failure }),
           })
         return {
           reason: preflightHolder._tag === 'in-use' ? 'holder-live' : 'holder-census-incomplete',
@@ -323,15 +345,17 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       }
       // Ownership is monotonic within a run: a later scan must not erase an earlier owner
       // or uncertainty, and one unknown source must never hide a known foreign owner.
-      ownerEvidence.push(...(yield* processOwners(worktree, daemons)), ...seatEvidence)
+      ownerEvidence.push(...(yield* processOwners(worktree, daemons, activity)), ...seatEvidence)
       // Refresh filesystem and holder gates after the potentially slow native
       // claim and owner captures, not before them.
       const git = yield* readBuckMaintainGitEvidence(worktree)
-      const holder = yield* readBudgetWorktreeInUse({
+      const refreshed = yield* census.probe({
         worktreePath: worktree,
         activity,
         ignoredProcesses,
       })
+      activity = refreshed.activity
+      const holder = refreshed.holder
       const evidence = ownerEvidence
       const owners = evidence.map((entry) => entry.owner)
       if (git.locked !== false || git.lastActivityMs === undefined) recordGitVeto(git)
@@ -342,6 +366,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
           ...(holder.pid === undefined ? {} : { pid: holder.pid }),
           ...(holder.probe === undefined ? {} : { probe: holder.probe }),
           activityAdmissionFailed: activity === undefined,
+          ...(refreshed.failure === undefined ? {} : { demandFailure: refreshed.failure }),
         })
       const reason = decideMaintainGate({
         blackout: isInBlackout({ now: Date.now(), blackout: config.blackout }),

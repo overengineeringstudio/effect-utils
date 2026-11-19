@@ -3321,6 +3321,20 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-store-gc' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-store-gc'
+      - name: Authenticated privileged census socket and controller tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -c '
+          set -euo pipefail
+          source nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh
+          report="$PWD/tmp/otel-scrape/summaries/test-megarepo-demand-census-root.vitest.json"
+          mkdir -p "$(dirname "$report")"
+          cd packages/@overeng/megarepo
+          runner="$(resolve_package_bin vitest vitest)"
+          sudo -E env "PATH=$PATH" TMPDIR=/var/tmp bun --bun "$runner" run src/store/store-demand-census-socket.integration.test.ts src/store/store-demand-census.integration.test.ts --testTimeout 30000 --reporter verbose --reporter json "--outputFile.json=$report"
+          jq -e "select(.success and .numPassedTests > 0 and .numFailedTests == 0 and .numPendingTests == 0)" "$report"
+          '
       - name: Complete native megarepo test receipt
         if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         run: "jq -e '{numTotalTests, numPassedTests, numFailedTests, numPendingTests, success, testResults: [.testResults[] | {name, status, assertionResults: [.assertionResults[] | {fullName, status}]}]} | select(.success and .numTotalTests > 0)' tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json"
