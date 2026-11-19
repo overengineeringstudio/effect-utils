@@ -58,10 +58,12 @@ export const readOccurrenceLogs = Effect.fn('buck2-cache-join.occurrence-logs')(
     endpoint === null ||
     endpoint.username !== '' || endpoint.password !== '' ||
     endpoint.search !== '' || endpoint.hash !== '' ||
-    !(endpoint.protocol === 'https:' ||
-      (endpoint.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))) ||
+    endpoint.pathname !== '/buck2-occurrences/v1/query_range' ||
+    !(endpoint.protocol === 'https:' || endpoint.protocol === 'http:') ||
     Number.isSafeInteger(limit) === false || limit < 1 || limit > 5000 ||
-    options.startNs < 0n || options.endNs <= options.startNs
+    options.startNs < 0n || options.endNs <= options.startNs ||
+    options.startNs.toString().length > 20 || options.endNs.toString().length > 20 ||
+    options.hosts.some((host) => /^[A-Za-z0-9_.-]{1,64}$/.test(host) === false)
   ) {
     return { files: [], evidenceGaps: ['occurrence-log-invalid-request'] }
   }
