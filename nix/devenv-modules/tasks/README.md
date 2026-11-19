@@ -523,6 +523,58 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `lint-genie.nix` - Genie lint tasks
 - `worktree-guard.nix` - Git hook: prevent commits on default branch (optionally enforce linked worktrees)
 
+### Shared privileged holder evidence
+
+`shared/worktree-holder-evidence.nix` is a Linux package constructor, not a
+task or automatic service enrollment. It accepts `pkgs`, canonical
+`allowedRoots`, a non-root `ownerUid`, and optional `managedPolicy`. With no
+managed policy, opaque namespaces remain unsupported; there are no private
+host names, deployment paths, manifests or runtime defaults in the public core.
+
+The package exports `holderEvidenceClient = { path; producerId; policyId; }`
+and a separate `processEvidenceCommand` pnpm adapter. The direct client reads
+bounded version-1 JSON on stdin with a fresh 32-hex nonce, `kind = "worktree"`
+and explicitly ordered canonical `paths`; it invokes only
+`/run/worktree-holder-evidence/evidence.sock`. The adapter preserves the
+seven-argument native store collector protocol. Neither uses sudo, PATH/env
+command selection, a periodic feed, or an arbitrary supplied PID.
+
+Deployers separately review and install a root-owned, one-worker,
+socket-activated `--serve-once` service. Root authority requires genuine initial
+USER/PID/MNT/NET namespaces and immutable executable/stdio bootstrap bindings.
+The original unprivileged peer may retain its private mount namespace: root
+mount IDs in responses are pinned peer-view identities, physically matched to
+the enrolled host roots. No `setns` or mount-ID equivalence shortcut is used.
+Store requests additionally authenticate the original collector's actual
+lifetime, pinned root FD and existing exclusive maintenance FLOCK OFD.
+Worktree requests do not manufacture that store-specific lease contract.
+
+Responses bind producer/policy, machine/boot, nonce, ordered roots and a
+capture-start-based 30-second expiry. Whole-host all-UID/all-TID discovery,
+mounted-root/native namespace provenance and final closure are required;
+errors, races, unsupported path-bearing objects and bounded-output overflow remain
+unknown. Mounts rooted beneath a candidate are explicit `mount` references,
+including bind aliases without an open descriptor or cwd in that tree.
+Any proxy exception requires an explicit reviewed immutable runtime/byte-IPC
+policy. This model prevents accidental breakage, not adversarial same-UID
+capability transfers or future opens. UNIX sockets, namespace handles and ordinary
+PTYs are unrelated to path liveness; directory descriptors queued through
+SCM_RIGHTS are explicitly outside the threat model. No argv, environment, or
+foreign file contents appear in the response.
+
+Typed regular-file FD/executable/mapping records may describe deferred bytes.
+That is not worktree deletion clearance: worktree consumers keep every current
+reference and their existing native vetoes. Only the immutable content-addressed
+store adapter may accept byte-only evidence, preserving original native pnpm
+positive vetoes. Root/cwd and mounted-root references always remain in-use.
+No bytes are claimed reclaimed until actually measured after removal/close.
+
+`worktree-holder-evidence --codec-fixtures-v1` emits nine actual Rust-serialized
+JSONL codec cases, not a live census or production authorization. The byte-only
+case includes FD, mapping and executable records; root/cwd/mount byte-only records
+are invalid. Tests, exact-source security approval and actual confined-client
+namespace/lease/IPC qualification precede deployment.
+
 ## `local/` - Effect-Utils Specific
 
 These tasks are **local to the effect-utils repo** and NOT meant for reuse.
