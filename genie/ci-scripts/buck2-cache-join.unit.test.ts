@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import type { ActionArtifact, CacheLane } from './buck2-action-evidence.ts'
 import {
   aggregate,
+  aggregateOccurrences,
   previousUtcDay,
   platformForJob,
   renderOtlp,
@@ -551,5 +552,99 @@ describe('cache join', () => {
         },
       })
     }
+  })
+})
+
+const occurrenceArtifact = (
+  id: string,
+  host: string,
+  time: number,
+  overrides: Parameters<typeof actionFixture>[0] = {},
+): ActionArtifact => {
+  const artifact = artifactFixture(false, [
+    actionFixture({
+      occurrenceId: id,
+      host,
+      startedAt: time - 1,
+      completedAt: time,
+      executionOutcome: 'local-exec',
+      durationNs: 10,
+      totalBytes: 20,
+      ...overrides,
+    }),
+  ])
+  artifact.header.invocations[0]!.rootId = `root-${id}`
+  return artifact
+}
+const occurrences = (artifacts: ActionArtifact[], evidenceGaps: string[] = []) =>
+  aggregateOccurrences({ artifacts, windowStartMs: 200, windowEndMs: 300, evidenceGaps })
+
+describe('exact execute-once occurrence scorecard', () => {
+  it('deduplicates transport and attributes global repeats across roots, hosts and CI chronologically', () => {
+    const first = occurrenceArtifact('first', 'host-a', 200, { configuration: null })
+    const repeat = occurrenceArtifact('repeat', 'host-b', 299, { executionOutcome: 'remote-exec' })
+    repeat.header.metadata.runId = '2'
+    const report = occurrences([
+      repeat,
+      first,
+      structuredClone(first),
+      occurrenceArtifact('before', 'host-a', 199),
+      occurrenceArtifact('after', 'host-a', 300),
+      occurrenceArtifact('hit', 'host-c', 205, { executionOutcome: 'cache-hit' }),
+      occurrenceArtifact('coalesced', 'host-b', 215, { executionOutcome: 'coalesced' }),
+    ])
+    expect(report).toMatchObject({ proof: 'unknown', reasons: ['unlinked-worker-attempt'] })
+    expect(report.totals).toMatchObject({
+      occurrences: 4,
+      localExecutions: 1,
+      remoteExecutions: 1,
+      cacheHits: 1,
+      coalesced: 1,
+      repeatExecutions: 1,
+    })
+    expect(report.perHost.map(({ host, repeatExecutions }) => [host, repeatExecutions])).toEqual([
+      ['host-a', 0],
+      ['host-b', 1],
+      ['host-c', 0],
+    ])
+  })
+  it('marks missing prerequisites and gaps unknown while retaining valid observations', () => {
+    const cases: Parameters<typeof actionFixture>[0][] = [
+      { occurrenceId: undefined },
+      { buildId: null },
+      { host: null },
+      { completedAt: null },
+      { digest: null },
+      { executionOutcome: 'unknown' },
+      { durationNs: Number.MAX_SAFE_INTEGER, totalBytes: Number.MAX_SAFE_INTEGER },
+    ]
+    for (const overrides of cases) {
+      const report = occurrences([
+        occurrenceArtifact('valid', 'host-a', 210),
+        occurrenceArtifact('broken', 'host-b', 220, overrides),
+      ])
+      expect(report.proof).toBe('unknown')
+      expect(report.reasons.length).toBeGreaterThan(0)
+      expect(report.totals.localExecutions).toBeGreaterThanOrEqual(1)
+    }
+    const broken = occurrenceArtifact('broken', 'host-b', 220)
+    delete broken.header.invocations[0]!.rootId
+    broken.header.invocations[0]!.complete = false
+    broken.header.complete = false
+    broken.header.metadata.runId = null
+    broken.header.metadata.lane = null
+    const gaps = ['sampled-selection', 'missing-artifact', 'artifact-overflow']
+    const report = occurrences([broken, occurrenceArtifact('valid', 'host-a', 210)], gaps)
+    expect(report.totals.occurrences).toBe(1)
+    expect(report.reasons).toEqual(
+      [
+        ...gaps,
+        'missing-root',
+        'incomplete-artifact',
+        'incomplete-invocation',
+        'missing-run',
+        'missing-lane',
+      ].sort(),
+    )
   })
 })
