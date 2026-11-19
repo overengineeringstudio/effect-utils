@@ -58,9 +58,46 @@ export class PoolError extends Schema.TaggedError<PoolError>()('PoolError', {
   message: Schema.String,
 }) {}
 
+const validatePoolState = (state: PoolState) =>
+  Effect.gen(function* () {
+    if (
+      Number.isSafeInteger(state.maxSlots) === false ||
+      state.maxSlots <= 0 ||
+      Number.isSafeInteger(state.maxBytes) === false ||
+      state.maxBytes <= 0
+    )
+      return yield* new PoolError({
+        message: 'Initialize pool with positive max-slots and max-bytes',
+      })
+    if (
+      new Set(state.slots.map((slot) => slot.id)).size !== state.slots.length ||
+      new Set(state.slots.map((slot) => slot.path)).size !== state.slots.length ||
+      state.slots.some(
+        (slot) =>
+          Number.isSafeInteger(slot.charge) === false ||
+          slot.charge <= 0 ||
+          Number.isSafeInteger(slot.generation) === false ||
+          slot.generation < 0 ||
+          slot.sourceHistory.at(-1) !== slot.commit ||
+          (slot.retarget !== undefined &&
+            (['preparing', 'quarantined'].includes(slot.state) === false ||
+              slot.identity !== '' ||
+              slot.token !== '' ||
+              slot.chargeKnown !== false ||
+              slot.retarget.to !== slot.commit ||
+              slot.sourceHistory.at(-2) !== slot.retarget.from ||
+              slot.retarget.token === '')),
+      ) === true
+    )
+      return yield* new PoolError({
+        message: 'Invalid authoritative pool ownership/accounting records',
+      })
+  })
+
 /** Fsync both contents and rename: readiness/ownership must survive process loss. */
 const persist = ({ path, state }: { path: string; state: PoolState }) =>
   Effect.gen(function* () {
+    yield* validatePoolState(state)
     const contents = yield* Schema.encodeEffect(Schema.fromJsonString(PoolState))(state)
     yield* Effect.tryPromise(async () => {
       const temporary = `${path}.${randomUUID()}`
@@ -108,7 +145,13 @@ export const withPoolState = <A, E, R>({
         exists === true
           ? yield* fs
               .readFileString(path)
-              .pipe(Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(PoolStateReader))))
+              .pipe(
+                Effect.flatMap(
+                  Schema.decodeEffect(Schema.fromJsonString(PoolStateReader), {
+                    onExcessProperty: 'error',
+                  }),
+                ),
+              )
           : {
               version: 2 as const,
               maxSlots: limits?.maxSlots ?? 0,
@@ -133,39 +176,8 @@ export const withPoolState = <A, E, R>({
         return yield* new PoolError({
           message: 'Pool limits are host-wide and immutable while records exist',
         })
-      if (
-        Number.isSafeInteger(state.maxSlots) === false ||
-        state.maxSlots <= 0 ||
-        Number.isSafeInteger(state.maxBytes) === false ||
-        state.maxBytes <= 0
-      )
-        return yield* new PoolError({
-          message: 'Initialize pool with positive max-slots and max-bytes',
-        })
-      if (
-        new Set(state.slots.map((slot) => slot.id)).size !== state.slots.length ||
-        new Set(state.slots.map((slot) => slot.path)).size !== state.slots.length ||
-        state.slots.some(
-          (slot) =>
-            Number.isSafeInteger(slot.charge) === false ||
-            slot.charge <= 0 ||
-            Number.isSafeInteger(slot.generation) === false ||
-            slot.generation < 0 ||
-            slot.sourceHistory.at(-1) !== slot.commit ||
-            (slot.retarget !== undefined &&
-              (['preparing', 'quarantined'].includes(slot.state) === false ||
-                slot.identity !== '' ||
-                slot.token !== '' ||
-                slot.chargeKnown !== false ||
-                slot.retarget.to !== slot.commit ||
-                slot.sourceHistory.at(-2) !== slot.retarget.from ||
-                slot.retarget.token === '')),
-        ) === true
-      )
-        return yield* new PoolError({
-          message: 'Invalid authoritative pool ownership/accounting records',
-        })
       if (stored.version === 1) yield* persist({ path, state })
+      else yield* validatePoolState(state)
       return yield* use(state, (next) => persist({ path, state: next }))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })

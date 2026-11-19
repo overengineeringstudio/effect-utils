@@ -432,7 +432,7 @@ Limits cannot be changed while authoritative records exist.
 The authoritative ledger writes version 2. Its one reader converts version 1 under
 the existing durable exclusion, preserving every generation, owner/token, barrier
 and unknown charge; allowed source history starts with exactly the old commit.
-Unknown versions fail closed. Keep this reader arm until a census of every declared
+Unknown versions or fields fail closed. Keep this reader arm until a census of every
 store proves no v1 records/writers remain and the no-old-record regression passes.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks

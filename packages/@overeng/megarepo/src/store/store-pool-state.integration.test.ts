@@ -213,4 +213,53 @@ describe('pool authoritative lifecycle', () => {
       ).toSatisfy(Exit.isFailure)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
+
+  it.effect('retains unknown fences and rejects inconsistent writes before replacing authority', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const path = `${base}.state/pool/state.json`
+      yield* fs.makeDirectory(`${base}.state/pool`, { recursive: true })
+      for (const version of [1, 2]) {
+        const oldSlot = version === 1 ? historicalSlot : slot
+        const bytes = yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+          version,
+          maxSlots: 1,
+          maxBytes: 64,
+          slots: [{ ...oldSlot, unknownFence: 'retained' }],
+        })
+        yield* fs.writeFileString(path, bytes)
+        expect(
+          yield* withPoolState({ base, use: () => Effect.void }).pipe(Effect.exit),
+        ).toSatisfy(Exit.isFailure)
+        expect(yield* fs.readFileString(path)).toBe(bytes)
+      }
+      const bytes = yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+        version: 2,
+        maxSlots: 1,
+        maxBytes: 64,
+        slots: [slot],
+      })
+      yield* fs.writeFileString(path, bytes)
+      const commit = 'b'.repeat(40)
+      const invalid: PoolSlot = {
+        ...slot,
+        commit,
+        sourceHistory: [slot.commit, commit],
+        state: 'preparing',
+        generation: 2,
+        token: '',
+        identity: '',
+        chargeKnown: true,
+        retarget: { from: slot.commit, to: commit, token: 'intent' },
+      }
+      expect(
+        yield* withPoolState({
+          base,
+          use: (state, save) => save({ ...state, slots: [invalid] }),
+        }).pipe(Effect.exit),
+      ).toSatisfy(Exit.isFailure)
+      expect(yield* fs.readFileString(path)).toBe(bytes)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
 })
