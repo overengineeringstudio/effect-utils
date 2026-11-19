@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { hostname } from 'node:os'
 import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { Effect, Option, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -22,16 +23,37 @@ import { runBuckMaintain, type BuckMaintainProgressHooks } from './store-buck-ma
 
 const fail = (message: string) => new BuckMaintainProgressError({ message })
 
+/** Pure validation of already-resolved paths, not runtime attestation. */
+export const validateBuckMaintainRuntimePaths = ({ executable, entrypoint, implementation }: {
+  executable: string; entrypoint: string; implementation: string
+}) => {
+  for (const path of [executable, entrypoint]) {
+    if (!/^\/nix\/store\/[a-z0-9]{32}-[^/]+\/.+/u.test(path))
+      return fail('Resumable dry-run requires an immutable packaged entrypoint and runtime in /nix/store')
+  }
+  if (implementation !== entrypoint)
+    return fail('Resumable dry-run requires its implementation bundled in the immutable process entrypoint')
+  return undefined
+}
+
+export const buckMaintainProgressCommandEnvironment = (environment: Readonly<Record<string, string | undefined>>) => ({
+  st3Binary: environment['MEGAREPO_GC_ST3_BIN'] ?? 'st3',
+  ptyBinary: environment['MEGAREPO_GC_PTY_BIN'] ?? 'pty',
+  buck2DaemonOverride: environment['MEGAREPO_GC_BUCK2_BIN'] ?? null,
+})
+
 /** No environment variable or caller-provided revision is used as source attestation. */
 export const readBuckMaintainRuntimeIdentity = Effect.fn('store.buckMaintain.progress.runtime')(function* () {
   const fs = yield* FileSystem.FileSystem
   const executable = yield* fs.realPath(process.execPath)
   if (process.argv[1] === undefined) return yield* fail('Cannot attest a packaged CLI entrypoint without argv[1]')
   const entrypoint = yield* fs.realPath(process.argv[1])
-  for (const path of [executable, entrypoint]) {
-    if (!/^\/nix\/store\/[a-z0-9]{32}-[^/]+\/.+/u.test(path))
-      return yield* fail('Resumable dry-run requires an immutable packaged entrypoint and runtime in /nix/store')
-  }
+  const implementation = yield* Effect.try({
+    try: () => fileURLToPath(import.meta.url),
+    catch: () => fail('Resumable dry-run requires a file-backed implementation entrypoint'),
+  }).pipe(Effect.flatMap((path) => fs.realPath(path)))
+  const invalid = validateBuckMaintainRuntimePaths({ executable, entrypoint, implementation })
+  if (invalid !== undefined) return yield* invalid
   const hashFile = (path: string) => fs.stream(path).pipe(
     Stream.runFold(() => createHash('sha256'), (hash, bytes) => hash.update(bytes)),
     Effect.map((hash) => hash.digest('hex')),
@@ -86,8 +108,10 @@ export const runBuckMaintainWithProgress = Effect.fn('store.buckMaintain.progres
           currentAgent: process.env['ST_AGENT'] || null,
           environment: {
             home: process.env['HOME'] === undefined ? undefined : yield* fs.realPath(process.env['HOME']),
+            currentDirectory: yield* fs.realPath(process.cwd()),
             buck2Binary: process.env['BUCK2_BIN'] === undefined ? undefined : yield* fs.realPath(process.env['BUCK2_BIN']),
             path: process.env['PATH'],
+            ...buckMaintainProgressCommandEnvironment(process.env),
           },
         })
         session = yield* openBuckMaintainProgress({ directory, expected: { version: 1, dryRun: true, runtime, configuration, inventory } })

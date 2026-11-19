@@ -582,8 +582,11 @@ The CLI opts into resumable observations with `--dry-run --progress-dir DIRECTOR
 `--progress-dir` the existing stateless command is unchanged. Repeat the same command
 and directory to finish the frozen inventory, increasing the shard bound only after
 measuring it. The wrapper requires resolved executable and entrypoint paths in
-`/nix/store`, hashes their actual bytes and binds normalized configuration, host,
-agent and relevant environment context before opening the session.
+`/nix/store`, and its own implementation must be bundled into that entrypoint rather
+than imported from other code. It hashes the actual runtime/entrypoint bytes and binds
+normalized configuration, host, agent, canonical working directory and relevant
+environment before opening the session. Activity-command and daemon overrides,
+including explicit disable values, participate in that binding.
 
 `--json` retains historical entries, their capture intervals, unfinished coverage and
 newly discovered roots. Human output labels that coverage historical and non-atomic.
