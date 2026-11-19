@@ -16,9 +16,9 @@ export const PoolSlot = Schema.Struct({
   bare: Schema.String,
   commit: Schema.String,
   identity: Schema.String,
-  charge: Schema.Number,
+  charge: Schema.Finite,
   chargeKnown: Schema.optional(Schema.Boolean),
-  generation: Schema.Number,
+  generation: Schema.Finite,
   state: Schema.Literals(['preparing', 'ready', 'leased', 'completed', 'quarantined']),
   token: Schema.String,
   barrierToken: Schema.String,
@@ -29,8 +29,8 @@ export const PoolSlot = Schema.Struct({
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
 const PoolState = Schema.Struct({
   version: Schema.Literal(1),
-  maxSlots: Schema.Number,
-  maxBytes: Schema.Number,
+  maxSlots: Schema.Finite,
+  maxBytes: Schema.Finite,
   slots: Schema.Array(PoolSlot),
 })
 /** Host-wide authoritative pool ledger and immutable retention limits. */
@@ -43,22 +43,25 @@ export class PoolError extends Schema.TaggedError<PoolError>()('PoolError', {
 
 /** Fsync both contents and rename: readiness/ownership must survive process loss. */
 const persist = ({ path, state }: { path: string; state: PoolState }) =>
-  Effect.tryPromise(async () => {
-    const temporary = `${path}.${randomUUID()}`
-    const file = await open(temporary, 'wx', 0o600)
-    try {
-      await file.writeFile(JSON.stringify(state))
-      await file.sync()
-    } finally {
-      await file.close()
-    }
-    await rename(temporary, path)
-    const directory = await open(dirname(path), 'r')
-    try {
-      await directory.sync()
-    } finally {
-      await directory.close()
-    }
+  Effect.gen(function* () {
+    const contents = yield* Schema.encodeEffect(Schema.fromJsonString(PoolState))(state)
+    yield* Effect.tryPromise(async () => {
+      const temporary = `${path}.${randomUUID()}`
+      const file = await open(temporary, 'wx', 0o600)
+      try {
+        await file.writeFile(contents)
+        await file.sync()
+      } finally {
+        await file.close()
+      }
+      await rename(temporary, path)
+      const directory = await open(dirname(path), 'r')
+      try {
+        await directory.sync()
+      } finally {
+        await directory.close()
+      }
+    })
   }).pipe(
     Effect.mapError((cause) => new PoolError({ message: `Pool persistence failed: ${cause}` })),
     Effect.uninterruptible,
@@ -88,7 +91,7 @@ export const withPoolState = <A, E, R>({
         exists === true
           ? yield* fs
               .readFileString(path)
-              .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(PoolState))))
+              .pipe(Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(PoolState))))
           : {
               version: 1 as const,
               maxSlots: limits?.maxSlots ?? 0,
