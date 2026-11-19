@@ -247,8 +247,7 @@ export const selectConfiguredChecks = ({
   const selected = new Set<string>()
   const changed = sortedUnique(changedPaths.map(requireRepositoryRelativePath))
   for (const snapshot of [base, candidate]) {
-    if (/^[0-9a-f]{40}$/.test(snapshot.revision) === false)
-      reasons.add('invalid-revision')
+    if (/^[0-9a-f]{40}$/.test(snapshot.revision) === false) reasons.add('invalid-revision')
     if (snapshot.complete !== true) reasons.add('incomplete-configured-query')
     if (snapshot.configuration.length === 0) reasons.add('missing-configuration-identity')
     for (const target of snapshot.affectedTargets)
@@ -265,11 +264,15 @@ export const selectConfiguredChecks = ({
     const parts = path.split('/')
     const name = parts.at(-1)!
     if (
-      name.endsWith('.lock') || name === 'pnpm-lock.yaml' || name.endsWith('.bzl') ||
-      name.startsWith('BUCK') || name.startsWith('.buckconfig') ||
+      name.endsWith('.lock') ||
+      name === 'pnpm-lock.yaml' ||
+      name.endsWith('.bzl') ||
+      name.startsWith('BUCK') ||
+      name.startsWith('.buckconfig') ||
       name.startsWith('rust-toolchain') ||
       parts.some((part) => part === 'toolchain' || part === 'toolchains') ||
-      name === '.buckroot' || name === 'megarepo.kdl'
+      name === '.buckroot' ||
+      name === 'megarepo.kdl'
     )
       reasons.add(`global-change:${path}`)
     if (base.ownedPaths.includes(path) === false && candidate.ownedPaths.includes(path) === false)
@@ -288,7 +291,7 @@ export const selectConfiguredChecks = ({
     )
       selected.add(target)
   }
-  const mode = reasons.size === 0 ? 'affected' as const : 'full' as const
+  const mode = reasons.size === 0 ? ('affected' as const) : ('full' as const)
   return {
     schema: 'effect-utils/configured-check-selection/v1' as const,
     base: base.revision,
@@ -298,9 +301,11 @@ export const selectConfiguredChecks = ({
     targets: mode === 'full' ? fullTargets : sortedUnique(selected),
     fullTargets,
     baseAffectedTargets: sortedUnique(base.affectedTargets),
-    removedTargets: sortedUnique(Object.keys(base.checks).filter(
-      (target) => Object.hasOwn(candidate.checks, target) === false,
-    )),
+    removedTargets: sortedUnique(
+      Object.keys(base.checks).filter(
+        (target) => Object.hasOwn(candidate.checks, target) === false,
+      ),
+    ),
   }
 }
 
