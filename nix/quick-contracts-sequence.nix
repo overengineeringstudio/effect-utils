@@ -1,5 +1,7 @@
 # Preserve the CI-owned hermetic posture surface without weakening host quick.
-{ ci ? builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1" }:
+{
+  ci ? builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1",
+}:
 [
   "genie:editor-view-closure:check"
   "content-address:contract:check"
