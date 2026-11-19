@@ -619,6 +619,11 @@ Retained Cargo protocol-bindings checks use the Nix Apple SDK and iconv on Darwi
 not an ambient `cc` or Xcode installation. The teardown regression declares its
 pinned `DEVENV_BIN`; the Buck runtime never depends on ambient devenv discovery.
 
+`EFFECT_UTILS_CI_TEST=1` selects the existing hermetic cache-posture CI task;
+host quick checks retain the full fleet-gate suite, including real max-hold expiry.
+The mandatory task guard tests both environment selections and keeps every other
+quick contract identical.
+
 ### Type Checking
 
 Buck is the only repository-wide TypeScript check authority:
