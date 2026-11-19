@@ -401,6 +401,8 @@ Neither the template type nor YAML can prove provider token scope. There is no
 validator additionally rejects any dedicated-looking read secret observed in a
 publisher/write context anywhere in the workflow. Never alias a publisher token
 under a read-secret name.
+Repository secrets remain repository-wide: this capability constrains generated
+workflows, not secret-level access from other repository workflows or branches.
 
 Change note: adds opt-in hosted private-cache reads without changing default
 denial for unopted jobs, other cache identities or dynamic/non-hosted runners.
