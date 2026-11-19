@@ -5,11 +5,8 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const repo = 'overengineeringstudio/effect-utils'
-const command = ['devenv', 'tasks', 'run', 'check:quick', '--no-tui', '--show-output']
-
-// This validates evidence, not authorship: the local gate receipt's trust model applies.
-export const passingReceipt = (receipt, head) =>
+/** Validate complete local gate evidence, not authorship, at the requested head. */
+export const passingReceipt = ({ receipt, head }) =>
   receipt.schema === 'gate-slot.receipt/v1' &&
   receipt.class === 'gate' &&
   receipt.exit === 0 &&
@@ -33,36 +30,44 @@ export const passingReceipt = (receipt, head) =>
   Number.isFinite(Date.parse(receipt.startedAt)) &&
   Date.parse(receipt.endedAt) >= Date.parse(receipt.startedAt)
 
-function run(argv, options = {}) {
+const repo = 'overengineeringstudio/effect-utils'
+const command = ['devenv', 'tasks', 'run', 'check:quick', '--no-tui', '--show-output']
+
+const run = ({ argv, options = {} }) => {
   const result = spawnSync(argv[0], argv.slice(1), {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
     ...options,
   })
-  if (result.error) throw result.error
+  if (result.error !== undefined) throw result.error
   if (result.status !== 0) throw new Error(`${argv[0]} failed (${result.status ?? result.signal})`)
   return result.stdout?.trim()
 }
 
-export function main(args) {
+const main = (args) => {
   const receiptOnly = args.includes('--receipt-only')
   const flags = args.filter((arg) => arg !== '--receipt-only')
-  if (flags.length !== 2 || flags[0] !== '--pr' || !/^[1-9][0-9]*$/.test(flags[1])) {
+  if (flags.length !== 2 || flags[0] !== '--pr' || /^[1-9][0-9]*$/.test(flags[1]) === false) {
     throw new Error('Usage: node scripts/check-quick-receipt.mjs --pr N [--receipt-only]')
   }
-  if (process.platform !== 'linux' || process.env.CI || process.env.GITHUB_ACTIONS) {
+  if (
+    process.platform !== 'linux' ||
+    process.env.CI !== undefined ||
+    process.env.GITHUB_ACTIONS !== undefined
+  ) {
     throw new Error('Run locally on Linux, not in CI; CI cannot replace local exact-head evidence')
   }
   const pr = flags[1]
   const started = performance.now()
   const view = () =>
-    JSON.parse(run(['gh', 'pr', 'view', pr, '-R', repo, '--json', 'headRefOid,isDraft,state']))
+    JSON.parse(
+      run({ argv: ['gh', 'pr', 'view', pr, '-R', repo, '--json', 'headRefOid,isDraft,state'] }),
+    )
   const target = view()
-  if (target.state !== 'OPEN' || (!receiptOnly && target.isDraft))
-    throw new Error('PR must be open (and ready to enqueue)')
+  if (target.state !== 'OPEN') throw new Error('PR must be open')
   const head = target.headRefOid
-  if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('Invalid PR head')
-  const common = resolve(run(['git', 'rev-parse', '--git-common-dir']))
+  if (/^[a-f0-9]{40}$/.test(head) === false) throw new Error('Invalid PR head')
+  const common = resolve(run({ argv: ['git', 'rev-parse', '--git-common-dir'] }))
   const worktrees = join(common, 'gate-worktrees')
   mkdirSync(worktrees, { recursive: true })
   const state = join(
@@ -72,21 +77,22 @@ export function main(args) {
   mkdirSync(state, { recursive: true, mode: 0o700 })
   const evidence = mkdtempSync(join(state, `pr-${pr}-`))
   const worktree = join(worktrees, `receipt-${pr}-${head.slice(0, 12)}-${process.pid}`)
-  run(['git', 'fetch', '--no-tags', 'origin', `pull/${pr}/head`])
-  if (run(['git', 'rev-parse', 'FETCH_HEAD']) !== head)
+  run({ argv: ['git', 'fetch', '--no-tags', 'origin', `pull/${pr}/head`] })
+  if (run({ argv: ['git', 'rev-parse', 'FETCH_HEAD'] }) !== head)
     throw new Error('PR head moved during fetch; no check or enqueue performed')
-  run(['git', 'worktree', 'add', '--detach', worktree, head])
+  run({ argv: ['git', 'worktree', 'add', '--detach', worktree, head] })
   const actor = process.env.FRACTAL_AGENT || process.env.ST_AGENT
-  if (actor) {
-    if (!actor.startsWith('agent/')) throw new Error('Invalid lease actor; refusing attribution')
-    run(['gate-lease-write', worktree, 'gate', actor])
+  if (actor !== undefined && actor !== '') {
+    if (actor.startsWith('agent/') === false)
+      throw new Error('Invalid lease actor; refusing attribution')
+    run({ argv: ['gate-lease-write', worktree, 'gate', actor] })
   } else {
     // Plain local sessions have no seat to attribute. Never invent one.
     // A clean detached checkout is disposable; dirty evidence is retained.
     process.once('exit', () => {
       try {
-        run(
-          [
+        run({
+          argv: [
             'gate-slot',
             '--class',
             'eval',
@@ -100,9 +106,9 @@ export function main(args) {
             '--mode',
             'single',
           ],
-          { cwd: worktree },
-        )
-        run(['git', 'worktree', 'remove', worktree])
+          options: { cwd: worktree },
+        })
+        run({ argv: ['git', 'worktree', 'remove', worktree] })
       } catch {
         console.error(`Worktree retained for inspection: ${worktree}`)
       }
@@ -114,8 +120,8 @@ export function main(args) {
   // A regular log file lets gate-slot retain its native diagnostics without a pipe.
   const logFd = openSync(log, 'wx', 0o600)
   try {
-    run(
-      [
+    run({
+      argv: [
         'gate-slot',
         '--class',
         'gate',
@@ -125,12 +131,12 @@ export function main(args) {
         '--',
         ...command,
       ],
-      {
+      options: {
         cwd: worktree,
         env: { ...process.env, GATE_SLOTS_RECEIPT_FILE: receiptFile },
         stdio: ['ignore', logFd, logFd],
       },
-    )
+    })
   } finally {
     closeSync(logFd)
   }
@@ -138,8 +144,8 @@ export function main(args) {
     .trim()
     .split('\n')
     .map((line) => JSON.parse(line))
-  const receipt = receipts.findLast((value) => passingReceipt(value, head))
-  if (!receipt) throw new Error(`No passing exact-head receipt; inspect ${evidence}`)
+  const receipt = receipts.findLast((value) => passingReceipt({ receipt: value, head: head }))
+  if (receipt === undefined) throw new Error(`No passing exact-head receipt; inspect ${evidence}`)
   if (view().headRefOid !== head)
     throw new Error('PR head moved during gate; receipt not posted and enqueue refused')
   // Allowlist public evidence: never publish hostnames, worktree paths, argv environments or logs.
@@ -176,24 +182,51 @@ export function main(args) {
     `Passing LOCAL exact-head check:quick receipt. Native queue checks and independent review remain required.\n\n<!-- check-quick-receipt/v1 sha256=${digest} -->\n\n\`\`\`json\n${payload}\n\`\`\`\n`,
     { mode: 0o600 },
   )
-  run(['gh', 'pr', 'comment', pr, '-R', repo, '--body-file', body], { stdio: 'inherit' })
-  if (!receiptOnly) {
+  run({
+    argv: ['gh', 'pr', 'comment', pr, '-R', repo, '--body-file', body],
+    options: { stdio: 'inherit' },
+  })
+  if (receiptOnly === false) {
+    run({
+      argv: [
+        'gh',
+        'pr',
+        'checks',
+        pr,
+        '-R',
+        repo,
+        '--required',
+        '--watch',
+        '--interval',
+        '60',
+        '--fail-fast',
+      ],
+      options: { stdio: 'inherit' },
+    })
+    const checked = view()
+    if (checked.headRefOid !== head)
+      throw new Error('PR head moved while waiting for checks; admission refused')
+    if (checked.isDraft === true)
+      run({ argv: ['gh', 'pr', 'ready', pr, '-R', repo], options: { stdio: 'inherit' } })
     // Run only by the repository's authorized enqueuer. Never auto-merge or bypass protection.
-    run(['gh', 'pr', 'merge', pr, '-R', repo, '--match-head-commit', head], { stdio: 'inherit' })
+    run({
+      argv: ['gh', 'pr', 'merge', pr, '-R', repo, '--match-head-commit', head],
+      options: { stdio: 'inherit' },
+    })
   }
   console.log(
     JSON.stringify({
       pr: Number(pr),
       head,
       receiptSha256: digest,
-      enqueueRequested: !receiptOnly,
+      enqueueRequested: receiptOnly === false,
       wallSeconds: (performance.now() - started) / 1000,
       evidence,
     }),
   )
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     main(process.argv.slice(2))
   } catch (error) {

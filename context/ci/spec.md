@@ -93,9 +93,12 @@ The authorized repository enqueuer runs
 `node scripts/check-quick-receipt.mjs --pr N` locally on Linux. The command
 fetches the current PR head into a separate detached gate worktree, runs the
 canonical `check:quick` through `gate-slot`, requires its passing exact-head
-receipt, posts an allowlisted JSON receipt comment, and requests SHA-guarded
-native queue admission. Review and required queue checks remain separate gates.
-`--receipt-only` produces the same evidence without requesting admission.
+receipt, posts an allowlisted JSON receipt comment, waits for required PR
+checks, marks a draft ready, and requests SHA-guarded native queue admission.
+This allows a draft's first local check without a circular readiness hold.
+The enqueuer remains responsible for independent review; required queue checks
+remain separate gates. `--receipt-only` produces the same evidence without
+waiting for CI, changing readiness, or requesting admission.
 
 Receipt comments contain `check-quick-receipt/v1` JSON and a SHA-256 digest of
 the exact JSON line, excluding the code fence and trailing newline. The digest

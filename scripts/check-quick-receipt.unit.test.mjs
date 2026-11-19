@@ -28,7 +28,7 @@ const receipt = {
 }
 
 test('accepts a passing exact-head local canonical gate', () => {
-  assert.equal(passingReceipt(receipt, head), true)
+  assert.equal(passingReceipt({ receipt: receipt, head: head }), true)
 })
 
 for (const [field, value] of Object.entries({
@@ -54,7 +54,7 @@ for (const [field, value] of Object.entries({
   taskTraceTruncated: true,
 })) {
   test(`rejects invalid ${field}`, () => {
-    assert.equal(passingReceipt({ ...receipt, [field]: value }, head), false)
+    assert.equal(passingReceipt({ receipt: { ...receipt, [field]: value }, head: head }), false)
   })
 }
 
@@ -65,14 +65,17 @@ for (const field of [
   'taskTraceTruncated',
 ]) {
   test(`rejects unknown ${field}`, () => {
-    assert.equal(passingReceipt({ ...receipt, [field]: null }, head), false)
+    assert.equal(passingReceipt({ receipt: { ...receipt, [field]: null }, head: head }), false)
   })
 }
 
 test('unknown task trace is not success evidence', () => {
-  assert.equal(passingReceipt({ ...receipt, failedTasks: null, notRunTasks: null }, head), false)
+  assert.equal(
+    passingReceipt({ receipt: { ...receipt, failedTasks: null, notRunTasks: null }, head: head }),
+    false,
+  )
 })
 
 test('missing local execution provenance is rejected', () => {
-  assert.equal(passingReceipt({ ...receipt, route: undefined }, head), false)
+  assert.equal(passingReceipt({ receipt: { ...receipt, route: undefined }, head: head }), false)
 })
