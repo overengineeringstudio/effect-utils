@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { dirname } from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
@@ -23,10 +22,11 @@ import {
 } from './store-pool-install.ts'
 import {
   claimPoolGeneration,
+  consumePoolReservation,
   PoolError,
   type PoolSlot,
   requirePoolLease,
-  reservePoolSlot,
+  reservePoolGeneration,
   withPoolState,
 } from './store-pool-state.ts'
 
@@ -107,8 +107,8 @@ const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
     return next
   })
 
-/** Explicitly prepare a protected detached generation within immutable host-wide limits. */
-export const prewarmPool = (args: {
+/** Allocate an unborn path for explicit owner enrollment, without preparing a root. */
+export const reservePool = (args: {
   base: AbsoluteDirPath
   bare: string
   commit: string
@@ -118,34 +118,45 @@ export const prewarmPool = (args: {
 }) =>
   withPoolState({
     base: args.base,
+    limits: { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
     use: (state, save) =>
       Effect.gen(function* () {
-        if (/^[0-9a-f]{40}$/u.test(args.commit) === false)
-          return yield* new PoolError({ message: 'Prewarm requires an exact commit SHA' })
+        const bare = yield* resolveGitCommonDir(args.bare)
+        const next = yield* reservePoolGeneration({ state, bare, commit: args.commit, charge: args.charge })
+        yield* save(next)
+        return next.slots.at(-1)!
+      }),
+  })
+
+/** Consume one exact reserved generation; failed preparation cannot resume. */
+export const prewarmPool = (args: {
+  base: AbsoluteDirPath
+  bare: string
+  commit: string
+  charge: number
+  id: string
+  reservation: string
+  generation: number
+}) =>
+  withPoolState({
+    base: args.base,
+    use: (state, save) =>
+      Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const bare = yield* resolveGitCommonDir(args.bare)
-        const storePath = (yield* fs.realPath(args.base)).replace(/\/$/u, '')
-        const id = randomUUID()
-        const path = `${dirname(bare)}/pool/${id}`
-        let slot: PoolSlot = {
-          id,
-          path,
-          bare,
-          commit: args.commit,
-          sourceHistory: [args.commit],
-          identity: '',
-          charge: args.charge,
-          generation: 0,
-          state: 'preparing',
-          chargeKnown: false,
-          token: '',
-          barrierToken: '',
-          owner: '',
-          reason: '',
-        }
-        const reserved = yield* reservePoolSlot({ state, slot })
+        const reserved = state.slots.find((slot) => slot.id === args.id)
+        if (reserved === undefined) return yield* new PoolError({ message: 'Unknown pool reservation' })
+        let slot = yield* consumePoolReservation({ ...args, bare, slot: reserved })
         const update = () =>
-          save({ ...reserved, slots: reserved.slots.map((item) => (item.id === id ? slot : item)) })
+          save({ ...state, slots: state.slots.map((item) => (item.id === slot.id ? slot : item)) })
+        const exists = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => undefined))
+        if (exists !== false) {
+          slot = yield* retainPoolSlot({ slot: reserved, reason: 'Reserved path occupied or unknown' })
+          yield* update()
+          return yield* new PoolError({ message: slot.reason })
+        }
+        const { id, path } = slot
+        const storePath = (yield* fs.realPath(args.base)).replace(/\/$/u, '')
         yield* update()
         const prepare = Effect.gen(function* () {
           yield* fs.makeDirectory(dirname(path), { recursive: true })
@@ -158,6 +169,7 @@ export const prewarmPool = (args: {
           })
           slot = { ...slot, barrierToken: lease.token }
           yield* update()
+          yield* fs.makeDirectory(path)
           yield* Git.ensureBareRefLogging({ repoPath: bare })
           yield* Git.createWorktreeDetached({
             repoPath: bare,
@@ -186,13 +198,12 @@ export const prewarmPool = (args: {
         return yield* prepare.pipe(
           Effect.tapError((error) =>
             Effect.gen(function* () {
-              slot = yield* retainPoolSlot({ slot, reason: String(error) })
+              slot = { ...(yield* retainPoolSlot({ slot, reason: String(error) })), chargeKnown: false }
               yield* update()
             }),
           ),
         )
       }),
-    limits: { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
   })
 
 /** Claim is serialized with capacity and generations; it never resets a root. */

@@ -15,6 +15,7 @@ import {
   prewarmPool,
   quarantinePool,
   releasePool,
+  reservePool,
 } from '../../../store/store-pool.ts'
 import { Store, StoreLayer } from '../../../store/store.ts'
 
@@ -35,8 +36,8 @@ const exactCommit = (commit: string) =>
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Expected a full immutable commit SHA' }))
 
-const prewarm = Cli.Command.make(
-  'prewarm',
+const reserve = Cli.Command.make(
+  'reserve',
   {
     ...pinned,
     maxSlots: Cli.Flag.Int('max-slots'),
@@ -48,13 +49,33 @@ const prewarm = Cli.Command.make(
       const { store, bare } = yield* resolveRepository(repo)
       yield* Console.log(
         yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
-          yield* prewarmPool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge }),
+          yield* reservePool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge }),
         ),
       )
     }),
 ).pipe(
-  Cli.Command.withDescription('Reserve host-wide capacity and prepare a protected native GVS slot'),
+  Cli.Command.withDescription('Reserve an unborn bounded path for explicit owner enrollment'),
 )
+
+const prewarm = Cli.Command.make(
+  'prewarm',
+  {
+    ...pinned,
+    id: Cli.Flag.String('id'),
+    reservation: Cli.Flag.String('reservation'),
+    generation: Cli.Flag.Int('generation'),
+    charge: Cli.Flag.Int('charge-bytes'),
+  },
+  ({ repo, ...receipt }) =>
+    Effect.gen(function* () {
+      const { store, bare } = yield* resolveRepository(repo)
+      yield* Console.log(
+        yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+          yield* prewarmPool({ base: store.basePath, bare, ...receipt }),
+        ),
+      )
+    }),
+).pipe(Cli.Command.withDescription('Consume one exact reserved path; never resume a failed generation'))
 
 const claim = Cli.Command.make(
   'claim',
@@ -196,7 +217,7 @@ const promote = Cli.Command.make(
 
 /** Callable native pool lifecycle, pinned reads and canonical edit promotion. */
 export const storePoolCommand = Cli.Command.make('pool', {}).pipe(
-  Cli.Command.withSubcommands([prewarm, claim, release, status, read, promote]),
+  Cli.Command.withSubcommands([reserve, prewarm, claim, release, status, read, promote]),
   Cli.Command.withDescription('Bounded native detached execution roots and lazy canonical editing'),
   Cli.Command.provide(StoreLayer),
 )

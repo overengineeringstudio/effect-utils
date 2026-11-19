@@ -47,8 +47,11 @@ Pool setup and execution use the existing admission mechanism; these commands
 do not grant execution admission or create admission records:
 
 ```sh
-mr store pool prewarm owner/repo --commit <full-sha> \
+mr store pool reserve owner/repo --commit <full-sha> \
   --max-slots <host-count> --max-bytes <host-byte-budget> --charge-bytes <slot-reservation>
+# Owner reviews/enrolls the returned exact missing path; reserve never does this.
+mr store pool prewarm owner/repo --commit <full-sha> --id <reserved-id> \
+  --reservation <one-use-nonce> --generation <reserved-generation> --charge-bytes <slot-reservation>
 mr store pool claim --identity <prewarm-receipt-identity> --owner <task-id> -- command arg
 mr store pool release --slot <id> --token <claim-token> --generation <generation>
 mr store pool status
@@ -443,15 +446,18 @@ They carry a one-use nonce and generation, but no provider owner, native root or
 identity. Inspection preserves an absent reserved path; an occupied or unknown path
 is quarantined with unknown bytes and its nonce revoked, never adopted or cleaned.
 The state owner consumes the exact source/bare/path/charge/nonce/epoch receipt before
-any creation. These state transitions do not register privileged roots or yet expose
-the reserve/prewarm CLI; canonical lifecycle callers must migrate as one cutover.
+any creation. `reserve` never creates a checkout or registers a privileged root;
+`prewarm` requires its explicit receipt, with no legacy one-shot or resume path.
+Owner enrollment and verified authenticated holder-provider qualification remain
+external prerequisites, not authority granted by these commands.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.
 The barrier's v2 record is deliberately not PID-death-recoverable; older readers
 reject it and retain the root. Ordinary v1 lease recovery is unchanged.
-Preparation reserves capacity before creating its protected path and uses normal
-root-owned `pnpm:install`; readiness consumes `pnpm:doctor` installation/projection/storage
+Preparation consumes its bounded reservation before creating the protected path,
+atomically refuses an already occupied path and uses normal root-owned `pnpm:install`.
+Readiness consumes `pnpm:doctor` installation/projection/storage
 receipts and full link-health proof across all declared package node_modules,
 including `.bin`. It additionally binds exact source/tool/platform identity,
 actual installed pnpm metadata and resolved GVS paths. Local stores are refused.

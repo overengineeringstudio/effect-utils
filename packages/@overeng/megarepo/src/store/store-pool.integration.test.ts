@@ -16,7 +16,15 @@ import {
   reservePoolSlot,
   withPoolState,
 } from './store-pool-state.ts'
-import { claimPool, completePool, inspectPool, quarantinePool, releasePool } from './store-pool.ts'
+import {
+  claimPool,
+  completePool,
+  inspectPool,
+  prewarmPool,
+  quarantinePool,
+  releasePool,
+  reservePool,
+} from './store-pool.ts'
 
 const fixture = Effect.gen(function* () {
   const f = yield* createStoreFixture([
@@ -64,7 +72,83 @@ const fixture = Effect.gen(function* () {
   return { ...f, slot }
 })
 
+const reservationFixture = (missingCommit = false) =>
+  Effect.gen(function* () {
+    const f = yield* createStoreFixture([
+      { host: 'github.com', owner: 'test-owner', repo: 'pool-reserve', branches: ['main'] },
+    ])
+    const bare = f.bareRepoPaths['github.com/test-owner/pool-reserve']!
+    const commit =
+      missingCommit === true
+        ? 'f'.repeat(40)
+        : yield* Git.getCurrentCommit(f.worktreePaths['github.com/test-owner/pool-reserve#main']!)
+    const reserved = yield* reservePool({
+      base: f.storePath,
+      bare,
+      commit,
+      charge: 1048576,
+      maxSlots: 1,
+      maxBytes: 1048576,
+    })
+    const receipt = {
+      base: f.storePath,
+      bare: reserved.bare,
+      commit,
+      charge: reserved.charge,
+      id: reserved.id,
+      reservation: reserved.reservation!,
+      generation: reserved.generation,
+    }
+    return { ...f, reserved, receipt }
+  })
+
 describe('native pool ownership safety', () => {
+  it.effect('reserves without birth and refuses stale preparation without consuming the nonce', () =>
+    Effect.gen(function* () {
+      const f = yield* reservationFixture()
+      const fs = yield* FileSystem.FileSystem
+      expect(yield* fs.exists(f.reserved.path)).toBe(false)
+      expect((yield* inspectPool(f.storePath)).slots[0]).toEqual(f.reserved)
+      const stale = yield* prewarmPool({ ...f.receipt, reservation: 'stale' }).pipe(Effect.exit)
+      expect(Exit.isFailure(stale)).toBe(true)
+      expect((yield* inspectPool(f.storePath)).slots[0]).toEqual(f.reserved)
+      expect(yield* fs.exists(f.reserved.path)).toBe(false)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('refuses occupied reservation paths and preserves their actual bytes', () =>
+    Effect.gen(function* () {
+      const f = yield* reservationFixture()
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.makeDirectory(f.reserved.path, { recursive: true })
+      yield* fs.writeFileString(`${f.reserved.path}/unowned`, 'keep')
+      const rejected = yield* prewarmPool(f.receipt).pipe(Effect.exit)
+      expect(Exit.isFailure(rejected)).toBe(true)
+      const state = yield* withPoolState({ base: f.storePath, use: Effect.succeed })
+      expect(state.slots[0]).toMatchObject({
+        state: 'quarantined', chargeKnown: false, reservation: undefined,
+      })
+      expect(yield* fs.readFileString(`${f.reserved.path}/unowned`)).toBe('keep')
+      expect(Exit.isFailure(yield* prewarmPool(f.receipt).pipe(Effect.exit))).toBe(true)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('retains a failed native creation with consumed nonce and unknown charge', () =>
+    Effect.gen(function* () {
+      const f = yield* reservationFixture(true)
+      const fs = yield* FileSystem.FileSystem
+      const failed = yield* prewarmPool(f.receipt).pipe(Effect.exit)
+      expect(Exit.isFailure(failed)).toBe(true)
+      const state = yield* withPoolState({ base: f.storePath, use: Effect.succeed })
+      expect(state.slots[0]).toMatchObject({
+        state: 'quarantined', chargeKnown: false, generation: 1, reservation: undefined,
+      })
+      expect(state.slots[0]?.barrierToken).not.toBe('')
+      expect(yield* fs.exists(f.reserved.path)).toBe(true)
+      expect(Exit.isFailure(yield* prewarmPool(f.receipt).pipe(Effect.exit))).toBe(true)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('status preserves live and completed ownership through release authorization', () =>
     Effect.gen(function* () {
       const { storePath, slot } = yield* fixture
