@@ -500,10 +500,13 @@ optimization is tracked in [#1915](https://github.com/overengineeringstudio/effe
 devenv tasks run buck2:editor:publish:all
 ```
 
-Each authority/bootstrap/publication invocation has a **300-second total deadline**
-(plus a 5-second forced-kill grace), including Buck builds, filesystem work and
-lock waits. A separate supervisor owns the publication session and always escalates
-to a group-wide kill after the grace, even if the authority already exited.
+Authority and default scoped-publication invocations retain a **300-second execution
+deadline**. Source bootstrap reserves **300 seconds for startup plus 300 seconds per
+requested package**, so cold build/authority work and first-view publication fit the
+same invocation. Aggregate batch policies are unchanged. Execution deadlines begin
+after per-worktree publication-lock admission and cover Buck builds and filesystem
+work. A separate supervisor owns the publication session and always escalates to a
+group-wide kill after a 5-second grace, even if the authority already exited.
 Fingerprint admission closes on termination. Expiry prints a deadline diagnostic and fails nonzero; partial
 publication is never reported as success. This bounds shared-lane occupancy
 well below the 53-minute TT-148 incident. Both view preparations and fingerprint
