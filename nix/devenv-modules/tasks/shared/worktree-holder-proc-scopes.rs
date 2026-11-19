@@ -76,6 +76,8 @@ fn pin_optional(path: impl AsRef<Path>, no_mm: bool, deadline: Instant) -> io::R
         Err(error) if no_mm && error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
+}
+
 pub fn recheck_namespaces(task: &TaskScope) -> io::Result<()> {
     for (name, retained) in ["user", "pid", "mnt", "net"].into_iter().zip(&task.namespaces) {
         let actual = objects::pin_magic(format!("{}/ns/{name}", scope_path(&task.scope)))?;
