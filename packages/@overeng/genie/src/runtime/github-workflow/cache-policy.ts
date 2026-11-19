@@ -16,7 +16,7 @@ export const publisherWriteSecret = Symbol('publisherWriteSecret')
 export const hostedPrivateCacheReads = Symbol('hostedPrivateCacheReads')
 export type HostedPrivateCacheRead = {
   readonly job: string
-  readonly cache: BinaryCacheDescriptor
+  readonly cache: Extract<BinaryCacheDescriptor, { kind: 'nix-binary' }>
   readonly readSecret: `CACHIX_READ_${string}`
   readonly trustedActors: readonly string[]
 }
@@ -28,12 +28,19 @@ export const defineHostedPrivateCacheRead = (read: HostedPrivateCacheRead): Host
     /^CACHIX_READ_[A-Z0-9_]+$/.test(read.readSecret) === false ||
     read.trustedActors.length === 0 ||
     read.trustedActors.some((actor) => /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(actor) === false) ||
-    decodeBinaryCacheDescriptor(read.cache).visibility !== 'private'
+    decodeBinaryCacheDescriptor(read.cache).visibility !== 'private' ||
+    read.cache.kind !== 'nix-binary'
   ) {
     throw new Error('Hosted private cache reads require an exact job, private cache, dedicated CACHIX_READ_ secret and trusted actors')
   }
   return read
 }
+
+export const trustedHostedCacheReadGateSucceededPredicate =
+  "steps.trusted_private_cache_reader.outcome == 'success'"
+/** Credential admission depends on successful execution, not merely gate order. */
+export const trustedHostedCacheReadCondition =
+  `\${{ success() && ${trustedHostedCacheReadGateSucceededPredicate} }}`
 
 /** Must be the first step, before checkout, credentials or any repository code. */
 export const trustedHostedCacheReadGate = (read: HostedPrivateCacheRead) => {
@@ -46,6 +53,7 @@ export const trustedHostedCacheReadGate = (read: HostedPrivateCacheRead) => {
     'github.triggering_actor',
   ]
   return {
+    id: 'trusted_private_cache_reader',
     name: 'Require trusted private cache reader',
     shell: 'bash',
     env: {
@@ -74,13 +82,9 @@ export const matchesHostedPrivateCacheRead = (
 ): boolean => {
   defineHostedPrivateCacheRead(read)
   const expected = read.cache
-  return read.job === job && expected.name === cache.name && expected.kind === cache.kind &&
+  return read.job === job && expected.name === cache.name && cache.kind === 'nix-binary' &&
     expected.visibility === cache.visibility &&
-    (expected.kind === 'nix-binary' && cache.kind === 'nix-binary'
-      ? expected.uri === cache.uri && expected.publicKey === cache.publicKey
-      : expected.kind === 'reapi' && cache.kind === 'reapi' &&
-        expected.endpoint === cache.endpoint && expected.instanceName === cache.instanceName &&
-        expected.digest === cache.digest)
+    expected.uri === cache.uri && expected.publicKey === cache.publicKey
 }
 
 /** Private cache exposure on a non-fleet runner. */
@@ -270,9 +274,18 @@ export const validateWorkflowCachePolicy = ({
         job.container !== undefined || job.services !== undefined) fail()
       let credentialFound = false
       for (const step of job.steps.slice(1)) {
+        const condition = step.if?.trim().replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
+        const gateSucceeded = condition !== undefined &&
+          workflowConditionConjuncts(condition)?.includes(trustedHostedCacheReadGateSucceededPredicate) === true
+        if (step.id === 'trusted_private_cache_reader' ||
+          (condition !== undefined && /\b(?:always|failure|cancelled|success)\s*\(/i.test(condition) &&
+            gateSucceeded === false)) fail()
         const { env, ...rest } = step
         const { CACHIX_READ_TOKEN: token, ...otherEnv } = env ?? {}
-        if (token === `\${{ secrets.${read.readSecret} }}`) credentialFound = true
+        if (token === `\${{ secrets.${read.readSecret} }}`) {
+          if (step.if !== trustedHostedCacheReadCondition) fail()
+          credentialFound = true
+        }
         else if (secretReferences(token).includes(read.readSecret)) fail()
         if (secretReferences([rest, otherEnv]).some((secret) =>
           secret === '*' || secret === read.readSecret)) fail()

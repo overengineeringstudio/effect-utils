@@ -371,7 +371,7 @@ hit or requiring a restored snapshot. Nix cache helpers are unchanged.
 
 Private caches remain fleet-only by default. A narrow, explicit exception for
 literal GitHub-hosted Ubuntu/macOS/Windows runner labels names one exact job,
-one complete private cache descriptor and one dedicated `CACHIX_READ_*` secret.
+one complete private Nix-binary cache descriptor and one dedicated `CACHIX_READ_*` secret.
 This does not relax runner admission in the independent fleet workflow policy.
 Consumers must also satisfy their repository's workflow policy.
 
@@ -382,6 +382,15 @@ with `{ job, cache, readSecret, trustedActors }`; spread
 `trustedHostedCacheReadGate(capability)` first in its steps, before checkout.
 Only a later step-local `env.CACHIX_READ_TOKEN` may reference the exact expression
 `'${{ secrets.CACHIX_READ_EXAMPLE }}'` named by the capability.
+That credential-bearing step must set `if: trustedHostedCacheReadCondition`
+(also exported by the root helper). The helper gate owns the fixed step ID
+`trusted_private_cache_reader`; duplicate IDs are rejected.
+Later code/cleanup steps using status functions must include the exported
+`trustedHostedCacheReadGateSucceededPredicate` as a top-level `&&` conjunct.
+For example, `${{ always() && steps.trusted_private_cache_reader.outcome == 'success' }}`
+retains cleanup after a lane failure but never after a rejected actor.
+An outer `||`, bare `always()`, `failure()` or `cancelled()` cannot bypass admission.
+REAPI capabilities are not part of this exception.
 For caller-level rendering, pass the same `job` and
 `hostedPrivateCacheReads: [capability]` to `binaryCachesExtraConfForJob`.
 Rendering is not authorization: the final workflow boundary revalidates the

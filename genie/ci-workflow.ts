@@ -66,6 +66,8 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
 }
 export {
   defineHostedPrivateCacheRead,
+  trustedHostedCacheReadCondition,
+  trustedHostedCacheReadGateSucceededPredicate,
   type HostedPrivateCacheRead,
   hostedPrivateCacheReadPolicy,
   trustedHostedCacheReadGate,
