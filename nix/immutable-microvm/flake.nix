@@ -75,6 +75,8 @@
     in
     {
       nixosModules.guest = import ./guest.nix;
+      nixosModules.host = import ./host.nix;
+      checks.${system}.lifecycle = import ./lifecycle-test.nix { inherit pkgs releases; };
       packages.${system} = releases // {
         default = releases.a;
       };
