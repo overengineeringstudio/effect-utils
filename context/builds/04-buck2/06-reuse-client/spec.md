@@ -22,9 +22,10 @@ All client configuration, including the overlay below, must exist in
 do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
-In CI, the entrypoint admits each command against the running daemon's RE
-posture while holding one project-root lock from overlay selection
-through daemon initialization and recording:
+For declared CI posture, an explicit host reader-forwarder map, or removal of
+an existing managed reader route, the entrypoint admits each command against
+the running daemon's RE posture while holding one project-root lock from
+overlay selection through daemon initialization and recording:
 
 ```text
 no daemon -> start with current environment -> record identity + keyed posture
@@ -76,10 +77,13 @@ remains native `false`, and absent HTTP headers remain empty.
 
 Composed workflows explicitly declare `BUCK2_CI_POSTURE=1` through the standard
 CI environment and the posture helper for every cache posture, including `none`.
-Only this marker enables CI daemon admission and
-job probe pinning; ambient `CI=1` or `CI=true` retains local behavior. Admission
-fails closed before daemon access when `GITHUB_ACTIONS=true` lacks the marker
-and remote cache is configured, except for commands that skip admission.
+This marker enables CI daemon admission and is required for CI job probe
+pinning; ambient `CI=1` or `CI=true` alone retains local behavior. Explicit
+host reader-forwarder routing and managed-route removal also enable locked
+daemon admission, without declaring CI posture or enabling job probe pinning.
+Admission fails closed before daemon access when `GITHUB_ACTIONS=true` lacks
+the marker and remote cache is configured, except for commands that skip
+admission.
 
 REAPI admission precedes reservation comparison and overlay mutation while holding
 the startup lock. In CI with a GitHub job-instance identity, the first fresh
