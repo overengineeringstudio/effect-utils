@@ -41,6 +41,7 @@ import {
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
 import {
+  initializeWatchmanRoot,
   prepareWatchmanEnvironment,
   probeWatchman,
   reconcileFileWatcher,
@@ -391,8 +392,20 @@ export const directBuckArguments = async ({
   const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
   if (selectedWatcher === 'watchman') {
-    const watchmanProbe = () =>
-      probeWatchman({
+    const crawlBudget = env['BUCK2_WATCHMAN_CRAWL_BUDGET_MS']
+    if (crawlBudget !== undefined && /^[1-9]\d*$/u.test(crawlBudget) === false)
+      throw new Error('BUCK2_WATCHMAN_CRAWL_BUDGET_MS must be a positive integer crawl budget')
+    const watchmanProbe = async () => {
+      // Root reuse can outlive Watchman's idle-reap interval while admission waits.
+      // Finish bounded registration before the independent short liveness check.
+      if (crawlBudget !== undefined)
+        await initializeWatchmanRoot({
+          env,
+          repoRoot: root,
+          deadlineMs: Number(crawlBudget),
+          managedDirectory: watchmanDirectory,
+        })
+      return probeWatchman({
         env,
         repoRoot: root,
         deadlineMs: deadlineMs ?? 2500,
@@ -400,6 +413,7 @@ export const directBuckArguments = async ({
         makeDeadlineSignal:
           probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
       })
+    }
     const available = await cachedProbe({
       cacheDirectory,
       root: realpathSync(root),
@@ -2092,6 +2106,17 @@ if (import.meta.main === true) {
     }
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
+    if (process.argv[3] === '--initialize-watchman-root') {
+      const root = findRoot(process.cwd())
+      const budget = process.argv[4]
+      if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
+      if (budget === undefined || !/^[1-9]\d*$/u.test(budget) || process.argv.length !== 5)
+        throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
+      if (process.env['WATCHMAN_SOCK'] === undefined)
+        throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
+      await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
+      process.exit(0)
+    }
     if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
       const root = findRoot(process.cwd())
       if (root !== undefined)

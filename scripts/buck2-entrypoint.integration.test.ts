@@ -33,7 +33,12 @@ import {
   runNativeWithEvidence,
 } from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
-import { prepareWatchmanEnvironment, WatchmanAdmissionError } from './buck2-file-watcher.ts'
+import {
+  initializeWatchmanRoot,
+  prepareWatchmanEnvironment,
+  WatchmanAdmissionError,
+  WatchmanCrawlError,
+} from './buck2-file-watcher.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
 import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 
@@ -486,7 +491,9 @@ describe('native daemon admission diagnostics', () => {
         const root = fixture()
         const native = join(root, 'native-buck')
         const calls = join(root, 'native-calls')
-        const deadlineMs = failure === 'timeout' ? 100 : 30000
+        // The deadline must reach the intended sleeping command, not expire
+        // during shell startup on a loaded macOS runner.
+        const deadlineMs = failure === 'timeout' ? 1000 : 30000
         const daemon = JSON.stringify({
           project_root: realpathSync(root),
           isolation_dir: 'owned',
@@ -1905,6 +1912,54 @@ for (let attempt = 0; attempt < 2; attempt++) {
 })
 
 describe('direct pinned Buck watcher admission', () => {
+  it('initializes a root separately before its unchanged short admission probe', async () => {
+    const { root, env, calls } = watcherFixture()
+    await initializeWatchmanRoot({ env, repoRoot: root, deadlineMs: 10000 })
+    await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
+    expect(watcherLocal(root)).toContain('file_watcher = watchman')
+  })
+
+  it('finishes opt-in registration before liveness and reuses cached admission', async () => {
+    const { root, env, calls } = watcherFixture()
+    const invocation = {
+      ...options(root),
+      env: { ...env, BUCK2_WATCHMAN_CRAWL_BUDGET_MS: '10000' },
+      args: ['build', '//:app'],
+    }
+    await directBuckArguments(invocation)
+    await directBuckArguments(invocation)
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
+    expect(watcherLocal(root)).toContain('file_watcher = watchman')
+  })
+
+  it('attributes an opt-in registration timeout to crawl before liveness', async () => {
+    const { root, env, state } = watcherFixture()
+    writeFileSync(state, 'hanging')
+    await expect(
+      directBuckArguments({
+        ...options(root),
+        env: { ...env, BUCK2_WATCHMAN_CRAWL_BUDGET_MS: '1000' },
+        args: ['build', '//:app'],
+      }),
+    ).rejects.toMatchObject({ reason: 'crawl', cause: { reason: 'timeout' } })
+    expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+  }, 5000)
+
+  it('reports an exhausted initialization budget as crawl, not liveness', async () => {
+    const { root, env, state } = watcherFixture()
+    writeFileSync(state, 'hanging')
+    let failure: unknown
+    try {
+      await initializeWatchmanRoot({ env, repoRoot: root, deadlineMs: 1000 })
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(WatchmanCrawlError)
+    expect(failure).toMatchObject({ reason: 'crawl', cause: { reason: 'timeout' } })
+    expect(watcherLocal(root)).not.toContain('file_watcher = notify')
+  }, 5000)
+
   it('admits a healthy service in a watcher-only root before the cache opt-in return', async () => {
     const { root, env, calls } = watcherFixture()
     const args = ['run', '//:app', '--', '--version', '--help', '-c', 'buck2.file_watcher=notify']
@@ -2364,6 +2419,45 @@ describe('direct pinned Buck watcher admission', () => {
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(2)
     expect(watcherLocal(root)).not.toContain('file_watcher = notify')
   }, 5000)
+
+  it('initializes the explicit service through the CLI without launching native Buck', async () => {
+    const { root, env, calls } = watcherFixture()
+    const prepared = await prepareEntrypointProcess({
+      root,
+      env: { ...process.env, ...env },
+      args: [
+        join(import.meta.dir, 'buck2-entrypoint.ts'),
+        join(root, 'native-must-not-run'),
+        '--initialize-watchman-root',
+        '10000',
+      ],
+    })
+    prepared.child.stdin.write('\n')
+    prepared.child.stdin.end()
+    const [stdout, stderr, exitCode] = await Promise.all([
+      prepared.stdout,
+      new Response(prepared.child.stderr).text(),
+      prepared.child.exited,
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toBe('')
+    const events = stderr.trim().split('\n').map((line) => JSON.parse(line))
+    expect(events[0]).toMatchObject({
+      event: 'buck2.watchman.crawl',
+      phase: 'start',
+      root,
+      deadlineMs: 10000,
+    })
+    expect(events[1]).toMatchObject({
+      event: 'buck2.watchman.crawl',
+      phase: 'end',
+      root,
+      outcome: 'ok',
+    })
+    expect(events[1].durationMs).toBeGreaterThanOrEqual(0)
+    expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(1)
+    expect(watcherLocal(root)).toBe('')
+  })
 
   for (const mode of ['healthy', 'unreachable'] as const) {
     describe(`native Buck launch with ${mode} watcher admission`, () => {
