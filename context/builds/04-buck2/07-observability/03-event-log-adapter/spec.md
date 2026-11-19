@@ -151,6 +151,30 @@ not capture time. Backfilled occurrences remain observed-only under unknown
 coverage when independent wrapper census is absent. Ingest queues existing OTLP
 chunks but does not require or invoke export.
 
+Typed pending chunks accept only `traces`, `metrics`, or `logs`, validating their
+content hash, byte count and signal before export to the matching `/v1/*` route.
+Log partial-success `rejectedLogRecords`/`rejected_log_records` counts retain the
+entire original chunk for retry; an ingress ACK is not backend completeness.
+
+`buck2-events export --replay-records [--records-dir DIR] --spool-dir DIR` repairs
+downstream loss from retained conversion, census and enrollment snapshots, without
+decoding native logs or adding a timer. Normal export never scans retained history.
+Replay fails explicitly on 100,000 scanned entries, 512 MiB source/queued bytes,
+or the shared export time budget, and reports counters; it never silently samples.
+
+Each replayed log body is a JSON string
+`{type:"buck2.occurrence.ledger",version:1,snapshotSha256,ordinal,recordCount,line}`:
+SHA-256 covers the exact LF-terminated retained JSONL bytes, ordinal is zero-based,
+recordCount includes every line, and line is exact UTF-8 without its final LF.
+Reassemble `line + "\n"` in ordinal order and verify the hash before reconciliation.
+Resources carry the snapshot's observed `host.name`, `service.name=buck2-events`,
+and scope `buck2-events.occurrence-ledger`; outer timestamps are emission time,
+while exact native epoch-nanosecond strings remain inside the original line.
+Envelope bodies exceed neither 8 KiB nor 12 KiB as serialized OTLP log records;
+resource metadata is bounded to 4 KiB. Oversize fails with unknown coverage and
+retains source; no row is silently dropped or truncated. HTTP acceptance can delete
+pending chunks, never retained source or downstream loss/completeness uncertainty.
+
 ## Producer Metrics
 
 ```text

@@ -1587,3 +1587,34 @@ fn census_survives_without_native_log_or_otlp_export() {
     .unwrap();
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
 }
+
+#[test]
+fn logs_partial_success_retries_exact_chunk_on_logs_route() {
+    let dir = tempfile::tempdir().unwrap();
+    let body = br#"{"resourceLogs":[{"scopeLogs":[]}]}"#;
+    let path = spool_chunk(dir.path(), "logs", body).unwrap();
+    assert!(spool_chunk(dir.path(), "invalid", body).is_err());
+    let (url, server) = serve_otlp_responses(
+        vec![
+            r#"{"partialSuccess":{"rejectedLogRecords":"1"}}"#,
+            r#"{"partial_success":{"rejected_log_records":2}}"#,
+            r#"{"partialSuccess":{"rejectedLogRecords":"0"}}"#,
+        ],
+        "/v1/logs",
+    );
+    drain_to_url(
+        dir.path(),
+        &url,
+        Duration::from_secs(2),
+        Duration::from_secs(5),
+    );
+    assert_eq!(read_chunk(&path).unwrap(), body);
+    drain_to_url(
+        dir.path(),
+        &url,
+        Duration::from_secs(2),
+        Duration::from_secs(5),
+    );
+    assert!(!path.exists());
+    assert_eq!(server.join().unwrap(), vec![body.to_vec(); 3]);
+}
