@@ -98,6 +98,8 @@ let
         ./evidence-tests
         mkdir -p "$out/bin"
         rustc --edition=2024 -D warnings -O -C panic=abort worktree-holder-evidence.rs -o "$out/bin/worktree-holder-evidence"
+        "$out/bin/worktree-holder-evidence" --codec-fixtures-v1 > actual-codec-fixtures-v1.jsonl
+        cmp ${../../../../. + "/packages/@overeng/megarepo/src/store/fixtures/worktree-holder-evidence-v1.jsonl"} actual-codec-fixtures-v1.jsonl
       '';
 in
 assert builtins.isInt ownerUid && ownerUid > 0 && ownerUid <= 4294967295;
