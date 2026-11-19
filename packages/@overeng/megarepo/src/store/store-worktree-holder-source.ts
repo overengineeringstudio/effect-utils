@@ -146,6 +146,7 @@ export const classifyWorktreeHolderEvidence = ({
         return ownedFd || ownedThreadFd || selectedDaemon
       })
     : []
+  const excludedSet = new Set(excluded)
   const references = root.references
     .filter((reference) => !excludedSet.has(reference))
     .map((reference) => ({

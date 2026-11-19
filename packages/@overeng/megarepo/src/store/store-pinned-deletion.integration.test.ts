@@ -174,13 +174,9 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
               expect(view.has({ ...reference, alias: { ...alias, tgid: process.pid + 2 } })).toBe(
                 false,
               )
-              expect(
-                view.has({
-                  ...reference,
-                  pid: alias.tid + 3,
-                  alias: { ...alias, tid: alias.tid + 3 },
-                }),
-              ).toBe(false)
+              expect(view.has({ ...reference, alias: { ...alias, tid: alias.tid + 3 } })).toBe(
+                false,
+              )
               expect(view.has({ ...reference, alias: { ...alias, proof: 'fd-equality-v0' } })).toBe(
                 false,
               )
