@@ -102,9 +102,36 @@ The workflow cache policy admits only this exact guarded expression.
 These opportunistic writers set `BUCK2_CACHE_WRITE_OPTIONAL=1`: if the bounded
 REAPI preflight cannot reach the cache, they warn and execute locally with remote
 cache reads and uploads disabled. A cache outage must not make the main gate red.
-The dedicated trusted remote-cache proof does not set this flag and remains
-fail-closed. This preflight fallback is not a guarantee against an outage that
-starts after a successful probe.
+The dedicated trusted remote-cache proof remains fail-closed and explicitly
+removes inherited optional-writer policy. A successful preflight does not guarantee
+availability throughout a build; the bounded native recovery amendment below
+governs that separate failure window.
+
+## Amendment — Bounded native LOCAL recovery
+
+Johannes authorized amending BUILD.BUCK.REUSE-R04: an effective reader or explicitly
+optional writer may recover one strictly classified transient RE capabilities/
+connect/transport failure with exactly one loud, bounded LOCAL build/test
+re-execution. Authentication/authorization, integrity, mixed/unknown diagnostics,
+ordinary compiler/test errors, interruption/overflow and trusted qualification
+remain fatal. Interactive commands are excluded rather than replayed speculatively.
+
+The existing offline overlay and daemon lifecycle lock own the transition: remove
+credentials and RE headers, disable remote reads/uploads, and restart only an idle
+mismatched daemon. Busy or unknown ownership refuses. Preserve the original failed
+native UUID, exit, occurrence and trace, and link a fresh local UUID/result without
+rewriting original evidence. The local native deadline is 600 seconds plus five
+seconds of termination grace, with no recursive recovery.
+
+CI distinguishes evidence-backed **command recovery** from **action completeness**.
+Only a verified same-root original/local relationship with complete event sources,
+successful complete LOCAL evidence and no unrelated gaps may keep an availability
+gate green. The failed original stays diagnostic/incomplete for physical
+execute-once and trusted cache qualification. This is not an outage mask, a
+`capabilities=false` workaround, or permission to forgive unknown traces. The
+[reuse-client spec](../04-buck2/06-reuse-client/spec.md#direct-invocation-admission-buildbuckreuse-r04)
+owns the exact safety scope and evidence contract.
+
 
 Preflight failures emit a fixed error class (configuration, DNS, TCP, TLS,
 transport, deadline, authentication, HTTP, gRPC, or protocol), the configuration,

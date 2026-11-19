@@ -489,4 +489,136 @@ describe('rotation-independent native evidence shards', () => {
       await rm(directory, { recursive: true, force: true })
     }
   })
+
+  for (const failure of [
+    null,
+    'source-incomplete',
+    'classification-mismatch',
+    'remote-local-attempt',
+    'duplicate',
+    'missing-original',
+    'missing-local',
+    'different-root',
+    'invalid-original',
+    'local-failed',
+    'trusted',
+  ] as const) {
+    it(`keeps action proof unknown while independently validating command recovery: ${failure ?? 'valid'}`, async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'buck-shard-local-fallback-'))
+      try {
+        const output = join(directory, 'evidence.json')
+        const originalBuildId = buildIdFor(1)
+        const localBuildId = buildIdFor(2)
+        const classification = {
+          cause: {
+            capabilitiesUnavailable: true,
+            connectRetry: true,
+            clientInitialization: true,
+            connectUnavailable: false,
+            transportMessage: 'tls-handshake-eof',
+          },
+          command: { subcommand: 'build', argumentCount: 4 },
+          nativeExitCode: 1,
+          durationMs: 1000,
+          failedActionCount: 1,
+          wouldDisableRemoteCache: true,
+        }
+        const originalId = await registerNativeShard({ output, buildId: originalBuildId })
+        await Bun.write(originalId, originalBuildId)
+        const originalEvents = join(directory, 'original.json-lines')
+        await Bun.write(
+          originalEvents,
+          nativeEvents({ buildId: originalBuildId, complete: false }) +
+            (failure === 'invalid-original' ? 'invalid\n' : ''),
+        )
+        await writeNativeShard({
+          output, buildId: originalBuildId, events: originalEvents, rootId,
+          cacheReadPolicy: 'enabled', exitCode: 1,
+        })
+        const originalCompletion = `${output}.native-build-ids/${originalBuildId}.exit.json`
+        const originalEnd = await Bun.file(originalCompletion).json()
+        await Bun.write(originalCompletion, JSON.stringify({
+          ...originalEnd,
+          sourceComplete: failure !== 'source-incomplete',
+          reapiUnavailable: failure === 'classification-mismatch'
+            ? { ...classification, durationMs: 2000 } : classification,
+        }))
+        const localId = await registerNativeShard({ output, buildId: localBuildId })
+        await Bun.write(localId, localBuildId)
+        const localEvents = join(directory, 'local.json-lines')
+        await Bun.write(localEvents, nativeEvents({
+          buildId: localBuildId,
+          executionKind: failure === 'remote-local-attempt' ? 2 : 1,
+        }))
+        await writeNativeShard({
+          output, buildId: localBuildId, events: localEvents,
+          rootId: failure === 'different-root' ? 'c'.repeat(64) : rootId,
+          cacheReadPolicy: 'disabled-by-design', exitCode: failure === 'local-failed' ? 1 : 0,
+        })
+        const localCompletion = `${output}.native-build-ids/${localBuildId}.exit.json`
+        const localEnd = await Bun.file(localCompletion).json()
+        await Bun.write(localCompletion, JSON.stringify({ ...localEnd, sourceComplete: true }))
+        const registry = (await Bun.file(`${output}.native-build-id-paths.jsonl`).text())
+          .trim().split('\n').map((line) => JSON.parse(line))
+        const relationship = {
+          schemaVersion: 1, originalBuildId, localBuildId, reason: 'capabilities',
+          classification, originalExitCode: 1, localExitCode: localEnd.exitCode, localSignalCode: null,
+          localOnly: true, startedAt: registry[1].startedAt, finishedAt: localEnd.finishedAt,
+        }
+        await Bun.write(`${output}.local-fallbacks.jsonl`,
+          `${JSON.stringify(relationship)}\n`.repeat(failure === 'duplicate' ? 2 : 1))
+        const originalShard = join(`${output}.shards`, `${originalBuildId}.json`)
+        const originalBytes = await Bun.file(originalShard).text()
+        if (failure === 'missing-original') await rm(originalShard)
+        if (failure === 'missing-local')
+          await rm(join(`${output}.shards`, `${localBuildId}.json`))
+        const result = await reconcileNativeShards({ output })
+        expect(result.index.complete).toBe(false)
+        const confirmed = failure === null || failure === 'trusted'
+        expect(result.index.commandRecoveryComplete).toBe(confirmed)
+        expect(result.index.localFallbacks).toHaveLength(confirmed ? 1 : 0)
+        expect(result.index.evidenceGaps.length).toBeGreaterThan(0)
+        if (failure === null) {
+          expect(result.index.evidenceGaps).toContain('incomplete-native-invocation')
+          expect(result.index.evidenceGaps).not.toContain('native-shard-missing')
+          expect(result.artifact.actions).toHaveLength(2)
+          expect(result.index.shards.find((shard) => shard.buildId === originalBuildId)?.complete)
+            .toBe(false)
+          expect(result.artifact.header.invocations.find(
+            (invocation) => invocation.buildId === originalBuildId)?.complete).toBe(false)
+          expect(await Bun.file(originalShard).text()).toBe(originalBytes)
+        }
+        const child = Bun.spawn(
+          [process.execPath, new URL('./buck2-cache-evidence.ts', import.meta.url).pathname,
+            '--output', output, '--finalize'],
+          { stdout: 'ignore', stderr: 'pipe', env: {
+            ...process.env,
+            GITHUB_REPOSITORY: 'overengineeringstudio/effect-utils',
+            GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1',
+            CI_BUCK2_CACHE_EVIDENCE_JOB: 'quality',
+            CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: 'quality (namespace-profile-linux-x86-64)',
+            CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: 'a'.repeat(40),
+            GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main',
+            BUCK2_PUBLIC_CACHE_READ_ONLY: '1', BUCK2_NO_REMOTE_CACHE: '0',
+            CI_BUCK2_CACHE_EVIDENCE_STARTED_AT: '0',
+            CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT: String(Date.now()),
+            CI_BUCK2_CACHE_WARM99_MANIFEST: undefined, GITHUB_STEP_SUMMARY: undefined,
+            GITHUB_JOB: 'quality',
+            BUCK2_CACHE_TRUSTED_QUALIFICATION: failure === 'trusted' ? '1' : undefined,
+          } },
+        )
+        const [stderr, exitCode] = await Promise.all([
+          new Response(child.stderr).text(), child.exited,
+        ])
+        expect(exitCode).toBe(failure === null ? 0 : 2)
+        const header = JSON.parse(gunzipSync(
+          await Bun.file(join(directory, 'buck2-cache-actions.jsonl.gz')).arrayBuffer(),
+        ).toString('utf8').split('\n')[0]!)
+        expect(header.complete).toBe(false)
+        if (failure === null) expect(stderr).toContain('original action evidence remains incomplete')
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    })
+  }
 })

@@ -66,6 +66,9 @@ const NO_REMOTE_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
+  default_allow_cache_upload = false
+[buck2_re_client]
+  http_headers =
 ${MANAGED_END}`
 
 /**

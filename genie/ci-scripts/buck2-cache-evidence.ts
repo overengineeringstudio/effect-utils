@@ -13,7 +13,8 @@ import { createHash } from 'node:crypto'
  * from a previous summary. Missing sidecars produce explicit zeros on new evidence.
  * Finalization confirms native --write-build-id outputs from the separate path
  * registry before detecting rotation; admission rows never prove native launch.
- * A written incomplete finalization exits 2; operational failures exit 1.
+ * Incomplete finalization exits 2 except a separately confirmed LOCAL command
+ * recovery; its original action evidence remains incomplete. Operational errors exit 1.
  *
  * Outcomes use data.proto's numeric enums, not command cache_hit booleans.
  * Digests are the exact native RE ActionCache `hash:size`, NOT output tiny_digest.
@@ -258,6 +259,51 @@ export const decodeReaderReapiUnavailableShadow = (
     durationMs: count(field({ value, key: 'durationMs' })),
     failedActionCount: count(field({ value, key: 'failedActionCount' })),
     wouldDisableRemoteCache: true,
+  }
+}
+
+/** A command recovery relationship, never proof that the failed trace was complete. */
+export type CacheLocalFallback = {
+  schemaVersion: 1
+  originalBuildId: string
+  localBuildId: string
+  reason: 'capabilities' | 'connect' | 'init'
+  classification: ReaderReapiUnavailableShadow
+  originalExitCode: number
+  localExitCode: number
+  localSignalCode: string | null
+  localOnly: true
+  startedAt: number
+  finishedAt: number
+}
+
+export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => {
+  const originalBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'originalBuildId' }))
+  const localBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'localBuildId' }))
+  const classification = decodeReaderReapiUnavailableShadow(field({ value, key: 'classification' }))
+  const reason = field({ value, key: 'reason' })
+  const originalExitCode = count(field({ value, key: 'originalExitCode' }))
+  const localExitCode = count(field({ value, key: 'localExitCode' }))
+  const localSignalCode = field({ value, key: 'localSignalCode' })
+  const startedAt = count(field({ value, key: 'startedAt' }))
+  const finishedAt = count(field({ value, key: 'finishedAt' }))
+  const expectedReason = classification.cause.capabilitiesUnavailable
+    ? 'capabilities'
+    : classification.cause.clientInitialization ? 'init' : 'connect'
+  if (
+    field({ value, key: 'schemaVersion' }) !== 1 ||
+    field({ value, key: 'localOnly' }) !== true ||
+    originalBuildId === localBuildId ||
+    originalExitCode !== classification.nativeExitCode ||
+    localExitCode > 255 ||
+    reason !== expectedReason ||
+    (localSignalCode !== null &&
+      (typeof localSignalCode !== 'string' || /^SIG[A-Z0-9]+$/u.test(localSignalCode) === false)) ||
+    finishedAt < startedAt
+  ) throw new Error('Invalid cache LOCAL fallback relationship')
+  return {
+    schemaVersion: 1, originalBuildId, localBuildId, reason, classification,
+    originalExitCode, localExitCode, localSignalCode, localOnly: true, startedAt, finishedAt,
   }
 }
 export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionInvocation => {
@@ -1383,8 +1429,14 @@ const run = async (): Promise<void> => {
     } else if ((previous?.actionCount ?? 0) > 0)
       full.header.evidenceGaps.push('prior-artifact-missing')
   }
+  let commandRecoveryComplete = false
   if (values.finalize === true && disabled === false) {
     const reconciled = await reconcileNativeShards({ output: values.output })
+    commandRecoveryComplete =
+      reconciled.index.commandRecoveryComplete &&
+      reconciled.index.localFallbacks.length > 0 &&
+      process.env['BUCK2_CACHE_TRUSTED_QUALIFICATION'] !== '1' &&
+      process.env['GITHUB_JOB'] !== 'trusted-buck2-remote-cache-proof'
     evidence = mergeCacheEvidence({ previous: evidence, next: reconciled.summary })
     let mergedBytes = full.actions.reduce(
       (size, row) => size + Buffer.byteLength(JSON.stringify(row)) + 1,
@@ -1707,8 +1759,17 @@ const run = async (): Promise<void> => {
     )
   }
   if (values.finalize === true && header.complete === false) {
-    console.error('Cache action evidence incomplete; observation is invalid.')
-    process.exitCode = 2
+    if (
+      commandRecoveryComplete &&
+      metadataComplete &&
+      header.evidenceGaps.every((gap) =>
+        gap === 'incomplete-native-invocation' || gap === 'native-shard-incomplete')
+    ) {
+      console.error('Cache command recovered through confirmed LOCAL fallback; original action evidence remains incomplete/diagnostic and cannot qualify execute-once or trusted reuse proof.')
+    } else {
+      console.error('Cache action evidence incomplete; observation is invalid.')
+      process.exitCode = 2
+    }
   }
   const inconsistent = evidence.invocations.reduce(
     (total, invocation) =>
