@@ -223,6 +223,9 @@ aggregate is a cache-publication inventory, not the selector for unit-shell
 packages or tasks. Native recipe identity is scoped to declared sources and
 pinned tools rather than repository HEAD; see the
 [native Nix bridge contract](../builds/05-product-distribution/02-nix-bridge/spec.md#native-products).
+The inventory retains the same `nix/reindeer.nix` override used by the devenv
+overlay, so bootstrap can substitute the patched generator instead of rebuilding
+it on every fresh runner.
 Closure-size claims require measured shell outputs and their dependency paths,
 not package-list changes or task scheduling alone. Execution latency is measured
 from job `startedAt` to `completedAt`; runner queue wait is reported separately
