@@ -107,7 +107,7 @@ export interface OwnedDeletionPin {
 
 const ownedDeletionPinsBrand = Symbol('OwnedDeletionPins')
 
-/** Valid only during beforeRemove; no process-wide or non-fd exemption is granted. */
+/** Valid only during its engine callback; no process-wide or non-fd exemption is granted. */
 export interface OwnedDeletionPins {
   readonly [ownedDeletionPinsBrand]: true
   readonly pins: ReadonlyArray<OwnedDeletionPin>
@@ -119,6 +119,60 @@ export interface OwnedDeletionPins {
     readonly ino: string
   }) => boolean
 }
+
+interface PinnedDirectoryTarget {
+  readonly rootPath: string
+  readonly path: string
+  readonly identity: DeletionIdentity
+}
+
+/** One pinner for read-only observations and deletion; the physical postlude stays private. */
+const withPinnedDirectoryScope = <A, E, R>({
+  rootPath,
+  path,
+  identity,
+  use,
+  afterUse,
+}: PinnedDirectoryTarget & {
+  readonly use: (ownedPins: OwnedDeletionPins) => Effect.Effect<A, E, R>
+  readonly afterUse?: (chain: readonly PinnedDirectory[]) => void
+}): Effect.Effect<A, PinnedDeletionError | E, R> =>
+  Effect.acquireUseRelease(
+    native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
+    (chain) =>
+      Effect.gen(function* () {
+        const owned = ownDeletionPins(chain)
+        const value = yield* Effect.suspend(() => use(owned.view)).pipe(
+          Effect.ensuring(Effect.sync(owned.revoke)),
+        )
+        yield* native({
+          path,
+          operation: () => {
+            verifyChain(chain)
+            afterUse?.(chain)
+          },
+        })
+        return value
+      }),
+    (chain) => Effect.sync(() => closeChain(chain)),
+  )
+
+/**
+ * Hold the existing no-follow identity pins for one awaited observation callback.
+ * No quarantine, rename, unlink or deletion postlude is performed. This grants no
+ * mutation or removal authority: callers still need their own action fence and
+ * fresh Git, owner, consumer and all-UID evidence inside the callback.
+ * Retained views are revoked before return, failure, interruption or native revalidation.
+ */
+export const withPinnedDirectoryPins = <A, E = never, R = never>({
+  rootPath,
+  path,
+  identity,
+  use,
+}: PinnedDirectoryTarget & {
+  readonly use: (ownedPins: OwnedDeletionPins) => Effect.Effect<A, E, R>
+}): Effect.Effect<A, PinnedDeletionError | E, R> =>
+  withPinnedDirectoryScope({ rootPath, path, identity, use })
 
 /**
  * Pin the recorded chain before final authority checks, then quarantine and remove only through fds.
@@ -141,20 +195,13 @@ export const withPinnedDeletion = <TError = never, TRequirements = never>({
   beforeRemove?: (ownedPins: OwnedDeletionPins) => Effect.Effect<void, TError, TRequirements>
   afterQuarantine?: (recoverPath: string) => void
 }): Effect.Effect<void, PinnedDeletionError | TError, TRequirements> =>
-  Effect.acquireUseRelease(
-    native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
-    (chain) =>
-      Effect.gen(function* () {
-        if (beforeRemove !== undefined) {
-          const owned = ownDeletionPins(chain)
-          yield* Effect.suspend(() => beforeRemove(owned.view)).pipe(
-            Effect.ensuring(Effect.sync(owned.revoke)),
-          )
-        }
-        yield* native({ path, operation: () => quarantineAndRemove({ chain, afterQuarantine }) })
-      }),
-    (chain) => Effect.sync(() => closeChain(chain)),
-  )
+  withPinnedDirectoryScope({
+    rootPath,
+    path,
+    identity,
+    use: (ownedPins) => beforeRemove?.(ownedPins) ?? Effect.void,
+    afterUse: (chain) => quarantineAndRemove({ chain, afterQuarantine }),
+  })
 
 /** No-follow evidence for one directory, observed through a single held fd. */
 export type DirectoryEvidence = {

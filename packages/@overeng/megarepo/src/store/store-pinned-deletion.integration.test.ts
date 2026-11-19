@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Schema, Stream } from 'effect'
+import { Deferred, Effect, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -28,6 +28,7 @@ import {
   PinnedDeletionError,
   readDirectoryEvidence,
   withPinnedDeletion,
+  withPinnedDirectoryPins,
   type OwnedDeletionPins,
 } from './store-pinned-deletion.ts'
 
@@ -591,6 +592,126 @@ process.stdin.resume()`,
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'observes real pinned data without removal and revokes its retained evidence',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        let retained: OwnedDeletionPins | undefined
+        const value = yield* withPinnedDirectoryPins({
+          rootPath, path, identity,
+          use: (pins) => Effect.gen(function* () {
+            retained = pins
+            const pin = pins.pins.at(-1)!
+            const actual = fstatSync(pin.fd, { bigint: true })
+            expect(actual.dev.toString()).toBe(pin.dev)
+            expect(actual.ino.toString()).toBe(pin.ino)
+            expect(pins.has({ kind: 'fd', ...pin })).toBe(true)
+            const extra = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY)
+            try {
+              expect(pins.has({ kind: 'fd', ...pin, fd: extra })).toBe(false)
+            } finally {
+              closeSync(extra)
+            }
+            return yield* fs.readFileString(`${path}/nested/deeper/artifact`)
+          }),
+        })
+        expect(value).toBe('original artifact')
+        expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe(value)
+        expect(retained).toBeDefined()
+        const pin = retained!.pins.at(-1)!
+        expect(retained!.has({ kind: 'fd', ...pin })).toBe(false)
+        expect(() => fstatSync(pin.fd)).toThrow()
+      },
+      Effect.provide(NodeServices.layer), Effect.scoped,
+    ),
+  )
+
+  for (const failure of ['typed', 'synchronous'] as const) {
+    it.effect(
+      `keeps real data and releases observation pins after ${failure} failure`,
+      Effect.fnUntraced(
+        function* () {
+          const { fs, rootPath, path } = yield* fixture
+          const identity = yield* captureDeletionIdentity({ rootPath, path })
+          let retained: OwnedDeletionPins | undefined
+          const refusal = new PinnedDeletionError({ path, message: 'Observation refuses' })
+          const result = yield* withPinnedDirectoryPins({
+            rootPath, path, identity,
+            use: (pins) => {
+              retained = pins
+              if (failure === 'synchronous') throw refusal
+              return Effect.fail(refusal)
+            },
+          }).pipe(Effect.exit)
+          expect(result._tag).toBe('Failure')
+          expect(retained).toBeDefined()
+          const pin = retained!.pins.at(-1)!
+          expect(retained!.has({ kind: 'fd', ...pin })).toBe(false)
+          expect(() => fstatSync(pin.fd)).toThrow()
+          expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
+          expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
+        },
+        Effect.provide(NodeServices.layer), Effect.scoped,
+      ),
+    )
+  }
+
+  it.effect(
+    'revokes and closes real observation pins on interruption',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        const entered = yield* Deferred.make<void>()
+        let retained: OwnedDeletionPins | undefined
+        yield* Effect.gen(function* () {
+          yield* withPinnedDirectoryPins({
+            rootPath, path, identity,
+            use: (pins) => Effect.gen(function* () {
+              retained = pins
+              yield* Deferred.succeed(entered, undefined)
+              return yield* Effect.never
+            }),
+          }).pipe(Effect.forkScoped)
+          yield* Deferred.await(entered)
+        }).pipe(Effect.scoped)
+        expect(retained).toBeDefined()
+        const pin = retained!.pins.at(-1)!
+        expect(retained!.has({ kind: 'fd', ...pin })).toBe(false)
+        expect(() => fstatSync(pin.fd)).toThrow()
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
+      },
+      Effect.provide(NodeServices.layer), Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'refuses replacement during observation without deleting either real tree',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        const detached = `${rootPath}/owner/detached`
+        const result = yield* withPinnedDirectoryPins({
+          rootPath, path, identity,
+          use: () => Effect.gen(function* () {
+            yield* fs.rename(path, detached)
+            yield* fs.makeDirectory(path)
+            yield* fs.writeFileString(`${path}/replacement`, 'replacement survives')
+          }),
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        expect(result._tag === 'Failure' && result.failure).toBeInstanceOf(PinnedDeletionError)
+        expect(yield* fs.readFileString(`${path}/replacement`)).toBe('replacement survives')
+        expect(yield* fs.readFileString(`${detached}/nested/deeper/artifact`)).toBe('original artifact')
+      },
+      Effect.provide(NodeServices.layer), Effect.scoped,
     ),
   )
 })

@@ -322,6 +322,16 @@ No caller-supplied ignore list or PID-wide exemption is accepted. The view's `ha
 predicate is revoked when the guard completes, fails, is interrupted, or throws; retained
 views do not authorize later actions. This seam is not census or deletion authorization.
 
+`withPinnedDirectoryPins({ rootPath, path, identity, use })` lends the same engine-owned
+pins to one awaited observation callback without any quarantine, rename or unlink postlude.
+It returns the callback value only after revalidating the pinned chain. The callback-scoped
+view is revoked before revalidation, failure or interruption cleanup, and all native fds
+are then closed. `withPinnedDeletion` shares this single acquisition/lifetime engine and
+adds its private physical-removal postlude after the guard's view is revoked. The
+observation API grants no reset, retarget or removal authority: callers must keep their
+own continuous action fence and capture fresh Git, owner, consumer and all-UID evidence
+inside the callback. A retained view or precomputed census cannot authorize a later action.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
