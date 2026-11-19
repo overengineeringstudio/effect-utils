@@ -41,14 +41,70 @@ const values = {
 
 describe('daemon RE posture', () => {
   it.each([
-    { nativeEvidence: false, reader: true, termination: 'exit', optional: false, trusted: false, localExit: 0 },
-    { nativeEvidence: true, reader: true, termination: 'exit', optional: false, trusted: false, localExit: 0 },
-    { nativeEvidence: true, reader: true, termination: 'exit', optional: false, trusted: false, localExit: 7 },
-    { nativeEvidence: true, reader: false, termination: 'exit', optional: true, trusted: false, localExit: 0 },
-    { nativeEvidence: true, reader: false, termination: 'exit', optional: false, trusted: false, localExit: 0 },
-    { nativeEvidence: true, reader: false, termination: 'exit', optional: true, trusted: true, localExit: 0 },
-    { nativeEvidence: true, reader: false, termination: 'SIGTERM', optional: false, trusted: false, localExit: 0 },
-    { nativeEvidence: true, reader: true, termination: 'SIGTERM', optional: false, trusted: false, localExit: 0 },
+    {
+      nativeEvidence: false,
+      reader: true,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: true,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: true,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 7,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'exit',
+      optional: true,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'exit',
+      optional: true,
+      trusted: true,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'SIGTERM',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: true,
+      termination: 'SIGTERM',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
   ])(
     'retains original failure and performs at most one LOCAL replay (evidence: $nativeEvidence, reader: $reader, optional: $optional, trusted: $trusted, localExit: $localExit, termination: $termination)',
     async ({ nativeEvidence, reader, termination, optional, trusted, localExit }) => {
@@ -193,7 +249,10 @@ else if(args.includes('build')) {
         expect(policy['buck2.remote_cache_enabled']).toBe('false')
         expect(policy['buck2.allow_cache_uploads']).toBe('false')
         expect(policy['buck2_re_client.http_headers']).toBe('')
-        const relationships = readFileSync(`${evidence}.local-fallbacks.jsonl`, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+        const relationships = readFileSync(`${evidence}.local-fallbacks.jsonl`, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
         expect(relationships).toHaveLength(1)
         const relationship = relationships[0]
         expect(relationship.originalBuildId).toBe(buildId)
@@ -205,13 +264,23 @@ else if(args.includes('build')) {
         expect(relationship.classification.nativeExitCode).toBe(1)
         expect(relationship.localOnly).toBe(true)
         if (nativeEvidence) {
-          const original = JSON.parse(readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'))
-          const local = JSON.parse(readFileSync(`${evidence}.native-build-ids/${relationship.localBuildId}.exit.json`, 'utf8'))
+          const original = JSON.parse(
+            readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'),
+          )
+          const local = JSON.parse(
+            readFileSync(
+              `${evidence}.native-build-ids/${relationship.localBuildId}.exit.json`,
+              'utf8',
+            ),
+          )
           expect(original.exitCode).toBe(1)
           expect(original.reapiUnavailable).toEqual(relationship.classification)
           expect(local.exitCode).toBe(localExit)
         }
-        const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+        const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
         expect(rows).toHaveLength(2)
         expect(rows.every((row) => row.event !== 'reader-reapi-unavailable-shadow')).toBe(true)
         const collector = Bun.spawn(

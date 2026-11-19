@@ -132,7 +132,6 @@ execute-once and trusted cache qualification. This is not an outage mask, a
 [reuse-client spec](../04-buck2/06-reuse-client/spec.md#direct-invocation-admission-buildbuckreuse-r04)
 owns the exact safety scope and evidence contract.
 
-
 Preflight failures emit a fixed error class (configuration, DNS, TCP, TLS,
 transport, deadline, authentication, HTTP, gRPC, or protocol), the configuration,
 DNS, TCP, TLS, or response phase, elapsed milliseconds, and the configured deadline.

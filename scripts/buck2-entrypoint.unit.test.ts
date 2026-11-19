@@ -374,33 +374,50 @@ it('admits readers and explicit optional writers but never trusted qualification
   for (const uploads of ['false', 'true']) {
     const values = { 'buck2.remote_cache_enabled': 'true', 'buck2.allow_cache_uploads': uploads }
     expect(cacheLocalFallbackEligible({ values, env: {} })).toBe(uploads === 'false')
-    expect(cacheLocalFallbackEligible({ values, env: { BUCK2_CACHE_WRITE_OPTIONAL: '1' } })).toBe(true)
+    expect(cacheLocalFallbackEligible({ values, env: { BUCK2_CACHE_WRITE_OPTIONAL: '1' } })).toBe(
+      true,
+    )
     for (const env of [
       { BUCK2_CACHE_TRUSTED_QUALIFICATION: '1' },
       { GITHUB_JOB: 'trusted-buck2-remote-cache-proof' },
-    ]) expect(cacheLocalFallbackEligible({
-      values, env: { ...env, BUCK2_CACHE_WRITE_OPTIONAL: '1' },
-    })).toBe(false)
-    expect(cacheLocalFallbackEligible({
-      values: { ...values, 'buck2.remote_cache_enabled': 'false' },
-      env: { BUCK2_CACHE_WRITE_OPTIONAL: '1' },
-    })).toBe(false)
+    ])
+      expect(
+        cacheLocalFallbackEligible({
+          values,
+          env: { ...env, BUCK2_CACHE_WRITE_OPTIONAL: '1' },
+        }),
+      ).toBe(false)
+    expect(
+      cacheLocalFallbackEligible({
+        values: { ...values, 'buck2.remote_cache_enabled': 'false' },
+        env: { BUCK2_CACHE_WRITE_OPTIONAL: '1' },
+      }),
+    ).toBe(false)
   }
 })
 
 it('replays one classified failure exactly once and returns the local result including failure', async () => {
   for (const localExit of [0, 7]) {
     const calls: string[] = []
-    expect(await runWithCacheLocalFallback({
-      eligible: true, command: { subcommand: 'build', argumentCount: 2 },
-      run: async () => { calls.push('native'); return { exitCode: 1, output: reUnavailable } },
-      onFallback: (value) => {
-        calls.push('classified')
-        expect(value.nativeExitCode).toBe(1)
-        expect(value.cause.transportMessage).toBe('tls-handshake-eof')
-      },
-      local: async () => { calls.push('local'); return localExit },
-    })).toBe(localExit)
+    expect(
+      await runWithCacheLocalFallback({
+        eligible: true,
+        command: { subcommand: 'build', argumentCount: 2 },
+        run: async () => {
+          calls.push('native')
+          return { exitCode: 1, output: reUnavailable }
+        },
+        onFallback: (value) => {
+          calls.push('classified')
+          expect(value.nativeExitCode).toBe(1)
+          expect(value.cause.transportMessage).toBe('tls-handshake-eof')
+        },
+        local: async () => {
+          calls.push('local')
+          return localExit
+        },
+      }),
+    ).toBe(localExit)
     expect(calls).toEqual(['native', 'classified', 'local'])
   }
 })
@@ -415,32 +432,74 @@ it('never replays disabled, signalled, unknown, mixed, auth, integrity or unforw
     { exitCode: 1, output: `${reUnavailable}\nError: digest mismatch` },
   ]) {
     let invocations = 0
-    expect(await runWithCacheLocalFallback({
-      eligible: true, command: { subcommand: 'test', argumentCount: 2 },
-      run: async () => { invocations++; return result },
-      onFallback: () => { throw new Error('unexpected fallback') },
-      local: async () => { invocations++; return 0 },
-    })).toBe(result.exitCode)
+    expect(
+      await runWithCacheLocalFallback({
+        eligible: true,
+        command: { subcommand: 'test', argumentCount: 2 },
+        run: async () => {
+          invocations++
+          return result
+        },
+        onFallback: () => {
+          throw new Error('unexpected fallback')
+        },
+        local: async () => {
+          invocations++
+          return 0
+        },
+      }),
+    ).toBe(result.exitCode)
     expect(invocations).toBe(1)
   }
 })
 
 it('pins local replay flags before payload and keeps original native identity sinks intact', () => {
   const options = { cwd: root, env: {}, buildId: 'local-id' }
-  expect(localCacheReplayArguments({
-    ...options, args: ['build', '//:app', '--write-build-id', 'original-id',
-      '--event-log=original-events', '--reuse-current-config', '--', '//:other'],
-  })).toEqual(['build', '//:app', '--write-build-id', 'original-id.local-local-id',
-    '--event-log=original-events.local-local-id', '--local-only', '--no-remote-cache', '--', '//:other'])
-  expect(localCacheReplayArguments({
-    ...options,
-    args: ['test', '//:tests', '--', '--event-log=literal', '--remote-only', '@literal'],
-  })).toEqual([
-    'test', '//:tests', '--local-only', '--no-remote-cache',
-    '--', '--event-log=literal', '--remote-only', '@literal',
+  expect(
+    localCacheReplayArguments({
+      ...options,
+      args: [
+        'build',
+        '//:app',
+        '--write-build-id',
+        'original-id',
+        '--event-log=original-events',
+        '--reuse-current-config',
+        '--',
+        '//:other',
+      ],
+    }),
+  ).toEqual([
+    'build',
+    '//:app',
+    '--write-build-id',
+    'original-id.local-local-id',
+    '--event-log=original-events.local-local-id',
+    '--local-only',
+    '--no-remote-cache',
+    '--',
+    '//:other',
+  ])
+  expect(
+    localCacheReplayArguments({
+      ...options,
+      args: ['test', '//:tests', '--', '--event-log=literal', '--remote-only', '@literal'],
+    }),
+  ).toEqual([
+    'test',
+    '//:tests',
+    '--local-only',
+    '--no-remote-cache',
+    '--',
+    '--event-log=literal',
+    '--remote-only',
+    '@literal',
   ])
   for (const args of [
-    ['run', '//:app'], ['install', '//:app'], ['bxl', '//:main'],
+    ['run', '//:app'],
+    ['install', '//:app'],
+    ['bxl', '//:main'],
     ['build', '--remote-only', '//:app'],
-  ]) expect(localCacheReplayArguments({ ...options, args })).toBeUndefined()
+  ])
+    expect(localCacheReplayArguments({ ...options, args })).toBeUndefined()
 })

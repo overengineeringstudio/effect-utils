@@ -28,7 +28,6 @@ const count = (value: unknown): number => {
   return value
 }
 
-
 export type ReaderReapiUnavailableShadow = {
   cause: {
     capabilitiesUnavailable: boolean
@@ -123,7 +122,9 @@ export type CacheLocalFallback = {
 }
 
 export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => {
-  const originalBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'originalBuildId' }))
+  const originalBuildId = canonicalCacheAdmissionInvocationId(
+    field({ value, key: 'originalBuildId' }),
+  )
   const localBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'localBuildId' }))
   const classification = decodeReaderReapiUnavailableShadow(field({ value, key: 'classification' }))
   const reason = field({ value, key: 'reason' })
@@ -134,22 +135,35 @@ export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => 
   const finishedAt = count(field({ value, key: 'finishedAt' }))
   const expectedReason = classification.cause.capabilitiesUnavailable
     ? 'capabilities'
-    : classification.cause.clientInitialization ? 'init' : 'connect'
+    : classification.cause.clientInitialization
+      ? 'init'
+      : 'connect'
   if (
     field({ value, key: 'schemaVersion' }) !== 1 ||
     field({ value, key: 'localOnly' }) !== true ||
     originalBuildId === localBuildId ||
     originalExitCode !== classification.nativeExitCode ||
     localExitCode > 255 ||
-    (classification.command.subcommand !== 'build' && classification.command.subcommand !== 'test') ||
+    (classification.command.subcommand !== 'build' &&
+      classification.command.subcommand !== 'test') ||
     reason !== expectedReason ||
     (localSignalCode !== null &&
       (typeof localSignalCode !== 'string' || /^SIG[A-Z0-9]+$/u.test(localSignalCode) === false)) ||
     finishedAt < startedAt
-  ) throw new Error('Invalid cache LOCAL fallback relationship')
+  )
+    throw new Error('Invalid cache LOCAL fallback relationship')
   return {
-    schemaVersion: 1, originalBuildId, localBuildId, reason, classification,
-    originalExitCode, localExitCode, localSignalCode, localOnly: true, startedAt, finishedAt,
+    schemaVersion: 1,
+    originalBuildId,
+    localBuildId,
+    reason,
+    classification,
+    originalExitCode,
+    localExitCode,
+    localSignalCode,
+    localOnly: true,
+    startedAt,
+    finishedAt,
   }
 }
 

@@ -1613,7 +1613,8 @@ export const runNativeWithEvidence = async ({
         createHash('sha256').update(realpathSync(root)).digest('hex'),
         ...(fresh === true ? ['--fresh-root'] : []),
         ...(process.env['BUCK2_NO_REMOTE_CACHE'] === '1'
-          ? ['--cache-read-policy', 'disabled-by-design'] : []),
+          ? ['--cache-read-policy', 'disabled-by-design']
+          : []),
       ],
       { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
     )
@@ -1680,9 +1681,14 @@ export const runNativeWithEvidence = async ({
     let reapiUnavailable: ReaderReapiUnavailableShadow | undefined
     await runWithReaderCacheShadow({
       reader: true,
-      command: { subcommand: buckSubcommand(args)?.command ?? 'unknown', argumentCount: args.length },
+      command: {
+        subcommand: buckSubcommand(args)?.command ?? 'unknown',
+        argumentCount: args.length,
+      },
       run: async () => nativeResult,
-      onShadow: (value) => { reapiUnavailable = value },
+      onShadow: (value) => {
+        reapiUnavailable = value
+      },
     })
     writeFileSync(
       `${completion}.pending`,
@@ -1891,12 +1897,15 @@ export const runWithReaderCacheShadow = async ({
 }
 
 /** Qualification is never an availability lane, including an inherited OPTIONAL flag. */
-export const trustedCacheQualification = (env: Readonly<Record<string, string | undefined>>): boolean =>
+export const trustedCacheQualification = (
+  env: Readonly<Record<string, string | undefined>>,
+): boolean =>
   env['BUCK2_CACHE_TRUSTED_QUALIFICATION'] === '1' ||
   env['GITHUB_JOB'] === 'trusted-buck2-remote-cache-proof'
 
 export const cacheLocalFallbackEligible = ({
-  values, env,
+  values,
+  env,
 }: {
   values: Readonly<Record<string, string>>
   env: Readonly<Record<string, string | undefined>>
@@ -1908,7 +1917,11 @@ export const cacheLocalFallbackEligible = ({
 
 /** Classify the original once; the supplied local operation cannot recurse. */
 export const runWithCacheLocalFallback = async ({
-  eligible, command, run, local, onFallback,
+  eligible,
+  command,
+  run,
+  local,
+  onFallback,
 }: {
   eligible: boolean
   command: ReaderReapiUnavailableShadow['command']
@@ -1918,7 +1931,12 @@ export const runWithCacheLocalFallback = async ({
 }): Promise<number> => {
   let classification: ReaderReapiUnavailableShadow | undefined
   const original = await runWithReaderCacheShadow({
-    reader: eligible, command, run, onShadow: (value) => { classification = value },
+    reader: eligible,
+    command,
+    run,
+    onShadow: (value) => {
+      classification = value
+    },
   })
   if (classification === undefined) return original
   onFallback(classification)
@@ -1927,7 +1945,10 @@ export const runWithCacheLocalFallback = async ({
 
 /** Expand once, retain explicit sinks separately, and never replay user binaries. */
 export const localCacheReplayArguments = ({
-  args, cwd, env, buildId,
+  args,
+  cwd,
+  env,
+  buildId,
 }: {
   args: readonly string[]
   cwd: string
@@ -1935,7 +1956,11 @@ export const localCacheReplayArguments = ({
   buildId: string
 }): string[] | undefined => {
   const invocation = resolveGateInvocation({
-    args, cwd, env, strictRunArguments: false, includePayload: true,
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    includePayload: true,
   })
   if (invocation === undefined) return undefined
   const command = buckSubcommand(invocation.args)?.command
@@ -2107,11 +2132,14 @@ const spawnNativeCommand = ({
   const handlers = signals.map((signal) => () => forward(signal))
   for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
   let hardDeadline: NodeJS.Timeout | undefined
-  const deadline = deadlineMs === undefined ? undefined : setTimeout(() => {
-    timedOut = true
-    forward('SIGTERM')
-    hardDeadline = setTimeout(() => child.kill('SIGKILL'), 5000)
-  }, deadlineMs)
+  const deadline =
+    deadlineMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          timedOut = true
+          forward('SIGTERM')
+          hardDeadline = setTimeout(() => child.kill('SIGKILL'), 5000)
+        }, deadlineMs)
   const result = (async (): Promise<NativeCommandResult> => {
     try {
       const output =
@@ -2300,7 +2328,10 @@ if (import.meta.main === true) {
     }
     const localBuildId = randomUUID()
     const replayArgs = localCacheReplayArguments({
-      args: requestedArgs, cwd: process.cwd(), env: process.env, buildId: localBuildId,
+      args: requestedArgs,
+      cwd: process.cwd(),
+      env: process.env,
+      buildId: localBuildId,
     })
     const superviseReader = shouldSuperviseReaderCommand({
       reader: fallbackEligible && replayArgs !== undefined,
@@ -2331,7 +2362,9 @@ if (import.meta.main === true) {
         local: async () => {
           if (root === undefined || classification === undefined || replayArgs === undefined)
             throw new Error('Buck2 LOCAL fallback requires an admitted root and classification')
-          const originalBuildId = canonicalCacheAdmissionInvocationId(process.env['BUCK_WRAPPER_UUID'])
+          const originalBuildId = canonicalCacheAdmissionInvocationId(
+            process.env['BUCK_WRAPPER_UUID'],
+          )
           const startedAt = Date.now()
           // Apply the existing offline overlay under the daemon lifecycle lock.
           // Same-isolation admission restarts only an idle mismatched daemon;
@@ -2343,34 +2376,62 @@ if (import.meta.main === true) {
           delete process.env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH']
           const localEnv = { ...process.env, BUCK2_CI_POSTURE: '1' }
           const localArgs = await admitCacheDaemonCommand({
-            native, root, args: replayArgs, env: localEnv,
-            admit: (beforeCachePosture) => directBuckArguments({
-              args: replayArgs, cwd: process.cwd(), env: localEnv,
-              beforeCachePosture, watchmanDirectory,
-            }),
+            native,
+            root,
+            args: replayArgs,
+            env: localEnv,
+            admit: (beforeCachePosture) =>
+              directBuckArguments({
+                args: replayArgs,
+                cwd: process.cwd(),
+                env: localEnv,
+                beforeCachePosture,
+                watchmanDirectory,
+              }),
           })
           const localInvocation = nativeBuildIdArguments({
             args: localArgs,
-            cwd: process.cwd(), env: process.env,
+            cwd: process.cwd(),
+            env: process.env,
           })
           nativeResult =
             (await runNativeWithEvidence({
-              native, args: localInvocation, root, stderr: 'pipe', deadlineMs: 600000,
+              native,
+              args: localInvocation,
+              root,
+              stderr: 'pipe',
+              deadlineMs: 600000,
             })) ??
             (await spawnNativeCommand({
-              native, args: localInvocation, stderr: 'pipe', deadlineMs: 600000,
+              native,
+              args: localInvocation,
+              stderr: 'pipe',
+              deadlineMs: 600000,
             }).result)
           const relationship = decodeCacheLocalFallback({
-            schemaVersion: 1, originalBuildId, localBuildId,
-            reason: classification.cause.capabilitiesUnavailable ? 'capabilities'
-              : classification.cause.clientInitialization ? 'init' : 'connect',
-            classification, originalExitCode: classification.nativeExitCode,
-            localExitCode: nativeResult.exitCode, localSignalCode: nativeResult.signalCode,
-            localOnly: true, startedAt, finishedAt: Date.now(),
+            schemaVersion: 1,
+            originalBuildId,
+            localBuildId,
+            reason: classification.cause.capabilitiesUnavailable
+              ? 'capabilities'
+              : classification.cause.clientInitialization
+                ? 'init'
+                : 'connect',
+            classification,
+            originalExitCode: classification.nativeExitCode,
+            localExitCode: nativeResult.exitCode,
+            localSignalCode: nativeResult.signalCode,
+            localOnly: true,
+            startedAt,
+            finishedAt: Date.now(),
           })
           const evidencePath = process.env['CI_BUCK2_CACHE_EVIDENCE_PATH']
           if (evidencePath !== undefined && evidencePath !== '')
-            appendFileSync(`${evidencePath}.local-fallbacks.jsonl`, `${JSON.stringify(relationship)}\n`, { mode: 0o600 })
+            appendFileSync(
+              `${evidencePath}.local-fallbacks.jsonl`,
+              `${JSON.stringify(relationship)}\n`,
+              { mode: 0o600 },
+            )
           warnStdio(
             `warning: Buck2 LOCAL fallback finished: original_build_id=${originalBuildId} local_build_id=${localBuildId} local_exit=${nativeResult.exitCode} local_signal=${nativeResult.signalCode ?? 'none'}; original failure remains diagnostic\n`,
           )
