@@ -1514,20 +1514,20 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             if let Some(root) = env::var_os("PNPM_GC_BIND_ALIAS_ROOT") {
                 let root = PathBuf::from(root);
                 let store = root.join("store");
-                assert!(process_proof(Path::new("/proc"), &store).is_ok());
+                process_proof(Path::new("/proc"), &store).unwrap();
                 let descriptor = fs::File::open(root.join("alias/payload")).unwrap();
                 assert!(
                     process_proof(Path::new("/proc"), &store)
                         .unwrap_err().contains("live process inode reference")
                 );
                 drop(descriptor);
-                assert!(process_proof(Path::new("/proc"), &store).is_ok());
+                process_proof(Path::new("/proc"), &store).unwrap();
                 let original = env::current_dir().unwrap();
                 env::set_current_dir(root.join("alias")).unwrap();
                 let protected = process_proof(Path::new("/proc"), &store);
                 env::set_current_dir(original).unwrap();
                 assert!(protected.unwrap_err().contains("live process inode reference"));
-                assert!(process_proof(Path::new("/proc"), &store).is_ok());
+                process_proof(Path::new("/proc"), &store).unwrap();
                 return;
             }
             let probe = Command::new("unshare").args(["-rmpf", "--mount-proc", "true"]).output();
@@ -1545,6 +1545,13 @@ printf live > "$1/store/payload"
 mount --bind "$1/store" "$1/alias" || exit 77
 export PNPM_GC_BIND_ALIAS_ROOT="$1"
 cd "$1" || exit 77
+# unshare clones mount IDs. Inherited gate/Nix descriptors can still refer to
+# the parent namespace's mounts, correctly yielding UNKNOWN. Isolate this alias
+# fixture instead of weakening production proof for detached mount references.
+for inherited in /proc/self/fd/*; do
+  descriptor=${inherited##*/}
+  case "$descriptor" in 0|1|2) ;; *) exec {descriptor}>&- ;; esac
+done
 exec "$2" --exact linux::tests::bind_alias_references_protect_payload_inodes --nocapture
 "#, "bind-reference"])
                 .arg(&root).arg(env::current_exe().unwrap()).output().unwrap();
