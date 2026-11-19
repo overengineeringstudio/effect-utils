@@ -1209,7 +1209,12 @@ export const admitCacheDaemonCommand = async ({
     initialValues['buck2.remote_cache_enabled'] !== 'true'
   )
     return admit()
-  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  const invocation = resolveGateInvocation({
+    args,
+    env,
+    cwd: process.cwd(),
+    strictRunArguments: false,
+  })
   if (invocation === undefined)
     throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
