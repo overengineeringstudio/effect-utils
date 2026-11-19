@@ -1142,6 +1142,9 @@ ok({
 ok({
   condition:
     editorViewHelper.includes('deadlineSeconds ? 300') &&
+    /deadlineSeconds\s*\?\s*\(?\s*if mode == "bootstrap" && packagePaths != null then\s+300 \* \(1 \+ builtins\.length packagePaths\)\s+else\s+300\s*\)?,/u.test(
+      editorViewHelper,
+    ) &&
     editorViewHelper.includes(
       'if deadlineSeconds == null then "none" else toString deadlineSeconds',
     ) &&
