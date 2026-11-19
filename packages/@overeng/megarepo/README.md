@@ -64,8 +64,15 @@ providers toward quarantine only.
 Host-store-wide count and charged-byte limits include preparing, leased and
 quarantined roots, across repositories. Reservations are accounting, not filesystem
 quotas; ordinary admitted execution remains responsible for runtime containment.
+Writable claims invalidate measured accounting until a safe release/remeasure.
+This blocks new reservations, not claims of other already-reserved ready roots.
+Status preserves live leased and completed ownership while accounting is unknown;
+an abandoned provider or a lost/unknown root path still causes quarantine.
 Every failed preparation reconciles retained logical bytes, including partial
 install growth. Unknown retained accounting or holders block further allocation.
+Missing pathnames cannot clear accounting: an unlinked file may still be held open.
+Clean-source and holder proofs run again after doctor/byte accounting, immediately
+before cleaning or publishing a ready/claimed generation.
 The charge uses apparent logical size, not allocated blocks: compression and sparse
 files cannot lower it. Report allocated disk usage separately; neither measurement
 claims exclusive bytes reclaimable from shared, reflinked or deduplicated storage.
