@@ -444,6 +444,9 @@ export const retargetPool = (args: {
         const admission = yield* Git.readLinkedWorktreeAdmission({
           owner: original.path, barePath: original.bare,
         })
+        if (original.path === admission.gitdir || original.path.startsWith(`${admission.gitdir}/`) ||
+          admission.gitdir.startsWith(`${original.path}/`))
+          return yield* new PoolError({ message: 'Retarget root and admin namespaces must be disjoint' })
         const rootTarget = { rootPath: args.base, path: original.path }
         const adminTarget = { rootPath: args.base, path: admission.gitdir }
         const rootIdentity = yield* captureDeletionIdentity(rootTarget)
@@ -489,31 +492,35 @@ export const retargetPool = (args: {
         yield* update()
         const intent = slot
         const execute = Effect.gen(function* () {
-          yield* runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] })
+          yield* withFreshProof(runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] }))
           yield* cleanSource(original)
-          if ((yield* poolInstallIdentity({
+          if ((yield* withFreshProof(poolInstallIdentity({
             path: original.path, commit: original.commit, base: args.base,
-          })) !== original.identity)
+          }))) !== original.identity)
             return yield* new PoolError({ message: 'Retarget installed projection changed; retained' })
           yield* withFreshProof(Effect.gen(function* () {
             yield* cleanSource(original)
             yield* Git.runCommand({ cwd: slot.path, args: ['clean', '-fdx', '-e', '/node_modules/'] })
             yield* Git.runCommand({ cwd: slot.path, args: ['checkout', '--detach', slot.commit] })
           }))
-          yield* preparePoolInstall(slot.path)
-          yield* runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] })
-          const ready = yield* withFreshProof(Effect.gen(function* () {
+          yield* withFreshProof(preparePoolInstall(slot.path))
+          yield* withFreshProof(runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] }))
+          const readiness = yield* withFreshProof(Effect.gen(function* () {
             yield* cleanSource(slot)
             const identity = yield* poolInstallIdentity({ path: slot.path, commit: slot.commit, base: args.base })
             const charge = yield* poolBytes(slot.path)
             if (charge > slot.charge)
               return yield* new PoolError({ message: 'Retarget exceeds reserved byte charge; retained' })
-            yield* assertCurrent
+            return { identity, charge }
+          }))
+          // Doctor is a real subprocess: neither its preceding source check nor census is final.
+          yield* cleanSource(slot)
+          return yield* withFreshProof(Effect.gen(function* () {
             const prepared = yield* finishPoolRetarget({
               slot, generation: slot.generation, token: slot.retarget!.token,
-              result: { _tag: 'Prepared', identity, charge },
+              result: { _tag: 'Prepared', ...readiness },
             })
-            return { ...prepared, activity: {
+            slot = { ...prepared, activity: {
               generation: prepared.generation, commit: prepared.commit, identity: prepared.identity,
               phase: 'retarget-ready' as const,
               event: {
@@ -522,10 +529,9 @@ export const retargetPool = (args: {
                 ownerLabel: args.owner, ownerLabelOrigin: 'retarget-argument' as const,
               },
             } }
+            yield* update()
+            return slot
           }))
-          slot = ready
-          yield* update()
-          return slot
         })
         return yield* execute.pipe(Effect.tapError((error) => Effect.gen(function* () {
           // Never overwrite a superseding nonce or lose the unresolved mutation intent.
@@ -535,7 +541,7 @@ export const retargetPool = (args: {
           slot = yield* retainPoolSlot({ slot: intent, reason: String(error) })
           yield* update()
         })))
-      }).pipe(withGitContainerLock({ path: original.bare, mode: 'exclusive' }))
+      }).pipe(withGitContainerLock({ path: original.bare, mode: 'shared' }))
     }),
   })
 
