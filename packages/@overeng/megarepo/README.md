@@ -74,8 +74,8 @@ Lock synchronization compares repository identity case-insensitively as well.
 ### Standalone Nix lock synchronization
 
 Check or update standalone flake locks from an already resolved root input, or
-select a revision explicitly, without changing their declared ref intent. For
-example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
+select a revision explicitly. Ref intent stays unchanged unless `--ref` is supplied.
+For example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
 
 ```bash
 mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock
@@ -91,6 +91,15 @@ supplies the actual locked metadata for the revision; write mode updates the
 authority root and selected standalone locks together atomically, preserving
 `original.ref`.
 Without `--write`, no locks are written and requested-revision drift fails the check.
+
+For an atomic member repin, use
+`mr lock-sync --input library --member library --ref feature/published --rev <40-character-sha> --write`.
+`--ref` proves reachability from that exact published GitHub branch and aligns
+matching lock originals and Nix source declarations from the old or requested branch.
+`--member` includes the megarepo config, member resolutions (including same-repository
+aliases), and both existing root locks in the same validated transaction. SHA-pinned
+aliases keep SHA intent and pin status. Without `--rev`, member mode also checks
+member and secondary-root drift against the current root resolution.
 
 Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
 Git pathspecs. This lets active consumers share the root resolution while archived
