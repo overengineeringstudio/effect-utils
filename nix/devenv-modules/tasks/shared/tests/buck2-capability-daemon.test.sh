@@ -105,13 +105,25 @@ assert_store_input() {
     jq -nc --arg tool "$tool" --arg generation "$gen" --arg target "$target" '{evidence:"direct-store-input",tool:$tool,generation:$generation,target:$target}'
   done
 }
-assert_gc_root() {
-  local root="$1" gen="$2" profile="$3" gc_root
-  gc_root="$root/.buck2/capability-roots/$gen"
-  [ -L "$gc_root" ] || fail "missing generation GC root $gen"
-  [ "$(readlink "$gc_root")" = "$profile" ] || fail "generation GC root targets wrong profile"
-  "$NIX_STORE_COMMAND" --query --roots "$profile" >"$TEMP_ROOT/gc-roots"
-  grep -Fq -- "$gc_root" "$TEMP_ROOT/gc-roots" || fail "Nix did not register indirect generation root $gen"
+assert_gc_roots() {
+  local root="$1" gen profile gc_root index
+  shift
+  local -a generations=() profiles=()
+  while [ "$#" -gt 0 ]; do
+    generations+=("$1")
+    profiles+=("$2")
+    shift 2
+  done
+  # Snapshot only this mutation-free checkpoint, then check each exact mapping.
+  "$NIX_STORE_COMMAND" --query --roots "${profiles[@]}" >"$TEMP_ROOT/gc-roots"
+  for ((index=0; index<${#generations[@]}; index++)); do
+    gen="${generations[$index]}"
+    profile="${profiles[$index]}"
+    gc_root="$root/.buck2/capability-roots/$gen"
+    [ -L "$gc_root" ] || fail "missing generation GC root $gen"
+    [ "$(readlink "$gc_root")" = "$profile" ] || fail "generation GC root targets wrong profile"
+    grep -Fxq -- "$gc_root -> $profile" "$TEMP_ROOT/gc-roots" || fail "Nix did not register indirect generation root $gen"
+  done
 }
 
 if [ "$WATCHER" = both ]; then watchers=(notify watchman); else watchers=("$WATCHER"); fi
@@ -282,8 +294,7 @@ CONFIG
     ' "$fixture/publication.json" >/dev/null || fail "migration did not retain both generations and stop only its two registered isolations"
     [ ! -e "$fixture/.buck2/capabilities.migration" ] || fail "successful native migration stop did not clear its obligation"
     [ -d "$fixture/.buck2/capabilities" ] && [ ! -L "$fixture/.buck2/capabilities" ] || fail "publisher did not migrate to a stable real capability cell"
-    assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
-    assert_gc_root "$fixture" "$GEN_TWO" "$PROFILE_TWO"
+    assert_gc_roots "$fixture" "$GEN_ONE" "$PROFILE_ONE" "$GEN_TWO" "$PROFILE_TWO"
     assert_store_input "$fixture/.buck2/capabilities" "$GEN_ONE"
   fi
   assert_store_input "$fixture/.buck2/capabilities" "$GEN_TWO"
@@ -331,8 +342,7 @@ CONFIG
     assert_output steady one steady
     assert_materialized_input steady "$GEN_ONE"
     grep -Fq -- 'capabilities//defs.bzl' "$fixture/steady.events" || fail "$watcher steady rotation did not report watched defs.bzl change"
-    assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
-    assert_gc_root "$fixture" "$GEN_TWO" "$PROFILE_TWO"
+    assert_gc_roots "$fixture" "$GEN_ONE" "$PROFILE_ONE" "$GEN_TWO" "$PROFILE_TWO"
     # A real native daemon, not a fabricated PID, holds an old action identity
     # beyond the three-generation retention window.
     old_tool="$(tool_directory "$fixture/.buck2/capabilities" "$GEN_ONE" archive-tool)"
@@ -344,7 +354,7 @@ CONFIG
       jq -e '.pruningDeferred == true and .migrationDaemonStops == []' "$fixture/retention-$version.json" >/dev/null || fail "live native daemon did not defer pruning"
     done
     [ -f "$old_tool/manifest.json" ] || fail "publication pruned a daemon-leased tool beyond retention"
-    assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
+    assert_gc_roots "$fixture" "$GEN_ONE" "$PROFILE_ONE"
     buck status >"$fixture/retention.status"
     [ "$(jq -er '.daemon_constraints.daemon_id' "$fixture/retention.status")" = "$daemon_uuid" ] || fail "retention publication replaced the live daemon"
     buck kill
