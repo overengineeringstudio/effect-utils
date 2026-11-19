@@ -519,6 +519,29 @@ Missing teardown, unknown processes, dirty/untracked source, changed commits or 
 preparation retain the root; no automatic dirty cleanup, expiry, removal or force-unlock
 exists. Removal remains the existing hygiene owner's operation with full consumer proof.
 
+The native per-slot operation primitive is `withPoolWorktreeOperationLock`.
+Its stable base is `<physical-slot-path>.mr-pool-operation`; the actual kernel
+control is `<physical-slot-path>.mr-pool-operation.mr-container.lock`, outside the
+removable root. Canonical store/repository/UUID membership and the real owned parent
+are checked. The no-follow control must be an owned, single-link regular file with
+mode `0600`, unchanged named device/inode after acquisition, and close-on-exec.
+It supplies no writer descriptor or child-borrow capability. Exclusive contention
+is a typed refusal, not successful admission or a waiting promise.
+Never unlink, rename or replace this control during reset, retirement, finalization
+or crash recovery: the persistent inode also protects existing kernel waiters.
+
+Lifecycle integration must use one order on every claim, preparation, reset,
+retirement and recovery path: **ROOT operation → short GLOBAL current-ledger CAS
+epochs → container → native identity pins**. No physical proof, doctor or install
+holds the global ledger fence. Reset/retarget uses a shared container fence because
+normal worktree activation takes its shared container lock before ancestor lease
+borrowing; an exclusive outer container would prevent that normal preparation.
+Retirement keeps its continuous exclusive container fence. Durable mutation intent
+and the root action lock are required before the first write through completion.
+A crash retains/quarantines the intent, never returns ready automatically.
+This primitive alone does not establish caller integration, concurrency/crash test
+results, holder SDK qualification or permission to activate physical operations.
+
 `readPoolProvenance` exports bearer-free observations through that same decoder,
 without initialization, migration writes, recovery, unlocks or removal. Missing or
 unsupported state fails closed, never fabricating an empty inventory. Legacy activity
