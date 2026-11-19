@@ -96,6 +96,7 @@ export default ciWorkflow({
           {
             name: `Assert clean source after bootstrap (${variant.name})`,
             if: "github.event_name == 'push'",
+            env: { GITHUB_TOKEN: '' },
             // No bootstrap mutation may enter either credentialed publisher.
             run: withCiSourceRoot(
               [

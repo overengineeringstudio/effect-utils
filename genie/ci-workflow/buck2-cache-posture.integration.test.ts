@@ -587,7 +587,15 @@ describe('generated CI cache trust behavior', () => {
       expect(bootstrap.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
       expect(bootstrap['timeout-minutes']).toBe(30)
       expect(isolation.if).toBe(bootstrap.if)
-      expect(isolation.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+      const isolationEnv = { ...publisher.env, ...isolation.env }
+      expect(isolationEnv.GITHUB_TOKEN).toBe('')
+      expect(isolationEnv.CACHIX_AUTH_TOKEN ?? '').toBe('')
+      for (const [name, value] of Object.entries(isolationEnv)) {
+        if (/TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|AUTH/i.test(name)) {
+          expect(value, name).toBe('')
+        }
+        expect(value).not.toMatch(/\$\{\{[^}]*(?:secrets\.|github\.token)/)
+      }
       expect(publisher.steps.indexOf(isolation)).toBe(publisher.steps.indexOf(bootstrap) + 1)
       expect(publisher.steps.indexOf(isolation)).toBeLessThan(
         publisher.steps.indexOf(shellPublication),
