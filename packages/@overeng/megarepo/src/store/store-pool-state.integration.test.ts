@@ -191,7 +191,7 @@ describe('pool authoritative lifecycle', () => {
       yield* fs.makeDirectory(`${base}.state/pool`, { recursive: true })
       yield* fs.writeFileString(
         `${base}.state/pool/state.json`,
-        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+        yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
           version: 1,
           maxSlots: 16,
           maxBytes: 1024,
@@ -222,7 +222,7 @@ describe('pool authoritative lifecycle', () => {
       yield* fs.makeDirectory(`${base}.state/pool`, { recursive: true })
       for (const version of [1, 2]) {
         const oldSlot = version === 1 ? historicalSlot : slot
-        const bytes = yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+        const bytes = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
           version,
           maxSlots: 1,
           maxBytes: 64,
@@ -234,7 +234,7 @@ describe('pool authoritative lifecycle', () => {
         ).toSatisfy(Exit.isFailure)
         expect(yield* fs.readFileString(path)).toBe(bytes)
       }
-      const bytes = yield* Schema.encodeEffect(Schema.UnknownFromJsonString)({
+      const bytes = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
         version: 2,
         maxSlots: 1,
         maxBytes: 64,
