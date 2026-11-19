@@ -91,7 +91,7 @@ behavior is unchanged. Baseline-measurement dispatches still exclude the lane.
 
 The authorized repository enqueuer runs
 `node scripts/check-quick-receipt.mjs --pr N` locally on Linux. The command
-fetches the current PR head into a separate leased gate worktree, runs the
+fetches the current PR head into a separate detached gate worktree, runs the
 canonical `check:quick` through `gate-slot`, requires its passing exact-head
 receipt, posts an allowlisted JSON receipt comment, and requests SHA-guarded
 native queue admission. Review and required queue checks remain separate gates.
@@ -104,7 +104,9 @@ authorship. The native gate receipt and log remain in the local state directory
 printed by the command. Hostnames, local paths and logs are not published.
 A failed, dirty, moved, nonlocal or incomplete gate cannot enqueue. A head
 change during fetch or execution refuses admission; the final enqueue is also
-SHA-guarded. Worktrees remain subject to the normal lease/reaping contract.
+SHA-guarded. With an agent seat, worktrees follow the normal lease/reaping
+contract. Plain local sessions do not fabricate lease attribution: on exit,
+their clean worktree is removed; dirty trees remain available for inspection.
 CI execution is deliberately refused: hosted or merge-group evidence does not
 replace the required local exact-head check.
 

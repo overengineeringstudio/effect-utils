@@ -65,15 +65,25 @@ export function main(args) {
   run(['git', 'fetch', '--no-tags', 'origin', `pull/${pr}/head`])
   if (run(['git', 'rev-parse', 'FETCH_HEAD']) !== head) throw new Error('PR head moved during fetch; no check or enqueue performed')
   run(['git', 'worktree', 'add', '--detach', worktree, head])
-  // Gate worktrees are retained under the normal lease/reaping contract, including failures.
-  run(['gate-lease-write', worktree, 'gate', process.env.FRACTAL_AGENT || process.env.ST_AGENT || ''])
+  const actor = process.env.FRACTAL_AGENT || process.env.ST_AGENT
+  if (actor) {
+    if (!actor.startsWith('agent/')) throw new Error('Invalid lease actor; refusing attribution')
+    run(['gate-lease-write', worktree, 'gate', actor])
+  } else {
+    // Plain local sessions have no seat to attribute. Never invent one.
+    // A clean detached checkout is disposable; dirty evidence is retained.
+    process.once('exit', () => {
+      try { run(['git', 'worktree', 'remove', worktree]) }
+      catch { console.error(`Worktree retained for inspection: ${worktree}`) }
+    })
+  }
   const receiptFile = join(evidence, 'gate.jsonl')
   const log = join(evidence, 'check.log')
   console.error(`Exact-head gate ${head}; evidence ${evidence}; worktree ${worktree}`)
   // A regular log file lets gate-slot retain its native diagnostics without a pipe.
   const logFd = openSync(log, 'wx', 0o600)
   try {
-    run(['gate-slot', '--class', 'gate', '--max-wait-mode', 'admissible', '--', ...command], {
+    run(['gate-slot', '--class', 'gate', '--guard-git-config', '--max-wait-mode', 'admissible', '--', ...command], {
       cwd: worktree,
       env: { ...process.env, GATE_SLOTS_RECEIPT_FILE: receiptFile },
       stdio: ['ignore', logFd, logFd],
