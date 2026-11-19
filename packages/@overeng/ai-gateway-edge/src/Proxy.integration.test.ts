@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto'
 import * as Http from 'node:http'
 import { join } from 'node:path'
+import {
+  brotliCompressSync,
+  constants as ZlibConstants,
+  createGzip,
+  deflateSync,
+  gzipSync,
+} from 'node:zlib'
 
 import { NodeHttpServer, NodeServices } from '@effect/platform-node'
 import { Effect, Fiber, FileSystem, Layer, Schema } from 'effect'
@@ -67,6 +74,27 @@ const start = async (
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('Expected TCP address')
   return `http://127.0.0.1:${address.port}`
+}
+
+const startRaw = async ({
+  socketPath,
+  handler,
+}: {
+  socketPath: string
+  handler: (incoming: Http.IncomingMessage, outgoing: Http.ServerResponse) => void
+}) => {
+  const server = Http.createServer(handler)
+  const listening = Promise.withResolvers<void>()
+  server.once('error', listening.reject)
+  server.listen(socketPath, listening.resolve)
+  await listening.promise
+  servers.push({
+    stop: async () => {
+      const closed = Promise.withResolvers<void>()
+      server.close((cause) => (cause !== undefined ? closed.reject(cause) : closed.resolve()))
+      await closed.promise
+    },
+  })
 }
 
 const gateway = async (
@@ -287,6 +315,240 @@ describe('Unix socket upstream (AIG.EDGE-R01, AIG.EDGE-R03, AIG.EDGE-R06)', () =
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     )
   })
+
+  it.each([
+    { encoding: 'gzip', compress: gzipSync },
+    { encoding: 'deflate', compress: deflateSync },
+    { encoding: 'br', compress: brotliCompressSync },
+  ])(
+    'decodes $encoding JSON from a raw socket upstream and meters exact usage',
+    async ({ encoding, compress }) => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'edge-socket-' })
+          const socketPath = join(directory, 'upstream.sock')
+          const bytes = encodeJson({ usage: { prompt_tokens: 7, completion_tokens: 4 } })
+          let upstreamAuth: string | undefined
+          yield* Effect.promise(() =>
+            startRaw({
+              socketPath,
+              handler(incoming, outgoing) {
+                upstreamAuth = incoming.headers.authorization
+                const compressed = compress(bytes)
+                outgoing.writeHead(200, {
+                  'content-type': 'application/json',
+                  'content-encoding': encoding,
+                  'content-length': compressed.length,
+                })
+                outgoing.end(compressed)
+              },
+            }),
+          )
+          yield* Effect.promise(async () => {
+            const upstream = 'http://fixture-user:fixture-password@upstream.example'
+            const { url, metrics } = await gateway(
+              upstream,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              {
+                upstream: new URL(upstream),
+                upstreamSocket: socketPath,
+                consumers: [
+                  {
+                    name: 'fixture-consumer',
+                    tokenSha256: createHash('sha256').update('secret').digest('hex'),
+                  },
+                ],
+              },
+            )
+            const response = await fetch(`${url}/v1/chat/completions`, {
+              method: 'POST',
+              headers: auth,
+              body: encodeJson({ model: 'fixture-compressed' }),
+            })
+            expect(response.status).toBe(200)
+            expect(response.headers.get('content-encoding')).toBeNull()
+            expect(await response.text()).toBe(bytes)
+            expect(upstreamAuth).toBeUndefined()
+            expect(metrics.render().split('\n')).toContain(
+              'requests_total{consumer="fixture-consumer",model="fixture-compressed",status="200"} 1',
+            )
+            expect(metrics.render().split('\n')).toContain(
+              'tokens_total{consumer="fixture-consumer",model="fixture-compressed",kind="input"} 7',
+            )
+            expect(metrics.render().split('\n')).toContain(
+              'tokens_total{consumer="fixture-consumer",model="fixture-compressed",kind="output"} 4',
+            )
+          })
+        }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      )
+    },
+  )
+
+  it('decodes gzip SSE incrementally from a raw socket upstream without forwarding bearer or losing usage', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'edge-socket-' })
+        const socketPath = join(directory, 'upstream.sock')
+        const release = Promise.withResolvers<void>()
+        const first = 'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'
+        const last =
+          'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":5}}\n\ndata: [DONE]\n\n'
+        let upstreamAuth: string | undefined
+        yield* Effect.promise(() =>
+          startRaw({
+            socketPath,
+            handler(incoming, outgoing) {
+              upstreamAuth = incoming.headers.authorization
+              outgoing.writeHead(200, {
+                'content-type': 'text/event-stream',
+                'content-encoding': 'gzip',
+              })
+              const gzip = createGzip()
+              gzip.pipe(outgoing)
+              gzip.write(first)
+              gzip.flush(ZlibConstants.Z_SYNC_FLUSH)
+              void release.promise.then(() => gzip.end(last))
+            },
+          }),
+        )
+        yield* Effect.promise(async () => {
+          const upstream = 'http://upstream.example'
+          const { url, metrics } = await gateway(
+            upstream,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {
+              upstream: new URL(upstream),
+              upstreamSocket: socketPath,
+              consumers: [
+                {
+                  name: 'fixture-consumer',
+                  tokenSha256: createHash('sha256').update('secret').digest('hex'),
+                },
+              ],
+            },
+          )
+          try {
+            const response = await fetch(`${url}/v1/chat/completions`, {
+              method: 'POST',
+              headers: auth,
+              body: encodeJson({ model: 'fixture-compressed', stream: true }),
+              signal: AbortSignal.timeout(5000),
+            })
+            expect(response.status).toBe(200)
+            expect(response.headers.get('content-encoding')).toBeNull()
+            const reader = response.body?.getReader()
+            if (reader === undefined) throw new Error('Expected SSE body')
+            const chunk = await reader.read()
+            expect(new TextDecoder().decode(chunk.value)).toBe(first)
+            release.resolve()
+            let remaining = ''
+            for (;;) {
+              const chunk = await reader.read()
+              if (chunk.done === true) break
+              remaining += new TextDecoder().decode(chunk.value)
+            }
+            expect(remaining).toBe(last)
+            expect(upstreamAuth).toBeUndefined()
+            expect(metrics.render().split('\n')).toContain(
+              'requests_total{consumer="fixture-consumer",model="fixture-compressed",status="200"} 1',
+            )
+            expect(metrics.render().split('\n')).toContain(
+              'tokens_total{consumer="fixture-consumer",model="fixture-compressed",kind="input"} 9',
+            )
+            expect(metrics.render().split('\n')).toContain(
+              'tokens_total{consumer="fixture-consumer",model="fixture-compressed",kind="output"} 5',
+            )
+          } finally {
+            release.resolve()
+          }
+        })
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    )
+  })
+
+  it.each(['invalid-status', 'unknown-encoding'])(
+    'sanitizes %s from a raw socket upstream, meters one rejection, and survives the next request',
+    async (failure) => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'edge-socket-' })
+          const socketPath = join(directory, 'upstream.sock')
+          let requests = 0
+          yield* Effect.promise(() =>
+            startRaw({
+              socketPath,
+              handler(_incoming, outgoing) {
+                requests += 1
+                if (requests === 1) {
+                  outgoing.writeHead(failure === 'invalid-status' ? 600 : 200, {
+                    'content-type': 'application/json',
+                    ...(failure === 'unknown-encoding'
+                      ? { 'content-encoding': 'unsupported-fixture' }
+                      : {}),
+                  })
+                  outgoing.end('private-upstream-detail')
+                } else {
+                  outgoing.writeHead(200, { 'content-type': 'application/json' })
+                  outgoing.end('{"object":"list","data":[]}')
+                }
+              },
+            }),
+          )
+          yield* Effect.promise(async () => {
+            const upstream = 'http://upstream.example'
+            const { url, metrics } = await gateway(
+              upstream,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              {
+                upstream: new URL(upstream),
+                upstreamSocket: socketPath,
+                consumers: [
+                  {
+                    name: 'fixture-consumer',
+                    tokenSha256: createHash('sha256').update('secret').digest('hex'),
+                  },
+                ],
+              },
+            )
+            const failed = await fetch(`${url}/v1/models`, { headers: auth })
+            expect(failed.status).toBe(502)
+            expect(await failed.json()).toEqual({
+              error: {
+                type: 'upstream_unavailable',
+                message: 'upstream socket unavailable',
+                code: null,
+              },
+            })
+            expect(metrics.render().split('\n')).toContain(
+              'requests_total{consumer="fixture-consumer",model="_rejected",status="502"} 1',
+            )
+            const healthy = await fetch(`${url}/v1/models`, { headers: auth })
+            expect(healthy.status).toBe(200)
+            expect(await healthy.json()).toEqual({ object: 'list', data: [] })
+            expect(requests).toBe(2)
+            expect(metrics.render().split('\n')).toContain(
+              'requests_total{consumer="fixture-consumer",model="_rejected",status="502"} 1',
+            )
+            expect(metrics.render().split('\n')).toContain(
+              'requests_total{consumer="fixture-consumer",model="models",status="200"} 1',
+            )
+          })
+        }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      )
+    },
+  )
 
   it('rejects a relative upstream socket path at startup', async () => {
     await Effect.runPromise(

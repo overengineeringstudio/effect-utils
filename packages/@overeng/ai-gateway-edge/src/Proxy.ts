@@ -2,6 +2,8 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { IncomingMessage, request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import type { Socket } from 'node:net'
+import { pipeline } from 'node:stream'
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
 
 import { NodeStream } from '@effect/platform-node'
 import { Data, Effect, Schema, Stream } from 'effect'
@@ -209,22 +211,53 @@ export const makeRoutes = ({
         agent: false,
       },
       (incoming) => {
-        const headers = new Headers()
-        for (const [name, value] of Object.entries(incoming.headers)) {
-          if (Array.isArray(value) === true) for (const part of value) headers.append(name, part)
-          else if (value !== undefined) headers.set(name, value)
-        }
-        const status = incoming.statusCode ?? 502
-        const bodyless = status === 204 || status === 205 || status === 304
-        if (bodyless === true) incoming.resume()
-        resolve(
-          new Response(
+        try {
+          const headers = new Headers()
+          for (const [name, value] of Object.entries(incoming.headers)) {
+            if (Array.isArray(value) === true) for (const part of value) headers.append(name, part)
+            else if (value !== undefined) headers.set(name, value)
+          }
+          const status = incoming.statusCode ?? 502
+          const bodyless = status === 204 || status === 205 || status === 304
+          const encoding = headers.get('content-encoding')?.trim().toLowerCase()
+          if (
+            encoding !== undefined &&
+            encoding !== '' &&
+            encoding !== 'identity' &&
+            encoding !== 'gzip' &&
+            encoding !== 'deflate' &&
+            encoding !== 'br'
+          )
+            throw new Error('Unsupported upstream content encoding')
+          const decoder =
             bodyless === true
-              ? null
-              : Stream.toReadableStream(NodeStream.fromReadable({ evaluate: () => incoming })),
-            { status, headers },
-          ),
-        )
+              ? undefined
+              : encoding === 'gzip'
+                ? createGunzip()
+                : encoding === 'deflate'
+                  ? createInflate()
+                  : encoding === 'br'
+                    ? createBrotliDecompress()
+                    : undefined
+          if (bodyless === true) incoming.resume()
+          else if (decoder !== undefined)
+            pipeline(incoming, decoder, (cause) => {
+              if (cause !== null && cause !== undefined) reject(cause)
+            })
+          resolve(
+            new Response(
+              bodyless === true
+                ? null
+                : Stream.toReadableStream(
+                    NodeStream.fromReadable({ evaluate: () => decoder ?? incoming }),
+                  ),
+              { status, headers },
+            ),
+          )
+        } catch (cause) {
+          incoming.destroy()
+          reject(cause)
+        }
       },
     )
     outgoing.on('error', reject)
