@@ -59,11 +59,14 @@ describe('native pool ownership safety', () => {
   it.effect('status preserves live and completed ownership', () =>
     Effect.gen(function* () {
       const { storePath, slot } = yield* fixture
-      yield* withPoolState({ base: storePath, use: (state, save) =>
-        save({
-          ...state,
-          slots: [{ ...slot, state: 'leased', token: 'task', generation: 1, chargeKnown: false }],
-        }) })
+      yield* withPoolState({
+        base: storePath,
+        use: (state, save) =>
+          save({
+            ...state,
+            slots: [{ ...slot, state: 'leased', token: 'task', generation: 1, chargeKnown: false }],
+          }),
+      })
       const live = yield* inspectPool(storePath)
       expect(live.slots[0]?.state).toBe('leased')
       expect(live.slots[0]?.chargeKnown).toBe(false)
@@ -77,9 +80,11 @@ describe('native pool ownership safety', () => {
       expect(observed.slots[0]?.chargeKnown).toBe(false)
       expect(observed.slots[0]?.token).toBe('task')
       expect(observed.slots[0]?.generation).toBe(1)
-      expect(yield* completePool({ base: storePath, id: slot.id, token: 'stale', generation: 1 }).pipe(Effect.exit)).toSatisfy(
-        Exit.isFailure,
-      )
+      expect(
+        yield* completePool({ base: storePath, id: slot.id, token: 'stale', generation: 1 }).pipe(
+          Effect.exit,
+        ),
+      ).toSatisfy(Exit.isFailure)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
@@ -92,15 +97,26 @@ describe('native pool ownership safety', () => {
         yield* fs.writeFileString(`${slot.path}/partial-install`, 'x'.repeat(16384))
         yield* fs.writeFileString(`${slot.path}/sparse-install`, '')
         yield* fs.truncate(`${slot.path}/sparse-install`, 16 * 1024 * 1024)
-        yield* withPoolState({ base: storePath, use: (state, save) =>
-          save({
-            ...state,
-            slots: [
-              { ...slot, charge: 1, token: 'partial', state: 'preparing', chargeKnown: false },
-            ],
-          }) })
-        yield* quarantinePool({ base: storePath, id: slot.id, token: 'partial', reason: 'install failed' })
-        const state = yield* withPoolState({ base: storePath, use: (state) => Effect.succeed(state) })
+        yield* withPoolState({
+          base: storePath,
+          use: (state, save) =>
+            save({
+              ...state,
+              slots: [
+                { ...slot, charge: 1, token: 'partial', state: 'preparing', chargeKnown: false },
+              ],
+            }),
+        })
+        yield* quarantinePool({
+          base: storePath,
+          id: slot.id,
+          token: 'partial',
+          reason: 'install failed',
+        })
+        const state = yield* withPoolState({
+          base: storePath,
+          use: (state) => Effect.succeed(state),
+        })
         expect(state.slots[0]?.state).toBe('quarantined')
         expect(state.slots[0]!.charge).toBeGreaterThan(16 * 1024 * 1024 + 16384)
         expect(yield* fs.readFileString(`${slot.path}/partial-install`)).toHaveLength(16384)
@@ -113,11 +129,14 @@ describe('native pool ownership safety', () => {
       const { storePath, slot } = yield* fixture
       yield* fs.writeFileString(`${slot.path}/retained`, 'held')
       const file = yield* fs.open(`${slot.path}/retained`, { flag: 'r' })
-      yield* withPoolState({ base: storePath, use: (state, save) =>
-        save({
-          ...state,
-          slots: [{ ...slot, token: 'lost', state: 'completed', chargeKnown: false }],
-        }) })
+      yield* withPoolState({
+        base: storePath,
+        use: (state, save) =>
+          save({
+            ...state,
+            slots: [{ ...slot, token: 'lost', state: 'completed', chargeKnown: false }],
+          }),
+      })
       // External pathname loss does not release the real open file description.
       yield* fs.remove(slot.path, { recursive: true })
       const state = yield* inspectPool(storePath)

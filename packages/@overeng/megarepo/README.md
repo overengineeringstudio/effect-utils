@@ -392,12 +392,10 @@ creating a fixed-path detached root with an atomic native Git lock. It publishes
 readiness only after installation and source/process proofs; failed preparation
 retains the locked root and reconciles partial growth into its charged bytes.
 
-Claims atomically fence one exact generation and adopt its persistent ownership
-without removing the deletion barrier. A provider records successful completion
-before exiting; inspection quarantines abandoned or uncertain providers instead
-of returning their roots to readiness.
-Live and completed receipts survive inspection while mutable accounting is unknown.
-Missing/unknown root paths remain quarantined, including retained open-file accounting.
+Claims atomically fence one generation and adopt its persistent barrier without unlinking it.
+Providers record completion before exiting; inspection quarantines abandoned/uncertain providers.
+Live and completed receipts survive inspection with unknown mutable accounting, never auto-ready.
+Missing/unknown roots remain quarantined, including retained open-file accounting.
 
 ### Process activity snapshot
 
