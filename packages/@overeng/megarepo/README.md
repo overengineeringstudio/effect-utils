@@ -577,6 +577,19 @@ produces an unknown, non-action decision instead of being silently omitted. Exis
 stateless action callers keep the same lease and fresh-evidence gates; historical
 entries never supply action authority.
 
+The CLI opts into resumable observations with `--dry-run --progress-dir DIRECTORY`.
+`--max-worktrees` bounds unfinished roots per invocation and defaults to one; without
+`--progress-dir` the existing stateless command is unchanged. Repeat the same command
+and directory to finish the frozen inventory, increasing the shard bound only after
+measuring it. The wrapper requires resolved executable and entrypoint paths in
+`/nix/store`, hashes their actual bytes and binds normalized configuration, host,
+agent and relevant environment context before opening the session.
+
+`--json` retains historical entries, their capture intervals, unfinished coverage and
+newly discovered roots. Human output labels that coverage historical and non-atomic.
+Even a complete receipt never authorizes apply or replaces a fresh consumer census;
+changed runtime/configuration, corrupt state and unsafe checkpoint paths refuse resume.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical

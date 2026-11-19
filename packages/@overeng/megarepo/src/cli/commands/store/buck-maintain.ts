@@ -1,6 +1,8 @@
 import { Console, Effect, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 
+import { validateBuckMaintainProgressOptions } from '../../../store/store-buck-maintain-progress-schema.ts'
+import { runBuckMaintainWithProgress } from '../../../store/store-buck-maintain-progress.ts'
 import {
   BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON,
   runBuckMaintain,
@@ -29,20 +31,37 @@ export const storeBuckMaintainCommand = Cli.Command.make(
       ),
       Cli.Flag.withDefault(false),
     ),
+    progressDir: Cli.Flag.String('progress-dir').pipe(
+      Cli.Flag.withDescription('Persist historical per-root dry-run observations in this directory; requires --dry-run'),
+      Cli.Flag.optional,
+    ),
+    maxWorktrees: Cli.Flag.Int('max-worktrees').pipe(
+      Cli.Flag.withDescription('Maximum unfinished roots per resumable shard (default: 1); requires --progress-dir'),
+      Cli.Flag.optional,
+    ),
     json: Cli.Flag.Boolean('json').pipe(
       Cli.Flag.withDescription('Emit the complete machine-readable maintenance receipt'),
       Cli.Flag.withDefault(false),
     ),
   },
-  ({ configPath, dryRun, json }) =>
+  ({ configPath, dryRun, json, progressDir, maxWorktrees }) =>
     Effect.gen(function* () {
-      const receipt = yield* runBuckMaintain({
-        configPath: Option.getOrUndefined(configPath),
-        dryRun,
-      })
+      const directory = Option.getOrUndefined(progressDir)
+      const maximum = Option.getOrUndefined(maxWorktrees)
+      const invalid = validateBuckMaintainProgressOptions({ dryRun, progressDir: directory, maxWorktrees: maximum })
+      if (invalid !== undefined) return yield* invalid
+      const options = { configPath: Option.getOrUndefined(configPath), dryRun }
+      const receipt = yield* directory === undefined
+        ? runBuckMaintain(options)
+        : runBuckMaintainWithProgress({ ...options, progressDir: directory, maxWorktrees: maximum })
       if (json === true) {
         yield* Console.log(encodeReceipt(receipt))
       } else {
+        if ('progress' in receipt) {
+          yield* Console.log(
+            `Historical dry-run coverage: ${receipt.progress.completed}/${receipt.progress.total} roots · ${receipt.progress.remaining} remaining · ${receipt.progress.complete === true ? 'complete' : 'partial'} (${receipt.progress.processedThisRun} this shard). Not an atomic fresh census; never authorizes apply.`,
+          )
+        }
         if (process.platform !== 'linux') {
           yield* Console.log(
             `Buck maintenance is unsupported on ${process.platform}: ${BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON}. No outputs or daemons will be changed. See #1955.`,
