@@ -189,7 +189,9 @@ describe('standalone Buck cache posture', () => {
     expect(escapeHatch).toContain('remote_cache_enabled = false')
     expect(escapeHatch).toContain('allow_cache_uploads = false')
     expect(escapeHatch).not.toContain('remote_cache_enabled = true')
-    expect(buckConfigValues(escapeHatch)['buck2_re_client.http_headers']).toBe('x-buck2-local-only: 1')
+    expect(buckConfigValues(escapeHatch)['buck2_re_client.http_headers']).toBe(
+      'x-buck2-local-only: 1',
+    )
   })
 
   it('selects the publisher posture only with a writer credential and never writes the credential', () => {
