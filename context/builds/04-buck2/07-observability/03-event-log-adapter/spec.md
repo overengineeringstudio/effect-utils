@@ -147,6 +147,64 @@ not create backend metric series. Conformance covers the retained local log
 and synthetic local/worker queues, explicit timing precedence (including
 zero), incomplete spans, repeated ends, and writer-host resource parity.
 
+## Bounded daily occurrence reader
+
+The dev3-local reader scores only the previous complete UTC day by native
+completion time, half-open `[00:00Z, 24:00Z)`. Its Loki ingestion window starts
+at that day's start and ends at read time. It MUST reject any window older
+than 48 hours before the read; retained host files are not permission for
+historical Loki backfill. This is a read-only consumer, not a rollout.
+
+The producer envelope is a **draft** dependency on #2656, pinned to
+`7a7eef1005c1a3ad3908f9c726cb20663e2e4c16`; this reader stacks on #2653,
+not the producer branch. Reconstruct `line + "\n"` in ordinal order, dedup
+`(snapshotSha256, ordinal)`, and verify SHA-256 before passing a snapshot to
+the shared retained-record codec/reconciler. Outer Loki timestamps are
+ingestion/emission evidence only; completion is filtered by the reconciler.
+Gateway body redaction can alter bytes: `hash-mismatch` is a distinct UNKNOWN
+reason, never silently repaired.
+
+Loki log reads use forward `query_range`, one request at a time, bounded by
+per-query and total collection deadlines. Read-only series discovery validates
+the gateway service label and actual host labels; do not invent host labels.
+Discover the effective `max_entries_limit_per_query` from `/config`. Saturated
+host-stream/time partitions are bisected into disjoint inclusive nanosecond
+ranges; saturation at a single timestamp is UNKNOWN. An unavailable effective
+limit cannot establish unsaturated completeness and contributes UNKNOWN.
+No push, delete, or admin operation is permitted.
+
+Conflicting ordinals, missing ordinals, record-count mismatch, unparsable
+envelopes, unsupported versions, hash mismatch, unknown limits, saturation,
+query failure, missing host streams, runtime exhaustion, and missing expected
+hosts/census all remain explicit UNKNOWN evidence. Collection exhaustion
+discards partial collection rather than publishing it as exact. Mimir checks
+`increase` of `loki_write_dropped_entries_total`,
+`otelcol_exporter_send_failed_log_records_total`, and Loki drops with
+`reason="ingester_error"` over the ingestion window; any increase, missing
+counter, or unavailable Mimir contributes UNKNOWN.
+
+The CLI requires `--previous-utc-day` and repeatable `--expected-host`.
+Endpoint flags are `--loki-url`, `--mimir-url`, and `--otlp-endpoint`.
+`--max-runtime` defaults to `20m`, `--query-timeout` to `60s`; durations accept
+positive integer `ms`, `s`, `m`, or `h`. `--format json` is the only format.
+The runtime budget reserves two query-timeout slots for metrics/log publication;
+`--max-runtime` must exceed twice `--query-timeout`. Collection exhaustion
+therefore has time to publish an UNKNOWN report rather than timing out silently.
+It prints the JSON report and publishes existing `buck2.cache.execute_once.*`
+gauges via OTLP HTTP with namespace `infra`, service `effect-utils-buck2`,
+scope `buck2-occurrence-loki-reader`. A companion JSON OTLP log includes proof
+and explicit reasons; ids and reasons are never metric labels. UNKNOWN exits
+zero; invalid input or publication/transport rejection exits nonzero.
+The #2653 author's inherited `fleet-registry:unknown`,
+`continuous-census:unknown`, `unsupported-entrypoints:unknown`, and
+`remote-worker-linkage:unknown` gaps are passed through unchanged: successful
+collection alone does not claim known fleet-wide proof.
+For nonempty records the reader also exposes `reader-seam:missing-repo` and
+`reader-seam:unsupported-lane`: #2653 supplies no repository and supplies
+`lane="supported-entrypoint/local"`, whereas #2604's scorecard expects a
+GitHub repository and a `CacheLane`. These are explicit upstream seam gaps,
+not fabricated GitHub provenance and not changes to either upstream contract.
+
 ## Schema Bump Procedure
 
 1. On a Buck version bump: fetch the pinned tag's protos, regenerate.
