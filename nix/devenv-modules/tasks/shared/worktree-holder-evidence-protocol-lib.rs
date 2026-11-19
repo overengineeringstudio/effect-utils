@@ -16,14 +16,14 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
-    fn generated_codec_bytes_match_frozen_nine_case_fixture() {
+    fn generated_codec_bytes_match_frozen_ten_case_fixture() {
         // Raw reviewed bytes, not a parsed or reserialized approximation.
         let expected = include_bytes!("../../../../packages/@overeng/megarepo/src/store/fixtures/worktree-holder-evidence-v1.jsonl");
-        assert_eq!(expected.len(), 11393);
+        assert_eq!(expected.len(), 12745);
         assert_eq!(digest::digest(expected.to_vec(), Instant::now() + Duration::from_secs(1)).unwrap(),
-            "dccf54d29201d599a2b39fb90d7ff42d84a171d17ed3c2854b4f4d8243f18606");
+            "06e42489f5e4d1664146a4e169bed0cb0f9ac5e0cb1c360b7d2cc0991c0b5bb7");
         let fixtures = protocol::codec_fixtures().unwrap();
-        assert_eq!(fixtures.len(), 9);
+        assert_eq!(fixtures.len(), 10);
         let mut actual = Vec::new();
         for fixture in fixtures {
             actual.extend_from_slice(&fixture);
