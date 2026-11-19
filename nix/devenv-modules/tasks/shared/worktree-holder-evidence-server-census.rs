@@ -471,7 +471,7 @@ mod tests {
         let task = task();
         let leader = Process { pid: 7, parent: 1, start: 100, state: b'Z' };
         let mut result = observation();
-        append_matches(&mut result, &[matched()], &leader, &task, ReferenceKind::Map, None, &mut 0);
+        append_matches(&mut result, &[matched()], &leader, &task, ReferenceKind::Map, None, &mut 0, None);
         let reference = &result.roots[0].references[0];
         assert_eq!((reference.tgid, reference.leader_start, reference.tid, reference.task_start), (7, 100, 8, 101));
         assert_eq!(reference.uid, [9, 10, 11, 12]);
@@ -486,7 +486,7 @@ mod tests {
         let mut result = observation();
         let mut count = 0;
         for _ in 0..=ROOT_REFERENCE_LIMIT {
-            append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(4), &mut count);
+            append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(4), &mut count, None);
         }
         let root = &result.roots[0];
         assert_eq!(root.references.len(), ROOT_REFERENCE_LIMIT);
@@ -513,7 +513,7 @@ mod tests {
         let task = task();
         let mut result = observation();
         let mut total = TOTAL_REFERENCE_LIMIT;
-        append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(5), &mut total);
+        append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(5), &mut total, None);
         assert!(result.roots[0].references.is_empty());
         assert!(!result.complete && !result.roots[0].references_complete);
         assert_eq!(result.roots[0].status, Status::Unknown);
