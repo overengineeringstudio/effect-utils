@@ -198,12 +198,12 @@ describe('pool authoritative lifecycle', () => {
           slots: records,
         }),
       )
-      const converted = yield* withPoolState({ base, use: Effect.succeed })
+      const converted = yield* withPoolState({ base, use: (state) => Effect.succeed(state) })
       expect(converted.version).toBe(2)
       expect(converted.slots).toEqual(
         records.map((record) => ({ ...record, sourceHistory: [record.commit] })),
       )
-      expect(yield* withPoolState({ base, use: Effect.succeed })).toEqual(converted)
+      expect(yield* withPoolState({ base, use: (state) => Effect.succeed(state) })).toEqual(converted)
       const bytes = yield* fs.readFileString(`${base}.state/pool/state.json`)
       expect(bytes).toContain('"version":2')
       expect(
