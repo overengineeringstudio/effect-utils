@@ -194,8 +194,14 @@ nanoseconds as strings; `durationNs` remains exact span elapsed time, matching C
 Host enrollment does not establish uninterrupted capture, an authoritative fleet
 registry, unsupported-entrypoint coverage or remote worker/shared-operation links;
 those absent authorities remain unknown. Valid observed per-host counts survive,
-including hosts outside the declared inventory. No CI private-fleet read authority,
-remote fetch transport, pipeline, daemon or exporter is introduced.
+including hosts outside the declared inventory. Local files grant no CI private-fleet
+read authority.
+
+Ledger log envelopes carry version 1, exact snapshot SHA-256, zero-based ordinal,
+total record count and one exact UTF-8 native JSONL line without its terminal LF.
+Reconstruction restores every LF, checks the complete hash, excludes conflicting
+snapshots and applies the same retained-file caps before strict reconciliation.
+Replay does not create additional occurrences; missing lines remain gaps.
 
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
