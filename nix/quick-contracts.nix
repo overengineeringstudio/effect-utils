@@ -84,10 +84,6 @@ let
   environment = ''
     set -euo pipefail
     export PATH="''${WORKTREE_POLICY_PATH:+$WORKTREE_POLICY_PATH:}${runtimePath}"
-    ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
-      export SDKROOT=${lib.escapeShellArg pkgs.apple-sdk.sdkroot}
-      export NIX_LDFLAGS=${lib.escapeShellArg "-L${pkgs.libiconv}/lib"}
-    ''}
     export DEVENV_ROOT="$PWD" WORKSPACE_ROOT="$PWD"
     : "''${WORKTREE_CAPABILITIES_PROFILE:?run devenv build effectUtils.quickContracts.capabilities and publish the returned profile}"
     export WORKTREE_CAPABILITIES_PROFILE

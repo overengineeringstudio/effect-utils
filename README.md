@@ -577,9 +577,6 @@ caller-owned policy, identity and trace context. The uncached checks observe Git
 inventories, capability publication, daemon
 lifecycle, Nix imports, generated bindings, hook isolation, and interruption.
 They are not hermetic build actions or remote-execution candidates.
-The retained Cargo protocol-bindings check uses the declared Nix C compiler,
-plus the Nix Apple SDK and iconv on Darwin, for Rust build-script linking rather
-than an ambient `cc` or Xcode installation.
 
 While devenv remains the evaluated task authority, prepare its immutable
 execution projection explicitly with
@@ -605,7 +602,9 @@ source files, rebuild the profile, republish it, and prepare again. All existing
 devenv tasks remain available; removing their evaluated authority requires a
 separate contract replacement, not deleting these guards.
 
-CI cache-posture admission accepts the declared tracing wrapper's native run options while retaining isolation and argument-file validation. The teardown regression binds its existing `DEVENV_BIN` explicitly to the pinned tool; it never relies on an ambient devenv executable in the Buck check PATH.
+When extending retained guards, update their evaluated tool closure rather than
+adding an ambient PATH or skipping a check. CI and fresh-worktree runs must use
+the same prepared task authority.
 
 Preparation reports up to ten untracked paths, JSON-escaped, and still refuses
 to publish them. The editor publisher's default content-addressed store is
