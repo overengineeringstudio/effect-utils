@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import * as Http from 'node:http'
 import { join } from 'node:path'
+import { inspect } from 'node:util'
 
 import { NodeHttpServer, NodeServices } from '@effect/platform-node'
-import { Effect, Fiber, FileSystem, Layer, Schema } from 'effect'
+import { Effect, Fiber, FileSystem, Layer, Redacted, Schema } from 'effect'
 import { HttpRouter } from 'effect/http'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { loadCases, toHttpClientResponse } from '@overeng/ai-gateway-conformance'
 
@@ -67,9 +68,10 @@ const gateway = async (
   maxModelLabels?: number,
   maxRequestBodyBytes?: number,
   routeMaxRequestBodyBytes?: GatewayConfig['routeMaxRequestBodyBytes'],
+  loadedConfig?: GatewayConfig,
 ) => {
   const { router, metrics } = makeRoutes({
-    config: {
+    config: loadedConfig ?? {
       upstream: new URL(upstream),
       consumers,
       ...(maxModelLabels === undefined ? {} : { maxModelLabels }),
@@ -100,6 +102,117 @@ const gateway = async (
 }
 
 const auth = { authorization: 'Bearer secret' }
+
+describe('upstream bearer authentication (AIG.EDGE-R01, AIG.EDGE-R03)', () => {
+  it('loads the bearer once, redacts config logs, and replaces consumer credentials on every route', async () => {
+    const token = 'upstream-fixture-bearer'
+    const observed: Array<{ path: string; authorization: string | null }> = []
+    const upstream = await start((request) => {
+      observed.push({
+        path: new URL(request.url).pathname,
+        authorization: request.headers.get('authorization'),
+      })
+      return Response.json({ object: 'list', data: [] })
+    })
+    const config = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'ai-gateway-edge-test-' })
+        const tokenPath = join(directory, 'upstream-token')
+        const configPath = join(directory, 'config.json')
+        yield* fs.writeFileString(tokenPath, `${token}\r\n`)
+        yield* fs.writeFileString(
+          configPath,
+          encodeJson({
+            upstream,
+            upstreamTokenFile: tokenPath,
+            consumers: [
+              {
+                name: 'fixture-consumer',
+                tokenSha256: createHash('sha256').update('secret').digest('hex'),
+              },
+            ],
+          }),
+        )
+        const loaded = yield* loadConfig(configPath)
+        expect(loaded.upstreamToken).toBeDefined()
+        if (loaded.upstreamToken !== undefined)
+          expect(Redacted.value(loaded.upstreamToken)).toBe(token)
+        const serialized = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(loaded)
+        expect(serialized).not.toContain(token)
+        expect(inspect(loaded)).not.toContain(token)
+        const logs = vi.spyOn(console, 'log').mockImplementation(() => {})
+        try {
+          yield* Effect.log(loaded)
+          expect(inspect(logs.mock.calls)).not.toContain(token)
+        } finally {
+          logs.mockRestore()
+        }
+        yield* fs.remove(tokenPath)
+        return loaded
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    )
+    const { url } = await gateway(upstream, undefined, undefined, undefined, undefined, config)
+    for (const path of [
+      '/v1/models',
+      '/v1/chat/completions',
+      '/v1/responses',
+      '/v1/systemone',
+      '/alpha/decisions',
+      '/healthz',
+    ]) {
+      const get = path === '/v1/models' || path === '/healthz'
+      const response = await fetch(`${url}${path}`, {
+        method: get === true ? 'GET' : 'POST',
+        headers: { ...auth, connection: 'authorization', 'content-type': 'application/json' },
+        ...(get === true ? {} : { body: '{"model":"fixture-model","input":"hello"}' }),
+      })
+      expect(response.status).toBe(200)
+      await response.text()
+    }
+    expect(observed).toHaveLength(6)
+    for (const request of observed) {
+      expect(request.authorization).toBe(`Bearer ${token}`)
+      expect(request.authorization).not.toBe(auth.authorization)
+    }
+  })
+
+  it.each(['missing', 'empty', 'newline', 'unreadable'])(
+    'fails startup closed for a %s upstream token file without exposing secrets',
+    async (kind) => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'ai-gateway-edge-test-' })
+          const secret = 'sensitive-fixture-marker'
+          const tokenPath = join(directory, secret)
+          if (kind === 'empty') yield* fs.writeFileString(tokenPath, '')
+          if (kind === 'newline') yield* fs.writeFileString(tokenPath, '\n')
+          if (kind === 'unreadable') yield* fs.makeDirectory(tokenPath)
+          const configPath = join(directory, 'config.json')
+          yield* fs.writeFileString(
+            configPath,
+            encodeJson({
+              upstream: 'https://upstream.example',
+              consumers: [],
+              upstreamTokenFile: tokenPath,
+            }),
+          )
+          const result = yield* loadConfig(configPath).pipe(Effect.result)
+          expect(result._tag).toBe('Failure')
+          if (result._tag === 'Failure') {
+            expect(result.failure._tag).toBe('UpstreamTokenLoadError')
+            expect(inspect(result.failure)).not.toContain(secret)
+            const serialized = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+              result.failure,
+            )
+            expect(serialized).not.toContain(secret)
+          }
+        }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      )
+    },
+  )
+})
 
 describe('consumer verifier isolation (AIG.EDGE-R01, AIG.EDGE-R05, AIG.EDGE-R06)', () => {
   it('rejects malformed, unknown and revoked bearers without revoking another consumer', async () => {

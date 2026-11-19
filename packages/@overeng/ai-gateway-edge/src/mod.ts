@@ -1,3 +1,3 @@
-export { ConfigLoadError, GatewayConfig, loadConfig } from './Config.ts'
+export { ConfigLoadError, GatewayConfig, loadConfig, UpstreamTokenLoadError } from './Config.ts'
 export { Metrics } from './Metrics.ts'
 export { makeRoutes } from './Proxy.ts'

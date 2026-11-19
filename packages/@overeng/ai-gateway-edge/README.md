@@ -29,6 +29,10 @@ The ports above are illustrative. All listener addresses and the upstream are ru
 
 Names and verifier digests must each be unique. Removing a verifier and restarting revokes only that consumer. The edge never forwards consumer Authorization to the upstream. Deployment must protect the optional metrics listener; it has no consumer auth.
 
+`upstreamTokenFile` is an optional nonempty file path. `loadConfig` reads it once before listeners start, removes exactly one trailing newline (`\n` or `\r\n`), and retains the token as an Effect `Redacted` value. Relative paths resolve against the process working directory. Missing, unreadable, or empty-after-newline-removal files fail startup with `UpstreamTokenLoadError`; errors omit file contents and filesystem causes. Rotation requires a restart. Do not put the token itself in JSON configuration.
+
+When configured, every upstream request, including health probes, carries `Authorization: Bearer <upstream token>` after consumer and hop-by-hop headers are stripped. This is a separate authentication hop, not a request-body rewrite. Without the field, upstream requests have no Authorization header, as before. A file readable by the edge's OS user is also readable by other processes of that user; deployments should isolate the service user.
+
 `maxModelLabels` is an optional nonnegative integer, defaulting to 64. Request, duration and token metrics retain model labels only for upstream 2xx responses, admit at most this many distinct values, and aggregate further models as `_other`. All non-2xx responses use `_rejected` without consuming the cap. Forwarded model IDs are never rewritten. Set the cap to zero to aggregate all successful models.
 
 `maxRequestBodyBytes` is an optional positive integer, defaulting to 1048576 (1 MiB). After authentication, the edge rejects a declared Content-Length above this limit before reading the body and counts raw bytes incrementally for bodies without a declared length. Exactly the limit is accepted; exceeding it stops reading immediately, before JSON decoding or upstream forwarding. Oversized requests return HTTP 413 with the stable local envelope:
@@ -52,6 +56,8 @@ const { router, metrics } = makeRoutes({ config })
 // Provide router to HttpRouter.serve with a NodeHttpServer layer.
 // metrics.render() is Prometheus text exposition.
 ```
+
+Use `loadConfig(path)` with an Effect FileSystem layer when configuring `upstreamTokenFile`; schema decoding alone does not read credential files.
 
 The empty table denies all protected operations. Model discovery, chat, structured output, tools and native decision responses pass through without semantic rewriting. Streaming chat forces `include_usage: true` and preserves SSE bytes. Provider usage is counted without inventing missing counts. Local errors have the shared error envelope; upstream errors retain their status and body.
 

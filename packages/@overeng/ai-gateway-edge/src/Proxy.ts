@@ -3,7 +3,7 @@ import { IncomingMessage } from 'node:http'
 import type { Socket } from 'node:net'
 
 import { NodeStream } from '@effect/platform-node'
-import { Data, Effect, Schema, Stream } from 'effect'
+import { Data, Effect, Redacted, Schema, Stream } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/http'
 
 import type { GatewayConfig } from './Config.ts'
@@ -352,6 +352,8 @@ export const makeRoutes = ({
           requestHeaders.set(name, value)
       }
       requestHeaders.set('accept-encoding', 'identity')
+      if (config.upstreamToken !== undefined)
+        requestHeaders.set('authorization', `Bearer ${Redacted.value(config.upstreamToken)}`)
       const effectSignal = yield* Effect.abortSignal
       const socketAbort = abortOnSocketClose(request.source.socket)
       const url = new URL(path, upstream)
@@ -482,7 +484,13 @@ export const makeRoutes = ({
 
   const health = Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
-      try: (signal) => fetch(new URL('/healthz', upstream), { signal }),
+      try: (signal) =>
+        fetch(new URL('/healthz', upstream), {
+          signal,
+          ...(config.upstreamToken === undefined
+            ? {}
+            : { headers: { authorization: `Bearer ${Redacted.value(config.upstreamToken)}` } }),
+        }),
       catch: () => 'upstream unavailable' as const,
     }).pipe(Effect.orElseSucceed(() => undefined))
     return result?.ok === true
