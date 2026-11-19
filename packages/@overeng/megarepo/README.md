@@ -500,6 +500,25 @@ refresh, reconciliation or pruning. Registration presence alone is not current
 member-pin, holder, root-activation or removal qualification.
 No adapter, copied Buck state or scripts-disabled preparation is used.
 
+The manual Linux fixture `src/test-utils/pool-activation-qualification.ts` exercises
+a **real different canonical caller's normal activation**, then claims a ready slot
+and runs normal doctor/identity collection inside its live provider ancestry.
+Run it only after separate SDK/service/root qualification and normal admission:
+`devenv shell -- bun packages/@overeng/megarepo/src/test-utils/pool-activation-qualification.ts /absolute/private/config.json`.
+The explicit JSON config follows that file's `Config`: exact store/slot/source/install
+binding; canonical caller root/bare/commit; expected caller and slot state/dotfile
+values from their actual evaluated configurations; declared absolute Nix-store
+`mr`, `devenv`, `bash`, `node` providers; and an existing owned mode-0700 `evidenceRoot`.
+No root environment variables are mocked, unset or overridden, and the claimed
+child is not reactivated before its first normal task. Caller root/admin metadata
+is compared after caller activation and around claimed execution, with no ignored
+paths, link following or copied file bytes. Autonomous caller writes also fail it.
+Full output (including the CLI lease), task reports and receipts remain private;
+never publish the raw evidence. Exact-root registration is compared with fresh
+member pins, not a union from other workspaces. Success establishes this fixture's
+activation binding only, not holder/seat/cleanup authority. It leaves the slot
+completed with unknown charge; it never auto-releases, resets or removes it.
+
 Fresh reserved UUID execution roots have an explicit disposable-ignored contract:
 ignored bytes in a proven-fresh, never-authored, never-promoted root are execution
 outputs and may be reset. Only canonical reservation records establish this class;
