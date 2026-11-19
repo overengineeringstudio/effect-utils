@@ -10,25 +10,35 @@ const VERSION: &str = "pnpm-store-evidence-v1";
 const COMMAND: Option<&str> = option_env!("PNPM_GC_PROCESS_EVIDENCE_COMMAND");
 const PROOF_TTL_NS: u64 = 30_000_000_000;
 
-fn boot_time_ns() -> Result<u64, String> {
-    #[repr(C)]
-    struct Timespec { seconds: std::ffi::c_long, nanoseconds: std::ffi::c_long }
-    unsafe extern "C" { fn clock_gettime(clock: std::ffi::c_int, value: *mut Timespec) -> std::ffi::c_int; }
-    let mut value = Timespec { seconds: 0, nanoseconds: 0 };
-    // Linux CLOCK_BOOTTIME includes suspend, unlike Instant/CLOCK_MONOTONIC.
-    // SAFETY: exact libc timespec layout and a valid writable output pointer.
-    if unsafe { clock_gettime(7, &mut value) } != 0 {
-        return Err(format!("process evidence boot clock: {}", std::io::Error::last_os_error()));
-    }
-    let seconds = u64::try_from(value.seconds).map_err(|_| "negative process evidence boot clock")?;
-    let nanos = u64::try_from(value.nanoseconds).map_err(|_| "negative process evidence boot nanos")?;
-    if nanos >= 1_000_000_000 { return Err("invalid process evidence boot nanos".into()); }
-    seconds.checked_mul(1_000_000_000).and_then(|seconds| seconds.checked_add(nanos))
+// /proc/uptime is Linux's suspend-inclusive boot clock, truncated to centiseconds.
+// Keep the lower reading and charge its entire uncertainty at acceptance.
+const BOOT_CLOCK_UNCERTAINTY_NS: u64 = 10_000_000;
+
+fn parse_boot_time(bytes: &[u8]) -> Result<u64, String> {
+    let value = std::str::from_utf8(bytes).map_err(|_| "non-UTF8 process evidence boot clock")?;
+    let (uptime, _) = value.split_once(' ').ok_or("truncated process evidence boot clock")?;
+    let (seconds, fraction) = uptime.split_once('.').ok_or("invalid process evidence boot clock")?;
+    if seconds.is_empty() || !seconds.bytes().all(|byte| byte.is_ascii_digit())
+        || fraction.len() != 2 || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    { return Err("invalid process evidence boot clock".into()); }
+    let seconds = seconds.parse::<u64>().map_err(|_| "process evidence boot clock overflow")?;
+    let centiseconds = fraction.parse::<u64>().map_err(|_| "invalid process evidence boot clock")?;
+    seconds.checked_mul(1_000_000_000)
+        .and_then(|seconds| seconds.checked_add(centiseconds * BOOT_CLOCK_UNCERTAINTY_NS))
         .ok_or_else(|| "process evidence boot clock overflow".into())
 }
 
+fn boot_time_ns() -> Result<u64, String> {
+    let mut clock = fs::File::open("/proc/uptime").map_err(|error| error.to_string())?;
+    let mut bytes = [0u8; 128];
+    let count = clock.read(&mut bytes).map_err(|error| error.to_string())?;
+    if count == bytes.len() { return Err("oversized process evidence boot clock".into()); }
+    parse_boot_time(&bytes[..count])
+}
+
 fn fresh(started: u64, now: u64) -> Result<(), String> {
-    if now < started || now - started >= PROOF_TTL_NS {
+    if now < started || now.checked_add(BOOT_CLOCK_UNCERTAINTY_NS)
+        .and_then(|upper| upper.checked_sub(started)).is_none_or(|age| age >= PROOF_TTL_NS) {
         Err("process evidence expired".into())
     } else { Ok(()) }
 }
@@ -158,12 +168,23 @@ mod tests {
     #[test]
     fn queued_success_expires_on_boot_clock_even_without_monotonic_progress() {
         let started = 123_000_000_000;
-        assert!(fresh(started, started + PROOF_TTL_NS - 1).is_ok());
+        assert!(fresh(started, started + PROOF_TTL_NS - BOOT_CLOCK_UNCERTAINTY_NS - 1).is_ok());
+        assert!(fresh(started, started + PROOF_TTL_NS - BOOT_CLOCK_UNCERTAINTY_NS).is_err());
         assert!(fresh(started, started + PROOF_TTL_NS).is_err());
         assert!(fresh(started, started + PROOF_TTL_NS + 1).is_err());
         assert!(fresh(started, started - 1).is_err());
         let actual = boot_time_ns().unwrap();
         assert!(fresh(actual, boot_time_ns().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn suspend_clock_parser_bounds_decimal_precision_and_overflow() {
+        assert_eq!(parse_boot_time(b"123.45 987.65\n").unwrap(), 123_450_000_000);
+        for invalid in [b"".as_slice(), b"123.45", b"-1.00 0.00\n", b"1.1 0.00\n",
+            b"1.001 0.00\n", b"18446744073709551615.00 0.00\n", b"1.x0 0.00\n"] {
+            assert!(parse_boot_time(invalid).is_err());
+        }
+        assert!(fresh(u64::MAX - 1, u64::MAX).is_err());
     }
 
     #[test]
