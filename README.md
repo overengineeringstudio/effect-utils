@@ -577,6 +577,8 @@ caller-owned policy, identity and trace context. The uncached checks observe Git
 inventories, capability publication, daemon
 lifecycle, Nix imports, generated bindings, hook isolation, and interruption.
 They are not hermetic build actions or remote-execution candidates.
+The retained Cargo protocol-bindings check uses the declared Nix C compiler
+closure for Rust build-script linking, rather than an ambient `cc`.
 
 While devenv remains the evaluated task authority, prepare its immutable
 execution projection explicitly with
