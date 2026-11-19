@@ -1,5 +1,9 @@
 export {
   CachePublisherJobError,
+  defineHostedPrivateCacheRead,
+  type HostedPrivateCacheRead,
+  hostedPrivateCacheReadPolicy,
+  trustedHostedCacheReadGate,
   jobCacheDescriptors,
   trustedCacheWriterGuardedSecret,
   publisherWriteSecret,

@@ -1,6 +1,9 @@
 import {
   isFleetCacheRunner,
   PrivateBinaryCacheRunnerError,
+  type HostedPrivateCacheRead,
+  isHostedPrivateCacheReadRunner,
+  matchesHostedPrivateCacheRead,
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
 export { isFleetCacheRunner, PrivateBinaryCacheRunnerError }
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
@@ -56,13 +59,20 @@ export const renderBinaryCachesExtraConf = (caches: readonly BinaryCacheDescript
 export const binaryCachesExtraConfForJob = ({
   runner,
   caches,
+  job,
+  hostedPrivateCacheReads = [],
 }: {
   readonly runner: string | readonly string[]
   readonly caches: readonly BinaryCacheDescriptor[]
+  readonly job?: string
+  readonly hostedPrivateCacheReads?: readonly HostedPrivateCacheRead[]
 }): string => {
-  const privateCache = caches.find((cache) => cache.visibility === 'private')
-  if (privateCache !== undefined && isFleetCacheRunner(runner) === false) {
-    throw new PrivateBinaryCacheRunnerError({ cacheName: privateCache.name, runner })
+  for (const cache of caches) {
+    if (cache.visibility === 'private' && isFleetCacheRunner(runner) === false &&
+      (isHostedPrivateCacheReadRunner(runner) === false ||
+        hostedPrivateCacheReads.some((read) => matchesHostedPrivateCacheRead(read, job, cache)) === false)) {
+      throw new PrivateBinaryCacheRunnerError({ cacheName: cache.name, runner })
+    }
   }
   return renderBinaryCachesExtraConf(caches)
 }

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
-import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   binaryCachesExtraConfForJob,
   ConflictingBinaryCacheError,
@@ -20,6 +20,9 @@ import {
 } from './binary-cache-descriptors.ts'
 import {
   CachePublisherJobError,
+  defineHostedPrivateCacheRead,
+  hostedPrivateCacheReadPolicy,
+  trustedHostedCacheReadGate,
   trustedCacheWriterGuardedSecret,
   publisherWriteSecret,
   validateWorkflowCachePolicy,
@@ -75,6 +78,76 @@ describe('build cache composition', () => {
     expect(publisher.message).toBe(
       'Cache publisher job publish requires protected main-branch publication or an exact main-push Buck2 secret guard; write secrets are step-local',
     )
+  })
+
+  it('admits only explicit hosted job/cache/read-secret capabilities behind the first trusted gate', () => {
+    const read = defineHostedPrivateCacheRead({
+      job: 'build', cache: privateCache, readSecret: 'CACHIX_READ_PRIVATE',
+      trustedActors: ['trusted-maintainer'],
+    })
+    const credential = { run: 'configure-reader', env: { CACHIX_READ_TOKEN: '${{ secrets.CACHIX_READ_PRIVATE }}' } }
+    const checkout = { uses: 'actions/checkout@v4' }
+    const install = installNixStep({ binaryCaches: [privateCache] })
+    const job = {
+      ...hostedPrivateCacheReadPolicy(read),
+      'runs-on': 'ubuntu-latest',
+      steps: [trustedHostedCacheReadGate(read), checkout, credential, install],
+    }
+    const validate = (candidate: GitHubWorkflowArgs['jobs'][string] = job, name = 'build') => githubWorkflow({
+      on: 'pull_request', jobs: { [name]: candidate },
+    })
+    expect(() => validate()).not.toThrow()
+    expect(() => validate().stringify({ cwd: '/', location: '' })).not.toThrow()
+    expect(binaryCachesExtraConfForJob({
+      job: 'build', runner: ['ubuntu-latest'], caches: [privateCache], hostedPrivateCacheReads: [read],
+    })).toContain(privateCache.uri)
+    for (const caches of [
+      [{ ...privateCache, name: 'other' }],
+      [{ ...privateCache, uri: 'https://other.cachix.org' }],
+    ]) {
+      expect(() => binaryCachesExtraConfForJob({
+        job: 'build', runner: 'ubuntu-latest', caches, hostedPrivateCacheReads: [read],
+      })).toThrow(PrivateBinaryCacheRunnerError)
+    }
+    expect(() => binaryCachesExtraConfForJob({
+      job: 'other', runner: 'ubuntu-latest', caches: [privateCache], hostedPrivateCacheReads: [read],
+    })).toThrow(PrivateBinaryCacheRunnerError)
+    expect(() => validate(job, 'other')).toThrow(PrivateBinaryCacheRunnerError)
+    for (const steps of [
+      [checkout, credential, install],
+      [checkout, trustedHostedCacheReadGate(read), credential, install],
+      [credential, trustedHostedCacheReadGate(read), checkout, install],
+      [{ ...trustedHostedCacheReadGate(read), 'continue-on-error': true }, credential, install],
+      [{ ...trustedHostedCacheReadGate(read), run: 'true' }, credential, install],
+      [trustedHostedCacheReadGate(read), { run: 'true' }, install],
+      [trustedHostedCacheReadGate(read), { ...credential, env: { OTHER_TOKEN: '${{ secrets.CACHIX_READ_PRIVATE }}' } }, install],
+    ]) {
+      expect(() => validate({ ...job, steps })).toThrow(PrivateBinaryCacheRunnerError)
+    }
+    expect(() => validate({ ...job, ...hostedPrivateCacheReadPolicy({ ...read, cache: { ...privateCache, name: 'other' } }) }))
+      .toThrow(PrivateBinaryCacheRunnerError)
+    expect(() => defineHostedPrivateCacheRead({
+      ...read, readSecret: 'CACHIX_AUTH_TOKEN' as typeof read.readSecret,
+    })).toThrow()
+    // A dedicated-looking read secret used by any publisher is still a writer.
+    expect(() => validateWorkflowCachePolicy({
+      workflow: { on: 'pull_request', jobs: {
+        build: job,
+        publish: { 'runs-on': 'sh-linux-x64', steps: [{
+          [publisherWriteSecret]: read.readSecret,
+          run: 'publish', env: { TOKEN: '${{ secrets.CACHIX_READ_PRIVATE }}' },
+        }] },
+      } },
+    })).toThrow(PrivateBinaryCacheRunnerError)
+    expect(() => validate({ ...job, env: { TOKEN: '${{ secrets.CACHIX_READ_PRIVATE }}' } }))
+      .toThrow(PrivateBinaryCacheRunnerError)
+    expect(() => validate({ ...job, env: { BASH_ENV: './untrusted.sh' } }))
+      .toThrow(PrivateBinaryCacheRunnerError)
+    // Metadata discovers the private descriptor even with raw extra-conf.
+    expect(() => validate({ ...job, steps: [
+      trustedHostedCacheReadGate(read), credential,
+      { run: 'true', env: { NIX_CONFIG: `extra-substituters = ${privateCache.uri}` } },
+    ] })).not.toThrow()
   })
 
   it('accepts public cache on non-fleet and private cache only on static fleet labels', () => {
