@@ -25,6 +25,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
+import { open } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname } from 'node:path'
 
@@ -35,6 +36,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
 import { resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
+import { writeFileAtomic } from './store-fs-atomic.ts'
 
 /** On-disk lease record version. */
 const DELETION_LEASE_VERSION = 1
@@ -56,7 +58,7 @@ export class DeletionLeaseUnavailableError extends Schema.TaggedError<DeletionLe
  * admission, never deletion or recovery. Older records remain non-reentrant.
  */
 const DeletionLeaseRecord = Schema.Struct({
-  version: Schema.Literal(DELETION_LEASE_VERSION),
+  version: Schema.Literals([DELETION_LEASE_VERSION, 2]),
   ownerPath: Schema.String,
   host: Schema.String,
   pid: Schema.Finite,
@@ -219,6 +221,8 @@ const hasAncestorActivationLease = ({
  * an unexpected error — keeps the lease.
  */
 const isProvablyReleasable = (record: DeletionLeaseRecord): boolean => {
+  // Pool ownership outlives its provider process. Older readers reject v2.
+  if (record.version === 2) return false
   if (record.host !== hostname()) return false
   if (Number.isInteger(record.pid) === false || record.pid <= 0) return false
   if (record.pid === process.pid) return false
@@ -242,11 +246,13 @@ export const acquireDeletionLease = ({
   ownerPath,
   now,
   activationIdentity,
+  persistent = false,
 }: {
   storeBasePath: AbsoluteDirPath
   ownerPath: string
   now: number
   activationIdentity?: { readonly storePath: string; readonly containerPath: string }
+  persistent?: boolean
 }): Effect.Effect<DeletionLease, DeletionLeaseUnavailableError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -254,7 +260,7 @@ export const acquireDeletionLease = ({
     const leasePath = deletionLeasePath({ storeBasePath, ownerPath: canonicalOwnerPath })
     const token = randomUUID()
     const record: DeletionLeaseRecord = {
-      version: DELETION_LEASE_VERSION,
+      version: persistent === true ? 2 : DELETION_LEASE_VERSION,
       ownerPath: canonicalOwnerPath,
       host: hostname(),
       pid: process.pid,
@@ -347,7 +353,74 @@ export const acquireDeletionLease = ({
       })
     }
 
+    if (persistent === true)
+      yield* Effect.forEach(
+        [leasePath, dirname(leasePath)],
+        (path) =>
+          Effect.tryPromise({
+            try: async () => {
+              const handle = await open(path, 'r')
+              try {
+                await handle.sync()
+              } finally {
+                await handle.close()
+              }
+            },
+            catch: (cause) =>
+              new DeletionLeaseUnavailableError({
+                ownerPath: canonicalOwnerPath,
+                leasePath,
+                message: `Persistent deletion barrier could not be synced: ${cause}`,
+              }),
+          }),
+        { concurrency: 1, discard: true },
+      )
     return { leasePath, ownerPath: canonicalOwnerPath, token }
+  })
+
+/** Transfer a persistent pool barrier without an unlink/reacquire deletion window.
+ * Caller must serialize its authoritative generation before granting execution.
+ */
+export const adoptPersistentDeletionLease = (lease: DeletionLease) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
+    if (
+      record?.version !== 2 ||
+      record.token !== lease.token ||
+      record.ownerPath !== lease.ownerPath
+    )
+      return yield* new DeletionLeaseUnavailableError({
+        ownerPath: lease.ownerPath,
+        leasePath: lease.leasePath,
+        message: 'Persistent pool deletion barrier no longer matches',
+      })
+    yield* writeFileAtomic({
+      path: EffectPath.unsafe.absoluteFile(lease.leasePath),
+      content: encodeLeaseRecord({
+        ...record,
+        pid: process.pid,
+        host: hostname(),
+        processStartTime: (yield* readProcessIdentity({ fs, pid: process.pid }))?.startTime,
+      }),
+    })
+  })
+
+/** Unknown provider identity is never evidence that its root is reusable. */
+export const persistentDeletionLeaseOwnerAlive = (lease: DeletionLease) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
+    if (
+      record?.version !== 2 ||
+      record.token !== lease.token ||
+      record.ownerPath !== lease.ownerPath ||
+      record.host !== hostname() ||
+      record.processStartTime === undefined
+    )
+      return false
+    const identity = yield* readProcessIdentity({ fs, pid: record.pid })
+    return identity?.startTime === record.processStartTime
   })
 
 /**
