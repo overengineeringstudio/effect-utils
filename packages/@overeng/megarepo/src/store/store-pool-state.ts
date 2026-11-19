@@ -10,7 +10,7 @@ import type { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { type AbsoluteDirPath, EffectPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { type GitWriterLockError, withPoolWorktreeOperationLock } from './git-writer-lock.ts'
+import { type GitWriterLockError, PoolStateEpoch, withPoolWorktreeOperationLock } from './git-writer-lock.ts'
 import {
   DeletionLeaseProviderObservation, type DeletionLeaseUnavailableError,
   hasPersistentDeletionLeases, withDeletionLease,
@@ -428,7 +428,7 @@ export const withPoolState = <A, E, R>({
         }
         yield* persist({ path, state: next })
         current = next
-      }))
+      })).pipe(Effect.provideService(PoolStateEpoch, true))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })
 

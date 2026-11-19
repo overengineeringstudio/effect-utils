@@ -8,6 +8,7 @@ import { expect } from 'vitest'
 
 import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
+import { withPoolWorktreeOperationLock } from './git-writer-lock.ts'
 import { acquireDeletionLease, deletionLeasePath, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import { poolBytes } from './store-pool-install.ts'
@@ -136,6 +137,41 @@ const reservationFixture = (missingCommit = false) =>
   })
 
 describe('native pool ownership safety', () => {
+  it.effect('all lifecycle callers refuse the same held native root before their bodies run', () =>
+    Effect.gen(function* () {
+      // Real Git/root/control, deliberately unqualified install fixture: negative custody only.
+      const { storePath: base, slot } = yield* fixture
+      const fs = yield* FileSystem.FileSystem
+      const before = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      const blocked = <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.gen(function* () {
+        expect(yield* effect.pipe(Effect.result)).toMatchObject({
+          _tag: 'Failure', failure: { _tag: 'GitWriterLockError', contention: true },
+        })
+      })
+      yield* Effect.gen(function* () {
+        const lease = { base, id: slot.id, generation: slot.generation, token: 'never-issued' }
+        yield* blocked(claimPool({ base, identity: slot.identity, owner: 'negative-lock-test' }))
+        yield* blocked(prewarmPool({
+          base, id: slot.id, generation: slot.generation, bare: slot.bare,
+          commit: slot.commit, charge: slot.charge, reservation: 'never-issued',
+        }))
+        yield* blocked(authorPoolRoot(lease))
+        yield* blocked(completePool(lease))
+        yield* blocked(releasePool(lease))
+        yield* blocked(quarantinePool({ ...lease, reason: 'must never enter' }))
+        yield* blocked(withPoolRetirement({
+          base, expected: slot, remove: () => Effect.die('Must not enter a held root removal callback'),
+        }))
+        expect((yield* inspectPool(base)).busy).toEqual([
+          { _tag: 'PoolSlotBusy', id: slot.id, state: 'HOLD' },
+        ])
+      }).pipe(withPoolWorktreeOperationLock({
+        storeBasePath: base, barePath: slot.bare, path: slot.path, id: slot.id,
+      }))
+      expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(before)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('reserves without birth and refuses stale preparation without consuming the nonce', () =>
     Effect.gen(function* () {
       const f = yield* reservationFixture()

@@ -19,6 +19,8 @@ import { basename, isAbsolute, normalize, relative } from 'node:path'
 
 import { Context, Effect, Option, Schema } from 'effect'
 
+import { assertOutsidePoolStateEpoch } from './git-writer-lock.ts'
+
 /** Injectable host platform for deletion policy; production uses the actual Node platform. */
 export class StoreDeletionPlatform extends Context.Service<
   StoreDeletionPlatform,
@@ -182,7 +184,11 @@ const fdPath = (fd: number): string => `/proc/self/fd/${fd}`
 const fail = ({ path, message }: { path: string; message: string }): PinnedDeletionError =>
   new PinnedDeletionError({ path, message })
 const native = <TResult>({ path, operation }: { path: string; operation: () => TResult }) =>
-  Effect.try({
+  assertOutsidePoolStateEpoch(path).pipe(
+    Effect.mapError((cause) => new PinnedDeletionError({
+      path, message: 'Native pin acquisition inside a GLOBAL pool epoch is forbidden', cause,
+    })),
+    Effect.andThen(Effect.try({
     try: operation,
     catch: (cause) =>
       cause instanceof PinnedDeletionError
@@ -192,7 +198,8 @@ const native = <TResult>({ path, operation }: { path: string; operation: () => T
             message: 'Pinned deletion filesystem evidence is unavailable; refusing removal',
             cause,
           }),
-  })
+    })),
+  )
 const mountIdOf = ({ fd, path }: { fd: number; path: string }): string => {
   const mountId = /^mnt_id:\s*([0-9]+)\s*$/mu.exec(
     readFileSync(`/proc/self/fdinfo/${fd}`, 'utf8'),

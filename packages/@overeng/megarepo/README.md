@@ -553,8 +553,15 @@ its callback once. Physical work holds no GLOBAL lock. Each supplied `save` vali
 the canonical schema and CASes only the selected slot; it cannot alter another root
 or host limits. Concurrent changes to other slots are preserved, not rejected due
 to the callback's older inventory. Conflict never retries or replays physical work.
-This primitive alone does not establish caller integration, concurrency/crash test
-results, holder SDK qualification or permission to activate physical operations.
+Preparation, claim, release, authoring, completion, quarantine, retirement and
+inspection use that root-scoped coordinator. Reservation remains a globally atomic
+count/byte decision, without acquiring a root/container/pin lock inside its epoch.
+Inspection reconciles one root at a time; native operation contention yields a typed
+`PoolSlotBusy` / `HOLD` observation without changing that busy root's authority.
+The diagnostic epoch context rejects reversed native writer/container/root/pin
+acquisitions before they run. It enforces Effect acquisition order only, not child
+process safety or holder evidence. Caller integration is not evidence of executed
+concurrency/crash tests, holder SDK qualification or permission to activate roots.
 
 `readPoolProvenance` exports bearer-free observations through that same decoder,
 without initialization, migration writes, recovery, unlocks or removal. Missing or

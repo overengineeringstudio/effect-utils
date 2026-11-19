@@ -20,8 +20,9 @@ import {
   withGitWriterLock,
   withPoolWorktreeOperationLock,
 } from './git-writer-lock.ts'
-import { consumePoolReservation, readPoolState, withPoolSlotOperation } from './store-pool-state.ts'
-import { reservePool } from './store-pool.ts'
+import { captureDeletionIdentity } from './store-pinned-deletion.ts'
+import { consumePoolReservation, readPoolState, withPoolSlotOperation, withPoolState } from './store-pool-state.ts'
+import { inspectPool, reservePool } from './store-pool.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
 const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
@@ -112,6 +113,41 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('rejects reversed native acquisition and clears the diagnostic epoch after interruption', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const root = yield* f.fs.realPath(f.root)
+      const base = EffectPath.unsafe.absoluteDir(`${root}/store/`)
+      const repository = `${base}github.com/test/pool`
+      const barePath = `${repository}/.bare`
+      yield* f.fs.makeDirectory(repository, { recursive: true })
+      yield* git(root, 'clone', '--bare', f.source, barePath)
+      const id = randomUUID()
+      const path = `${repository}/pool/${id}`
+      const target = { storeBasePath: base, barePath, path, id }
+      const reversed = <A, E, R>(operation: Effect.Effect<A, E, R>) => withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 64 }, use: () => operation,
+      }).pipe(Effect.result)
+      const container = yield* reversed(Effect.void.pipe(withGitContainerLock({ path: barePath, mode: 'shared' })))
+      const writer = yield* reversed(Effect.void.pipe(withGitWriterLock({ path: barePath })))
+      const action = yield* reversed(Effect.void.pipe(withPoolWorktreeOperationLock(target)))
+      expect([container._tag, writer._tag, action._tag]).toEqual(['Failure', 'Failure', 'Failure'])
+      expect(yield* f.fs.exists(`${path}.mr-pool-operation.mr-container.lock`)).toBe(false)
+      if (process.platform === 'linux') {
+        expect(yield* reversed(captureDeletionIdentity({ rootPath: base, path: repository }))).toMatchObject({
+          _tag: 'Failure', failure: {
+            _tag: 'PinnedDeletionError',
+            message: 'Native pin acquisition inside a GLOBAL pool epoch is forbidden',
+          },
+        })
+      }
+      yield* withPoolState({ base, use: () => Effect.interrupt }).pipe(Effect.exit)
+      expect(yield* withPoolState({
+        base, use: (state) => Effect.succeed(state.slots.length),
+      }).pipe(withPoolWorktreeOperationLock(target))).toBe(0)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.live('allows another slot epoch during a held action and retains birth intent after provider death', () =>
     Effect.gen(function* () {
       const f = yield* fixture
@@ -133,6 +169,9 @@ describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_0
       const busy = yield* withPoolSlotOperation({
         base, select: first.id, use: () => Effect.die('Busy callback must not execute'),
       }).pipe(Effect.result)
+      expect((yield* inspectPool(base)).busy).toEqual([
+        { _tag: 'PoolSlotBusy', id: first.id, state: 'HOLD' },
+      ])
       expect(busy._tag).toBe('Failure')
       yield* withPoolSlotOperation({
         base, select: second.id,

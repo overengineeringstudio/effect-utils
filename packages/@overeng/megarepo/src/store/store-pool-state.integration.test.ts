@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { dirname } from 'node:path'
+
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Cause, Effect, Exit, Schema } from 'effect'
@@ -6,6 +9,7 @@ import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
+import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, adoptPersistentDeletionLease, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
 import { poolBytes } from './store-pool-install.ts'
 import { projectPoolProvenance, readPoolProvenance } from './store-pool-provenance.ts'
@@ -43,6 +47,14 @@ const historicalSlot = {
   chargeKnown: true,
 }
 const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
+
+/** Real native ownership only; state-model source/install evidence remains unqualified. */
+const nativeStateOwner = Effect.gen(function* () {
+  const fixture = yield* createStoreFixture([
+    { host: 'github.com', owner: 'test-owner', repo: 'pool-state', branches: ['main'] },
+  ])
+  return { base: fixture.storePath, bare: fixture.bareRepoPaths['github.com/test-owner/pool-state']! }
+})
 
 describe('pool authoritative lifecycle', () => {
   it.effect('short CAS epochs preserve another slot and refuse stale generation overwrites', () =>
@@ -335,7 +347,7 @@ describe('pool authoritative lifecycle', () => {
   it.effect('persists retirement revocation and keeps both pending and failed real-root measurements unknown', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const { base, bare } = yield* nativeStateOwner
       // State-model input only; no native install, birth qualification or removal is fabricated.
       const activity: PoolActivity = {
         generation: 1, commit: slot.commit, identity: slot.identity, phase: 'birth-ready',
@@ -345,8 +357,9 @@ describe('pool authoritative lifecycle', () => {
           ownerLabel: '', ownerLabelOrigin: 'none',
         },
       }
+      const id = randomUUID()
       const ready: PoolSlot = {
-        ...slot, path: `${base}repo/pool/slot`, bare: `${base}repo/.bare`,
+        ...slot, id, path: `${dirname(bare)}/pool/${id}`, bare,
         state: 'ready', token: '', owner: '', activity, barrierToken: 'retirement-barrier-sentinel',
       }
       const persist = (next: PoolSlot) => withPoolState({
@@ -396,12 +409,12 @@ describe('pool authoritative lifecycle', () => {
   it.effect('persists an unborn bounded reservation unchanged across actual inspection', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const { base, bare } = yield* nativeStateOwner
       const reserved = yield* withPoolState({
         base,
         limits: { maxSlots: 1, maxBytes: 64 },
         use: (state, save) =>
-          reservePoolGeneration({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+          reservePoolGeneration({ state, bare, commit: slot.commit, charge: 64 })
             .pipe(Effect.tap(save)),
       })
       const unborn = reserved.slots[0]!
@@ -437,12 +450,12 @@ describe('pool authoritative lifecycle', () => {
   it.effect('consumes one exact reservation epoch atomically and never resumes preparation', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const { base, bare } = yield* nativeStateOwner
       const state = yield* withPoolState({
         base,
         limits: { maxSlots: 2, maxBytes: 128 },
         use: (state, save) =>
-          reservePoolGeneration({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+          reservePoolGeneration({ state, bare, commit: slot.commit, charge: 64 })
             .pipe(Effect.tap(save)),
       })
       const reserved = state.slots[0]!
@@ -493,12 +506,12 @@ describe('pool authoritative lifecycle', () => {
   it.effect('quarantines unexpected reservation paths without adopting or deleting their bytes', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const { base, bare } = yield* nativeStateOwner
       const state = yield* withPoolState({
         base,
         limits: { maxSlots: 1, maxBytes: 64 },
         use: (state, save) =>
-          reservePoolGeneration({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+          reservePoolGeneration({ state, bare, commit: slot.commit, charge: 64 })
             .pipe(Effect.tap(save)),
       })
       const reserved = state.slots[0]!
