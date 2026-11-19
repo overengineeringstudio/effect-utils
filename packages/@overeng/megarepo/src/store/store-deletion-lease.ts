@@ -72,6 +72,14 @@ const DeletionLeaseRecord = Schema.Struct({
 
 type DeletionLeaseRecord = Schema.Schema.Type<typeof DeletionLeaseRecord>
 
+/** Local process-stat observation, not pidfd, cross-boot identity or authenticated seat evidence. */
+export const DeletionLeaseProviderObservation = Schema.Struct({
+  pid: DeletionLeaseRecord.fields.pid,
+  uid: Schema.optional(Schema.Finite),
+  processStartTime: DeletionLeaseRecord.fields.processStartTime,
+})
+export type DeletionLeaseProviderObservation = Schema.Schema.Type<typeof DeletionLeaseProviderObservation>
+
 const encodeLeaseRecord = Schema.encodeSync(Schema.fromJsonString(DeletionLeaseRecord))
 const decodeLeaseRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(DeletionLeaseRecord))
 
@@ -169,6 +177,20 @@ const readProcessIdentity = ({ fs, pid }: { fs: FileSystem.FileSystem; pid: numb
       return undefined
     return { ppid, startTime }
   })
+
+/** Reuse the lease owner's actual Linux reader; unavailable lifetime/UID remain unknown. */
+export const readCurrentDeletionLeaseProvider: Effect.Effect<
+  DeletionLeaseProviderObservation, never, FileSystem.FileSystem
+> = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const identity = yield* readProcessIdentity({ fs, pid: process.pid })
+  const startTime = identity?.startTime
+  return {
+    pid: process.pid,
+    uid: process.getuid?.(),
+    processStartTime: typeof startTime === 'string' ? startTime : undefined,
+  }
+})
 
 /** Only activation descendants borrow admission; deletion always takes its own exclusive lease. */
 const hasAncestorActivationLease = ({

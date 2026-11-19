@@ -494,6 +494,14 @@ The public error channel is the fixed `PoolProvenanceUnavailableError` category:
 it forwards no original diagnostic, input or cause. The private canonical reader's
 error detail remains unchanged; failure is never converted into a successful inventory.
 Per-root qualification and provisioning-caller adoption are separate from this API.
+
+Optional canonical activity binds its generation/source/install identity to a typed
+birth/claim/release/retarget phase, UTC observation and provider. Legacy records keep
+missing history; source/generation transitions revoke prior activity before mutation.
+The provider reuses the lease owner's local Linux process-stat reader and actual UID:
+it is neither pidfd nor cross-boot identity, and missing lifetime/UID stays unknown.
+Decoding never manufactures events, mtime activity, authenticated seats or removal authority.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

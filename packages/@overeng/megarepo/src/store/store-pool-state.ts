@@ -8,7 +8,7 @@ import type { PlatformError } from 'effect/PlatformError'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
-import { withDeletionLease } from './store-deletion-lease.ts'
+import { DeletionLeaseProviderObservation, withDeletionLease } from './store-deletion-lease.ts'
 
 /** Historical authority is decoded only at the single canonical read boundary. */
 const PoolSlotV1 = Schema.Struct({
@@ -31,6 +31,27 @@ const RetargetIntent = Schema.Struct({
   to: Schema.String,
   token: Schema.String,
 })
+/** Tool-observed root activity; an opaque owner label is never an authenticated seat. */
+export const PoolActivityEvent = Schema.Struct({
+  observedAtUtc: Schema.String,
+  provider: DeletionLeaseProviderObservation,
+  ownerLabel: Schema.String,
+  ownerLabelOrigin: Schema.Literals(['none', 'claim-argument', 'retarget-argument', 'legacy-record']),
+})
+export type PoolActivityEvent = Schema.Schema.Type<typeof PoolActivityEvent>
+export const PoolActivity = Schema.Struct({
+  generation: Schema.Finite,
+  commit: Schema.String,
+  identity: Schema.String,
+  phase: Schema.Literals([
+    'birth-ready', 'birth-failed', 'claim-active', 'claim-completed', 'claim-failed',
+    'release-ready', 'release-failed', 'retarget-ready', 'retarget-failed',
+  ]),
+  event: PoolActivityEvent,
+  claimed: Schema.optional(PoolActivityEvent),
+  completed: Schema.optional(PoolActivityEvent),
+})
+export type PoolActivity = Schema.Schema.Type<typeof PoolActivity>
 /** Authoritative records: uncertain generations are never implicitly recovered. */
 export const PoolSlot = Schema.Struct({
   ...PoolSlotV1.fields,
@@ -39,6 +60,7 @@ export const PoolSlot = Schema.Struct({
   initialPreparation: Schema.optional(Schema.Struct({ generation: Schema.Finite, commit: Schema.String })),
   sourceHistory: Schema.NonEmptyArray(Schema.String),
   retarget: Schema.optional(RetargetIntent),
+  activity: Schema.optional(PoolActivity),
 })
 /** Durable identity, accounting and lifecycle of one protected detached path. */
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
@@ -62,6 +84,50 @@ export class PoolError extends Schema.TaggedError<PoolError>()('PoolError', {
   message: Schema.String,
 }) {}
 
+const validActivityEvent = (event: PoolActivityEvent) => {
+  const observed = Date.parse(event.observedAtUtc)
+  return Number.isFinite(observed) && new Date(observed).toISOString() === event.observedAtUtc &&
+    Number.isSafeInteger(event.provider.pid) && event.provider.pid > 0 &&
+    (event.provider.uid === undefined || (Number.isSafeInteger(event.provider.uid) && event.provider.uid >= 0)) &&
+    (event.provider.processStartTime === undefined || /^\d+$/u.test(event.provider.processStartTime)) &&
+    (event.ownerLabelOrigin !== 'none' || event.ownerLabel === '')
+}
+
+const validPoolActivity = (slot: PoolSlot) => {
+  const activity = slot.activity
+  if (activity === undefined) return true
+  const expected = activity.phase.endsWith('-ready') ? 'ready' :
+    activity.phase === 'claim-active' ? 'leased' : activity.phase === 'claim-completed' ? 'completed' : 'quarantined'
+  if (activity.generation !== slot.generation || activity.commit !== slot.commit || activity.identity !== slot.identity ||
+    validActivityEvent(activity.event) === false ||
+    (activity.claimed !== undefined && validActivityEvent(activity.claimed) === false) ||
+    (activity.completed !== undefined && validActivityEvent(activity.completed) === false) ||
+    (slot.state !== expected && slot.state !== 'quarantined') ||
+    (slot.state === 'ready' && (slot.token !== '' || slot.owner !== '' || slot.chargeKnown !== true)) ||
+    (slot.initialPreparation !== undefined && activity.phase !== 'birth-failed') ||
+    (slot.retarget !== undefined && activity.phase !== 'retarget-failed') ||
+    (activity.phase.endsWith('-ready') && activity.identity === '')) return false
+  if (activity.completed !== undefined && activity.claimed === undefined) return false
+  if (activity.claimed !== undefined && (activity.claimed.ownerLabelOrigin !== 'claim-argument' ||
+    activity.completed !== undefined && (activity.completed.ownerLabelOrigin !== 'claim-argument' ||
+      activity.completed.ownerLabel !== activity.claimed.ownerLabel))) return false
+  if (activity.phase.startsWith('birth-')) return slot.generation === 1 && slot.sourceHistory.length === 1 &&
+    activity.event.ownerLabelOrigin === 'none' && activity.claimed === undefined && activity.completed === undefined
+  if (activity.phase.startsWith('retarget-')) return slot.sourceHistory.length >= 2 &&
+    activity.event.ownerLabelOrigin === 'retarget-argument' && activity.claimed === undefined && activity.completed === undefined
+  if (activity.phase === 'claim-active') return activity.claimed !== undefined && activity.completed === undefined &&
+    activity.event.ownerLabelOrigin === 'claim-argument' && activity.event.ownerLabel === slot.owner &&
+    activity.claimed.ownerLabel === slot.owner
+  if (activity.phase === 'claim-completed') return activity.event.ownerLabel === slot.owner &&
+    (activity.claimed === undefined
+      ? activity.completed === undefined && activity.event.ownerLabelOrigin === 'legacy-record'
+      : activity.completed !== undefined && activity.event.ownerLabelOrigin === 'claim-argument' &&
+        activity.event.ownerLabel === activity.claimed.ownerLabel)
+  if (activity.phase === 'release-ready') return activity.claimed !== undefined && activity.completed !== undefined &&
+    activity.event.ownerLabelOrigin === 'claim-argument' && activity.event.ownerLabel === activity.claimed.ownerLabel
+  return true
+}
+
 const validatePoolState = (state: PoolState) =>
   Effect.gen(function* () {
     if (
@@ -83,6 +149,7 @@ const validatePoolState = (state: PoolState) =>
           Number.isSafeInteger(slot.generation) === false ||
           slot.generation < 0 ||
           slot.sourceHistory.at(-1) !== slot.commit ||
+          validPoolActivity(slot) === false ||
           (slot.state === 'reserved'
             ? slot.reservation === undefined ||
               slot.reservation === '' ||
@@ -248,6 +315,7 @@ export const claimPoolGeneration = ({
     token: randomUUID(),
     owner,
     reason: '',
+    activity: undefined,
   }
   return Effect.succeed(next)
 }
@@ -343,6 +411,7 @@ export const consumePoolReservation = ({
     ? Effect.succeed<PoolSlot>({
         ...slot,
         reservation: undefined,
+        activity: undefined,
         generation: generation + 1,
         initialPreparation: { generation: generation + 1, commit },
         state: 'preparing',
@@ -390,6 +459,7 @@ export const beginPoolRetarget = ({
     chargeKnown: false,
     owner,
     reason: 'Retarget preparation',
+    activity: undefined,
   }
   return Effect.succeed(next)
 }
@@ -433,5 +503,6 @@ export const finishPoolRetarget = ({
     state: 'ready',
     owner: '',
     reason: '',
+    activity: undefined,
   })
 }

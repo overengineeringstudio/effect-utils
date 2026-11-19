@@ -6,13 +6,14 @@ import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
-import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
+import { acquireDeletionLease, adoptPersistentDeletionLease, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
 import { projectPoolProvenance, readPoolProvenance } from './store-pool-provenance.ts'
 import {
   beginPoolRetarget,
   claimPoolGeneration,
   consumePoolReservation,
   finishPoolRetarget,
+  type PoolActivity,
   type PoolSlot,
   requirePoolLease,
   reservePoolGeneration,
@@ -39,6 +40,75 @@ const historicalSlot = {
 const slot: PoolSlot = { ...historicalSlot, sourceHistory: [historicalSlot.commit] }
 
 describe('pool authoritative lifecycle', () => {
+  it.effect('reports the actual current provider without inventing Linux lifetime or seat authority', () =>
+    Effect.gen(function* () {
+      const provider = yield* readCurrentDeletionLeaseProvider
+      expect(provider.pid).toBe(process.pid)
+      expect(provider.uid).toBe(process.getuid?.())
+      if (provider.processStartTime !== undefined) {
+        expect(process.platform).toBe('linux')
+        expect(provider.processStartTime).toMatch(/^\d+$/u)
+      }
+      if (process.platform !== 'linux') expect(provider.processStartTime).toBeUndefined()
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
+  it.effect('round-trips optional activity fixtures, rejects invalid writes and revokes history before mutation', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const activity: PoolActivity = {
+        generation: 1, commit: slot.commit, identity: slot.identity, phase: 'birth-ready',
+        event: {
+          observedAtUtc: '2026-11-19T12:00:00.000Z',
+          provider: { pid: 123, uid: 456, processStartTime: '789' },
+          ownerLabel: '', ownerLabelOrigin: 'none',
+        },
+      }
+      const ready: PoolSlot = { ...slot, state: 'ready', token: '', owner: '', activity }
+      yield* withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) => save({ ...state, slots: [ready] }),
+      })
+      expect((yield* withPoolState({ base, use: Effect.succeed })).slots[0]?.activity).toEqual(activity)
+      const bytes = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      const invalid: ReadonlyArray<PoolActivity> = [
+        { ...activity, generation: 2 },
+        { ...activity, phase: 'release-ready' },
+        { ...activity, event: { ...activity.event, observedAtUtc: 'not-a-time' } },
+        { ...activity, event: { ...activity.event, provider: { pid: 0 } } },
+      ]
+      for (const metadata of invalid) {
+        const result = yield* withPoolState({
+          base, use: (state, save) => save({ ...state, slots: [{ ...ready, activity: metadata }] }),
+        }).pipe(Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(bytes)
+      }
+      const malformed = JSON.stringify({
+        version: 2, maxSlots: 1, maxBytes: 64, slots: [{ ...ready, activity: invalid[0]! }],
+      })
+      yield* fs.writeFileString(`${base}.state/pool/state.json`, malformed)
+      expect(Exit.isFailure(yield* readPoolProvenance({ base }).pipe(Effect.exit))).toBe(true)
+      expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(malformed)
+      yield* fs.writeFileString(`${base}.state/pool/state.json`, bytes)
+      const leased = yield* claimPoolGeneration({
+        slot: ready, identity: ready.identity, owner: 'fixture-claim',
+      })
+      expect(leased.activity).toBeUndefined()
+      const retarget = yield* beginPoolRetarget({
+        slot: ready, generation: ready.generation, identity: ready.identity,
+        commit: 'b'.repeat(40), owner: 'fixture-retarget',
+      })
+      expect(retarget.activity).toBeUndefined()
+      const prepared = yield* finishPoolRetarget({
+        slot: retarget, generation: retarget.generation, token: retarget.retarget!.token,
+        result: { _tag: 'Prepared', identity: 'fixture-install', charge: 64 },
+      })
+      expect(prepared.activity).toBeUndefined()
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('observes historical authority without initialization, migration writes or recovery', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
