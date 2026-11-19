@@ -36,7 +36,7 @@ import {
   reservePool,
 } from './store-pool.ts'
 
-const fixture = Effect.gen(function* () {
+const fixtureWithLimits = (maxSlots = 1) => Effect.gen(function* () {
   const f = yield* createStoreFixture([
     { host: 'github.com', owner: 'test-owner', repo: 'pool-test', branches: ['main'] },
   ])
@@ -45,7 +45,7 @@ const fixture = Effect.gen(function* () {
     f.worktreePaths['github.com/test-owner/pool-test#main']!,
   )
   const reserved = yield* reservePool({
-    base: f.storePath, bare, commit, charge: 1048576, maxSlots: 1, maxBytes: 1048576,
+    base: f.storePath, bare, commit, charge: 1048576, maxSlots, maxBytes: maxSlots * 1048576,
   })
   const preparing = yield* consumePoolReservation({
     slot: reserved, id: reserved.id, reservation: reserved.reservation!,
@@ -101,10 +101,11 @@ const fixture = Effect.gen(function* () {
     use: (state, save) => save({
       ...state, slots: state.slots.map((item) => item.id === slot.id ? slot : item),
     }),
-    limits: { maxSlots: 1, maxBytes: 1048576 },
+    limits: { maxSlots, maxBytes: maxSlots * 1048576 },
   })
   return { ...f, slot }
 })
+const fixture = fixtureWithLimits()
 
 const reservationFixture = (missingCommit = false) =>
   Effect.gen(function* () {
@@ -277,7 +278,7 @@ describe('native pool ownership safety', () => {
       const fs = yield* FileSystem.FileSystem
       const provider = yield* readCurrentDeletionLeaseProvider
       for (const mode of ['reported-failure', 'missing-removal', 'admin-retained', 'stale-binding'] as const) {
-        const f = yield* fixture
+        const f = yield* fixtureWithLimits(3)
         // Historical schema input only, not a successful install or qualified birth.
         const ready: PoolSlot = { ...f.slot, activity: {
           generation: f.slot.generation, commit: f.slot.commit, identity: f.slot.identity, phase: 'birth-ready',
@@ -289,6 +290,10 @@ describe('native pool ownership safety', () => {
         } }
         yield* withPoolState({ base: f.storePath, use: (state, save) =>
           save({ ...state, slots: [ready] }) })
+        const other = yield* reservePool({
+          base: f.storePath, bare: ready.bare, commit: ready.commit, charge: 1,
+          maxSlots: 3, maxBytes: 3 * 1048576,
+        })
         yield* fs.writeFileString(`${ready.path}/preserved`, 'never delete this unqualified fixture')
         let called = false
         let capturedAdmin: string | undefined
@@ -298,6 +303,13 @@ describe('native pool ownership safety', () => {
             called = true
             yield* assertCurrent
             capturedAdmin = target.adminDir
+            const concurrent = yield* reservePool({
+              base: f.storePath, bare: ready.bare, commit: ready.commit, charge: 1,
+              maxSlots: 3, maxBytes: 3 * 1048576,
+            }).pipe(Effect.result)
+            expect(concurrent).toMatchObject({ _tag: 'Failure', failure: {
+              _tag: 'PoolError', message: 'Pool retained bytes are unknown; allocation blocked',
+            } })
             const current = yield* readPoolState({ base: f.storePath })
             expect(JSON.stringify(target)).not.toContain(current.slots[0]!.retirement!.nonce)
             expect(target.id).toBe(ready.id)
@@ -326,6 +338,7 @@ describe('native pool ownership safety', () => {
         const retained = yield* withPoolState({
           base: f.storePath, use: (state) => Effect.succeed(state.slots[0]!),
         })
+        expect((yield* readPoolState({ base: f.storePath })).slots[1]).toEqual(other)
         expect(retained.generation).toBe(ready.generation + 1)
         expect(retained.retirement?.status).toBe(mode === 'stale-binding' && called === true ? 'pending' : 'failed')
         if (mode === 'stale-binding' && called === true)

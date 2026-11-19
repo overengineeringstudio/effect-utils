@@ -112,7 +112,7 @@ export const withPoolRetirement = <E, R>({
             const owned = current.slots.find((item) => item.id === slot.id)
             if (owned === undefined || matches(owned) === false || owned.retirement === undefined) return
             const failed: PoolSlot = { ...owned, retirement: { ...owned.retirement, status: 'failed' } }
-            yield* save({ ...current, slots: current.slots.map((item) => item.id === slot.id ? failed : item) })
+            yield* update(failed)
           }).pipe(Effect.exit)
           return yield* Effect.failCause(Exit.isFailure(retained) === true
             ? Cause.combine(action.cause, retained.cause) : action.cause)
