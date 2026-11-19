@@ -76,15 +76,28 @@ const encode = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 /** Stable object ordering; array ordering remains meaningful unless normalized by the caller. */
 export const canonicalBuckMaintainJson = (value: unknown): string => {
   const normalize = (input: unknown): unknown => {
-    if (Array.isArray(input)) return input.map(normalize)
-    if (input !== null && typeof input === 'object')
+    if (input === null || typeof input === 'string' || typeof input === 'boolean') return input
+    if (typeof input === 'number') {
+      if (Number.isFinite(input)) return input
+      throw fail('Checkpoint JSON cannot encode non-finite numbers')
+    }
+    if (Array.isArray(input)) {
+      const normalized: unknown[] = new Array(input.length)
+      for (let index = 0; index < input.length; index++) normalized[index] = normalize(input[index])
+      return normalized
+    }
+    if (typeof input === 'object') {
+      const prototype = Object.getPrototypeOf(input)
+      if (prototype !== Object.prototype && prototype !== null)
+        throw fail('Checkpoint JSON requires plain objects')
       return Object.fromEntries(
         Object.entries(input)
           .filter(([, item]) => item !== undefined)
           .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
           .map(([key, item]) => [key, normalize(item)]),
       )
-    return input
+    }
+    throw fail('Checkpoint JSON cannot encode unsupported values')
   }
   return encode(normalize(value))
 }
