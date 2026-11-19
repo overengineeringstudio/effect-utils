@@ -490,6 +490,9 @@ with `authorizesRemoval: false`, even when ready/unclaimed. Owner labels are una
 A future hygiene consumer must reread the same generation under its action lease and
 the shared pool lifecycle fence before its own fresh Git/all-UID/consumer checks;
 the snapshot grants no eligibility or cleanup authority.
+The public error channel is the fixed `PoolProvenanceUnavailableError` category:
+it forwards no original diagnostic, input or cause. The private canonical reader's
+error detail remains unchanged; failure is never converted into a successful inventory.
 Per-root qualification and provisioning-caller adoption are separate from this API.
 ### Process activity snapshot
 

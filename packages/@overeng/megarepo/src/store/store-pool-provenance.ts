@@ -1,11 +1,15 @@
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { FileSystem } from 'effect/FileSystem'
-import type { PlatformError } from 'effect/PlatformError'
-import type { SchemaError } from 'effect/Schema'
 
 import type { AbsoluteDirPath } from '@overeng/effect-path'
 
-import { type PoolError, type PoolSlot, readPoolState } from './store-pool-state.ts'
+import { type PoolSlot, readPoolState } from './store-pool-state.ts'
+
+/** Public observations never forward private ledger diagnostics or capability-bearing causes. */
+export class PoolProvenanceUnavailableError extends Schema.TaggedError<PoolProvenanceUnavailableError>()(
+  'PoolProvenanceUnavailableError',
+  { message: Schema.Literal('Authoritative pool provenance is unavailable') },
+) {}
 
 /** Recorded observation, never an action lease, cleanup proof or bearer capability. */
 export type PoolRootProvenance = Readonly<Pick<PoolSlot,
@@ -60,5 +64,10 @@ export const projectPoolProvenance = (slot: PoolSlot): PoolRootProvenance => {
 
 /** No initialization, migration writes, recovery, liveness probes, unlocking or removal. */
 export const readPoolProvenance = ({ base }: { base: AbsoluteDirPath }): Effect.Effect<
-  ReadonlyArray<PoolRootProvenance>, PoolError | PlatformError | SchemaError, FileSystem
-> => readPoolState({ base }).pipe(Effect.map((state) => state.slots.map(projectPoolProvenance)))
+  ReadonlyArray<PoolRootProvenance>, PoolProvenanceUnavailableError, FileSystem
+> => readPoolState({ base }).pipe(
+  Effect.map((state) => state.slots.map(projectPoolProvenance)),
+  Effect.mapError(() => new PoolProvenanceUnavailableError({
+    message: 'Authoritative pool provenance is unavailable',
+  })),
+)

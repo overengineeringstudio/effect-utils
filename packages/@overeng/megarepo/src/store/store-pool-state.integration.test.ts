@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Schema } from 'effect'
+import { Cause, Effect, Exit, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -69,6 +69,37 @@ describe('pool authoritative lifecycle', () => {
         expect(Exit.isFailure(yield* readPoolProvenance({ base }).pipe(Effect.exit))).toBe(true)
         expect(yield* fs.readFileString(`${directory}/state.json`)).toBe(invalidBytes)
       }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('keeps malformed authority pretty and JSON errors free of bearer values', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const directory = `${base}.state/pool`
+      yield* fs.makeDirectory(directory, { recursive: true })
+      const sentinels = ['CLM7X', 'RSR8Y', 'RTG9Z', 'BAR0Q']
+      const bearerFields = {
+        token: sentinels[0], reservation: sentinels[1],
+        retarget: { token: sentinels[2] }, barrierToken: sentinels[3],
+      }
+      for (const bytes of [
+        JSON.stringify({ version: 2, maxSlots: 1, maxBytes: 64, slots: bearerFields }),
+        JSON.stringify({ version: 3, maxSlots: 1, maxBytes: 64, slots: [{ ...historicalSlot, ...bearerFields }] }),
+        JSON.stringify({ version: 2, maxSlots: 1, maxBytes: 64, slots: [], [sentinels[0]!]: true }),
+        sentinels.join(' '),
+      ]) {
+        yield* fs.writeFileString(`${directory}/state.json`, bytes)
+        const result = yield* readPoolProvenance({ base }).pipe(Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        if (Exit.isFailure(result) === true) {
+          expect(JSON.stringify(result)).toContain('"PoolProvenanceUnavailableError"')
+          const rendered = `${Cause.pretty(result.cause)}\n${JSON.stringify(result)}\n${JSON.stringify(result.cause)}`
+          for (const sentinel of sentinels) expect(rendered).not.toContain(sentinel)
+        }
+        expect(yield* fs.readFileString(`${directory}/state.json`)).toBe(bytes)
+      }
+      expect(yield* fs.readDirectory(directory)).toEqual(['state.json'])
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
