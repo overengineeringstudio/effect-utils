@@ -248,7 +248,7 @@ else if(args.includes('build')) {
         const policy = buckConfigValues(commands[1].policy)
         expect(policy['buck2.remote_cache_enabled']).toBe('false')
         expect(policy['buck2.allow_cache_uploads']).toBe('false')
-        expect(policy['buck2_re_client.http_headers']).toBe('')
+        expect(policy['buck2_re_client.http_headers']).toBe('x-buck2-local-only: 1')
         const relationships = readFileSync(`${evidence}.local-fallbacks.jsonl`, 'utf8')
           .trim()
           .split('\n')

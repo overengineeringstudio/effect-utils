@@ -117,9 +117,13 @@ ordinary compiler/test errors, interruption/overflow and trusted qualification
 remain fatal. Interactive commands are excluded rather than replayed speculatively.
 
 The existing offline overlay and daemon lifecycle lock own the transition: remove
-credentials and RE headers, disable remote reads/uploads, and restart only an idle
-mismatched daemon. Busy or unknown ownership refuses. Preserve the original failed
-native UUID, exit, occurrence and trace, and link a fresh local UUID/result without
+credentials, replace inherited RE authentication headers with the fixed
+non-credential `x-buck2-local-only: 1` header, disable remote reads/uploads, and
+restart only an idle mismatched daemon. Busy or unknown ownership refuses.
+The [R04 native-parser constraints](../04-buck2/06-reuse-client/spec.md)
+explain why neither an empty file header nor CLI deletion is valid for this
+daemon transition. Preserve the original failed native UUID, exit, occurrence
+and trace, and link a fresh local UUID/result without
 rewriting original evidence. The local native deadline is 600 seconds plus five
 seconds of termination grace, with no recursive recovery.
 

@@ -194,13 +194,16 @@ const PUBLIC_READ_CACHE_BLOCK = `${MANAGED_BEGIN}
 ${MANAGED_END}`
 
 /** Explicit escape hatch for cache outages, including public CI. */
+// Empty FILE header values are invalid to native Buck; CLI deletion does not
+// reach daemon static RE metadata. Replace inherited authentication with a valid
+// fixed non-credential header (see REUSE-R04's pinned-native parser constraints).
 const NO_REMOTE_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
   default_allow_cache_upload = false
 [buck2_re_client]
-  http_headers =
+  http_headers = x-buck2-local-only: 1
 ${MANAGED_END}`
 
 /**

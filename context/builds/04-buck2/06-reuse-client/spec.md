@@ -222,9 +222,19 @@ enumerated RE-client initialization/capabilities/connect unavailable failure.
 The replay uses the original expanded command, removes `--reuse-current-config`,
 and adds `--local-only --no-remote-cache`. Existing explicit build-ID/event-log
 sinks receive a `.local-<UUID>` suffix so the original evidence is not overwritten.
-The offline root overlay disables reads/uploads/default uploads and clears RE
-headers; writer credential variables are removed before daemon startup. The
-existing root lock, posture fingerprint, idle-only restart and per-invocation
+The offline root overlay disables reads/uploads/default uploads and replaces the
+entire inherited RE header list with fixed non-authentication,
+non-credential `x-buck2-local-only: 1`; writer credential variables are removed
+before daemon startup. Empty file values are not deletion: the pinned native
+[file parser](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/legacy_configs/parser.rs#L368-L376)
+preserves them and its
+[header parser](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_re_configuration/src/lib.rs#L494-L511)
+rejects the resulting empty header. Although an
+[empty CLI value deletes a key](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/legacy_configs/args.rs#L74-L77),
+[daemon startup reads root configuration without CLI overrides](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_server/src/daemon/state.rs#L369-L377).
+Therefore CLI deletion cannot remove inherited authentication from daemon RE
+metadata; the valid non-credential file replacement is mandatory.
+The existing root lock, posture fingerprint, idle-only restart and per-invocation
 policy file prevent reuse of a credential-bearing remote daemon. Concurrent,
 busy or unrecognized ownership refuses recovery instead of killing or reusing it.
 No per-invocation isolation directory is created.

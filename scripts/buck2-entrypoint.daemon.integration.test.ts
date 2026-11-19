@@ -239,3 +239,87 @@ try {
     }
   }
 }, 30000)
+
+it('restarts inherited FILE authorization into a valid non-credential offline daemon', () => {
+  const native = process.env['BUCK2_NATIVE_BIN']
+  if (native === undefined)
+    throw new Error('BUCK2_NATIVE_BIN is required for real daemon regression')
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-real-offline-')))
+  const support = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-real-offline-home-')))
+  const isolation = 'offline'
+  const worker = join(root, 'launcher.ts')
+  // Public fixture text only. No cache endpoint exists and no real credential is
+  // supplied. Keep HOME/TMPDIR outside the watched root and all daemon calls on
+  // this same isolated environment, including cleanup.
+  const env = { PATH: process.env['PATH'], HOME: support, TMPDIR: support }
+  const inherited = 'authorization: Basic public-fixture-only'
+  try {
+    writeFileSync(join(root, '.buckroot'), '')
+    writeFileSync(
+      join(root, '.buckconfig'),
+      `[cells]\nfixture = .\n[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = true\ndefault_allow_cache_upload = true\n[buck2_re_client]\nhttp_headers = ${inherited}\n`,
+    )
+    writeFileSync(
+      worker,
+      `
+import {spawnSync} from 'node:child_process';
+import {admitCacheDaemonCommand,directBuckArguments} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+const offline=process.argv[2]==='offline';
+const root=${JSON.stringify(root)},native=${JSON.stringify(native)},isolation=${JSON.stringify(isolation)};
+const env={...process.env,BUCK2_CI_POSTURE:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:'public-fixture-only'};
+if(offline) {
+ env.BUCK2_NO_REMOTE_CACHE='1';
+ delete env.BUCK2_CACHE_WRITE_BASIC_AUTH;
+}
+const audit=['audit','config','--json'];
+const values={'buck2.remote_cache_enabled':'true','buck2.allow_cache_uploads':'true','buck2.default_allow_cache_upload':'true','buck2_re_client.http_headers':${JSON.stringify(inherited)}};
+const args=await admitCacheDaemonCommand({native,root,args:['--isolation-dir',isolation,...audit],env,
+ admit:async check=>{
+  if(!offline) {check?.(values);return audit;}
+  const prepared=await directBuckArguments({cwd:root,args:['build','//:fixture'],env,beforeCachePosture:check});
+  return [...audit,...prepared.slice(2)];
+ }
+});
+const result=spawnSync(native,['--isolation-dir',isolation,...args],{cwd:root,env,encoding:'utf8',timeout:10000});
+if(result.status!==0) throw new Error('native offline audit failed: '+result.stderr);
+const status=spawnSync(native,['--isolation-dir',isolation,'status'],{cwd:root,env,encoding:'utf8',timeout:10000});
+if(status.status!==0) throw new Error('native daemon status failed: '+status.stderr);
+console.log(JSON.stringify({policy:JSON.parse(result.stdout),pid:JSON.parse(status.stdout).process_info.pid}));
+`,
+    )
+    const launch = (mode: 'writer' | 'offline') => {
+      const result = spawnSync(process.execPath, [worker, mode], {
+        cwd: root,
+        env,
+        encoding: 'utf8',
+        timeout: 20000,
+      })
+      expect(result.status, result.stderr).toBe(0)
+      return JSON.parse(result.stdout)
+    }
+    const writer = launch('writer')
+    expect(writer.policy['buck2_re_client.http_headers']).toBe(inherited)
+    const offline = launch('offline')
+    expect(offline.pid).not.toBe(writer.pid)
+    expect(offline.policy['buck2.remote_cache_enabled']).toBe('false')
+    expect(offline.policy['buck2.allow_cache_uploads']).toBe('false')
+    expect(offline.policy['buck2.default_allow_cache_upload']).toBe('false')
+    expect(offline.policy['buck2_re_client.http_headers']).toBe('x-buck2-local-only: 1')
+    if (process.platform === 'linux')
+      expect(readFileSync(`/proc/${offline.pid}/environ`, 'utf8')).not.toContain(
+        'BUCK2_CACHE_WRITE_BASIC_AUTH=',
+      )
+    expect(readFileSync(join(root, '.buckconfig'), 'utf8')).toContain(inherited)
+    expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).not.toContain('authorization:')
+  } finally {
+    const killed = spawnSync(native, ['--isolation-dir', isolation, 'kill'], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+      timeout: 10000,
+    })
+    expect(killed.status, killed.stderr).toBe(0)
+    rmSync(root, { recursive: true, force: true })
+    rmSync(support, { recursive: true, force: true })
+  }
+}, 60000)

@@ -156,7 +156,7 @@ describe('standalone Buck cache posture', () => {
   allow_cache_uploads = false
   default_allow_cache_upload = false
 [buck2_re_client]
-  http_headers =
+  http_headers = x-buck2-local-only: 1
 # effect-utils standalone cache posture: end
 `)
 
@@ -189,7 +189,7 @@ describe('standalone Buck cache posture', () => {
     expect(escapeHatch).toContain('remote_cache_enabled = false')
     expect(escapeHatch).toContain('allow_cache_uploads = false')
     expect(escapeHatch).not.toContain('remote_cache_enabled = true')
-    expect(buckConfigValues(escapeHatch)['buck2_re_client.http_headers']).toBe('')
+    expect(buckConfigValues(escapeHatch)['buck2_re_client.http_headers']).toBe('x-buck2-local-only: 1')
   })
 
   it('selects the publisher posture only with a writer credential and never writes the credential', () => {
@@ -250,7 +250,9 @@ describe('standalone Buck cache posture', () => {
         env: { ...env, ...override },
       })
       expect(reader).toContain('allow_cache_uploads = false')
-      expect(buckConfigValues(reader)['buck2_re_client.http_headers'] ?? '').toBe('')
+      expect(buckConfigValues(reader)['buck2_re_client.http_headers'] ?? '').toBe(
+        'BUCK2_NO_REMOTE_CACHE' in override ? 'x-buck2-local-only: 1' : '',
+      )
       expect(reader).not.toContain('authorization:')
       expect(reader).not.toContain('private-cache.example')
     }
@@ -294,7 +296,7 @@ describe('standalone Buck cache posture', () => {
   allow_cache_uploads = false
   default_allow_cache_upload = false
 [buck2_re_client]
-  http_headers =
+  http_headers = x-buck2-local-only: 1
 # effect-utils standalone cache posture: end
 `)
 
