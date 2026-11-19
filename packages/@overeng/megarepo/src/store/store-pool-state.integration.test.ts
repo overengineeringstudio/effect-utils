@@ -53,7 +53,8 @@ describe('pool authoritative lifecycle', () => {
       const results = yield* Effect.all([claim, claim], { concurrency: 2 })
       expect(results.filter(Exit.isSuccess)).toHaveLength(1)
       expect(
-        (yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]) }))?.generation,
+        (yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]) }))
+          ?.generation,
       ).toBe(2)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
@@ -87,7 +88,11 @@ describe('pool authoritative lifecycle', () => {
         slot: { ...slot, id: 'next', bare: '/other/.bare' },
       }).pipe(Effect.flip)
       expect(failure.message).toContain('capacity')
-      const leased = yield* claimPoolGeneration({ slot: ready, identity: 'installed', owner: 'task' })
+      const leased = yield* claimPoolGeneration({
+        slot: ready,
+        identity: 'installed',
+        owner: 'task',
+      })
       expect(leased.chargeKnown).toBe(false)
       const unknown = yield* reservePoolSlot({
         state: { ...state, slots: [leased] },
