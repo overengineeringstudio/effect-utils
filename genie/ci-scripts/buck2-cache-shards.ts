@@ -414,7 +414,7 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
         (diagnostic === true
           ? decoded.header.evidenceGaps.length !== 1 ||
             decoded.header.evidenceGaps[0] !== 'incomplete-native-invocation'
-          : decoded.header.evidenceGaps.length > 0)
+          : decoded.header.evidenceGaps.length > 0) === true
       )
         throw new Error('Invalid shard')
       const invocation = decoded.header.invocations[0]
@@ -515,7 +515,7 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
               action.executionKind === 11 ||
               action.cacheOutcome === 'remote-hit' ||
               action.uploadOutcome !== 'not-uploaded'),
-        )
+        ) === true
       )
         throw new Error('Unconfirmed local fallback')
       confirmedFallbacks.push(fallback)

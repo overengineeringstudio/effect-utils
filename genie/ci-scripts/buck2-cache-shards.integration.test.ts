@@ -641,7 +641,7 @@ describe('rotation-independent native evidence shards', () => {
           failure === 'missing-native-command-end' ||
           unrelatedShard === true
         expect(result.index.commandRecoveryComplete).toBe(confirmed && unrelatedShard === false)
-        expect(result.index.localFallbacks).toHaveLength(confirmed ? 1 : 0)
+        expect(result.index.localFallbacks).toHaveLength(confirmed === true ? 1 : 0)
         expect(result.index.evidenceGaps.length).toBeGreaterThan(0)
         if (unrelatedShard === true) {
           expect(result.index.evidenceGaps).toContain('native-shard-incomplete')

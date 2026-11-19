@@ -1657,11 +1657,11 @@ const run = async (): Promise<void> => {
   }
   if (values.finalize === true && header.complete === false) {
     if (
-      commandRecoveryComplete &&
-      metadataComplete &&
+      commandRecoveryComplete === true &&
+      metadataComplete === true &&
       header.evidenceGaps.every(
         (gap) => gap === 'incomplete-native-invocation' || gap === 'native-shard-incomplete',
-      )
+      ) === true
     ) {
       console.error(
         'Cache command recovered through confirmed LOCAL fallback; original action evidence remains incomplete/diagnostic and cannot qualify execute-once or trusted reuse proof.',
