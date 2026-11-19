@@ -602,6 +602,10 @@ source files, rebuild the profile, republish it, and prepare again. All existing
 devenv tasks remain available; removing their evaluated authority requires a
 separate contract replacement, not deleting these guards.
 
+When extending retained guards, update their evaluated tool closure rather than
+adding an ambient PATH or skipping a check. CI and fresh-worktree runs must use
+the same prepared task authority.
+
 Preparation reports up to ten untracked paths, JSON-escaped, and still refuses
 to publish them. The editor publisher's default content-addressed store is
 `.editor-view-content/v1` beside the common Git directory; in ordinary clones
