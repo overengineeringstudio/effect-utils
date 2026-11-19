@@ -52,10 +52,8 @@ describe('pool authoritative lifecycle', () => {
       }).pipe(Effect.exit)
       const results = yield* Effect.all([claim, claim], { concurrency: 2 })
       expect(results.filter(Exit.isSuccess)).toHaveLength(1)
-      expect(
-        (yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]) }))
-          ?.generation,
-      ).toBe(2)
+      const claimed = yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]) })
+      expect(claimed?.generation).toBe(2)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
@@ -88,18 +86,14 @@ describe('pool authoritative lifecycle', () => {
         slot: { ...slot, id: 'next', bare: '/other/.bare' },
       }).pipe(Effect.flip)
       expect(failure.message).toContain('capacity')
-      const leased = yield* claimPoolGeneration({
-        slot: ready,
-        identity: 'installed',
-        owner: 'task',
-      })
-      expect(leased.chargeKnown).toBe(false)
+      const held = yield* claimPoolGeneration({ slot: ready, identity: 'installed', owner: 'task' })
+      expect(held.chargeKnown).toBe(false)
       const unknown = yield* reservePoolSlot({
-        state: { ...state, slots: [leased] },
+        state: { ...state, slots: [held] },
         slot,
       }).pipe(Effect.flip)
       expect(unknown.message).toContain('unknown')
-      const remeasured = { ...leased, state: 'ready' as const, chargeKnown: true }
+      const remeasured = { ...held, state: 'ready' as const, chargeKnown: true }
       expect(
         (yield* reservePoolSlot({
           state: { ...state, slots: [remeasured] },
