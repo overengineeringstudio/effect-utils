@@ -1499,6 +1499,7 @@ in
     exec = trace.exec "worktree:teardown:test" ''
       set -euo pipefail
       export BUN_BIN=${pkgs.bun}/bin/bun
+      export DEVENV_BIN=${inputs.devenv.packages.${currentSystem}.devenv}/bin/devenv
       export CP_BIN=${pkgs.coreutils}/bin/cp MV_BIN=${pkgs.coreutils}/bin/mv
       export JQ_BIN=${pkgs.jq}/bin/jq
       export FINGERPRINT_BIN=${
