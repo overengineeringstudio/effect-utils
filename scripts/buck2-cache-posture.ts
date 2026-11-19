@@ -131,8 +131,9 @@ const fail = (message: string): never => {
 /** Remove only the launcher-owned overlay, rejecting malformed or duplicate managed blocks. */
 export const withoutManagedBlock = (
   current: string,
-): { readonly content: string; readonly found: boolean } => {
+): { readonly content: string; readonly found: boolean; readonly managed: string } => {
   const output: string[] = []
+  const managed: string[] = []
   let inside = false
   let found = false
   for (const line of current.split(/\r?\n/u)) {
@@ -148,9 +149,10 @@ export const withoutManagedBlock = (
       continue
     }
     if (inside === false) output.push(line)
+    else managed.push(line)
   }
   if (inside === true) fail('unterminated managed block in .buckconfig.local')
-  return { content: output.join('\n').trimEnd(), found }
+  return { content: output.join('\n').trimEnd(), found, managed: managed.join('\n') }
 }
 
 /** Exact host-declared private reader routes; never apply them to a writer or CI lane. */
@@ -281,22 +283,21 @@ export const standaloneCachePostureConfig = ({
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
 
-/** Atomically publish or remove only the managed cache posture block. */
+/** Atomically reconcile using the same effective policy base that selected admission. */
 export const reconcileStandaloneCachePosture = ({
   repoRoot,
   env,
+  base,
 }: {
   readonly repoRoot: string
   readonly env: Readonly<Record<string, string | undefined>>
+  readonly base: Readonly<Record<string, string>>
 }): void => {
   const output = resolve(repoRoot, '.buckconfig.local')
   const exists = existsSync(output)
   if (exists === true && lstatSync(output).isSymbolicLink() === true)
     fail('.buckconfig.local must not be a symbolic link')
   const current = exists === true ? readFileSync(output, 'utf8') : ''
-  const base = buckConfigValues(
-    `${readConfig({ path: resolve(repoRoot, '.buckconfig') })}\n${withoutManagedBlock(readConfig({ path: output })).content}`,
-  )
   const next = standaloneCachePostureConfig({ current, env, base })
   if (next === current) return
   const candidate = `${output}.candidate-${randomUUID().replaceAll('-', '')}`
@@ -785,7 +786,10 @@ export const probeRemoteCacheCapabilities = async ({
 if (import.meta.main === true)
   try {
     const repoRoot = process.argv[2] ?? fail('expected repository root argument')
-    reconcileStandaloneCachePosture({ repoRoot, env: process.env })
+    const base = buckConfigValues(
+      `${readConfig({ path: resolve(repoRoot, '.buckconfig') })}\n${withoutManagedBlock(readConfig({ path: resolve(repoRoot, '.buckconfig.local') })).content}`,
+    )
+    reconcileStandaloneCachePosture({ repoRoot, env: process.env, base })
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

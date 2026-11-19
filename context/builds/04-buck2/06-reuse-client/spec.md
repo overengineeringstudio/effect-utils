@@ -192,8 +192,9 @@ mutation. The host endpoint registry remains the authority for origins and
 ports; the launcher does not infer a tier or enroll an unmatched endpoint.
 
 Only the existing default read-only posture (`allow_cache_uploads = false`,
-TLS disabled for that already-plain private tier) applies exact matches to
-the resolved tracked/unmanaged-local addresses. Each unmatched address,
+including effective pre-payload CLI policy, and TLS disabled for the
+already-plain private tier) applies exact matches to the resolved
+tracked/unmanaged-local addresses. Each unmatched address,
 including the public TLS default and explicit user addresses, remains intact.
 The same managed root FILE overlay supplies resolved addresses to both the
 admission probe and native daemon startup; instance names and TLS settings
@@ -204,8 +205,12 @@ inherited authorization. CI, public-reader overrides, publishers, private
 writers, trusted qualification and offline posture do not apply reader maps.
 The resolved address participates in the existing probe fingerprint; the
 shell's complete exported-environment warm-launch identity already includes
-`BUCK2_REAPI_READ_FORWARDERS`. Root locking, idle-only daemon transitions,
-source fingerprints, watcher admission and payload handling are unchanged.
+`BUCK2_REAPI_READ_FORWARDERS`. Explicit maps and removal of an existing managed
+reader route enter the existing root-locked, idle-only daemon posture
+transition before changing the overlay. A busy mismatched daemon refuses
+before mutation; stable posture reuses its recorded daemon. This does not
+declare CI posture, pin CI probes, or change Darwin daemon lifetime.
+Source fingerprints, watcher admission and payload handling are unchanged.
 
 Public CI declares every job's Buck cache posture in the Genie workflow source:
 

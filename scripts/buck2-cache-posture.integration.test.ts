@@ -292,7 +292,7 @@ describe('standalone Buck cache posture', () => {
     const local = `[ui]\n  color = true\n`
     writeFileSync(output, local)
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '1' } })
+    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '1' }, base: {} })
     expect(readFileSync(output, 'utf8')).toBe(`${local.trimEnd()}
 
 # effect-utils standalone cache posture: begin
@@ -302,7 +302,7 @@ describe('standalone Buck cache posture', () => {
 # effect-utils standalone cache posture: end
 `)
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: {} })
+    reconcileStandaloneCachePosture({ repoRoot: root, env: {}, base: {} })
     expect(readFileSync(output, 'utf8')).toBe(`${local.trimEnd()}
 
 # effect-utils standalone cache posture: begin
@@ -314,10 +314,10 @@ describe('standalone Buck cache posture', () => {
     const root = makeRoot()
     const output = join(root, '.buckconfig.local')
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '1' } })
+    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '1' }, base: {} })
     expect(existsSync(output)).toBeTrue()
 
-    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' } })
+    reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' }, base: {} })
     expect(readFileSync(output, 'utf8')).not.toContain('[archive_origin]')
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
   })
@@ -412,6 +412,7 @@ describe('standalone Buck cache posture', () => {
       JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 41045 }),
     ]) {
       expect(() => reconcileStandaloneCachePosture({
+        base: {},
         repoRoot: root,
         env: { BUCK2_REAPI_READ_FORWARDERS: encoded },
       })).toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')

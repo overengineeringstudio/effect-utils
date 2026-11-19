@@ -463,7 +463,14 @@ export const directBuckArguments = async ({
     configArgs.includes('--no-remote-cache') === true ||
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
-  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv, base })
+  // Eligibility follows the effective invocation policy, including explicit
+  // pre-payload writer flags. Reconciliation must use this same decision.
+  const effectiveBase = { ...base, ...cliValues }
+  const posture = standaloneCachePostureConfig({
+    current: '',
+    env: postureEnv,
+    base: effectiveBase,
+  })
   const overrides = buckConfigValues(posture)
   const values = { ...base, ...overrides, ...cliValues }
   const mappedReader = overrides['buck2_re_client.http_headers'] === 'x-buck2-reader: read-only'
@@ -474,7 +481,7 @@ export const directBuckArguments = async ({
       standaloneCachePostureConfig({
         current: '',
         env: postureEnv,
-        base,
+        base: effectiveBase,
       }),
     )
     Object.assign(values, disabled)
@@ -676,7 +683,7 @@ export const directBuckArguments = async ({
       (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
     ) === true
   )
-    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
+    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv, base: effectiveBase })
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
@@ -1180,10 +1187,25 @@ export const admitCacheDaemonCommand = async ({
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
   readonly deadlineMs?: number
 }): Promise<string[]> => {
-  if (ciPostureDeclared(env) === false && env['GITHUB_ACTIONS'] !== 'true') return admit()
-  const initialValues = buckConfigValues(
-    `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
+  const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
+  // Validation precedes lock/state creation, including on cache-less roots.
+  if (routedReader === true)
+    standaloneCachePostureConfig({ current: '', env, base: {} })
+  const local = readConfig({ path: join(root, '.buckconfig.local') })
+  const previousReaderRoute =
+    buckConfigValues(withoutManagedBlock(local).managed)['buck2_re_client.http_headers'] ===
+    'x-buck2-reader: read-only'
+  if (
+    ciPostureDeclared(env) === false &&
+    env['GITHUB_ACTIONS'] !== 'true' &&
+    routedReader === false &&
+    previousReaderRoute === false
   )
+    return admit()
+  const initialValues = {
+    ...buckConfigValues(readConfig({ path: join(root, '.buckconfig') })),
+    ...buckConfigValues(local),
+  }
   if (
     initialValues['buck2_re_client.action_cache_address'] === undefined &&
     initialValues['buck2.remote_cache_enabled'] !== 'true'
@@ -1191,11 +1213,11 @@ export const admitCacheDaemonCommand = async ({
     return admit()
   const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
   if (invocation === undefined)
-    throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
+    throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
   // Check here, before any daemon access: cache-less roots and skipped commands
   // need no admission, but GitHub jobs must never silently inherit local policy.
-  if (ciPostureDeclared(env) === false)
+  if (env['GITHUB_ACTIONS'] === 'true' && ciPostureDeclared(env) === false)
     throw new Error('Buck2 cache posture: GitHub Actions job without BUCK2_CI_POSTURE declaration')
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
