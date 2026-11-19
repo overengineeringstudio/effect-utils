@@ -66,6 +66,8 @@ quarantined roots, across repositories. Reservations are accounting, not filesys
 quotas; ordinary admitted execution remains responsible for runtime containment.
 Writable claims invalidate measured accounting until a safe release/remeasure.
 This blocks new reservations, not claims of other already-reserved ready roots.
+Status preserves live leased and completed ownership while accounting is unknown;
+an abandoned provider or a lost/unknown root path still causes quarantine.
 Every failed preparation reconciles retained logical bytes, including partial
 install growth. Unknown retained accounting or holders block further allocation.
 Missing pathnames cannot clear accounting: an unlinked file may still be held open.
