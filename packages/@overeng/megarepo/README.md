@@ -580,6 +580,17 @@ introduced by these APIs. Decoded or captured evidence is not deletion permissio
 Worktree consumers must veto every fd, executable, mapping and mount reference,
 including retained bytes; store-specific retained-byte policy does not apply.
 
+`makeWorktreeHolderSource` captures only the selected roots once; each read
+rechecks expiry and the current no-follow directory device/inode/mount identity
+through the existing fd-based evidence owner, without another mount census.
+Unknown, stale, aliased or replaced roots remain unknown, without an implicit
+recapture. An action must create its source under its own deletion lease.
+All descriptor, executable, mapping and mount references veto worktree removal.
+Only an exact own-UID daemon leader and matching leader/task lifetime may defer
+a cwd/root reference to shutdown and the final probe; nonleader references veto.
+Temporary identity-read descriptors are closed before return: this API does not
+claim descriptors held through deletion, atomic exclusion or live qualification.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
