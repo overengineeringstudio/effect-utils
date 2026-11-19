@@ -99,7 +99,7 @@ const validActivityEvent = (event: PoolActivityEvent) => {
     (event.ownerLabelOrigin !== 'none' || event.ownerLabel === '')
 }
 
-const validPoolActivity = (slot: PoolSlot) => {
+export const validPoolActivity = (slot: PoolSlot) => {
   const activity = slot.activity
   if (activity === undefined) return true
   const expected = activity.phase.endsWith('-ready') ? 'ready' :

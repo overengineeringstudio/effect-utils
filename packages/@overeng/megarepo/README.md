@@ -491,8 +491,11 @@ hygiene owner's operation with full consumer proof.
 `readPoolProvenance` exports bearer-free observations through that same decoder,
 without initialization, migration writes, recovery, unlocks or removal. Missing or
 unsupported state fails closed, never fabricating an empty inventory. Legacy activity
-remains unrecorded; the current public projection still returns `HOLD` with
-`authorizesRemoval: false`, even when ready/unclaimed. Owner labels are unauthenticated.
+remains unrecorded and `HOLD`. A ready/unclaimed root with complete recorded birth or
+claim/completion/release history may be a `CANDIDATE` observation; missing provider
+UID/lifetime, incomplete or misbound history and pure retarget results remain `HOLD`.
+Recorded event times and opaque caller labels are exported, never authenticated seats.
+Every observation still has `authorizesRemoval: false`; candidate is not an action grant.
 A future hygiene consumer must reread the same generation under its action lease and
 the shared pool lifecycle fence before its own fresh Git/all-UID/consumer checks;
 the snapshot grants no eligibility or cleanup authority.

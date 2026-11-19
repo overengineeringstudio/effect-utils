@@ -212,6 +212,71 @@ describe('pool authoritative lifecycle', () => {
     }),
   )
 
+  it.effect('projects recorded terminal roots as observations only, retaining incomplete histories on HOLD', () =>
+    Effect.gen(function* () {
+      // Schema inputs only: these are not installed-root or host qualification receipts.
+      const birth: PoolActivity = {
+        generation: 1, commit: slot.commit, identity: slot.identity, phase: 'birth-ready',
+        event: {
+          observedAtUtc: '2026-11-19T12:00:00.000Z',
+          provider: { pid: 123, uid: 456, processStartTime: '789' },
+          ownerLabel: '', ownerLabelOrigin: 'none',
+        },
+      }
+      const ready: PoolSlot = {
+        ...slot, state: 'ready', token: '', owner: '', activity: birth,
+        barrierToken: 'never-export-this-barrier',
+      }
+      const claimed = {
+        ...birth.event, ownerLabel: 'caller label, not a seat', ownerLabelOrigin: 'claim-argument' as const,
+      }
+      const released: PoolSlot = {
+        ...ready, generation: 2, activity: {
+          ...birth, generation: 2, phase: 'release-ready', claimed,
+          completed: { ...claimed, observedAtUtc: '2026-11-19T12:01:00.000Z' },
+          event: { ...claimed, observedAtUtc: '2026-11-19T12:02:00.000Z' },
+        },
+      }
+      for (const root of [ready, released]) {
+        const observation = projectPoolProvenance(root)
+        expect(observation.disposition).toBe('CANDIDATE')
+        expect(observation.authorizesRemoval).toBe(false)
+        expect(observation.holdReasons).toEqual([])
+        expect(observation.ownerActivity._tag).toBe('Recorded')
+        if (observation.ownerActivity._tag === 'Recorded') {
+          expect(observation.ownerActivity.authenticatedSeat).toBe(false)
+          expect(observation.ownerActivity.event.providerIdentityComplete).toBe(true)
+        }
+        expect(JSON.stringify(observation)).not.toContain(root.barrierToken)
+      }
+      const activity = released.activity!
+      const uncertain: ReadonlyArray<PoolSlot> = [
+        { ...ready, activity: undefined },
+        { ...ready, activity: { ...birth, event: { ...birth.event, provider: { pid: 123 } } } },
+        { ...released, generation: 3 },
+        { ...released, activity: { ...activity, completed: undefined } },
+        { ...released, activity: { ...activity, event: { ...activity.event, observedAtUtc: claimed.observedAtUtc } } },
+        { ...released, state: 'quarantined', chargeKnown: false },
+        { ...released, state: 'leased', token: 'never-export-live-claim', owner: claimed.ownerLabel },
+      ]
+      const retarget = yield* beginPoolRetarget({
+        slot: released, generation: released.generation, identity: released.identity,
+        commit: 'b'.repeat(40), owner: 'retarget label',
+      })
+      const planned = yield* finishPoolRetarget({
+        slot: retarget, generation: retarget.generation, token: retarget.retarget!.token,
+        result: { _tag: 'Prepared', identity: 'pure-input-only', charge: 64 },
+      })
+      for (const root of [...uncertain, retarget, planned]) {
+        const observation = projectPoolProvenance(root)
+        expect(observation.disposition).toBe('HOLD')
+        expect(observation.authorizesRemoval).toBe(false)
+        expect(JSON.stringify(observation)).not.toContain('never-export-live-claim')
+        expect(JSON.stringify(observation)).not.toContain(root.barrierToken)
+      }
+    }),
+  )
+
   it.effect('persists an unborn bounded reservation unchanged across actual inspection', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
