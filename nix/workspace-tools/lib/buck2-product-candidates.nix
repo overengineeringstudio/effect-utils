@@ -187,11 +187,16 @@ let
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
     pathPackages = megarepoProviders.pathPackages;
-    smokeTestArgs = [
-      "store"
-      "pool"
-      "--help"
-    ];
+    # Keep the pinned pre-pool published artifact usable until its own repin.
+    smokeTestArgs =
+      if builtins.elem "mr" megarepoProviders.capabilities then
+        [
+          "store"
+          "pool"
+          "--help"
+        ]
+      else
+        [ "--help" ];
   };
   tui-stories = mk "tui-stories" {
     binaryName = "tui-stories";
