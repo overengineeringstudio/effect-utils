@@ -911,10 +911,12 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   }
   if (holderSource !== undefined) {
     if (holderWorktree === undefined) return yield* unavailable('Holder scope is missing')
-    const observation = yield* holderSource.read({
-      worktreePath: holderWorktree,
-      ignoredProcesses: ignoredOwnProcesses,
-    }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+    const observation = yield* holderSource
+      .read({
+        worktreePath: holderWorktree,
+        ignoredProcesses: ignoredOwnProcesses,
+      })
+      .pipe(Effect.provideService(FileSystem.FileSystem, fs))
     if (observation.complete === false)
       return yield* unavailable('Scoped holder evidence is incomplete')
     return {
@@ -1071,7 +1073,12 @@ export const readBudgetWorkspaceActivity: (options: {
           })
         : builtin === true
           ? yield* readOwnerActivity({
-              fs, scope: 'all-uids', ignoredOwnProcesses, preflight, holderSource, holderWorktree,
+              fs,
+              scope: 'all-uids',
+              ignoredOwnProcesses,
+              preflight,
+              holderSource,
+              holderWorktree,
             })
           : undefined
     const activity: BudgetWorkspaceActivity | undefined =
@@ -1166,8 +1173,11 @@ export const readBudgetWorktreeInUse = ({
             : undefined
         if (exempt !== undefined) {
           const stat = yield* fs.readFileString(`/proc/${reference.pid}/stat`).pipe(Effect.option)
-          if (Option.isSome(stat) === true &&
-              parseProcStat(stat.value)?.startTime === exempt.startTime) continue
+          if (
+            Option.isSome(stat) === true &&
+            parseProcStat(stat.value)?.startTime === exempt.startTime
+          )
+            continue
         }
         return { _tag: 'in-use', holder: { pid: reference.pid, path: reference.path } } as const
       }

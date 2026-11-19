@@ -173,9 +173,15 @@ const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
     const start =
       Option.isSome(before) === true ? parseProcStat(before.value)?.startTime : undefined
     const end = Option.isSome(after) === true ? parseProcStat(after.value)?.startTime : undefined
-    const expected = observation?.processIdentities.find((identity) => identity.pid === pid)?.startTime
-    if (start === undefined || start !== end ||
-        (expected !== undefined && start !== expected) || Option.isNone(environ) === true) {
+    const expected = observation?.processIdentities.find(
+      (identity) => identity.pid === pid,
+    )?.startTime
+    if (
+      start === undefined ||
+      start !== end ||
+      (expected !== undefined && start !== expected) ||
+      Option.isNone(environ) === true
+    ) {
       evidence.push({ source: 'process', owner: null, pid })
       continue
     }

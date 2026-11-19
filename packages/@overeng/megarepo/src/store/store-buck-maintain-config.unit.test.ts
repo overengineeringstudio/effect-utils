@@ -55,20 +55,22 @@ describe('Buck maintenance config', () => {
     }),
   )
 
-  it.effect('preserves the explicit immutable native holder binding without enabling a default', () =>
-    Effect.gen(function* () {
-      const producerId = `/nix/store/${'0'.repeat(32)}-holder-evidence-config-fixture`
-      const holderEvidenceClient = {
-        path: `${producerId}/bin/worktree-holder-evidence`,
-        producerId,
-        policyId: 'a'.repeat(64),
-      }
-      const result = yield* decodeStoreBuckMaintainConfig(
-        encodeJson({ version: 1, holderEvidenceClient }),
-      )
-      expect(result.holderEvidenceClient).toEqual(holderEvidenceClient)
-      expect(DEFAULT_STORE_BUCK_MAINTAIN_CONFIG.holderEvidenceClient).toBeUndefined()
-    }),
+  it.effect(
+    'preserves the explicit immutable native holder binding without enabling a default',
+    () =>
+      Effect.gen(function* () {
+        const producerId = `/nix/store/${'0'.repeat(32)}-holder-evidence-config-fixture`
+        const holderEvidenceClient = {
+          path: `${producerId}/bin/worktree-holder-evidence`,
+          producerId,
+          policyId: 'a'.repeat(64),
+        }
+        const result = yield* decodeStoreBuckMaintainConfig(
+          encodeJson({ version: 1, holderEvidenceClient }),
+        )
+        expect(result.holderEvidenceClient).toEqual(holderEvidenceClient)
+        expect(DEFAULT_STORE_BUCK_MAINTAIN_CONFIG.holderEvidenceClient).toBeUndefined()
+      }),
   )
 
   for (const [name, value] of Object.entries({
@@ -77,12 +79,15 @@ describe('Buck maintenance config', () => {
     'unknown field': { version: 1, extra: true },
     'unknown nested field': { version: 1, buckOut: { extra: true } },
     'incomplete native holder binding': {
-      version: 1, holderEvidenceClient: { path: '/bin/helper' },
+      version: 1,
+      holderEvidenceClient: { path: '/bin/helper' },
     },
     'mutable native holder producer': {
       version: 1,
       holderEvidenceClient: {
-        path: '/bin/helper', producerId: 'current', policyId: 'a'.repeat(64),
+        path: '/bin/helper',
+        producerId: 'current',
+        policyId: 'a'.repeat(64),
       },
     },
     'different native holder executable': {
