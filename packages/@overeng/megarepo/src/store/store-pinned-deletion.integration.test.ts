@@ -131,6 +131,71 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
   )
 
   it.effect(
+    'admits a producer-proven thread alias only when every exact binding holds',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        yield* withPinnedDeletion({
+          rootPath,
+          path,
+          identity,
+          beforeRemove: (view) =>
+            Effect.sync(() => {
+              const target = lstatSync(path, { bigint: true })
+              const pin = view.pins.find(
+                (entry) =>
+                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
+              )
+              if (pin === undefined) throw new Error('Engine did not hold its target fd')
+              const actual = fstatSync(pin.fd, { bigint: true })
+              const alias = {
+                proof: 'pidfd-kcmp-files-and-file-v1',
+                tgid: process.pid,
+                leaderStart: '22',
+                tid: process.pid + 1,
+                taskStart: '23',
+                fd: pin.fd,
+              } as const
+              const reference = {
+                kind: 'fd',
+                pid: alias.tid,
+                fd: pin.fd,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+                alias,
+              }
+              expect(view.has(reference)).toBe(true)
+              // A different fd number, foreign leader, mismatched task or wrong
+              // proof veto even when the identity strings look identical.
+              expect(
+                view.has({ ...reference, fd: pin.fd + 1, alias: { ...alias, fd: pin.fd + 1 } }),
+              ).toBe(false)
+              expect(view.has({ ...reference, alias: { ...alias, tgid: process.pid + 2 } })).toBe(
+                false,
+              )
+              expect(
+                view.has({
+                  ...reference,
+                  pid: alias.tid + 3,
+                  alias: { ...alias, tid: alias.tid + 3 },
+                }),
+              ).toBe(false)
+              expect(view.has({ ...reference, alias: { ...alias, proof: 'fd-equality-v0' } })).toBe(
+                false,
+              )
+              // Identity drift still vetoes an otherwise perfectly bound alias.
+              expect(view.has({ ...reference, ino: `${reference.ino}0` })).toBe(false)
+            }),
+        })
+        expect(yield* fs.exists(path)).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'vetoes a second real fd from the same process without quarantining the target',
     Effect.fnUntraced(
       function* () {

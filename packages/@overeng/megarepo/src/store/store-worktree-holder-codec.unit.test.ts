@@ -229,6 +229,62 @@ describe('native holder evidence Rust codec authority', () => {
       }).pipe(Effect.provide(NodeServices.layer)),
   )
 
+  it.effect('accepts only exactly bound nonleader thread fd aliases and rejects every drift', () =>
+    Effect.gen(function* () {
+      const { decoded } = yield* fixtures
+      const evidence = decoded[1]!
+      const root = evidence.roots[0]!
+      const base = root.references[0]!
+      const thread = {
+        ...base,
+        tid: base.tgid + 1,
+        taskStart: `${base.leaderStart}7`,
+        reference: 'fd' as const,
+        fd: 3,
+      }
+      const alias = {
+        proof: 'pidfd-kcmp-files-and-file-v1',
+        tgid: thread.tgid,
+        leaderStart: thread.leaderStart,
+        tid: thread.tid,
+        taskStart: thread.taskStart,
+        fd: 3,
+      }
+      const valid = {
+        ...evidence,
+        roots: [{ ...root, references: [{ ...thread, leaderFdAlias: alias }] }],
+      }
+      expect(
+        yield* decodeWorktreeHolderEvidence({ ...binding(evidence), json: encodeJson(valid) }),
+      ).toMatchObject({
+        roots: [{ references: [{ leaderFdAlias: alias }] }],
+      })
+      const invalid: ReadonlyArray<unknown> = [
+        { ...thread, leaderFdAlias: { ...alias, fd: 4 } },
+        { ...thread, leaderFdAlias: { ...alias, tid: thread.tid + 5 } },
+        { ...thread, leaderFdAlias: { ...alias, tgid: thread.tgid + 5 } },
+        { ...thread, leaderFdAlias: { ...alias, taskStart: `${thread.taskStart}9` } },
+        { ...thread, leaderFdAlias: { ...alias, leaderStart: `${thread.leaderStart}9` } },
+        { ...thread, leaderFdAlias: { ...alias, proof: 'fd-equality-v0' } },
+        { ...thread, fd: null, leaderFdAlias: alias },
+        // The leader itself never needs or admits an alias.
+        { ...base, reference: 'fd', fd: 3, leaderFdAlias: alias },
+      ]
+      for (const reference of invalid) {
+        const value = {
+          ...evidence,
+          roots: [{ ...root, references: [reference] }],
+        }
+        expect(
+          yield* decodeWorktreeHolderEvidence({
+            ...binding(evidence),
+            json: encodeJson(value),
+          }),
+        ).toBeUndefined()
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
   it.effect('rejects binding, requested order, coverage and nonce changes', () =>
     Effect.gen(function* () {
       const { decoded, lines } = yield* fixtures

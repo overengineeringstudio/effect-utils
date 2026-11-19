@@ -54,6 +54,21 @@ export const WorktreeHolderEvidenceRequestSchema = Schema.Struct({
 })
 
 const Identity = Schema.Struct({ dev: U64, ino: NonzeroU64, mountId: NonzeroU64 })
+/**
+ * Producer-owned proof that a NONLEADER task's fd table is the leader's
+ * (KCMP_FILES==0) and that its fd number is the same open file description
+ * (KCMP_FILE==0), bound to retained pidfd generations. Pure typed evidence:
+ * absence, unsupported kernels or failed rechecks simply omit the alias and the
+ * reference keeps its veto. Never a process-wide exemption or census authority.
+ */
+const LeaderFdAlias = Schema.Struct({
+  proof: Schema.Literal('pidfd-kcmp-files-and-file-v1'),
+  tgid: U32.check(Schema.isGreaterThan(0)),
+  leaderStart: NonzeroU64,
+  tid: U32.check(Schema.isGreaterThan(0)),
+  taskStart: NonzeroU64,
+  fd: U32,
+})
 const Reference = Schema.Struct({
   tgid: U32.check(Schema.isGreaterThan(0)),
   leaderStart: NonzeroU64,
@@ -65,6 +80,7 @@ const Reference = Schema.Struct({
   identity: Identity,
   effect: Schema.Literals(['in-use', 'retained-bytes']),
   fd: Schema.NullOr(U32),
+  leaderFdAlias: Schema.optional(LeaderFdAlias),
 }).check(
   Schema.makeFilter(
     (reference) =>
@@ -72,7 +88,17 @@ const Reference = Schema.Struct({
       (reference.effect !== 'retained-bytes' ||
         reference.reference === 'fd' ||
         reference.reference === 'map' ||
-        reference.reference === 'exe'),
+        reference.reference === 'exe') &&
+      (reference.leaderFdAlias === undefined ||
+        (reference.reference === 'fd' &&
+          reference.fd !== null &&
+          // Nonleader tasks only: an alias for the leader itself is malformed.
+          (reference.tid !== reference.tgid || reference.taskStart !== reference.leaderStart) &&
+          reference.leaderFdAlias.tgid === reference.tgid &&
+          reference.leaderFdAlias.leaderStart === reference.leaderStart &&
+          reference.leaderFdAlias.tid === reference.tid &&
+          reference.leaderFdAlias.taskStart === reference.taskStart &&
+          reference.leaderFdAlias.fd === reference.fd)),
   ),
 )
 const Root = Schema.Struct({

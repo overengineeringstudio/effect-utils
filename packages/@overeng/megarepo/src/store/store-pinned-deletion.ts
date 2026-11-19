@@ -105,6 +105,22 @@ export interface OwnedDeletionPin {
   readonly ino: string
 }
 
+/**
+ * Producer-minted kernel evidence that a nonleader task shares the leader's fd
+ * table and open file description for the same fd number. Typed observation
+ * only: the producer retains pidfd generation binding and both kcmp rechecks;
+ * any error, unsupported kernel or failed recheck omits the alias, and this
+ * engine still vetoes the reference. Never a heuristic fd/dev/ino whitelist.
+ */
+export interface LeaderFdAliasEvidence {
+  readonly proof: 'pidfd-kcmp-files-and-file-v1'
+  readonly tgid: number
+  readonly leaderStart: string
+  readonly tid: number
+  readonly taskStart: string
+  readonly fd: number
+}
+
 const ownedDeletionPinsBrand = Symbol('OwnedDeletionPins')
 
 /** Valid only during beforeRemove; no process-wide or non-fd exemption is granted. */
@@ -117,6 +133,7 @@ export interface OwnedDeletionPins {
     readonly fd: number | null
     readonly dev: string
     readonly ino: string
+    readonly alias?: LeaderFdAliasEvidence | undefined
   }) => boolean
 }
 
@@ -212,16 +229,30 @@ const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
       Object.freeze({ pid: process.pid, fd, dev: dev.toString(), ino: ino.toString() }),
     ),
   )
+  const matchesPin = (fd: number, dev: string, ino: string) =>
+    pins.some((pin) => pin.fd === fd && pin.dev === dev && pin.ino === ino)
   const view: OwnedDeletionPins = Object.freeze({
     [ownedDeletionPinsBrand]: true,
     pins,
     has: (reference: Parameters<OwnedDeletionPins['has']>[0]) => {
-      if (active === false || reference.kind !== 'fd' || reference.pid !== process.pid) return false
-      for (const pin of pins) {
-        if (reference.fd === pin.fd && reference.dev === pin.dev && reference.ino === pin.ino)
-          return true
-      }
-      return false
+      if (active === false || reference.kind !== 'fd' || reference.fd === null) return false
+      // Exact leader descriptor: the original uninterrupted admission path.
+      if (reference.alias === undefined)
+        return (
+          reference.pid === process.pid && matchesPin(reference.fd, reference.dev, reference.ino)
+        )
+      // Thread alias: the producer proved a shared fd table AND the same open
+      // file description for this exact fd number, rechecked through retained
+      // pidfd generations. This engine still binds the alias to its own leader
+      // pid, a minted pin fd and the referenced identity; anything else vetoes.
+      const { alias } = reference
+      return (
+        alias.proof === 'pidfd-kcmp-files-and-file-v1' &&
+        alias.tgid === process.pid &&
+        alias.tid === reference.pid &&
+        alias.fd === reference.fd &&
+        matchesPin(alias.fd, reference.dev, reference.ino)
+      )
     },
   })
   return {

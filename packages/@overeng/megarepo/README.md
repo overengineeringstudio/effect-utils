@@ -626,7 +626,14 @@ opaque `ownedPins` view. The source additionally binds the actual leader start t
 all four UID values, and exact leader/task identity before checking owned fd tuples.
 Task-local descriptor numbers are not process-global: a nonleader row with the same
 fd/device/inode still vetoes, because threads can unshare their descriptor tables.
-An owned fd is never reported as a process-wide exemption in receipt metadata.
+The sole exception is a producer-minted `pidfd-kcmp-files-and-file-v1` alias: the
+producer retained both pidfds, rechecked start generations, and proved the task's
+fd table is the leader's (KCMP_FILES==0) with the same open file description at
+the same fd number (KCMP_FILE==0). The engine still binds the alias to its own
+leader pid, a minted pin fd and the referenced identity; unsupported kernels,
+failed rechecks or any mismatch omit the alias and the reference keeps its veto.
+Equal fd/device/inode alone is never evidence, and no alias is a process-wide
+exemption. An owned fd is never reported as such in receipt metadata.
 Capture the source after native pins are acquired, inside the same final guard;
 this adapter does not activate or qualify the privileged client/service.
 

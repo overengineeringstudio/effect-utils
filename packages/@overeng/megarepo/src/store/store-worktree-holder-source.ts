@@ -112,6 +112,29 @@ export const classifyWorktreeHolderEvidence = ({
             dev: reference.identity.dev,
             ino: reference.identity.ino,
           }) === true
+        const alias = reference.leaderFdAlias
+        const ownedThreadFd =
+          leader === false &&
+          ownIdentity &&
+          ownStartTime !== undefined &&
+          reference.reference === 'fd' &&
+          reference.fd !== null &&
+          alias !== undefined &&
+          alias.proof === 'pidfd-kcmp-files-and-file-v1' &&
+          alias.tgid === reference.tgid &&
+          alias.leaderStart === reference.leaderStart &&
+          alias.tid === reference.tid &&
+          alias.taskStart === reference.taskStart &&
+          alias.fd === reference.fd &&
+          reference.leaderStart === ownStartTime &&
+          ownedPins?.has({
+            kind: 'fd',
+            pid: reference.tid,
+            fd: reference.fd,
+            dev: reference.identity.dev,
+            ino: reference.identity.ino,
+            alias,
+          }) === true
         const selectedDaemon =
           leader &&
           ownIdentity &&
@@ -120,10 +143,9 @@ export const classifyWorktreeHolderEvidence = ({
             (identity) =>
               identity.pid === reference.tgid && identity.startTime === reference.leaderStart,
           ) === true
-        return ownedFd || selectedDaemon
+        return ownedFd || ownedThreadFd || selectedDaemon
       })
     : []
-  const excludedSet = new Set(excluded)
   const references = root.references
     .filter((reference) => !excludedSet.has(reference))
     .map((reference) => ({
