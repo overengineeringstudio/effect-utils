@@ -143,6 +143,7 @@ let
     required =
       if products.megarepo.sourceImport != null then
         [
+          "coreutils"
           "git"
           "nix"
           "worktree-lease"
@@ -151,6 +152,10 @@ let
       else
         (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
     providers = {
+      coreutils = {
+        capability = "coreutils";
+        pathPackages = [ pkgs.coreutils ];
+      };
       git = {
         capability = "git";
         pathPackages = [ pkgs.git ];
