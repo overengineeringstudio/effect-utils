@@ -87,6 +87,28 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
   response paths and error text are stripped or sanitized; outcome fields
   retain their native wire presence.
 
+## Compact local occurrence evidence
+
+`buck2-events` owns `${XDG_STATE_HOME:-$HOME/.local/state}/buck2-events/occurrence-records/v1`,
+outside disposable worktrees. `ingest --records-dir DIR` overrides the state root
+for isolated tests/operator capture; normal callers share the default.
+
+Every immutable JSONL file is atomically published and synced before ingest
+acknowledges conversion. Conversion filenames include native-build and content
+hashes, so replay is idempotent while partial and later complete snapshots coexist.
+First use syncs the entire newly established directory ancestry before creating
+an owned `.directory-synced` marker. Later publications sync their file and leaf
+directory; concurrent creation or a lost marker cannot skip the ancestry barrier.
+The conversion header carries `build_id`, `root_id`, typed `resource_attributes`,
+`truncated`, `stop_reason`, `unknown_fields`, and `action_count`. Each following
+`occurrence` carries `build_id`, `span_id`, decimal-string `start_ns`/`end_ns`,
+`ended`, and allowlisted typed OTLP `attributes`. Only native action spans enter
+this projection, not command roots, raw argv, environment, paths, or full traces.
+`retained.rs` is the format/allowlist authority; absent attributes stay unknown.
+A conversion is capped at 64 MiB; overflow/I/O errors fail ingest so native input
+remains available. Records are retained without expiry in this capture boundary;
+worktree teardown must not remove this host-owned evidence.
+
 ## Producer Metrics
 
 ```text

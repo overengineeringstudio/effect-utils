@@ -42,6 +42,35 @@ truncation. These are observations, not proof of lock ownership or a network sta
 Run the FIFO-controlled regression with
 `CI=1 python3 genie/ci-scripts/preparation-watchdog.test.py`.
 
+## Immutable authority microVM
+
+`nix/immutable-microvm/guest.nix` composes with the pinned microvm.nix guest
+module: cloud-hypervisor, 2 vCPU / 2 GiB, EROFS store, private `/var`, no host
+filesystem shares, no guest Nix or Perl, systemd initrd and networkd.
+`services.immutableAuthority.package` supplies the authority binary; environment
+and networking are explicit module inputs. Tailscale owns its identity in the
+guest state disk and is never enrolled by the image or reference tests.
+The nested flake builds a credential-free reference image, not an authorization
+service: `nix build ./nix/immutable-microvm#a` on x86_64 Linux.
+Image outputs are public code, never a location for keys or provider credentials.
+
+`host.nix` owns one VMM UID, TAP and state writer. Its root-only activation
+package accepts a prebuilt immutable release path and starts a target-local
+systemd transaction, independent of the requesting client. Current, prior and
+candidate closures remain GC-rooted. Readiness requires exact release,
+catalog digest, state epoch, a fresh challenge and a new boot nonce. Failed
+health restarts the prior release; a killed controller triggers bounded rescue;
+boot recovery selects the journaled prior before autostart. Incompatible state
+epochs reject before restart. This is not publisher verification or permission
+to promote arbitrary releases: consumers own that human-controlled boundary.
+The Linux nested-KVM proof is
+`nix build ./nix/immutable-microvm#checks.x86_64-linux.lifecycle`.
+The `Immutable Authority Lifecycle` same-repository PR workflow runs that proof on
+the admitted public Namespace KVM selector, serialized across public heavy jobs.
+It builds both immutable image/runner closures first, then exercises cold boot,
+update, automatic rollback, restart and persistent state with no enrollment,
+provider credentials, deployment or cache publishing.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
@@ -85,6 +114,54 @@ scan. The consumer lane in #1994 part 2 is the backstop and gates `published`;
 this part-1 inventory guard does not replace that consumer proof.
 
 ## Packages
+
+### SCG Discord signer
+
+`@overeng/scg-discord` is a Bun/Effect adapter for the shared `@overeng/scg-protocol`
+contracts. `./card` exports the pure Components V2 renderer and limit validator.
+The runtime verifies Discord's Ed25519 signature over the raw timestamp/body,
+checks the application and human allowlist, and durably binds opaque message
+controls to a signed pending digest and offered option. HTTP callbacks return
+type-6 deferred update before authority I/O; a click never masquerades as accepted.
+Transport and journal failures carry an operation and a cause encoded with
+`Schema.Defect()`, preserving the original failure rather than replacing it with
+an error-construction defect. Consumers must redact private causes in service logs.
+
+Compose `DiscordStore`, `makeAuthorityClient`, `makeDiscordDelivery`, `makeSigner`,
+`listenDiscordInteractions` and `syncDiscordSurface` in an independently enrolled
+signer process. The public HTTPS API proxies exact raw bytes and Discord signature
+headers to its private Unix listener at `/interactions`. The listener reconciles
+the durable outbox and stale original cards before accepting traffic. The parent
+socket directory and its shared proxy group are provisioned separately; the
+signer's database and signing key remain private to its UID.
+The socket parent must be canonical, signer-owned and not group/world writable.
+A persistent private SQLite lifecycle-lock inode is held exclusively for the
+listener's scoped lifetime; never delete or replace it while a signer may run.
+After a crash releases the OS lock, only an owned socket with a refused connection
+and unchanged inode is reclaimed. Live listeners, symlinks, regular files and
+foreign-owned paths fail closed. The host must retain the private directory and
+lock inode across restarts (or remove them only after proving the service stopped).
+
+Cards name exactly the statements offered by the authority. Similar-lease controls
+appear only for signed offers with explicit scope, absolute expiry and guardrails.
+Session-rule offers are inspect/reject-only on Discord. Sensitive shared previews
+disclose command/account only; Inspect and Show my words are ephemeral. Origin
+words are hydrated transiently and digest-checked, never stored in the journal;
+only non-sensitive Discord-origin words may be quoted publicly.
+
+Recovering an accepted decision consults its durable winner digest rather than
+resubmitting or dispatching again. Unacknowledged candidates are discarded on
+restart; failed terminal edits are retried before the terminal cursor advances.
+An accepted reservation removes controls but retains its durable message mapping
+until a final execution outcome has been PATCHed successfully. Sync polls these
+tracked outcomes even after consuming their reservation event. Status selection
+and message editing share one lock, preventing stale reserved edits from replacing
+the final outcome.
+Card and decision-job journal JSON uses the same `Schema.fromJsonString` codec
+for encoding and decoding.
+Delivery failure never signs a synthetic global deny. A create-before-journal
+message has no enabled controls. Experimental exact-only authority support does
+not imply live lease support, signer enrollment, an application/token or deployment.
 
 ### GitHub Actions retained artifacts
 
@@ -515,6 +592,11 @@ Editor publication follows the selected source suites and module fixtures rather
 than publishing neutral-only package views. macOS still builds and smokes the native
 and compiled products to cover Darwin artifacts.
 
+The platform registry is hand-authored, not a generated projection: classify each
+new bounded task there alongside its package-local Buck lane declaration. Bun
+Vitest lanes that exercise real on-disk SQLite persistence belong in the
+Darwin-sensitive subset; pure protocol-vector and schema lanes are platform-neutral.
+
 Infrastructure Bun suites outside package source roots run through source tasks
 rather than `buck2-test-authority.json`: `genie:buck2:test` covers the Buck projection
 suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, including
@@ -741,6 +823,9 @@ service un-niced with `watchman get-sockname` outside the gate or provision
 the host service, and never relax the shared startup priority limit. Other
 niced failures keep their genuine executable or service diagnosis; admission
 never falls back to notify.
+Managed services start with `--no-save-state` and no statefile override, so
+restart does not restore and re-crawl obsolete worktree watches. Root deletion
+is handled by Watchman itself, not a launcher-side `watch-del` loop.
 An explicit `WATCHMAN_SOCK` also uses `--no-spawn` on every platform: admission
 must reach that owned service, not create a replacement. Missing, unhealthy or incorrectly
 rooted Watchman fails with the probe command and remediation; it never selects notify as an
@@ -861,6 +946,8 @@ private CAS and verified seeder remain optional infrastructure; there is no
 runtime archive-origin selection or automatic fallback. A future mirror or CAS
 read path needs a separate decision. Nix's per-digest fixed-output archives and
 copy-and-verify projection are unchanged.
+The optional seeder's tracked trusted prefix selects this repository's private
+store, not the legacy cross-repository store; it does not enable CAS downloads.
 
 Public read-only jobs set
 `BUCK2_PUBLIC_CACHE_READ_ONLY=1`; protected public publishers provide

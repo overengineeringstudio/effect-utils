@@ -49,6 +49,9 @@ import { buck2TypeScriptAdmission as ptyEffectAdmission } from '../../packages/@
 import { buck2TypeScriptAdmission as reactInspectorAdmission } from '../../packages/@overeng/react-inspector/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as restateEffectAdmission } from '../../packages/@overeng/restate-effect/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as rpcDevtoolsAdmission } from '../../packages/@overeng/rpc-devtools/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as scgAuthorityAdmission } from '../../packages/@overeng/scg-authority/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as scgDiscordAdmission } from '../../packages/@overeng/scg-discord/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as scgProtocolAdmission } from '../../packages/@overeng/scg-protocol/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as stylexTokensAdmission } from '../../packages/@overeng/stylex-tokens/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as tuiCoreAdmission } from '../../packages/@overeng/tui-core/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as tuiReactAdmission } from '../../packages/@overeng/tui-react/BUCK.genie.ts'
@@ -145,6 +148,9 @@ export const buck2TypeScriptAdmissions = {
   ptyEffect: ptyEffectAdmission,
   reactInspector: reactInspectorAdmission,
   restateEffect: restateEffectAdmission,
+  scgAuthority: scgAuthorityAdmission,
+  scgDiscord: scgDiscordAdmission,
+  scgProtocol: scgProtocolAdmission,
   stylexTokens: stylexTokensAdmission,
   tuiCore: tuiCoreAdmission,
   tuiReact: tuiReactAdmission,

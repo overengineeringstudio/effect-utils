@@ -406,6 +406,21 @@
       "description": "@overeng/rpc-devtools package · Set: manual"
     },
     {
+      "name": "system:scg-authority",
+      "color": "a371f7",
+      "description": "@overeng/scg-authority package · Set: manual"
+    },
+    {
+      "name": "system:scg-discord",
+      "color": "a371f7",
+      "description": "@overeng/scg-discord package · Set: manual"
+    },
+    {
+      "name": "system:scg-protocol",
+      "color": "a371f7",
+      "description": "@overeng/scg-protocol package · Set: manual"
+    },
+    {
       "name": "system:stylex-tokens",
       "color": "a371f7",
       "description": "@overeng/stylex-tokens package · Set: manual"
