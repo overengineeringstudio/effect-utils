@@ -392,6 +392,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     different device/inode numbers do not prove unrelated backing objects.
     This does not qualify otherwise unreadable container processes, introduce
     a privileged helper, or authorize namespace-path translation.
+    The isolated bind-alias test closes inherited non-stdio gate/Nix
+    descriptors before its namespace exec: cloned mount IDs cannot attest
+    descriptors retained from the parent mount namespace. Production keeps
+    that unobservable-reference veto unchanged.
     Other-UID processes are outside the normal
     user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
     own-UID processes fail closed, except the explicit Linux privileged-broker
