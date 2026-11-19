@@ -29,11 +29,15 @@ export const lockSyncCommand = Cli.Command.make(
       Cli.Flag.optional,
     ),
     ref: Cli.Flag.String('ref').pipe(
-      Cli.Flag.withDescription('Published GitHub branch containing --rev; align matching source declarations'),
+      Cli.Flag.withDescription(
+        'Published GitHub branch containing --rev; align matching source declarations',
+      ),
       Cli.Flag.optional,
     ),
     member: Cli.Flag.String('member').pipe(
-      Cli.Flag.withDescription('Align this megarepo member and both existing root locks in the transaction'),
+      Cli.Flag.withDescription(
+        'Align this megarepo member and both existing root locks in the transaction',
+      ),
       Cli.Flag.optional,
     ),
     write: Cli.Flag.Boolean('write').pipe(

@@ -18,20 +18,24 @@ import {
   parseSourceString,
   readMegarepoConfig,
 } from '../config.ts'
-import { decodeLockFileContent, LockFile, upsertLockedMember } from '../lock.ts'
 import { runCommand } from '../git.ts'
+import { decodeLockFileContent, LockFile, upsertLockedMember } from '../lock.ts'
 import { isCommitSha } from '../ref.ts'
+import { getRef, getRev, parseNixFlakeUrl } from './flake-url.ts'
 import {
   extractDevenvYamlInputs,
   extractFlakeNixInputs,
   extractLockFileInputs,
   resolveLockInputNode,
 } from './input-discovery.ts'
-import { getRef, getRev, parseNixFlakeUrl } from './flake-url.ts'
 import { urlsMatch } from './matcher.ts'
 import { fetchNixFlakeMetadata } from './mod.ts'
-import { rewriteDevenvYamlUrls, rewriteFlakeNixUrls, type SourceUrlUpdate } from './source-rewriter.ts'
 import { parseLockedInput } from './schema.ts'
+import {
+  rewriteDevenvYamlUrls,
+  rewriteFlakeNixUrls,
+  type SourceUrlUpdate,
+} from './source-rewriter.ts'
 
 /** Repository identity selects duplicate nodes independently of their lock-local IDs. */
 const inputRepositoryUrl = (section: unknown): string | undefined => {
@@ -102,10 +106,13 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       isCommitSha(ref) ||
       ref.startsWith('-') ||
       ref.startsWith('refs/') ||
+      /^[A-Za-z0-9._/-]+$/.test(ref) === false ||
       /[\x00-\x20\x7f~^:?*\[\\]/.test(ref) ||
       ref.includes('..') ||
       ref.includes('@{') ||
-      ref.split('/').some((part) => part === '' || part.startsWith('.') || part.endsWith('.lock')) ||
+      ref
+        .split('/')
+        .some((part) => part === '' || part.startsWith('.') || part.endsWith('.lock')) ||
       ref.endsWith('.'))
   ) {
     return yield* new StandaloneLockSyncError({
@@ -152,7 +159,35 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       declarationPaths.add(path)
       const content = yield* fs.readFileString(path)
       const updates = new Map<string, SourceUrlUpdate>()
-      for (const declaration of extract(content)) {
+      const declarations = extract(content)
+      // This is deliberately not a Nix evaluator. Refuse same-repository URL literals
+      // outside the supported declaration grammar instead of silently leaving authority behind.
+      if (name === 'flake.nix') {
+        const occurrences = new Map<string, number>()
+        for (const match of content.matchAll(
+          /"((?:github:|git\+https:\/\/|git\+ssh:\/\/)[^"]+)"|''\s*((?:github:|git\+https:\/\/|git\+ssh:\/\/)[\s\S]*?)''/g,
+        )) {
+          const url = (match[1] ?? match[2]!).trim()
+          const count = (occurrences.get(url) ?? 0) + 1
+          occurrences.set(url, count)
+          const parsed = parseNixFlakeUrl(url)
+          if (
+            parsed !== undefined &&
+            urlsMatch({
+              url1: `https://github.com/${parsed.owner}/${parsed.repo}`,
+              url2: sourceRepository,
+            }) &&
+            declarations.filter((declaration) => declaration.url === url).length < count
+          ) {
+            return yield* new StandaloneLockSyncError({
+              path,
+              input,
+              message: `${path}: unsupported same-repository Nix URL declaration; no locks written`,
+            })
+          }
+        }
+      }
+      for (const declaration of declarations) {
         const parsed = parseNixFlakeUrl(declaration.url)
         if (
           declaration.inputName !== input &&
@@ -161,13 +196,21 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
               url1: `https://github.com/${parsed.owner}/${parsed.repo}`,
               url2: sourceRepository,
             }) === false)
-        ) continue
-        const expected = ref ?? (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)
+        )
+          continue
+        const expected =
+          ref ?? (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)
         if (
-          typeof expected !== 'string' || parsed === undefined ||
+          typeof expected !== 'string' ||
+          parsed === undefined ||
           (getRef(parsed) !== expected &&
-            getRef(parsed) !== (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)) ||
+            getRef(parsed) !==
+              (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)) ||
           getRev(parsed) !== undefined ||
+          (parsed?._tag === 'github' &&
+            parsed.ref !== undefined &&
+            parsed.params.has('ref') &&
+            parsed.params.get('ref') !== parsed.ref) ||
           urlsMatch({
             url1: `https://github.com/${parsed.owner}/${parsed.repo}`,
             url2: sourceRepository,
@@ -176,7 +219,7 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
           return yield* new StandaloneLockSyncError({
             path,
             input,
-            message: `Declaration '${declaration.inputName}' must track branch '${expected}'; no locks written`,
+            message: `${path}: declaration '${declaration.inputName}' must track branch '${expected}' without a revision override; no locks written`,
           })
         }
         updates.set(declaration.inputName, { memberName: member ?? input, newRef: expected })
@@ -360,14 +403,19 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     const memberSource = configFile.config.members[member]
     const parsed = memberSource === undefined ? undefined : parseSourceString(memberSource)
     const url = parsed === undefined ? undefined : getSourceUrl(parsed)
-    const targetRef = ref ?? (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)
+    const targetRef =
+      ref ?? (Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined)
     const targetRev = sourceLocked['rev']
-    const configuredRef = parsed === undefined ? undefined : Option.getOrUndefined(getSourceRef(parsed))
+    const configuredRef =
+      parsed === undefined ? undefined : Option.getOrUndefined(getSourceRef(parsed))
     const previousRef = Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined
     if (
-      memberSource === undefined || parsed === undefined || url === undefined ||
+      memberSource === undefined ||
+      parsed === undefined ||
+      url === undefined ||
       urlsMatch({ url1: url, url2: sourceRepository }) === false ||
-      typeof targetRef !== 'string' || typeof targetRev !== 'string' ||
+      typeof targetRef !== 'string' ||
+      typeof targetRev !== 'string' ||
       (configuredRef !== targetRef && (ref === undefined || configuredRef !== previousRef))
     ) {
       return yield* new StandaloneLockSyncError({
@@ -385,13 +433,20 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       const parsedSource = parseSourceString(source)
       const sourceUrl = parsedSource === undefined ? undefined : getSourceUrl(parsedSource)
       if (sourceUrl === undefined || urlsMatch({ url1: sourceUrl, url2: url }) === false) continue
-      const declaredRef = parsedSource === undefined ? undefined : Option.getOrUndefined(getSourceRef(parsedSource))
+      const declaredRef =
+        parsedSource === undefined ? undefined : Option.getOrUndefined(getSourceRef(parsedSource))
       const pinnedRevision = declaredRef !== undefined && isCommitSha(declaredRef)
       const nextRef = name !== member && pinnedRevision ? targetRev : targetRef
       const oldRef = Schema.is(InputMetadata)(sourceOriginal) ? sourceOriginal['ref'] : undefined
-      if (name !== member && pinnedRevision === false && declaredRef !== targetRef && declaredRef !== oldRef) {
+      if (
+        name !== member &&
+        pinnedRevision === false &&
+        declaredRef !== targetRef &&
+        declaredRef !== oldRef
+      ) {
         return yield* new StandaloneLockSyncError({
-          path: configFile.path, input,
+          path: configFile.path,
+          input,
           message: `Same-repository member '${name}' declares a different tracking branch; no locks written`,
         })
       }
@@ -400,7 +455,9 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
         lockFile: next,
         memberName: name,
         update: {
-          url: sourceUrl, ref: nextRef, commit: targetRev,
+          url: sourceUrl,
+          ref: nextRef,
+          commit: targetRev,
           pinned: lock.members[name]?.pinned ?? pinnedRevision,
         },
       })
@@ -418,7 +475,10 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       })
     }
     if (next !== lock) {
-      plans.push({ path, content: `${yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(next)}\n` })
+      plans.push({
+        path,
+        content: `${yield* Schema.encodeEffect(Schema.fromJsonString(LockFile, { space: 2 }))(next)}\n`,
+      })
     }
     for (const path of ['devenv.lock', 'flake.lock']) {
       if (path !== rootLock && (yield* fs.exists(`${root}/${path}`)) === true) files.push(path)
@@ -441,10 +501,9 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     }
   }
   // A set avoids duplicate tracked/untracked results; git excludes ignored caches and member mounts.
-  for (const relative of [...new Set([
-    ...files,
-    ...(member !== undefined || ref !== undefined ? [rootLock] : []),
-  ])].toSorted()) {
+  for (const relative of [
+    ...new Set([...files, ...(member !== undefined || ref !== undefined ? [rootLock] : [])]),
+  ].toSorted()) {
     if (relative === rootLock && member === undefined && ref === undefined) continue
     const path = `${root}/${relative}`
     // Tracked files removed from the worktree are not standalone locks in this consumer.
@@ -511,9 +570,14 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       const dir = Schema.is(InputMetadata)(original) === true ? original['dir'] : undefined
       const locked = dir === undefined ? sourceLocked : { ...sourceLocked, dir }
       const nextOriginal =
-        ref === undefined ? original : { ...(yield* Schema.decodeUnknownEffect(InputMetadata)(original)), ref }
-      if (isDeepStrictEqual(node['locked'], locked) === true &&
-          isDeepStrictEqual(original, nextOriginal) === true) continue
+        ref === undefined
+          ? original
+          : { ...(yield* Schema.decodeUnknownEffect(InputMetadata)(original)), ref }
+      if (
+        isDeepStrictEqual(node['locked'], locked) === true &&
+        isDeepStrictEqual(original, nextOriginal) === true
+      )
+        continue
       // Keep the graph and unknown metadata while aligning branch intent and resolution.
       updates[candidateId] = { ...node, original: nextOriginal, locked }
     }

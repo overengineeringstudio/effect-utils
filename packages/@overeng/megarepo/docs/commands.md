@@ -100,6 +100,8 @@ index paths), while retaining authentication settings.
 
 `--ref <branch>` selects a published GitHub branch for `--rev`. Only short branch
 names are accepted, not `refs/*`, tags, SHA selectors or Git revision expressions.
+Branch literals are restricted to ASCII letters, digits, `.`, `_`, `/`, and `-`
+with Git branch-name restrictions; quoting and interpolation characters are rejected.
 Git fetches the exact `refs/heads/<branch>`, so a same-named tag is not sufficient.
 Matching lock originals may track either the previous root branch or the requested
 branch; the transaction aligns them to the requested branch. Other original
@@ -108,6 +110,10 @@ must track either the previous or requested branch without a revision override.
 The same transaction rewrites their branch while preserving URL parameters,
 quoting and surrounding formatting; third-branch or repository disagreement fails
 without writing.
+GitHub branch selectors may be path-based or `?ref=` query parameters; query-form
+updates remain query-based. Nix URL declarations support dotted attributes and
+attribute sets whose first attribute is `url`, including nested `inputs` sets.
+Other same-repository URL-literal forms fail closed and report their source path.
 
 `--member <name>` adds the megarepo configuration, `megarepo.lock`, and both
 existing root locks to the transaction, even with explicit `--lock` paths. The

@@ -141,156 +141,383 @@ const revisionSpawner = ({
 }
 
 describe('standalone root lock synchronization', () => {
-  it.effect('checks and aligns member authorities and both roots with an explicit standalone cohort', () =>
-    Effect.gen(function* () {
-      const { fs, root } = yield* fixture
-      yield* fs.writeFileString(`${root}megarepo.kdl`, 'members { library "example/library#published"; }\n')
-      yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({
-        version: 1,
-        members: {
-          library: {
-            url: 'https://github.com/example/library',
-            ref: 'published',
-            commit: 'b'.repeat(40),
-            pinned: true,
-            lockedAt: '2026-01-01T00:00:00.000Z',
-          },
-        },
-      }))
-      const options = { root, input: 'library', member: 'library', locks: ['nix/tool/flake.lock'] }
-      const before = yield* fs.readFileString(`${root}megarepo.lock`)
-      const check = yield* syncStandaloneLocks(options)
-      expect(check.checked).toEqual(expect.arrayContaining([
-        'megarepo.kdl', 'megarepo.lock', 'devenv.lock', 'flake.lock', 'nix/tool/flake.lock',
-      ]))
-      expect(check.changed).toEqual(expect.arrayContaining(['megarepo.lock', 'flake.lock']))
-      expect(yield* fs.readFileString(`${root}megarepo.lock`)).toBe(before)
-      yield* syncStandaloneLocks({ ...options, write: true })
-      expect((yield* syncStandaloneLocks(options)).changed).toEqual([])
-      const member = decodeJson(yield* fs.readFileString(`${root}megarepo.lock`))
-      expect(member).toMatchObject({ members: { library: { commit: locked.rev, pinned: true } } })
-    }).pipe(withServices),
+  it.effect(
+    'checks and aligns member authorities and both roots with an explicit standalone cohort',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        yield* fs.writeFileString(
+          `${root}megarepo.kdl`,
+          'members { library "example/library#published"; }\n',
+        )
+        yield* fs.writeFileString(
+          `${root}megarepo.lock`,
+          encodeJson({
+            version: 1,
+            members: {
+              library: {
+                url: 'https://github.com/example/library',
+                ref: 'published',
+                commit: 'b'.repeat(40),
+                pinned: true,
+                lockedAt: '2026-01-01T00:00:00.000Z',
+              },
+            },
+          }),
+        )
+        const options = {
+          root,
+          input: 'library',
+          member: 'library',
+          locks: ['nix/tool/flake.lock'],
+        }
+        const before = yield* fs.readFileString(`${root}megarepo.lock`)
+        const check = yield* syncStandaloneLocks(options)
+        expect(check.checked).toEqual(
+          expect.arrayContaining([
+            'megarepo.kdl',
+            'megarepo.lock',
+            'devenv.lock',
+            'flake.lock',
+            'nix/tool/flake.lock',
+          ]),
+        )
+        expect(check.changed).toEqual(expect.arrayContaining(['megarepo.lock', 'flake.lock']))
+        expect(yield* fs.readFileString(`${root}megarepo.lock`)).toBe(before)
+        yield* syncStandaloneLocks({ ...options, write: true })
+        expect((yield* syncStandaloneLocks(options)).changed).toEqual([])
+        const member = decodeJson(yield* fs.readFileString(`${root}megarepo.lock`))
+        expect(member).toMatchObject({ members: { library: { commit: locked.rev, pinned: true } } })
+      }).pipe(withServices),
   )
 
-  it.effect('rejects unsupported refs before invoking Git or Nix and leaves all files unchanged', () =>
-    Effect.gen(function* () {
-      const { fs, root } = yield* fixture
-      const before = yield* fs.readFileString(`${root}devenv.lock`)
-      const spawner = revisionSpawner()
-      for (const ref of ['refs/tags/v1', '-unsafe', 'bad..branch', 'branch.lock', 'branch@{1}', '']) {
-        const result = yield* Effect.exit(syncStandaloneLocks({
-          root, input: 'library', rev: requestedRev, ref, write: true,
-        }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service)))
-        expect(Exit.isFailure(result)).toBe(true)
-      }
-      expect(spawner.calls).toEqual([])
-      expect(yield* fs.readFileString(`${root}devenv.lock`)).toBe(before)
-    }).pipe(withServices),
+  it.effect(
+    'rejects unsupported refs before invoking Git or Nix and leaves all files unchanged',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        const before = yield* fs.readFileString(`${root}devenv.lock`)
+        const spawner = revisionSpawner()
+        for (const ref of [
+          'refs/tags/v1',
+          '-unsafe',
+          'bad..branch',
+          'branch.lock',
+          'branch@{1}',
+          '',
+          'feature/quote"fix',
+          'feature/${builtins.currentSystem}',
+          "feature/quote'fix",
+        ]) {
+          const result = yield* Effect.exit(
+            syncStandaloneLocks({
+              root,
+              input: 'library',
+              rev: requestedRev,
+              ref,
+              write: true,
+            }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service)),
+          )
+          expect(Exit.isFailure(result)).toBe(true)
+        }
+        expect(spawner.calls).toEqual([])
+        expect(yield* fs.readFileString(`${root}devenv.lock`)).toBe(before)
+      }).pipe(withServices),
   )
 
-  it.effect('selects an exact published branch and aligns originals, member and all resolutions', () =>
+  it.effect(
+    'rewrites dotted and attribute-set Nix URL declarations without leaving old authority',
+    () =>
+      Effect.gen(function* () {
+        for (const declaration of [
+          '{ inputs.library.url = "github:example/library/published"; }',
+          '{ inputs.library = { url = "github:example/library/published"; }; }',
+          '{ inputs = { library = { url = "github:example/library/published"; }; }; }',
+        ]) {
+          const { fs, root } = yield* fixture
+          yield* fs.writeFileString(`${root}flake.nix`, declaration)
+          const ref = 'feature/literal'
+          yield* syncStandaloneLocks({
+            root,
+            input: 'library',
+            ref,
+            rev: requestedRev,
+            locks: ['flake.lock'],
+            write: true,
+          }).pipe(
+            Effect.provideService(
+              ChildProcessSpawner,
+              revisionSpawner({ ref: `refs/heads/${ref}` }).service,
+            ),
+          )
+          expect(yield* fs.readFileString(`${root}flake.nix`)).toBe(
+            declaration.replace('/published', `/${ref}`),
+          )
+        }
+      }).pipe(withServices),
+  )
+
+  it.effect('accepts and rewrites canonical GitHub query refs in child flakes', () =>
     Effect.gen(function* () {
       const { fs, root } = yield* fixture
-      const ref = 'feature/atomic-repin'
-      yield* fs.writeFileString(`${root}flake.nix`, ' { inputs.library.url = "github:example/library/published?dir=nix/tool"; } ')
-      yield* fs.writeFileString(`${root}devenv.yaml`, 'inputs:\n  library:\n    url: "github:example/library/published?dir=nix/devenv"\n')
-      yield* fs.writeFileString(`${root}megarepo.kdl`, `members {
-        library "example/library#published"
-        alias "example/library#${'d'.repeat(40)}"
-      }\n`)
-      yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({
-        version: 1, members: {
-          alias: {
-            url: 'https://github.com/example/library', ref: 'd'.repeat(40),
-            commit: 'd'.repeat(40), pinned: true, lockedAt: '2026-01-01T00:00:00.000Z',
-          },
-        },
-      }))
-      const spawner = revisionSpawner({ ref: `refs/heads/${ref}` })
-      const result = yield* syncStandaloneLocks({
-        root, input: 'library', member: 'library', ref, rev: requestedRev,
-        locks: ['nix/tool/flake.lock'], write: true,
-      }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service))
-      expect(result.changed).toEqual(expect.arrayContaining([
-        'megarepo.kdl', 'megarepo.lock', 'devenv.lock', 'flake.lock', 'nix/tool/flake.lock',
-        'flake.nix', 'devenv.yaml',
-      ]))
-      for (const path of ['devenv.lock', 'flake.lock', 'nix/tool/flake.lock']) {
-        expect(decodeJson(yield* fs.readFileString(`${root}${path}`))).toMatchObject({
-          nodes: { [path === 'devenv.lock' ? 'root-library' : 'library_2']: {
-            original: { ref }, locked: { rev: requestedRev },
-          } },
-        })
-      }
-      expect(yield* fs.readFileString(`${root}megarepo.kdl`)).toContain(`#${ref}`)
-      expect(yield* fs.readFileString(`${root}megarepo.kdl`)).toContain(`#${requestedRev}`)
-      expect(yield* fs.readFileString(`${root}flake.nix`)).toContain(`${ref}?dir=nix/tool`)
-      expect(yield* fs.readFileString(`${root}devenv.yaml`)).toContain(`${ref}?dir=nix/devenv`)
-      expect(decodeJson(yield* fs.readFileString(`${root}megarepo.lock`))).toMatchObject({
-        members: {
-          library: { ref, commit: requestedRev },
-          alias: { ref: requestedRev, commit: requestedRev, pinned: true },
-        },
+      const source = '{ inputs.library.url = "github:example/library?ref=published&dir=nix/tool"; }'
+      yield* fs.writeFileString(`${root}nix/tool/flake.nix`, source)
+      yield* fs.writeFileString(
+        `${root}megarepo.kdl`,
+        'members { library "example/library#published"; }\n',
+      )
+      yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({ version: 1, members: {} }))
+      // No --ref: current published intent must be accepted, not reported as undefined.
+      yield* syncStandaloneLocks({
+        root,
+        input: 'library',
+        member: 'library',
+        locks: ['nix/tool/flake.lock'],
+        write: true,
       })
-      const repeated = yield* syncStandaloneLocks({
-        root, input: 'library', member: 'library', ref, rev: requestedRev,
-        locks: ['nix/tool/flake.lock'], write: true,
-      }).pipe(Effect.provideService(ChildProcessSpawner, revisionSpawner({ ref: `refs/heads/${ref}` }).service))
-      expect(repeated.changed).toEqual([])
-      yield* Cli.Command.runWith(lockSyncCommand, { version: 'test' })([
-        '--input', 'library', '--member', 'library', '--ref', ref, '--rev', requestedRev,
-        '--lock', 'nix/tool/flake.lock',
-      ]).pipe(
-        Effect.provideService(Cwd, root),
-        Effect.provideService(ChildProcessSpawner, revisionSpawner({ ref: `refs/heads/${ref}` }).service),
+      expect(yield* fs.readFileString(`${root}nix/tool/flake.nix`)).toBe(source)
+      const ref = 'feature/query'
+      yield* syncStandaloneLocks({
+        root,
+        input: 'library',
+        member: 'library',
+        ref,
+        rev: requestedRev,
+        locks: ['nix/tool/flake.lock'],
+        write: true,
+      }).pipe(
+        Effect.provideService(
+          ChildProcessSpawner,
+          revisionSpawner({ ref: `refs/heads/${ref}` }).service,
+        ),
+      )
+      expect(yield* fs.readFileString(`${root}nix/tool/flake.nix`)).toBe(
+        source.replace('ref=published', `ref=${ref}`),
       )
     }).pipe(withServices),
+  )
+
+  it.effect('fails closed with the source path for unsupported same-repository declarations', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const path = `${root}flake.nix`
+      for (const source of [
+        '{ inputs.library = { flake = true; url = "github:example/library/published"; }; }',
+        "{ inputs.library.url = ''github:example/library/published''; }",
+        "{ inputs.library.url = ''\n  github:example/library/published\n''; }",
+      ]) {
+        yield* fs.writeFileString(path, source)
+        const before = yield* fs.readFileString(`${root}devenv.lock`)
+        const spawner = revisionSpawner()
+        const error = yield* syncStandaloneLocks({
+          root,
+          input: 'library',
+          ref: 'feature/unsupported',
+          rev: requestedRev,
+          write: true,
+        }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service), Effect.flip)
+        expect(error.message).toContain(path)
+        expect(error.message).toContain('unsupported')
+        expect(spawner.calls).toEqual([])
+        expect(yield* fs.readFileString(path)).toBe(source)
+        expect(yield* fs.readFileString(`${root}devenv.lock`)).toBe(before)
+      }
+    }).pipe(withServices),
+  )
+
+  it.effect(
+    'selects an exact published branch and aligns originals, member and all resolutions',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        const ref = 'feature/atomic-repin'
+        yield* fs.writeFileString(
+          `${root}flake.nix`,
+          ' { inputs.library.url = "github:example/library/published?dir=nix/tool"; } ',
+        )
+        yield* fs.writeFileString(
+          `${root}devenv.yaml`,
+          'inputs:\n  library:\n    url: "github:example/library/published?dir=nix/devenv"\n',
+        )
+        yield* fs.writeFileString(
+          `${root}megarepo.kdl`,
+          `members {
+        library "example/library#published"
+        alias "example/library#${'d'.repeat(40)}"
+      }\n`,
+        )
+        yield* fs.writeFileString(
+          `${root}megarepo.lock`,
+          encodeJson({
+            version: 1,
+            members: {
+              alias: {
+                url: 'https://github.com/example/library',
+                ref: 'd'.repeat(40),
+                commit: 'd'.repeat(40),
+                pinned: true,
+                lockedAt: '2026-01-01T00:00:00.000Z',
+              },
+            },
+          }),
+        )
+        const spawner = revisionSpawner({ ref: `refs/heads/${ref}` })
+        const result = yield* syncStandaloneLocks({
+          root,
+          input: 'library',
+          member: 'library',
+          ref,
+          rev: requestedRev,
+          locks: ['nix/tool/flake.lock'],
+          write: true,
+        }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service))
+        expect(result.changed).toEqual(
+          expect.arrayContaining([
+            'megarepo.kdl',
+            'megarepo.lock',
+            'devenv.lock',
+            'flake.lock',
+            'nix/tool/flake.lock',
+            'flake.nix',
+            'devenv.yaml',
+          ]),
+        )
+        for (const path of ['devenv.lock', 'flake.lock', 'nix/tool/flake.lock']) {
+          expect(decodeJson(yield* fs.readFileString(`${root}${path}`))).toMatchObject({
+            nodes: {
+              [path === 'devenv.lock' ? 'root-library' : 'library_2']: {
+                original: { ref },
+                locked: { rev: requestedRev },
+              },
+            },
+          })
+        }
+        expect(yield* fs.readFileString(`${root}megarepo.kdl`)).toContain(`#${ref}`)
+        expect(yield* fs.readFileString(`${root}megarepo.kdl`)).toContain(`#${requestedRev}`)
+        expect(yield* fs.readFileString(`${root}flake.nix`)).toContain(`${ref}?dir=nix/tool`)
+        expect(yield* fs.readFileString(`${root}devenv.yaml`)).toContain(`${ref}?dir=nix/devenv`)
+        expect(decodeJson(yield* fs.readFileString(`${root}megarepo.lock`))).toMatchObject({
+          members: {
+            library: { ref, commit: requestedRev },
+            alias: { ref: requestedRev, commit: requestedRev, pinned: true },
+          },
+        })
+        const repeated = yield* syncStandaloneLocks({
+          root,
+          input: 'library',
+          member: 'library',
+          ref,
+          rev: requestedRev,
+          locks: ['nix/tool/flake.lock'],
+          write: true,
+        }).pipe(
+          Effect.provideService(
+            ChildProcessSpawner,
+            revisionSpawner({ ref: `refs/heads/${ref}` }).service,
+          ),
+        )
+        expect(repeated.changed).toEqual([])
+        yield* Cli.Command.runWith(lockSyncCommand, { version: 'test' })([
+          '--input',
+          'library',
+          '--member',
+          'library',
+          '--ref',
+          ref,
+          '--rev',
+          requestedRev,
+          '--lock',
+          'nix/tool/flake.lock',
+        ]).pipe(
+          Effect.provideService(Cwd, root),
+          Effect.provideService(
+            ChildProcessSpawner,
+            revisionSpawner({ ref: `refs/heads/${ref}` }).service,
+          ),
+        )
+      }).pipe(withServices),
   )
 
   it.effect('rejects mismatched declaration intent before fetching a revision', () =>
     Effect.gen(function* () {
       const { fs, root } = yield* fixture
-      yield* fs.writeFileString(`${root}devenv.yaml`, 'inputs:\n  library:\n    url: github:example/library/other\n')
+      yield* fs.writeFileString(
+        `${root}devenv.yaml`,
+        'inputs:\n  library:\n    url: github:example/library/other\n',
+      )
       const spawner = revisionSpawner()
-      const result = yield* Effect.exit(syncStandaloneLocks({
-        root, input: 'library', ref: 'feature', rev: requestedRev, write: true,
-      }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service)))
+      const result = yield* Effect.exit(
+        syncStandaloneLocks({
+          root,
+          input: 'library',
+          ref: 'feature',
+          rev: requestedRev,
+          write: true,
+        }).pipe(Effect.provideService(ChildProcessSpawner, spawner.service)),
+      )
       expect(Exit.isFailure(result)).toBe(true)
       expect(spawner.calls).toEqual([])
     }).pipe(withServices),
   )
 
-  it.effect('rolls back declarations, member authorities and locks together on replacement failure', () =>
-    Effect.gen(function* () {
-      const { fs, root } = yield* fixture
-      yield* fs.writeFileString(`${root}flake.nix`, '{ inputs.library.url = "github:example/library/published"; }')
-      yield* fs.writeFileString(`${root}megarepo.kdl`, 'members { library "example/library#published"; }\n')
-      yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({ version: 1, members: {} }))
-      const paths = ['flake.nix', 'megarepo.kdl', 'megarepo.lock', 'devenv.lock', 'flake.lock', 'nix/tool/flake.lock']
-      const before = yield* Effect.forEach(paths, (path) => fs.readFileString(`${root}${path}`))
-      let injectedFailure = false
-      const controlledFs: FileSystem.FileSystem = {
-        ...fs,
-        rename: (from, to) => {
-          if (to === `${root}flake.lock` && injectedFailure === false) {
-            injectedFailure = true
-            return fs.rename(`${root}missing-replacement`, to)
-          }
-          return fs.rename(from, to)
-        },
-      }
-      const ref = 'feature/atomic-repin'
-      const result = yield* Effect.exit(syncStandaloneLocks({
-        root, input: 'library', member: 'library', ref, rev: requestedRev,
-        locks: ['nix/tool/flake.lock'], write: true,
-      }).pipe(
-        Effect.provideService(FileSystem.FileSystem, controlledFs),
-        Effect.provideService(ChildProcessSpawner, revisionSpawner({ ref: `refs/heads/${ref}` }).service),
-      ))
-      expect(injectedFailure).toBe(true)
-      expect(Exit.isFailure(result)).toBe(true)
-      expect(yield* Effect.forEach(paths, (path) => fs.readFileString(`${root}${path}`))).toEqual(before)
-    }).pipe(withServices),
+  it.effect(
+    'rolls back declarations, member authorities and locks together on replacement failure',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        yield* fs.writeFileString(
+          `${root}flake.nix`,
+          '{ inputs.library.url = "github:example/library/published"; }',
+        )
+        yield* fs.writeFileString(
+          `${root}megarepo.kdl`,
+          'members { library "example/library#published"; }\n',
+        )
+        yield* fs.writeFileString(`${root}megarepo.lock`, encodeJson({ version: 1, members: {} }))
+        const paths = [
+          'flake.nix',
+          'megarepo.kdl',
+          'megarepo.lock',
+          'devenv.lock',
+          'flake.lock',
+          'nix/tool/flake.lock',
+        ]
+        const before = yield* Effect.forEach(paths, (path) => fs.readFileString(`${root}${path}`))
+        let injectedFailure = false
+        const controlledFs: FileSystem.FileSystem = {
+          ...fs,
+          rename: (from, to) => {
+            if (to === `${root}flake.lock` && injectedFailure === false) {
+              injectedFailure = true
+              return fs.rename(`${root}missing-replacement`, to)
+            }
+            return fs.rename(from, to)
+          },
+        }
+        const ref = 'feature/atomic-repin'
+        const result = yield* Effect.exit(
+          syncStandaloneLocks({
+            root,
+            input: 'library',
+            member: 'library',
+            ref,
+            rev: requestedRev,
+            locks: ['nix/tool/flake.lock'],
+            write: true,
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, controlledFs),
+            Effect.provideService(
+              ChildProcessSpawner,
+              revisionSpawner({ ref: `refs/heads/${ref}` }).service,
+            ),
+          ),
+        )
+        expect(injectedFailure).toBe(true)
+        expect(Exit.isFailure(result)).toBe(true)
+        expect(yield* Effect.forEach(paths, (path) => fs.readFileString(`${root}${path}`))).toEqual(
+          before,
+        )
+      }).pipe(withServices),
   )
 
   it.effect('isolates ancestry Git writes from inherited hook repository overrides', () =>
