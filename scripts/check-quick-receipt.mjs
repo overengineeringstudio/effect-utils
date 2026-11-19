@@ -133,7 +133,13 @@ const main = (args) => {
       ],
       options: {
         cwd: worktree,
-        env: { ...process.env, GATE_SLOTS_RECEIPT_FILE: receiptFile },
+        env: {
+          ...process.env,
+          GATE_SLOTS_RECEIPT_FILE: receiptFile,
+          // Canonical quick traces exceed gate-slot's 8 MiB diagnostic default.
+          // Keep a bounded complete capture; truncation still refuses admission.
+          GATE_SLOTS_TASK_TRACE_BYTES: String(256 * 1024 * 1024),
+        },
         stdio: ['ignore', logFd, logFd],
       },
     })

@@ -105,6 +105,9 @@ the exact JSON line, excluding the code fence and trailing newline. The digest
 detects accidental modification; it is not a signature or independent proof of
 authorship. The native gate receipt and log remain in the local state directory
 printed by the command. Hostnames, local paths and logs are not published.
+The command raises the local task-trace capture bound to 256 MiB because the
+canonical check exceeds the gate's 8 MiB diagnostic default. Truncated traces,
+unknown diagnostics and unfinished tasks still refuse admission.
 A failed, dirty, moved, nonlocal or incomplete gate cannot enqueue. A head
 change during fetch or execution refuses admission; the final enqueue is also
 SHA-guarded. With an agent seat, worktrees follow the normal lease/reaping
