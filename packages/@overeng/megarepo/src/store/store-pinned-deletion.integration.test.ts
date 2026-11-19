@@ -86,33 +86,41 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
       function* () {
         const { fs, rootPath, path } = yield* fixture
         const identity = yield* captureDeletionIdentity({ rootPath, path })
-        let observed: { view: OwnedDeletionPins; reference: Parameters<OwnedDeletionPins['has']>[0] } | undefined
+        let observed:
+          | { view: OwnedDeletionPins; reference: Parameters<OwnedDeletionPins['has']>[0] }
+          | undefined
         yield* withPinnedDeletion({
           rootPath,
           path,
           identity,
-          beforeRemove: (view) => Effect.sync(() => {
-            expect(Object.isFrozen(view)).toBe(true)
-            expect(Object.isFrozen(view.pins)).toBe(true)
-            const target = lstatSync(path, { bigint: true })
-            const pin = view.pins.find((entry) =>
-              entry.dev === target.dev.toString() && entry.ino === target.ino.toString())
-            expect(pin).toBeDefined()
-            if (pin === undefined) throw new Error('Engine did not hold its target fd')
-            const actual = fstatSync(pin.fd, { bigint: true })
-            const reference = {
-              kind: 'fd', pid: process.pid, fd: pin.fd,
-              dev: actual.dev.toString(), ino: actual.ino.toString(),
-            }
-            expect(Object.isFrozen(pin)).toBe(true)
-            expect(view.has(reference)).toBe(true)
-            expect(view.has({ ...reference, fd: null })).toBe(false)
-            expect(view.has({ ...reference, dev: `${reference.dev}0` })).toBe(false)
-            expect(view.has({ ...reference, ino: `${reference.ino}0` })).toBe(false)
-            for (const kind of ['cwd', 'root', 'exe', 'map', 'mount'])
-              expect(view.has({ ...reference, kind })).toBe(false)
-            observed = { view, reference }
-          }),
+          beforeRemove: (view) =>
+            Effect.sync(() => {
+              expect(Object.isFrozen(view)).toBe(true)
+              expect(Object.isFrozen(view.pins)).toBe(true)
+              const target = lstatSync(path, { bigint: true })
+              const pin = view.pins.find(
+                (entry) =>
+                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
+              )
+              expect(pin).toBeDefined()
+              if (pin === undefined) throw new Error('Engine did not hold its target fd')
+              const actual = fstatSync(pin.fd, { bigint: true })
+              const reference = {
+                kind: 'fd',
+                pid: process.pid,
+                fd: pin.fd,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+              }
+              expect(Object.isFrozen(pin)).toBe(true)
+              expect(view.has(reference)).toBe(true)
+              expect(view.has({ ...reference, fd: null })).toBe(false)
+              expect(view.has({ ...reference, dev: `${reference.dev}0` })).toBe(false)
+              expect(view.has({ ...reference, ino: `${reference.ino}0` })).toBe(false)
+              for (const kind of ['cwd', 'root', 'exe', 'map', 'mount'])
+                expect(view.has({ ...reference, kind })).toBe(false)
+              observed = { view, reference }
+            }),
         })
         expect(observed?.view.has(observed.reference)).toBe(false)
         expect(yield* fs.exists(path)).toBe(false)
@@ -136,20 +144,29 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
           rootPath,
           path,
           identity,
-          beforeRemove: (view) => Effect.gen(function* () {
-            const actual = fstatSync(extra, { bigint: true })
-            const reference = {
-              kind: 'fd', pid: process.pid, fd: extra,
-              dev: actual.dev.toString(), ino: actual.ino.toString(),
-            }
-            expect(view.has(reference)).toBe(false)
-            if (view.has(reference) === false)
-              return yield* Effect.fail(new PinnedDeletionError({ path, message: 'Live extra fd' }))
-          }),
+          beforeRemove: (view) =>
+            Effect.gen(function* () {
+              const actual = fstatSync(extra, { bigint: true })
+              const reference = {
+                kind: 'fd',
+                pid: process.pid,
+                fd: extra,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+              }
+              expect(view.has(reference)).toBe(false)
+              if (view.has(reference) === false)
+                return yield* Effect.fail(
+                  new PinnedDeletionError({ path, message: 'Live extra fd' }),
+                )
+            }),
         }).pipe(Effect.result)
         expect(result._tag).toBe('Failure')
         if (result._tag === 'Failure')
-          expect(result.failure).toMatchObject({ _tag: 'PinnedDeletionError', message: 'Live extra fd' })
+          expect(result.failure).toMatchObject({
+            _tag: 'PinnedDeletionError',
+            message: 'Live extra fd',
+          })
         expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
         expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
       },
@@ -169,14 +186,20 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
           rootPath,
           path,
           identity,
-          beforeRemove: (view) => Effect.gen(function* () {
-            const target = lstatSync(path, { bigint: true })
-            const pin = view.pins.find((entry) =>
-              entry.dev === target.dev.toString() && entry.ino === target.ino.toString())
-            if (pin === undefined) return yield* Effect.die('Missing held target fd')
-            const child = yield* spawner.spawn(ChildProcess.make(process.execPath, [
-              '-e',
-              `const fs = require('node:fs')
+          beforeRemove: (view) =>
+            Effect.gen(function* () {
+              const target = lstatSync(path, { bigint: true })
+              const pin = view.pins.find(
+                (entry) =>
+                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
+              )
+              if (pin === undefined) return yield* Effect.die('Missing held target fd')
+              const child = yield* spawner.spawn(
+                ChildProcess.make(
+                  process.execPath,
+                  [
+                    '-e',
+                    `const fs = require('node:fs')
 const wanted = Number(process.argv[2])
 let fd = fs.openSync('/dev/null', fs.constants.O_RDONLY)
 while (fd < wanted) fd = fs.openSync('/dev/null', fs.constants.O_RDONLY)
@@ -186,35 +209,49 @@ fd = fs.openSync(process.argv[1], fs.constants.O_RDONLY | fs.constants.O_DIRECTO
 if (fd !== wanted) throw new Error('Unexpected held fd')
 process.stdout.write(String(fd) + '\\n')
 process.stdin.resume()`,
-              path,
-              String(pin.fd),
-            ], {
-              cwd: rootPath, stdin: Stream.never, stdout: 'pipe', stderr: 'pipe',
-            }))
-            // Await the real open's acknowledgement; no sleep or fake service/frame is involved.
-            const chunks = yield* child.stdout.pipe(
-              Stream.takeUntil((chunk) => chunk.includes(10)),
-              Stream.runCollect,
-              Effect.timeout('10 seconds'),
-            )
-            const ready = new TextDecoder().decode(Buffer.concat(chunks)).trim()
-            expect(ready).toBe(String(pin.fd))
-            const actual = statSync(`/proc/${child.pid}/fd/${ready}`, { bigint: true })
-            expect(actual.dev.toString()).toBe(pin.dev)
-            expect(actual.ino.toString()).toBe(pin.ino)
-            const reference = {
-              kind: 'fd', pid: Number(child.pid), fd: pin.fd,
-              dev: actual.dev.toString(), ino: actual.ino.toString(),
-            }
-            expect(reference.pid).not.toBe(process.pid)
-            expect(view.has(reference)).toBe(false)
-            if (view.has(reference) === false)
-              return yield* Effect.fail(new PinnedDeletionError({ path, message: 'Live foreign fd' }))
-          }),
+                    path,
+                    String(pin.fd),
+                  ],
+                  {
+                    cwd: rootPath,
+                    stdin: Stream.never,
+                    stdout: 'pipe',
+                    stderr: 'pipe',
+                  },
+                ),
+              )
+              // Await the real open's acknowledgement; no sleep or fake service/frame is involved.
+              const chunks = yield* child.stdout.pipe(
+                Stream.takeUntil((chunk) => chunk.includes(10)),
+                Stream.runCollect,
+                Effect.timeout('10 seconds'),
+              )
+              const ready = new TextDecoder().decode(Buffer.concat(chunks)).trim()
+              expect(ready).toBe(String(pin.fd))
+              const actual = statSync(`/proc/${child.pid}/fd/${ready}`, { bigint: true })
+              expect(actual.dev.toString()).toBe(pin.dev)
+              expect(actual.ino.toString()).toBe(pin.ino)
+              const reference = {
+                kind: 'fd',
+                pid: Number(child.pid),
+                fd: pin.fd,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+              }
+              expect(reference.pid).not.toBe(process.pid)
+              expect(view.has(reference)).toBe(false)
+              if (view.has(reference) === false)
+                return yield* Effect.fail(
+                  new PinnedDeletionError({ path, message: 'Live foreign fd' }),
+                )
+            }),
         }).pipe(Effect.result)
         expect(result._tag).toBe('Failure')
         if (result._tag === 'Failure')
-          expect(result.failure).toMatchObject({ _tag: 'PinnedDeletionError', message: 'Live foreign fd' })
+          expect(result.failure).toMatchObject({
+            _tag: 'PinnedDeletionError',
+            message: 'Live foreign fd',
+          })
         expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
         expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
       },
@@ -229,7 +266,9 @@ process.stdin.resume()`,
       function* () {
         const { fs, rootPath, path } = yield* fixture
         const identity = yield* captureDeletionIdentity({ rootPath, path })
-        let observed: { view: OwnedDeletionPins; reference: Parameters<OwnedDeletionPins['has']>[0] } | undefined
+        let observed:
+          | { view: OwnedDeletionPins; reference: Parameters<OwnedDeletionPins['has']>[0] }
+          | undefined
         yield* withPinnedDeletion({
           rootPath,
           path,
