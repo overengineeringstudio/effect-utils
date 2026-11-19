@@ -19,6 +19,7 @@ import {
   collectStoreLiveSet,
   collectWorkspaceLivePaths,
   collectWorkspaceLivePathsStrict,
+  readWorkspaceRegistration,
   refreshWorkspaceRegistry,
 } from './store-liveness.ts'
 import { makeStoreLayer, Store } from './store.ts'
@@ -34,6 +35,39 @@ const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
   })
 
 describe('store-liveness', () => {
+  it.effect('reads only the exact existing canonical registration without repair or alias fallback', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const { storePath } = yield* createStoreFixture([])
+      const { workspacePath } = yield* createWorkspaceWithLock({ members: {} })
+      const basePath = EffectPath.unsafe.absoluteDir(`${yield* fs.realPath(storePath)}/`)
+      const workspaceRoot = EffectPath.unsafe.absoluteDir(`${yield* fs.realPath(workspacePath)}/`)
+      const store = yield* Effect.provide(Store, makeStoreLayer({ basePath }))
+      const read = readWorkspaceRegistration({ workspaceRoot, store })
+      expect((yield* read.pipe(Effect.result))._tag).toBe('Failure')
+      expect(yield* fs.exists(`${basePath}.state/workspaces`)).toBe(false)
+      const record = yield* refreshWorkspaceRegistry({ workspaceRoot, store, now: 1 })
+      const directory = `${basePath}.state/workspaces`
+      const names = yield* fs.readDirectory(directory)
+      expect(names).toHaveLength(1)
+      const path = `${directory}/${names[0]!}`
+      const bytes = yield* fs.readFileString(path)
+      const before = yield* fs.stat(path)
+      expect(yield* read).toEqual(record)
+      expect(yield* fs.readFileString(path)).toBe(bytes)
+      expect((yield* fs.stat(path)).mtime).toEqual(before.mtime)
+      yield* fs.writeFileString(path, JSON.stringify({ ...record, workspaceRoot: '/different-root' }))
+      expect((yield* read.pipe(Effect.result))._tag).toBe('Failure')
+      yield* fs.writeFileString(path, '{')
+      expect((yield* read.pipe(Effect.result))._tag).toBe('Failure')
+      yield* fs.writeFileString(path, bytes)
+      yield* fs.rename(path, `${path}.retained`)
+      yield* fs.symlink(`${path}.retained`, path)
+      expect((yield* read.pipe(Effect.result))._tag).toBe('Failure')
+      expect(yield* fs.readFileString(`${path}.retained`)).toBe(bytes)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect(
     'collectWorkspaceLivePaths includes store symlink targets',
     Effect.fnUntraced(

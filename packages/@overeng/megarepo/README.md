@@ -451,6 +451,9 @@ protected only by the process veto; lease wrapping of activations is tracked in
 ### Durable pool ownership primitives
 
 Claims atomically fence one generation and adopt its persistent barrier without unlinking it.
+`claim --id SLOT --identity IDENTITY` restricts atomic selection to that exact ready
+root and full identity; a missing, busy or mismatched target never falls back to a
+different root. Without `--id`, selection remains the first matching ready root.
 Providers record completion before exiting; inspection quarantines abandoned/uncertain providers.
 
 Host-store-wide count and charged-byte limits include preparing, leased and
@@ -530,7 +533,34 @@ actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
 The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
 store-state directory. Pool validation reads that file after the single-task
 runner exits; it never parses devenv console output or relies on log flags.
+The version-1 report additionally observes the task's `runtimeContext` (cwd and
+`DEVENV_ROOT`, `DEVENV_STATE`, `DEVENV_DOTFILE`); absent variables are null, never
+replaced with a healthy-root fallback. These observations grant no authority and
+do not change the existing install-identity subset. `readWorkspaceRegistration`
+reads one exact canonical record with the existing registry codec/path, without
+refresh, reconciliation or pruning. Registration presence alone is not current
+member-pin, holder, root-activation or removal qualification.
 No adapter, copied Buck state or scripts-disabled preparation is used.
+
+The manual Linux fixture `src/test-utils/pool-activation-qualification.ts` exercises
+a **real different canonical caller's normal activation**, then claims its exact
+configured ready slot with `--id` and runs normal doctor/identity collection inside
+its live provider ancestry. Equivalent slots cannot redirect the claim.
+Run it only after separate SDK/service/root qualification and normal admission:
+`devenv shell -- bun packages/@overeng/megarepo/src/test-utils/pool-activation-qualification.ts /absolute/private/config.json`.
+The explicit JSON config follows that file's `Config`: exact store/slot/source/install
+binding; canonical caller root/bare/commit; expected caller and slot state/dotfile
+values from their actual evaluated configurations; declared absolute Nix-store
+`mr`, `devenv`, `bash`, `node` providers; and an existing owned mode-0700 `evidenceRoot`.
+No root environment variables are mocked, unset or overridden, and the claimed
+child is not reactivated before its first normal task. Caller root/admin metadata
+is compared after caller activation and around claimed execution, with no ignored
+paths, link following or copied file bytes. Autonomous caller writes also fail it.
+Full output (including the CLI lease), task reports and receipts remain private;
+never publish the raw evidence. Exact-root registration is compared with fresh
+member pins, not a union from other workspaces. Success establishes this fixture's
+activation binding only, not holder/seat/cleanup authority. It leaves the slot
+completed with unknown charge; it never auto-releases, resets or removes it.
 
 Fresh reserved UUID execution roots have an explicit disposable-ignored contract:
 ignored bytes in a proven-fresh, never-authored, never-promoted root are execution

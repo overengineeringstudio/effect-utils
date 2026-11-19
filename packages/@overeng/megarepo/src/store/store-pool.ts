@@ -283,10 +283,13 @@ export const prewarmPool = (args: {
   })
 
 /** Claim is serialized with capacity and generations; it never resets a root. */
-export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner: string }) =>
+export const claimPool = (args: {
+  base: AbsoluteDirPath; identity: string; owner: string; id?: string
+}): Effect.Effect<PoolSlot, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> =>
   withPoolSlotOperation({
     base: args.base,
-    select: (slot) => slot.state === 'ready' && slot.identity === args.identity,
+    select: (slot) => slot.state === 'ready' && slot.identity === args.identity &&
+      (args.id === undefined || slot.id === args.id),
     use: (state, save, slot) =>
       Effect.gen(function* () {
         const update = (next: PoolSlot) =>
