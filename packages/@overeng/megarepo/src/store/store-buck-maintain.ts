@@ -16,7 +16,12 @@ import {
   stopWorktreeBuckDaemons,
   type WorktreeBuckDaemon,
 } from './store-buck-daemons.ts'
-import { buckDurationMs, canonicalBuckMaintainRoot, loadStoreBuckMaintainConfig, type StoreBuckMaintainConfig } from './store-buck-maintain-config.ts'
+import {
+  buckDurationMs,
+  canonicalBuckMaintainRoot,
+  loadStoreBuckMaintainConfig,
+  type StoreBuckMaintainConfig,
+} from './store-buck-maintain-config.ts'
 import {
   discoverBuckMaintainWorktrees,
   readBuckMaintainGitEvidence,
@@ -28,7 +33,10 @@ import {
   fullCleanLastActivityMs,
   isInBlackout,
 } from './store-buck-maintain-policy.ts'
-import { BuckMaintainProgressError, type BuckMaintainCaptureTimes } from './store-buck-maintain-progress-schema.ts'
+import {
+  BuckMaintainProgressError,
+  type BuckMaintainCaptureTimes,
+} from './store-buck-maintain-progress-schema.ts'
 import {
   acquireDeletionLease,
   deletionLeasePath,
@@ -185,19 +193,19 @@ export interface BuckMaintainProgressHooks {
     readonly storeBase: string
     readonly activityConfig: unknown
   }) => Effect.Effect<readonly string[], BuckMaintainProgressError, FileSystem.FileSystem>
-  readonly onEntry: (entry: BuckMaintainEntry, capture: BuckMaintainCaptureTimes) => Effect.Effect<void, BuckMaintainProgressError, FileSystem.FileSystem>
+  readonly onEntry: (
+    entry: BuckMaintainEntry,
+    capture: BuckMaintainCaptureTimes,
+  ) => Effect.Effect<void, BuckMaintainProgressError, FileSystem.FileSystem>
 }
 
-/** Maintain scoped worktrees through native Buck commands, gated by ownership, activity and leases. */
-export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
-  configPath,
-  dryRun,
-  progress,
-}: {
+interface MaintainOptions {
   configPath: string | undefined
   dryRun: boolean
   progress?: BuckMaintainProgressHooks
-}) {
+}
+
+const maintainWorktrees = function* ({ configPath, dryRun, progress }: MaintainOptions) {
   const fs = yield* FileSystem.FileSystem
   const config = yield* loadStoreBuckMaintainConfig(
     configPath === undefined ? {} : { path: configPath },
@@ -226,8 +234,11 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
     const allowedRoots = yield* Effect.forEach(roots, (root) => canonicalBuckMaintainRoot(fs, root))
     const selected = new Set<string>()
     for (const worktree of worktrees) {
-      if (selected.has(worktree) || resolve(worktree) !== worktree ||
-          !allowedRoots.some((root) => isInsideWorktree({ candidate: worktree, worktreePath: root })))
+      if (
+        selected.has(worktree) ||
+        resolve(worktree) !== worktree ||
+        !allowedRoots.some((root) => isInsideWorktree({ candidate: worktree, worktreePath: root }))
+      )
         return yield* new BuckMaintainProgressError({
           message: 'Progress selection contains a duplicate or out-of-policy root',
         })
@@ -257,12 +268,18 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
     }
     if (discoveredSet !== undefined) {
       const canonical = yield* fs.realPath(worktree).pipe(Effect.option)
-      if (!discoveredSet.has(worktree) || Option.isNone(canonical) || canonical.value !== worktree) {
+      if (
+        !discoveredSet.has(worktree) ||
+        Option.isNone(canonical) ||
+        canonical.value !== worktree
+      ) {
         yield* record({
           worktree,
           action: 'none',
-          reason: Option.isSome(canonical) && canonical.value !== worktree
-            ? 'worktree-identity-changed' : 'worktree-unavailable',
+          reason:
+            Option.isSome(canonical) && canonical.value !== worktree
+              ? 'worktree-identity-changed'
+              : 'worktree-unavailable',
           bytesBefore: null,
           bytesAfter: null,
           daemon: [],
@@ -688,12 +705,18 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
     entries,
     summary: { worktrees: entries.length, actions, skipped: entries.length - actions },
   } satisfies BuckMaintainReceipt
-}, (effect, { dryRun, progress }) =>
-  progress !== undefined && dryRun !== true
-    ? Effect.fail(
-        new BuckMaintainProgressError({
-          message: 'Progress hooks require explicit dry-run; historical observations cannot authorize apply',
-        }),
-      )
-    : effect.pipe(Effect.provide(StoreLayer)),
+}
+
+/** Maintain scoped worktrees through native Buck commands, gated by ownership, activity and leases. */
+export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(
+  maintainWorktrees,
+  (effect, { dryRun, progress }) =>
+    progress !== undefined && dryRun !== true
+      ? Effect.fail(
+          new BuckMaintainProgressError({
+            message:
+              'Progress hooks require explicit dry-run; historical observations cannot authorize apply',
+          }),
+        )
+      : effect.pipe(Effect.provide(StoreLayer)),
 )
