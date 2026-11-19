@@ -29,6 +29,7 @@ __pycache__/
 
 # Buck2 daemon and materialized build state
 buck-out/
+/.worktree-tools/
 # Standalone trust-tier cache posture, reconciled before every Buck invocation.
 /.buckconfig.local
 # Generated editor snapshots. Unanchored so every admitted package root — present
