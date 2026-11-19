@@ -603,7 +603,9 @@ devenv tasks remain available; removing their evaluated authority requires a
 separate contract replacement, not deleting these guards.
 
 Preparation reports up to ten untracked paths, JSON-escaped, and still refuses
-to publish them. Generated runtime state belongs in its existing owned locations.
+to publish them. The editor publisher's default content-addressed store is
+`.editor-view-content/v1` beside the common Git directory; in ordinary clones
+this is root-local runtime state, explicitly ignored alongside editor snapshots.
 
 Audit cross-cell Buck provider identity separately:
 
