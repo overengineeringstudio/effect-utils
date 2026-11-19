@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
+import { hostedPrivateCacheReads } from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
 import { githubWorkflow, type GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   binaryCachesExtraConfForJob,
@@ -141,14 +142,20 @@ describe('build cache composition', () => {
       expect(() => binaryCachesExtraConfForJob({
         job: 'build', runner: 'ubuntu-latest', caches: [privateCache], hostedPrivateCacheReads: [invalid],
       })).toThrow()
-      expect(() => validate({ ...job, ...hostedPrivateCacheReadPolicy(invalid) })).toThrow()
+      // Bypass the authoring constructor so the final boundary sees bad metadata.
+      const invalidJob = { ...job, [hostedPrivateCacheReads]: [invalid] }
+      expect(() => validate(invalidJob)).toThrow()
     }
     for (const condition of [undefined, 'always()', 'failure()', 'cancelled()', 'success()', "${{ always() || steps.trusted_private_cache_reader.outcome == 'success' }}"]) {
       expect(() => validate({ ...job, steps: [
         trustedHostedCacheReadGate(read), { ...credential, if: condition }, install,
       ] })).toThrow(PrivateBinaryCacheRunnerError)
     }
-    for (const condition of ['always()', 'failure()', '!cancelled()']) {
+    for (const condition of [
+      'always()', 'failure()', '!cancelled()', 'always() && true',
+      `always() || ${trustedHostedCacheReadGateSucceededPredicate}`,
+      `always() && (${trustedHostedCacheReadGateSucceededPredicate} || true)`,
+    ]) {
       expect(() => validate({ ...job, steps: [
         ...job.steps, { run: 'repository-code', if: condition },
       ] })).toThrow(PrivateBinaryCacheRunnerError)
