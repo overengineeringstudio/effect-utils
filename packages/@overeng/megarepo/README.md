@@ -581,6 +581,11 @@ borrowing; an exclusive outer container would prevent that normal preparation.
 Retirement keeps its continuous exclusive container fence. Durable mutation intent
 and the root action lock are required before the first write through completion.
 A crash retains/quarantines the intent, never returns ready automatically.
+The isolated retarget source integration uses the canonical verified multi-target
+pin transaction: prepare leaves the durable intent unknown, ALL root/admin chains
+verify, then the ready CAS commits while every pin FD remains held. A kill before
+verification cannot publish ready; a completed, verified CAS may. This prototype
+has no CLI activation or qualified holder-service/root execution authority.
 `replacePoolSlot` provides the short compare-and-swap epoch: it rereads canonical
 authority, rejects a stale source/generation/token/intent/provenance observation,
 and merges only that slot into the current ledger. Other slots and host-wide limits

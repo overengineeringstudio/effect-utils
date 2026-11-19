@@ -19,7 +19,7 @@ import {
 } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import {
-  captureDeletionIdentity, type PinnedDeletionError, withPinnedDirectoryPins,
+  captureDeletionIdentity, type PinnedDeletionError, withVerifiedDirectoryPins,
 } from './store-pinned-deletion.ts'
 import type { WorktreeHolderEvidenceClientConfig } from './store-worktree-holder-codec.ts'
 import { makeWorktreeHolderSource } from './store-worktree-holder-source.ts'
@@ -433,8 +433,8 @@ export const retargetPool = (args: {
   owner: string
   holderClient: WorktreeHolderEvidenceClientConfig
 }): Effect.Effect<PoolSlot, PoolOperationError, FileSystem.FileSystem | ChildProcessSpawner> =>
-  withPoolState({
-    base: args.base,
+  withPoolSlotOperation({
+    base: args.base, select: args.id,
     use: (state, save) => Effect.gen(function* () {
       const original = state.slots.find((item) => item.id === args.id)
       if (original === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
@@ -469,29 +469,33 @@ export const retargetPool = (args: {
           if (linked.gitdir !== admission.gitdir)
             return yield* new PoolError({ message: 'Retarget administrative identity changed' })
         })
-        const withFreshProof = <A, E, R>(use: Effect.Effect<A, E, R>) =>
-          withPinnedDirectoryPins({
-            ...rootTarget, identity: rootIdentity,
-            use: (rootPins) => withPinnedDirectoryPins({
-              ...adminTarget, identity: adminIdentity,
-              use: (adminPins) => Effect.gen(function* () {
-                yield* assertCurrent
-                // Capture inside both current pin scopes, never reuse a startup census.
-                const source = yield* makeWorktreeHolderSource({
-                  client: args.holderClient, paths: [slot.path, admission.gitdir],
-                })
-                for (const [worktreePath, ownedPins] of [
-                  [slot.path, rootPins], [admission.gitdir, adminPins],
-                ] as const) {
-                  const proof = yield* source.read({ worktreePath, ownedPins })
-                  if (proof.complete !== true || proof.inUse._tag !== 'free')
-                    return yield* new PoolError({ message: 'Qualified retarget holders not proven absent' })
-                }
-                yield* assertCurrent
-                return yield* use
-              }),
-            }),
-          })
+        const withFreshProof = <A, E, R, ECommit = never, RCommit = never>(
+          use: Effect.Effect<A, E, R>,
+          commit: (prepared: A) => Effect.Effect<A, ECommit, RCommit> = Effect.succeed,
+        ) => withVerifiedDirectoryPins({
+          targets: [
+            { ...rootTarget, identity: rootIdentity }, { ...adminTarget, identity: adminIdentity },
+          ],
+          prepare: ([rootPins, adminPins]) => Effect.gen(function* () {
+            if (rootPins === undefined || adminPins === undefined)
+              return yield* new PoolError({ message: 'Canonical retarget pins are incomplete' })
+            yield* assertCurrent
+            // Capture inside BOTH current pin scopes, never reuse a startup census.
+            const source = yield* makeWorktreeHolderSource({
+              client: args.holderClient, paths: [slot.path, admission.gitdir],
+            })
+            for (const [worktreePath, ownedPins] of [
+              [slot.path, rootPins], [admission.gitdir, adminPins],
+            ] as const) {
+              const proof = yield* source.read({ worktreePath, ownedPins })
+              if (proof.complete !== true || proof.inUse._tag !== 'free')
+                return yield* new PoolError({ message: 'Qualified retarget holders not proven absent' })
+            }
+            yield* assertCurrent
+            return yield* use
+          }),
+          commit,
+        })
         // Durable source/epoch revocation precedes teardown, cleanup and checkout.
         yield* update()
         const intent = slot
@@ -525,7 +529,7 @@ export const retargetPool = (args: {
               slot, generation: slot.generation, token: slot.retarget!.token,
               result: { _tag: 'Prepared', ...readiness },
             })
-            slot = { ...prepared, activity: {
+            return { ...prepared, activity: {
               generation: prepared.generation, commit: prepared.commit, identity: prepared.identity,
               phase: 'retarget-ready' as const,
               event: {
@@ -534,18 +538,21 @@ export const retargetPool = (args: {
                 ownerLabel: args.owner, ownerLabelOrigin: 'retarget-argument' as const,
               },
             } }
-            published = slot
+          }), (prepared) => Effect.gen(function* () {
+            // The canonical engine verified ALL chains; only now publish under its held FDs.
+            slot = prepared
+            published = prepared
             yield* update()
-            return slot
+            return prepared
           }))
         })
-        return yield* execute.pipe(Effect.tapError((error) => Effect.gen(function* () {
+        return yield* execute.pipe(retainPoolFailure((reason) => Effect.gen(function* () {
           // Never overwrite a superseding nonce or lose the unresolved mutation intent.
           const current = (yield* readPoolState({ base: args.base })).slots.find((item) => item.id === intent.id)
           if (current === undefined) return
-          const failed = failedPoolRetarget({ current, intent, published, reason: String(error) })
+          const failed = failedPoolRetarget({ current, intent, published, reason })
           if (failed === undefined) return
-          slot = yield* retainPoolSlot({ slot: failed, reason: String(error) })
+          slot = yield* retainPoolSlot({ slot: failed, reason })
           yield* update()
         })))
       }).pipe(withGitContainerLock({ path: original.bare, mode: 'shared' }))
