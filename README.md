@@ -65,7 +65,11 @@ epochs reject before restart. This is not publisher verification or permission
 to promote arbitrary releases: consumers own that human-controlled boundary.
 The Linux nested-KVM proof is
 `nix build ./nix/immutable-microvm#checks.x86_64-linux.lifecycle`.
-It needs a KVM-capable admitted lane, not an unapproved new hosted CI job.
+The `Immutable Authority Lifecycle` same-repository PR workflow runs that proof on
+the admitted public Namespace KVM selector, serialized across public heavy jobs.
+It builds both immutable image/runner closures first, then exercises cold boot,
+update, automatic rollback, restart and persistent state with no enrollment,
+provider credentials, deployment or cache publishing.
 
 ## Standalone Nix-staged JavaScript and TypeScript
 
@@ -870,6 +874,10 @@ which can contain isolation-looking options. Lifecycle resolution conservatively
 supports `run TARGET [-- payload]` with Buck options before `run`; other run
 forms retain daemons with the same fail-closed warning rather than guessing
 where Buck options end.
+CI cache admission separately uses the native arity-aware resolver for declared
+`run` trace flags; unknown arity and unsafe isolation/argfiles still fail closed.
+The ordinary-clone runtime CAS is ignored state, not source; other untracked
+sources refuse with at most ten JSON-escaped paths.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
 At exit it invokes native `buck2 kill` only when a fresh status identifies the

@@ -69,7 +69,7 @@ async fn spans_cover_validation_usage_and_cancellation_without_content() {
                 .user("secret-prompt")
                 .structured_with_schema(schema)
                 .await,
-            Err(Error::Validation { .. })
+            Err(Error::StructuredOutput(_))
         ));
     }
     .with_subscriber(subscriber)
@@ -95,6 +95,7 @@ async fn spans_cover_validation_usage_and_cancellation_without_content() {
     );
     assert!(!format!("{spans:?}").contains("secret-bearer"));
     assert!(!format!("{spans:?}").contains("secret-prompt"));
+    assert!(!format!("{spans:?}").contains("{\\\"age\\\":-1}"));
 
     exporter.reset();
     let subscriber = tracing_subscriber::registry().with(

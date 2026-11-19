@@ -199,7 +199,14 @@ export const updateNixFlakeUrl = ({
   if (parsed._tag === 'github') {
     let newRef = parsed.ref
     if ('ref' in updates) {
-      newRef = updates.ref ?? undefined
+      if (parsed.params.has('ref') === true) {
+        if (updates.ref != null) newParams.set('ref', updates.ref)
+        else newParams.delete('ref')
+        // A query ref remains query-based; never leave a conflicting path selector.
+        newRef = undefined
+      } else {
+        newRef = updates.ref ?? undefined
+      }
     }
 
     if ('rev' in updates) {
@@ -267,7 +274,7 @@ export const getOwnerRepo = (parsed: NixFlakeUrl): { owner: string; repo: string
 /** Get the ref from a NixFlakeUrl (either path-embedded or query param) */
 export const getRef = (parsed: NixFlakeUrl): string | undefined => {
   if (parsed._tag === 'github') {
-    return parsed.ref
+    return parsed.ref ?? parsed.params.get('ref')
   }
   return parsed.params.get('ref')
 }
