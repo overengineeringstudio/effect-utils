@@ -417,7 +417,6 @@ source, changed commits or failed preparation retain the root; no automatic dirt
 cleanup, expiry, removal or force-unlock exists. Removal remains the existing
 hygiene owner's operation with full consumer proof.
 Per-root qualification and provisioning-caller adoption are separate from this API.
-
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

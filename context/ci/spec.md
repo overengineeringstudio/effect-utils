@@ -115,6 +115,13 @@ body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
 this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
 retry signature.
 
+Terminal Nix download errors reporting curl send, receive, or timeout failures
+also retry, even with HTTP 200 or 206. Nix's terminal `some substitutes for the
+outputs of derivation '…' failed (usually happens due to networking issues)`
+diagnostic is likewise transient. A download retry warning or generic
+`1 dependency failed` alone is insufficient: ordinary build and lint failures
+must preserve their original exit code without consuming the retry budget.
+
 `Resolve devenv` overlaps pinned executable resolution with two locked-source
 prefetch workers. They traverse the checkout's `devenv.lock` shell graph,
 including follows edges, but exclude the root executable branch, local inputs,
@@ -223,6 +230,9 @@ aggregate is a cache-publication inventory, not the selector for unit-shell
 packages or tasks. Native recipe identity is scoped to declared sources and
 pinned tools rather than repository HEAD; see the
 [native Nix bridge contract](../builds/05-product-distribution/02-nix-bridge/spec.md#native-products).
+The inventory retains the same `nix/reindeer.nix` override used by the devenv
+overlay, so bootstrap can substitute the patched generator instead of rebuilding
+it on every fresh runner.
 Closure-size claims require measured shell outputs and their dependency paths,
 not package-list changes or task scheduling alone. Execution latency is measured
 from job `startedAt` to `completedAt`; runner queue wait is reported separately

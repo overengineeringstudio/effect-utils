@@ -13,6 +13,7 @@ export default jsonArtifact({
       'target',
       'tmp',
       'node_modules',
+      '.worktree-tools',
       '.direnv',
       '.git',
     ],
