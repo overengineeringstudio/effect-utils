@@ -49,21 +49,20 @@ export type DependencyGraph = ReadonlyMap<string, MemberDependencies>
 // Source file URL extraction
 // =============================================================================
 
+/** Shared literal declaration grammar for discovery and format-preserving rewriting. */
+export const flakeNixInputUrlPattern = () =>
+  /(?:inputs\.)?([a-zA-Z0-9_-]+)(?:\.url\s*=\s*|\s*=\s*\{\s*url\s*=\s*)"([^"]+)"/g
+
 /**
- * Extract `inputs.<name>.url = "..."` from a flake.nix file.
- *
- * Uses line-by-line regex matching — not a full Nix parser, but sufficient
- * for the standard `inputs.foo.url = "..."` declaration pattern.
+ * Extract literal dotted and attribute-set input URLs from a flake.nix file.
+ * Attribute-set declarations require the URL to be the first attribute.
  */
 export const extractFlakeNixInputs = (
   content: string,
 ): ReadonlyArray<{ inputName: string; url: string }> => {
   const results: Array<{ inputName: string; url: string }> = []
 
-  // Match both forms:
-  // 1. inputs.NAME.url = "URL";  (top-level declaration)
-  // 2. NAME.url = "URL";         (inside inputs = { ... } block)
-  const pattern = /(?:inputs\.)?([a-zA-Z0-9_-]+)\.url\s*=\s*"([^"]+)"/g
+  const pattern = flakeNixInputUrlPattern()
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(content)) !== null) {
