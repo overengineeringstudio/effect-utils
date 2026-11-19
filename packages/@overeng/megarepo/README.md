@@ -553,6 +553,11 @@ its callback once. Physical work holds no GLOBAL lock. Each supplied `save` vali
 the canonical schema and CASes only the selected slot; it cannot alter another root
 or host limits. Concurrent changes to other slots are preserved, not rejected due
 to the callback's older inventory. Conflict never retries or replays physical work.
+If rename commits but directory sync fails, the save still fails. Under the retained
+ROOT lock it reconciles only an exact prior or attempted current record so failure
+retention can CAS that same owned generation. It never reports persistence success,
+overwrites a superseding record, or resurrects a missing removed record. Original
+and reconciliation failures are retained together.
 Preparation, claim, release, authoring, completion, quarantine, retirement and
 inspection use that root-scoped coordinator. Reservation remains a globally atomic
 count/byte decision, without acquiring a root/container/pin lock inside its epoch.
