@@ -54,6 +54,19 @@ The nested flake builds a credential-free reference image, not an authorization
 service: `nix build ./nix/immutable-microvm#a` on x86_64 Linux.
 Image outputs are public code, never a location for keys or provider credentials.
 
+`host.nix` owns one VMM UID, TAP and state writer. Its root-only activation
+package accepts a prebuilt immutable release path and starts a target-local
+systemd transaction, independent of the requesting client. Current, prior and
+candidate closures remain GC-rooted. Readiness requires exact release,
+catalog digest, state epoch, a fresh challenge and a new boot nonce. Failed
+health restarts the prior release; a killed controller triggers bounded rescue;
+boot recovery selects the journaled prior before autostart. Incompatible state
+epochs reject before restart. This is not publisher verification or permission
+to promote arbitrary releases: consumers own that human-controlled boundary.
+The Linux nested-KVM proof is
+`nix build ./nix/immutable-microvm#checks.x86_64-linux.lifecycle`.
+It needs a KVM-capable admitted lane, not an unapproved new hosted CI job.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
