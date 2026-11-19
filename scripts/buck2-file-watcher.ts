@@ -414,7 +414,15 @@ export const probeWatchman = async ({
 export class WatchmanCrawlError extends Error {
   readonly reason = 'crawl'
 
-  constructor(root: string, deadlineMs: number, cause: unknown) {
+  constructor({
+    root,
+    deadlineMs,
+    cause,
+  }: {
+    readonly root: string
+    readonly deadlineMs: number
+    readonly cause: unknown
+  }) {
     super(
       `Buck2 Watchman initial crawl failed (crawl): ${root}; initialization budget ${deadlineMs} ms.\n${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
@@ -455,7 +463,7 @@ export const initializeWatchmanRoot = async ({
     })
     outcome = 'ok'
   } catch (cause) {
-    throw new WatchmanCrawlError(root, deadlineMs, cause)
+    throw new WatchmanCrawlError({ root, deadlineMs, cause })
   } finally {
     writeSync(
       2,

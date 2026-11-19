@@ -2110,7 +2110,7 @@ if (import.meta.main === true) {
       const root = findRoot(process.cwd())
       const budget = process.argv[4]
       if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
-      if (budget === undefined || !/^[1-9]\d*$/u.test(budget) || process.argv.length !== 5)
+      if (budget === undefined || /^[1-9]\d*$/u.test(budget) === false || process.argv.length !== 5)
         throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
       if (process.env['WATCHMAN_SOCK'] === undefined)
         throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
