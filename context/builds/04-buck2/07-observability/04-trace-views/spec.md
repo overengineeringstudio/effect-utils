@@ -213,6 +213,14 @@ an explicit gap. Enumeration has an 800-request ceiling, shared caller budget,
 250 ms pacing and 120-second deadline. Even exhaustive backend enumeration
 cannot prove transport/census closure or absence of later arrivals.
 
+`--occurrence-log-url <URL>` enables that reader in the existing daily join,
+alongside optional local directories and the same expected-host inventory.
+Backend ingestion retrieval spans `[native-window-start, invocation-as-of)`;
+native exact completion timestamps still determine the scorecard window.
+Both inputs feed the existing strict reconciler in memory. The flag does not
+provision read authority: workflow activation requires the separately governed
+fixed-selector route and trusted read-only network identity.
+
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
 run. Expired evidence artifacts are not downloaded and contribute evidence

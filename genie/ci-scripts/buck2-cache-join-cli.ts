@@ -45,6 +45,7 @@ import {
 } from './buck2-cache-proof-history.ts'
 import { writeBuck2CacheProofReports } from './buck2-cache-proof-reports.ts'
 import { decodeEvidence, renderWarm99Diagnostics } from './buck2-cache-warm99.ts'
+import { readOccurrenceLogs } from './buck2-occurrence-log-reader.ts'
 import { reconcileOccurrenceRecords, type OccurrenceEvidence } from './buck2-occurrence-records.ts'
 
 const limits = {
@@ -129,6 +130,9 @@ Trusted presence: only complete main-writer uploads or verified remote-hit obser
 --proof-directory retains full downloaded proof sources, authoritative run/job expectations,
 and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
 --occurrence-records <directory> includes immutable native v1 JSONL records (repeatable).
+--occurrence-log-url <URL> reads the governed fixed-selector backend endpoint (no credentials).
+It queries ingestion time from native window start to this invocation's as-of time;
+late arrivals and unproven transport/census closure remain explicit UNKNOWN.
 --expected-occurrence-host <hostname> declares expected retained sources (repeatable);
 operator-local files do not grant CI private-fleet read authority or certify unobserved hosts.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
@@ -204,6 +208,7 @@ const program = Effect.gen(function* () {
           'otlp-spool': { type: 'string' },
           'proof-directory': { type: 'string' },
           'occurrence-records': { type: 'string', multiple: true },
+          'occurrence-log-url': { type: 'string' },
           'expected-occurrence-host': { type: 'string', multiple: true },
           help: { type: 'boolean', short: 'h' },
         },
@@ -633,9 +638,9 @@ const program = Effect.gen(function* () {
   const retainedFiles: { name: string; body: string }[] = []
   const retainedGaps: string[] = []
   const retainedBudget = makeDownloadBudget(512 * 1024 ** 2)
-  if (options['occurrence-records'] !== undefined) {
+  if (options['occurrence-records'] !== undefined || options['occurrence-log-url'] !== undefined) {
     let capped = false
-    for (const directory of options['occurrence-records']) {
+    for (const directory of options['occurrence-records'] ?? []) {
       const entries = yield* io({
         message: 'Cannot enumerate retained occurrence records',
         body: () => readdir(directory, { withFileTypes: true }),
@@ -675,6 +680,27 @@ const program = Effect.gen(function* () {
         retainedFiles.push({ name: path, body: bytes.success.toString('utf8') })
       }
       if (capped === true) break
+    }
+    if (options['occurrence-log-url'] !== undefined) {
+      const backend = yield* readOccurrenceLogs({
+        url: options['occurrence-log-url'],
+        startNs: BigInt(since) * 1_000_000n,
+        endNs: BigInt(now) * 1_000_000n,
+        hosts: options['expected-occurrence-host'] ?? [],
+        budget: retainedBudget,
+        reserveRequest: () => {
+          if (apiBudgetAvailable({ calls: apiCalls, remaining }) === false) {
+            budgetStopped = true
+            return false
+          }
+          apiCalls++
+          return true
+        },
+      })
+      const available = 100_000 - retainedFiles.length
+      for (const file of backend.files.slice(0, available)) retainedFiles.push(file)
+      retainedGaps.push(...backend.evidenceGaps)
+      if (backend.files.length > available) retainedGaps.push('retained-record-count-overflow')
     }
     const reconciled = reconcileOccurrenceRecords({
       files: retainedFiles,
