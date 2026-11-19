@@ -602,6 +602,9 @@ source files, rebuild the profile, republish it, and prepare again. All existing
 devenv tasks remain available; removing their evaluated authority requires a
 separate contract replacement, not deleting these guards.
 
+Preparation reports up to ten untracked paths, JSON-escaped, and still refuses
+to publish them. Generated runtime state belongs in its existing owned locations.
+
 Audit cross-cell Buck provider identity separately:
 
 ```bash
