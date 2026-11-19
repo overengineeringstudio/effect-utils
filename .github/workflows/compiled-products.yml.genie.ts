@@ -93,6 +93,21 @@ export default ciWorkflow({
             env: variant.env,
             run: runDevenvTasksBefore('buck2:editor:bootstrap'),
           },
+          {
+            name: `Assert clean source after bootstrap (${variant.name})`,
+            if: "github.event_name == 'push'",
+            // No bootstrap mutation may enter either credentialed publisher.
+            run: withCiSourceRoot(
+              [
+                'set -euo pipefail',
+                'changes=$(git status --porcelain --untracked-files=all -- .)',
+                'if [ -n "$changes" ]; then',
+                '  printf "::error::Bootstrap changed publisher source\\n%s\\n" "$changes" >&2',
+                '  exit 1',
+                'fi',
+              ].join('\n'),
+            ),
+          },
           cachixPushStep({
             jobIf: protectedMainIf,
             triggers: ['push'],
