@@ -514,6 +514,8 @@ birth/claim/release/retarget phase, UTC observation and provider. Legacy records
 missing history; source/generation transitions revoke prior activity before mutation.
 The provider reuses the lease owner's local Linux process-stat reader and actual UID:
 it is neither pidfd nor cross-boot identity, and missing lifetime/UID stays unknown.
+The read-only persistent-barrier assertion requires current fenced acquisition/adoption:
+it matches the exact token, owner and local process, without rewriting or recovering records.
 Decoding never manufactures events, mtime activity, authenticated seats or removal authority.
 Physical preparation, claim, completion, release and reported-failure controllers
 record their actual provider and tool-clock transition time. Missing historical claim

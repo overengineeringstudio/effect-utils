@@ -451,6 +451,24 @@ export const adoptPersistentDeletionLease = (lease: DeletionLease) =>
     })
   })
 
+/** Read-only ownership check after fenced acquisition/adoption; not cross-boot authority.
+ * Never adopts, expires or releases a barrier.
+ */
+export const assertOwnedPersistentDeletionLease = (lease: DeletionLease): Effect.Effect<
+  void, PlatformError | Schema.SchemaError | DeletionLeaseUnavailableError, FileSystem.FileSystem
+> => Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const record = yield* decodeLeaseRecord(yield* fs.readFileString(lease.leasePath), { onExcessProperty: 'error' })
+  const provider = yield* readProcessIdentity({ fs, pid: process.pid })
+  if (record.version !== 2 || record.token !== lease.token || record.ownerPath !== lease.ownerPath ||
+    record.host !== hostname() || record.pid !== process.pid || provider?.startTime === undefined ||
+    record.processStartTime !== provider.startTime)
+    return yield* new DeletionLeaseUnavailableError({
+      ownerPath: lease.ownerPath, leasePath: lease.leasePath,
+      message: 'Persistent root barrier is not owned by this process',
+    })
+})
+
 /** Unknown provider identity is never evidence that its root is reusable. */
 export const persistentDeletionLeaseOwnerAlive = (lease: DeletionLease) =>
   Effect.gen(function* () {

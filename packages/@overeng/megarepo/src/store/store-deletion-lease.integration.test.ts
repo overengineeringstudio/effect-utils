@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Clock, Deferred, Effect, Fiber, Scope } from 'effect'
+import { Clock, Deferred, Effect, Exit, Fiber, Scope } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -26,10 +26,12 @@ import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { withGitContainerLock, withGitWriterLock } from './git-writer-lock.ts'
 import {
   acquireDeletionLease,
+  assertOwnedPersistentDeletionLease,
   canonicalizeOwnerPath,
   createStoreWorktree,
   deletionLeasePath,
   DeletionLeaseUnavailableError,
+  readCurrentDeletionLeaseProvider,
   releaseDeletionLease,
   withDeletionLease,
   withStoreWorktreeLease,
@@ -73,6 +75,31 @@ const writeLease = ({
   })
 
 describe('store deletion lease', () => {
+  it.effect('asserts only the exact current persistent barrier without rewriting or recovering records', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const provider = yield* readCurrentDeletionLeaseProvider
+      for (const persistent of [false, true]) {
+        const f = yield* fixture()
+        const lease = yield* acquireDeletionLease({
+          storeBasePath: f.storePath, ownerPath: f.owner, now: NOW, persistent,
+        })
+        const bytes = yield* fs.readFileString(lease.leasePath)
+        const result = yield* assertOwnedPersistentDeletionLease(lease).pipe(Effect.exit)
+        expect(Exit.isSuccess(result)).toBe(persistent === true && provider.processStartTime !== undefined)
+        expect(yield* fs.readFileString(lease.leasePath)).toBe(bytes)
+        expect(Exit.isFailure(yield* assertOwnedPersistentDeletionLease({
+          ...lease, token: 'not-this-acquisition',
+        }).pipe(Effect.exit))).toBe(true)
+        expect(yield* fs.readFileString(lease.leasePath)).toBe(bytes)
+        const unsupported = bytes.replace(/"version":[12]/u, '"version":3')
+        expect(unsupported).not.toBe(bytes)
+        yield* fs.writeFileString(lease.leasePath, unsupported)
+        expect(Exit.isFailure(yield* assertOwnedPersistentDeletionLease(lease).pipe(Effect.exit))).toBe(true)
+        expect(yield* fs.readFileString(lease.leasePath)).toBe(unsupported)
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
   for (const scenario of ['canonical', 'wrong-start-time', 'store-alias']) {
     const wrongStartTime = scenario === 'wrong-start-time'
     const useStoreAlias = scenario === 'store-alias'
