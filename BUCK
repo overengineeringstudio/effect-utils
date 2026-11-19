@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:a19706397d004071e3bf5b80c330bf8f57d93c7b788f96a1f1b4a20693581892
+# Semantic fingerprint: sha256:f68eb17bd78debd10d780c75b87a3d9509c8716a9d59ae1a05d25447ce7a6e2f
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -231,6 +231,7 @@ check_aggregate(
         "//packages/@overeng/react-inspector:strict_consumer_typecheck",
         "//packages/@overeng/restate-effect:typecheck",
         "//packages/@overeng/scg-authority:typecheck",
+        "//packages/@overeng/scg-discord:typecheck",
         "//packages/@overeng/scg-protocol:typecheck",
         "//packages/@overeng/stylex-tokens:typecheck",
         "//packages/@overeng/tui-core:typecheck",
@@ -302,6 +303,7 @@ check_aggregate(
         "//packages/@overeng/react-inspector:dist",
         "//packages/@overeng/restate-effect:dist",
         "//packages/@overeng/scg-authority:dist",
+        "//packages/@overeng/scg-discord:dist",
         "//packages/@overeng/scg-protocol:dist",
         "//packages/@overeng/stylex-tokens:dist",
         "//packages/@overeng/tui-core:dist",
@@ -359,6 +361,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/restate-effect:test",
         "effect_utils//packages/@overeng/rpc-devtools:test",
         "effect_utils//packages/@overeng/scg-authority:test",
+        "effect_utils//packages/@overeng/scg-discord:test",
         "effect_utils//packages/@overeng/scg-protocol:test",
         "effect_utils//packages/@overeng/tui-core:test",
         "effect_utils//packages/@overeng/tui-react:test",

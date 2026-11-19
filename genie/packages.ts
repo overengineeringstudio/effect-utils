@@ -57,6 +57,7 @@ export const internalPackages = [
   'react-inspector',
   'restate-effect',
   'scg-authority',
+  'scg-discord',
   'scg-protocol',
   'tui-core',
   'tui-react',
