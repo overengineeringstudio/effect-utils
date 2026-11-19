@@ -1,4 +1,6 @@
-import { Effect, FileSystem, Redacted, Schema } from 'effect'
+import { isAbsolute } from 'node:path'
+
+import { Effect, FileSystem, Schema } from 'effect'
 
 const Consumer = Schema.Struct({
   name: Schema.NonEmptyString.pipe(Schema.check(Schema.isTrimmed())),
@@ -8,7 +10,7 @@ const Consumer = Schema.Struct({
 /** Runtime-only upstream, consumer verifiers and request/metric bounds. */
 export const GatewayConfig = Schema.Struct({
   upstream: Schema.URLFromString,
-  upstreamTokenFile: Schema.optionalKey(Schema.NonEmptyString),
+  upstreamSocket: Schema.optionalKey(Schema.String),
   consumers: Schema.Array(Consumer),
   maxModelLabels: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   maxRequestBodyBytes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
@@ -20,9 +22,7 @@ export const GatewayConfig = Schema.Struct({
 }).annotate({ identifier: 'AiGatewayEdge.Config' })
 
 /** Decoded runtime gateway configuration. */
-export type GatewayConfig = typeof GatewayConfig.Type & {
-  readonly upstreamToken?: Redacted.Redacted<string>
-}
+export type GatewayConfig = typeof GatewayConfig.Type
 
 /** Configuration read or schema-decode failure, retaining its original cause. */
 export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()('ConfigLoadError', {
@@ -30,9 +30,9 @@ export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()('Conf
   cause: Schema.Defect(),
 }) {}
 
-/** Token-file failures deliberately omit the filesystem cause and secret contents. */
-export class UpstreamTokenLoadError extends Schema.TaggedError<UpstreamTokenLoadError>()(
-  'UpstreamTokenLoadError',
+/** Relative socket paths are rejected before listeners start. */
+export class UpstreamSocketError extends Schema.TaggedError<UpstreamSocketError>()(
+  'UpstreamSocketError',
   { message: Schema.String },
 ) {}
 
@@ -51,16 +51,9 @@ export const loadConfig = Effect.fn('ai-gateway-edge.loadConfig')(function* (pat
   ).pipe(
     Effect.mapError((cause) => new ConfigLoadError({ message: `Invalid config ${path}`, cause })),
   )
-  if (config.upstreamTokenFile === undefined) return config
-  const tokenText = yield* fs
-    .readFileString(config.upstreamTokenFile)
-    .pipe(
-      Effect.mapError(
-        () => new UpstreamTokenLoadError({ message: 'Cannot read upstream token file' }),
-      ),
-    )
-  const token = tokenText.replace(/\r?\n$/, '')
-  if (token.length === 0)
-    return yield* new UpstreamTokenLoadError({ message: 'Upstream token file is empty' })
-  return { ...config, upstreamToken: Redacted.make(token) }
+  if (config.upstreamSocket !== undefined) {
+    if (isAbsolute(config.upstreamSocket) === false)
+      return yield* new UpstreamSocketError({ message: 'Upstream socket path must be absolute' })
+  }
+  return config
 })
