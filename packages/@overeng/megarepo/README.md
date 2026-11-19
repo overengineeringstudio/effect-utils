@@ -314,6 +314,14 @@ Replacing an ancestor with a symlink cannot redirect removal outside the verifie
 changed identities or unavailable primitives refuse deletion. The same boundary protects
 worktree and merged-worklog teardown.
 
+The native `beforeRemove` guard receives an engine-minted, immutable `OwnedDeletionPins`
+view. Capture all-UID holder evidence **inside** that guard, after pin acquisition. Only
+an `fd` reference matching an actual owned `(pid, fd, dev, ino)` is exempt from self-use;
+another fd from the same process, or any cwd/exe/map/mount reference, still vetoes.
+No caller-supplied ignore list or PID-wide exemption is accepted. The view's `has`
+predicate is revoked when the guard completes, fails, is interrupted, or throws; retained
+views do not authorize later actions. This seam is not census or deletion authorization.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
