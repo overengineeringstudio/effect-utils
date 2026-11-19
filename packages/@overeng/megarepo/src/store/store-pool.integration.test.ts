@@ -9,13 +9,16 @@ import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, deletionLeasePath, readCurrentDeletionLeaseProvider } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import { poolBytes } from './store-pool-install.ts'
+import { withPoolRetirement } from './store-pool-retirement.ts'
 import {
   beginPoolRetarget,
   claimPoolGeneration,
   consumePoolReservation,
   finishPoolRetarget,
+  PoolError,
   type PoolActivityEvent,
   type PoolSlot,
+  readPoolState,
   withPoolState,
 } from './store-pool-state.ts'
 import {
@@ -225,6 +228,78 @@ describe('native pool ownership safety', () => {
       expect(yield* fs.readFileString(lease)).toBe(barrierBytes)
       const native = (yield* Git.listWorktrees(f.slot.bare)).find((entry) => entry.path === f.slot.path)
       expect(Option.getOrUndefined(native!.lockReason)).toBe(`mr-pool:${f.slot.id}:preparing`)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('retains native data and barriers on refusal, stale ownership or incomplete exact-admin removal', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const provider = yield* readCurrentDeletionLeaseProvider
+      for (const mode of ['reported-failure', 'missing-removal', 'admin-retained', 'stale-binding'] as const) {
+        const f = yield* fixture
+        // Historical schema input only, not a successful install or qualified birth.
+        const ready: PoolSlot = { ...f.slot, activity: {
+          generation: f.slot.generation, commit: f.slot.commit, identity: f.slot.identity, phase: 'birth-ready',
+          event: {
+            observedAtUtc: '2026-11-19T12:00:00.000Z',
+            provider: { pid: 123, uid: 456, processStartTime: '789' },
+            ownerLabel: '', ownerLabelOrigin: 'none',
+          },
+        } }
+        yield* withPoolState({ base: f.storePath, use: (state, save) =>
+          save({ ...state, slots: [ready] }) })
+        yield* fs.writeFileString(`${ready.path}/preserved`, 'never delete this unqualified fixture')
+        let called = false
+        let capturedAdmin: string | undefined
+        const result = yield* withPoolRetirement({
+          base: f.storePath, expected: ready,
+          remove: ({ target, assertCurrent }) => Effect.gen(function* () {
+            called = true
+            yield* assertCurrent
+            capturedAdmin = target.adminDir
+            const current = yield* readPoolState({ base: f.storePath })
+            expect(JSON.stringify(target)).not.toContain(current.slots[0]!.retirement!.nonce)
+            expect(target.id).toBe(ready.id)
+            expect(target.generation).toBe(ready.generation)
+            expect(target.adminDir.startsWith('/')).toBe(true)
+            expect(JSON.stringify(target)).not.toContain(ready.barrierToken)
+            if (mode === 'reported-failure')
+              return yield* new PoolError({ message: 'intentional admission refusal' })
+            if (mode === 'admin-retained') {
+              yield* fs.rename(ready.path, `${ready.path}-retained`)
+              yield* fs.writeFileString(`${target.adminDir}/HEAD`, 'invalid-head\n')
+            }
+            if (mode === 'stale-binding') {
+              yield* fs.writeFileString(`${f.storePath}/.state/pool/state.json`, JSON.stringify({
+                ...current, slots: current.slots.map((item) => item.id === ready.id
+                  ? { ...item, retirement: { ...item.retirement!, nonce: 'newer-intent-sentinel' } } : item),
+              }))
+              yield* assertCurrent
+            }
+          }),
+        }).pipe(Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        expect(called).toBe(provider.processStartTime !== undefined)
+        if (called === true && mode === 'reported-failure' && Exit.isFailure(result) === true)
+          expect(Cause.pretty(result.cause)).toContain('intentional admission refusal')
+        const retained = yield* withPoolState({
+          base: f.storePath, use: (state) => Effect.succeed(state.slots[0]!),
+        })
+        expect(retained.generation).toBe(ready.generation + 1)
+        expect(retained.retirement?.status).toBe(mode === 'stale-binding' && called === true ? 'pending' : 'failed')
+        if (mode === 'stale-binding' && called === true)
+          expect(retained.retirement?.nonce).toBe('newer-intent-sentinel')
+        expect(retained.chargeKnown).toBe(false)
+        const dataPath = mode === 'admin-retained' && called === true ? `${ready.path}-retained` : ready.path
+        expect(yield* fs.readFileString(`${dataPath}/preserved`)).toBe('never delete this unqualified fixture')
+        expect(yield* fs.exists(deletionLeasePath({ storeBasePath: f.storePath, ownerPath: ready.path }))).toBe(true)
+        if (mode === 'admin-retained' && called === true) {
+          expect(yield* fs.readFileString(`${capturedAdmin!}/locked`)).toContain(`mr-pool:${ready.id}:preparing`)
+        } else {
+          const native = (yield* Git.listWorktrees(ready.bare)).find((item) => item.path === ready.path)
+          expect(Option.getOrUndefined(native!.lockReason)).toBe(`mr-pool:${ready.id}:preparing`)
+        }
+      }
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
