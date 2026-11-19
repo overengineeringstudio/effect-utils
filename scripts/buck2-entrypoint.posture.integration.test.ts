@@ -187,13 +187,13 @@ else if(args.includes('build')) {
               ...process.env,
               HOME: root,
               XDG_CACHE_HOME: join(root, 'cache'),
-              BUCK2_PUBLIC_CACHE_READ_ONLY: reader ? '1' : '',
+              BUCK2_PUBLIC_CACHE_READ_ONLY: reader === true ? '1' : '',
               BUCK2_NO_REMOTE_CACHE: '',
-              BUCK2_CACHE_WRITE_OPTIONAL: optional ? '1' : '',
-              BUCK2_CACHE_TRUSTED_QUALIFICATION: trusted ? '1' : '',
+              BUCK2_CACHE_WRITE_OPTIONAL: optional === true ? '1' : '',
+              BUCK2_CACHE_TRUSTED_QUALIFICATION: trusted === true ? '1' : '',
               BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
               BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
-              BUCK2_CACHE_WRITE_BASIC_AUTH: reader ? '' : secret,
+              BUCK2_CACHE_WRITE_BASIC_AUTH: reader === true ? '' : secret,
               CI: '1',
               BUCK2_CI_POSTURE: '1',
               GITHUB_RUN_ID: 'reader-shadow-fixture',
@@ -213,8 +213,9 @@ else if(args.includes('build')) {
           new Response(child.stderr).text(),
           child.exited,
         ])
-        const replay = termination === 'exit' && (reader || optional) && !trusted
-        const expectedExitCode = termination === 'SIGTERM' ? 143 : replay ? localExit : 1
+        const replay =
+          termination === 'exit' && (reader === true || optional === true) && trusted === false
+        const expectedExitCode = termination === 'SIGTERM' ? 143 : replay === true ? localExit : 1
         expect(code, stderr).toBe(expectedExitCode)
         expect(child.signalCode).toBe(termination === 'SIGTERM' ? 'SIGTERM' : null)
         expect(stdout).toBe('')
@@ -233,8 +234,8 @@ else if(args.includes('build')) {
           .trim()
           .split('\n')
           .map((line) => JSON.parse(line))
-        expect(commands).toHaveLength(replay ? 2 : 1)
-        if (!replay) {
+        expect(commands).toHaveLength(replay === true ? 2 : 1)
+        if (replay === false) {
           expect(stderr).not.toContain('exactly one bounded LOCAL re-execution follows')
           expect(existsSync(`${evidence}.local-fallbacks.jsonl`)).toBe(false)
           return
@@ -263,7 +264,7 @@ else if(args.includes('build')) {
         expect(relationship.classification.cause.transportMessage).toBe('tls-handshake-eof')
         expect(relationship.classification.nativeExitCode).toBe(1)
         expect(relationship.localOnly).toBe(true)
-        if (nativeEvidence) {
+        if (nativeEvidence === true) {
           const original = JSON.parse(
             readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'),
           )

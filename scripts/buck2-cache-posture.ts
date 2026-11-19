@@ -28,6 +28,7 @@ const count = (value: unknown): number => {
   return value
 }
 
+/** Strictly classified native transport failure retained beside the original invocation. */
 export type ReaderReapiUnavailableShadow = {
   cause: {
     capabilitiesUnavailable: boolean
@@ -59,6 +60,7 @@ export const canonicalCacheAdmissionInvocationId = (value: unknown): string => {
   const hex = plain.replaceAll('-', '').toLowerCase()
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
+/** Reject malformed or unclassified native failure evidence before recovery is considered. */
 export const decodeReaderReapiUnavailableShadow = (
   value: unknown,
 ): ReaderReapiUnavailableShadow => {
@@ -121,6 +123,7 @@ export type CacheLocalFallback = {
   finishedAt: number
 }
 
+/** Decode the distinct failed-original and bounded-LOCAL invocation relationship. */
 export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => {
   const originalBuildId = canonicalCacheAdmissionInvocationId(
     field({ value, key: 'originalBuildId' }),
@@ -133,11 +136,12 @@ export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => 
   const localSignalCode = field({ value, key: 'localSignalCode' })
   const startedAt = count(field({ value, key: 'startedAt' }))
   const finishedAt = count(field({ value, key: 'finishedAt' }))
-  const expectedReason = classification.cause.capabilitiesUnavailable
-    ? 'capabilities'
-    : classification.cause.clientInitialization
-      ? 'init'
-      : 'connect'
+  const expectedReason =
+    classification.cause.capabilitiesUnavailable === true
+      ? 'capabilities'
+      : classification.cause.clientInitialization === true
+        ? 'init'
+        : 'connect'
   if (
     field({ value, key: 'schemaVersion' }) !== 1 ||
     field({ value, key: 'localOnly' }) !== true ||

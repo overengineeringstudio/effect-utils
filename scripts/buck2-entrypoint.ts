@@ -645,7 +645,7 @@ export const directBuckArguments = async ({
   }
   if (remoteAvailable === false) {
     if (
-      trustedCacheQualification(env) ||
+      trustedCacheQualification(env) === true ||
       (values['buck2.allow_cache_uploads'] === 'true' && env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1')
     ) {
       if (workflowCommands === true)
@@ -1956,6 +1956,7 @@ export const trustedCacheQualification = (
   env['BUCK2_CACHE_TRUSTED_QUALIFICATION'] === '1' ||
   env['GITHUB_JOB'] === 'trusted-buck2-remote-cache-proof'
 
+/** Permit recovery only for readers or explicitly optional writers, never qualification. */
 export const cacheLocalFallbackEligible = ({
   values,
   env,
@@ -2020,7 +2021,7 @@ export const localCacheReplayArguments = ({
   if (command !== 'build' && command !== 'test') return undefined
   const separator = invocation.args.indexOf('--')
   const before = separator === -1 ? invocation.args : invocation.args.slice(0, separator)
-  if (before.includes('--remote-only')) return undefined
+  if (before.includes('--remote-only') === true) return undefined
   const replay: string[] = []
   for (let index = 0; index < before.length; index++) {
     const arg = before[index]!
@@ -2029,7 +2030,10 @@ export const localCacheReplayArguments = ({
       const path = before[++index]
       if (path === undefined || path === '') return undefined
       replay.push(arg, `${path}.local-${buildId}`)
-    } else if (arg.startsWith('--write-build-id=') || arg.startsWith('--event-log=')) {
+    } else if (
+      arg.startsWith('--write-build-id=') === true ||
+      arg.startsWith('--event-log=') === true
+    ) {
       replay.push(`${arg}.local-${buildId}`)
     } else replay.push(arg)
   }
@@ -2202,7 +2206,7 @@ const spawnNativeCommand = ({
       const exitCode = await exited
       const signalCode = child.signalCode
       return {
-        exitCode: timedOut ? 124 : exitCode,
+        exitCode: timedOut === true ? 124 : exitCode,
         signalCode,
         durationMs,
         output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
@@ -2409,7 +2413,7 @@ if (import.meta.main === true) {
         onFallback: (value) => {
           classification = value
           warnStdio(
-            `warning: Buck2 transient REAPI ${value.cause.capabilitiesUnavailable ? 'capabilities' : value.cause.clientInitialization ? 'init' : 'connect'} failure: original_build_id=${process.env['BUCK_WRAPPER_UUID']} original_exit=${value.nativeExitCode}; exactly one bounded LOCAL re-execution follows; original failed trace retained\n`,
+            `warning: Buck2 transient REAPI ${value.cause.capabilitiesUnavailable === true ? 'capabilities' : value.cause.clientInitialization === true ? 'init' : 'connect'} failure: original_build_id=${process.env['BUCK_WRAPPER_UUID']} original_exit=${value.nativeExitCode}; exactly one bounded LOCAL re-execution follows; original failed trace retained\n`,
           )
         },
         local: async () => {
@@ -2465,11 +2469,12 @@ if (import.meta.main === true) {
             schemaVersion: 1,
             originalBuildId,
             localBuildId,
-            reason: classification.cause.capabilitiesUnavailable
-              ? 'capabilities'
-              : classification.cause.clientInitialization
-                ? 'init'
-                : 'connect',
+            reason:
+              classification.cause.capabilitiesUnavailable === true
+                ? 'capabilities'
+                : classification.cause.clientInitialization === true
+                  ? 'init'
+                  : 'connect',
             classification,
             originalExitCode: classification.nativeExitCode,
             localExitCode: nativeResult.exitCode,
