@@ -621,6 +621,15 @@ a cwd/root reference to shutdown and the final probe; nonleader references veto.
 Temporary identity-read descriptors are closed before return: this API does not
 claim descriptors held through deletion, atomic exclusion or live qualification.
 
+When invoked inside native `beforeRemove`, `source.read` accepts only that callback's
+opaque `ownedPins` view. The source additionally binds the actual leader start time,
+all four UID values, and exact leader/task identity before checking owned fd tuples.
+Task-local descriptor numbers are not process-global: a nonleader row with the same
+fd/device/inode still vetoes, because threads can unshare their descriptor tables.
+An owned fd is never reported as a process-wide exemption in receipt metadata.
+Capture the source after native pins are acquired, inside the same final guard;
+this adapter does not activate or qualify the privileged client/service.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
