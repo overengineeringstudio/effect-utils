@@ -533,6 +533,15 @@ measurement, cleanup, daemon shutdown, or deletion lease. Decision tests assert 
 fail-closed result on Darwin rather than skipping. Native Darwin census support is tracked
 in [#1955](https://github.com/overengineeringstudio/effect-utils/issues/1955).
 
+### Historical Buck maintenance checkpoint contract
+
+`src/store/store-buck-maintain-progress-schema.ts` owns the serialized manifest and
+record schemas, inferred capture/manifest/record types, strict JSON decoders,
+`BuckMaintainProgressError`, canonical JSON encoding and dry-run input validation.
+Unknown fields and versions fail closed. This contract compares caller-supplied
+runtime digests; it does not attest runtimes, derive configuration, grant apply
+authority, or provide durable storage.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical
