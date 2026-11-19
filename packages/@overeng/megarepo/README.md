@@ -453,6 +453,14 @@ retaining the previous terminal activity and a private one-use intent nonce. Pen
 or failed retirement stays quarantined with unknown charge even when inspection can
 measure its remaining files. No retry, expiry, adoption or physical deletion follows
 from this transition. Read-only observations expose historical metadata, never its nonce.
+The internal `withPoolRetirement` custody boundary holds the state and exclusive
+container fences, persists revocation, and adopts the exact persistent root barrier.
+Its same-process GC callback receives positive root/admin metadata and a private
+`assertCurrent` effect, not a bearer token or claimed-held flag. The qualified consumer
+must capture both native identities before mutation and perform its own fresh admission.
+Only independent no-follow absence of the original root and exact Git-resolved admin
+directory permits accounting finalization. Errors retain a nonclaimable intent;
+there is no retirement CLI, automatic retry or removal authority in the public snapshot.
 Unborn reservations count against the same host-wide slot and planned-byte limits.
 They carry a one-use nonce and generation, but no provider owner, native root or ready
 identity. Inspection preserves an absent reserved path; an occupied or unknown path
