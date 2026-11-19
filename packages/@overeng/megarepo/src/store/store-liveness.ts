@@ -73,6 +73,27 @@ const workspaceRecordPath = ({
     EffectPath.unsafe.relativeFile(`${hashPath(normalizePath(workspaceRoot))}.json`),
   )
 
+/** Observe one existing canonical registration, without refresh, reconciliation or pruning. */
+export const readWorkspaceRegistration = ({
+  store, workspaceRoot,
+}: { store: MegarepoStore; workspaceRoot: AbsoluteDirPath }): Effect.Effect<
+  StoreWorkspaceRecord, PlatformError | Schema.SchemaError, FileSystem.FileSystem
+> => Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const path = workspaceRecordPath({ store, workspaceRoot })
+  yield* Schema.decodeUnknownEffect(Schema.Literal(path))(yield* fs.realPath(path))
+  yield* Schema.decodeUnknownEffect(Schema.Literal(normalizePath(workspaceRoot)))(
+    yield* fs.realPath(workspaceRoot),
+  )
+  const record = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoreWorkspaceRecord))(
+    yield* fs.readFileString(path),
+  )
+  yield* Schema.decodeUnknownEffect(Schema.Literal(normalizePath(workspaceRoot)))(
+    normalizePath(record.workspaceRoot),
+  )
+  return record
+})
+
 const isStorePath = ({ store, path }: { store: MegarepoStore; path: string }): boolean =>
   normalizePath(path).startsWith(normalizePath(store.basePath) + '/')
 

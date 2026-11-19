@@ -491,6 +491,13 @@ actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
 The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
 store-state directory. Pool validation reads that file after the single-task
 runner exits; it never parses devenv console output or relies on log flags.
+The version-1 report additionally observes the task's `runtimeContext` (cwd and
+`DEVENV_ROOT`, `DEVENV_STATE`, `DEVENV_DOTFILE`); absent variables are null, never
+replaced with a healthy-root fallback. These observations grant no authority and
+do not change the existing install-identity subset. `readWorkspaceRegistration`
+reads one exact canonical record with the existing registry codec/path, without
+refresh, reconciliation or pruning. Registration presence alone is not current
+member-pin, holder, root-activation or removal qualification.
 No adapter, copied Buck state or scripts-disabled preparation is used.
 
 Fresh reserved UUID execution roots have an explicit disposable-ignored contract:

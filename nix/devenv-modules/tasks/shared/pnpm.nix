@@ -884,7 +884,9 @@ let
           "$install_hash" "$projection_hash" "$storage_state" "$(realpath "$PNPM_NATIVE_BIN")" <<'EOF'
         const [root, decision, reason, installHash, projectionHash, storageState, pnpm] = process.argv.slice(2)
         const report = JSON.stringify({ phase: 'doctor', version: 1, root, decision, reason,
-          installHash, projectionHash, storageState, pnpm, node: process.execPath })
+          installHash, projectionHash, storageState, pnpm, node: process.execPath,
+          runtimeContext: { cwd: process.cwd(), devenvRoot: process.env.DEVENV_ROOT ?? null,
+            devenvState: process.env.DEVENV_STATE ?? null, devenvDotfile: process.env.DEVENV_DOTFILE ?? null } })
         if (process.env.PNPM_DOCTOR_OUTPUT_FILE) {
           require('node:fs').writeFileSync(process.env.PNPM_DOCTOR_OUTPUT_FILE, report + '\n',
             { flag: 'wx', mode: 0o600 })

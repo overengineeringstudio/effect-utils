@@ -120,11 +120,21 @@ for name in first second ci local; do
   decision="$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)"
   test "$decision" = healthy
   report_file="$tmpdir/$name-doctor.json"
-  PNPM_DOCTOR_OUTPUT_FILE="$report_file" bash "$tmpdir/$mode-exec-doctor.sh" >/dev/null
+  env -u DEVENV_ROOT -u DEVENV_STATE -u DEVENV_DOTFILE \
+    PNPM_DOCTOR_OUTPUT_FILE="$report_file" bash "$tmpdir/$mode-exec-doctor.sh" >/dev/null
   report="$(cat "$report_file")"
   test "$(printf '%s\n' "$report" | jq -r .version)" = 1
   test -n "$(printf '%s\n' "$report" | jq -r .installHash)"
   test -n "$(printf '%s\n' "$report" | jq -r .projectionHash)"
+  printf '%s\n' "$report" | jq -e --arg root "$root" \
+    '.runtimeContext == {cwd:$root,devenvRoot:null,devenvState:null,devenvDotfile:null}' >/dev/null
+  # Unit emission only: observed activation vars are never replaced with a healthy-root fallback.
+  observed_file="$tmpdir/$name-observed-doctor.json"
+  DEVENV_ROOT=foreign-root DEVENV_STATE=foreign-state DEVENV_DOTFILE=foreign-dotfile \
+    PNPM_DOCTOR_OUTPUT_FILE="$observed_file" bash "$tmpdir/$mode-exec-doctor.sh" >/dev/null
+  jq -e --arg root "$root" \
+    '.root == $root and .runtimeContext == {cwd:$root,devenvRoot:"foreign-root",devenvState:"foreign-state",devenvDotfile:"foreign-dotfile"}' \
+    "$observed_file" >/dev/null
   # Root-owned realization evidence covers dotentries, not just package links.
   mv "$root/node_modules/.bin" "$tmpdir/saved-bin"
   test "$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)" = repair-root
