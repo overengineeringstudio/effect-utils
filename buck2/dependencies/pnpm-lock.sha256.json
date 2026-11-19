@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:d196ae04b22325568355db800a320610ac1bc951c981169b8fa21ee797484cc2",
+  "lockfileFingerprint": "sha256:2147a149c85bd69ff4611b85c10aa6e5f1810d7bcea468ff0566b827da1380cf",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -1112,15 +1112,6 @@
       "registryUrl": "https://registry.npmjs.org/@myobie/pty/-/pty-0.10.0.tgz",
       "sha256": "0138c1c4a0b9c89d1c76fb8d1765c5aa4efa11ab5ab91ad04afe4ccdb1ff5af5",
       "sizeBytes": 188462
-    },
-    "@napi-rs/wasm-runtime@1.2.3": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-UMduMbqO5s5zF2NkNacMT/yK5Y5QiKvWr2+50bzIIxFDwVJ2h49b+oyjaCGPhJxd2/gC2x39EHv/gHVuu36x2Q==",
-      "packageIdentity": "@napi-rs/wasm-runtime@1.2.3",
-      "registryUrl": "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-1.2.3.tgz",
-      "sha256": "434e1f4532cef2e9505ad597735cdad0eab0b3cfe3b6708f9dfb399f737346b2",
-      "sizeBytes": 156767
     },
     "@napi-rs/wasm-runtime@1.2.6": {
       "bins": {},
@@ -5733,17 +5724,6 @@
       "sha256": "f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6",
       "sizeBytes": 2967
     },
-    "nanoid@3.3.18": {
-      "bins": {
-        "nanoid": "bin/nanoid.cjs"
-      },
-      "classification": "public",
-      "integrity": "sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==",
-      "packageIdentity": "nanoid@3.3.18",
-      "registryUrl": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
-      "sha256": "b9dc81cb403ea2510314dd2d1ad8d71934f325db90c1b43805e781b87e3fb009",
-      "sizeBytes": 5713
-    },
     "nanoid@3.3.20": {
       "bins": {
         "nanoid": "bin/nanoid.cjs"
@@ -6434,15 +6414,6 @@
       "sha256": "1fc995be91cdb777fc13e20c2edfebaaf60ef4e4d2d5331caef2837b04d37892",
       "sizeBytes": 23162
     },
-    "source-map-js@1.2.1": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
-      "packageIdentity": "source-map-js@1.2.1",
-      "registryUrl": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
-      "sha256": "f126a6f9fca487a43219d8cb8c3a955279187a966119d548eb5cd47e999d4853",
-      "sizeBytes": 35340
-    },
     "source-map-js@1.2.2": {
       "bins": {},
       "classification": "public",
@@ -7080,5 +7051,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:420e5b2ff500d112363fd436a27f12a092c227f18cab79b954e195b7429ab509"
+  "fingerprint": "sha256:25f750c07dc8ad1dc45b8417086a9533ccbcacc4e75da46d4b4ee48adb0cea5b"
 }

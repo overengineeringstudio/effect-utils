@@ -29,6 +29,47 @@ mr lock
 | `mr lock`          | Record the current synced workspace state into `megarepo.lock`            |
 | `mr apply`         | Apply `megarepo.lock` exactly, using commit worktrees for reproducible CI |
 
+### Native execution pool and lazy editing
+
+`mr store pool` is an explicit API, not automatic workspace provisioning.
+Read-only source access runs no install/build and allocates no branch:
+
+```sh
+mr store pool read owner/repo --commit <full-sha> path/to/source.ts
+mr store pool promote owner/repo --commit <full-sha> --branch topic/change
+```
+
+Promotion delegates to `mr store worktree new --ref … --base … --no-fetch`,
+then runs the owned root's normal `devenv tasks run pnpm:install`. It never
+renames a slot or changes a canonical branch path's identity.
+
+Pool setup and execution use the existing admission mechanism; these commands
+do not grant execution admission or create admission records:
+
+```sh
+mr store pool reserve owner/repo --commit <full-sha> \
+  --max-slots <host-count> --max-bytes <host-byte-budget> --charge-bytes <slot-reservation>
+# Owner reviews/enrolls the returned exact missing path; reserve never does this.
+mr store pool prewarm owner/repo --commit <full-sha> --id <reserved-id> \
+  --reservation <one-use-nonce> --generation <reserved-generation> --charge-bytes <slot-reservation>
+mr store pool claim --identity <prewarm-receipt-identity> --owner <task-id> -- command arg
+mr store pool release --slot <id> --token <claim-token> --generation <generation>
+mr store pool status
+```
+
+Run release **outside** the slot after the owner command exits. Claim emits a
+JSON receipt and passes `MR_POOL_SLOT`, `MR_POOL_TOKEN`, `MR_POOL_GENERATION`
+to its child. Release is explicit; task failure quarantines instead of resetting.
+Success publishes a fenced `completed` state before provider exit; status cannot
+mistake normal completion for abandonment. Status reconciles abandoned/unknown
+providers toward quarantine only.
+
+See [durable pool ownership](#durable-pool-ownership-primitives) for capacity,
+readiness, retention and teardown safety. This callable API does not enable
+automatic provisioning or confer per-root production qualification.
+Promotion invokes the packaged absolute `MR_CANONICAL_BIN` self-provider; an
+ambient `mr` on PATH is never substituted, and a missing provider fails closed.
+
 ## Typical Flow
 
 ```bash
@@ -367,6 +408,128 @@ Builds that have not written yet are invisible to the mtime and activity checks.
 agent activations wrap their builds in `mr store lease --owner-path <worktree>`, such a build is
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
+
+### Durable pool ownership primitives
+
+Claims atomically fence one generation and adopt its persistent barrier without unlinking it.
+Providers record completion before exiting; inspection quarantines abandoned/uncertain providers.
+
+Host-store-wide count and charged-byte limits include preparing, leased and
+quarantined roots, across repositories. Reservations are accounting, not filesystem
+quotas; ordinary admitted execution remains responsible for runtime containment.
+Writable claims invalidate measured accounting until a safe release/remeasure.
+This blocks new reservations, not claims of other already-reserved ready roots.
+Status preserves live leased and completed ownership while accounting is unknown;
+an abandoned provider or a lost/unknown root path still causes quarantine.
+Every failed preparation reconciles retained logical bytes, including partial
+install growth. Unknown retained accounting or holders block further allocation.
+Missing pathnames cannot clear accounting: an unlinked file may still be held open.
+Clean-source and holder proofs run again after doctor/byte accounting, immediately
+before cleaning or publishing a ready/claimed generation.
+The charge uses apparent logical size, not allocated blocks: compression and sparse
+files cannot lower it. Report allocated disk usage separately; neither measurement
+claims exclusive bytes reclaimable from shared, reflinked or deduplicated storage.
+The packaged Nix CLI supplies GNU coreutils for consistent accounting on each platform.
+Limits cannot be changed while authoritative records exist.
+
+The ledger is authoritative, never an expendable cache. Missing state initializes
+only after a one-time census under the pool fence finds no pool namespace contents,
+native pool registrations, persistent or unclassifiable deletion barriers.
+Unknown inventory fails closed; no roots are adopted, reset, removed or reconstructed.
+Existing state skips this initialization census; read-only provenance never runs it.
+
+The authoritative ledger writes version 2. Its canonical decoder converts version 1,
+preserving every generation, owner/token, barrier and unknown charge; allowed source
+history starts with exactly the old commit. Mutating operations checkpoint that
+conversion under the existing durable exclusion; readonly observations do not.
+Unknown versions or fields fail closed. Keep this reader arm until a census of every
+store proves no v1 records/writers remain and the no-old-record regression passes.
+State-only retarget intent advances the generation and revokes install/lease identity
+before mutation; failure retains intent and unknown bytes. These transitions do not
+provide holder evidence or enable a retarget CLI: qualified teardown, fresh authenticated
+holder SDK evidence and normal installation/doctor integration remain required.
+State-only retirement likewise advances the epoch and revokes ready/install identity,
+retaining the previous terminal activity and a private one-use intent nonce. Pending
+or failed retirement stays quarantined with unknown charge even when inspection can
+measure its remaining files. No retry, expiry, adoption or physical deletion follows
+from this transition. Read-only observations expose historical metadata, never its nonce.
+The internal `withPoolRetirement` custody boundary holds the state and exclusive
+container fences, persists revocation, and adopts the exact persistent root barrier.
+Its same-process GC callback receives positive root/admin metadata and a private
+`assertCurrent` effect, not a bearer token or claimed-held flag. The qualified consumer
+must capture both native identities before mutation and perform its own fresh admission.
+Only independent no-follow absence of the original root and exact Git-resolved admin
+directory permits accounting finalization. Errors retain a nonclaimable intent;
+there is no retirement CLI, automatic retry or removal authority in the public snapshot.
+Unborn reservations count against the same host-wide slot and planned-byte limits.
+They carry a one-use nonce and generation, but no provider owner, native root or ready
+identity. Inspection preserves an absent reserved path; an occupied or unknown path
+is quarantined with unknown bytes and its nonce revoked, never adopted or cleaned.
+The state owner consumes the exact source/bare/path/charge/nonce/epoch receipt before
+any creation. `reserve` never creates a checkout or registers a privileged root;
+`prewarm` requires its explicit receipt, with no legacy one-shot or resume path.
+Owner enrollment and verified authenticated holder-provider qualification remain
+external prerequisites, not authority granted by these commands.
+Consumed reservations retain an initial-preparation intent through any failure.
+Inspection may raise its measured byte lower bound but cannot declare its charge
+known; only qualified successful preparation clears the intent atomically with ready.
+
+Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
+and persistent deletion barriers remain through ready, leased and uncertain states.
+The barrier's v2 record is deliberately not PID-death-recoverable; older readers
+reject it and retain the root. Ordinary v1 lease recovery is unchanged.
+Preparation consumes its bounded reservation before creating the protected path,
+atomically refuses an already occupied path and uses normal root-owned `pnpm:install`.
+Readiness consumes `pnpm:doctor` installation/projection/storage
+receipts and full link-health proof across all declared package node_modules,
+including `.bin`. It additionally binds exact source/tool/platform identity,
+actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
+The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
+store-state directory. Pool validation reads that file after the single-task
+runner exits; it never parses devenv console output or relies on log flags.
+No adapter, copied Buck state or scripts-disabled preparation is used.
+
+Release first fences its owner and persists quarantine, then invokes the packaged
+absolute `WORKTREE_TEARDOWN_BIN` provider, not an ambient PATH command.
+It uses the existing store-owner `gc-owner` process policy: readable foreign
+references veto, unreadable foreign processes are counted, and own-UID completeness
+requires native or bounded lsof evidence. Unknown owner processes retain the root.
+After unchanged clean source/history proof, it validates the installed dependency
+view, then cleans only its own detached root preserving validated `node_modules`,
+and reruns normal installation. Missing teardown, unknown processes, dirty/untracked
+source, changed commits or failed preparation retain the root; no automatic dirty
+cleanup, expiry, removal or force-unlock exists. Removal remains the existing
+hygiene owner's operation with full consumer proof.
+
+`readPoolProvenance` exports bearer-free observations through that same decoder,
+without initialization, migration writes, recovery, unlocks or removal. Missing or
+unsupported state fails closed, never fabricating an empty inventory. Legacy activity
+remains unrecorded and `HOLD`. A ready/unclaimed root with complete recorded birth or
+claim/completion/release history may be a `CANDIDATE` observation; missing provider
+UID/lifetime, incomplete or misbound history and pure retarget results remain `HOLD`.
+Recorded event times and opaque caller labels are exported, never authenticated seats.
+Every observation still has `authorizesRemoval: false`; candidate is not an action grant.
+A future hygiene consumer must reread the same generation under its action lease and
+the shared pool lifecycle fence before its own fresh Git/all-UID/consumer checks;
+the snapshot grants no eligibility or cleanup authority.
+The public error channel is the fixed `PoolProvenanceUnavailableError` category:
+it forwards no original diagnostic, input or cause. The private canonical reader's
+error detail remains unchanged; failure is never converted into a successful inventory.
+Per-root qualification and provisioning-caller adoption are separate from this API.
+
+Optional canonical activity binds its generation/source/install identity to a typed
+birth/claim/release/retarget phase, UTC observation and provider. Legacy records keep
+missing history; source/generation transitions revoke prior activity before mutation.
+The provider reuses the lease owner's local Linux process-stat reader and actual UID:
+it is neither pidfd nor cross-boot identity, and missing lifetime/UID stays unknown.
+The read-only persistent-barrier assertion requires current fenced acquisition/adoption:
+it matches the exact token, owner and local process, without rewriting or recovering records.
+Decoding never manufactures events, mtime activity, authenticated seats or removal authority.
+Physical preparation, claim, completion, release and reported-failure controllers
+record their actual provider and tool-clock transition time. Missing historical claim
+starts/completions remain missing, including releases of legacy or incomplete claims;
+service transition times are not inferred child-exit times. Pure retarget `Prepared`
+results never manufacture physical success history.
 
 ### Process activity snapshot
 

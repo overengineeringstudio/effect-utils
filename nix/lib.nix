@@ -9,6 +9,9 @@
 
   # Build a materialized standalone Buck root for a consumer checkout.
   mkConsumerBuckRoot = args: import ./buck2-products/consumer-root.nix args;
+
+  # One immutable development PATH; repositories keep their publisher/guards.
+  mkWorktreeTools = args: import ./worktree-tools.nix args;
   # Producer authority for no-follow classification of generated worktree roots.
   buck2GeneratedWorktreeRootsFile = ./buck2-generated-worktree-roots.json;
   buck2GeneratedWorktreeRoots = builtins.fromJSON (

@@ -143,16 +143,27 @@ let
     required =
       if products.megarepo.sourceImport != null then
         [
+          "coreutils"
           "git"
+          "mr"
           "nix"
           "worktree-lease"
+          "worktree-teardown"
         ]
       else
         (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
     providers = {
+      coreutils = {
+        capability = "coreutils";
+        pathPackages = [ pkgs.coreutils ];
+      };
       git = {
         capability = "git";
         pathPackages = [ pkgs.git ];
+      };
+      mr = {
+        capability = "mr";
+        environment.MR_CANONICAL_BIN = "${placeholder "out"}/bin/mr";
       };
       nix = {
         capability = "nix";
@@ -161,6 +172,12 @@ let
       worktree-lease = {
         capability = "worktree-lease";
         environment.WORKTREE_LEASE_BIN = "${nativeProducts.worktree-lease}/bin/worktree-lease";
+      };
+      worktree-teardown = {
+        capability = "worktree-teardown";
+        environment.WORKTREE_TEARDOWN_BIN = "${
+          import ../../worktree-teardown.nix { inherit pkgs; }
+        }/bin/worktree-teardown";
       };
     };
   };
@@ -172,7 +189,16 @@ let
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
     pathPackages = megarepoProviders.pathPackages;
-    smokeTestArgs = [ "--help" ];
+    # Keep the pinned pre-pool published artifact usable until its own repin.
+    smokeTestArgs =
+      if builtins.elem "mr" megarepoProviders.capabilities then
+        [
+          "store"
+          "pool"
+          "--help"
+        ]
+      else
+        [ "--help" ];
   };
   tui-stories = mk "tui-stories" {
     binaryName = "tui-stories";

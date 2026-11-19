@@ -86,20 +86,19 @@ and pass identity, purity, data-safety, concurrency, and bounded-repair gates.
 
 ## Amendment 1 — Reopen Local GVS With Staged pnpm 12 Validation
 
-The local shared-GVS rejection is reopened. Local GVS is the preferred
-challenger for compatible isolated-linker workspaces, subject to a designated
-pilot and the concurrency, repair, and compatibility gates below. This is an
-explicit acceptance of bounded shared mutable topology for the pilot, not a
-claim that GVS satisfies the immutable Hermetic Dependency Artifact target.
+Johannes adopted native workspace slots plus same-filesystem GVS as the default
+workspace substrate (Q19, in-tab decision 2026-11-18). Expansion is qualified
+per Materialization Root, not enabled fleetwide by this decision. This accepts
+bounded shared mutable topology for each qualified root, not a claim that GVS
+satisfies the immutable Hermetic Dependency Artifact target.
 The original identity experiment already distinguished pnpm's correct native
 graph identities from an unsafe secondary name-only graph writer.
 
 The shared task exposes `globalVirtualStore = true;` and Genie exposes
 `enableGlobalVirtualStore: true`. Defaults remain root-local. CI and
 fixed-output preparation remain GVS-disabled and job/output-local, independent
-of a local opt-in. Actual effect-utils and LiveStore enablement waits until the
-designated pilot has remained green for several days; this amendment does not
-enable either repository.
+of a local opt-in. Roots remain root-local until their own qualification passes;
+neither another root's receipt nor a script-free benchmark enables them.
 
 ### New Evidence And Limits
 
@@ -171,7 +170,7 @@ root's projection without deleting shared instances.
 
 ### Verification And Rollout Gate
 
-For the designated pilot, record the exact pnpm version, lock/peer graph, linker,
+For each candidate root, record the exact pnpm version, lock/peer graph, linker,
 effective store/mode, `.modules.yaml`, package realpaths, cold/warm footprints,
 and readiness receipts. pnpm 12 must receive GVS through the honoured environment
 key or workspace YAML, not the ineffective kebab-case generic config argument.
@@ -181,8 +180,23 @@ Run semantic typechecks and the consuming applications' actual build/runtime
 paths, including bundlers with root boundaries, implicit type/phantom
 dependencies, patched/local packages, generated source inputs, and any required
 native initialization. Prove CI and fixed-output preparation stay local.
-Observe the pilot across repeated fresh worktrees and lock changes for several
-green days before proposing effect-utils/LiveStore cutover. Only measured
-compatible consumers advance; default changes require that evidence, not this
-API's availability or the benchmark alone. Hermetic artifacts remain the
-long-term architectural target; GVS remains pnpm-owned mutable live state.
+Qualify each root through its normal owned-root `pnpm:install` task and required
+checks, then repeat fresh-worktree and lock-change scenarios with the concurrency
+and repair gates above. Inspect the installed `.modules.yaml`, storage-state
+receipt, and resolved virtual-store realpath; authored configuration alone is
+not proof of the effective mode. A preparation receipt binds source/install
+inputs, platform, package-manager/tool closure, and successful consuming checks.
+
+Begin with already opted-in roots; qualify additional roots independently.
+The maintainer's primary macOS workstation is excluded from this rollout.
+No blanket configuration flip, CI/fixed-output change, or reuse of another
+root's mutable projection is authorized. Pool slots retain only qualified,
+fixed-path dependency projections; Buck daemon/materializer state is private
+to each slot and is not copied from a template. Dirty, leased, or uncertain
+slots are never returned as ready. Adapters remain disabled until a matched
+per-host measurement establishes a win and compatibility passes.
+
+A failed qualification keeps that root local. Rollback disables its opt-in and
+rematerializes its root-owned projection without deleting shared instances or
+other consumers' state. Hermetic artifacts remain the long-term architectural
+target; GVS remains pnpm-owned mutable live state.

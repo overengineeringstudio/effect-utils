@@ -9,6 +9,8 @@ export * from './core/config.ts'
 
 // Services
 export * from './store/store.ts'
+// Readonly pool observations, never cleanup authority.
+export { PoolProvenanceUnavailableError, type PoolRootProvenance, readPoolProvenance } from './store/store-pool-provenance.ts'
 
 // Git utilities
 export * from './core/git.ts'

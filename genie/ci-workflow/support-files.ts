@@ -433,6 +433,10 @@ PY
     printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*unable to download '[^']+': HTTP error 416([^0-9]|${dollar})" && saw_fetch_signature=true || true
     # Cachix can return a transient conflict for narinfo GETs; Nix treats 409 as permanent.
     printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*unable to download 'https?://[^']+\\.narinfo': HTTP error 409([^0-9]|${dollar})" && saw_fetch_signature=true || true
+    # A successful HTTP status does not imply a successful NAR transfer. Match
+    # terminal Nix errors, not retry warnings that can precede an unrelated task failure.
+    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*unable to download 'https?://[^']+': HTTP error [0-9]+ \\(curl error: (Failed sending data to the peer|Failure when receiving data from the peer|Timeout was reached)\\)" && saw_fetch_signature=true || true
+    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*some substitutes for the outputs of derivation '/nix/store/[^']+\\.drv' failed \\(usually happens due to networking issues\\)" && saw_fetch_signature=true || true
     printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*cannot connect to socket at '/nix/var/nix/daemon-socket/socket'" && saw_daemon_socket_failure=true || true
     rm -f "$log"
 

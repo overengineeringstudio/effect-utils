@@ -358,6 +358,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
     graph instances. Stores are writable state for trusted same-user consumers;
     verify tools that depend on package realpaths or implicit dependencies
     before opting in.
+  - `pnpm:doctor` validates current install, storage and complete declared projection
+    receipts (including executable wrappers). Its version-1 JSON includes exact
+    install/projection hashes and resolved tools. Set `PNPM_DOCTOR_OUTPUT_FILE` to
+    an absent caller-owned path for an exclusive mode-0600 machine report; consumers
+    must read it only after successful task completion, not parse runner logs.
+    Doctor and install must use the same evaluated module options, including
+    post-install projection hooks; a different configuration is not healthy evidence.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
@@ -408,6 +415,20 @@ for outer tasks that must complete before the nested devenv process can evaluate
     does not prove a checkout stopped referencing its store.
   - The collector requires no own-UID cwd/open-fd references under the
     historical **store**, not the entire checkout, using Linux `/proc`.
+    Besides component-aware path matching, references are pinned with `O_PATH`
+    and compared against the candidate's complete device/inode inventory, so
+    native bind aliases and hardlinked payload references also protect it.
+    Negative identity evidence requires an observable native mount
+    (`ext2/3/4`, XFS, Btrfs, ZFS, tmpfs or ramfs) for both the candidate and
+    each regular-file/directory reference. Overlay, FUSE, remote/proxy views,
+    detached/unobservable mounts and incomplete mount evidence fail closed:
+    different device/inode numbers do not prove unrelated backing objects.
+    This does not qualify otherwise unreadable container processes, introduce
+    a privileged helper, or authorize namespace-path translation.
+    The isolated bind-alias test closes inherited non-stdio gate/Nix
+    descriptors before its namespace exec: cloned mount IDs cannot attest
+    descriptors retained from the parent mount namespace. Production keeps
+    that unobservable-reference veto unchanged.
     Other-UID processes are outside the normal
     user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
     own-UID processes fail closed, except the explicit Linux privileged-broker
@@ -627,6 +648,10 @@ boundaries are:
   "shared" means shared between that script's fixtures, not between scripts.
   Smoke installs use private homes and fake providers; no repository install
   or repository node_modules mutation is scheduled.
+  The shared-store reuse proof reports the failing command and line, pinned
+  pnpm version, fixture store paths, and pnpm logs before fixture cleanup.
+  Diagnostics preserve the original nonzero exit; they do not normalize
+  failed assertions or retry installs.
 - **Genie:** `genie-compiled-staging` and `genie-module-options`. Compiled output,
   generated JSON, task receipts, and scratch Git repositories are private.
   The compiled fixture reads repository node_modules through a symlink but

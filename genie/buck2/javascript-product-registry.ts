@@ -76,13 +76,13 @@ export const javaScriptProductRegistry = {
   'packages/@overeng/megarepo': [
     {
       entrypoint: 'bin/mr.ts',
-      externalCapabilities: ['git', 'nix', 'worktree-lease'],
+      externalCapabilities: ['coreutils', 'git', 'mr', 'nix', 'worktree-lease', 'worktree-teardown'],
       kind: 'cli',
       output: 'mr.js',
       productName: 'megarepo',
       // Common-directory writer locks use Bun's FFI-backed flock implementation.
       runtime: 'bun',
-      smokeArgs: ['--help'],
+      smokeArgs: ['store', 'pool', '--help'],
       targetName: 'megarepo-candidate',
     },
   ],

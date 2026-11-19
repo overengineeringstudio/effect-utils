@@ -155,6 +155,7 @@ import type {
 } from '../../renderers/StoreOutput/mod.ts'
 import { storeBuckMaintainCommand } from './buck-maintain.ts'
 import { storeLockCommand } from './lock.ts'
+import { storePoolCommand } from './pool.ts'
 
 /**
  * Entry returned by collectStoreWorktrees — `broken` indicates a directory that looks like a
@@ -5117,6 +5118,7 @@ export const storeCommand = Cli.Command.make('store', {}).pipe(
     storeLockCommand,
     storeActivityCommand,
     storeWorktreeCommand,
+    storePoolCommand,
   ]),
   Cli.Command.withDescription('Manage the shared git store'),
 )
