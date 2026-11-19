@@ -26,6 +26,7 @@ const nativeEvents = ({
   identifier = 'check',
   executionKind = 3,
   digest = true,
+  unclosedAction = false,
 }: {
   buildId: string
   actions?: boolean
@@ -33,6 +34,7 @@ const nativeEvents = ({
   identifier?: string
   executionKind?: number
   digest?: boolean
+  unclosedAction?: boolean
 }) => {
   const identity = {
     kind: 'Run',
@@ -91,6 +93,13 @@ const nativeEvents = ({
             }),
           ]
         : []),
+      ...(unclosedAction === true ? [
+        event(3, 3, 'SpanStart', {
+          ActionExecution: {
+            ...identity, name: { ...identity.name, identifier: `${identifier}-unclosed` },
+          },
+        }),
+      ] : []),
       ...(complete === true ? [event(1, 4, 'SpanEnd', { Command: {} })] : []),
     ]
       .map((value) => JSON.stringify(value))
@@ -503,6 +512,7 @@ describe('rotation-independent native evidence shards', () => {
     'ineligible-command',
     'extra-unregistered-shard',
     'extra-invalid-shard',
+    'missing-native-command-end',
     'local-failed',
     'trusted',
   ] as const) {
@@ -531,7 +541,11 @@ describe('rotation-independent native evidence shards', () => {
         const originalEvents = join(directory, 'original.json-lines')
         await Bun.write(
           originalEvents,
-          nativeEvents({ buildId: originalBuildId, complete: false }) +
+          nativeEvents({
+            buildId: originalBuildId,
+            complete: failure !== 'missing-native-command-end',
+            unclosedAction: true,
+          }) +
             (failure === 'invalid-original' ? 'invalid\n' : ''),
         )
         await writeNativeShard({
@@ -587,7 +601,9 @@ describe('rotation-independent native evidence shards', () => {
         }
         const result = await reconcileNativeShards({ output })
         expect(result.index.complete).toBe(false)
-        const confirmed = failure === null || failure === 'trusted' || unrelatedShard === true
+        // A confirmed pair never waives the finalizer's separate native time-window integrity.
+        const confirmed = failure === null || failure === 'trusted' ||
+          failure === 'missing-native-command-end' || unrelatedShard === true
         expect(result.index.commandRecoveryComplete).toBe(confirmed && unrelatedShard === false)
         expect(result.index.localFallbacks).toHaveLength(confirmed ? 1 : 0)
         expect(result.index.evidenceGaps.length).toBeGreaterThan(0)

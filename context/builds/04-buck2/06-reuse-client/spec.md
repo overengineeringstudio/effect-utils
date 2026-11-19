@@ -262,8 +262,11 @@ Duplicate, missing, corrupt or unconfirmed relationships fail collection.
 `commandRecoveryComplete` is separate from action `complete`. A confirmed pair
 may satisfy the CI collector's command-recovery exit only when all remaining
 gaps are the paired original's incomplete-native diagnostic; metadata, overflow,
-missing traces and other unknown gaps still fail. Original incomplete shards,
-action rows and gaps remain retained with `complete: false`, so execute-once and
+missing traces and other unknown gaps still fail.
+A retained command terminal may coexist with unclosed actions; a missing native
+`CommandEnd` still leaves an unknown time-window integrity failure.
+Original incomplete shards, action rows and gaps remain retained with
+`complete: false`, so execute-once and
 trusted reuse consumers cannot mistake recovery for complete physical proof.
 Trusted qualification never accepts command recovery.
 
