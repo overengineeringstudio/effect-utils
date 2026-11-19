@@ -1,7 +1,7 @@
 // @genie-bootstrap
 import effectSocketPkg from './context/effect/socket/package.json.genie.ts'
 import opentuiPkg from './context/opentui/package.json.genie.ts'
-import { firstPartyPackageDefaults, packageJson } from './genie/internal.ts'
+import { catalog, firstPartyPackageDefaults, packageJson } from './genie/internal.ts'
 import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/package.json.genie.ts'
 import aiGatewayConformancePkg from './packages/@overeng/ai-gateway-conformance/package.json.genie.ts'
 import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.genie.ts'
@@ -136,4 +136,9 @@ export const rootWorkspaceMemberPaths = rootWorkspace.data.workspaces
 export default packageJson({
   ...rootWorkspace.data,
   ...firstPartyPackageDefaults,
+  devDependencies: {
+    ...rootWorkspace.data.devDependencies,
+    // A downstream consumer links this exact pnpm store path.
+    ...catalog.pick('oxc-parser'),
+  },
 })
