@@ -5600,7 +5600,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   buck2-cache-join:
     name: ci/buck2-cache-join
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
@@ -5725,10 +5725,21 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+      - # v4.4.0
+        name: Join occurrence read-only tailnet
+        if: ${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != '' }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
+        with:
+          oauth-client-id: ${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}
+          audience: ${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}
+          tags: 'tag:ci-buck2-occurrence-read'
+          args: --accept-dns=true
       - name: Join previous UTC day cache evidence
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_OCCURRENCE_READ_URL: ${{ vars.BUCK2_OCCURRENCE_READ_URL }}
+          BUCK2_OCCURRENCE_EXPECTED_HOSTS: ${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
@@ -5739,7 +5750,10 @@ jobs:
             spool="$PWD/.devenv/otel/run-records/${trace_assignment#trace=}-${root_assignment#root=}"
             mkdir -p "$spool/spans" "$spool/buck2" "$spool/pending"
             printf "BUCK2_CACHE_JOIN_PENDING=%s\n" "$spool/pending" >> "$GITHUB_ENV"
-            bun genie/ci-scripts/buck2-cache-join-cli.ts --repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending" --proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof"
+            occurrence_args=(--occurrence-log-url "${BUCK2_OCCURRENCE_READ_URL:?occurrence read URL is not configured}")
+            read -r -a expected_hosts <<< "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?expected occurrence hosts are not configured}"
+            for host in "${expected_hosts[@]}"; do occurrence_args+=(--expected-occurrence-host "$host"); done
+            bun genie/ci-scripts/buck2-cache-join-cli.ts --repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending" --proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof" "${occurrence_args[@]}"
           '
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}

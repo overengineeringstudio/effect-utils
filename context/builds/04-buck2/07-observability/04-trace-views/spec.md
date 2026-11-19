@@ -221,6 +221,16 @@ Both inputs feed the existing strict reconciler in memory. The flag does not
 provision read authority: workflow activation requires the separately governed
 fixed-selector route and trusted read-only network identity.
 
+The existing daily workflow admits backend reads only for this repository's
+scheduled or manually dispatched `main`, never branch dispatches or PRs.
+After source bootstrap and before the join, the existing pinned Tailscale action
+uses `TS_OCCURRENCE_READ_CLIENT_ID` / `TS_OCCURRENCE_READ_AUDIENCE` with the
+read-only `tag:ci-buck2-occurrence-read`. Deployment-owned repository variables
+`BUCK2_OCCURRENCE_READ_URL` and space-separated `BUCK2_OCCURRENCE_EXPECTED_HOSTS`
+supply the endpoint and explicit host inventory without public private-topology
+literals or credentials. Missing manifests still mean UNKNOWN. The existing
+writer admission/export remains after the query, with its separate identity.
+
 Only after run selection does collection paginate
 `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
 run. Expired evidence artifacts are not downloaded and contribute evidence

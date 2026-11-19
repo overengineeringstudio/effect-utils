@@ -362,23 +362,17 @@ test('daily cache join is isolated from required CI and other empirical jobs', (
   }
 })
 
-test('daily cache join admits only scheduled and manual runs, including branch dispatches', () => {
-  for (const ref of ['refs/heads/main', 'refs/heads/feature']) {
-    expect(admitted('buck2-cache-join', 'schedule', ref)).toBe(true)
-    expect(admitted('buck2-cache-join', 'workflow_dispatch', ref)).toBe(true)
-    expect(admitted('buck2-cache-join', 'push', ref)).toBe(false)
-  }
-  for (const event of ['pull_request', 'pull_request_target', 'merge_group']) {
-    expect(
-      admitted(
-        'buck2-cache-join',
-        event,
-        'refs/pull/1/merge',
-        'labeled',
-        ['ci:heavy-proofs'],
-        'ci:heavy-proofs',
-      ),
-    ).toBe(false)
+test('daily cache join admits only same-repository scheduled/main dispatch reads', () => {
+  const accepts = new Function('github', `return (${condition('buck2-cache-join')})`)
+  for (const repository of ['overengineeringstudio/effect-utils', 'fork/repo']) {
+    for (const ref of ['refs/heads/main', 'refs/heads/feature', 'refs/pull/1/merge']) {
+      for (const event of ['schedule', 'workflow_dispatch', 'push', 'pull_request', 'pull_request_target', 'merge_group']) {
+        expect(Boolean(accepts({ repository, ref, event_name: event }))).toBe(
+          repository === 'overengineeringstudio/effect-utils' &&
+          ref === 'refs/heads/main' && ['schedule', 'workflow_dispatch'].includes(event),
+        )
+      }
+    }
   }
   expect(proofWorkflow).toContain('cron: 17 3 * * *')
 })
@@ -446,6 +440,34 @@ test('daily cache join has read-only GitHub access and uses the previous-day met
     '--repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending"',
   )
   expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
+})
+
+test('daily occurrence read admission follows bootstrap, precedes query and never grants writes', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const bootstrap = steps.findIndex((step) => step.name === 'Prepare source script dependencies')
+  const admission = steps.findIndex((step) => step.name === 'Join occurrence read-only tailnet')
+  const query = steps.findIndex((step) => step.name === 'Join previous UTC day cache evidence')
+  expect(admission).toBe(bootstrap + 1)
+  expect(query).toBe(admission + 1)
+  expect(steps[admission]).toMatchObject({
+    uses: 'tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c',
+    with: {
+      'oauth-client-id': '${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}',
+      audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
+      tags: 'tag:ci-buck2-occurrence-read',
+    },
+  })
+  expect(steps[admission]?.if).toContain("github.ref == 'refs/heads/main'")
+  expect(steps[admission]?.if).toContain("github.repository == 'overengineeringstudio/effect-utils'")
+  expect(steps[query]?.env?.BUCK2_OCCURRENCE_READ_URL).toBe('${{ vars.BUCK2_OCCURRENCE_READ_URL }}')
+  expect(steps[query]?.env?.BUCK2_OCCURRENCE_EXPECTED_HOSTS).toBe('${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}')
+  expect(steps[query]?.run).toContain('--occurrence-log-url "${BUCK2_OCCURRENCE_READ_URL:?')
+  expect(steps[query]?.run).toContain('--expected-occurrence-host "$host"')
+  expect(steps.slice(query + 1).some((step) => step.with?.tags === 'tag:ci-buck2-evidence')).toBe(true)
+  for (const [jobId, job] of Object.entries(empiricalWorkflow.data.jobs)) {
+    if (jobId !== 'buck2-cache-join')
+      expect(job.steps.some((step) => step.with?.tags === 'tag:ci-buck2-occurrence-read')).toBe(false)
+  }
 })
 
 test('daily warm99 proof writes authoritative history and full observations locally', () => {

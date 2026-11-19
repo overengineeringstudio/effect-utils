@@ -18,7 +18,11 @@ import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evid
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
+
+const dailyOccurrenceRead =
+  "github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"
 
 /** Keep export failures visible on the nonblocking daily job, without changing other jobs. */
 const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs['jobs'] => {
@@ -75,7 +79,7 @@ export default ciWorkflow({
         ...withBuck2CacheEvidence(empiricalProofJobs),
         'buck2-cache-join': {
           name: 'ci/buck2-cache-join',
-          if: "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
+          if: `\${{ ${dailyOccurrenceRead} }}`,
           'runs-on': namespaceRunner({
             profile: 'namespace-profile-linux-x86-64',
             runId: '${{ github.run_id }}',
@@ -100,9 +104,24 @@ export default ciWorkflow({
               run: runDevenvTasksBefore('buck2:editor:bootstrap'),
             },
             {
+              name: 'Join occurrence read-only tailnet',
+              if: `\${{ ${dailyOccurrenceRead} && vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != '' }}`,
+              ...pinnedAction({ name: 'tailscale' }),
+              with: {
+                'oauth-client-id': '${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}',
+                audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
+                tags: 'tag:ci-buck2-occurrence-read',
+                args: '--accept-dns=true',
+              },
+            },
+            {
               name: 'Join previous UTC day cache evidence',
               shell: 'bash',
-              env: { GITHUB_TOKEN: '${{ github.token }}' },
+              env: {
+                GITHUB_TOKEN: '${{ github.token }}',
+                BUCK2_OCCURRENCE_READ_URL: '${{ vars.BUCK2_OCCURRENCE_READ_URL }}',
+                BUCK2_OCCURRENCE_EXPECTED_HOSTS: '${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}',
+              },
               run: withCiSourceRoot(
                 [
                   'set -euo pipefail',
@@ -114,7 +133,10 @@ export default ciWorkflow({
                   '  spool="$PWD/.devenv/otel/run-records/${trace_assignment#trace=}-${root_assignment#root=}"',
                   '  mkdir -p "$spool/spans" "$spool/buck2" "$spool/pending"',
                   '  printf "BUCK2_CACHE_JOIN_PENDING=%s\\n" "$spool/pending" >> "$GITHUB_ENV"',
-                  '  bun genie/ci-scripts/buck2-cache-join-cli.ts --repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending" --proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof"',
+                  '  occurrence_args=(--occurrence-log-url "${BUCK2_OCCURRENCE_READ_URL:?occurrence read URL is not configured}")',
+                  '  read -r -a expected_hosts <<< "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?expected occurrence hosts are not configured}"',
+                  '  for host in "${expected_hosts[@]}"; do occurrence_args+=(--expected-occurrence-host "$host"); done',
+                  '  bun genie/ci-scripts/buck2-cache-join-cli.ts --repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending" --proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof" "${occurrence_args[@]}"',
                   "'",
                 ].join('\n'),
               ),
