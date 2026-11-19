@@ -450,6 +450,9 @@ any creation. `reserve` never creates a checkout or registers a privileged root;
 `prewarm` requires its explicit receipt, with no legacy one-shot or resume path.
 Owner enrollment and verified authenticated holder-provider qualification remain
 external prerequisites, not authority granted by these commands.
+Consumed reservations retain an initial-preparation intent through any failure.
+Inspection may raise its measured byte lower bound but cannot declare its charge
+known; only qualified successful preparation clears the intent atomically with ready.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.
