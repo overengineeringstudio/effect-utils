@@ -260,7 +260,7 @@ export const acquireDeletionLease = ({
     const leasePath = deletionLeasePath({ storeBasePath, ownerPath: canonicalOwnerPath })
     const token = randomUUID()
     const record: DeletionLeaseRecord = {
-      version: persistent ? 2 : DELETION_LEASE_VERSION,
+      version: persistent === true ? 2 : DELETION_LEASE_VERSION,
       ownerPath: canonicalOwnerPath,
       host: hostname(),
       pid: process.pid,
@@ -353,25 +353,28 @@ export const acquireDeletionLease = ({
       })
     }
 
-    if (persistent)
-      yield* Effect.tryPromise({
-        try: async () => {
-          for (const path of [leasePath, dirname(leasePath)]) {
-            const handle = await open(path, 'r')
-            try {
-              await handle.sync()
-            } finally {
-              await handle.close()
-            }
-          }
-        },
-        catch: (cause) =>
-          new DeletionLeaseUnavailableError({
-            ownerPath: canonicalOwnerPath,
-            leasePath,
-            message: `Persistent deletion barrier could not be synced: ${cause}`,
+    if (persistent === true)
+      yield* Effect.forEach(
+        [leasePath, dirname(leasePath)],
+        (path) =>
+          Effect.tryPromise({
+            try: async () => {
+              const handle = await open(path, 'r')
+              try {
+                await handle.sync()
+              } finally {
+                await handle.close()
+              }
+            },
+            catch: (cause) =>
+              new DeletionLeaseUnavailableError({
+                ownerPath: canonicalOwnerPath,
+                leasePath,
+                message: `Persistent deletion barrier could not be synced: ${cause}`,
+              }),
           }),
-      })
+        { concurrency: 1, discard: true },
+      )
     return { leasePath, ownerPath: canonicalOwnerPath, token }
   })
 
