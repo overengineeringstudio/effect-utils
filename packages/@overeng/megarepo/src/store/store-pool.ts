@@ -15,7 +15,10 @@ import { PoolError, type PoolSlot, reservePoolSlot, withPoolState } from './stor
 
 const cleanSource = (slot: PoolSlot) =>
   Effect.gen(function* () {
-    if (!/^[a-zA-Z0-9-]+$/u.test(slot.id) || slot.path !== `${dirname(slot.bare)}/pool/${slot.id}`)
+    if (
+      /^[a-zA-Z0-9-]+$/u.test(slot.id) === false ||
+      slot.path !== `${dirname(slot.bare)}/pool/${slot.id}`
+    )
       return yield* new PoolError({ message: 'Pool root is not its fixed detached execution path' })
     if ((yield* Git.resolveRef({ repoPath: slot.path, ref: 'HEAD' })) !== slot.commit)
       return yield* new PoolError({ message: 'Committed work retained; source HEAD changed' })
@@ -23,7 +26,7 @@ const cleanSource = (slot: PoolSlot) =>
       cwd: slot.path,
       args: ['reflog', 'show', '--format=%H', 'HEAD'],
     })
-    if (history.split('\n').some((commit) => commit !== slot.commit))
+    if (history.split('\n').some((commit) => commit !== slot.commit) === true)
       return yield* new PoolError({
         message: 'Detached commit history retained; slot is not recyclable',
       })
@@ -52,7 +55,7 @@ const free = (slot: PoolSlot) =>
   })
 
 /** Retention never hides partial growth; unknown holders/accounting block allocation. */
-const retainPoolSlot = (slot: PoolSlot, reason: string) =>
+const retainPoolSlot = ({ slot, reason }: { slot: PoolSlot; reason: string }) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const exists = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => undefined))
@@ -72,6 +75,7 @@ const retainPoolSlot = (slot: PoolSlot, reason: string) =>
     return next
   })
 
+/** Explicitly prepare a protected detached generation within immutable host-wide limits. */
 export const prewarmPool = (args: {
   base: AbsoluteDirPath
   bare: string
@@ -80,11 +84,11 @@ export const prewarmPool = (args: {
   maxBytes: number
   charge: number
 }) =>
-  withPoolState(
-    args.base,
-    (state, save) =>
+  withPoolState({
+    base: args.base,
+    use: (state, save) =>
       Effect.gen(function* () {
-        if (!/^[0-9a-f]{40}$/u.test(args.commit))
+        if (/^[0-9a-f]{40}$/u.test(args.commit) === false)
           return yield* new PoolError({ message: 'Prewarm requires an exact commit SHA' })
         const fs = yield* FileSystem.FileSystem
         const bare = yield* resolveGitCommonDir(args.bare)
@@ -106,7 +110,7 @@ export const prewarmPool = (args: {
           owner: '',
           reason: '',
         }
-        const reserved = yield* reservePoolSlot(state, slot)
+        const reserved = yield* reservePoolSlot({ state, slot })
         const update = () =>
           save({ ...reserved, slots: reserved.slots.map((item) => (item.id === id ? slot : item)) })
         yield* update()
@@ -131,7 +135,10 @@ export const prewarmPool = (args: {
           yield* preparePoolInstall(path)
           yield* cleanSource(slot)
           yield* free(slot)
-          slot = { ...slot, identity: yield* poolInstallIdentity(path, args.commit, args.base) }
+          slot = {
+            ...slot,
+            identity: yield* poolInstallIdentity({ path, commit: args.commit, base: args.base }),
+          }
           const bytes = yield* poolBytes(path)
           if (bytes > args.charge) {
             slot = { ...slot, charge: bytes }
@@ -146,11 +153,11 @@ export const prewarmPool = (args: {
         return yield* prepare.pipe(
           Effect.tapError((error) =>
             Effect.gen(function* () {
-              slot = yield* retainPoolSlot(slot, String(error))
+              slot = yield* retainPoolSlot({ slot, reason: String(error) })
               yield* update()
             }),
           ),
         )
       }),
-    { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
-  )
+    limits: { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
+  })

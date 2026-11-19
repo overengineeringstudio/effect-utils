@@ -45,11 +45,11 @@ const fixture = Effect.gen(function* () {
     owner: '',
     reason: '',
   }
-  yield* withPoolState(
-    f.storePath,
-    (state, save) => Effect.flatMap(reservePoolSlot(state, slot), save),
-    { maxSlots: 1, maxBytes: 1048576 },
-  )
+  yield* withPoolState({
+    base: f.storePath,
+    use: (state, save) => Effect.flatMap(reservePoolSlot({ state, slot }), save),
+    limits: { maxSlots: 1, maxBytes: 1048576 },
+  })
   return { ...f, slot }
 })
 
