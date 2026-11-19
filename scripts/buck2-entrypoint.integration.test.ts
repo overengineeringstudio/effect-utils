@@ -1718,8 +1718,7 @@ console.log(JSON.stringify({admitted, attempt}));`,
         requests++
         stream.on('data', () => {})
         stream.on('end', () => {
-          // Advance the wall clock, not the network timer: the real response
-          // arrives after more than the old five-second admission lifetime.
+          // Advance wall time past the old lifetime without delaying the real response.
           setSystemTime(new Date(Date.now() + 8000))
           stream.respond({
             ':status': 200,

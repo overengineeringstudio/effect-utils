@@ -566,7 +566,7 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
 export const runPackageTreeCli = (manifestPath: string): void => {
   const args: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
   if (Array.isArray(args) === false || args.some((value) => typeof value !== 'string')) {
-    invalidArguments('argument manifest must be an array of strings')
+    return invalidArguments('argument manifest must be an array of strings')
   }
   assemblePackageTree(parseOptions(args))
 }
