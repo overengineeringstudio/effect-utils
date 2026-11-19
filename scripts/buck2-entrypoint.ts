@@ -30,6 +30,7 @@ import type {
 } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   buckConfigValues,
+  readConfig,
   canonicalCacheAdmissionInvocationId,
   decodeReapiAdmissionFailure,
   probeRemoteCacheCapabilities,
@@ -62,23 +63,6 @@ const configCommands: Record<string, true> = {
 }
 const readOptional = (path: string): string =>
   existsSync(path) === true ? readFileSync(path, 'utf8') : ''
-
-const readConfig = ({
-  path,
-  seen = new Set<string>(),
-}: {
-  readonly path: string
-  readonly seen?: Set<string>
-}): string => {
-  const absolute = resolve(path)
-  if (seen.has(absolute) === true) throw new Error('Buck cache posture: recursive config include')
-  seen.add(absolute)
-  const text = readOptional(absolute).replace(/^\s*<file:([^>]+)>\s*$/gmu, (_, include: string) =>
-    readConfig({ path: resolve(dirname(absolute), include), seen }),
-  )
-  seen.delete(absolute)
-  return text
-}
 
 const findRoot = (cwd: string): string | undefined => {
   let root = resolve(cwd)
@@ -387,6 +371,13 @@ export const directBuckArguments = async ({
   const tracked = readConfig({ path: join(root, '.buckconfig') })
   const trackedValues = buckConfigValues(tracked)
   const currentLocal = readConfig({ path: join(root, '.buckconfig.local') })
+  // Validate host routing before watcher admission can mutate the root.
+  if ((env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== '')
+    standaloneCachePostureConfig({
+      current: '',
+      env,
+      base: buckConfigValues(`${tracked}\n${withoutManagedBlock(currentLocal).content}`),
+    })
   const localWithoutWatcher = withoutManagedWatcherBlock(currentLocal)
   const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
@@ -472,15 +463,18 @@ export const directBuckArguments = async ({
     configArgs.includes('--no-remote-cache') === true ||
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
-  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv })
+  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv, base })
   const overrides = buckConfigValues(posture)
   const values = { ...base, ...overrides, ...cliValues }
-  for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
+  const mappedReader = overrides['buck2_re_client.http_headers'] === 'x-buck2-reader: read-only'
+  if (mappedReader === true) Object.assign(values, overrides)
+  else for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
   if (cacheDisabled === true || env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1') {
     const disabled = buckConfigValues(
       standaloneCachePostureConfig({
         current: '',
         env: postureEnv,
+        base,
       }),
     )
     Object.assign(values, disabled)

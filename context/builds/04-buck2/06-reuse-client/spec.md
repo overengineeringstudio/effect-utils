@@ -182,6 +182,31 @@ expands the variable at startup. Archive origins do not select the read path.
 The public read-only override takes precedence over either credential.
 No publisher credential is a fallback for a host writer.
 
+Default host readers may declare `BUCK2_REAPI_READ_FORWARDERS`, a JSON object
+mapping exact canonical private `grpc://host:port` origins to
+`grpc://127.0.0.1:port` endpoints of host-owned transparent TCP forwarders.
+Sources are tailnet DNS names (`*.ts.net`) or RFC1918/CGNAT IPv4 addresses;
+ports are decimal integers from 1 through 65535. Userinfo, paths, queries,
+fragments, non-loopback destinations and malformed maps fail before root
+mutation. The host endpoint registry remains the authority for origins and
+ports; the launcher does not infer a tier or enroll an unmatched endpoint.
+
+Only the existing default read-only posture (`allow_cache_uploads = false`,
+TLS disabled for that already-plain private tier) applies exact matches to
+the resolved tracked/unmanaged-local addresses. Each unmatched address,
+including the public TLS default and explicit user addresses, remains intact.
+The same managed root FILE overlay supplies resolved addresses to both the
+admission probe and native daemon startup; instance names and TLS settings
+are unchanged. Mapped readers force both upload settings false and replace
+inherited headers with the valid non-auth header
+`x-buck2-reader: read-only` (not an empty FILE header). They never forward
+inherited authorization. CI, public-reader overrides, publishers, private
+writers, trusted qualification and offline posture do not apply reader maps.
+The resolved address participates in the existing probe fingerprint; the
+shell's complete exported-environment warm-launch identity already includes
+`BUCK2_REAPI_READ_FORWARDERS`. Root locking, idle-only daemon transitions,
+source fingerprints, watcher admission and payload handling are unchanged.
+
 Public CI declares every job's Buck cache posture in the Genie workflow source:
 
 | Posture  | `BUCK2_NO_REMOTE_CACHE` | `BUCK2_PUBLIC_CACHE_READ_ONLY` | Authority                                                |

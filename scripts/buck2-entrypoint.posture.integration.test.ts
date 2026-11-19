@@ -528,7 +528,7 @@ if(process.env.STALLED_TERMINATION==='exit') process.exit(0);
           BUCK2_CACHE_WRITE_OPTIONAL: posture === 'optional-writer-outage' ? '1' : '',
           CI_BUCK2_CACHE_EVIDENCE_PATH: '',
         }
-        const overlay = standaloneCachePostureConfig({ current: '', env })
+        const overlay = standaloneCachePostureConfig({ base: {}, current: '', env })
         // Use the production publisher block and the actual tracked config: neither
         // declares remote_cache_enabled, whose native default is enabled.
         if (posture === 'publisher')

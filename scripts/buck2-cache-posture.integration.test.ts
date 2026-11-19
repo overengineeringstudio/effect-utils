@@ -126,18 +126,18 @@ describe('standalone Buck cache posture', () => {
       { GITHUB_ACTIONS: 'true', BUCK2_NO_REMOTE_CACHE: '1' },
       { GITHUB_ACTIONS: 'true', BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
     ]) {
-      const ci = standaloneCachePostureConfig({ current, env })
+      const ci = standaloneCachePostureConfig({ base: {}, current, env })
       const values = buckConfigValues(ci)
       expect(values['buck2.retained_event_logs']).toBe('120')
       expect(ci.startsWith(current.trimEnd())).toBe(true)
       expect(ci).not.toContain('retained_event_log_bytes')
-      const developer = standaloneCachePostureConfig({ current: ci, env: {} })
+      const developer = standaloneCachePostureConfig({ base: {}, current: ci, env: {} })
       expect(buckConfigValues(developer)['buck2.retained_event_logs']).toBe('7')
       expect(developer.startsWith(current.trimEnd())).toBe(true)
     }
     for (const env of [{}, { GITHUB_ACTIONS: 'false' }, { CI_BUCK2_CACHE_EVIDENCE_PATH: '' }]) {
       expect(
-        buckConfigValues(standaloneCachePostureConfig({ current: '', env }))[
+        buckConfigValues(standaloneCachePostureConfig({ base: {}, current: '', env }))[
           'buck2.retained_event_logs'
         ],
       ).toBeUndefined()
@@ -147,6 +147,7 @@ describe('standalone Buck cache posture', () => {
   it('disables remote cache only for the exact opt-out without selecting an archive origin', () => {
     expect(
       standaloneCachePostureConfig({
+        base: {},
         current: '',
         env: { BUCK2_NO_REMOTE_CACHE: '1' },
       }),
@@ -160,6 +161,7 @@ describe('standalone Buck cache posture', () => {
     for (const value of [undefined, '0', 'true', ' 1'])
       expect(
         standaloneCachePostureConfig({
+          base: {},
           current: '',
           env: { BUCK2_NO_REMOTE_CACHE: value },
         }),
@@ -170,6 +172,7 @@ describe('standalone Buck cache posture', () => {
 
   it('reads the public TLS tier anonymously in a PR lane, without upload rights', () => {
     const prLane = standaloneCachePostureConfig({
+      base: {},
       current: '',
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
     })
@@ -180,6 +183,7 @@ describe('standalone Buck cache posture', () => {
     expect(prLane).not.toContain('http_headers')
 
     const escapeHatch = standaloneCachePostureConfig({
+      base: {},
       current: prLane,
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1', BUCK2_NO_REMOTE_CACHE: '1' },
     })
@@ -192,6 +196,7 @@ describe('standalone Buck cache posture', () => {
   it('selects the publisher posture only with a writer credential and never writes the credential', () => {
     const credential = 'd3JpdGVyOnNlY3JldA=='
     const publisher = standaloneCachePostureConfig({
+      base: {},
       current: '',
       env: { BUCK2_NO_REMOTE_CACHE: '0', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
     })
@@ -208,6 +213,7 @@ describe('standalone Buck cache posture', () => {
     for (const value of [undefined, ''])
       expect(
         standaloneCachePostureConfig({
+          base: {},
           current: '',
           env: { BUCK2_CACHE_WRITE_BASIC_AUTH: value },
         }),
@@ -216,6 +222,7 @@ describe('standalone Buck cache posture', () => {
     // The exact public-lane opt-out wins over a leaked credential.
     expect(
       standaloneCachePostureConfig({
+        base: {},
         current: '',
         env: { BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
       }),
@@ -229,7 +236,7 @@ describe('standalone Buck cache posture', () => {
       BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://private-cache.example:41045',
       BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher-credential',
     }
-    const writer = standaloneCachePostureConfig({ current: '', env })
+    const writer = standaloneCachePostureConfig({ base: {}, current: '', env })
     expect(writer).toContain('allow_cache_uploads = true')
     for (const field of ['action_cache_address', 'cas_address', 'engine_address'])
       expect(writer).toContain(`${field} = ${env.BUCK2_PRIVATE_CACHE_ADDRESS}`)
@@ -243,6 +250,7 @@ describe('standalone Buck cache posture', () => {
       { BUCK2_NO_REMOTE_CACHE: '1' },
     ]) {
       const reader = standaloneCachePostureConfig({
+        base: {},
         current: writer,
         env: { ...env, ...override },
       })
@@ -252,6 +260,7 @@ describe('standalone Buck cache posture', () => {
     }
     expect(() =>
       standaloneCachePostureConfig({
+        base: {},
         current: '',
         env: { BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential },
       }),
@@ -260,10 +269,12 @@ describe('standalone Buck cache posture', () => {
 
   it('replaces a publisher overlay with anonymous read-only posture in a reader root', () => {
     const publisher = standaloneCachePostureConfig({
+      base: {},
       current: '',
       env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'd3JpdGVyOnNlY3JldA==' },
     })
     const reader = standaloneCachePostureConfig({
+      base: {},
       current: publisher,
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
     })
@@ -309,6 +320,104 @@ describe('standalone Buck cache posture', () => {
     reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' } })
     expect(readFileSync(output, 'utf8')).not.toContain('[archive_origin]')
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
+  })
+  it('maps only exact private read-only origins without changing instances or TLS', () => {
+    const routes = {
+      'grpc://cache.fixture.ts.net:41045': 'grpc://127.0.0.1:41045',
+      'grpc://cache.fixture.ts.net:41068': 'grpc://127.0.0.1:41068',
+    }
+    const env = { BUCK2_REAPI_READ_FORWARDERS: JSON.stringify(routes) }
+    for (const [address, target] of Object.entries(routes)) {
+      const base = {
+        'buck2.allow_cache_uploads': 'false',
+        'buck2_re_client.tls': 'false',
+        'buck2_re_client.instance_name': 'fixture-instance',
+        'buck2_re_client.action_cache_address': address,
+        'buck2_re_client.cas_address': address,
+        'buck2_re_client.engine_address': address,
+        'buck2_re_client.http_headers': 'authorization: Basic inherited',
+      }
+      const mapped = buckConfigValues(standaloneCachePostureConfig({ current: '', base, env }))
+      for (const field of ['action_cache_address', 'cas_address', 'engine_address'])
+        expect(mapped[`buck2_re_client.${field}`]).toBe(target)
+      expect(mapped['buck2.allow_cache_uploads']).toBe('false')
+      expect(mapped['buck2.default_allow_cache_upload']).toBe('false')
+      expect(mapped['buck2_re_client.http_headers']).toBe('x-buck2-reader: read-only')
+      expect(mapped['buck2_re_client.tls']).toBeUndefined()
+      expect(mapped['buck2_re_client.instance_name']).toBeUndefined()
+      const explicit = 'grpc://other.fixture.ts.net:41045'
+      const mixed = buckConfigValues(standaloneCachePostureConfig({
+        current: '',
+        base: { ...base, 'buck2_re_client.cas_address': explicit },
+        env,
+      }))
+      expect(mixed['buck2_re_client.action_cache_address']).toBe(target)
+      expect(mixed['buck2_re_client.cas_address']).toBeUndefined()
+      expect({ ...base, 'buck2_re_client.cas_address': explicit, ...mixed }[
+        'buck2_re_client.cas_address'
+      ]).toBe(explicit)
+      for (const lane of [
+        { CI: '1' },
+        { GITHUB_ACTIONS: 'true' },
+        { BUCK2_CI_POSTURE: '1' },
+        { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
+        { BUCK2_NO_REMOTE_CACHE: '1' },
+        { BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher' },
+        {
+          BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'host-writer',
+          BUCK2_PRIVATE_CACHE_ADDRESS: address,
+        },
+      ]) {
+        const laneEnv = { ...env, ...lane }
+        expect(standaloneCachePostureConfig({ current: '', base, env: laneEnv })).toBe(
+          standaloneCachePostureConfig({ current: '', base, env: lane }),
+        )
+      }
+      for (const change of [
+        { 'buck2.allow_cache_uploads': 'true' },
+        { 'buck2.default_allow_cache_upload': 'true' },
+        { 'buck2_re_client.tls': 'true' },
+        {
+          'buck2_re_client.tls': 'true',
+          'buck2_re_client.action_cache_address': 'grpc://public.example:443',
+          'buck2_re_client.cas_address': 'grpc://public.example:443',
+          'buck2_re_client.engine_address': 'grpc://public.example:443',
+        },
+      ]) {
+        const selected = { ...base, ...change }
+        expect(standaloneCachePostureConfig({ current: '', base: selected, env })).toBe(
+          standaloneCachePostureConfig({ current: '', base: selected, env: {} }),
+        )
+      }
+    }
+  })
+
+  it('rejects malformed routes before replacing inherited file content', () => {
+    const root = makeRoot()
+    const output = join(root, '.buckconfig.local')
+    const local = '[buck2_re_client]\nhttp_headers = authorization: Basic inherited\n'
+    writeFileSync(output, local)
+    for (const encoded of [
+      '{', '[]', 'null', '"text"',
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://localhost:41045' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://192.168.1.1:41045' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://user:secret@127.0.0.1:41045' }),
+      JSON.stringify({ 'grpc://user:secret@cache.fixture.ts.net:41045': 'grpc://127.0.0.1:41045' }),
+      JSON.stringify({ 'grpcs://cache.fixture.ts.net:41045': 'grpc://127.0.0.1:41045' }),
+      JSON.stringify({ 'grpc://public.example:41045': 'grpc://127.0.0.1:41045' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045/path': 'grpc://127.0.0.1:41045' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://127.0.0.1:0' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://127.0.0.1:65536' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 'grpc://127.0.0.1:41045?auth=secret' }),
+      JSON.stringify({ 'grpc://cache.fixture.ts.net:41045': 41045 }),
+    ]) {
+      expect(() => reconcileStandaloneCachePosture({
+        repoRoot: root,
+        env: { BUCK2_REAPI_READ_FORWARDERS: encoded },
+      })).toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+      expect(readFileSync(output, 'utf8')).toBe(local)
+      expect(readdirSync(root).some((name) => name.includes('.candidate-'))).toBe(false)
+    }
   })
 })
 
