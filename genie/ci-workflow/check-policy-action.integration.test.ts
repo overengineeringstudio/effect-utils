@@ -47,9 +47,10 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
     const loaderOverrides = Object.fromEntries(
       loaderControls.map((name) => [name, action.runs.steps[0].env[name]]),
     )
-    const nix = (await Bun.file('/nix/var/nix/profiles/default/bin/nix').exists())
-      ? '/nix/var/nix/profiles/default/bin/nix'
-      : '/run/current-system/sw/bin/nix'
+    const nix =
+      (await Bun.file('/nix/var/nix/profiles/default/bin/nix').exists()) === true
+        ? '/nix/var/nix/profiles/default/bin/nix'
+        : '/run/current-system/sw/bin/nix'
     const packageSelector = join(root, '.github/actions/ci-policy/bun-package.nix')
     console.error('ci-policy-isolation: selecting runtime')
     const bunPackage = (

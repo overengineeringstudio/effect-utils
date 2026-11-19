@@ -198,8 +198,8 @@ for (const step of [
   '{ run: null }',
   '{ uses: false }',
   '{ run: 1 }',
-  '{ uses: \"\" }',
-  '{ run: \" \" }',
+  '{ uses: "" }',
+  '{ run: " " }',
 ]) {
   test(`entrypoint rejects unknown step shape ${step}`, async () => {
     const result = await run(await fixture(workflow({ step })))
@@ -215,7 +215,7 @@ for (const runner of [
   '{ labels: null }',
   '{ labels: [sh-linux-x64, false] }',
   '{ group: [] }',
-  '{ group: \"\" }',
+  '{ group: "" }',
   '[]',
   'false',
   'null',
