@@ -542,6 +542,18 @@ Cache products stage this as a separate build input, not the development package
 `nix/buck2-products/production-helpers.test.sh` checks compile identity isolation
 for test/validation edits and sensitivity to real runtime and configuration edits.
 
+### Declared Quick Contract Runtime
+
+The evaluated quick-contract PATH declares its process tools and C compiler.
+Retained Cargo protocol-bindings checks use the Nix Apple SDK and iconv on Darwin,
+not an ambient `cc` or Xcode installation. The teardown regression declares its
+pinned `DEVENV_BIN`; the Buck runtime never depends on ambient devenv discovery.
+
+`EFFECT_UTILS_CI_TEST=1` selects the existing hermetic cache-posture CI task;
+host quick checks retain the full fleet-gate suite, including real max-hold expiry.
+The mandatory task guard tests both environment selections and keeps every other
+quick contract identical.
+
 ### Type Checking
 
 Buck is the only repository-wide TypeScript check authority:
