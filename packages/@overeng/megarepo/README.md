@@ -550,6 +550,9 @@ record schemas, inferred capture/manifest/record types, strict JSON decoders,
 Unknown fields and versions fail closed. This contract compares caller-supplied
 runtime digests; it does not attest runtimes, derive configuration, grant apply
 authority, or provide durable storage.
+Canonical encoding rejects non-finite numbers, unsupported JSON values and non-plain
+objects rather than silently replacing invalid observations with null or empty objects.
+Undefined object properties remain deliberately omitted; undefined array elements refuse.
 
 `src/store/store-buck-maintain-progress-store.ts` owns durable storage and the session,
 selection and receipt APIs. Callers retain `withExclusiveDirectoryLock(directory)`
