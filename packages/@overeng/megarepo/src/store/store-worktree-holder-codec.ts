@@ -35,6 +35,18 @@ export const WorktreeHolderEvidenceClientConfigSchema = Schema.Struct({
 ))
 export type WorktreeHolderEvidenceClientConfig = typeof WorktreeHolderEvidenceClientConfigSchema.Type
 
+/** Worktree requests reuse the response's nonce and canonical root-path rules. */
+export const WorktreeHolderEvidenceRequestSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  nonce: Nonce,
+  kind: Schema.Literal('worktree'),
+  paths: Schema.Array(Path).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(4096),
+    Schema.makeFilter((paths) => new Set(paths).size === paths.length),
+  ),
+})
+
 const Identity = Schema.Struct({ dev: U64, ino: NonzeroU64, mountId: NonzeroU64 })
 const Reference = Schema.Struct({
   tgid: U32.check(Schema.isGreaterThan(0)),

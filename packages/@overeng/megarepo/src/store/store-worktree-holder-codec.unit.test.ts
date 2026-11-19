@@ -9,6 +9,7 @@ import { expect } from 'vitest'
 import { encodeJson } from '../test-utils/mod.ts'
 import {
   WorktreeHolderEvidenceSchema,
+  WorktreeHolderEvidenceRequestSchema,
   decodeWorktreeHolderEvidence,
   type WorktreeHolderEvidence,
 } from './store-worktree-holder-codec.ts'
@@ -34,6 +35,43 @@ const binding = (evidence: WorktreeHolderEvidence) => ({
   },
   paths: evidence.roots.map((root) => root.path),
   nonce: evidence.nonce,
+})
+
+describe('native holder evidence worktree request', () => {
+  it.effect('shares real producer roots and rejects malformed, repeated or excessive scope', () =>
+    Effect.gen(function* () {
+      const { decoded } = yield* fixtures
+      const actual = decoded[0]!
+      const paths = actual.roots.map((root) => root.path)
+      const request = { version: 1, nonce: actual.nonce, kind: 'worktree', paths }
+      expect(yield* Schema.decodeEffect(WorktreeHolderEvidenceRequestSchema)(request)).toEqual(request)
+      const invalid: ReadonlyArray<unknown> = [
+        { ...request, version: 2 },
+        { ...request, nonce: 'f'.repeat(31) },
+        { ...request, kind: 'store' },
+        { ...request, store: null },
+        { ...request, paths: [] },
+        { ...request, paths: [paths[0], paths[0]] },
+        { ...request, paths: ['/'] },
+        { ...request, paths: ['relative'] },
+        { ...request, paths: ['/root/../other'] },
+        { ...request, paths: ['/root/./child'] },
+        { ...request, paths: ['/root//child'] },
+        { ...request, paths: ['/root/'] },
+        { ...request, paths: ['/root/\nchild'] },
+        { ...request, paths: ['/root/\u0000child'] },
+        { ...request, paths: ['/root/\ud800'] },
+        { ...request, paths: [`/${'é'.repeat(2048)}`] },
+        { ...request, paths: Array.from({ length: 4097 }, (_, index) => `/root/${index}`) },
+      ]
+      for (const value of invalid) {
+        const result = yield* Schema.decodeEffect(WorktreeHolderEvidenceRequestSchema, {
+          onExcessProperty: 'error',
+        })(value).pipe(Effect.exit)
+        expect(result._tag).toBe('Failure')
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
 })
 
 describe('native holder evidence Rust codec authority', () => {

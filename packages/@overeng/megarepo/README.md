@@ -562,16 +562,23 @@ host. An additional real-`pty` test skips only when the executable is absent fro
 `PATH`; other probe failures fail the test. Empty native projections also require PTY
 capture: unavailable PTY evidence is unknown, not proof of no owners.
 
-## Native holder protocol decoding
+## Native holder protocol and client
 
 `store-worktree-holder-codec.ts` strictly decodes the scoped Rust protocol and binds
 the response to its immutable client, compiled policy, nonce and ordered roots.
 Its bounded tests read the sole producer-owned JSONL asset; the protocol Nix
 builder compares that asset with actual Rust codec output. No handwritten
 positive fixtures, second collector or privileged runtime is introduced.
-Decoded evidence is not deletion permission: host/boot freshness, authenticated
-transport and consumer-specific vetoes remain required. Worktree consumers must
-veto every fd, executable, mapping and mount reference, including retained bytes.
+`store-worktree-holder-client.ts` invokes only the immutable native client with
+`--client-v1`, empty environment and bounded streams/deadline. The native client,
+not a TypeScript socket reader, authenticates the fixed privileged endpoint.
+Every error, oversized stream, mismatched identity or stale capture is unknown.
+Freshness checks actual Linux machine/boot identity and conservative boot-time
+bounds; callers must recheck freshness and root identity under their action lease.
+No service, activation, cleanup wiring or positive runtime qualification is
+introduced by these APIs. Decoded or captured evidence is not deletion permission.
+Worktree consumers must veto every fd, executable, mapping and mount reference,
+including retained bytes; store-specific retained-byte policy does not apply.
 
 ## Documentation
 
