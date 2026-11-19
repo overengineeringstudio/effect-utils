@@ -145,6 +145,14 @@ describe('native pool ownership safety', () => {
       })
       expect(state.slots[0]?.barrierToken).not.toBe('')
       expect(yield* fs.exists(f.reserved.path)).toBe(true)
+      expect(state.slots[0]?.initialPreparation).toEqual({
+        generation: 1, commit: f.receipt.commit,
+      })
+      const inspected = yield* inspectPool(f.storePath)
+      expect(inspected.slots[0]).toMatchObject({
+        state: 'quarantined', chargeKnown: false, initialPreparation: state.slots[0]?.initialPreparation,
+      })
+      expect(yield* withPoolState({ base: f.storePath, use: Effect.succeed })).toEqual(inspected)
       expect(Exit.isFailure(yield* prewarmPool(f.receipt).pipe(Effect.exit))).toBe(true)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )

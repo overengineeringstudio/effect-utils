@@ -184,10 +184,7 @@ export const prewarmPool = (args: {
           yield* preparePoolInstall(path)
           yield* cleanSource(slot)
           yield* free(slot)
-          slot = {
-            ...slot,
-            identity: yield* poolInstallIdentity({ path, commit: args.commit, base: args.base }),
-          }
+          const identity = yield* poolInstallIdentity({ path, commit: args.commit, base: args.base })
           const bytes = yield* poolBytes(path)
           if (bytes > args.charge) {
             slot = { ...slot, charge: bytes }
@@ -195,7 +192,7 @@ export const prewarmPool = (args: {
           }
           yield* cleanSource(slot)
           yield* free(slot)
-          slot = { ...slot, state: 'ready', chargeKnown: true }
+          slot = { ...slot, identity, initialPreparation: undefined, state: 'ready', chargeKnown: true }
           yield* update()
           return slot
         }).pipe(withGitContainerLock({ path: bare, mode: 'shared' }))
