@@ -16,7 +16,12 @@ import {
   stopWorktreeBuckDaemons,
   type WorktreeBuckDaemon,
 } from './store-buck-daemons.ts'
-import { buckDurationMs, canonicalBuckMaintainRoot, loadStoreBuckMaintainConfig, type StoreBuckMaintainConfig } from './store-buck-maintain-config.ts'
+import {
+  buckDurationMs,
+  canonicalBuckMaintainRoot,
+  loadStoreBuckMaintainConfig,
+  type StoreBuckMaintainConfig,
+} from './store-buck-maintain-config.ts'
 import {
   discoverBuckMaintainWorktrees,
   readBuckMaintainGitEvidence,
@@ -28,7 +33,10 @@ import {
   fullCleanLastActivityMs,
   isInBlackout,
 } from './store-buck-maintain-policy.ts'
-import { BuckMaintainProgressError, type BuckMaintainCaptureTimes } from './store-buck-maintain-progress-schema.ts'
+import {
+  BuckMaintainProgressError,
+  type BuckMaintainCaptureTimes,
+} from './store-buck-maintain-progress-schema.ts'
 import {
   acquireDeletionLease,
   deletionLeasePath,
@@ -185,515 +193,540 @@ export interface BuckMaintainProgressHooks {
     readonly storeBase: string
     readonly activityConfig: unknown
   }) => Effect.Effect<readonly string[], BuckMaintainProgressError, FileSystem.FileSystem>
-  readonly onEntry: (entry: BuckMaintainEntry, capture: BuckMaintainCaptureTimes) => Effect.Effect<void, BuckMaintainProgressError, FileSystem.FileSystem>
+  readonly onEntry: (
+    entry: BuckMaintainEntry,
+    capture: BuckMaintainCaptureTimes,
+  ) => Effect.Effect<void, BuckMaintainProgressError, FileSystem.FileSystem>
 }
 
 /** Maintain scoped worktrees through native Buck commands, gated by ownership, activity and leases. */
-export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
-  configPath,
-  dryRun,
-  progress,
-}: {
-  configPath: string | undefined
-  dryRun: boolean
-  progress?: BuckMaintainProgressHooks
-}) {
-  const fs = yield* FileSystem.FileSystem
-  const config = yield* loadStoreBuckMaintainConfig(
-    configPath === undefined ? {} : { path: configPath },
-  )
-  const roots = config.worktreeRoots.map((root) =>
-    resolve(configPath === undefined ? process.cwd() : dirname(resolve(configPath)), root),
-  )
-  const { basePath: storeBase } = yield* Store
-  const activityConfig = (yield* loadStoreGcConfig({ storeBasePath: storeBase })).generatedArtifacts
-  const currentAgent = process.env['ST_AGENT'] === '' ? undefined : process.env['ST_AGENT']
-  const reportOnly = dryRun || (currentAgent === undefined && config.maintainOwners.length === 0)
-  const blackout = isInBlackout({ now: Date.now(), blackout: config.blackout })
-  const entries: BuckMaintainEntry[] = []
-  const discovered = yield* discoverBuckMaintainWorktrees(roots)
-  const worktrees =
-    progress === undefined
-      ? discovered
-      : yield* progress.selectWorktrees({
-          worktrees: discovered,
-          config,
-          storeBase,
-          activityConfig,
-        })
-  const discoveredSet = progress === undefined ? undefined : new Set(discovered)
-  if (progress !== undefined) {
-    const allowedRoots = yield* Effect.forEach(roots, (root) => canonicalBuckMaintainRoot(fs, root))
-    const selected = new Set<string>()
-    for (const worktree of worktrees) {
-      if (selected.has(worktree) || resolve(worktree) !== worktree ||
-          !allowedRoots.some((root) => isInsideWorktree({ candidate: worktree, worktreePath: root })))
-        return yield* new BuckMaintainProgressError({
-          message: 'Progress selection contains a duplicate or out-of-policy root',
-        })
-      selected.add(worktree)
-    }
-  }
-  let preflightStartedAt: number | undefined
-  let rootStartedAt = 0
-  let rootStartedMonotonic = 0
-  const record = Effect.fn('store.buckMaintain.record')(function* (entry: BuckMaintainEntry) {
-    if (progress !== undefined)
-      yield* progress.onEntry(entry, {
-        startedAt: preflightStartedAt ?? rootStartedAt,
-        completedAt: Date.now(),
-        elapsedMs: performance.now() - rootStartedMonotonic,
-      })
-    entries.push(entry)
-  })
-  // Shared observations select candidates only. capture() without an argument
-  // always takes fresh evidence under the lease before EACH native action.
-  let preflight: BudgetActivityPreflight | undefined
-  let daemonCensus: ReadonlyArray<WorktreeBuckDaemon> | undefined
-  for (const worktree of worktrees) {
+export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(
+  function* ({
+    configPath,
+    dryRun,
+    progress,
+  }: {
+    configPath: string | undefined
+    dryRun: boolean
+    progress?: BuckMaintainProgressHooks
+  }) {
+    const fs = yield* FileSystem.FileSystem
+    const config = yield* loadStoreBuckMaintainConfig(
+      configPath === undefined ? {} : { path: configPath },
+    )
+    const roots = config.worktreeRoots.map((root) =>
+      resolve(configPath === undefined ? process.cwd() : dirname(resolve(configPath)), root),
+    )
+    const { basePath: storeBase } = yield* Store
+    const activityConfig = (yield* loadStoreGcConfig({ storeBasePath: storeBase }))
+      .generatedArtifacts
+    const currentAgent = process.env['ST_AGENT'] === '' ? undefined : process.env['ST_AGENT']
+    const reportOnly = dryRun || (currentAgent === undefined && config.maintainOwners.length === 0)
+    const blackout = isInBlackout({ now: Date.now(), blackout: config.blackout })
+    const entries: BuckMaintainEntry[] = []
+    const discovered = yield* discoverBuckMaintainWorktrees(roots)
+    const worktrees =
+      progress === undefined
+        ? discovered
+        : yield* progress.selectWorktrees({
+            worktrees: discovered,
+            config,
+            storeBase,
+            activityConfig,
+          })
+    const discoveredSet = progress === undefined ? undefined : new Set(discovered)
     if (progress !== undefined) {
-      rootStartedAt = Date.now()
-      rootStartedMonotonic = performance.now()
+      const allowedRoots = yield* Effect.forEach(roots, (root) =>
+        canonicalBuckMaintainRoot(fs, root),
+      )
+      const selected = new Set<string>()
+      for (const worktree of worktrees) {
+        if (
+          selected.has(worktree) ||
+          resolve(worktree) !== worktree ||
+          !allowedRoots.some((root) =>
+            isInsideWorktree({ candidate: worktree, worktreePath: root }),
+          )
+        )
+          return yield* new BuckMaintainProgressError({
+            message: 'Progress selection contains a duplicate or out-of-policy root',
+          })
+        selected.add(worktree)
+      }
     }
-    if (discoveredSet !== undefined) {
-      const canonical = yield* fs.realPath(worktree).pipe(Effect.option)
-      if (!discoveredSet.has(worktree) || Option.isNone(canonical) || canonical.value !== worktree) {
+    let preflightStartedAt: number | undefined
+    let rootStartedAt = 0
+    let rootStartedMonotonic = 0
+    const record = Effect.fn('store.buckMaintain.record')(function* (entry: BuckMaintainEntry) {
+      if (progress !== undefined)
+        yield* progress.onEntry(entry, {
+          startedAt: preflightStartedAt ?? rootStartedAt,
+          completedAt: Date.now(),
+          elapsedMs: performance.now() - rootStartedMonotonic,
+        })
+      entries.push(entry)
+    })
+    // Shared observations select candidates only. capture() without an argument
+    // always takes fresh evidence under the lease before EACH native action.
+    let preflight: BudgetActivityPreflight | undefined
+    let daemonCensus: ReadonlyArray<WorktreeBuckDaemon> | undefined
+    for (const worktree of worktrees) {
+      if (progress !== undefined) {
+        rootStartedAt = Date.now()
+        rootStartedMonotonic = performance.now()
+      }
+      if (discoveredSet !== undefined) {
+        const canonical = yield* fs.realPath(worktree).pipe(Effect.option)
+        if (
+          !discoveredSet.has(worktree) ||
+          Option.isNone(canonical) ||
+          canonical.value !== worktree
+        ) {
+          yield* record({
+            worktree,
+            action: 'none',
+            reason:
+              Option.isSome(canonical) && canonical.value !== worktree
+                ? 'worktree-identity-changed'
+                : 'worktree-unavailable',
+            bytesBefore: null,
+            bytesAfter: null,
+            daemon: [],
+            ownerEvidence: [{ source: 'process', owner: null }],
+          })
+          continue
+        }
+      }
+      if (process.platform !== 'linux') {
         yield* record({
           worktree,
           action: 'none',
-          reason: Option.isSome(canonical) && canonical.value !== worktree
-            ? 'worktree-identity-changed' : 'worktree-unavailable',
+          reason: BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON,
           bytesBefore: null,
           bytesAfter: null,
           daemon: [],
-          ownerEvidence: [{ source: 'process', owner: null }],
+          ownerEvidence: [],
         })
         continue
       }
-    }
-    if (process.platform !== 'linux') {
-      yield* record({
-        worktree,
-        action: 'none',
-        reason: BUCK_MAINTAIN_UNSUPPORTED_PLATFORM_REASON,
-        bytesBefore: null,
-        bytesAfter: null,
-        daemon: [],
-        ownerEvidence: [],
-      })
-      continue
-    }
-    if (progress !== undefined) preflightStartedAt ??= Date.now()
-    preflight ??= yield* makeBudgetActivityPreflight(fs)
-    daemonCensus ??= yield* readBuckDaemonCensus()
-    let daemons = yield* findWorktreeBuckDaemons({
-      worktreePath: worktree,
-      preflightCensus: daemonCensus,
-    })
-    let ignoredProcesses = daemons.flatMap((entry) => entry.processes)
-    const ownerEvidence: BuckMaintainOwnerEvidence[] = []
-    const capture = Effect.fn('store.buckMaintain.capture')(function* (
-      initialPreflight?: BudgetActivityPreflight,
-    ) {
-      const preflightGit = yield* readBuckMaintainGitEvidence(worktree)
-      if (preflightGit.locked !== false || preflightGit.lastActivityMs === undefined)
-        return {
-          reason: preflightGit.locked !== false ? 'git-locked' : 'git-activity-unknown',
-          git: preflightGit,
-          evidence: ownerEvidence,
-          activity: undefined,
-          fullLastActivityMs: undefined,
-        }
-      const activity = yield* readBudgetWorkspaceActivity({
-        fs,
-        config: activityConfig,
-        ignoredOwnProcesses: ignoredProcesses,
-        ignoredManifestProcesses: ignoredProcesses,
-        preflight: initialPreflight,
-      })
-      const preflightHolder = yield* readBudgetWorktreeInUse({
+      if (progress !== undefined) preflightStartedAt ??= Date.now()
+      preflight ??= yield* makeBudgetActivityPreflight(fs)
+      daemonCensus ??= yield* readBuckDaemonCensus()
+      let daemons = yield* findWorktreeBuckDaemons({
         worktreePath: worktree,
-        activity,
-        ignoredProcesses,
-        preflight: initialPreflight,
+        preflightCensus: daemonCensus,
       })
-      if (preflightHolder._tag !== 'free')
-        return {
-          reason: preflightHolder._tag === 'in-use' ? 'holder-live' : 'holder-census-incomplete',
-          git: preflightGit,
-          evidence: ownerEvidence,
+      let ignoredProcesses = daemons.flatMap((entry) => entry.processes)
+      const ownerEvidence: BuckMaintainOwnerEvidence[] = []
+      const capture = Effect.fn('store.buckMaintain.capture')(function* (
+        initialPreflight?: BudgetActivityPreflight,
+      ) {
+        const preflightGit = yield* readBuckMaintainGitEvidence(worktree)
+        if (preflightGit.locked !== false || preflightGit.lastActivityMs === undefined)
+          return {
+            reason: preflightGit.locked !== false ? 'git-locked' : 'git-activity-unknown',
+            git: preflightGit,
+            evidence: ownerEvidence,
+            activity: undefined,
+            fullLastActivityMs: undefined,
+          }
+        const activity = yield* readBudgetWorkspaceActivity({
+          fs,
+          config: activityConfig,
+          ignoredOwnProcesses: ignoredProcesses,
+          ignoredManifestProcesses: ignoredProcesses,
+          preflight: initialPreflight,
+        })
+        const preflightHolder = yield* readBudgetWorktreeInUse({
+          worktreePath: worktree,
           activity,
-          fullLastActivityMs: undefined,
-        }
-      const native =
-        initialPreflight === undefined
-          ? yield* readWorkspaceActivity({ fs })
-          : yield* initialPreflight.nativeActivity
-      const seatEvidence: BuckMaintainOwnerEvidence[] = []
-      const canonicalWorktree = yield* fs.realPath(worktree).pipe(Effect.option)
-      for (const claim of [...(activity?.ownerClaims ?? []), ...(native?.ownerClaims ?? [])]) {
-        const canonicalClaim = yield* fs.realPath(claim.workspace).pipe(Effect.option)
-        // Unresolvable ownership is protective, never evidence that a foreign seat vanished.
-        if (
-          Option.isNone(canonicalWorktree) === true ||
-          Option.isNone(canonicalClaim) === true ||
-          isInsideWorktree({
-            candidate: canonicalWorktree.value,
-            worktreePath: canonicalClaim.value,
-          }) === true ||
-          isInsideWorktree({
-            candidate: canonicalClaim.value,
-            worktreePath: canonicalWorktree.value,
-          }) === true
-        ) {
-          seatEvidence.push(
-            ...claim.agents.map((owner) => ({
-              source: 'st3-seat' as const,
-              owner,
-              workspace: claim.workspace,
-            })),
-          )
-        }
-      }
-      // Ownership is monotonic within a run: a later scan must not erase an earlier owner
-      // or uncertainty, and one unknown source must never hide a known foreign owner.
-      ownerEvidence.push(
-        ...(yield* processOwners(worktree, daemons, initialPreflight)),
-        ...seatEvidence,
-      )
-      // Refresh filesystem and holder gates after the potentially slow native
-      // claim and owner captures, not before them.
-      const git = yield* readBuckMaintainGitEvidence(worktree)
-      const holder = yield* readBudgetWorktreeInUse({
-        worktreePath: worktree,
-        activity,
-        ignoredProcesses,
-        preflight: initialPreflight,
-      })
-      const evidence = ownerEvidence
-      const owners = evidence.map((entry) => entry.owner)
-      const reason = decideMaintainGate({
-        blackout: isInBlackout({ now: Date.now(), blackout: config.blackout }),
-        gitLocked: git.locked,
-        liveHolder: holder._tag === 'unknown' ? undefined : holder._tag === 'in-use',
-        seatClaimsComplete: native?.ownerClaims !== undefined,
-        activeClaim:
-          activity === undefined
-            ? undefined
-            : isWorkspaceActive({ activity, canonicalWorktree: worktree }) ||
-              (native !== undefined &&
-                isWorkspaceActive({ activity: native, canonicalWorktree: worktree })),
-        owners,
-        currentAgent,
-        maintainOwners: config.maintainOwners,
-        maintainUnowned: config.maintainUnowned,
-        leaseHeld: false,
-      })
-      if (reason !== undefined)
-        return { reason, git, evidence, activity, fullLastActivityMs: undefined }
-      const outputActivity = yield* readBuckMaintainOutputActivity(
-        worktree,
-        config.buckOut.fullCleanWhenInactiveFor !== undefined,
-      )
-      const buckActivityMs = typeof outputActivity === 'number' ? outputActivity : undefined
-      const fullLastActivityMs = fullCleanLastActivityMs({
-        gitActivityMs: git.lastActivityMs,
-        buckActivityMs,
-      })
-      const activityReason =
-        outputActivity === 'unsafe'
-          ? 'output-activity-unknown'
-          : outputActivity === 'absent' && daemons.length === 0
-            ? 'no-buck-out'
-            : git.lastActivityMs === undefined
-              ? 'git-activity-unknown'
-              : config.buckOut.fullCleanWhenInactiveFor !== undefined &&
-                  daemons.length === 0 &&
-                  fullLastActivityMs === undefined
-                ? 'inactivity-unknown'
-                : undefined
-      return {
-        reason: reason ?? activityReason,
-        git,
-        evidence,
-        activity,
-        fullLastActivityMs,
-      }
-    })
-    const initial = blackout === true ? undefined : yield* capture(preflight)
-    // Skip gates precede all output accounting; a no-op must not walk buck-out.
-    const base = {
-      worktree,
-      bytesBefore: null as number | null,
-      bytesAfter: null as number | null,
-      daemon: daemons.map((entry) => ({
-        pid: entry.daemon.pid,
-        isolation: entry.daemon.isolation,
-        outcome: 'not-attempted' as BuckMaintainEntry['daemon'][number]['outcome'],
-        reason: undefined as string | undefined,
-      })),
-      ownerEvidence: initial?.evidence ?? ownerEvidence,
-    }
-    if (blackout === true || initial?.reason !== undefined) {
-      yield* record({
-        ...base,
-        action: 'none',
-        reason: blackout === true ? 'blackout' : (initial?.reason ?? 'active-claim'),
-      })
-      continue
-    }
-    const root = yield* readBuckProjectRoot({
-      cwd: worktree,
-      homeDirectory: process.env['HOME'],
-    }).pipe(Effect.orElseSucceed(() => undefined))
-    if (root !== worktree) {
-      yield* record({ ...base, action: 'none', reason: 'project-root-mismatch' })
-      continue
-    }
-    const binary = yield* nativeBinary(daemons)
-    if (Option.isNone(binary) === true) {
-      yield* record({ ...base, action: 'none', reason: 'native-binary-unavailable' })
-      continue
-    }
-    const lease =
-      reportOnly === true
-        ? Option.none()
-        : yield* acquireDeletionLease({
-            storeBasePath: storeBase,
-            ownerPath: worktree,
-            now: Date.now(),
-          }).pipe(Effect.option)
-    if (
-      (reportOnly === true &&
-        (yield* fs.exists(deletionLeasePath({ storeBasePath: storeBase, ownerPath: worktree }))) ===
-          true) ||
-      (reportOnly === false && Option.isNone(lease) === true)
-    ) {
-      yield* record({ ...base, action: 'none', reason: 'lease-held' })
-      continue
-    }
-    const maintained = yield* Effect.gen(function* () {
-      // Potentially slow accounting is completed before the final safety observation.
-      const currentBytes = yield* allocatedBytes(worktree)
-      if (currentBytes === undefined)
-        return { ...base, action: 'none' as const, reason: 'size-unavailable' }
-      base.bytesBefore = currentBytes
-      base.bytesAfter = currentBytes
-      // "Inactive" means no recorded work for the interval and no daemon now.
-      // A recent exit alone is not work: old Git/log/state timestamps can qualify.
-      const action = decideBuckOut({
-        sizeBytes: currentBytes,
-        lastActivityMs: initial?.fullLastActivityMs,
-        now: Date.now(),
-        policy: config.buckOut,
-        inactive: daemons.length === 0,
-      })
-      let stopRaced = false
-      // No measurement, directory enumeration or other unrelated work follows this
-      // recheck before a native action. Every isolation gets its own fresh check.
-      const recheck = Effect.fn('store.buckMaintain.recheck')(function* () {
-        if (stopRaced === true) return 'daemon-stop-raced'
-        const fresh = yield* capture()
-        if (fresh.reason !== undefined) return fresh.reason
-        const projectRoot = yield* readBuckProjectRoot({
-          cwd: worktree,
-          homeDirectory: process.env['HOME'],
-        }).pipe(Effect.orElseSucceed(() => undefined))
-        if (projectRoot !== worktree) return 'project-root-mismatch'
-        const current = yield* findWorktreeBuckDaemons({ worktreePath: worktree })
-        if (
-          current.length !== daemons.length ||
-          current.some(
-            (entry) =>
-              daemons.some(
-                (expected) =>
-                  expected.daemon.pid === entry.daemon.pid &&
-                  expected.daemon.daemonId === entry.daemon.daemonId &&
-                  expected.processes.some(
-                    (process) =>
-                      process.pid === expected.daemon.pid &&
-                      entry.processes.some(
-                        (observed) =>
-                          observed.pid === process.pid && observed.startTime === process.startTime,
-                      ) === true,
-                  ),
-              ) === false,
-          ) === true
-        )
-          return 'daemon-changed'
-        if ((yield* hasWorktreeBuckClients(worktree, current)) === true) return 'attached-client'
-        if (action === 'full-clean') {
-          if (current.length !== 0) return 'daemon-not-idle'
-          if (fresh.fullLastActivityMs === undefined) return 'inactivity-unknown'
+          ignoredProcesses,
+          preflight: initialPreflight,
+        })
+        if (preflightHolder._tag !== 'free')
+          return {
+            reason: preflightHolder._tag === 'in-use' ? 'holder-live' : 'holder-census-incomplete',
+            git: preflightGit,
+            evidence: ownerEvidence,
+            activity,
+            fullLastActivityMs: undefined,
+          }
+        const native =
+          initialPreflight === undefined
+            ? yield* readWorkspaceActivity({ fs })
+            : yield* initialPreflight.nativeActivity
+        const seatEvidence: BuckMaintainOwnerEvidence[] = []
+        const canonicalWorktree = yield* fs.realPath(worktree).pipe(Effect.option)
+        for (const claim of [...(activity?.ownerClaims ?? []), ...(native?.ownerClaims ?? [])]) {
+          const canonicalClaim = yield* fs.realPath(claim.workspace).pipe(Effect.option)
+          // Unresolvable ownership is protective, never evidence that a foreign seat vanished.
           if (
-            decideBuckOut({
-              sizeBytes: currentBytes,
-              lastActivityMs: fresh.fullLastActivityMs,
-              now: Date.now(),
-              policy: config.buckOut,
-              inactive: true,
-            }) !== 'full-clean'
-          )
-            return 'activity-changed'
-        }
-        return undefined
-      })
-      if (action !== 'within-budget') {
-        const isolations = new Set(daemons.map((item) => item.daemon.isolation))
-        const outputChildren = yield* fs
-          .readDirectory(join(worktree, 'buck-out'))
-          .pipe(Effect.orElseSucceed(() => []))
-        for (const child of outputChildren) {
-          const info = yield* fs.stat(join(worktree, 'buck-out', child)).pipe(Effect.option)
-          if (Option.isSome(info) === true && info.value.type === 'Directory') isolations.add(child)
-        }
-        if (isolations.size === 0) isolations.add('v2')
-        let cleaned = false
-        for (const isolation of isolations) {
-          const reason = yield* recheck()
-          if (reason !== undefined)
-            return { ...base, action: cleaned === true ? action : ('none' as const), reason }
-          if (reportOnly === true) continue
-          const result = yield* command(
-            binary.value,
-            [
-              '--isolation-dir',
-              isolation,
-              'clean',
-              ...(action === 'clean-stale' ? [`--stale=${config.buckOut.keepSince}`] : []),
-            ],
-            worktree,
-          )
-          if (Option.isNone(result) === true || result.value.exitCode !== 0)
-            return {
-              ...base,
-              action,
-              reason: 'clean-failed',
-              bytesAfter: (yield* allocatedBytes(worktree)) ?? null,
-            }
-          cleaned = true
-        }
-        return {
-          ...base,
-          action,
-          reason: reportOnly === true ? 'dry-run' : 'completed',
-          bytesAfter:
-            reportOnly === true ? currentBytes : ((yield* allocatedBytes(worktree)) ?? null),
-        }
-      }
-      if (daemons.length === 0) return { ...base, action: 'none' as const, reason: 'within-budget' }
-      if (reportOnly === true) {
-        const reason = yield* recheck()
-        if (reason !== undefined) return { ...base, action: 'none' as const, reason }
-        // Native status is read-only and does not start a missing daemon.
-        for (const { daemon } of daemons) {
-          const entry = base.daemon.find((item) => item.pid === daemon.pid)
-          if (entry === undefined) continue
-          const result = yield* runBuck2({ binary: binary.value, daemon, subcommand: 'status' })
-          const status =
-            Option.isSome(result) === true && result.value.exitCode === 0
-              ? yield* Schema.decodeEffect(
-                  Schema.fromJsonString(
-                    Schema.Struct({ ...BuckDaemonStatus.fields, start_time: Schema.String }),
-                  ),
-                )(result.value.stdout).pipe(Effect.option)
-              : Option.none()
-          const log = yield* newestBuckLogWriteMs(daemon)
-          const started = Option.isSome(status) === true ? Date.parse(status.value.start_time) : NaN
-          if (
-            Option.isNone(status) === true ||
-            status.value.process_info.pid !== daemon.pid ||
-            status.value.daemon_constraints.daemon_id !== daemon.daemonId ||
-            status.value.active_commands.length > 0 ||
-            Number.isFinite(started) === false ||
-            Date.now() - Math.max(started, log ?? 0) < buckDurationMs(config.daemon.idleStopAfter)
-          )
-            entry.outcome = 'kept-active'
-          else entry.outcome = 'would-stop'
-        }
-        const wouldStop = base.daemon.some((entry) => entry.outcome === 'would-stop')
-        return {
-          ...base,
-          action: wouldStop === true ? ('stop-daemon' as const) : ('none' as const),
-          reason: wouldStop === true ? 'dry-run' : 'daemon-not-idle',
-        }
-      }
-      const stopped = yield* stopWorktreeBuckDaemons({
-        worktreePath: worktree,
-        binary: binary.value,
-        reportRaces: false,
-        idleSinceMs: Date.now() - buckDurationMs(config.daemon.idleStopAfter),
-        afterStop: (stoppedDaemon) =>
-          Effect.sync(() => {
-            stopRaced = stoppedDaemon.raced !== undefined
-            daemons = daemons.filter(
-              (entry) =>
-                entry.daemon.pid !== stoppedDaemon.pid ||
-                entry.daemon.daemonId !== stoppedDaemon.daemonId,
+            Option.isNone(canonicalWorktree) === true ||
+            Option.isNone(canonicalClaim) === true ||
+            isInsideWorktree({
+              candidate: canonicalWorktree.value,
+              worktreePath: canonicalClaim.value,
+            }) === true ||
+            isInsideWorktree({
+              candidate: canonicalClaim.value,
+              worktreePath: canonicalWorktree.value,
+            }) === true
+          ) {
+            seatEvidence.push(
+              ...claim.agents.map((owner) => ({
+                source: 'st3-seat' as const,
+                owner,
+                workspace: claim.workspace,
+              })),
             )
-            ignoredProcesses = daemons.flatMap((entry) => entry.processes)
-          }),
-        beforeKill: () =>
-          recheck().pipe(
-            Effect.map((reason) => reason === undefined),
-            Effect.orElseSucceed(() => false),
-          ),
-      })
-      for (const result of stopped) {
-        const entry = base.daemon.find(
-          (item) => item.pid === result.pid && item.isolation === result.isolation,
+          }
+        }
+        // Ownership is monotonic within a run: a later scan must not erase an earlier owner
+        // or uncertainty, and one unknown source must never hide a known foreign owner.
+        ownerEvidence.push(
+          ...(yield* processOwners(worktree, daemons, initialPreflight)),
+          ...seatEvidence,
         )
-        if (entry === undefined) continue
-        entry.outcome = result._tag
-        entry.reason =
-          result._tag === 'unreachable'
-            ? result.reason
-            : result._tag === 'stopped'
-              ? result.raced
-              : 'daemon-not-idle'
+        // Refresh filesystem and holder gates after the potentially slow native
+        // claim and owner captures, not before them.
+        const git = yield* readBuckMaintainGitEvidence(worktree)
+        const holder = yield* readBudgetWorktreeInUse({
+          worktreePath: worktree,
+          activity,
+          ignoredProcesses,
+          preflight: initialPreflight,
+        })
+        const evidence = ownerEvidence
+        const owners = evidence.map((entry) => entry.owner)
+        const reason = decideMaintainGate({
+          blackout: isInBlackout({ now: Date.now(), blackout: config.blackout }),
+          gitLocked: git.locked,
+          liveHolder: holder._tag === 'unknown' ? undefined : holder._tag === 'in-use',
+          seatClaimsComplete: native?.ownerClaims !== undefined,
+          activeClaim:
+            activity === undefined
+              ? undefined
+              : isWorkspaceActive({ activity, canonicalWorktree: worktree }) ||
+                (native !== undefined &&
+                  isWorkspaceActive({ activity: native, canonicalWorktree: worktree })),
+          owners,
+          currentAgent,
+          maintainOwners: config.maintainOwners,
+          maintainUnowned: config.maintainUnowned,
+          leaseHeld: false,
+        })
+        if (reason !== undefined)
+          return { reason, git, evidence, activity, fullLastActivityMs: undefined }
+        const outputActivity = yield* readBuckMaintainOutputActivity(
+          worktree,
+          config.buckOut.fullCleanWhenInactiveFor !== undefined,
+        )
+        const buckActivityMs = typeof outputActivity === 'number' ? outputActivity : undefined
+        const fullLastActivityMs = fullCleanLastActivityMs({
+          gitActivityMs: git.lastActivityMs,
+          buckActivityMs,
+        })
+        const activityReason =
+          outputActivity === 'unsafe'
+            ? 'output-activity-unknown'
+            : outputActivity === 'absent' && daemons.length === 0
+              ? 'no-buck-out'
+              : git.lastActivityMs === undefined
+                ? 'git-activity-unknown'
+                : config.buckOut.fullCleanWhenInactiveFor !== undefined &&
+                    daemons.length === 0 &&
+                    fullLastActivityMs === undefined
+                  ? 'inactivity-unknown'
+                  : undefined
+        return {
+          reason: reason ?? activityReason,
+          git,
+          evidence,
+          activity,
+          fullLastActivityMs,
+        }
+      })
+      const initial = blackout === true ? undefined : yield* capture(preflight)
+      // Skip gates precede all output accounting; a no-op must not walk buck-out.
+      const base = {
+        worktree,
+        bytesBefore: null as number | null,
+        bytesAfter: null as number | null,
+        daemon: daemons.map((entry) => ({
+          pid: entry.daemon.pid,
+          isolation: entry.daemon.isolation,
+          outcome: 'not-attempted' as BuckMaintainEntry['daemon'][number]['outcome'],
+          reason: undefined as string | undefined,
+        })),
+        ownerEvidence: initial?.evidence ?? ownerEvidence,
       }
-      const killFailed = stopped.some(
-        (result) =>
-          result._tag === 'unreachable' &&
-          (result.reason === 'kill-failed' || result.reason === 'kill-found-no-daemon'),
-      )
-      const raced = stopped.some(
-        (result) => result._tag === 'stopped' && result.raced !== undefined,
-      )
-      const didStop = stopped.some((result) => result._tag === 'stopped')
-      return {
-        ...base,
-        action: didStop === true ? ('stop-daemon' as const) : ('none' as const),
-        reason:
-          killFailed === true
-            ? 'kill-failed'
-            : raced === true
-              ? 'daemon-stop-raced'
-              : didStop === true
-                ? 'completed'
-                : 'daemon-not-idle',
-        bytesAfter: (yield* allocatedBytes(worktree)) ?? null,
+      if (blackout === true || initial?.reason !== undefined) {
+        yield* record({
+          ...base,
+          action: 'none',
+          reason: blackout === true ? 'blackout' : (initial?.reason ?? 'active-claim'),
+        })
+        continue
       }
-    }).pipe(
-      Effect.ensuring(
-        Option.isSome(lease) === true ? releaseDeletionLease(lease.value) : Effect.void,
-      ),
-    )
-    yield* record(maintained)
-  }
-  const actions = entries.filter((entry) => entry.action !== 'none').length
-  return {
-    version: 1,
-    dryRun: reportOnly,
-    entries,
-    summary: { worktrees: entries.length, actions, skipped: entries.length - actions },
-  } satisfies BuckMaintainReceipt
-}, (effect, { dryRun, progress }) =>
-  progress !== undefined && dryRun !== true
-    ? Effect.fail(
-        new BuckMaintainProgressError({
-          message: 'Progress hooks require explicit dry-run; historical observations cannot authorize apply',
-        }),
+      const root = yield* readBuckProjectRoot({
+        cwd: worktree,
+        homeDirectory: process.env['HOME'],
+      }).pipe(Effect.orElseSucceed(() => undefined))
+      if (root !== worktree) {
+        yield* record({ ...base, action: 'none', reason: 'project-root-mismatch' })
+        continue
+      }
+      const binary = yield* nativeBinary(daemons)
+      if (Option.isNone(binary) === true) {
+        yield* record({ ...base, action: 'none', reason: 'native-binary-unavailable' })
+        continue
+      }
+      const lease =
+        reportOnly === true
+          ? Option.none()
+          : yield* acquireDeletionLease({
+              storeBasePath: storeBase,
+              ownerPath: worktree,
+              now: Date.now(),
+            }).pipe(Effect.option)
+      if (
+        (reportOnly === true &&
+          (yield* fs.exists(
+            deletionLeasePath({ storeBasePath: storeBase, ownerPath: worktree }),
+          )) === true) ||
+        (reportOnly === false && Option.isNone(lease) === true)
+      ) {
+        yield* record({ ...base, action: 'none', reason: 'lease-held' })
+        continue
+      }
+      const maintained = yield* Effect.gen(function* () {
+        // Potentially slow accounting is completed before the final safety observation.
+        const currentBytes = yield* allocatedBytes(worktree)
+        if (currentBytes === undefined)
+          return { ...base, action: 'none' as const, reason: 'size-unavailable' }
+        base.bytesBefore = currentBytes
+        base.bytesAfter = currentBytes
+        // "Inactive" means no recorded work for the interval and no daemon now.
+        // A recent exit alone is not work: old Git/log/state timestamps can qualify.
+        const action = decideBuckOut({
+          sizeBytes: currentBytes,
+          lastActivityMs: initial?.fullLastActivityMs,
+          now: Date.now(),
+          policy: config.buckOut,
+          inactive: daemons.length === 0,
+        })
+        let stopRaced = false
+        // No measurement, directory enumeration or other unrelated work follows this
+        // recheck before a native action. Every isolation gets its own fresh check.
+        const recheck = Effect.fn('store.buckMaintain.recheck')(function* () {
+          if (stopRaced === true) return 'daemon-stop-raced'
+          const fresh = yield* capture()
+          if (fresh.reason !== undefined) return fresh.reason
+          const projectRoot = yield* readBuckProjectRoot({
+            cwd: worktree,
+            homeDirectory: process.env['HOME'],
+          }).pipe(Effect.orElseSucceed(() => undefined))
+          if (projectRoot !== worktree) return 'project-root-mismatch'
+          const current = yield* findWorktreeBuckDaemons({ worktreePath: worktree })
+          if (
+            current.length !== daemons.length ||
+            current.some(
+              (entry) =>
+                daemons.some(
+                  (expected) =>
+                    expected.daemon.pid === entry.daemon.pid &&
+                    expected.daemon.daemonId === entry.daemon.daemonId &&
+                    expected.processes.some(
+                      (process) =>
+                        process.pid === expected.daemon.pid &&
+                        entry.processes.some(
+                          (observed) =>
+                            observed.pid === process.pid &&
+                            observed.startTime === process.startTime,
+                        ) === true,
+                    ),
+                ) === false,
+            ) === true
+          )
+            return 'daemon-changed'
+          if ((yield* hasWorktreeBuckClients(worktree, current)) === true) return 'attached-client'
+          if (action === 'full-clean') {
+            if (current.length !== 0) return 'daemon-not-idle'
+            if (fresh.fullLastActivityMs === undefined) return 'inactivity-unknown'
+            if (
+              decideBuckOut({
+                sizeBytes: currentBytes,
+                lastActivityMs: fresh.fullLastActivityMs,
+                now: Date.now(),
+                policy: config.buckOut,
+                inactive: true,
+              }) !== 'full-clean'
+            )
+              return 'activity-changed'
+          }
+          return undefined
+        })
+        if (action !== 'within-budget') {
+          const isolations = new Set(daemons.map((item) => item.daemon.isolation))
+          const outputChildren = yield* fs
+            .readDirectory(join(worktree, 'buck-out'))
+            .pipe(Effect.orElseSucceed(() => []))
+          for (const child of outputChildren) {
+            const info = yield* fs.stat(join(worktree, 'buck-out', child)).pipe(Effect.option)
+            if (Option.isSome(info) === true && info.value.type === 'Directory')
+              isolations.add(child)
+          }
+          if (isolations.size === 0) isolations.add('v2')
+          let cleaned = false
+          for (const isolation of isolations) {
+            const reason = yield* recheck()
+            if (reason !== undefined)
+              return { ...base, action: cleaned === true ? action : ('none' as const), reason }
+            if (reportOnly === true) continue
+            const result = yield* command(
+              binary.value,
+              [
+                '--isolation-dir',
+                isolation,
+                'clean',
+                ...(action === 'clean-stale' ? [`--stale=${config.buckOut.keepSince}`] : []),
+              ],
+              worktree,
+            )
+            if (Option.isNone(result) === true || result.value.exitCode !== 0)
+              return {
+                ...base,
+                action,
+                reason: 'clean-failed',
+                bytesAfter: (yield* allocatedBytes(worktree)) ?? null,
+              }
+            cleaned = true
+          }
+          return {
+            ...base,
+            action,
+            reason: reportOnly === true ? 'dry-run' : 'completed',
+            bytesAfter:
+              reportOnly === true ? currentBytes : ((yield* allocatedBytes(worktree)) ?? null),
+          }
+        }
+        if (daemons.length === 0)
+          return { ...base, action: 'none' as const, reason: 'within-budget' }
+        if (reportOnly === true) {
+          const reason = yield* recheck()
+          if (reason !== undefined) return { ...base, action: 'none' as const, reason }
+          // Native status is read-only and does not start a missing daemon.
+          for (const { daemon } of daemons) {
+            const entry = base.daemon.find((item) => item.pid === daemon.pid)
+            if (entry === undefined) continue
+            const result = yield* runBuck2({ binary: binary.value, daemon, subcommand: 'status' })
+            const status =
+              Option.isSome(result) === true && result.value.exitCode === 0
+                ? yield* Schema.decodeEffect(
+                    Schema.fromJsonString(
+                      Schema.Struct({ ...BuckDaemonStatus.fields, start_time: Schema.String }),
+                    ),
+                  )(result.value.stdout).pipe(Effect.option)
+                : Option.none()
+            const log = yield* newestBuckLogWriteMs(daemon)
+            const started =
+              Option.isSome(status) === true ? Date.parse(status.value.start_time) : NaN
+            if (
+              Option.isNone(status) === true ||
+              status.value.process_info.pid !== daemon.pid ||
+              status.value.daemon_constraints.daemon_id !== daemon.daemonId ||
+              status.value.active_commands.length > 0 ||
+              Number.isFinite(started) === false ||
+              Date.now() - Math.max(started, log ?? 0) < buckDurationMs(config.daemon.idleStopAfter)
+            )
+              entry.outcome = 'kept-active'
+            else entry.outcome = 'would-stop'
+          }
+          const wouldStop = base.daemon.some((entry) => entry.outcome === 'would-stop')
+          return {
+            ...base,
+            action: wouldStop === true ? ('stop-daemon' as const) : ('none' as const),
+            reason: wouldStop === true ? 'dry-run' : 'daemon-not-idle',
+          }
+        }
+        const stopped = yield* stopWorktreeBuckDaemons({
+          worktreePath: worktree,
+          binary: binary.value,
+          reportRaces: false,
+          idleSinceMs: Date.now() - buckDurationMs(config.daemon.idleStopAfter),
+          afterStop: (stoppedDaemon) =>
+            Effect.sync(() => {
+              stopRaced = stoppedDaemon.raced !== undefined
+              daemons = daemons.filter(
+                (entry) =>
+                  entry.daemon.pid !== stoppedDaemon.pid ||
+                  entry.daemon.daemonId !== stoppedDaemon.daemonId,
+              )
+              ignoredProcesses = daemons.flatMap((entry) => entry.processes)
+            }),
+          beforeKill: () =>
+            recheck().pipe(
+              Effect.map((reason) => reason === undefined),
+              Effect.orElseSucceed(() => false),
+            ),
+        })
+        for (const result of stopped) {
+          const entry = base.daemon.find(
+            (item) => item.pid === result.pid && item.isolation === result.isolation,
+          )
+          if (entry === undefined) continue
+          entry.outcome = result._tag
+          entry.reason =
+            result._tag === 'unreachable'
+              ? result.reason
+              : result._tag === 'stopped'
+                ? result.raced
+                : 'daemon-not-idle'
+        }
+        const killFailed = stopped.some(
+          (result) =>
+            result._tag === 'unreachable' &&
+            (result.reason === 'kill-failed' || result.reason === 'kill-found-no-daemon'),
+        )
+        const raced = stopped.some(
+          (result) => result._tag === 'stopped' && result.raced !== undefined,
+        )
+        const didStop = stopped.some((result) => result._tag === 'stopped')
+        return {
+          ...base,
+          action: didStop === true ? ('stop-daemon' as const) : ('none' as const),
+          reason:
+            killFailed === true
+              ? 'kill-failed'
+              : raced === true
+                ? 'daemon-stop-raced'
+                : didStop === true
+                  ? 'completed'
+                  : 'daemon-not-idle',
+          bytesAfter: (yield* allocatedBytes(worktree)) ?? null,
+        }
+      }).pipe(
+        Effect.ensuring(
+          Option.isSome(lease) === true ? releaseDeletionLease(lease.value) : Effect.void,
+        ),
       )
-    : effect.pipe(Effect.provide(StoreLayer)),
+      yield* record(maintained)
+    }
+    const actions = entries.filter((entry) => entry.action !== 'none').length
+    return {
+      version: 1,
+      dryRun: reportOnly,
+      entries,
+      summary: { worktrees: entries.length, actions, skipped: entries.length - actions },
+    } satisfies BuckMaintainReceipt
+  },
+  (effect, { dryRun, progress }) =>
+    progress !== undefined && dryRun !== true
+      ? Effect.fail(
+          new BuckMaintainProgressError({
+            message:
+              'Progress hooks require explicit dry-run; historical observations cannot authorize apply',
+          }),
+        )
+      : effect.pipe(Effect.provide(StoreLayer)),
 )

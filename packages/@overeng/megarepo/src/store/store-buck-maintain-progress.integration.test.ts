@@ -25,7 +25,8 @@ it.live('rejects acting and invalid shards before runtime resolution or checkpoi
         maxWorktrees: options.maxWorktrees,
       }).pipe(Effect.flip)
       expect(error).toMatchObject({
-        _tag: 'BuckMaintainProgressError', message: expect.stringContaining(options.message),
+        _tag: 'BuckMaintainProgressError',
+        message: expect.stringContaining(options.message),
       })
       expect(yield* fs.exists(progressDir)).toBe(false)
     }

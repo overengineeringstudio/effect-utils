@@ -32,11 +32,15 @@ export const storeBuckMaintainCommand = Cli.Command.make(
       Cli.Flag.withDefault(false),
     ),
     progressDir: Cli.Flag.String('progress-dir').pipe(
-      Cli.Flag.withDescription('Persist historical per-root dry-run observations in this directory; requires --dry-run'),
+      Cli.Flag.withDescription(
+        'Persist historical per-root dry-run observations in this directory; requires --dry-run',
+      ),
       Cli.Flag.optional,
     ),
     maxWorktrees: Cli.Flag.Int('max-worktrees').pipe(
-      Cli.Flag.withDescription('Maximum unfinished roots per resumable shard (default: 1); requires --progress-dir'),
+      Cli.Flag.withDescription(
+        'Maximum unfinished roots per resumable shard (default: 1); requires --progress-dir',
+      ),
       Cli.Flag.optional,
     ),
     json: Cli.Flag.Boolean('json').pipe(
@@ -48,7 +52,11 @@ export const storeBuckMaintainCommand = Cli.Command.make(
     Effect.gen(function* () {
       const directory = Option.getOrUndefined(progressDir)
       const maximum = Option.getOrUndefined(maxWorktrees)
-      const invalid = validateBuckMaintainProgressOptions({ dryRun, progressDir: directory, maxWorktrees: maximum })
+      const invalid = validateBuckMaintainProgressOptions({
+        dryRun,
+        progressDir: directory,
+        maxWorktrees: maximum,
+      })
       if (invalid !== undefined) return yield* invalid
       const options = { configPath: Option.getOrUndefined(configPath), dryRun }
       const receipt = yield* directory === undefined

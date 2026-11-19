@@ -24,52 +24,82 @@ import { runBuckMaintain, type BuckMaintainProgressHooks } from './store-buck-ma
 const fail = (message: string) => new BuckMaintainProgressError({ message })
 
 /** Pure validation of already-resolved paths, not runtime attestation. */
-export const validateBuckMaintainRuntimePaths = ({ executable, entrypoint, implementation }: {
-  executable: string; entrypoint: string; implementation: string
+export const validateBuckMaintainRuntimePaths = ({
+  executable,
+  entrypoint,
+  implementation,
+}: {
+  executable: string
+  entrypoint: string
+  implementation: string
 }) => {
   for (const path of [executable, entrypoint]) {
     if (!/^\/nix\/store\/[a-z0-9]{32}-[^/]+\/.+/u.test(path))
-      return fail('Resumable dry-run requires an immutable packaged entrypoint and runtime in /nix/store')
+      return fail(
+        'Resumable dry-run requires an immutable packaged entrypoint and runtime in /nix/store',
+      )
   }
   if (implementation !== entrypoint)
-    return fail('Resumable dry-run requires its implementation bundled in the immutable process entrypoint')
+    return fail(
+      'Resumable dry-run requires its implementation bundled in the immutable process entrypoint',
+    )
   return undefined
 }
 
-export const buckMaintainProgressCommandEnvironment = (environment: Readonly<Record<string, string | undefined>>) => ({
+export const buckMaintainProgressCommandEnvironment = (
+  environment: Readonly<Record<string, string | undefined>>,
+) => ({
   st3Binary: environment['MEGAREPO_GC_ST3_BIN'] ?? 'st3',
   ptyBinary: environment['MEGAREPO_GC_PTY_BIN'] ?? 'pty',
   buck2DaemonOverride: environment['MEGAREPO_GC_BUCK2_BIN'] ?? null,
 })
 
 /** No environment variable or caller-provided revision is used as source attestation. */
-export const readBuckMaintainRuntimeIdentity = Effect.fn('store.buckMaintain.progress.runtime')(function* () {
-  const fs = yield* FileSystem.FileSystem
-  const executable = yield* fs.realPath(process.execPath)
-  if (process.argv[1] === undefined) return yield* fail('Cannot attest a packaged CLI entrypoint without argv[1]')
-  const entrypoint = yield* fs.realPath(process.argv[1])
-  const implementation = yield* Effect.try({
-    try: () => fileURLToPath(import.meta.url),
-    catch: () => fail('Resumable dry-run requires a file-backed implementation entrypoint'),
-  }).pipe(Effect.flatMap((path) => fs.realPath(path)))
-  const invalid = validateBuckMaintainRuntimePaths({ executable, entrypoint, implementation })
-  if (invalid !== undefined) return yield* invalid
-  const hashFile = (path: string) => fs.stream(path).pipe(
-    Stream.runFold(() => createHash('sha256'), (hash, bytes) => hash.update(bytes)),
-    Effect.map((hash) => hash.digest('hex')),
-  )
-  const executableSha256 = yield* hashFile(executable)
-  return {
-    executable, executableSha256, entrypoint,
-    entrypointSha256: entrypoint === executable ? executableSha256 : yield* hashFile(entrypoint),
-    platform: process.platform, arch: process.arch,
-  }
-})
+export const readBuckMaintainRuntimeIdentity = Effect.fn('store.buckMaintain.progress.runtime')(
+  function* () {
+    const fs = yield* FileSystem.FileSystem
+    const executable = yield* fs.realPath(process.execPath)
+    if (process.argv[1] === undefined)
+      return yield* fail('Cannot attest a packaged CLI entrypoint without argv[1]')
+    const entrypoint = yield* fs.realPath(process.argv[1])
+    const implementation = yield* Effect.try({
+      try: () => fileURLToPath(import.meta.url),
+      catch: () => fail('Resumable dry-run requires a file-backed implementation entrypoint'),
+    }).pipe(Effect.flatMap((path) => fs.realPath(path)))
+    const invalid = validateBuckMaintainRuntimePaths({ executable, entrypoint, implementation })
+    if (invalid !== undefined) return yield* invalid
+    const hashFile = (path: string) =>
+      fs.stream(path).pipe(
+        Stream.runFold(
+          () => createHash('sha256'),
+          (hash, bytes) => hash.update(bytes),
+        ),
+        Effect.map((hash) => hash.digest('hex')),
+      )
+    const executableSha256 = yield* hashFile(executable)
+    return {
+      executable,
+      executableSha256,
+      entrypoint,
+      entrypointSha256: entrypoint === executable ? executableSha256 : yield* hashFile(entrypoint),
+      platform: process.platform,
+      arch: process.arch,
+    }
+  },
+)
 
 /** Bounded resumable historical receipt. Never feeds historical entries to native actions. */
 export const runBuckMaintainWithProgress = Effect.fn('store.buckMaintain.progress.run')(function* ({
-  configPath, dryRun, progressDir, maxWorktrees,
-}: { configPath: string | undefined; dryRun: boolean; progressDir: string; maxWorktrees: number | undefined }) {
+  configPath,
+  dryRun,
+  progressDir,
+  maxWorktrees,
+}: {
+  configPath: string | undefined
+  dryRun: boolean
+  progressDir: string
+  maxWorktrees: number | undefined
+}) {
   const invalid = validateBuckMaintainProgressOptions({ dryRun, progressDir, maxWorktrees })
   if (invalid !== undefined) return yield* invalid
   const fs = yield* FileSystem.FileSystem
@@ -77,56 +107,87 @@ export const runBuckMaintainWithProgress = Effect.fn('store.buckMaintain.progres
   yield* fs.makeDirectory(resolve(progressDir), { recursive: true, mode: 0o700 })
   const directory = yield* fs.realPath(progressDir)
   const directoryInfo = yield* fs.lstat(directory)
-  if (directoryInfo.type !== 'Directory' || Option.getOrUndefined(directoryInfo.uid) !== process.getuid?.())
+  if (
+    directoryInfo.type !== 'Directory' ||
+    Option.getOrUndefined(directoryInfo.uid) !== process.getuid?.()
+  )
     return yield* fail('Expected an owned progress directory')
   return yield* Effect.gen(function* () {
     let session: BuckMaintainProgressSession | undefined
     let selected: readonly string[] = []
-    const mapError = (cause: unknown) => cause instanceof BuckMaintainProgressError ? cause : fail(String(cause))
+    const mapError = (cause: unknown) =>
+      cause instanceof BuckMaintainProgressError ? cause : fail(String(cause))
     const progress: BuckMaintainProgressHooks = {
-      selectWorktrees: (input) => Effect.gen(function* () {
-        if (session !== undefined) return yield* fail('Progress inventory may only be selected once')
-        const inventory = [...input.worktrees].sort()
-        if (new Set(inventory).size !== inventory.length) return yield* fail('Duplicate canonical worktree roots')
-        const roots = yield* Effect.forEach(input.config.worktreeRoots, (root) => canonicalBuckMaintainRoot(fs, resolve(
-          configPath === undefined ? process.cwd() : dirname(resolve(configPath)), root,
-        )))
-        const configuration = canonicalBuckMaintainJson({
-          ...input.config,
-          host: hostname(),
-          worktreeRoots: [...new Set(roots)].sort(),
-          buckOut: {
-            budgetBytes: input.config.buckOut.budgetBytes,
-            keepSinceMs: buckDurationMs(input.config.buckOut.keepSince),
-            fullCleanWhenInactiveForMs: input.config.buckOut.fullCleanWhenInactiveFor === undefined ? undefined : buckDurationMs(input.config.buckOut.fullCleanWhenInactiveFor),
-          },
-          daemon: { idleStopAfterMs: buckDurationMs(input.config.daemon.idleStopAfter) },
-          maintainOwners: [...new Set(input.config.maintainOwners)].sort(),
-          blackout: [...input.config.blackout].sort((a, b) => canonicalBuckMaintainJson(a).localeCompare(canonicalBuckMaintainJson(b))),
-          storeBase: yield* fs.realPath(input.storeBase),
-          activityConfig: input.activityConfig,
-          currentAgent: process.env['ST_AGENT'] || null,
-          environment: {
-            home: process.env['HOME'] === undefined ? undefined : yield* fs.realPath(process.env['HOME']),
-            currentDirectory: yield* fs.realPath(process.cwd()),
-            buck2Binary: process.env['BUCK2_BIN'] === undefined ? undefined : yield* fs.realPath(process.env['BUCK2_BIN']),
-            path: process.env['PATH'],
-            ...buckMaintainProgressCommandEnvironment(process.env),
-          },
-        })
-        session = yield* openBuckMaintainProgress({ directory, expected: { version: 1, dryRun: true, runtime, configuration, inventory } })
-        selected = yield* selectBuckMaintainProgressRoots(session, maxWorktrees)
-        return selected
-      }).pipe(Effect.mapError(mapError)),
-      onEntry: (entry, capture) => Effect.gen(function* () {
-        if (session === undefined || !selected.includes(entry.worktree)) return yield* fail('Native runner emitted an unselected checkpoint root')
-        yield* session.append(entry, capture)
-      }).pipe(Effect.mapError(mapError)),
+      selectWorktrees: (input) =>
+        Effect.gen(function* () {
+          if (session !== undefined)
+            return yield* fail('Progress inventory may only be selected once')
+          const inventory = [...input.worktrees].sort()
+          if (new Set(inventory).size !== inventory.length)
+            return yield* fail('Duplicate canonical worktree roots')
+          const roots = yield* Effect.forEach(input.config.worktreeRoots, (root) =>
+            canonicalBuckMaintainRoot(
+              fs,
+              resolve(
+                configPath === undefined ? process.cwd() : dirname(resolve(configPath)),
+                root,
+              ),
+            ),
+          )
+          const configuration = canonicalBuckMaintainJson({
+            ...input.config,
+            host: hostname(),
+            worktreeRoots: [...new Set(roots)].sort(),
+            buckOut: {
+              budgetBytes: input.config.buckOut.budgetBytes,
+              keepSinceMs: buckDurationMs(input.config.buckOut.keepSince),
+              fullCleanWhenInactiveForMs:
+                input.config.buckOut.fullCleanWhenInactiveFor === undefined
+                  ? undefined
+                  : buckDurationMs(input.config.buckOut.fullCleanWhenInactiveFor),
+            },
+            daemon: { idleStopAfterMs: buckDurationMs(input.config.daemon.idleStopAfter) },
+            maintainOwners: [...new Set(input.config.maintainOwners)].sort(),
+            blackout: [...input.config.blackout].sort((a, b) =>
+              canonicalBuckMaintainJson(a).localeCompare(canonicalBuckMaintainJson(b)),
+            ),
+            storeBase: yield* fs.realPath(input.storeBase),
+            activityConfig: input.activityConfig,
+            currentAgent: process.env['ST_AGENT'] || null,
+            environment: {
+              home:
+                process.env['HOME'] === undefined
+                  ? undefined
+                  : yield* fs.realPath(process.env['HOME']),
+              currentDirectory: yield* fs.realPath(process.cwd()),
+              buck2Binary:
+                process.env['BUCK2_BIN'] === undefined
+                  ? undefined
+                  : yield* fs.realPath(process.env['BUCK2_BIN']),
+              path: process.env['PATH'],
+              ...buckMaintainProgressCommandEnvironment(process.env),
+            },
+          })
+          session = yield* openBuckMaintainProgress({
+            directory,
+            expected: { version: 1, dryRun: true, runtime, configuration, inventory },
+          })
+          selected = yield* selectBuckMaintainProgressRoots(session, maxWorktrees)
+          return selected
+        }).pipe(Effect.mapError(mapError)),
+      onEntry: (entry, capture) =>
+        Effect.gen(function* () {
+          if (session === undefined || !selected.includes(entry.worktree))
+            return yield* fail('Native runner emitted an unselected checkpoint root')
+          yield* session.append(entry, capture)
+        }).pipe(Effect.mapError(mapError)),
     }
     yield* runBuckMaintain({ configPath, dryRun: true, progress })
-    if (session === undefined) return yield* fail('Native runner did not initialize progress inventory')
+    if (session === undefined)
+      return yield* fail('Native runner did not initialize progress inventory')
     for (const root of selected) {
-      if (!session.records.has(session.manifest.inventory.indexOf(root))) return yield* fail('Native runner omitted a selected checkpoint result')
+      if (!session.records.has(session.manifest.inventory.indexOf(root)))
+        return yield* fail('Native runner omitted a selected checkpoint result')
     }
     return buckMaintainProgressReceipt(session, selected.length)
   }).pipe(withExclusiveDirectoryLock(directory))
