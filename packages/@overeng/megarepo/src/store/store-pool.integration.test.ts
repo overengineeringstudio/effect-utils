@@ -12,10 +12,10 @@ import { poolBytes } from './store-pool-install.ts'
 import {
   beginPoolRetarget,
   claimPoolGeneration,
+  consumePoolReservation,
   finishPoolRetarget,
   type PoolActivityEvent,
   type PoolSlot,
-  reservePoolSlot,
   withPoolState,
 } from './store-pool-state.ts'
 import {
@@ -36,22 +36,43 @@ const fixture = Effect.gen(function* () {
   const commit = yield* Git.getCurrentCommit(
     f.worktreePaths['github.com/test-owner/pool-test#main']!,
   )
-  const path = `${bare.replace(/\/\.bare\/?$/u, '')}/pool/native`
+  const reserved = yield* reservePool({
+    base: f.storePath, bare, commit, charge: 1048576, maxSlots: 1, maxBytes: 1048576,
+  })
+  const preparing = yield* consumePoolReservation({
+    slot: reserved, id: reserved.id, reservation: reserved.reservation!,
+    generation: reserved.generation, bare: reserved.bare, commit, charge: reserved.charge,
+  })
+  yield* withPoolState({
+    base: f.storePath,
+    use: (state, save) => save({
+      ...state, slots: state.slots.map((item) => item.id === preparing.id ? preparing : item),
+    }),
+  })
+  const path = preparing.path
   const lease = yield* acquireDeletionLease({
     storeBasePath: f.storePath,
     ownerPath: path,
     now: 1,
     persistent: true,
   })
+  yield* withPoolState({
+    base: f.storePath,
+    use: (state, save) => save({
+      ...state, slots: state.slots.map((item) =>
+        item.id === preparing.id ? { ...preparing, barrierToken: lease.token } : item),
+    }),
+  })
   yield* Git.ensureBareRefLogging({ repoPath: bare })
   yield* Git.createWorktreeDetached({
     repoPath: bare,
     worktreePath: path,
     commit,
-    lockReason: 'mr-pool:native:preparing',
+    lockReason: `mr-pool:${preparing.id}:preparing`,
   })
+  // Native protection only: this fixture intentionally has no qualified install or birth activity.
   const slot: PoolSlot = {
-    id: 'native',
+    id: preparing.id,
     path,
     bare,
     commit,
@@ -60,7 +81,7 @@ const fixture = Effect.gen(function* () {
     charge: 1048576,
     state: 'ready',
     chargeKnown: true,
-    generation: 0,
+    generation: preparing.generation,
     token: '',
     barrierToken: lease.token,
     owner: '',
@@ -68,7 +89,9 @@ const fixture = Effect.gen(function* () {
   }
   yield* withPoolState({
     base: f.storePath,
-    use: (state, save) => Effect.flatMap(reservePoolSlot({ state, slot }), save),
+    use: (state, save) => save({
+      ...state, slots: state.slots.map((item) => item.id === slot.id ? slot : item),
+    }),
     limits: { maxSlots: 1, maxBytes: 1048576 },
   })
   return { ...f, slot }
@@ -317,7 +340,7 @@ describe('native pool ownership safety', () => {
     Effect.gen(function* () {
       const { slot } = yield* fixture
       const entry = (yield* Git.listWorktrees(slot.bare)).find((item) => item.path === slot.path)
-      expect(Option.getOrUndefined(entry!.lockReason)).toBe('mr-pool:native:preparing')
+      expect(Option.getOrUndefined(entry!.lockReason)).toBe(`mr-pool:${slot.id}:preparing`)
       expect(Option.isNone(entry!.branch)).toBe(true)
       expect(
         yield* Git.removeWorktree({ repoPath: slot.bare, worktreePath: slot.path }).pipe(
