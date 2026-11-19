@@ -8,7 +8,9 @@ import { EffectPath } from '@overeng/effect-path'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
 import {
+  beginPoolRetarget,
   claimPoolGeneration,
+  finishPoolRetarget,
   type PoolSlot,
   requirePoolLease,
   reservePoolSlot,
@@ -198,12 +200,12 @@ describe('pool authoritative lifecycle', () => {
           slots: records,
         }),
       )
-      const converted = yield* withPoolState({ base, use: Effect.succeed })
+      const converted = yield* withPoolState({ base, use: (state) => Effect.succeed(state) })
       expect(converted.version).toBe(2)
       expect(converted.slots).toEqual(
         records.map((record) => ({ ...record, sourceHistory: [record.commit] })),
       )
-      expect(yield* withPoolState({ base, use: Effect.succeed })).toEqual(converted)
+      expect(yield* withPoolState({ base, use: (state) => Effect.succeed(state) })).toEqual(converted)
       const bytes = yield* fs.readFileString(`${base}.state/pool/state.json`)
       expect(bytes).toContain('"version":2')
       expect(
@@ -211,6 +213,121 @@ describe('pool authoritative lifecycle', () => {
           Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(1) })),
         )(bytes).pipe(Effect.exit),
       ).toSatisfy(Exit.isFailure)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('fences retarget intent epochs and retains failed unknown preparation', () =>
+    Effect.gen(function* () {
+      const ready = { ...slot, state: 'ready' as const }
+      const begin = {
+        slot: ready,
+        generation: ready.generation,
+        identity: ready.identity,
+        commit: 'b'.repeat(40),
+        owner: 'retarget-task',
+      }
+      for (const state of ['leased', 'completed', 'preparing', 'quarantined'] as const)
+        expect(
+          yield* beginPoolRetarget({ ...begin, slot: { ...ready, state } }).pipe(Effect.exit),
+        ).toSatisfy(Exit.isFailure)
+      for (const chargeKnown of [false, undefined])
+        expect(
+          yield* beginPoolRetarget({ ...begin, slot: { ...ready, chargeKnown } }).pipe(Effect.exit),
+        ).toSatisfy(Exit.isFailure)
+      expect(
+        yield* beginPoolRetarget({ ...begin, generation: 0 }).pipe(Effect.exit),
+      ).toSatisfy(Exit.isFailure)
+      const intent = yield* beginPoolRetarget(begin)
+      expect(intent).toMatchObject({
+        state: 'preparing',
+        identity: '',
+        token: '',
+        chargeKnown: false,
+        generation: 2,
+        barrierToken: slot.barrierToken,
+      })
+      expect(intent.sourceHistory).toEqual([slot.commit, begin.commit])
+      expect(
+        yield* requirePoolLease({ slot: intent, token: slot.token, generation: 1 }).pipe(Effect.exit),
+      ).toSatisfy(Exit.isFailure)
+      const finish = {
+        slot: intent,
+        generation: intent.generation,
+        token: intent.retarget!.token,
+        result: { _tag: 'Prepared' as const, identity: 'new-install', charge: 96 },
+      }
+      for (const stale of [{ generation: 1 }, { token: 'stale' }])
+        expect(yield* finishPoolRetarget({ ...finish, ...stale }).pipe(Effect.exit)).toSatisfy(
+          Exit.isFailure,
+        )
+      const failed = yield* finishPoolRetarget({
+        ...finish,
+        result: { _tag: 'Failed', reason: 'doctor failed' },
+      })
+      expect(failed).toMatchObject({ state: 'quarantined', chargeKnown: false, identity: '' })
+      expect(failed.retarget).toEqual(intent.retarget)
+      expect(
+        yield* finishPoolRetarget({ ...finish, slot: failed }).pipe(Effect.exit),
+      ).toSatisfy(Exit.isFailure)
+      const prepared = yield* finishPoolRetarget(finish)
+      expect(prepared).toMatchObject({
+        state: 'ready',
+        chargeKnown: true,
+        identity: 'new-install',
+        charge: 96,
+        generation: 2,
+      })
+      expect(prepared.retarget).toBeUndefined()
+      const next = yield* beginPoolRetarget({
+        ...begin,
+        slot: prepared,
+        generation: 2,
+        identity: 'new-install',
+        commit: 'c'.repeat(40),
+      })
+      expect(next.generation).toBe(3)
+      expect(next.sourceHistory).toEqual([slot.commit, begin.commit, 'c'.repeat(40)])
+    }),
+  )
+
+  it.effect('durably retains a failed retarget intent and its unknown charge after reopening', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      yield* withPoolState({
+        base,
+        limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) => save({ ...state, slots: [{ ...slot, state: 'ready' }] }),
+      })
+      const retained = yield* withPoolState({
+        base,
+        use: (state, save) =>
+          Effect.gen(function* () {
+            const intent = yield* beginPoolRetarget({
+              slot: state.slots[0]!,
+              generation: 1,
+              identity: slot.identity,
+              commit: 'b'.repeat(40),
+              owner: 'retarget-task',
+            })
+            yield* save({ ...state, slots: [intent] })
+            const failed = yield* finishPoolRetarget({
+              slot: intent,
+              generation: intent.generation,
+              token: intent.retarget!.token,
+              result: { _tag: 'Failed', reason: 'preparation interrupted' },
+            })
+            yield* save({ ...state, slots: [failed] })
+            return failed
+          }),
+      })
+      const reopened = yield* withPoolState({ base, use: (state) => Effect.succeed(state) })
+      expect(reopened.slots).toEqual([retained])
+      const blocked = yield* withPoolState({
+        base,
+        use: (state) => reservePoolSlot({ state, slot: { ...slot, id: 'other' } }),
+      }).pipe(Effect.flip)
+      expect(blocked.message).toContain('unknown')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })

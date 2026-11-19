@@ -434,6 +434,10 @@ the existing durable exclusion, preserving every generation, owner/token, barrie
 and unknown charge; allowed source history starts with exactly the old commit.
 Unknown versions fail closed. Keep this reader arm until a census of every declared
 store proves no v1 records/writers remain and the no-old-record regression passes.
+State-only retarget intent advances the generation and revokes install/lease identity
+before mutation; failure retains intent and unknown bytes. These transitions do not
+provide holder evidence or enable a retarget CLI: qualified teardown, fresh authenticated
+holder SDK evidence and normal installation/doctor integration remain required.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
 and persistent deletion barriers remain through ready, leased and uncertain states.

@@ -220,3 +220,88 @@ export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolS
     )
   return Effect.succeed({ ...state, slots: [...state.slots, slot] })
 }
+
+/** Pure intent transition; the owner must persist it before any checkout mutation. */
+export const beginPoolRetarget = ({
+  slot,
+  generation,
+  identity,
+  commit,
+  owner,
+}: {
+  slot: PoolSlot
+  generation: number
+  identity: string
+  commit: string
+  owner: string
+}): Effect.Effect<PoolSlot, PoolError> => {
+  if (
+    slot.state !== 'ready' ||
+    slot.chargeKnown !== true ||
+    slot.retarget !== undefined ||
+    slot.generation !== generation ||
+    Number.isSafeInteger(generation + 1) === false ||
+    slot.identity !== identity ||
+    identity === '' ||
+    owner === '' ||
+    commit === slot.commit ||
+    /^[0-9a-f]{40}$/u.test(commit) === false
+  )
+    return Effect.fail(new PoolError({ message: 'Stale, unknown or non-ready retarget source' }))
+  const next: PoolSlot = {
+    ...slot,
+    commit,
+    sourceHistory: [...slot.sourceHistory, commit],
+    retarget: { from: slot.commit, to: commit, token: randomUUID() },
+    generation: generation + 1,
+    identity: '',
+    token: '',
+    state: 'preparing',
+    chargeKnown: false,
+    owner,
+    reason: 'Retarget preparation',
+  }
+  return Effect.succeed(next)
+}
+
+/** Pure completion fencing, not holder/readiness evidence or permission to mutate a root. */
+export const finishPoolRetarget = ({
+  slot,
+  generation,
+  token,
+  result,
+}: {
+  slot: PoolSlot
+  generation: number
+  token: string
+  result: { _tag: 'Prepared'; identity: string; charge: number } | { _tag: 'Failed'; reason: string }
+}): Effect.Effect<PoolSlot, PoolError> => {
+  if (
+    slot.state !== 'preparing' ||
+    slot.generation !== generation ||
+    slot.retarget === undefined ||
+    slot.retarget.token !== token
+  )
+    return Effect.fail(new PoolError({ message: 'Stale or non-preparing retarget intent' }))
+  if (result._tag === 'Failed') {
+    if (result.reason === '')
+      return Effect.fail(new PoolError({ message: 'Failed retarget requires its retained reason' }))
+    return Effect.succeed<PoolSlot>({ ...slot, state: 'quarantined', reason: result.reason })
+  }
+  if (
+    result.identity === '' ||
+    Number.isSafeInteger(result.charge) === false ||
+    result.charge <= 0
+  )
+    return Effect.fail(new PoolError({ message: 'Retarget completion requires exact readiness/charge' }))
+  return Effect.succeed<PoolSlot>({
+    ...slot,
+    retarget: undefined,
+    identity: result.identity,
+    charge: result.charge,
+    chargeKnown: true,
+    state: 'ready',
+    owner: '',
+    reason: '',
+  })
+}
