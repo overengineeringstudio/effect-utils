@@ -242,6 +242,8 @@ export const releasePool = (args: {
         yield* cleanSource(slot)
         if ((yield* poolInstallIdentity(slot.path, slot.commit, args.base)) !== slot.identity)
           return yield* new PoolError({ message: 'Installed projection changed; retained' })
+        yield* cleanSource(slot)
+        yield* free(slot)
         // Only this detached slot is cleaned; preserved node_modules was validated above.
         yield* Git.runCommand({ cwd: slot.path, args: ['clean', '-fdx', '-e', '/node_modules/'] })
         yield* Git.runCommand({ cwd: slot.path, args: ['checkout', '--detach', slot.commit] })
@@ -255,6 +257,8 @@ export const releasePool = (args: {
           return yield* new PoolError({
             message: 'Reprepared root no longer matches reserved identity/bytes',
           })
+        yield* cleanSource(slot)
+        yield* free(slot)
         const ready: PoolSlot = {
           ...slot,
           state: 'ready',

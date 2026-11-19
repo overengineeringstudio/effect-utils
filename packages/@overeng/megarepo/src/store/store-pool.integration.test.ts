@@ -56,7 +56,7 @@ const fixture = Effect.gen(function* () {
 })
 
 describe('native pool ownership safety', () => {
-  it.effect('status preserves live and completed ownership', () =>
+  it.effect('status preserves live and completed ownership through release authorization', () =>
     Effect.gen(function* () {
       const { storePath, slot } = yield* fixture
       yield* withPoolState(storePath, (state, save) =>
@@ -81,6 +81,14 @@ describe('native pool ownership safety', () => {
       expect(yield* completePool(storePath, slot.id, 'stale', 1).pipe(Effect.exit)).toSatisfy(
         Exit.isFailure,
       )
+      // This real fixture has no prepared install; release must pass ownership first.
+      const refused = yield* releasePool({
+        base: storePath,
+        id: slot.id,
+        token: 'task',
+        generation: 1,
+      }).pipe(Effect.flip)
+      expect(String(refused)).not.toContain('Stale or non-leased pool generation')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
