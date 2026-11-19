@@ -66,6 +66,10 @@ quarantined roots, across repositories. Reservations are accounting, not filesys
 quotas; ordinary admitted execution remains responsible for runtime containment.
 Every failed preparation reconciles retained logical bytes, including partial
 install growth. Unknown retained accounting or holders block further allocation.
+The charge uses apparent logical size, not allocated blocks: compression and sparse
+files cannot lower it. Report allocated disk usage separately; neither measurement
+claims exclusive bytes reclaimable from shared, reflinked or deduplicated storage.
+The packaged Nix CLI supplies GNU coreutils for consistent accounting on each platform.
 Limits cannot be changed while authoritative records exist.
 
 Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
