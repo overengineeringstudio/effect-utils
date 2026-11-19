@@ -61,50 +61,11 @@ Success publishes a fenced `completed` state before provider exit; status cannot
 mistake normal completion for abandonment. Status reconciles abandoned/unknown
 providers toward quarantine only.
 
-Host-store-wide count and charged-byte limits include preparing, leased and
-quarantined roots, across repositories. Reservations are accounting, not filesystem
-quotas; ordinary admitted execution remains responsible for runtime containment.
-Writable claims invalidate measured accounting until a safe release/remeasure.
-This blocks new reservations, not claims of other already-reserved ready roots.
-Status preserves live leased and completed ownership while accounting is unknown;
-an abandoned provider or a lost/unknown root path still causes quarantine.
-Every failed preparation reconciles retained logical bytes, including partial
-install growth. Unknown retained accounting or holders block further allocation.
-Missing pathnames cannot clear accounting: an unlinked file may still be held open.
-Clean-source and holder proofs run again after doctor/byte accounting, immediately
-before cleaning or publishing a ready/claimed generation.
-The charge uses apparent logical size, not allocated blocks: compression and sparse
-files cannot lower it. Report allocated disk usage separately; neither measurement
-claims exclusive bytes reclaimable from shared, reflinked or deduplicated storage.
-The packaged Nix CLI supplies GNU coreutils for consistent accounting on each platform.
-Limits cannot be changed while authoritative records exist.
-
-Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
-and persistent deletion barriers remain through ready, leased and uncertain states.
-The barrier's v2 record is deliberately not PID-death-recoverable; older readers
-reject it and retain the root. Ordinary v1 lease recovery is unchanged.
-Readiness consumes the root-owned `pnpm:doctor` installation/projection/storage
-receipts and full link-health proof across all declared package node_modules,
-including `.bin`. It additionally binds exact source/tool/platform identity,
-actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
-The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
-store-state directory. Pool validation reads that file after the single-task
-runner exits; it never parses devenv console output or relies on log flags.
-No adapter, copied Buck state or scripts-disabled preparation is used.
-
-Release invokes the packaged absolute `WORKTREE_TEARDOWN_BIN` provider, not an
-ambient PATH command. It uses the existing store-owner `gc-owner` process policy:
-readable foreign references veto, unreadable foreign processes are counted, and
-own-UID completeness requires native or bounded lsof evidence. Unknown owner
-processes retain the root. After unchanged clean source/history proof, it validates the
-installed dependency view, then cleans only its own detached root preserving
-validated `node_modules`, and reruns normal installation. Missing teardown,
-unknown processes, dirty/untracked source, changed commits or failed preparation
-retain the root; no automatic dirty cleanup, expiry, removal or force-unlock exists.
-Removal remains the existing hygiene owner's operation with full consumer proof.
+See [durable pool ownership](#durable-pool-ownership-primitives) for capacity,
+readiness, retention and teardown safety. This callable API does not enable
+automatic provisioning or confer per-root production qualification.
 Promotion invokes the packaged absolute `MR_CANONICAL_BIN` self-provider; an
 ambient `mr` on PATH is never substituted, and a missing provider fails closed.
-Per-root qualification and provisioning-caller adoption are separate from this API.
 
 ## Typical Flow
 
@@ -445,6 +406,55 @@ agent activations wrap their builds in `mr store lease --owner-path <worktree>`,
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
 
+### Durable pool ownership primitives
+
+Claims atomically fence one generation and adopt its persistent barrier without unlinking it.
+Providers record completion before exiting; inspection quarantines abandoned/uncertain providers.
+
+Host-store-wide count and charged-byte limits include preparing, leased and
+quarantined roots, across repositories. Reservations are accounting, not filesystem
+quotas; ordinary admitted execution remains responsible for runtime containment.
+Writable claims invalidate measured accounting until a safe release/remeasure.
+This blocks new reservations, not claims of other already-reserved ready roots.
+Status preserves live leased and completed ownership while accounting is unknown;
+an abandoned provider or a lost/unknown root path still causes quarantine.
+Every failed preparation reconciles retained logical bytes, including partial
+install growth. Unknown retained accounting or holders block further allocation.
+Missing pathnames cannot clear accounting: an unlinked file may still be held open.
+Clean-source and holder proofs run again after doctor/byte accounting, immediately
+before cleaning or publishing a ready/claimed generation.
+The charge uses apparent logical size, not allocated blocks: compression and sparse
+files cannot lower it. Report allocated disk usage separately; neither measurement
+claims exclusive bytes reclaimable from shared, reflinked or deduplicated storage.
+The packaged Nix CLI supplies GNU coreutils for consistent accounting on each platform.
+Limits cannot be changed while authoritative records exist.
+
+Slots live at fixed `<repository>/pool/<uuid>` detached paths. Native Git locks
+and persistent deletion barriers remain through ready, leased and uncertain states.
+The barrier's v2 record is deliberately not PID-death-recoverable; older readers
+reject it and retain the root. Ordinary v1 lease recovery is unchanged.
+Preparation reserves capacity before creating its protected path and uses normal
+root-owned `pnpm:install`; readiness consumes `pnpm:doctor` installation/projection/storage
+receipts and full link-health proof across all declared package node_modules,
+including `.bin`. It additionally binds exact source/tool/platform identity,
+actual installed pnpm metadata and resolved GVS paths. Local stores are refused.
+The doctor writes its JSON to an exclusive `PNPM_DOCTOR_OUTPUT_FILE` in a scoped
+store-state directory. Pool validation reads that file after the single-task
+runner exits; it never parses devenv console output or relies on log flags.
+No adapter, copied Buck state or scripts-disabled preparation is used.
+
+Release first fences its owner and persists quarantine, then invokes the packaged
+absolute `WORKTREE_TEARDOWN_BIN` provider, not an ambient PATH command.
+It uses the existing store-owner `gc-owner` process policy: readable foreign
+references veto, unreadable foreign processes are counted, and own-UID completeness
+requires native or bounded lsof evidence. Unknown owner processes retain the root.
+After unchanged clean source/history proof, it validates the installed dependency
+view, then cleans only its own detached root preserving validated `node_modules`,
+and reruns normal installation. Missing teardown, unknown processes, dirty/untracked
+source, changed commits or failed preparation retain the root; no automatic dirty
+cleanup, expiry, removal or force-unlock exists. Removal remains the existing
+hygiene owner's operation with full consumer proof.
+Per-root qualification and provisioning-caller adoption are separate from this API.
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

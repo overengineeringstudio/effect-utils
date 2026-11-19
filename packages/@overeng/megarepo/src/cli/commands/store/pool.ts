@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path'
 
-import { Console, Effect } from 'effect'
+import { Console, Effect, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as ChildProcess from 'effect/process/ChildProcess'
 
@@ -24,14 +24,14 @@ const resolveRepository = (repo: string) =>
   Effect.gen(function* () {
     const store = yield* Store
     const source = parseSourceString(repo)
-    if (source === undefined || !isRemoteSource(source))
+    if (source === undefined || isRemoteSource(source) === false)
       return yield* new PoolError({ message: 'Expected a remote repository identity' })
-    if (!(yield* store.hasBareRepo(source)))
+    if ((yield* store.hasBareRepo(source)) === false)
       return yield* new PoolError({ message: 'Repository must already exist in the store' })
     return { store, source, bare: store.getBareRepoPath(source) }
   })
 const exactCommit = (commit: string) =>
-  /^[0-9a-f]{40}$/u.test(commit)
+  /^[0-9a-f]{40}$/u.test(commit) === true
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Expected a full immutable commit SHA' }))
 
@@ -47,9 +47,7 @@ const prewarm = Cli.Command.make(
     Effect.gen(function* () {
       const { store, bare } = yield* resolveRepository(repo)
       yield* Console.log(
-        JSON.stringify(
-          yield* prewarmPool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge }),
-        ),
+        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* prewarmPool({ base: store.basePath, bare, commit, maxSlots, maxBytes, charge })),
       )
     }),
 ).pipe(
@@ -67,8 +65,8 @@ const claim = Cli.Command.make(
     Effect.gen(function* () {
       const store = yield* Store
       const slot = yield* claimPool({ base: store.basePath, identity, owner })
-      const retain = (reason: string) => quarantinePool(store.basePath, slot.id, slot.token, reason)
-      yield* Console.log(JSON.stringify(slot))
+      const retain = (reason: string) => quarantinePool({ base: store.basePath, id: slot.id, token: slot.token, reason })
+      yield* Console.log(yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(slot))
       // The live provider is the activation ancestor for ordinary install/check wrappers.
       const code = yield* Effect.scoped(
         Effect.gen(function* () {
@@ -90,7 +88,7 @@ const claim = Cli.Command.make(
         yield* retain(`Task exited ${code}`)
         process.exitCode = code
       }
-      if (code === 0) yield* completePool(store.basePath, slot.id, slot.token, slot.generation)
+      if (code === 0) yield* completePool({ base: store.basePath, id: slot.id, token: slot.token, generation: slot.generation })
     }),
 ).pipe(
   Cli.Command.withDescription(
@@ -109,7 +107,7 @@ const release = Cli.Command.make(
     Effect.gen(function* () {
       const store = yield* Store
       yield* Console.log(
-        JSON.stringify(yield* releasePool({ base: store.basePath, id, token, generation })),
+        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* releasePool({ base: store.basePath, id, token, generation })),
       )
     }),
 ).pipe(
@@ -121,7 +119,7 @@ const release = Cli.Command.make(
 const status = Cli.Command.make('status', {}, () =>
   Effect.gen(function* () {
     const store = yield* Store
-    yield* Console.log(JSON.stringify(yield* inspectPool(store.basePath)))
+    yield* Console.log(yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(yield* inspectPool(store.basePath)))
   }),
 )
 
@@ -158,7 +156,7 @@ const promote = Cli.Command.make(
       if (canonicalMr === undefined || !isAbsolute(canonicalMr))
         return yield* new PoolError({ message: 'Packaged absolute MR_CANONICAL_BIN is required' })
       const { store } = yield* resolveRepository(repo)
-      const path = yield* runPoolCommand(store.basePath, canonicalMr, [
+      const path = yield* runPoolCommand({ cwd: store.basePath, command: canonicalMr, args: [
         'store',
         'worktree',
         'new',
@@ -169,7 +167,7 @@ const promote = Cli.Command.make(
         commit,
         '--no-fetch',
         '--porcelain',
-      ])
+      ] })
       yield* preparePoolInstall(path)
       yield* Console.log(path)
     }),
@@ -179,6 +177,7 @@ const promote = Cli.Command.make(
   ),
 )
 
+/** Callable native pool lifecycle, pinned reads and canonical edit promotion. */
 export const storePoolCommand = Cli.Command.make('pool', {}).pipe(
   Cli.Command.withSubcommands([prewarm, claim, release, status, read, promote]),
   Cli.Command.withDescription('Bounded native detached execution roots and lazy canonical editing'),
