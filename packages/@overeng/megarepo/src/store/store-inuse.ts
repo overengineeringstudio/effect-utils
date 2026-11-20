@@ -938,6 +938,7 @@ export const readWorktreeReferencesInUse = ({
   scope = 'all-uids',
   coveredProcesses,
   ignoredProcesses,
+  preflightScan,
 }: {
   worktreePath: AbsoluteDirPath | string
   selfPid?: number | undefined
@@ -945,12 +946,15 @@ export const readWorktreeReferencesInUse = ({
   coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   /** Only exact observed daemon/forkserver lifetimes may be checked separately via status. */
   ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  /** Report/preflight only. Never supply historical evidence to a deletion-time probe. */
+  preflightScan?: ProcessReferenceScan | undefined
 }): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const canonical = yield* procRead(fs.realPath(worktreePath))
     if (canonical._tag !== 'value') return { _tag: 'unknown', reason: 'scan-failed' } as const
-    const scan = yield* readProcessReferences({ fs, selfPid, scope, coveredProcesses })
+    const scan =
+      preflightScan ?? (yield* readProcessReferences({ fs, selfPid, scope, coveredProcesses }))
     const metadata =
       scan.ignoredForeignProcesses === undefined
         ? {}

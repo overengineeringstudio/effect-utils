@@ -1,5 +1,6 @@
 //! Host-owned compact evidence, independent of OTLP acknowledgement and worktrees.
 use super::{identity_attributes, sha256_hex, Model};
+use clap::{Args, ValueEnum};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -11,6 +12,30 @@ use std::{
 
 const RETENTION_SECONDS: u64 = 30 * 24 * 60 * 60;
 const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, Copy, ValueEnum)]
+pub(super) enum Phase {
+    Open,
+    Terminal,
+}
+#[derive(Args)]
+pub(super) struct Census {
+    #[arg(long)]
+    invocation_id: String,
+    #[arg(long, value_enum)]
+    phase: Phase,
+    #[arg(long)]
+    host: String,
+    #[arg(long)]
+    build_id: Option<String>,
+    #[arg(long)]
+    exit_code: Option<i32>,
+    /// A preceding census write failed; completeness must remain unknown.
+    #[arg(long)]
+    capture_error: bool,
+    #[arg(long)]
+    records_dir: Option<PathBuf>,
+}
 
 pub(super) fn directory(explicit: Option<PathBuf>) -> io::Result<PathBuf> {
     if let Some(path) = explicit {
@@ -123,6 +148,90 @@ fn manifest(dir: &Path, host: &str) -> io::Result<()> {
         )
     })
 }
+fn prune(dir: &Path) -> io::Result<()> {
+    let now = SystemTime::now();
+    // Amortize the host-wide retention scan across all wrappers and worktrees.
+    let day = now
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_secs()
+        / 86400;
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join(format!(".prune-{day}")))
+    {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) => return Err(error),
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry
+            .path()
+            .extension()
+            .is_none_or(|extension| extension != "jsonl")
+        {
+            continue;
+        }
+        // Manifests establish enrollment, not evidence completeness, and survive
+        // empty windows. Other immutable records age from first durable capture.
+        let mut reader = std::io::BufReader::new(File::open(entry.path())?);
+        let mut first = String::new();
+        std::io::BufRead::read_line(&mut reader, &mut first)?;
+        if serde_json::from_str::<Value>(&first)?["type"] == "manifest" {
+            continue;
+        }
+        if now
+            .duration_since(entry.metadata()?.modified()?)
+            .is_ok_and(|age| age.as_secs() > RETENTION_SECONDS)
+        {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
+}
+pub(super) fn census(args: Census) -> io::Result<()> {
+    if args.invocation_id.is_empty()
+        || args.host.is_empty()
+        || args.invocation_id.len() > 1024
+        || args.host.len() > 1024
+    {
+        return Err(io::Error::other(
+            "census requires invocation and observed host of 1..1024 bytes",
+        ));
+    }
+    let dir = directory(args.records_dir)?;
+    manifest(&dir, &args.host)?;
+    let phase = match args.phase {
+        Phase::Open => "open",
+        Phase::Terminal => "terminal",
+    };
+    let pipeline_run = std::env::var("PIPELINE_RUN_ID")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let lane = pipeline_run
+        .as_deref()
+        .filter(|id| id.starts_with("ci/"))
+        .map_or(Some("supported-entrypoint/local"), |_| None);
+    publish(
+        &dir,
+        &format!("census:{}:{phase}", args.invocation_id),
+        |file| {
+            line(
+                file,
+                &json!({
+                    "type":"invocation", "phase":phase, "invocation_id":args.invocation_id,
+                    "host":args.host, "timestamp_ns":now_ns()?.to_string(),
+                    "build_id":args.build_id.filter(|id| !id.is_empty()), "exit_code":args.exit_code,
+                    "capture_error":args.capture_error, "lane":lane,
+                    "run_id":pipeline_run.as_deref().unwrap_or(&args.invocation_id)
+                }),
+            )
+        },
+    )?;
+    prune(&dir)
+}
 fn allowed(attribute: &Value, resource: bool) -> bool {
     let key = attribute["key"].as_str().unwrap_or("");
     if resource {
@@ -215,5 +324,6 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
             }
         }
         Ok(())
-    })
+    })?;
+    prune(dir)
 }
