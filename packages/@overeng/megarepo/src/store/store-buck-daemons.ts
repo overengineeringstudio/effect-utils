@@ -1,15 +1,12 @@
 /** Root-scoped Buck2 shutdown before GC renames or removes a worktree. */
 import { dirname } from 'node:path'
 
-import {
-  editorPublicationIsolation,
-  tryAcquireEditorPublicationOwner,
-} from '@overeng/buck2-tools'
-
 import { Effect, Option, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
+
+import { editorPublicationIsolation, tryAcquireEditorPublicationOwner } from '@overeng/buck2-tools'
 
 import {
   isInsideWorktree,
@@ -585,11 +582,17 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
           return { _tag: 'unreachable' as const, ...identity, memoryKiB, reason: 'kill-failed' }
         const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(killRun.value.stderr)?.[1]
         if (exitedPid === undefined)
-          return { _tag: 'unreachable' as const, ...identity, memoryKiB, reason: 'kill-found-no-daemon' }
+          return {
+            _tag: 'unreachable' as const,
+            ...identity,
+            memoryKiB,
+            reason: 'kill-found-no-daemon',
+          }
         const logWriteAfterKillMs = yield* newestBuckLogWriteMs(daemon)
         let raced: string | undefined
         if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
-        else if (logWriteAfterKillMs !== observedLogWriteMs) raced = 'command-log-written-during-kill'
+        else if (logWriteAfterKillMs !== observedLogWriteMs)
+          raced = 'command-log-written-during-kill'
         if (raced !== undefined && reportRaces === true)
           yield* Effect.logWarning(
             `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,

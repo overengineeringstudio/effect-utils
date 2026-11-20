@@ -6,13 +6,15 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
-it.effect('protects real maintenance writes and releases the publication owner on failure and interruption', () =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
-    // This is the shared bracket's real filesystem contract, not a fake Buck executable.
-    // Native daemon lifecycle coverage remains in the capability and teardown regressions.
-    const script = `
+it.effect(
+  'protects real maintenance writes and releases the publication owner on failure and interruption',
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+      // This is the shared bracket's real filesystem contract, not a fake Buck executable.
+      // Native daemon lifecycle coverage remains in the capability and teardown regressions.
+      const script = `
       import { strict as assert } from 'node:assert'
       import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
       import { join } from 'node:path'
@@ -66,12 +68,13 @@ it.effect('protects real maintenance writes and releases the publication owner o
       })), { _tag: 'blocked', reason: 'editor-publication-owner-unknown' })
       assert.equal(existsSync(unknownMarker), false)
     `
-    const bun = process.env.BUN_BIN ?? (process.versions.bun === undefined ? 'bun' : process.execPath)
-    const spawner = yield* ChildProcessSpawner
-    const code = yield* spawner.exitCode(
-      ChildProcess.make(bun, ['--eval', script, root], { stderr: 'inherit' }),
-    )
-    expect(code).toBe(0)
-    expect(yield* fs.readFileString(`${root}/maintenance-write`)).toBe('owned mutation')
-  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      const bun =
+        process.env.BUN_BIN ?? (process.versions.bun === undefined ? 'bun' : process.execPath)
+      const spawner = yield* ChildProcessSpawner
+      const code = yield* spawner.exitCode(
+        ChildProcess.make(bun, ['--eval', script, root], { stderr: 'inherit' }),
+      )
+      expect(code).toBe(0)
+      expect(yield* fs.readFileString(`${root}/maintenance-write`)).toBe('owned mutation')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 )
