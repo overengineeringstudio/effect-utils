@@ -2,11 +2,12 @@
 {
   pkgs,
   allowedRoots ? [ ],
+  ownedVmClassDiagnostics ? false,
 }:
 let
   inherit (pkgs) lib;
   protocol = import ./worktree-holder-evidence-protocol.nix { inherit pkgs; };
-  kernel = import ./worktree-holder-proc.nix { inherit pkgs; };
+  kernel = import ./worktree-holder-proc.nix { inherit pkgs ownedVmClassDiagnostics; };
   sources = map (suffix: "worktree-holder-evidence${suffix}.rs") [
     "-mounted-lib"
     "-inventory"
@@ -20,7 +21,7 @@ let
   );
 in
 assert builtins.isList allowedRoots && builtins.all builtins.isString allowedRoots;
-pkgs.runCommand "holder-evidence-native-membership"
+pkgs.runCommand (if ownedVmClassDiagnostics then "holder-evidence-native-membership-owned-vm-diagnostics" else "holder-evidence-native-membership")
   {
     nativeBuildInputs = [
       pkgs.rustc
