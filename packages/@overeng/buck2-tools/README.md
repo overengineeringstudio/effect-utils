@@ -233,8 +233,12 @@ failure or after the active owner finishes.
 `requireEditorPublicationInputs` walks filesystem components and intermediate symlink
 targets, including parent-directory aliases: every reached Buck boundary must belong
 to this root's reserved isolation and owner, even if the final target is immutable.
-Direct immutable Nix inputs and ordinary files remain valid. Declaring the helper
-does not yet move publisher callers onto the reserved isolation.
+Direct immutable Nix inputs and ordinary files remain valid.
+
+Watch reconciliations now retain the owner across the private Buck build, authority
+reads, budget reservation, copying and verification. The publisher validates Buck
+input ownership before traversal/reservation and again before final verification.
+Default-isolation builds and rematerialization remain outside that private namespace.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress

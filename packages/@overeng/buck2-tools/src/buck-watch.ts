@@ -5,6 +5,11 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import {
+  editorPublicationIsolation,
+  editorPublicationOwnerFdEnv,
+  withEditorPublicationOwner,
+} from './editor-publication-owner.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
 
@@ -509,6 +514,8 @@ export type RunCommand = (options: {
   readonly onStderr?: (chunk: string) => void
   /** Disable duplicate capture when onStderr owns a bounded diagnostic ring. */
   readonly captureStderr?: boolean
+  /** Actual publication flock capability, mapped to child descriptor 3. */
+  readonly publicationOwnerFd?: number
 }) => Promise<CommandResult>
 
 /**
@@ -544,15 +551,26 @@ export const runCommand: RunCommand = ({
   input,
   onStderr,
   captureStderr,
+  publicationOwnerFd,
 }) => {
   const settled = Promise.withResolvers<CommandResult>()
-  const child =
-    input === undefined
-      ? spawn(command, args, { cwd, signal, stdio: ['ignore', 'pipe', 'pipe'], detached })
-      : spawn(command, args, { cwd, signal, stdio: ['pipe', 'pipe', 'pipe'], detached })
+  const stdio = [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] as const
+  const child = spawn(command, args, {
+    cwd,
+    signal,
+    detached,
+    stdio: publicationOwnerFd === undefined ? stdio : [...stdio, publicationOwnerFd],
+    ...(publicationOwnerFd === undefined
+      ? {}
+      : { env: { ...process.env, [editorPublicationOwnerFdEnv]: '3' } }),
+  })
+  const outputStream = child.stdout
+  const errorStream = child.stderr
+  if (outputStream === null || errorStream === null)
+    throw new Error('Command runner did not create its declared output pipes')
   let stdout = ''
   let stderr = ''
-  child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+  outputStream.setEncoding('utf8').on('data', (chunk: string) => {
     stdout += chunk
   })
   const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
@@ -561,10 +579,10 @@ export const runCommand: RunCommand = ({
     if (captureStderr !== false) stderr += chunk
     onStderr?.(chunk)
   }
-  child.stderr.on('data', (chunk: Buffer) => {
+  errorStream.on('data', (chunk: Buffer) => {
     capture(decoder.decode(chunk, { stream: true }))
   })
-  child.stderr.once('end', () => capture(decoder.decode()))
+  errorStream.once('end', () => capture(decoder.decode()))
   child.once('error', settled.reject)
   let inputError: Error | undefined
   // A dead reader can report EPIPE before close supplies its actual exit status.
@@ -672,15 +690,24 @@ export type BuckReconcilerOptions = {
   readonly batchPublication?: boolean
 }
 
-/** Build the affected product set, then publish each affected editor view from provider roots. */
-export const reconcileBuckViews = async ({
-  request,
-  options,
-}: {
+type BuckReconciliation = {
   readonly request: ReconcileRequest
   readonly options: BuckReconcilerOptions
-}): Promise<void> => {
-  const execute = options.run ?? runCommand
+}
+
+/** Own the reserved materializer from before build until the last publisher exits. */
+export const reconcileBuckViews = (input: BuckReconciliation): Promise<void> =>
+  withEditorPublicationOwner({
+    root: input.options.repoRoot,
+    run: (ownerFd) => reconcileOwnedBuckViews(input, ownerFd),
+  })
+
+const reconcileOwnedBuckViews = async (
+  { request, options }: BuckReconciliation,
+  ownerFd: number,
+): Promise<void> => {
+  const execute: RunCommand = (command) =>
+    (options.run ?? runCommand)({ ...command, publicationOwnerFd: ownerFd })
   let pendingDiagnostics = ''
   const forwardDiagnostics = (chunk: string): void => {
     pendingDiagnostics += chunk
@@ -807,7 +834,15 @@ export const reconcileBuckViews = async ({
   try {
     built = await execute({
       command: options.buck2,
-      args: ['build', ...request.buildTargets, '--show-full-output', '--event-log', eventLog],
+      args: [
+        '--isolation-dir',
+        editorPublicationIsolation,
+        'build',
+        ...request.buildTargets,
+        '--show-full-output',
+        '--event-log',
+        eventLog,
+      ],
       cwd: options.workspaceRoot,
       captureStderr: false,
       onStderr: captureBuildDiagnostic,

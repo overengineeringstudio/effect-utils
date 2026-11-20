@@ -31,6 +31,7 @@ import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
+import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import {
   EditorViewCapacityError,
   editorViewHostBudgetBytes,
@@ -174,6 +175,8 @@ export type EditorViewOptions = {
    * Omission preserves the legacy tree-confined policy.
    */
   readonly backingRoots?: readonly string[]
+  /** Actual in-process owner capability; child CLIs inherit the same descriptor instead. */
+  readonly publicationOwnerFd?: number
   readonly nodeModules: string
   /**
    * Synchronization hook invoked after the admitted roots are fingerprinted and
@@ -181,6 +184,8 @@ export type EditorViewOptions = {
    * changed inside that window are caught by the publication stability check.
    */
   readonly beforeMaterialize?: () => void | Promise<void>
+  /** Real-process barrier before reading declared roots, used to prove producer isolation. */
+  readonly beforeVerify?: () => void | Promise<void>
   /** Fault barrier after a direct CAS link, before leaving its exclusion. */
   readonly afterDirectLink?: () => void
   /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
@@ -3200,6 +3205,11 @@ const publishEditorViewCoordinated = async ({
   budgetCensusSession?: EditorViewBudgetCensusSession
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
+  requireEditorPublicationInputs({
+    root: options.repoRoot,
+    paths: [options.editorInputs, options.nodeModules, ...(options.backingRoots ?? [])],
+    ...(options.publicationOwnerFd === undefined ? {} : { ownerFd: options.publicationOwnerFd }),
+  })
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
@@ -3432,6 +3442,7 @@ const publishEditorViewCoordinated = async ({
       }
     })()
     enterPhase('verify')
+    await options.beforeVerify?.()
     const declaredRoots =
       finite === true
         ? await fingerprintDeclaredRoots({
@@ -4224,6 +4235,11 @@ export const verifyEditorViewSnapshot = async (
 
 /** Validate the live two-hop view against freshly admitted Buck artifacts. */
 export const checkEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+  requireEditorPublicationInputs({
+    root: options.repoRoot,
+    paths: [options.editorInputs, options.nodeModules, ...(options.backingRoots ?? [])],
+    ...(options.publicationOwnerFd === undefined ? {} : { ownerFd: options.publicationOwnerFd }),
+  })
   requireRecordIdentity(options)
   const paths = makePaths(options)
   validateWorkspaceDependencyAuthority({
