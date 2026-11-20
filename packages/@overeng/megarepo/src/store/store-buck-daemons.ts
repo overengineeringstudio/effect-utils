@@ -7,6 +7,12 @@ import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import {
+  editorPublicationIsolation,
+  releaseEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
+} from '@overeng/buck2-tools'
+
+import {
   isInsideWorktree,
   parseProcStat,
   parseProcUids,
@@ -385,6 +391,57 @@ export const newestBuckLogWriteMs = Effect.fn('store.newestBuckLogWriteMs')(func
   return newest
 })
 
+/** A live or uninspectable publication owner vetoes maintenance without mutating the root. */
+export type BuckIsolationMaintenanceResult<TResult> =
+  | { readonly _tag: 'completed'; readonly value: TResult }
+  | {
+      readonly _tag: 'blocked'
+      readonly reason: 'editor-publication-busy' | `editor-publication-owner-unknown: ${string}`
+      readonly cause?: unknown
+    }
+
+export const withBuckIsolationMaintenance = <TResult, TError, TEnv>({
+  root,
+  isolation,
+  run,
+}: {
+  readonly root: string
+  readonly isolation: string
+  readonly run: Effect.Effect<TResult, TError, TEnv>
+}): Effect.Effect<BuckIsolationMaintenanceResult<TResult>, TError, TEnv> => {
+  const completed = (value: TResult): BuckIsolationMaintenanceResult<TResult> => ({
+    _tag: 'completed',
+    value,
+  })
+  if (isolation !== editorPublicationIsolation) return Effect.map(run, completed)
+  return Effect.acquireUseRelease(
+    Effect.try({ try: () => tryAcquireEditorPublicationOwner({ root }), catch: (cause) => cause }).pipe(
+      Effect.match({
+        onFailure: (cause) => ({
+          _tag: 'blocked' as const,
+          reason: `editor-publication-owner-unknown: ${String(cause)}` as const,
+          cause,
+        }),
+        onSuccess: (owner) => ({ _tag: 'acquired' as const, owner }),
+      }),
+    ),
+    (acquisition) => {
+      if (acquisition._tag === 'blocked') return Effect.succeed(acquisition)
+      if (acquisition.owner === undefined)
+        return Effect.succeed({
+          _tag: 'blocked' as const,
+          reason: 'editor-publication-busy' as const,
+        })
+      return Effect.map(run, completed)
+    },
+    (acquisition) =>
+      Effect.sync(() => {
+        if (acquisition._tag === 'acquired' && acquisition.owner !== undefined)
+          releaseEditorPublicationOwner(acquisition.owner)
+      }),
+  )
+}
+
 /** Invoke the native binary against an existing daemon's exact root and isolation. */
 export const runBuck2 = Effect.fn('store.runBuck2')(function* ({
   binary,
@@ -522,42 +579,54 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
       })
       continue
     }
-    if (beforeKill !== undefined && (yield* beforeKill()) === false) {
-      results.push({ _tag: 'kept-active', ...identity })
-      continue
-    }
-    const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
-    if (observedLogWriteMs !== decidedLogWriteMs) {
-      results.push({ _tag: 'kept-active', ...identity })
-      continue
-    }
-    const killRun = yield* runBuck2({ binary, daemon, subcommand: 'kill' })
-    if (Option.isNone(killRun) === true || killRun.value.exitCode !== 0) {
-      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-failed' })
-      continue
-    }
-    const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(killRun.value.stderr)?.[1]
-    if (exitedPid === undefined) {
-      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-found-no-daemon' })
-      continue
-    }
-    const logWriteAfterKillMs = yield* newestBuckLogWriteMs(daemon)
-    let raced: string | undefined
-    if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
-    else if (logWriteAfterKillMs !== observedLogWriteMs) raced = 'command-log-written-during-kill'
-    if (raced !== undefined && reportRaces === true) {
-      yield* Effect.logWarning(
-        `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
+    const maintenance = yield* withBuckIsolationMaintenance({
+      root: daemon.root,
+      isolation: daemon.isolation,
+      run: Effect.gen(function* () {
+        if (beforeKill !== undefined && (yield* beforeKill()) === false)
+          return { _tag: 'kept-active' as const, ...identity }
+        const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
+        if (observedLogWriteMs !== decidedLogWriteMs)
+          return { _tag: 'kept-active' as const, ...identity }
+        const killRun = yield* runBuck2({ binary, daemon, subcommand: 'kill' })
+        if (Option.isNone(killRun) === true || killRun.value.exitCode !== 0)
+          return { _tag: 'unreachable' as const, ...identity, memoryKiB, reason: 'kill-failed' }
+        const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(killRun.value.stderr)?.[1]
+        if (exitedPid === undefined)
+          return {
+            _tag: 'unreachable' as const,
+            ...identity,
+            memoryKiB,
+            reason: 'kill-found-no-daemon',
+          }
+        const logWriteAfterKillMs = yield* newestBuckLogWriteMs(daemon)
+        let raced: string | undefined
+        if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
+        else if (logWriteAfterKillMs !== observedLogWriteMs)
+          raced = 'command-log-written-during-kill'
+        if (raced !== undefined && reportRaces === true)
+          yield* Effect.logWarning(
+            `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
+          )
+        return {
+          _tag: 'stopped' as const,
+          ...identity,
+          freedKiB: memoryKiB,
+          ...(raced === undefined ? {} : { raced }),
+        }
+      }),
+    })
+    if (maintenance._tag === 'blocked') {
+      results.push(
+        maintenance.reason === 'editor-publication-busy'
+          ? { _tag: 'kept-active', ...identity }
+          : { _tag: 'unreachable', ...identity, memoryKiB, reason: maintenance.reason },
       )
+      continue
     }
-    const stopped = {
-      _tag: 'stopped' as const,
-      ...identity,
-      freedKiB: memoryKiB,
-      ...(raced === undefined ? {} : { raced }),
-    }
-    results.push(stopped)
-    if (afterStop !== undefined) yield* afterStop(stopped)
+    results.push(maintenance.value)
+    if (maintenance.value._tag === 'stopped' && afterStop !== undefined)
+      yield* afterStop(maintenance.value)
   }
   return results
 })
