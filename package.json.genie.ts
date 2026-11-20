@@ -1,7 +1,7 @@
 // @genie-bootstrap
 import effectSocketPkg from './context/effect/socket/package.json.genie.ts'
 import opentuiPkg from './context/opentui/package.json.genie.ts'
-import { firstPartyPackageDefaults, packageJson } from './genie/internal.ts'
+import { catalog, firstPartyPackageDefaults, packageJson } from './genie/internal.ts'
 import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/package.json.genie.ts'
 import aiGatewayConformancePkg from './packages/@overeng/ai-gateway-conformance/package.json.genie.ts'
 import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.genie.ts'
@@ -51,6 +51,9 @@ import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
 import restateEffectPkg from './packages/@overeng/restate-effect/package.json.genie.ts'
 import rpcDevtoolsPkg from './packages/@overeng/rpc-devtools/package.json.genie.ts'
+import scgAuthorityPkg from './packages/@overeng/scg-authority/package.json.genie.ts'
+import scgDiscordPkg from './packages/@overeng/scg-discord/package.json.genie.ts'
+import scgProtocolPkg from './packages/@overeng/scg-protocol/package.json.genie.ts'
 import stylexTokensPkg from './packages/@overeng/stylex-tokens/package.json.genie.ts'
 import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
 import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
@@ -113,6 +116,9 @@ export const rootWorkspacePackages = [
   opentuiPkg,
   reactInspectorPkg,
   restateEffectPkg,
+  scgAuthorityPkg,
+  scgDiscordPkg,
+  scgProtocolPkg,
   stylexTokensPkg,
   tuiCorePkg,
   tuiReactPkg,
@@ -136,4 +142,9 @@ export const rootWorkspaceMemberPaths = rootWorkspace.data.workspaces
 export default packageJson({
   ...rootWorkspace.data,
   ...firstPartyPackageDefaults,
+  devDependencies: {
+    ...rootWorkspace.data.devDependencies,
+    // A downstream consumer links this exact pnpm store path.
+    ...catalog.pick('oxc-parser'),
+  },
 })

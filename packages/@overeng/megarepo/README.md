@@ -74,8 +74,8 @@ Lock synchronization compares repository identity case-insensitively as well.
 ### Standalone Nix lock synchronization
 
 Check or update standalone flake locks from an already resolved root input, or
-select a revision explicitly, without changing their declared ref intent. For
-example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
+select a revision explicitly. Ref intent stays unchanged unless `--ref` is supplied.
+For example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
 
 ```bash
 mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock
@@ -91,6 +91,15 @@ supplies the actual locked metadata for the revision; write mode updates the
 authority root and selected standalone locks together atomically, preserving
 `original.ref`.
 Without `--write`, no locks are written and requested-revision drift fails the check.
+
+For an atomic member repin, use
+`mr lock-sync --input library --member library --ref feature/published --rev <40-character-sha> --write`.
+`--ref` proves reachability from that exact published GitHub branch and aligns
+matching lock originals and Nix source declarations from the old or requested branch.
+`--member` includes the megarepo config, member resolutions (including same-repository
+aliases), and both existing root locks in the same validated transaction. SHA-pinned
+aliases keep SHA intent and pin status. Without `--rev`, member mode also checks
+member and secondary-root drift against the current root resolution.
 
 Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
 Git pathspecs. This lets active consumers share the root resolution while archived
@@ -367,6 +376,17 @@ Builds that have not written yet are invisible to the mtime and activity checks.
 agent activations wrap their builds in `mr store lease --owner-path <worktree>`, such a build is
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
+
+### Durable pool ownership primitives
+
+Persistent pool ownership uses version-2 store deletion barriers, which do not expire
+when their provider exits. Unknown records remain protected; ordinary version-1
+lease recovery is unchanged. Detached worktree creation can acquire its native Git
+lock atomically. Durable pool records serialize host-store capacity and generation
+claims, and retain unknown accounting rather than allocating around uncertainty.
+Writable claims invalidate measured accounting until a safe remeasure; new reservations
+wait, while other already-reserved ready roots remain claimable. Execution can expand
+files, so this accounting ledger is not a hard filesystem quota.
 
 ### Process activity snapshot
 

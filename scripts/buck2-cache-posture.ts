@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import { connect, type ClientHttp2Stream } from 'node:http2'
 import { BlockList, isIP } from 'node:net'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 
 const MANAGED_BEGIN = '# effect-utils standalone cache posture: begin'
@@ -33,6 +33,25 @@ export const canonicalCacheAdmissionInvocationId = (value: unknown): string => {
     throw new Error('Invalid cache admission invocation ID')
   const hex = plain.replaceAll('-', '').toLowerCase()
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/** Resolve the same root/include config sources for admission and FILE reconciliation. */
+export const readConfig = ({
+  path,
+  seen = new Set<string>(),
+}: {
+  readonly path: string
+  readonly seen?: Set<string>
+}): string => {
+  const absolute = resolve(path)
+  if (seen.has(absolute) === true) throw new Error('Buck cache posture: recursive config include')
+  seen.add(absolute)
+  const text = (existsSync(absolute) === true ? readFileSync(absolute, 'utf8') : '').replace(
+    /^\s*<file:([^>]+)>\s*$/gmu,
+    (_, include: string) => readConfig({ path: resolve(dirname(absolute), include), seen }),
+  )
+  seen.delete(absolute)
+  return text
 }
 
 /** Parse Buck section/key assignments, with later assignments taking precedence. */
@@ -112,8 +131,9 @@ const fail = (message: string): never => {
 /** Remove only the launcher-owned overlay, rejecting malformed or duplicate managed blocks. */
 export const withoutManagedBlock = (
   current: string,
-): { readonly content: string; readonly found: boolean } => {
+): { readonly content: string; readonly found: boolean; readonly managed: string } => {
   const output: string[] = []
+  const managed: string[] = []
   let inside = false
   let found = false
   for (const line of current.split(/\r?\n/u)) {
@@ -129,9 +149,101 @@ export const withoutManagedBlock = (
       continue
     }
     if (inside === false) output.push(line)
+    else managed.push(line)
   }
   if (inside === true) fail('unterminated managed block in .buckconfig.local')
-  return { content: output.join('\n').trimEnd(), found }
+  return { content: output.join('\n').trimEnd(), found, managed: managed.join('\n') }
+}
+
+/** Exact host-declared private reader routes; never apply them to a writer or CI lane. */
+const readerForwarderCacheBlock = ({
+  base,
+  env,
+}: {
+  readonly base: Readonly<Record<string, string>>
+  readonly env: Readonly<Record<string, string | undefined>>
+}): string => {
+  const encoded = env['BUCK2_REAPI_READ_FORWARDERS']
+  if (encoded === undefined || encoded === '') return DEFAULT_CACHE_BLOCK
+  const invalid = (): never => fail('invalid BUCK2_REAPI_READ_FORWARDERS')
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(encoded)
+  } catch {
+    return invalid()
+  }
+  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded) === true)
+    return invalid()
+  // Require canonical origins, not URL normalization (userinfo, paths, escapes,
+  // whitespace, query strings and fragments must never become config text).
+  const origin = (value: unknown): URL => {
+    if (typeof value !== 'string' || /^grpc:\/\/[^/@?#\s%]+:[0-9]+$/u.test(value) === false)
+      return invalid()
+    let url: URL
+    try {
+      url = new URL(value)
+    } catch {
+      return invalid()
+    }
+    if (
+      url.username !== '' ||
+      url.password !== '' ||
+      url.pathname !== '' ||
+      url.search !== '' ||
+      url.hash !== '' ||
+      url.port === '' ||
+      Number(url.port) < 1 ||
+      Number(url.port) > 65535 ||
+      value !== `grpc://${url.hostname}:${url.port}`
+    )
+      return invalid()
+    return url
+  }
+  const routes = new Map<string, string>()
+  for (const [source, target] of Object.entries(decoded)) {
+    const from = origin(source)
+    const to = origin(target)
+    const privateIPv4 =
+      isIP(from.hostname) === 4 &&
+      (from.hostname.startsWith('10.') ||
+        from.hostname.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2[0-9]|3[01])\./u.test(from.hostname) ||
+        /^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./u.test(from.hostname))
+    const tailnetName = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+ts\.net$/u.test(from.hostname)
+    if (privateIPv4 === false && tailnetName === false) return invalid()
+    if (to.hostname !== '127.0.0.1') return invalid()
+    routes.set(source, `grpc://${to.hostname}:${to.port}`)
+  }
+  if (
+    env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
+    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
+    (env['CI'] ?? '') !== '' ||
+    env['GITHUB_ACTIONS'] === 'true' ||
+    env['BUCK2_CI_POSTURE'] === '1' ||
+    (env['CI_BUCK2_CACHE_EVIDENCE_PATH'] ?? '') !== '' ||
+    (env['BUCK2_PRIVATE_CACHE_WRITE_AUTH'] ?? '') !== '' ||
+    (env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] ?? '') !== '' ||
+    (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== '' ||
+    base['buck2.remote_cache_enabled'] === 'false' ||
+    base['buck2.allow_cache_uploads'] !== 'false' ||
+    base['buck2.default_allow_cache_upload'] === 'true' ||
+    base['buck2_re_client.tls'] !== 'false'
+  )
+    return DEFAULT_CACHE_BLOCK
+  const addresses: string[] = []
+  for (const field of ['action_cache_address', 'cas_address', 'engine_address']) {
+    const target = routes.get(base[`buck2_re_client.${field}`] ?? '')
+    if (target !== undefined) addresses.push(`  ${field} = ${target}`)
+  }
+  if (addresses.length === 0) return DEFAULT_CACHE_BLOCK
+  return `${MANAGED_BEGIN}
+[buck2]
+  allow_cache_uploads = false
+  default_allow_cache_upload = false
+[buck2_re_client]
+${addresses.join('\n')}
+  http_headers = x-buck2-reader: read-only
+${MANAGED_END}`
 }
 
 /**
@@ -141,11 +253,14 @@ export const withoutManagedBlock = (
 export const standaloneCachePostureConfig = ({
   current,
   env,
+  base,
 }: {
   readonly current: string
+  readonly base: Readonly<Record<string, string>>
   readonly env: Readonly<Record<string, string | undefined>>
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
+  const reader = readerForwarderCacheBlock({ base, env })
   let managed =
     env['BUCK2_NO_REMOTE_CACHE'] === '1'
       ? NO_REMOTE_CACHE_BLOCK
@@ -155,7 +270,7 @@ export const standaloneCachePostureConfig = ({
           ? privateWriterCacheBlock({ env })
           : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
             ? PUBLISHER_CACHE_BLOCK
-            : DEFAULT_CACHE_BLOCK
+            : reader
   // Measured CI peak: 58 native-launch admissions; 120 retains twice that volume.
   // This is Buck's count-only native retention, not a byte bound or a developer default.
   if (env['GITHUB_ACTIONS'] === 'true' || (env['CI_BUCK2_CACHE_EVIDENCE_PATH'] ?? '') !== '') {
@@ -169,20 +284,22 @@ export const standaloneCachePostureConfig = ({
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
 
-/** Atomically publish or remove only the managed cache posture block. */
+/** Atomically reconcile using the same effective policy base that selected admission. */
 export const reconcileStandaloneCachePosture = ({
   repoRoot,
   env,
+  base,
 }: {
   readonly repoRoot: string
   readonly env: Readonly<Record<string, string | undefined>>
+  readonly base: Readonly<Record<string, string>>
 }): void => {
   const output = resolve(repoRoot, '.buckconfig.local')
   const exists = existsSync(output)
   if (exists === true && lstatSync(output).isSymbolicLink() === true)
     fail('.buckconfig.local must not be a symbolic link')
   const current = exists === true ? readFileSync(output, 'utf8') : ''
-  const next = standaloneCachePostureConfig({ current, env })
+  const next = standaloneCachePostureConfig({ current, env, base })
   if (next === current) return
   const candidate = `${output}.candidate-${randomUUID().replaceAll('-', '')}`
   try {
@@ -670,7 +787,10 @@ export const probeRemoteCacheCapabilities = async ({
 if (import.meta.main === true)
   try {
     const repoRoot = process.argv[2] ?? fail('expected repository root argument')
-    reconcileStandaloneCachePosture({ repoRoot, env: process.env })
+    const base = buckConfigValues(
+      `${readConfig({ path: resolve(repoRoot, '.buckconfig') })}\n${withoutManagedBlock(readConfig({ path: resolve(repoRoot, '.buckconfig.local') })).content}`,
+    )
+    reconcileStandaloneCachePosture({ repoRoot, env: process.env, base })
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

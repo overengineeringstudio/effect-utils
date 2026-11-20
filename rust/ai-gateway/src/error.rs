@@ -26,6 +26,40 @@ impl std::error::Error for ToolRunError {
     }
 }
 
+/// Caller-visible evidence for malformed JSON or original-schema violations.
+#[derive(Clone, PartialEq)]
+pub struct StructuredOutputError {
+    pub errors: Vec<String>,
+    pub usage: Option<Usage>,
+    pub finish_reason: Option<String>,
+    /// UTF-8 prefix, at most 2048 bytes including the truncation marker.
+    raw_text: String,
+    /// Byte length of the complete response text, before truncation.
+    pub raw_text_bytes: usize,
+    pub truncated: bool,
+}
+
+impl StructuredOutputError {
+    /// Explicitly access sensitive model-generated response text.
+    pub fn raw_text(&self) -> &str {
+        &self.raw_text
+    }
+}
+
+impl fmt::Debug for StructuredOutputError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StructuredOutputError")
+            .field("errors", &self.errors)
+            .field("usage", &self.usage)
+            .field("finish_reason", &self.finish_reason)
+            .field("raw_text", &"[REDACTED]")
+            .field("raw_text_bytes", &self.raw_text_bytes)
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Error {
     Http {
@@ -44,6 +78,9 @@ pub enum Error {
         errors: Vec<String>,
         usage: Option<Usage>,
     },
+    /// Structured response rejected after parsing or original-schema validation.
+    /// Raw text is caller-visible only; Display and telemetry omit the excerpt.
+    StructuredOutput(Box<StructuredOutputError>),
     Transport {
         message: String,
     },
@@ -76,6 +113,33 @@ impl Error {
             *billed = usage;
         }
         self
+    }
+
+    pub(crate) fn structured_output(
+        errors: Vec<String>,
+        usage: Option<Usage>,
+        finish_reason: Option<String>,
+        mut raw_text: String,
+    ) -> Self {
+        const LIMIT: usize = 2048;
+        const MARKER: &str = "\n[truncated]";
+        let raw_text_bytes = raw_text.len();
+        let truncated = raw_text_bytes > LIMIT;
+        if truncated {
+            let mut end = LIMIT - MARKER.len();
+            while !raw_text.is_char_boundary(end) {
+                end -= 1;
+            }
+            raw_text = format!("{}{MARKER}", &raw_text[..end]);
+        }
+        Self::StructuredOutput(Box::new(StructuredOutputError {
+            errors,
+            usage,
+            finish_reason,
+            raw_text,
+            raw_text_bytes,
+            truncated,
+        }))
     }
 
     pub(crate) fn http(status: u16, raw_body: String, retry_after: Option<String>) -> Self {
@@ -125,7 +189,7 @@ impl Error {
         match self {
             Self::Http { r#type, .. } => r#type.as_deref().unwrap_or("http_error"),
             Self::Stream { .. } => "stream_error",
-            Self::Validation { .. } => "validation_error",
+            Self::Validation { .. } | Self::StructuredOutput(_) => "validation_error",
             Self::Transport { .. } => "transport_error",
             Self::Config { .. } => "config_error",
         }
@@ -139,6 +203,9 @@ impl fmt::Display for Error {
                 status, message, ..
             } => write!(formatter, "HTTP {status}: {message}"),
             Self::Stream { message, .. } => write!(formatter, "stream: {message}"),
+            Self::StructuredOutput(error) => {
+                write!(formatter, "validation: {}", error.errors.join("; "))
+            }
             Self::Validation { errors, .. } => {
                 write!(formatter, "validation: {}", errors.join("; "))
             }
@@ -153,6 +220,30 @@ impl std::error::Error for Error {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structured_output_debug_redacts_excerpt_for_payload_and_error() {
+        let text = "sensitive-response-excerpt";
+        let error = Error::structured_output(
+            vec!["expected value".into()],
+            None,
+            Some("length".into()),
+            text.into(),
+        );
+        let Error::StructuredOutput(payload) = &error else {
+            panic!("expected structured output failure");
+        };
+        assert_eq!(payload.raw_text(), text);
+        for debug in [format!("{payload:?}"), format!("{error:?}")] {
+            assert!(!debug.contains(text));
+            assert!(debug.contains("[REDACTED]"));
+            assert!(debug.contains("raw_text_bytes: 26"));
+            assert!(debug.contains("truncated: false"));
+            assert!(debug.contains("length"));
+            assert!(debug.contains("expected value"));
+            assert!(debug.contains("usage: None"));
+        }
+    }
 
     #[test]
     fn unknown_error_bodies_remain_http_failures() {

@@ -586,8 +586,10 @@ fn assert_outcome(case: &Value, result: ai_gateway::Result<Value>) {
         }
         "validation-error" => {
             let error = result.expect_err("expected local validation failure");
-            let Error::Validation { errors, usage } = error else {
-                panic!("expected validation error, got {error:?}");
+            let (errors, usage) = match error {
+                Error::Validation { errors, usage } => (errors, usage),
+                Error::StructuredOutput(error) => (error.errors, error.usage),
+                error => panic!("expected validation error, got {error:?}"),
             };
             assert!(
                 !errors.is_empty(),
@@ -663,12 +665,10 @@ async fn structured_invalid_retains_billed_usage() {
         .build()
         .unwrap();
     let error = operate(&client, &case).await.unwrap_err();
-    let Error::Validation {
-        usage: Some(usage), ..
-    } = error
-    else {
-        panic!("missing billed usage: {error:?}");
+    let Error::StructuredOutput(error) = error else {
+        panic!("missing structured output error: {error:?}");
     };
+    let usage = error.usage.expect("missing billed usage");
     let wire = &case["response"]["json"]["usage"];
     assert_eq!(usage.input, wire["prompt_tokens"].as_u64());
     assert_eq!(usage.output, wire["completion_tokens"].as_u64());
@@ -678,6 +678,89 @@ async fn structured_invalid_retains_billed_usage() {
         wire["prompt_tokens_details"]["cached_tokens"].as_u64()
     );
     replay.assert_request(&case);
+}
+
+async fn structured_output_error(text: &str, finish_reason: Option<&str>) -> Error {
+    let mut case = load_cases()
+        .into_iter()
+        .find(|case| case["id"] == "structured.invalid")
+        .unwrap();
+    case["response"]["json"]["choices"][0]["message"]["content"] = json!(text);
+    case["response"]["json"]["choices"][0]["finish_reason"] = json!(finish_reason);
+    let replay = Replay::start(&case).await;
+    let client = Client::builder(&replay.origin)
+        .token("fixture-token")
+        .build()
+        .unwrap();
+    let error = client
+        .chat("fixture/model")
+        .user("Return an object")
+        .structured_with_schema(json!({
+            "type": "object",
+            "properties": { "answer": { "type": "string" } },
+            "required": ["answer"],
+            "additionalProperties": false
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(replay.requests.lock().len(), 1, "no repair or retry");
+    error
+}
+
+#[tokio::test]
+async fn structured_fenced_json_retains_raw_text_and_finish_reason() {
+    let text = "```json\n{\"answer\":\"ok\"}\n```";
+    let error = structured_output_error(text, Some("stop")).await;
+    assert!(!error.is_retryable());
+    assert!(!error.to_string().contains(text));
+    let Error::StructuredOutput(error) = error else {
+        panic!("expected structured output failure");
+    };
+    assert!(error.errors[0].contains("expected value"));
+    assert_eq!(error.raw_text(), text);
+    assert_eq!(error.raw_text_bytes, text.len());
+    assert!(!error.truncated);
+    assert_eq!(error.finish_reason.as_deref(), Some("stop"));
+    assert!(error.usage.is_some());
+}
+
+#[tokio::test]
+async fn structured_trailing_characters_remain_parse_failure() {
+    let text = "{\"answer\":\"ok\"} trailing";
+    let Error::StructuredOutput(error) = structured_output_error(text, Some("stop")).await else {
+        panic!("expected structured output failure");
+    };
+    assert!(error.errors[0].contains("trailing characters"));
+    assert_eq!(error.raw_text(), text);
+    assert_eq!(error.finish_reason.as_deref(), Some("stop"));
+}
+
+#[tokio::test]
+async fn structured_array_against_object_retains_validation_evidence() {
+    let text = "[{\"answer\":\"ok\"}]";
+    let Error::StructuredOutput(error) = structured_output_error(text, None).await else {
+        panic!("expected structured output failure");
+    };
+    assert!(error.errors[0].contains("not of type \"object\""));
+    assert_eq!(error.raw_text(), text);
+    assert_eq!(error.finish_reason, None);
+}
+
+#[tokio::test]
+async fn structured_long_body_bounds_utf8_excerpt_and_surfaces_length() {
+    let text = format!("```{}", "界".repeat(2000));
+    let Error::StructuredOutput(error) = structured_output_error(&text, Some("length")).await
+    else {
+        panic!("expected structured output failure");
+    };
+    assert!(error.errors[0].contains("expected value"));
+    assert_eq!(error.raw_text_bytes, text.len());
+    assert!(error.truncated);
+    assert!(error.raw_text().len() <= 2048);
+    let prefix = error.raw_text().strip_suffix("\n[truncated]").unwrap();
+    assert!(text.starts_with(prefix));
+    assert!(prefix.len() >= 2048 - "\n[truncated]".len() - 3);
+    assert_eq!(error.finish_reason.as_deref(), Some("length"));
 }
 
 #[tokio::test]
