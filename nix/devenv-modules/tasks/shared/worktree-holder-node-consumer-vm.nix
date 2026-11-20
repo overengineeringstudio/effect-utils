@@ -5,6 +5,7 @@
   mkBuckProductFromSource,
   pnpmArchives,
   capabilities,
+  producerCommit,
 }:
 let
   evidence = import ./worktree-holder-evidence.nix {
@@ -18,7 +19,7 @@ let
   # These test-only Buck rules exist solely in the derivation, not the product
   # registry or generated checkout BUCK. Both bundles use the real local source.
   recipe = mode: {
-    inherit pnpmArchives capabilities;
+    inherit pnpmArchives capabilities producerCommit;
     product = {
       name = "worktree-holder-node-${mode}";
       kind = "fixture";

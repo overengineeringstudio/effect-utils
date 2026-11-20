@@ -358,6 +358,7 @@ rec {
           worktree-holder-node-consumer = import ./nix/devenv-modules/tasks/shared/worktree-holder-node-consumer-vm.nix {
             inherit pkgs mkBuckProductFromSource pnpmArchives;
             capabilities = buck2Capabilities;
+            producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           };
         }
         // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
