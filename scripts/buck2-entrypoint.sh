@@ -1,6 +1,10 @@
 #!@shell@
 # Keep a warm pinned-Buck loop out of the JavaScript runtime. Cache only complete
 # read-only invocations with identical config, arguments and exported environment.
+# Managed argv is literal or a plain-text @argfile; Python/stdin/config-cell
+# argfiles fail closed. For unmanaged projects only, the package's libexec/buck2
+# is the native escape hatch. Never use it for the reserved editor-publication
+# namespace: that materializer requires its real inherited root-owner descriptor.
 set -euo pipefail
 # Lifecycle initialization never starts native Buck or participates in its
 # launch cache/daemon wrapper, including when called from an admitted gate.
@@ -62,7 +66,12 @@ fi
 root="$PWD"
 while [[ ! -f "$root/.buckroot" && "$root" != / ]]; do root="${root%/*}"; [[ -n "$root" ]] || root=/; done
 cache=""
+# Descriptor 3 belongs to the publication owner, not the launch-cache reader.
+# Reserved calls always pass the ownership guard, including local-only cache hits.
 if [[ $# -gt 0 && -n "${HOME:-}${XDG_CACHE_HOME:-}" && -f "$root/.buckroot" && -f "$root/.buckconfig" && ! -d "$root/.buckconfig.d" \
+  && -z "${BUCK2_EDITOR_PUBLICATION_OWNER_FD:-}" \
+  && "${BUCK_ISOLATION_DIR:-v2}" != editor-publication \
+  && "$*" != *editor-publication* \
   && -z "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" \
   && -z "${CI:-}" \
   && -n "${WATCHMAN_SOCK:-}" \

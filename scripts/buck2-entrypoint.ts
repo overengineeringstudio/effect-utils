@@ -49,6 +49,11 @@ import {
   reconcileWatcherDaemon,
   withoutManagedWatcherBlock,
 } from './buck2-file-watcher.ts'
+import {
+  editorPublicationIsolation,
+  editorPublicationOwnerFdEnv,
+  requireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 
 const configCommands: Record<string, true> = {
   build: true,
@@ -781,6 +786,7 @@ export const resolveGateInvocation = ({
   cwd,
   strictRunArguments = true,
   includePayload = false,
+  selectionOnly = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -794,6 +800,8 @@ export const resolveGateInvocation = ({
   readonly cwd: string
   readonly strictRunArguments?: boolean
   readonly includePayload?: boolean
+  /** Ownership selection does not impose gate cleanup's conservative run-payload grammar. */
+  readonly selectionOnly?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }):
   | {
@@ -830,6 +838,7 @@ export const resolveGateInvocation = ({
         requested === undefined ||
         requested === '' ||
         requested === '-' ||
+        requested.endsWith('.py') === true ||
         requested.includes('//') === true ||
         requested.includes('#') === true ||
         (requested.startsWith('/') === true && resolve(requested) !== requested)
@@ -867,7 +876,7 @@ export const resolveGateInvocation = ({
     (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
   )
     return undefined
-  if (strictRunArguments === false && runIndex !== -1) {
+  if (selectionOnly === false && strictRunArguments === false && runIndex !== -1) {
     let targetSeen = false
     for (let index = runIndex + 1; index < buckArgs.length; index++) {
       const arg = buckArgs[index] ?? ''
@@ -937,6 +946,70 @@ export const resolveGateInvocation = ({
       : { isolation, args: buckArgs }
     : undefined
 }
+
+export const resolveManagedInvocation = ({
+  args,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): { readonly isolation: string; readonly args: readonly string[] } => {
+  const invocation = resolveGateInvocation({
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    selectionOnly: true,
+    includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck entrypoint cannot safely resolve publication ownership: managed Buck accepts literal argv and plain-text @argfiles only, not Python, stdin or config-cell argfiles. Use literal arguments, or the package libexec/buck2 only for unmanaged projects (never editor-publication).',
+    )
+  return invocation
+}
+
+const editorPublicationInvocation = ({
+  args,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): { readonly root: string; readonly fd: number } | undefined => {
+  const invocation = resolveManagedInvocation({ args, cwd, env })
+  if (invocation.isolation !== editorPublicationIsolation) return undefined
+  const canonicalCwd = realpathSync(cwd)
+  const root = findRoot(canonicalCwd)
+  const home = resolve(env['HOME'] ?? homedir())
+  let current = canonicalCwd
+  let nativeRoot: string | undefined
+  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
+  // Native has no argv cwd override. Do not authorize its outputs using marker ascent alone.
+  for (;;) {
+    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
+      if (current === home) break
+      nativeRoot = current
+    }
+    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  if (root === undefined || nativeRoot !== root)
+    throw new Error(
+      `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
+    )
+  return { root, fd: requireEditorPublicationOwner({ root, env }) }
+}
+
+/** No other caller may mutate the publication materializer without its real owner capability. */
+export const requireEditorPublicationInvocationOwner = (
+  options: Parameters<typeof editorPublicationInvocation>[0],
+): number | undefined => editorPublicationInvocation(options)?.fd
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
 export const cacheDaemonPolicyArguments = ({
@@ -2026,6 +2099,14 @@ type NativeCommandResult = {
   durationMs: number
 }
 
+/** Native children do not inherit the supervisor's owner descriptor or a stale claim to it. */
+const nativeCommandEnvironment = (): NodeJS.ProcessEnv => {
+  if (process.env[editorPublicationOwnerFdEnv] === undefined) return process.env
+  const env = { ...process.env }
+  delete env[editorPublicationOwnerFdEnv]
+  return env
+}
+
 /** Spawn exactly once, preserving inherited stdout and forwarding redirected stderr byte-for-byte. */
 const spawnNativeCommand = ({
   native,
@@ -2038,7 +2119,7 @@ const spawnNativeCommand = ({
 }) => {
   const started = performance.now()
   const child = Bun.spawn([native, ...args], {
-    env: process.env,
+    env: nativeCommandEnvironment(),
     stdin: 'inherit',
     stdout: 'inherit',
     stderr,
@@ -2138,15 +2219,29 @@ if (import.meta.main === true) {
       process.exit(0)
     }
     if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
-      const root = findRoot(process.cwd())
-      if (root !== undefined)
-        reconcileGateDaemon({
-          native,
-          root,
-          args: process.argv.slice(4),
+      const invocation = resolveGateInvocation({
+        args: process.argv.slice(4),
+        cwd: process.cwd(),
+        env: process.env,
+        includePayload: true,
+      })
+      // An opaque cleanup request retains its daemon without executing or rereading its input.
+      if (invocation !== undefined) {
+        const publication = editorPublicationInvocation({
+          args: invocation.args,
+          cwd: process.cwd(),
           env: process.env,
-          phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
         })
+        const root = publication?.root ?? findRoot(process.cwd())
+        if (root !== undefined)
+          reconcileGateDaemon({
+            native,
+            root,
+            args: invocation.args,
+            env: process.env,
+            phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
+          })
+      }
       process.exit(0)
     }
     const auth = process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
@@ -2165,8 +2260,18 @@ if (import.meta.main === true) {
     // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
     process.env['BUCK_WRAPPER_UUID'] ??= randomUUID()
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
-    const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
-    const root = findRoot(process.cwd())
+    // Snapshot mutable text argfiles once. The same literal stream is admitted and executed.
+    const requestedArgs = resolveManagedInvocation({
+      args: process.argv.slice(launchCache === undefined ? 3 : 5),
+      cwd: process.cwd(),
+      env: process.env,
+    }).args
+    const publication = editorPublicationInvocation({
+      args: requestedArgs,
+      cwd: process.cwd(),
+      env: process.env,
+    })
+    const root = publication?.root ?? findRoot(process.cwd())
     const watchmanDirectory =
       root !== undefined &&
       skipsWatcherAdmission(requestedArgs) === false &&
@@ -2313,7 +2418,12 @@ if (import.meta.main === true) {
       })
     } else {
       nativeResult = await runNativeWithEvidence({ native, args, root })
-      if (nativeResult === undefined) process.execve(native, [native, ...args], process.env)
+      if (nativeResult === undefined) {
+        if (publication === undefined)
+          process.execve(native, [native, ...args], nativeCommandEnvironment())
+        // Keep the borrowed owner in this client, never inherited by the persistent buckd.
+        else nativeResult = await spawnNativeCommand({ native, args, stderr: 'inherit' }).result
+      }
     }
     if (nativeResult !== undefined) {
       process.exitCode = nativeResult.exitCode

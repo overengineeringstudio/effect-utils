@@ -1,13 +1,22 @@
 import { expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import type { ReaderReapiUnavailableShadow } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import {
+  editorPublicationIsolation,
+  editorPublicationOwnerFdEnv,
+  withEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
   ciPostureDeclared,
   gateCgroupRelation,
   gateDaemonStopDecision,
   gateScopeIdentity,
   isOnlyReapiUnavailable,
+  requireEditorPublicationInvocationOwner,
+  resolveManagedInvocation,
   runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
@@ -362,3 +371,114 @@ it('cancels a stalled stderr backpressure retry and disables capture on terminat
   expect(attempts).toBe(1)
   expect(drained).toBe(3)
 })
+
+const withPublicationRoot = async (run: (fixtureRoot: string) => Promise<void>): Promise<void> => {
+  const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'buck-publication-invocation-')))
+  writeFileSync(join(fixtureRoot, '.buckroot'), '')
+  writeFileSync(join(fixtureRoot, '.buckconfig'), '')
+  try {
+    await run(fixtureRoot)
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true })
+  }
+}
+
+it('rejects unowned reserved isolation selected through argv, env and real nested argfiles', () =>
+  withPublicationRoot(async (cwd) => {
+    writeFileSync(join(cwd, 'private.args'), `--isolation-dir\n${editorPublicationIsolation}\nbuild\n//:quick\n`)
+    writeFileSync(join(cwd, 'nested.args'), '@private.args\n')
+    for (const args of [
+      ['--isolation-dir', editorPublicationIsolation, 'build', '//:quick'],
+      [`--isolation-dir=${editorPublicationIsolation}`, 'clean'],
+      ['@nested.args'],
+      ['--flagfile', 'nested.args'],
+    ]) expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env: {} })).toThrow(/publication|owner/i)
+    expect(() => requireEditorPublicationInvocationOwner({
+      args: ['kill'], cwd, env: { BUCK_ISOLATION_DIR: editorPublicationIsolation },
+    })).toThrow(/publication|owner/i)
+    expect(() => requireEditorPublicationInvocationOwner({
+      args: ['build', '//:quick'], cwd,
+      env: { BUCK_ISOLATION_DIR: editorPublicationIsolation, [editorPublicationOwnerFdEnv]: '3' },
+    })).toThrow()
+  }))
+
+it('accepts the actual owner and leaves default-isolation build and cleanup disjoint', () =>
+  withPublicationRoot(async (cwd) => {
+    await withEditorPublicationOwner({ root: cwd, run: async (fd) => {
+      const env = { [editorPublicationOwnerFdEnv]: String(fd) }
+      for (const command of ['build', 'clean', 'kill']) {
+        expect(requireEditorPublicationInvocationOwner({
+          args: ['--isolation-dir', editorPublicationIsolation, command], cwd, env,
+        })).toBe(fd)
+        expect(requireEditorPublicationInvocationOwner({ args: [command], cwd, env: {} })).toBeUndefined()
+      }
+      expect(requireEditorPublicationInvocationOwner({
+        args: ['build', '//:quick'], cwd, env: { ...env, BUCK_ISOLATION_DIR: editorPublicationIsolation },
+      })).toBe(fd)
+      expect(requireEditorPublicationInvocationOwner({
+        args: ['--isolation-dir', 'v2', 'build', '//:quick'], cwd,
+        env: { BUCK_ISOLATION_DIR: editorPublicationIsolation },
+      })).toBeUndefined()
+    } })
+  }))
+
+it('requires managed marker and pinned native project roots to agree, including HOME and symlinks', () =>
+  withPublicationRoot(async (cwd) => {
+    const child = join(cwd, 'nested cell')
+    mkdirSync(child)
+    writeFileSync(join(child, '.buckconfig'), '')
+    const alias = join(cwd, 'cwd-alias')
+    symlinkSync(child, alias)
+    await withEditorPublicationOwner({ root: cwd, run: async (fd) => {
+      const env = { [editorPublicationOwnerFdEnv]: String(fd) }
+      const args = ['--isolation-dir', editorPublicationIsolation, 'clean']
+      expect(requireEditorPublicationInvocationOwner({ args, cwd: child, env })).toBe(fd)
+      expect(requireEditorPublicationInvocationOwner({ args, cwd: alias, env })).toBe(fd)
+      rmSync(join(cwd, '.buckconfig'))
+      expect(() => requireEditorPublicationInvocationOwner({ args, cwd: child, env })).toThrow('native project root')
+      rmSync(join(child, '.buckconfig'))
+      expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env })).toThrow('native project root')
+      writeFileSync(join(cwd, '.buckconfig'), '')
+      expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env: { ...env, HOME: cwd } })).toThrow('native project root')
+      const foreign = join(cwd, 'foreign root')
+      mkdirSync(foreign)
+      writeFileSync(join(foreign, '.buckroot'), '')
+      writeFileSync(join(foreign, '.buckconfig'), '')
+      expect(() => requireEditorPublicationInvocationOwner({ args, cwd: foreign, env })).toThrow()
+    } })
+  }))
+
+it('retains the production plaintext uquery owner batch protocol', () =>
+  withPublicationRoot(async (cwd) => {
+    writeFileSync(join(cwd, 'candidates.args'), 'package.json\npackages/tool/package.json\n')
+    expect(requireEditorPublicationInvocationOwner({
+      args: ['uquery', '--output-format', 'json', 'owner(%s)', '@candidates.args'], cwd, env: {},
+    })).toBeUndefined()
+  }))
+
+it('fails closed for opaque isolation selection even when a real owner is available', () =>
+  withPublicationRoot(async (cwd) => {
+    writeFileSync(join(cwd, 'cycle.args'), '@cycle.args\n')
+    writeFileSync(join(cwd, 'opaque.py'), '--isolation-dir\neditor-publication\n')
+    writeFileSync(join(cwd, 'plain.args'), 'build\n//:quick\n')
+    symlinkSync('plain.args', join(cwd, 'python-alias.py'))
+    await withEditorPublicationOwner({ root: cwd, run: async (fd) => {
+      for (const args of [['@-'], ['@missing.args'], ['@cycle.args'], ['@opaque.py'], ['@python-alias.py']]) {
+        for (const env of [{}, { [editorPublicationOwnerFdEnv]: String(fd) }])
+          expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env })).toThrow()
+      }
+    } })
+  }))
+
+it('keeps the executed literal snapshot when a supported argfile is rewritten after admission', () =>
+  withPublicationRoot(async (cwd) => {
+    const path = join(cwd, 'mutable.args')
+    writeFileSync(path, '--isolation-dir\nv2\nbuild\n//:quick\n')
+    const admitted = resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} })
+    writeFileSync(path, '--isolation-dir\neditor-publication\nclean\n')
+    expect(admitted).toEqual({
+      isolation: 'v2', args: ['--isolation-dir', 'v2', 'build', '//:quick'],
+    })
+    expect(requireEditorPublicationInvocationOwner({ args: admitted.args, cwd, env: {} })).toBeUndefined()
+    expect(() => requireEditorPublicationInvocationOwner({ args: ['@mutable.args'], cwd, env: {} })).toThrow()
+  }))
