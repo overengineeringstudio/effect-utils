@@ -32,10 +32,34 @@ mkdir -p "$TEST_HOME"
 declare -a daemon_roots=() daemon_isolations=()
 private_watchman_started=false
 private_watchman_socket_dir=""
+owner_pid=""
 cleanup() {
   local exit_code=$? index
+  if [ -n "$owner_pid" ]; then
+    kill "$owner_pid" 2>/dev/null || true
+    wait "$owner_pid" 2>/dev/null || true
+  fi
   for ((index=0; index<${#daemon_roots[@]}; index++)); do
-    (cd "${daemon_roots[$index]}" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "${daemon_isolations[$index]}" kill) >/dev/null 2>&1 || true
+    if [ "${daemon_isolations[$index]}" = editor-publication ]; then
+      OWNER_MODULE="$ROOT/packages/@overeng/buck2-tools/src/editor-publication-owner.ts" \
+        OWNER_ROOT="${daemon_roots[$index]}" OWNER_BUCK2="$BUCK2" HOME="$TEST_HOME" "$BUN" --eval '
+        const { spawnSync } = require("node:child_process");
+        const { editorPublicationIsolation, editorPublicationOwnerFdEnv, tryAcquireEditorPublicationOwner } =
+          await import(process.env.OWNER_MODULE);
+        const owner = tryAcquireEditorPublicationOwner({ root: process.env.OWNER_ROOT });
+        if (owner === undefined) throw new Error("fixture cleanup owner unexpectedly busy");
+        try {
+          const result = spawnSync(process.env.OWNER_BUCK2, ["--isolation-dir", editorPublicationIsolation, "kill"], {
+            cwd: process.env.OWNER_ROOT,
+            env: { ...process.env, [editorPublicationOwnerFdEnv]: "3" },
+            stdio: ["ignore", "ignore", "ignore", owner.fd],
+          });
+          if (result.error || result.status !== 0) throw new Error("fixture reserved daemon cleanup failed");
+        } finally { owner.release(); }
+      ' || exit_code=1
+    else
+      (cd "${daemon_roots[$index]}" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "${daemon_isolations[$index]}" kill) >/dev/null 2>&1 || true
+    fi
   done
   if [ "$private_watchman_started" = true ]; then
     if ! HOME="$TEST_HOME" "$WATCHMAN_COMMAND" --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server \
@@ -275,11 +299,83 @@ CONFIG
       >"$fixture/failed-publication.json" 2>"$fixture/failed-publication.stderr" || migration_failure=$?
     [ "$migration_failure" -ne 0 ] && [ -f "$fixture/.buck2/capabilities.migration" ] || fail "failed migration did not preserve its lifecycle obligation"
     [ ! -L "$fixture/.buck2/capabilities" ] || fail "native stop failure occurred before the complete real root was installed"
+    # A real independent process owns the same persistent flock as an editor
+    # publisher. Native status/targets inherit the actual descriptor, not a
+    # boolean bypass. Two FIFO handshakes inspect the daemon while still owned.
+    daemon_roots+=("$fixture")
+    daemon_isolations+=("editor-publication")
+    mkfifo "$fixture/owner-ready" "$fixture/owner-release"
+    exec 8<>"$fixture/owner-ready"
+    exec 9<>"$fixture/owner-release"
+    OWNER_MODULE="$ROOT/packages/@overeng/buck2-tools/src/editor-publication-owner.ts" \
+      OWNER_FIXTURE="$fixture" OWNER_BUCK2="$BUCK2" HOME="$TEST_HOME" "$BUN" --eval '
+      const { spawnSync } = require("node:child_process");
+      const fs = require("node:fs");
+      const { editorPublicationIsolation, editorPublicationOwnerFdEnv, tryAcquireEditorPublicationOwner } =
+        await import(process.env.OWNER_MODULE);
+      const root = process.env.OWNER_FIXTURE;
+      const owner = tryAcquireEditorPublicationOwner({ root });
+      if (owner === undefined) throw new Error("fixture owner unexpectedly busy");
+      try {
+        const run = (args) => {
+          const result = spawnSync(process.env.OWNER_BUCK2,
+            ["--isolation-dir", editorPublicationIsolation, ...args], {
+              cwd: root, encoding: "utf8",
+              env: { ...process.env, [editorPublicationOwnerFdEnv]: "3" },
+              stdio: ["ignore", "pipe", "pipe", owner.fd],
+            });
+          if (result.error || result.status !== 0)
+            throw new Error(`owned native ${args[0]} failed: ${result.stderr}`, { cause: result.error });
+          return result.stdout;
+        };
+        run(["targets", "root//:pnpm_extract"]);
+        fs.writeFileSync(`${root}/owner-before.status`, run(["status"]));
+        const release = fs.openSync(`${root}/owner-release`, "r");
+        const next = () => {
+          if (fs.readSync(release, Buffer.alloc(1), 0, 1, null) !== 1)
+            throw new Error("owner fixture release handshake closed");
+        };
+        fs.writeFileSync(`${root}/owner-ready`, "ready\n");
+        next();
+        fs.writeFileSync(`${root}/owner-after.status`, run(["status"]));
+        fs.writeFileSync(`${root}/owner-ready`, "checked\n");
+        next();
+        fs.closeSync(release);
+      } finally { owner.release(); }
+    ' >"$fixture/owner.stdout" 2>"$fixture/owner.stderr" &
+    owner_pid=$!
+    read -r -t 60 -u 8 owner_ready || { cat "$fixture/owner.stderr" >&2; fail "editor owner did not become ready"; }
+    [ "$owner_ready" = ready ] || fail "invalid owner readiness handshake"
+    primary_pid="$(cat "$TEST_HOME/.buck/buckd/${fixture#/}/$isolation/buckd.pid")"
+    migration_deferred=0
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" \
+      >"$fixture/deferred-publication.json" 2>"$fixture/deferred-publication.stderr" || migration_deferred=$?
+    [ "$migration_deferred" -ne 0 ] || fail "live editor owner incorrectly completed migration"
+    grep -Fq "Capability cell migration deferred: active editor-publication owner" "$fixture/deferred-publication.stderr" || fail "busy owner lacked migration deferral diagnostic"
+    [ -f "$fixture/.buck2/capabilities.migration" ] || fail "busy editor owner cleared migration marker"
+    [ ! -s "$fixture/deferred-publication.json" ] || fail "deferred migration emitted a success receipt"
+    if kill -0 "$primary_pid" 2>/dev/null; then fail "editor owner prevented independent ordinary daemon stop"; fi
+    printf x >&9
+    read -r -t 60 -u 8 owner_ready || { cat "$fixture/owner.stderr" >&2; fail "owned native status did not complete"; }
+    [ "$owner_ready" = checked ] || fail "invalid owner status handshake"
+    [ "$(jq -er '.daemon_constraints.daemon_id' "$fixture/owner-before.status")" = "$(jq -er '.daemon_constraints.daemon_id' "$fixture/owner-after.status")" ] || fail "migration stopped the live-owned reserved daemon"
+    assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
+    assert_gc_root "$fixture" "$GEN_TWO" "$PROFILE_TWO"
+    printf x >&9
+    wait "$owner_pid" || { cat "$fixture/owner.stderr" >&2; fail "editor owner failed to release"; }
+    owner_pid=""
+    exec 8>&-
+    exec 9>&-
+    # Re-establish the ordinary registrations after their independent stop so
+    # the original complete migration assertion still exercises native kills.
+    buck targets root//:pnpm_extract >"$fixture/restarted.targets" 2>"$fixture/restarted.stderr"
+    (cd "$fixture" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "$alternate_isolation" targets root//:pnpm_extract) \
+      >"$fixture/restarted-alternate.targets" 2>"$fixture/restarted-alternate.stderr"
     HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/publication.json"
-    jq -e --arg gen "$GEN_TWO" --arg primary "$fixture:$isolation" --arg alternate "$fixture:$alternate_isolation" '
+    jq -e --arg gen "$GEN_TWO" --arg primary "$fixture:$isolation" --arg alternate "$fixture:$alternate_isolation" --arg editor "$fixture:editor-publication" '
       .generation == $gen and .retainedCount == 2 and
-      (.migrationDaemonStops | sort) == ([$primary, $alternate] | sort)
-    ' "$fixture/publication.json" >/dev/null || fail "migration did not retain both generations and stop only its two registered isolations"
+      (.migrationDaemonStops | sort) == ([$primary, $alternate, $editor] | sort)
+    ' "$fixture/publication.json" >/dev/null || fail "migration did not retain both generations and stop only its three registered isolations"
     [ ! -e "$fixture/.buck2/capabilities.migration" ] || fail "successful native migration stop did not clear its obligation"
     [ -d "$fixture/.buck2/capabilities" ] && [ ! -L "$fixture/.buck2/capabilities" ] || fail "publisher did not migrate to a stable real capability cell"
     assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
@@ -358,7 +454,7 @@ CONFIG
     [ "$(stat -c %i "$shared_tool/manifest.json" 2>/dev/null || stat -f %i "$shared_tool/manifest.json")" = "$shared_inode" ] || fail "shared immutable tool was recopied"
     jq -nc --arg watcher "$watcher" --arg uuid "$daemon_uuid" --arg oldTool "$old_tool" \
       '{evidence:"native-daemon-tool-retention",watcher:$watcher,daemonUUID:$uuid,oldTool:$oldTool,survivedBeyondRetention:true,collectedAfterNativeStop:true}'
-    jq -nc --arg watcher "$watcher" --arg oldUUID "$migrated_uuid" --arg uuid "$daemon_uuid" --arg before "$GEN_ONE" --arg after "$GEN_TWO" '{publisher:"production",watcher:$watcher,migratedDaemonUUID:$oldUUID,daemonUUID:$uuid,beforeGeneration:$before,afterGeneration:$after,migrationExit:0,steadyRotationExit:0,retainedCount:2,pruningDeferred:true,migrationDaemonStops:2,steadyDaemonStops:0}'
+    jq -nc --arg watcher "$watcher" --arg oldUUID "$migrated_uuid" --arg uuid "$daemon_uuid" --arg before "$GEN_ONE" --arg after "$GEN_TWO" '{publisher:"production",watcher:$watcher,migratedDaemonUUID:$oldUUID,daemonUUID:$uuid,beforeGeneration:$before,afterGeneration:$after,migrationExit:0,steadyRotationExit:0,retainedCount:2,pruningDeferred:true,migrationDaemonStops:3,steadyDaemonStops:0,editorOwnerDeferral:true}'
   fi
 done
 if [ "$PUBLISHER" = legacy ]; then

@@ -21,6 +21,11 @@ import {
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import {
+  editorPublicationIsolation,
+  editorPublicationOwnerFdEnv,
+  tryAcquireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 
 const generationPattern = /^[0-9a-f]{64}$/u
 
@@ -328,6 +333,7 @@ const stopMigrationDaemons = ({
   readonly buck2: string
 }): readonly string[] => {
   const stopped: string[] = []
+  const deferred: string[] = []
   for (const root of new Set(roots)) {
     const state = join(homedir(), '.buck', 'buckd', root.replace(/^\//u, ''))
     if (statIfPresent(state) === undefined) continue
@@ -336,19 +342,48 @@ const stopMigrationDaemons = ({
     for (const isolation of readdirSync(state)) {
       if (lstatSync(join(state, isolation)).isDirectory() === false)
         throw new Error(`Invalid capability migration isolation state: ${join(state, isolation)}`)
-      console.error(`Capability cell migration: stopping Buck daemon ${root} (${isolation})`)
-      const result = spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
-        cwd: root,
-        encoding: 'utf8',
-      })
-      if (result.error !== undefined) throw result.error
-      if (result.status !== 0)
-        throw new Error(
-          `Buck daemon stop failed during capability cell migration (${isolation}): ${result.stderr.trim()}`,
-        )
-      stopped.push(`${root}:${isolation}`)
+      // Only the reserved isolation shares the editor publisher's physical-root
+      // owner. Keep the independent lease through the complete native stop.
+      const owner = (() => {
+        if (isolation !== editorPublicationIsolation) return undefined
+        try {
+          return tryAcquireEditorPublicationOwner({ root })
+        } catch (cause) {
+          throw new Error(`Cannot acquire capability migration editor-publication owner: ${root}`, {
+            cause,
+          })
+        }
+      })()
+      if (isolation === editorPublicationIsolation && owner === undefined) {
+        deferred.push(root)
+        continue
+      }
+      try {
+        console.error(`Capability cell migration: stopping Buck daemon ${root} (${isolation})`)
+        const result = spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
+          cwd: root,
+          encoding: 'utf8',
+          env:
+            owner === undefined
+              ? process.env
+              : { ...process.env, [editorPublicationOwnerFdEnv]: '3' },
+          stdio: owner === undefined ? 'pipe' : ['ignore', 'pipe', 'pipe', owner.fd],
+        })
+        if (result.error !== undefined) throw result.error
+        if (result.status !== 0)
+          throw new Error(
+            `Buck daemon stop failed during capability cell migration (${isolation}): ${result.stderr.trim()}`,
+          )
+        stopped.push(`${root}:${isolation}`)
+      } finally {
+        owner?.release()
+      }
     }
   }
+  if (deferred.length !== 0)
+    throw new Error(
+      `Capability cell migration deferred: active editor-publication owner (${deferred.join(', ')}); migration marker remains pending`,
+    )
   return stopped
 }
 
