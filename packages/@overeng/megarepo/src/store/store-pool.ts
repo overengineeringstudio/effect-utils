@@ -15,7 +15,12 @@ import {
   persistentDeletionLeaseOwnerAlive,
 } from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
-import { poolBytes, poolInstallIdentity, preparePoolInstall } from './store-pool-install.ts'
+import {
+  poolBytes,
+  poolInstallIdentity,
+  preparePoolInstall,
+  runPoolCommand,
+} from './store-pool-install.ts'
 import {
   claimPoolGeneration,
   PoolError,
@@ -216,6 +221,87 @@ export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner
           })
           yield* update(next)
           return next
+        }).pipe(
+          withGitContainerLock({ path: slot.bare, mode: 'shared' }),
+          Effect.tapError((error) =>
+            Effect.flatMap(retainPoolSlot({ slot, reason: String(error) }), update),
+          ),
+        )
+      }),
+  })
+
+/** Teardown is the existing owner. Dirty, committed, crashed or uncertain roots stay locked. */
+export const releasePool = (args: {
+  base: AbsoluteDirPath
+  id: string
+  token: string
+  generation: number
+}) =>
+  withPoolState({
+    base: args.base,
+    use: (state, save) =>
+      Effect.gen(function* () {
+        const slot = state.slots.find((item) => item.id === args.id)
+        if (slot === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
+        yield* requirePoolLease({ slot, token: args.token, generation: args.generation })
+        const update = (next: PoolSlot) =>
+          save({ ...state, slots: state.slots.map((item) => (item.id === slot.id ? next : item)) })
+        // Durable quarantine precedes any draining/reset. A crash cannot expose ready.
+        yield* update({
+          ...slot,
+          state: 'quarantined',
+          chargeKnown: false,
+          reason: 'release incomplete',
+        })
+        return yield* Effect.gen(function* () {
+          yield* adoptPersistentDeletionLease(barrier({ base: args.base, slot }))
+          const teardown = process.env.WORKTREE_TEARDOWN_BIN
+          if (teardown === undefined || teardown.startsWith('/') === false)
+            return yield* new PoolError({
+              message: 'Packaged WORKTREE_TEARDOWN_BIN provider is required',
+            })
+          yield* runPoolCommand({ cwd: args.base, command: teardown, args: [slot.path] })
+          yield* free(slot)
+          yield* cleanSource(slot)
+          if (
+            (yield* poolInstallIdentity({
+              path: slot.path,
+              commit: slot.commit,
+              base: args.base,
+            })) !== slot.identity
+          )
+            return yield* new PoolError({ message: 'Installed projection changed; retained' })
+          yield* cleanSource(slot)
+          yield* free(slot)
+          // Only this detached slot is cleaned; preserved node_modules was validated above.
+          yield* Git.runCommand({ cwd: slot.path, args: ['clean', '-fdx', '-e', '/node_modules/'] })
+          yield* Git.runCommand({ cwd: slot.path, args: ['checkout', '--detach', slot.commit] })
+          yield* preparePoolInstall(slot.path)
+          yield* cleanSource(slot)
+          yield* free(slot)
+          if (
+            (yield* poolInstallIdentity({
+              path: slot.path,
+              commit: slot.commit,
+              base: args.base,
+            })) !== slot.identity ||
+            (yield* poolBytes(slot.path)) > slot.charge
+          )
+            return yield* new PoolError({
+              message: 'Reprepared root no longer matches reserved identity/bytes',
+            })
+          yield* cleanSource(slot)
+          yield* free(slot)
+          const ready: PoolSlot = {
+            ...slot,
+            state: 'ready',
+            chargeKnown: true,
+            token: '',
+            owner: '',
+            reason: '',
+          }
+          yield* update(ready)
+          return ready
         }).pipe(
           withGitContainerLock({ path: slot.bare, mode: 'shared' }),
           Effect.tapError((error) =>

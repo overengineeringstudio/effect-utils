@@ -8,7 +8,7 @@ import * as Git from '../core/git.ts'
 import { createStoreFixture } from '../test-utils/store-setup.ts'
 import { acquireDeletionLease, deletionLeasePath } from './store-deletion-lease.ts'
 import { type PoolSlot, reservePoolSlot, withPoolState } from './store-pool-state.ts'
-import { claimPool, completePool, inspectPool, quarantinePool } from './store-pool.ts'
+import { claimPool, completePool, inspectPool, quarantinePool, releasePool } from './store-pool.ts'
 
 const fixture = Effect.gen(function* () {
   const f = yield* createStoreFixture([
@@ -56,7 +56,7 @@ const fixture = Effect.gen(function* () {
 })
 
 describe('native pool ownership safety', () => {
-  it.effect('status preserves live and completed ownership', () =>
+  it.effect('status preserves live and completed ownership through release authorization', () =>
     Effect.gen(function* () {
       const { storePath, slot } = yield* fixture
       yield* withPoolState({
@@ -85,6 +85,14 @@ describe('native pool ownership safety', () => {
           Effect.exit,
         ),
       ).toSatisfy(Exit.isFailure)
+      // This real fixture has no prepared install; release must pass ownership first.
+      const refused = yield* releasePool({
+        base: storePath,
+        id: slot.id,
+        token: 'task',
+        generation: 1,
+      }).pipe(Effect.flip)
+      expect(String(refused)).not.toContain('Stale or non-leased pool generation')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
@@ -205,6 +213,24 @@ describe('native pool ownership safety', () => {
         owner: 'test',
       }).pipe(Effect.flip)
       expect(String(failure)).toContain('history retained')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('a stale release cannot drain, mutate or return another generation', () =>
+    Effect.gen(function* () {
+      const { storePath, slot } = yield* fixture
+      const failure = yield* releasePool({
+        base: storePath,
+        id: slot.id,
+        token: 'stale',
+        generation: 1,
+      }).pipe(Effect.flip)
+      expect(String(failure)).toContain('Stale')
+      const preserved = yield* withPoolState({
+        base: storePath,
+        use: (state) => Effect.succeed(state.slots[0]),
+      })
+      expect(preserved?.state).toBe('ready')
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 })
