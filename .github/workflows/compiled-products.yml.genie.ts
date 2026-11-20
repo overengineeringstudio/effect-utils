@@ -9,12 +9,17 @@ import {
   githubTokenEnv,
   installNixStep,
   namespaceRunner,
+  prepareCiScriptsStep,
+  preparePinnedDevenvStep,
   readBinaryCacheDescriptors,
+  runDevenvTasksBefore,
+  validateNixStoreStep,
   withCiSourceRoot,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { testPlatformForRunner, unitTestShellEnv } from '../../genie/ci-workflow/runners.ts'
 
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
@@ -55,6 +60,7 @@ export default ciWorkflow({
         matrix: {
           include: RUNNER_PROFILES.map((runner) => ({
             runner,
+            testPlatform: testPlatformForRunner(runner),
             runnerLabel: namespaceRunner({
               profile: runner,
               runId: '{0}',
@@ -73,6 +79,59 @@ export default ciWorkflow({
         checkoutStep(),
         installNixStep({ binaryCaches: [binaryCache] }),
         cachixCliBuildStep,
+        prepareCiScriptsStep,
+        preparePinnedDevenvStep,
+        validateNixStoreStep,
+        ...[
+          { name: 'full', env: { EFFECT_UTILS_CI_TEST: '', EFFECT_UTILS_TEST_PLATFORM: '' } },
+          { name: 'unit', env: unitTestShellEnv('${{ matrix.testPlatform }}') },
+        ].flatMap((variant) => [
+          {
+            name: `Realize source generator bootstrap shell (${variant.name})`,
+            if: "github.event_name == 'push'",
+            'timeout-minutes': 30,
+            env: variant.env,
+            run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+          },
+          {
+            name: `Assert clean source after bootstrap (${variant.name})`,
+            if: "github.event_name == 'push'",
+            env: { GITHUB_TOKEN: '' },
+            // No bootstrap mutation may enter either credentialed publisher.
+            run: withCiSourceRoot(
+              [
+                'set -euo pipefail',
+                'changes=$(git status --porcelain --untracked-files=all -- .)',
+                'if [ -n "$changes" ]; then',
+                '  printf "::error::Bootstrap changed publisher source\\n%s\\n" "$changes" >&2',
+                '  exit 1',
+                'fi',
+              ].join('\n'),
+            ),
+          },
+          cachixPushStep({
+            jobIf: protectedMainIf,
+            triggers: ['push'],
+            authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+            step: {
+              name: `Publish realized bootstrap shell closure (${variant.name})`,
+              'timeout-minutes': 15,
+              env: variant.env,
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  'shell=$(readlink .devenv/gc/shell)',
+                  'case "$shell" in',
+                  '  /nix/store/*-devenv-shell) ;;',
+                  '  *) echo "::error::Missing realized bootstrap shell GC root" >&2; exit 1 ;;',
+                  'esac',
+                  'nix-store --check-validity "$shell"',
+                  'cachix push overeng-effect-utils "$shell"',
+                ].join('\n'),
+              ),
+            },
+          }),
+        ]),
         cachixPushStep({
           jobIf: protectedMainIf,
           triggers: ['push', 'workflow_dispatch'],

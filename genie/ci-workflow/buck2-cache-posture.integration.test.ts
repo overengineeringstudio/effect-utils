@@ -25,6 +25,7 @@ type GeneratedWorkflow = {
       'runs-on'?: string | string[]
       if?: string
       needs?: string[]
+      strategy?: { matrix: { include: Array<{ testPlatform: string }> } }
       env?: Record<string, string>
       steps: Array<{
         name?: string
@@ -32,6 +33,7 @@ type GeneratedWorkflow = {
         if?: string
         env?: Record<string, string>
         'continue-on-error'?: boolean
+        'timeout-minutes'?: number
         run?: string
         with?: Record<string, string | number>
       }>
@@ -568,6 +570,115 @@ describe('generated CI cache trust behavior', () => {
     expect(flake).toContain('reindeer = import ./nix/reindeer.nix { inherit pkgs; };')
     const devenv = await Bun.file(new URL('../../devenv.nix', import.meta.url)).text()
     expect(devenv).toContain('reindeer = import ./nix/reindeer.nix { pkgs = previous; };')
+    expect(publisher.strategy?.matrix.include.map((row) => row.testPlatform)).toEqual([
+      'linux',
+      'darwin',
+    ])
+    for (const variant of ['full', 'unit']) {
+      const bootstrap = publisher.steps.find(
+        (step) => step.name === `Realize source generator bootstrap shell (${variant})`,
+      )!
+      const isolation = publisher.steps.find(
+        (step) => step.name === `Assert clean source after bootstrap (${variant})`,
+      )!
+      const shellPublication = publisher.steps.find(
+        (step) => step.name === `Publish realized bootstrap shell closure (${variant})`,
+      )!
+      expect(bootstrap.run).toContain('buck2:editor:bootstrap')
+      expect(bootstrap.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+      expect(bootstrap['timeout-minutes']).toBe(30)
+      expect(isolation.if).toBe(bootstrap.if)
+      const isolationEnv = { ...publisher.env, ...isolation.env }
+      expect(isolationEnv.GITHUB_TOKEN).toBe('')
+      expect(isolationEnv.CACHIX_AUTH_TOKEN ?? '').toBe('')
+      for (const [name, value] of Object.entries(isolationEnv)) {
+        if (/TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|AUTH/i.test(name)) {
+          expect(value, name).toBe('')
+        }
+        expect(value).not.toMatch(/\$\{\{[^}]*(?:secrets\.|github\.token)/)
+      }
+      expect(publisher.steps.indexOf(isolation)).toBe(publisher.steps.indexOf(bootstrap) + 1)
+      expect(publisher.steps.indexOf(isolation)).toBeLessThan(
+        publisher.steps.indexOf(shellPublication),
+      )
+      expect(publisher.steps.indexOf(isolation)).toBeLessThan(publisher.steps.indexOf(publication))
+      expect(shellPublication['timeout-minutes']).toBe(15)
+      expect(bootstrap.env?.EFFECT_UTILS_CI_TEST).toBe(variant === 'unit' ? '1' : '')
+      expect(bootstrap.env?.EFFECT_UTILS_TEST_PLATFORM).toBe(
+        variant === 'unit' ? '${{ matrix.testPlatform }}' : '',
+      )
+      expect(shellPublication.run).toContain('shell=$(readlink .devenv/gc/shell)')
+      expect(shellPublication.run).toContain('nix-store --check-validity "$shell"')
+      expect(shellPublication.run).toContain('cachix push overeng-effect-utils "$shell"')
+      expect(shellPublication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
+      // Actions permits bare step conditions; normalize them for this evaluator.
+      const condition = shellPublication.if!.startsWith('${{')
+        ? shellPublication.if!
+        : `\${{ ${shellPublication.if} }}`
+      expect(evaluate(condition, 'push', 'refs/heads/main')).toBe(true)
+      expect(evaluate(condition, 'push', 'refs/heads/topic')).toBe(false)
+      for (const event of ['pull_request', 'merge_group', 'workflow_dispatch']) {
+        expect(evaluate(condition, event, 'refs/heads/main')).toBe(false)
+      }
+    }
+  })
+
+  it('rejects tracked and untracked bootstrap mutations before credentialed publication', async () => {
+    const publisher = (await readWorkflow('compiled-products.yml')).jobs[
+      'publish-compiled-products'
+    ]!
+    const work = mkdtempSync(join(tmpdir(), 'bootstrap-source-isolation-'))
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(['git', '-c', 'core.hooksPath=/dev/null', ...args], {
+        cwd: work,
+      })
+      expect(result.exitCode, result.stderr.toString()).toBe(0)
+    }
+    try {
+      git('init', '--quiet')
+      writeFileSync(join(work, '.gitignore'), '.devenv/\n')
+      writeFileSync(join(work, 'source.nix'), 'original\n')
+      git('add', '.')
+      git(
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.com',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--quiet',
+        '-m',
+        'fixture',
+      )
+      mkdirSync(join(work, '.devenv'))
+      writeFileSync(join(work, '.devenv', 'shell'), 'ignored runtime output\n')
+      for (const variant of ['full', 'unit']) {
+        const isolation = publisher.steps.find(
+          (step) => step.name === `Assert clean source after bootstrap (${variant})`,
+        )!
+        const run = () =>
+          Bun.spawnSync(['bash', '-euo', 'pipefail', '-c', isolation.run!], {
+            cwd: work,
+            env: { ...process.env, GITHUB_WORKSPACE: work },
+          })
+        expect(run().exitCode).toBe(0)
+        writeFileSync(join(work, 'source.nix'), 'bootstrap mutation\n')
+        const changed = run()
+        expect(changed.exitCode).not.toBe(0)
+        expect(changed.stderr.toString()).toContain('Bootstrap changed publisher source')
+        git('checkout', '--', 'source.nix')
+        writeFileSync(join(work, 'generated.nix'), 'untracked bootstrap source\n')
+        expect(run().exitCode).not.toBe(0)
+        rmSync(join(work, 'generated.nix'))
+        git('rm', '--quiet', 'source.nix')
+        expect(run().exitCode).not.toBe(0)
+        git('reset', '--quiet', 'HEAD', '--', 'source.nix')
+        git('checkout', '--', 'source.nix')
+      }
+    } finally {
+      rmSync(work, { recursive: true, force: true })
+    }
   })
 
   it('roundtrips libraries during preparation, then smokes outputs and publishes only on request', () => {
