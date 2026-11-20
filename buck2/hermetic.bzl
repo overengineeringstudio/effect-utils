@@ -109,15 +109,20 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs, fingerprint
     ], hidden = inputs + sandbox.inputs + [output.as_output() for output in outputs])
 
 
-def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs = [], cacheable = True, **kwargs):
+def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs = [], cacheable = True, remote_pilot = False, **kwargs):
     """TS caller of the shared boundary, with Bun's closure always admitted."""
     sandbox = ctx.attrs._ts_sandbox[TsSandboxToolchainInfo]
     if not sandbox.bun:
         fail("TS sandbox: Bun capability missing; unsandboxed execution is forbidden")
     closures = dict(tool_closures)
     closures["bun"] = sandbox.closure_paths["bun"] + closures.get("bun", [])
+    if remote_pilot:
+        if ts_action_admission_status(ctx) != "linux-bwrap":
+            fail("NativeLink pilot requires Linux Bubblewrap containment")
+        kwargs["local_only"] = False
     hermetic_sandboxed_action(
         ctx, sandbox, closures, arguments, inputs, outputs,
+        remote_pilot = remote_pilot,
         tool_inputs = tool_inputs + sandbox.bun_inputs, cacheable = cacheable, **kwargs
     )
 
@@ -135,7 +140,7 @@ def hermetic_cacheable_sandboxed_action(ctx, sandbox, tool_closures, arguments, 
     )
 
 
-def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, inherit_nix_build_environment = False, require_cacheable_sandbox = False, **kwargs):
+def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, inherit_nix_build_environment = False, require_cacheable_sandbox = False, remote_pilot = False, **kwargs):
     """Runs admitted directory-output actions with exactly the supplied closures.
 
     Each closure must be attested by the caller's toolchain dependencies; their
@@ -147,7 +152,7 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
     if require_cacheable_sandbox:
         if status != "linux-bwrap":
             fail("Sandbox: cacheable execution requires Linux Bubblewrap containment")
-    else:
+    elif not remote_pilot:
         kwargs["local_only"] = True
     for tool_id in sorted(tool_closures.keys()):
         if not tool_closures[tool_id]:

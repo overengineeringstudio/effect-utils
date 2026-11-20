@@ -53,6 +53,9 @@ import reactInspectorTsconfig from '../packages/@overeng/react-inspector/tsconfi
 import reactInspectorStrictConsumerTsconfig from '../packages/@overeng/react-inspector/tsconfig.strict-consumer.json.genie.ts'
 import restateEffectTsconfig from '../packages/@overeng/restate-effect/tsconfig.json.genie.ts'
 import rpcDevtoolsTsconfig from '../packages/@overeng/rpc-devtools/tsconfig.json.genie.ts'
+import scgAuthorityTsconfig from '../packages/@overeng/scg-authority/tsconfig.json.genie.ts'
+import scgDiscordTsconfig from '../packages/@overeng/scg-discord/tsconfig.json.genie.ts'
+import scgProtocolTsconfig from '../packages/@overeng/scg-protocol/tsconfig.json.genie.ts'
 import stylexTokensTsconfig from '../packages/@overeng/stylex-tokens/tsconfig.json.genie.ts'
 import tuiCoreTsconfig from '../packages/@overeng/tui-core/tsconfig.json.genie.ts'
 import tuiReactTsconfig from '../packages/@overeng/tui-react/tsconfig.json.genie.ts'
@@ -121,6 +124,9 @@ const rootWorkspaceTsconfigProjects = (() => {
   const workspaceTsconfigsByPath: Record<string, RootTsconfigProjectDefinition> = {
     'context/effect/socket': { tsconfig: effectSocketTsconfig },
     'context/opentui': { tsconfig: opentuiTsconfig },
+    'packages/@overeng/scg-authority': { tsconfig: scgAuthorityTsconfig },
+    'packages/@overeng/scg-discord': { tsconfig: scgDiscordTsconfig },
+    'packages/@overeng/scg-protocol': { tsconfig: scgProtocolTsconfig },
     'packages/@overeng/agent-session-ingest': { tsconfig: agentSessionIngestTsconfig },
     'packages/@overeng/ai-gateway-conformance': { tsconfig: aiGatewayConformanceTsconfig },
     'packages/@overeng/ai-gateway-edge': { tsconfig: aiGatewayEdgeTsconfig },
