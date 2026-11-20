@@ -142,6 +142,8 @@ Capture failures remain protective UNKNOWN. Root-journal diagnostics identify
 only a static capture/reclosure stage, `io::ErrorKind`, and numeric OS errno.
 Native-scope failures additionally emit only their audited source-literal reason
 through an `&'static str` helper, preserving the original `Other` kind and message.
+Rejected anonymous kernel objects also report only a finite static diagnostic
+class (io-uring, pidfd, fanotify, BPF, userfaultfd, or other), never their proc-link target.
 They never format an underlying error object, foreign paths, process identities,
 or pseudo-file contents; the original error and wire classification are unchanged.
 
