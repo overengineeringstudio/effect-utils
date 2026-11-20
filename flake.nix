@@ -336,6 +336,10 @@ rec {
           worktree-holder-thread-fd-alias = import ./nix/devenv-modules/tasks/shared/worktree-holder-thread-alias-vm.nix {
             inherit pkgs;
           };
+          worktree-holder-node-consumer = import ./nix/devenv-modules/tasks/shared/worktree-holder-node-consumer-vm.nix {
+            inherit pkgs mkBuckProductFromSource pnpmArchives;
+            capabilities = buck2Capabilities;
+          };
         }
         // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           macos-app-host-stability = macosAppExample.check;
