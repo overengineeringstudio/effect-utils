@@ -23,7 +23,7 @@ fn incomplete(reason: &'static str) -> io::Error {
 /// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AnonymousKernelObject {
-    BpfMap, BpfProgram, BpfLink, Btf, EventFd, TimerFd, SignalFd, Epoll, Inotify,
+    BpfMap, BpfProgram, BpfLink, Btf, BpfStats, EventFd, TimerFd, SignalFd, Epoll, Inotify,
     PidFd, UserfaultFd, PerfEvent, IoUring, Fanotify, Unrecognized,
 }
 
@@ -33,7 +33,7 @@ enum KernelObjectPathClass { NonPathKernelObject, PathBearingOrUnknown }
 impl AnonymousKernelObject {
     fn path_class(self) -> KernelObjectPathClass {
         match self {
-            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::Btf | Self::EventFd
+            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::Btf | Self::BpfStats | Self::EventFd
             | Self::TimerFd | Self::SignalFd | Self::Epoll | Self::Inotify
             | Self::PidFd | Self::UserfaultFd | Self::PerfEvent =>
                 KernelObjectPathClass::NonPathKernelObject,
@@ -55,8 +55,9 @@ fn anonymous_kernel_object(name: &Path) -> AnonymousKernelObject {
     match name.to_str() {
         Some("anon_inode:bpf-map") => AnonymousKernelObject::BpfMap,
         Some("anon_inode:bpf-prog") => AnonymousKernelObject::BpfProgram,
-        Some("anon_inode:bpf-link") => AnonymousKernelObject::BpfLink,
+        Some("anon_inode:bpf-link" | "anon_inode:bpf_link") => AnonymousKernelObject::BpfLink,
         Some("anon_inode:btf") => AnonymousKernelObject::Btf,
+        Some("anon_inode:bpf-stats") => AnonymousKernelObject::BpfStats,
         Some("anon_inode:[eventfd]") => AnonymousKernelObject::EventFd,
         Some("anon_inode:[timerfd]") => AnonymousKernelObject::TimerFd,
         Some("anon_inode:[signalfd]") => AnonymousKernelObject::SignalFd,
@@ -105,7 +106,9 @@ mod diagnostic_tests {
             ("anon_inode:bpf-map", Object::BpfMap),
             ("anon_inode:bpf-prog", Object::BpfProgram),
             ("anon_inode:bpf-link", Object::BpfLink),
+            ("anon_inode:bpf_link", Object::BpfLink),
             ("anon_inode:btf", Object::Btf),
+            ("anon_inode:bpf-stats", Object::BpfStats),
             ("anon_inode:[eventfd]", Object::EventFd),
             ("anon_inode:[timerfd]", Object::TimerFd),
             ("anon_inode:[signalfd]", Object::SignalFd),
@@ -125,6 +128,8 @@ mod diagnostic_tests {
             "anon_inode:[io_uring]", "anon_inode:[fanotify]", "anon_inode:fanotify",
             "anon_inode:bpf-map-unknown", "anon_inode:bpf-prog/child",
             "anon_inode:[btf]", "anon_inode:btf-unknown", "anon_inode:btf/child",
+            "anon_inode:[bpf_link]", "anon_inode:bpf_link-unknown", "anon_inode:bpf_link/child",
+            "anon_inode:[bpf-stats]", "anon_inode:bpf-stats-unknown", "anon_inode:bpf-stats/child",
             "/untrusted/proc-link-target",
         ] {
             assert_eq!(super::anonymous_kernel_object(std::path::Path::new(name)).path_class(),
@@ -159,6 +164,50 @@ mod diagnostic_tests {
         assert_eq!(super::owned_vm_anonymous_class(path), None);
         let non_utf8 = std::ffi::OsStr::from_bytes(b"anon_inode:\xff");
         assert_eq!(super::owned_vm_anonymous_class(std::path::Path::new(non_utf8)), None);
+    }
+
+    #[test]
+    fn linux_6_18_62_unapproved_emitter_inventory_stays_unknown() {
+        // Whole-tree five-constructor inventory; exact source references and
+        // dynamic wrappers are documented in the tasks README. This is a
+        // reviewed snapshot, not a claim that anonymous files are non-holding.
+        use super::KernelObjectPathClass::PathBearingOrUnknown;
+        for suffix in [
+            "kvm-htab", "kvm-spapr-tce", "[papr-hvpipe]", "[papr-platform-dump]",
+            "[papr-indices]", "[papr-physical-attestation]", "[papr-vpd]",
+            "binder_alloc_kunit", "[vtpms]", "sync_file", "gpio-linehandle",
+            "gpio-line", "gpio-event", "drm", "syncobj_file", "kfd_smi_ev",
+            "[i915_perf]", "i915.gem", "[xe_eu_stall]", "[xe_oa]",
+            "mshv_vp", "mshv_partition", "iio:buffer", "iio:event",
+            "[infinibandevent]", "[devx_async_cmd]", "[devx_async_event]",
+            "[iommufd-pgfault]", "[iommufd-viommu-event]", "[iommufd_test_staccess]",
+            "request", "ntsync", "tee_shm", "[vduse-domain]", "[vfio-device]",
+            "hisi_acc_vf_mig", "mlx5vf_mig", "pds_vfio_lm", "qat_vf_mig",
+            "virtiovf_mig", "ne-vm", "[fscontext]", "[cachefiles]", "[fanotify]",
+            "[io_uring]", "[io_uring_mock]", "seccomp notify", "bpf_iter",
+            "mtty_mig", "[landlock-ruleset]", "[kvm-gmem]", "kvm-vm-stats", "kvm-vm",
+            "kvm-vfio", "kvm-arm-vgic-its", "kvm-arm-vgic-v2", "kvm-arm-vgic-v3",
+            "kvm-loongarch-eiointc", "kvm-loongarch-ipi", "kvm-loongarch-pch-pic",
+            "kvm-xics", "kvm-xive", "kvm-xive-native", "kvm-mpic", "kvm-riscv-aia",
+            "kvm-flic", "future-unknown",
+        ] {
+            let name = format!("anon_inode:{suffix}");
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                PathBearingOrUnknown, "{suffix}");
+        }
+        // Dynamic emitted families remain rejected, not prefix approvals.
+        for id in 0..128 {
+            let name = format!("anon_inode:snd-utimer{id}");
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                PathBearingOrUnknown);
+        }
+        for id in [0, 1, 127, i32::MAX] {
+            for prefix in ["kvm-vcpu:", "kvm-vcpu-stats:"] {
+                let name = format!("anon_inode:{prefix}{id}");
+                assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                    PathBearingOrUnknown);
+            }
+        }
     }
 }
 
