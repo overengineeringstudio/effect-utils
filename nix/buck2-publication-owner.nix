@@ -24,16 +24,14 @@ pkgs.runCommand "buck2-publication-owner-native"
     #include <unistd.h>
     int buck2_publication_owner_open(const char *);
     int buck2_publication_owner_lock(int, int);
-    int buck2_publication_owner_cloexec(int, int);
-    int buck2_publication_owner_fd_flags(int);
     int main(void) {
       const char *path = "owner-native-check.lock";
       int fd = buck2_publication_owner_open(path);
-      if (fd < 0 || buck2_publication_owner_fd_flags(fd) != FD_CLOEXEC) return 1;
-      if (buck2_publication_owner_cloexec(fd, 0) != 0 ||
-          buck2_publication_owner_fd_flags(fd) != 0) return 2;
-      if (buck2_publication_owner_cloexec(fd, 1) != 0 ||
-          buck2_publication_owner_fd_flags(fd) != FD_CLOEXEC) return 3;
+      if (fd < 0 || fcntl(fd, F_GETFD) != FD_CLOEXEC) return 1;
+      if (fcntl(fd, F_SETFD, 0) != 0 ||
+          fcntl(fd, F_GETFD) != 0) return 2;
+      if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0 ||
+          fcntl(fd, F_GETFD) != FD_CLOEXEC) return 3;
       if (buck2_publication_owner_lock(fd, LOCK_EX | LOCK_NB) != 0) return 4;
       int rival = buck2_publication_owner_open(path);
       if (rival < 0) return 5;
