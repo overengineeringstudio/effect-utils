@@ -136,7 +136,13 @@ const main = Effect.gen(function* () {
       const captured = evidence.roots[0]
       assert(captured !== undefined && evidence.scope.complete && captured.complete &&
         captured.referencesComplete && captured.status !== 'unknown' && captured.unknownReasons.length === 0,
-        'Actual producer coverage is UNKNOWN')
+        `Actual producer coverage is UNKNOWN: ${JSON.stringify({
+          scopeComplete: evidence.scope.complete,
+          rootComplete: captured?.complete,
+          referencesComplete: captured?.referencesComplete,
+          status: captured?.status,
+          unknownReasons: captured?.unknownReasons,
+        })}`)
       const refs = captured.references.filter((reference) => reference.tgid === process.pid &&
         reference.tid === worker.tid && reference.reference === 'fd')
       assert(refs.length > 0, 'Producer did not observe actual worker target descriptors')
