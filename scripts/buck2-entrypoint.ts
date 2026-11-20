@@ -1055,14 +1055,16 @@ export const reconcileGateDaemon = ({
   args,
   env,
   phase,
+  cwd = process.cwd(),
 }: {
   readonly native: string
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly phase: 'start' | 'exit'
+  readonly cwd?: string
 }): void => {
-  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  const invocation = resolveGateInvocation({ args, env, cwd })
   if (invocation === undefined) {
     if (phase === 'start')
       writeSync(
@@ -1260,6 +1262,7 @@ export const admitCacheDaemonCommand = async ({
   env,
   admit,
   deadlineMs = 30000,
+  cwd = process.cwd(),
 }: {
   readonly native: string
   readonly root: string
@@ -1267,6 +1270,7 @@ export const admitCacheDaemonCommand = async ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
   readonly deadlineMs?: number
+  readonly cwd?: string
 }): Promise<string[]> => {
   const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
   // Validation precedes lock/state creation, including on cache-less roots.
@@ -1294,7 +1298,7 @@ export const admitCacheDaemonCommand = async ({
   const invocation = resolveGateInvocation({
     args,
     env,
-    cwd: process.cwd(),
+    cwd,
     strictRunArguments: false,
   })
   if (invocation === undefined)
@@ -1532,7 +1536,7 @@ export const admitCacheDaemonCommand = async ({
     }
     // Expand once and execute the resulting argv, so Buck cannot later move our
     // policy behind a separator introduced by a nested user argfile.
-    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd: process.cwd(), env })
+    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd, env })
   } finally {
     closeSync(descriptor)
     library.close()
@@ -1651,15 +1655,18 @@ export const runNativeWithEvidence = async ({
   root,
   stderr = 'inherit',
   deadlineMs,
+  execution = {},
 }: {
   native: string
   args: string[]
   root: string | undefined
   stderr?: 'inherit' | 'pipe'
   deadlineMs?: number
+  execution?: NativeExecution
 }): Promise<NativeCommandResult | undefined> => {
-  const output = process.env.CI_BUCK2_CACHE_EVIDENCE_PATH
-  const wrapperId = process.env.BUCK_WRAPPER_UUID
+  const { env = process.env, cwd = process.cwd() } = execution
+  const output = env.CI_BUCK2_CACHE_EVIDENCE_PATH
+  const wrapperId = env.BUCK_WRAPPER_UUID
   if (output === undefined || root === undefined || wrapperId === undefined) return undefined
   const buildId = canonicalCacheAdmissionInvocationId(wrapperId)
   try {
@@ -1670,8 +1677,8 @@ export const runNativeWithEvidence = async ({
   }
   const invocation = resolveGateInvocation({
     args,
-    cwd: process.cwd(),
-    env: process.env,
+    cwd,
+    env,
     strictRunArguments: false,
     includePayload: true,
   })
@@ -1695,10 +1702,12 @@ export const runNativeWithEvidence = async ({
   let reapCollector: (() => Promise<void>) | undefined
   let reapNative: (() => Promise<void>) | undefined
   let reapDecoder: (() => Promise<void>) | undefined
+  let cancelEvidence: (() => void) | undefined
   try {
+    execution.signal?.throwIfAborted()
     createPrivateEvidenceSink(sink)
     keeper = openSync(sink, 'r+')
-    const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
+    const marker = env.CI_BUCK2_CACHE_EVIDENCE_START
     const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'
     const bun =
       typeof BUCK2_EVIDENCE_BUN_BINARY === 'string' ? BUCK2_EVIDENCE_BUN_BINARY : process.execPath
@@ -1715,16 +1724,19 @@ export const runNativeWithEvidence = async ({
         '--root-id',
         createHash('sha256').update(realpathSync(root)).digest('hex'),
         ...(fresh === true ? ['--fresh-root'] : []),
-        ...(process.env['BUCK2_NO_REMOTE_CACHE'] === '1'
+        ...(env['BUCK2_NO_REMOTE_CACHE'] === '1'
           ? ['--cache-read-policy', 'disabled-by-design']
           : []),
       ],
-      { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+      { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
     )
     reapCollector = async () => {
       if (collector.exitCode === null) collector.kill('SIGKILL')
       await collector.exited
     }
+    cancelEvidence = () => collector.kill('SIGKILL')
+    execution.signal?.addEventListener('abort', cancelEvidence, { once: true })
+    if (execution.signal?.aborted === true) cancelEvidence()
     const ready = await collector.stdout.getReader().read()
     if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
       throw new Error('Evidence collector did not open its sink')
@@ -1743,7 +1755,7 @@ export const runNativeWithEvidence = async ({
               ...payload,
             ]
           : [...before, '--event-log', sink, ...payload]
-    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr, deadlineMs })
+    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr, deadlineMs, ...execution })
     reapNative = async () => {
       if (child.exitCode === null) child.kill('SIGKILL')
       await child.exited
@@ -1758,13 +1770,15 @@ export const runNativeWithEvidence = async ({
       if (finished.source === 'collector') child.kill('SIGTERM')
       nativeResult = await result
       if (callerSink !== undefined) {
+        execution.signal?.throwIfAborted()
         // Preserve the caller's OTEL/profiling sink and decode that exact file,
         // outside native rotation. Never rediscover it through --recent.
-        const decoder = Bun.spawn([native, 'log', 'show', resolve(callerSink)], {
+        const decoder = Bun.spawn([native, 'log', 'show', resolve(cwd, callerSink)], {
           stdin: 'ignore',
           stdout: keeper,
           stderr: 'ignore',
-          env: process.env,
+          cwd,
+          env,
         })
         reapDecoder = async () => {
           if (decoder.exitCode === null) decoder.kill('SIGKILL')
@@ -1801,6 +1815,7 @@ export const runNativeWithEvidence = async ({
     renameSync(`${completion}.pending`, completion)
     return nativeResult
   } finally {
+    if (cancelEvidence !== undefined) execution.signal?.removeEventListener('abort', cancelEvidence)
     if (keeper !== undefined) closeSync(keeper)
     await reapNative?.()
     await reapDecoder?.()
