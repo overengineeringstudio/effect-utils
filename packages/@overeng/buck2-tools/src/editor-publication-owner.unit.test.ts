@@ -7,6 +7,8 @@ import {
   openSync,
   realpathSync,
   rmSync,
+  statSync,
+  symlinkSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,6 +18,8 @@ import {
   editorPublicationLockPath,
   editorPublicationOwnerFdEnv,
   requireEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
+  withEditorPublicationOwner,
 } from './editor-publication-owner.ts'
 
 const native = dlopen(process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6', {
@@ -81,4 +85,46 @@ it('rejects absent, malformed, closed, wrong-inode, unlocked and shared-lock des
       closeSync(fd)
     }
     expect(() => requireEditorPublicationOwner({ root, env: env(String(fd)) })).toThrow()
+  }))
+
+it('holds the persistent inode through the whole callback and releases on failure', () =>
+  withRoot(async (root) => {
+    let inode: number | undefined
+    await expect(
+      withEditorPublicationOwner({
+        root,
+        run: async (fd) => {
+          inode = statSync(editorPublicationLockPath(root)).ino
+          expect(
+            requireEditorPublicationOwner({
+              root,
+              env: { [editorPublicationOwnerFdEnv]: String(fd) },
+            }),
+          ).toBe(fd)
+          expect(canAcquire(root)).toBe(false)
+          expect(tryAcquireEditorPublicationOwner({ root })).toBeUndefined()
+          throw new Error('publication failed')
+        },
+      }),
+    ).rejects.toThrow('publication failed')
+    expect(canAcquire(root)).toBe(true)
+    await withEditorPublicationOwner({
+      root,
+      run: async () => {
+        expect(statSync(editorPublicationLockPath(root)).ino).toBe(inode)
+        expect(canAcquire(root)).toBe(false)
+      },
+    })
+    expect(canAcquire(root)).toBe(true)
+    const owner = tryAcquireEditorPublicationOwner({ root })
+    expect(owner).toBeDefined()
+    expect(canAcquire(root)).toBe(false)
+    owner!.release()
+    owner!.release()
+    expect(canAcquire(root)).toBe(true)
+    rmSync(join(root, '.devenv'), { recursive: true })
+    const foreign = join(root, 'foreign-control')
+    mkdirSync(foreign)
+    symlinkSync(foreign, join(root, '.devenv'))
+    expect(() => tryAcquireEditorPublicationOwner({ root })).toThrow('canonical control directory')
   }))
