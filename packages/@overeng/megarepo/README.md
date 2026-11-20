@@ -388,6 +388,14 @@ Writable claims invalidate measured accounting until a safe remeasure; new reser
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
 
+Pool preparation uses the normal root-owned `pnpm:install` and validates its
+machine-readable doctor report, installed shared GVS paths, exact source and
+resolved tool/platform identity. Logical root bytes are charged conservatively.
+The `mr` product supplies its existing teardown helper through the explicit
+`WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
+Its curated GNU coreutils provider measures apparent logical size, including sparse
+and compressed payloads; allocated disk usage and exclusive reclamation are separate.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
