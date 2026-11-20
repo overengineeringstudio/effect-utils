@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, it } from 'vitest'
 
+import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import { editorPublicationIsolation, editorPublicationOwnerFdEnv, requireEditorPublicationOwner, withEditorPublicationOwner } from './editor-publication-owner.ts'
 import { publishEditorView, verifyEditorViewSnapshot } from './editor-view.ts'
 
@@ -90,6 +91,12 @@ inputs = rule(impl = _impl, attrs = {})
 `)
     writeFileSync(join(root, 'BUCK'), 'load(":inputs.bzl", "inputs")\ninputs(name = "inputs")\n')
     writeFileSync(join(root, 'package.json'), '{}\n')
+    const immutableInput = realpathSync(tool('BUN_BIN'))
+    expect(() => requireEditorPublicationInputs({ root, paths: [immutableInput] })).not.toThrow()
+    const immutableCarrier = join(root, 'buck-out', 'v2', 'immutable-carrier')
+    mkdirSync(dirname(immutableCarrier), { recursive: true })
+    symlinkSync(immutableInput, immutableCarrier)
+    expect(() => requireEditorPublicationInputs({ root, paths: [immutableCarrier] })).toThrow()
     const authority = join(root, 'workspace-authority.json')
     writeFileSync(authority, JSON.stringify({ schema: 'effect-utils/workspace-dependency-authority/v1', requiredPackages: ['.'], ownedPackages: ['.'] }))
     const defaultOutput = await measured('warmDefaultBuildMs', () => build())
