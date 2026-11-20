@@ -332,6 +332,11 @@ rec {
             producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           };
         }
+        // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          worktree-holder-thread-fd-alias = import ./nix/devenv-modules/tasks/shared/worktree-holder-thread-alias-vm.nix {
+            inherit pkgs;
+          };
+        }
         // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           macos-app-host-stability = macosAppExample.check;
           macos-app-primitives = macosAppExample.primitives;

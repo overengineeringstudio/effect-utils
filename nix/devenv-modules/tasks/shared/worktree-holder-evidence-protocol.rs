@@ -17,11 +17,17 @@ pub struct ObjectIdentity { pub dev: u64, pub ino: u64, pub mount_id: u64 }
 pub enum ReferenceKind { Root, Cwd, Mount, Exe, Fd, Map }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReferenceEffect { InUse, RetainedBytes }
+/// Kernel observation only: this never grants a consumer's owned-pin exemption.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeaderFdAlias {
+    pub tgid: u32, pub leader_start: u64, pub tid: u32, pub task_start: u64, pub fd: u32,
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reference {
     pub tgid: u32, pub leader_start: u64, pub tid: u32, pub task_start: u64,
     pub uid: [u32; 4], pub reference: ReferenceKind, pub relative_path: String,
     pub identity: ObjectIdentity, pub effect: ReferenceEffect, pub fd: Option<u32>,
+    pub leader_fd_alias: Option<LeaderFdAlias>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status { NoCurrentReference, InUse, Unknown }
@@ -298,7 +304,12 @@ impl Response {
                 pair(&mut out,"reference",match h.reference {ReferenceKind::Root=>"root",ReferenceKind::Cwd=>"cwd",ReferenceKind::Mount=>"mount",ReferenceKind::Exe=>"exe",ReferenceKind::Fd=>"fd",ReferenceKind::Map=>"map"});
                 out.push(','); pair(&mut out,"relativePath",&h.relative_path); out.push_str(",\"identity\":"); identity(&mut out,&h.identity); out.push(',');
                 pair(&mut out,"effect",match h.effect {ReferenceEffect::InUse=>"in-use",ReferenceEffect::RetainedBytes=>"retained-bytes"});
-                out.push_str(",\"fd\":"); if let Some(fd)=h.fd { write!(out,"{fd}").expect("String write"); } else { out.push_str("null"); } out.push('}');
+                out.push_str(",\"fd\":"); if let Some(fd)=h.fd { write!(out,"{fd}").expect("String write"); } else { out.push_str("null"); }
+                if let Some(alias)=&h.leader_fd_alias {
+                    if !alias.matches(h) { return Err(invalid()); }
+                    write!(out,",\"leaderFdAlias\":{{\"proof\":\"pidfd-kcmp-files-and-file-v1\",\"tgid\":{},\"leaderStart\":\"{}\",\"tid\":{},\"taskStart\":\"{}\",\"fd\":{}}}",alias.tgid,alias.leader_start,alias.tid,alias.task_start,alias.fd).expect("String write");
+                }
+                out.push('}');
             }
             out.push_str("],\"unknownReasons\":["); for (j,cause) in r.unknown_reasons.iter().enumerate() { if j>0 { out.push(','); } quoted(&mut out,reason(*cause)); } out.push_str("]}");
             if out.len()>MAX_RESPONSE { return Err(invalid()); }
@@ -344,6 +355,7 @@ impl Response {
                 if h.tgid==0 || h.tid==0 || h.leader_start==0 || h.task_start==0 || !relative_path(&h.relative_path)
                     || h.identity.ino==0 || h.identity.mount_id==0 || (h.reference==ReferenceKind::Fd)!=h.fd.is_some()
                     || (h.effect==ReferenceEffect::RetainedBytes && matches!(h.reference,ReferenceKind::Root|ReferenceKind::Cwd|ReferenceKind::Mount)) { return Err(invalid()); }
+                if h.leader_fd_alias.as_ref().is_some_and(|alias| !alias.matches(h)) { return Err(invalid()); }
             }
         }
         Ok(())
@@ -366,24 +378,43 @@ fn read_reference(j: Json) -> io::Result<Reference> {
     let reference=match text(&mut o,"reference")?.as_str() {"root"=>ReferenceKind::Root,"cwd"=>ReferenceKind::Cwd,"mount"=>ReferenceKind::Mount,"exe"=>ReferenceKind::Exe,"fd"=>ReferenceKind::Fd,"map"=>ReferenceKind::Map,_=>return Err(invalid())};
     let relative_path=text(&mut o,"relativePath")?; let identity=read_identity(take(&mut o,"identity")?)?;
     let effect=match text(&mut o,"effect")?.as_str() {"in-use"=>ReferenceEffect::InUse,"retained-bytes"=>ReferenceEffect::RetainedBytes,_=>return Err(invalid())};
-    let fd=match take(&mut o,"fd")? { Json::Null=>None,j=>Some(number(j)?) }; done(o)?;
-    Ok(Reference {tgid,leader_start,tid,task_start,uid,reference,relative_path,identity,effect,fd})
+    let fd=match take(&mut o,"fd")? { Json::Null=>None,j=>Some(number(j)?) };
+    let leader_fd_alias=o.remove("leaderFdAlias").map(|j| {
+        let mut a=object(j)?;
+        if text(&mut a,"proof")? != "pidfd-kcmp-files-and-file-v1" { return Err(invalid()); }
+        let alias=LeaderFdAlias {tgid:number(take(&mut a,"tgid")?)?,leader_start:dec(take(&mut a,"leaderStart")?)?,
+            tid:number(take(&mut a,"tid")?)?,task_start:dec(take(&mut a,"taskStart")?)?,fd:number(take(&mut a,"fd")?)?};
+        done(a)?; Ok(alias)
+    }).transpose()?;
+    done(o)?;
+    let reference=Reference {tgid,leader_start,tid,task_start,uid,reference,relative_path,identity,effect,fd,leader_fd_alias};
+    if reference.leader_fd_alias.as_ref().is_some_and(|alias| !alias.matches(&reference)) { return Err(invalid()); }
+    Ok(reference)
+}
+impl LeaderFdAlias {
+    fn matches(&self, reference: &Reference) -> bool {
+        reference.reference==ReferenceKind::Fd && reference.fd==Some(self.fd)
+            && self.tgid!=0 && self.tid!=self.tgid && self.leader_start!=0 && self.task_start!=0
+            && self.tgid==reference.tgid && self.leader_start==reference.leader_start
+            && self.tid==reference.tid && self.task_start==reference.task_start
+    }
 }
 
 /// Synthetic codec data, NOT a live census or a production qualification.
 /// JSONL order: clear, cwd, fd, map, incomplete-positive, mixed covered roots,
-/// exact threaded-daemon lifetime, retained-byte fd/map/exe, null/uncovered root.
+/// exact threaded-daemon lifetime, retained-byte fd/map/exe, null/uncovered root,
+/// kernel-proof thread descriptor alias (observation only, no exemption authority).
 pub fn codec_fixtures() -> io::Result<Vec<Vec<u8>>> {
     use std::time::{Duration,Instant};
     let deadline=Instant::now()+Duration::from_secs(1);
     let id=ObjectIdentity {dev:8,ino:9,mount_id:10};
     let root=RootEvidence {path:"/srv/worktrees/fixture".into(),identity:Some(id.clone()),complete:true,status:Status::NoCurrentReference,references_complete:true,references:vec![],unknown_reasons:vec![]};
-    let holder=Reference {tgid:41,leader_start:100,tid:42,task_start:101,uid:[1000;4],reference:ReferenceKind::Cwd,relative_path:".".into(),identity:id,effect:ReferenceEffect::InUse,fd:None};
+    let holder=Reference {tgid:41,leader_start:100,tid:42,task_start:101,uid:[1000;4],reference:ReferenceKind::Cwd,relative_path:".".into(),identity:id,effect:ReferenceEffect::InUse,fd:None,leader_fd_alias:None};
     let mut unknown=root.clone();
     unknown.identity=None; unknown.complete=false; unknown.status=Status::Unknown;
     unknown.references_complete=false; unknown.unknown_reasons.push(UnknownReason::RootUncovered);
     let mut result=Vec::new();
-    for case in 0..9 {
+    for case in 0..10 {
         let mut roots=vec![root.clone()]; let mut complete=true;
         match case {
             0=>{},
@@ -403,6 +434,12 @@ pub fn codec_fixtures() -> io::Result<Vec<Vec<u8>>> {
                 }
             },
             5=>{let mut other=unknown.clone();other.path="/srv/worktrees/uncovered".into();roots.push(other);},
+            9=>{
+                let mut reference=holder.clone();reference.tgid=61;reference.leader_start=700;
+                reference.tid=62;reference.task_start=701;reference.reference=ReferenceKind::Fd;reference.fd=Some(20);
+                reference.leader_fd_alias=Some(LeaderFdAlias {tgid:61,leader_start:700,tid:62,task_start:701,fd:20});
+                roots[0].status=Status::InUse; roots[0].references.push(reference);
+            },
             7=>{
                 for kind in [ReferenceKind::Fd,ReferenceKind::Map,ReferenceKind::Exe] {
                     let mut reference=holder.clone();reference.reference=kind;
@@ -514,5 +551,25 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    fn alias_is_optional_strict_and_bound_to_the_exact_nonleader_fd() {
+        let cases=codec_fixtures().unwrap();
+        let raw=String::from_utf8(cases[9].clone()).unwrap();
+        let parsed=Response::parse(raw.as_bytes()).unwrap();
+        assert!(parsed.roots[0].references[0].leader_fd_alias.is_some());
+        for (from,to) in [
+            ("\"proof\":\"pidfd-kcmp-files-and-file-v1\"","\"proof\":\"inode-equality\""),
+            ("\"fd\":20}}","\"fd\":21}}"),
+            ("\"taskStart\":\"701\",\"fd\":20}","\"taskStart\":\"702\",\"fd\":20}"),
+            ("\"tid\":62,\"taskStart\":\"701\",\"fd\":20}","\"tid\":61,\"taskStart\":\"701\",\"fd\":20}"),
+            ("\"leaderStart\":\"700\",\"tid\":62,\"taskStart\":\"701\",\"fd\":20}","\"leaderStart\":\"701\",\"tid\":62,\"taskStart\":\"701\",\"fd\":20}"),
+            ("\"proof\":\"pidfd-kcmp-files-and-file-v1\"","\"extra\":true,\"proof\":\"pidfd-kcmp-files-and-file-v1\""),
+        ] {
+            assert!(raw.contains(from),"directed invalid-frame mutation must actually apply");
+            assert!(Response::parse(raw.replace(from,to).as_bytes()).is_err());
+        }
+        // Existing producer frames carry no alias and remain protective.
+        assert!(Response::parse(&cases[2]).unwrap().roots[0].references[0].leader_fd_alias.is_none());
     }
 }
