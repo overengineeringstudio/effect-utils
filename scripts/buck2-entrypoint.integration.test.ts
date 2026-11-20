@@ -1867,6 +1867,204 @@ for (let attempt = 0; attempt < 2; attempt++) {
     expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
   })
 
+  it('uses mapped FILE endpoints for admission and native startup, with route-keyed probe reuse', async () => {
+    const requests = [0, 0]
+    const services = [0, 1].map((index) => {
+      const service = createServer()
+      service.on('stream', (stream: ServerHttp2Stream, headers) => {
+        requests[index] = (requests[index] ?? 0) + 1
+        expect(headers['authorization']).toBeUndefined()
+        expect(headers['x-buck2-reader']).toBe('read-only')
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      return service
+    })
+    await Promise.all(
+      services.map((service) => {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        service.listen(0, '127.0.0.1', resolve)
+        return promise
+      }),
+    )
+    const targets = services.map((service) => {
+      const bound = service.address()
+      if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+      return `grpc://127.0.0.1:${bound.port}`
+    })
+    try {
+      for (const port of [41045, 41068]) {
+        const source = `grpc://cache.fixture.ts.net:${port}`
+        const root = fixture(source)
+        const local = join(root, '.buckconfig.local')
+        const inherited = '<file:reader-auth.buckconfig>\n'
+        writeFileSync(
+          join(root, 'reader-auth.buckconfig'),
+          '[buck2_re_client]\nhttp_headers = authorization: Basic inherited\n',
+        )
+        writeFileSync(local, inherited)
+        const args = ['run', '//:app', '--', '-c', 'buck2.allow_cache_uploads=true', source]
+        for (const target of targets) {
+          const env = { BUCK2_REAPI_READ_FORWARDERS: JSON.stringify({ [source]: target }) }
+          for (let repeat = 0; repeat < 2; repeat++) {
+            const before = statSync(local)
+            const result = await directBuckArguments({ ...options(root), env, args })
+            const after = statSync(local)
+            const values = effective(result)
+            expect(values['buck2_re_client.action_cache_address']).toBe(target)
+            expect(values['buck2.remote_cache_enabled']).not.toBe('false')
+            expect(values['buck2.allow_cache_uploads']).toBe('false')
+            expect(values['buck2.default_allow_cache_upload']).toBe('false')
+            expect(result.slice(result.indexOf('--'))).toEqual(args.slice(args.indexOf('--')))
+            const file = readFileSync(local, 'utf8')
+            expect(file.startsWith(inherited.trimEnd())).toBe(true)
+            expect(file).toContain(`action_cache_address = ${target}`)
+            expect(file).toContain('http_headers = x-buck2-reader: read-only')
+            expect(file).not.toContain('instance_name =')
+            expect(file).not.toContain('tls =')
+            if (repeat === 1) {
+              expect(after.ino).toBe(before.ino)
+              expect(after.mtimeMs).toBe(before.mtimeMs)
+            }
+          }
+        }
+      }
+      // Healthy repeats share a probe; changing the forwarder address cannot reuse it.
+      expect(requests).toEqual([2, 2])
+    } finally {
+      for (const service of services) service.close()
+    }
+  })
+
+  it('rejects malformed host routing before watcher or root overlay mutation', async () => {
+    const root = fixture('grpc://cache.fixture.ts.net:41045')
+    const tracked = readFileSync(join(root, '.buckconfig'), 'utf8')
+    writeFileSync(join(root, '.buckconfig'), `${tracked}\n[buck2]\nfile_watcher = watchman\n`)
+    const local = '[ui]\ncolor = true\n'
+    writeFileSync(join(root, '.buckconfig.local'), local)
+    await expect(
+      directBuckArguments({
+        ...options(root),
+        args: ['build', '//:app'],
+        env: {
+          BUCK2_REAPI_READ_FORWARDERS:
+            '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}',
+        },
+      }),
+    ).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+    expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(local)
+    expect(existsSync(join(root, 'probe-cache'))).toBe(false)
+  })
+
+  it('keeps CLI writer policy and removes a stale mapped reader FILE overlay', async () => {
+    const service = createServer()
+    service.on('stream', (stream) => {
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+        stream.end(Buffer.from([0, 0, 0, 0, 0]))
+      })
+    })
+    const { promise, resolve } = Promise.withResolvers<void>()
+    service.listen(0, '127.0.0.1', resolve)
+    await promise
+    const bound = service.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    try {
+      const root = fixture(`grpc://127.0.0.1:${bound.port}`)
+      const source = 'grpc://cache.fixture.ts.net:41045'
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `${readFileSync(join(root, '.buckconfig'), 'utf8')}\n[buck2_re_client]\ncas_address = ${source}\nengine_address = ${source}\n`,
+      )
+      const writerConfig = join(root, 'writer.buckconfig')
+      writeFileSync(writerConfig, '[buck2]\ndefault_allow_cache_upload = true\n')
+      const env = {
+        BUCK2_REAPI_READ_FORWARDERS: JSON.stringify({ [source]: 'grpc://127.0.0.1:41045' }),
+      }
+      for (const writerArgs of [
+        ['-c', 'buck2.allow_cache_uploads=true'],
+        ['--config=buck2.allow_cache_uploads=true'],
+        ['-c', 'buck2.default_allow_cache_upload=true'],
+        ['--config-file', writerConfig],
+      ]) {
+        await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
+        expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
+          'http_headers = x-buck2-reader: read-only',
+        )
+        const payload = ['--', '-c', 'buck2.allow_cache_uploads=false', '@literal-payload']
+        let admittedValues: Readonly<Record<string, string>> = {}
+        const admitted = await directBuckArguments({
+          ...options(root),
+          env,
+          args: ['run', '//:app', ...writerArgs, ...payload],
+          onCachePosture: (values) => {
+            admittedValues = values
+          },
+        })
+        expect(admitted.slice(admitted.indexOf('--'))).toEqual(payload)
+        expect(admittedValues['buck2.remote_cache_enabled']).not.toBe('false')
+        const key =
+          writerArgs[0] === '--config-file' ||
+          writerArgs.includes('buck2.default_allow_cache_upload=true') === true
+            ? 'buck2.default_allow_cache_upload'
+            : 'buck2.allow_cache_uploads'
+        expect(admittedValues[key]).toBe('true')
+        const local = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+        expect(local).not.toContain('x-buck2-reader')
+        expect(local).not.toContain('cas_address')
+        expect(local).not.toContain('engine_address')
+      }
+    } finally {
+      service.close()
+    }
+  })
+
+  it('includes host reader routing in the shell warm-launch environment identity', () => {
+    const root = fixture('grpc://cache.fixture.ts.net:41045')
+    const bash = Bun.which('bash')
+    const sha256 = Bun.which('sha256sum')
+    if (bash === null || sha256 === null) throw new Error('expected packaged shell and sha256sum')
+    const launcher = join(root, 'capture-launch-cache')
+    writeFileSync(launcher, `#!${bash}\nprintf '%s\\n' "$3"\n`, { mode: 0o700 })
+    const wrapper = join(root, 'buck2-wrapper')
+    writeFileSync(
+      wrapper,
+      readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
+        .replaceAll('@shell@', bash)
+        .replaceAll('@native@', '/unused-native')
+        .replaceAll('@launcher@', launcher)
+        .replaceAll('@sha256@', sha256),
+      { mode: 0o700 },
+    )
+    const identities = [
+      '',
+      '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41045"}',
+      '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41068"}',
+      '',
+    ].map((mapping) => {
+      const result = Bun.spawnSync([bash, wrapper, 'build', '//:app'], {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          XDG_CACHE_HOME: join(root, 'cache'),
+          WATCHMAN_SOCK: join(root, 'unused-watcher'),
+          BUCK2_REAPI_READ_FORWARDERS: mapping,
+        },
+      })
+      expect(result.exitCode).toBe(0)
+      const identity = result.stdout.toString().trim()
+      expect(identity).toContain('/buck2-launch-v2/')
+      return identity
+    })
+    expect(new Set(identities.slice(0, 3)).size).toBe(3)
+    expect(identities[0]).toBe(identities[3])
+  })
+
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
     let requests = 0
     const grpc = createServer()

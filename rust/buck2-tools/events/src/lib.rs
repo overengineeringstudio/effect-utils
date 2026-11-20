@@ -51,6 +51,8 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Record the supported invocation census, independently of export.
+    Census(retained::Census),
     Ingest {
         #[arg(required = true)]
         logs: Vec<PathBuf>,
@@ -84,6 +86,7 @@ pub fn main_entry() -> Result<(), Box<dyn std::error::Error>> {
 }
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
+        Command::Census(args) => Ok(retained::census(args)?),
         Command::Ingest {
             logs,
             sidecar,

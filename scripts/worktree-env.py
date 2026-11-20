@@ -3,6 +3,8 @@
 
 Python is stage-zero glue, matching the existing consumer-root materializer.
 Nix and Buck remain the tool-closure and computation authorities respectively.
+The Nix launcher retains caller-owned policy wrappers and immutable admission
+tools without forwarding ambient executable directories into check runtimes.
 """
 import fcntl
 import hashlib
@@ -24,7 +26,11 @@ def identity(root):
     # a closure that appears to include them; staging is sufficient, no commit.
     untracked = git("ls-files", "--others", "--exclude-standard", "-z")
     if untracked:
-        raise RuntimeError("Stage new source files with git add before preparing worktree tools")
+        paths = [os.fsdecode(path) for path in untracked.split(b"\0", 10)[:10] if path]
+        raise RuntimeError(
+            "Stage new source files with git add before preparing worktree tools "
+            f"(paths={json.dumps(paths)}; limit=10)"
+        )
     digest = hashlib.sha256(b"effect-utils/worktree-tools/v1\0" + os.fsencode(root))
     digest.update(git("rev-parse", "HEAD"))
     digest.update(git("diff", "HEAD", "--binary", "--no-ext-diff", "--", "."))
@@ -53,6 +59,9 @@ def main():
     # Git hooks must never redirect the worktree or index used for identity.
     for variable in git("rev-parse", "--local-env-vars").decode().splitlines():
         os.environ.pop(variable, None)
+    inherited = os.environ.get("PATH", "").split(os.pathsep)
+    guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
+    os.environ["WORKTREE_POLICY_PATH"] = os.pathsep.join(guards)
     root = Path(git("rev-parse", "--show-toplevel").decode().strip()).resolve()
     os.chdir(root)
     state = root / ".worktree-tools/v1"
@@ -109,9 +118,6 @@ def main():
             raise RuntimeError("run requires a command after --")
         # Keep the authenticated agent policy guards before all development tools.
         # Repository products precede the general development tool closure.
-        inherited = os.environ.get("PATH", "").split(os.pathsep)
-        guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
-        os.environ["WORKTREE_POLICY_PATH"] = os.pathsep.join(guards)
         os.environ["PATH"] = os.pathsep.join(guards + [str(root / "node_modules/.bin"), str(tools / "bin")] + inherited)
         os.environ["WORKSPACE_ROOT"] = str(root)
     os.chdir(invocation_directory)
