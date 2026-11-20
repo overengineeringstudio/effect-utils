@@ -2,19 +2,26 @@ import { dlopen } from 'bun:ffi'
 import { expect, it } from 'bun:test'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
-import { closeSync, mkdtempSync, openSync, realpathSync, rmSync } from 'node:fs'
+import { closeSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
   editorPublicationLockPath,
+  releaseEditorPublicationOwner,
   requireEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
   withEditorPublicationOwner,
 } from './editor-publication-owner.ts'
 
 const ownerLibrary = process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY
 if (ownerLibrary === undefined || ownerLibrary.length === 0)
   throw new Error('Owner regression requires BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
+const python = process.env.BUCK2_EDITOR_PUBLICATION_TEST_PYTHON
+if (python === undefined || python.startsWith('/') === false)
+  throw new Error('Owner regression requires absolute BUCK2_EDITOR_PUBLICATION_TEST_PYTHON')
+const supervisor = fileURLToPath(new URL('../../../../scripts/editor-view-supervisor.py', import.meta.url))
 const native = dlopen(ownerLibrary, {
   buck2_publication_owner_lock: { args: ['i32', 'i32'], returns: 'i32' },
 })
@@ -180,4 +187,114 @@ it('holds exclusive ownership until the callback interrupts and joins its non-ow
       child?.kill('SIGKILL')
       await exited
     }
+  }))
+
+it('records advisory metadata from both real acquirers usable by the genuine admission diagnostic', () =>
+  withRoot(async (root) => {
+    const clock = spawnSync(python, ['-c', 'import time; print(time.monotonic())'], {
+      encoding: 'utf8', timeout: 10000,
+    })
+    expect({ status: clock.status, signal: clock.signal, error: clock.error, stderr: clock.stderr })
+      .toEqual({ status: 0, signal: null, error: undefined, stderr: '' })
+    const before = Number(clock.stdout.trim())
+    expect(Number.isFinite(before)).toBe(true)
+    const inspect = (): void => {
+      const path = editorPublicationLockPath(root)
+      expect(readFileSync(path).byteLength).toBeLessThanOrEqual(1024)
+      const dump = spawnSync(python, ['-c', `
+import json, runpy, sys, time
+owner = json.load(open(sys.argv[2]))
+assert float(sys.argv[3]) <= owner["started"] <= time.monotonic(), owner
+runpy.run_path(sys.argv[1])["admission_dump"](sys.argv[2])
+`, supervisor, path, String(before)], {
+        env: { ...process.env, BUCK2_NATIVE_BIN: '', DEVENV_ROOT: root },
+        encoding: 'utf8', timeout: 10000,
+      })
+      expect({ status: dump.status, signal: dump.signal, error: dump.error })
+        .toEqual({ status: 0, signal: null, error: undefined })
+      const command = basename(process.execPath).slice(0, 80).replace(/[^A-Za-z0-9_.-]/g, '_')
+      expect(dump.stderr).toContain(`holder recorded-pid=${process.pid} command=${command} `)
+      expect(dump.stderr).toContain('held-seconds=')
+      expect(dump.stderr).toContain('identity=advisory')
+      expect(dump.stderr).not.toContain('holder=unparseable')
+      expect(dump.stderr).not.toContain('holder=unknown')
+    }
+    await withEditorPublicationOwner({
+      root,
+      run: async (owner) => {
+        inspect()
+        const original = readFileSync(editorPublicationLockPath(root), 'utf8')
+        expect(requireEditorPublicationOwner({ root, owner })).toBe(owner)
+        expect(tryAcquireEditorPublicationOwner({ root })).toBeUndefined()
+        expect(readFileSync(editorPublicationLockPath(root), 'utf8')).toBe(original)
+        // Neither valid-looking content nor damaged advisory bytes confer or revoke authority.
+        expect(() => requireEditorPublicationOwner({ root, owner: JSON.parse(original) })).toThrow(
+          'live in-process publication owner',
+        )
+        writeFileSync(editorPublicationLockPath(root), 'unparseable advisory bytes')
+        expect(requireEditorPublicationOwner({ root, owner })).toBe(owner)
+        expect(canAcquire(root)).toBe(false)
+      },
+    })
+    const owner = tryAcquireEditorPublicationOwner({ root })
+    expect(owner).toBeDefined()
+    try {
+      inspect()
+      expect(canAcquire(root)).toBe(false)
+    } finally {
+      releaseEditorPublicationOwner(owner!)
+    }
+    // Stale, parseable metadata is not ownership once the real flock has gone.
+    expect(() => requireEditorPublicationOwner({
+      root, owner: JSON.parse(readFileSync(editorPublicationLockPath(root), 'utf8')),
+    })).toThrow('live in-process publication owner')
+    expect(canAcquire(root)).toBe(true)
+  }))
+
+it('closes and unlocks both acquisition paths when real metadata writes fail', () =>
+  withRoot(async (root) => {
+    const child = spawnSync(python, ['-c', `
+import resource, signal, subprocess, sys
+def limit():
+    signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
+result = subprocess.run([sys.argv[1], "--eval", sys.argv[2]], preexec_fn=limit,
+                        timeout=10)
+sys.exit(result.returncode)
+`, process.execPath, `
+      import { strict as assert } from 'node:assert';
+      import { dlopen } from 'bun:ffi';
+      import { closeSync, fstatSync, openSync, readdirSync, statSync } from 'node:fs';
+      import {
+        editorPublicationLockPath, tryAcquireEditorPublicationOwner, withEditorPublicationOwner
+      } from ${JSON.stringify(moduleUrl)};
+      process.on('SIGXFSZ', () => {});
+      const root = ${JSON.stringify(root)};
+      let entered = false;
+      assert.throws(() => tryAcquireEditorPublicationOwner({ root }), { code: 'EFBIG' });
+      await assert.rejects(withEditorPublicationOwner({
+        root, run: async () => { entered = true; }
+      }), { code: 'EFBIG' });
+      assert.equal(entered, false);
+      const path = editorPublicationLockPath(root);
+      const expected = statSync(path);
+      for (const entry of readdirSync(process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd')) {
+        let actual;
+        try { actual = fstatSync(Number(entry)); }
+        catch (error) { if (error.code === 'EBADF') continue; throw error; }
+        assert.ok(actual.dev !== expected.dev || actual.ino !== expected.ino,
+          'failed metadata write leaked the owner descriptor');
+      }
+      const native = dlopen(process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY, {
+        buck2_publication_owner_lock: { args: ['i32', 'i32'], returns: 'i32' }
+      });
+      const fd = openSync(path, 'r+');
+      try { assert.equal(native.symbols.buck2_publication_owner_lock(fd, 2 | 4), 0); }
+      finally { closeSync(fd); native.close(); }
+    `], {
+      env: process.env, encoding: 'utf8', timeout: 15000,
+    })
+    expect({ status: child.status, signal: child.signal, error: child.error, stderr: child.stderr })
+      .toEqual({ status: 0, signal: null, error: undefined, stderr: '' })
+    expect(canAcquire(root)).toBe(true)
   }))

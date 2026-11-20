@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Usage: worktree-teardown <worktree-path> (absolute or relative).
 # Requires Bash, Git, flock, GNU coreutils/findutils and awk with NUL record support.
-# buck2 is required when root-owned daemon state exists; Watchman is optional
-# and never spawned, with jq required only when its service is reachable.
+# BUCK2_NATIVE_BIN must name the declared pinned native Buck when daemon state exists;
+# Watchman is optional and never spawned; jq is required only for a reachable service.
 # HOME locates Buck state; XDG_CACHE_HOME overrides the admission cache location;
 # WATCHMAN_SOCK selects a service. WORKTREE_TEARDOWN_EDITOR_RELEASE=1 explicitly
 # permits the checkout's devenv editor-release task; otherwise no checkout code
@@ -60,7 +60,7 @@ fi
 
 # The persistent root publication owner fences every destructive step, including
 # editor release below (which directly releases/retires, not the supervisor).
-# Allocate our own inheritable descriptor: FD 3 may belong to the caller.
+# This shell owns its descriptor; native shutdown never accepts it as authority.
 # Never unlink this file: every publisher and maintenance writer locks its inode.
 publication_directory="$root/.devenv"
 publication_lock="$publication_directory/editor-view-publication.lock"
@@ -90,8 +90,8 @@ if [ -L "$publication_directory" ] || [ -L "$publication_lock" ] || \
   echo "worktree-teardown: editor publication owner path/inode changed; leave the worktree intact" >&2
   exit 1
 fi
-# Keep this exec-open descriptor until shell exit, including all child commands.
-# It is the actual flock owner, not an inherited/reentrant ownership assertion.
+# Keep this descriptor in the shell until exit. Close it in children that can
+# daemonize or outlive the shell; short-lived synchronous children may inherit it.
 
 home="$(realpath -m -- "$HOME")"
 for component_path in "$home/.buck" "$home/.buck/buckd"; do
@@ -178,8 +178,8 @@ if [ -d "$state" ]; then
     verify_isolation_contents "$directory"
     # Native kill is offline and never starts a daemon. Use its protocol rather
     # than signaling a potentially recycled PID from buckd.pid.
-    BUCK2_EDITOR_PUBLICATION_OWNER_FD="$publication_owner_fd" \
-      buck2 --isolation-dir "${directory##*/}" kill
+    "${BUCK2_NATIVE_BIN:?required declared pinned native Buck binary}" \
+      --isolation-dir "${directory##*/}" kill {publication_owner_fd}>&-
     verify_isolation_contents "$directory"
     # Never recursively delete an isolation or its history. Shallow regular-file
     # deletion plus rmdir leaves any newly appearing unknown directory intact.
@@ -207,7 +207,7 @@ if command -v watchman >/dev/null 2>&1; then
     managed_socket="/tmp/eu-wm-$(id -u)-${home_hash:0:12}/sock"
     watchman_args+=("--sockname=$managed_socket")
   fi
-  if watch_list="$(watchman "${watchman_args[@]}" watch-list 2>/dev/null)"; then
+  if watch_list="$(watchman "${watchman_args[@]}" watch-list {publication_owner_fd}>&- 2>/dev/null)"; then
     if ! command -v jq >/dev/null 2>&1; then
       echo "worktree:teardown: jq is required to check watched roots" >&2
       exit 1
@@ -215,7 +215,7 @@ if command -v watchman >/dev/null 2>&1; then
     # Check exact root membership rather than suppressing genuine watch-del errors.
     # shellcheck disable=SC2016
     if jq -e --arg root "$root" 'any(.roots[]?; . == $root)' >/dev/null <<<"$watch_list"; then
-      watchman "${watchman_args[@]}" watch-del "$root"
+      watchman "${watchman_args[@]}" watch-del "$root" {publication_owner_fd}>&-
     fi
   fi
 fi
@@ -238,7 +238,7 @@ max-jobs = 0
 builders =
 substitute = false" \
     WORKTREE_TEARDOWN_EDITOR_RETIRE=1 DEVENV_TUI=false DEVENV_ROOT="$root" \
-    devenv tasks run buck2:editor:release --mode single
+    devenv tasks run buck2:editor:release --mode single {publication_owner_fd}>&-
 else
   echo "worktree:teardown: editor release skipped (set WORKTREE_TEARDOWN_EDITOR_RELEASE=1 to opt in; Nix builds remain disabled)"
 fi

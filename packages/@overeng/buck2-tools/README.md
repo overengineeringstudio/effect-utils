@@ -185,6 +185,9 @@ build/publication flow; the supervisor receives only a one-byte admission notifi
 Its execution clock starts after acquisition, excluding queue time. Existing explicit
 600/900 s cold-publication budgets and derived scoped budgets remain unchanged;
 the supervisor retains its **5 s kill grace** on interruption or deadline expiry.
+Byte `1` means the real owner was acquired; byte `0` explicitly finishes an authority-only
+or empty-selection path without claiming ownership or starting an execution deadline.
+Unexpected EOF and malformed notifications fail closed, even when the child exits zero.
 Each admitted invocation logs the lock path and admission wait in seconds.
 Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
@@ -222,6 +225,9 @@ but cannot release an active callback before its subordinate work has joined.
 This protects against accidental and foreign-descriptor misuse, not an adversarial
 same-uid process that can directly invoke the unmanaged native binary.
 No token is stored in the lock file or shared cursor.
+Successful acquisition writes bounded advisory PID, command and system-monotonic start
+metadata for admission diagnostics. File contents never grant ownership, and opaque-owner
+validation does not rewrite them.
 
 The public managed CLI rejects the reserved `editor-publication` namespace.
 Only the same-process managed launcher accepts its real opaque owner; it retains
@@ -229,6 +235,9 @@ normal admission, cache posture, tracing and native lifecycle policy.
 Publication dispatch also runs in process with that object rather than a borrowed FD.
 Kernel regressions cover atomic CLOEXEC, child non-inheritance, callback-wide contention,
 foreign/copied/released objects, cancellation joins and exact native error diagnostics.
+Fingerprint cancellation regressions use a declared shell-only kernel child for FIFO
+readiness, TERM and close-join coverage; they do not simulate the Rust hash algorithm.
+A subsequent independent scope uses the actual declared fingerprint executable and verifies its digest.
 
 Megarepo maintenance independently acquires that owner around reserved-isolation
 clean and the final daemon checks/stop. A live publisher defers maintenance;
@@ -918,10 +927,13 @@ checkout root, removes only its isolation state, deletes its Watchman watch when
 the service is reachable, and removes only its root-keyed admission cache entries.
 Without `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`, any owned `.editor-view`, including
 lease-only state, refuses with exit 3 before mutation and reports the opt-in retry.
-After that refusal check, teardown holds the persistent root publication flock
-across every destructive step and passes its actual inherited descriptor to
-reserved-isolation shutdown. A busy or invalid owner refuses without mutation;
-the control inode remains persistent, so a live publisher cannot lose its fence.
+After that refusal check, teardown's Bash process holds the persistent root publication
+flock across every destructive step. Offline shutdown uses its explicitly declared
+`BUCK2_NATIVE_BIN`, never the managed reserved-namespace CLI or inherited-owner environment.
+The shell closes its lock descriptor in native Buck, Watchman and devenv invocations
+that could create long-lived descendants; short-lived synchronous children may inherit it.
+A busy or invalid owner refuses without mutation; the control inode remains persistent,
+so a live publisher cannot lose its fence.
 Only editor-free checkouts skip release successfully. Opt-in permits the checkout's
 `buck2:editor:release` task with final retirement enabled; Nix builds/substitutions
 remain disabled. The command makes

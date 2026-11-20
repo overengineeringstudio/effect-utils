@@ -43,14 +43,17 @@ os.close(ready_fd)
 class AdmissionNotificationTest(unittest.TestCase):
     def test_missing_or_malformed_admission_fails_closed_even_without_deadline(self):
         supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
-        for notification in (b"", b"0", b"\xff"):
-            with self.subTest(notification=notification), tempfile.TemporaryDirectory() as scratch:
+        for notification, exits_cleanly in (
+            (b"", False), (b"2", False), (b"\xff", False),
+            (b"", True), (b"2", True), (b"\xff", True),
+        ):
+            with self.subTest(notification=notification, exits_cleanly=exits_cleanly), tempfile.TemporaryDirectory() as scratch:
                 fixture = f'''
 import os, time
 fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
 os.write(fd, {notification!r})
 os.close(fd)
-time.sleep(60)
+{"pass" if exits_cleanly else "time.sleep(60)"}
 '''
                 result = subprocess.run(
                     [sys.executable, supervisor, "none", "0.1", "--lock",
@@ -61,6 +64,89 @@ time.sleep(60)
                 self.assertIn("failed to notify owner admission", result.stderr)
                 self.assertNotIn("publication admitted on lock", result.stderr)
                 self.assertFalse((Path(scratch) / "publication.lock").exists())
+
+    def test_explicit_no_publication_does_not_start_execution_deadline(self):
+        supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            fixture = '''
+import os, time
+fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
+os.write(fd, b"0")
+os.close(fd)
+time.sleep(0.1)
+'''
+            result = subprocess.run(
+                [sys.executable, supervisor, "0.001", "0.1", "--lock", str(lock),
+                 sys.executable, "-c", fixture],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("publication admitted on lock", result.stderr)
+            self.assertNotIn("execution deadline", result.stderr)
+            self.assertFalse(lock.exists())
+
+    def test_real_authority_and_empty_diff_succeed_without_publication_owner(self):
+        repo = Path(__file__).resolve().parent.parent
+        supervisor = str(repo / "scripts/editor-view-supervisor.py")
+        authority = str(repo / "scripts/editor-view-authority.ts")
+        bun = os.environ.get("BUN_BIN") or shutil.which("bun")
+        git = shutil.which("git")
+        buck = os.environ.get("BUCK2_BIN") or shutil.which("buck2")
+        self.assertIsNotNone(bun, "Bun is required for the real authority command")
+        self.assertIsNotNone(git, "Git is required for real empty-diff selection")
+        self.assertIsNotNone(buck, "Buck is required for the real authority census")
+        # The authority path uses the real repository census, not a stubbed Buck.
+        # Its atomic output must remain within the repository.
+        with tempfile.TemporaryDirectory(prefix=".admission-test-", dir=repo) as scratch:
+            root = Path(scratch)
+            empty_repo = root / "empty"
+            empty_repo.mkdir()
+            for args in (
+                ["init", "--quiet"],
+                ["-c", "user.name=Admission Test", "-c", "user.email=admission@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "-m", "empty"],
+            ):
+                subprocess.run([git, *args], cwd=empty_repo, check=True,
+                               capture_output=True, text=True, timeout=10)
+            env = os.environ.copy()
+            env.pop("EDITOR_VIEW_PACKAGES", None)
+            for command, command_root in (("authority", repo), ("publish", empty_repo)):
+                with self.subTest(command=command):
+                    output = root / f"{command}.json"
+                    lock = root / f"{command}.lock"
+                    # A real competing holder must not delay either no-work path.
+                    with lock.open("w+") as holder:
+                        holder.write("not an acquired publication owner\n")
+                        holder.flush()
+                        fcntl.flock(holder, fcntl.LOCK_EX)
+                        extra = [] if command == "authority" else [
+                            "--changed-since", "HEAD",
+                            "--buck2-native", os.environ["BUCK2_NATIVE_BIN"],
+                            "--cp", shutil.which("cp"), "--mv", shutil.which("mv"),
+                            "--fingerprint-tool", os.environ["FINGERPRINT_BIN"],
+                            "--snapshot-retention", "2",
+                        ]
+                        result = subprocess.run(
+                            [sys.executable, supervisor, "0.001", "0.1", "--lock", str(lock),
+                             bun, authority, command, "--repo-root", str(command_root),
+                             "--workspace-root", str(command_root), "--cell", "effect_utils",
+                             "--buck2", buck, "--git", git, "--output", str(output), *extra],
+                            env=env, capture_output=True, text=True, timeout=60,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertNotIn("publication admitted on lock", result.stderr)
+                        self.assertNotIn("failed to notify owner admission", result.stderr)
+                        self.assertEqual(lock.read_text(), "not an acquired publication owner\n")
+                    if command == "authority":
+                        census = json.loads(output.read_text())
+                        self.assertTrue(census["requiredPackages"])
+                        self.assertEqual(census["requiredPackages"], census["ownedPackages"])
+                        self.assertIn("wrote editor dependency authority", result.stdout)
+                    else:
+                        self.assertFalse(output.exists())
+                        self.assertIn("No changed editor consumers; nothing to publish.", result.stdout)
+
 
     def test_authority_keeps_owner_private_across_exec_and_child_join(self):
         supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))

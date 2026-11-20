@@ -280,7 +280,8 @@ const withPublicationCancellation = async (
   }
 }
 
-const notifyPublicationAdmission = (): void => {
+/** A terminal notification: only real owner acquisition starts the execution deadline. */
+const notifyPublicationAdmission = (outcome: 'owner-acquired' | 'no-publication'): void => {
   const value = process.env.EDITOR_VIEW_ADMISSION_READY_FD
   delete process.env.EDITOR_VIEW_ADMISSION_READY_FD
   if (value === undefined) return
@@ -289,7 +290,7 @@ const notifyPublicationAdmission = (): void => {
     throw new Error('Invalid editor publication deadline notification descriptor')
   const fd = Number(value)
   try {
-    if (writeSync(fd, '1') !== 1)
+    if (writeSync(fd, outcome === 'owner-acquired' ? '1' : '0') !== 1)
       throw new Error('Incomplete editor publication deadline notification')
   } finally {
     closeSync(fd)
@@ -381,6 +382,7 @@ const main = async (): Promise<void> => {
         process.stdout.write(
           'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
         )
+        notifyPublicationAdmission('no-publication')
         return
       }
       serializedPublicationPackages = JSON.stringify(selected)
@@ -406,6 +408,7 @@ const main = async (): Promise<void> => {
     process.stdout.write(
       `wrote editor dependency authority for ${authority.ownedPackages.length} workspace consumers\n`,
     )
+    notifyPublicationAdmission('no-publication')
     return
   }
   const plan = editorViewPlan({
@@ -424,7 +427,7 @@ const main = async (): Promise<void> => {
     options: {
       plan,
       signal,
-      onOwnerAcquired: notifyPublicationAdmission,
+      onOwnerAcquired: () => notifyPublicationAdmission('owner-acquired'),
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,

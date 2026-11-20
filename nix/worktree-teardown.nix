@@ -1,4 +1,7 @@
-{ pkgs }:
+{
+  pkgs,
+  buck2 ? import ./buck2.nix { inherit pkgs; },
+}:
 pkgs.writeShellApplication {
   name = "worktree-teardown";
   runtimeInputs = [
@@ -9,5 +12,7 @@ pkgs.writeShellApplication {
     pkgs.flock
     pkgs.jq
   ];
-  text = builtins.readFile ./devenv-modules/tasks/shared/worktree-teardown.sh;
+  text = ''
+    export BUCK2_NATIVE_BIN=${buck2}/libexec/buck2
+  '' + builtins.readFile ./devenv-modules/tasks/shared/worktree-teardown.sh;
 }

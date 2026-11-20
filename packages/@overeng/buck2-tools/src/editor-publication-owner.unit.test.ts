@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   openSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -53,17 +54,23 @@ const canAcquire = (root: string, mode = 2): boolean => {
 }
 // Observe real descriptors solely to verify native CLOEXEC and externally closed-inode safety.
 // Production never exposes this descriptor, nor accepts one as authority.
-const findOwnerFd = (root: string): number => {
+const findOwnerFds = (root: string): number[] => {
   const expected = statSync(editorPublicationLockPath(root))
+  const found: number[] = []
   for (const entry of readdirSync(process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd')) {
     const fd = Number(entry)
     try {
       const observed = fstatSync(fd)
-      if (observed.dev === expected.dev && observed.ino === expected.ino) return fd
+      if (observed.dev === expected.dev && observed.ino === expected.ino) found.push(fd)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EBADF') throw error
     }
   }
+  return found
+}
+const findOwnerFd = (root: string): number => {
+  const fd = findOwnerFds(root)[0]
+  if (fd !== undefined) return fd
   throw new Error('Acquired publication owner descriptor was not found')
 }
 
@@ -254,16 +261,21 @@ it('aborts a contending waiter without entering its callback or releasing the cu
       run: async (owner) => {
         const controller = new AbortController()
         let entered = false
+        const metadata = readFileSync(editorPublicationLockPath(root), 'utf8')
+        const descriptors = findOwnerFds(root)
         // Acquisition runs synchronously through its first real contention before returning.
         const waiting = withEditorPublicationOwner({
           root,
           signal: controller.signal,
           run: async () => { entered = true },
         })
+        expect(findOwnerFds(root)).toHaveLength(descriptors.length + 1)
         const rejected = expect(waiting).rejects.toMatchObject({ name: 'AbortError' })
         controller.abort()
         await rejected
         expect(entered).toBe(false)
+        expect(findOwnerFds(root)).toEqual(descriptors)
+        expect(readFileSync(editorPublicationLockPath(root), 'utf8')).toBe(metadata)
         expect(requireEditorPublicationOwner({ root, owner })).toBe(owner)
         expect(canAcquire(root)).toBe(false)
         expect(tryAcquireEditorPublicationOwner({ root })).toBeUndefined()

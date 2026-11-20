@@ -958,6 +958,7 @@ const reconcileOwnedBuckViews = async (
         throw new CommandFailure({
           message: `Editor publication failed with exit code ${result.exitCode}`,
           exitCode: result.exitCode,
+          signal: undefined,
         })
     } catch (error) {
       emitPublicationSpan(exitCodeOf(error))
@@ -988,6 +989,7 @@ const reconcileOwnedBuckViews = async (
       publicationFailure(new CommandFailure({
         message: `Editor publication batch failed with exit code ${result.exitCode}`,
         exitCode: result.exitCode,
+        signal: undefined,
       }))
     // Preserve the existing per-view callback as well as successful-task stderr evidence.
     for (const line of result.stderr.split('\n')) {

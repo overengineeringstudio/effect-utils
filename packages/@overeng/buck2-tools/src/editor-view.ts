@@ -31,6 +31,7 @@ import {
 import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
 
 import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import type { EditorPublicationOwner } from './editor-publication-owner.ts'
@@ -2548,7 +2549,9 @@ const acquirePublicationLock = async ({
   // Wait only for identified live eviction; recover only positively abandoned same-host owners.
   // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
   let acquisition: EditorViewPublicationLockProof['acquisition'] = 'normal'
+  const signal = editorViewDispatchScope.getStore()?.signal
   for (;;) {
+    signal?.throwIfAborted()
     try {
       const lock = acquireLock({ editorRoot, recoveryCommand })
       try {
@@ -2576,7 +2579,7 @@ const acquirePublicationLock = async ({
       const path = join(editorRoot, '.publish.lock')
       if (pathExists(path) === false) {
         // eslint-disable-next-line no-await-in-loop -- Yield when the contending lock vanished.
-        await Bun.sleep(10)
+        await delay(10, undefined, { signal })
         continue
       }
       let owner: LockOwner
@@ -2585,16 +2588,17 @@ const acquirePublicationLock = async ({
       } catch {
         if (pathExists(path) === false) {
           // eslint-disable-next-line no-await-in-loop -- Yield when owner inspection races release.
-          await Bun.sleep(10)
+          await delay(10, undefined, { signal })
           continue
         }
         throw error
       }
+      signal?.throwIfAborted()
       // eslint-disable-next-line no-await-in-loop -- Recovery repeats proof under the host fence.
       if ((await recoverAbandonedPublicationLock({ editorRoot, owner })) === true) {
         acquisition = 'recovered-dead-owner'
         // eslint-disable-next-line no-await-in-loop -- Yield before retrying the now-free root lock.
-        await Bun.sleep(10)
+        await delay(10, undefined, { signal })
         continue
       }
       if (
@@ -2607,7 +2611,7 @@ const acquirePublicationLock = async ({
       )
         throw error
       // eslint-disable-next-line no-await-in-loop -- Only the same live eviction incarnation is retried.
-      await Bun.sleep(10)
+      await delay(10, undefined, { signal })
     }
   }
 }
@@ -3925,18 +3929,10 @@ const publishEditorViewCoordinated = async ({
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
     if (error instanceof EditorViewCapacityError) throw error
-    const contextual = new Error(
-      `${error instanceof Error ? error.message : String(error)}; publication workers=${JSON.stringify(failureStates)}`,
-      { cause: error },
+    throw Object.assign(
+      error instanceof Error ? error : new Error(String(error), { cause: error }),
+      { publicationWorkers: failureStates },
     )
-    if (
-      error !== null &&
-      typeof error === 'object' &&
-      'exitCode' in error &&
-      typeof error.exitCode === 'number'
-    )
-      Object.assign(contextual, { exitCode: error.exitCode })
-    throw contextual
   } finally {
     interruptedPublicationPhases.delete(reportInterruption)
     if (candidate !== undefined && pathExists(candidate) === true) {

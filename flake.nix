@@ -425,7 +425,7 @@ rec {
                 fi
               '';
             };
-            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs; };
+            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs buck2; };
             editor-view-budget = import ./nix/editor-view-budget.nix { inherit pkgs; };
             editor-view-lease = pkgs.callPackage ./nix/editor-view-lease { };
             buck2-rules = buck2Rules;

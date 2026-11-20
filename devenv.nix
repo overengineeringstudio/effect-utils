@@ -129,6 +129,17 @@ let
   editorViewLease = pkgs.callPackage ./nix/editor-view-lease/default.nix { };
   publicationOwner = import ./nix/buck2-publication-owner.nix { inherit pkgs; };
   publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
+  # Real kernel child for lifetime tests, not an implementation of the Rust digest algorithm.
+  fingerprintLifetimeTestChild = pkgs.writeShellScriptBin "buck2-fingerprint" ''
+    set -euo pipefail
+    ready="$1"
+    terminated="$2"
+    exec 3<"$3"
+    trap 'printf joined >"$terminated"; exit 0' TERM
+    printf '%s' "$$" >"$ready"
+    IFS= read -r _ <&3
+    exit 1
+  '';
   sourceLease = import ./nix/editor-view-lease/consumer.nix {
     inherit pkgs;
     native = editorViewLease;
@@ -1332,6 +1343,9 @@ in
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
+      export FINGERPRINT_LIFETIME_TEST_BIN=${fingerprintLifetimeTestChild}/bin/buck2-fingerprint
+      export MKFIFO_BIN=${pkgs.coreutils}/bin/mkfifo
+      export BUCK2_EDITOR_PUBLICATION_TEST_PYTHON=${pkgs.python3}/bin/python3
       ${tsSandboxTestEnvironment}
       cd "$root"
       ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts

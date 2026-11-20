@@ -10,6 +10,7 @@ ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
 BUN="${BUN_BIN:-$(command -v bun)}"
 BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
 MANAGED_BUCK2="$(command -v buck2)"
+BUCK2_NATIVE="${BUCK2_NATIVE_BIN:?required declared pinned native Buck binary}"
 DEVENV="${DEVENV_BIN:-$(command -v devenv)}"
 FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint tool}"
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
@@ -69,8 +70,7 @@ cleanup() {
         cd "$worktree"
         exec {cleanup_owner_fd}>>"$worktree/.devenv/editor-view-publication.lock"
         flock -n "$cleanup_owner_fd"
-        BUCK2_EDITOR_PUBLICATION_OWNER_FD="$cleanup_owner_fd" \
-          "$MANAGED_BUCK2" --isolation-dir "$isolation" kill
+        "$BUCK2_NATIVE" --isolation-dir "$isolation" kill {cleanup_owner_fd}>&-
       ) >/dev/null 2>&1 || true
     done
     find -P "$worktree" -type d -exec chmod u+w -- {} +
@@ -396,20 +396,39 @@ done
 for pid in "${pids[@]}"; do kill -0 "$pid" || fail 'refused teardown stopped a daemon'; done
 [ -f "${admission_entries[0]}" ] || fail 'refused teardown deleted admission state'
 
-# A real private managed daemon requires the actual root owner, not an env bool.
+# Start a real private daemon through an actual in-process owner, never a borrowed FD.
 publication_lock="$worktree/.devenv/editor-view-publication.lock"
+OWNER_MODULE="$ROOT/packages/@overeng/buck2-tools/src/editor-publication-owner.ts" \
+  LAUNCHER_MODULE="$ROOT/scripts/buck2-entrypoint.ts" \
+  OWNER_FIXTURE="$worktree" OWNER_NATIVE_BUCK2="$BUCK2_NATIVE" "$BUN" --eval '
+  const { withEditorPublicationOwner } = await import(process.env.OWNER_MODULE);
+  const { runOwnedEditorPublicationCommand } = await import(process.env.LAUNCHER_MODULE);
+  const root = process.env.OWNER_FIXTURE;
+  await withEditorPublicationOwner({ root, run: async (owner) => {
+    const result = await runOwnedEditorPublicationCommand({
+      native: process.env.OWNER_NATIVE_BUCK2,
+      args: ["--isolation-dir", "editor-publication", "targets", "//:"],
+      cwd: root, env: process.env, owner, stdin: "ignore",
+    });
+    if (result.exitCode !== 0 || result.signalCode !== null)
+      throw new Error(`owned private daemon startup failed: ${result.stderr}`);
+  } });
+'
 exec {fixture_owner_fd}>>"$publication_lock"
 flock -n "$fixture_owner_fd"
 publication_identity="$(stat -Lc '%d:%i' "$publication_lock")"
 (cd "$worktree" && env -u BUCK2_EDITOR_PUBLICATION_OWNER_FD \
-  "$MANAGED_BUCK2" --isolation-dir first status >/dev/null)
+  "$MANAGED_BUCK2" --isolation-dir first status {fixture_owner_fd}>&- >/dev/null)
 if (cd "$worktree" && env -u BUCK2_EDITOR_PUBLICATION_OWNER_FD \
   "$MANAGED_BUCK2" --isolation-dir editor-publication targets //:) \
   >"$TEMP_ROOT/private-without-owner.log" 2>&1; then
   fail 'managed private Buck accepted a missing publication owner'
 fi
-(cd "$worktree" && BUCK2_EDITOR_PUBLICATION_OWNER_FD="$fixture_owner_fd" \
-  "$MANAGED_BUCK2" --isolation-dir editor-publication targets //: >/dev/null)
+if (cd "$worktree" && BUCK2_EDITOR_PUBLICATION_OWNER_FD="$fixture_owner_fd" \
+  "$MANAGED_BUCK2" --isolation-dir editor-publication targets //: {fixture_owner_fd}>&-) \
+  >"$TEMP_ROOT/private-forged-owner.log" 2>&1; then
+  fail 'managed private Buck accepted an inherited descriptor claim'
+fi
 private_pid="$(cat "$state/editor-publication/buckd.pid")"
 kill -0 "$private_pid" || fail 'private managed fixture daemon is not live'
 pids+=("$private_pid")
@@ -442,7 +461,37 @@ done
 [ ! -e "$state" ] || fail 'root buckd state remains'
 [ "$(stat -Lc '%d:%i' "$publication_lock")" = "$publication_identity" ] \
   || fail 'teardown unlinked or replaced the persistent publication owner'
-echo 'PASS: released owner permits teardown; managed private native kill accepted the actual inherited owner'
+(
+  exec {probe_owner_fd}>>"$publication_lock"
+  flock -n "$probe_owner_fd" || fail 'publication owner not immediately available after teardown'
+)
+if [ -d /proc/self/fd ]; then
+  # Linux kernel census of real accessible descriptors; no fixture process may pin the inode.
+  "$BUN" --eval '
+    const fs = require("node:fs");
+    const identity = fs.statSync(process.argv[1]);
+    const holders = [];
+    for (const pid of fs.readdirSync("/proc").filter((name) => /^[0-9]+$/.test(name))) {
+      let descriptors;
+      try { descriptors = fs.readdirSync(`/proc/${pid}/fd`); }
+      catch (error) {
+        if (["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(error.code)) continue;
+        throw error;
+      }
+      for (const fd of descriptors) {
+        try {
+          const stat = fs.statSync(`/proc/${pid}/fd/${fd}`);
+          if (stat.dev === identity.dev && stat.ino === identity.ino) holders.push(`${pid}:${fd}`);
+        } catch (error) {
+          if (["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(error.code)) continue;
+          throw error;
+        }
+      }
+    }
+    if (holders.length !== 0) throw new Error(`Publication lock descriptors survived teardown: ${holders.join(", ")}`);
+  ' "$publication_lock"
+fi
+echo 'PASS: shell-owned teardown uses pinned offline native kill; lock is immediately available with no accessible surviving Linux holder'
 [ ! -e "$worktree/.editor-view" ] || fail 'editor root remains after retirement'
 [ ! -e "$worktree/context/.editor-view" ] || fail 'empty legacy context editor root remains'
 [ ! -e "$worktree/packages/.editor-view" ] || fail 'empty legacy packages editor root remains'

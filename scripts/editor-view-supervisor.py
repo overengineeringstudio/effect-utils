@@ -164,17 +164,21 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admissio
         signal.signal(sig, lambda number, _frame: interrupted.append(number))
     started = time.monotonic()
     admitted = waiting_lock is None
+    no_publication = False
     admission_failed = False
     expires = started + deadline if admitted and deadline is not None else float("inf")
     diagnostic = AdmissionDiagnostic()
     def observe_admission():
-        nonlocal admitted, admission_failed, expires
-        if not admitted:
+        nonlocal admitted, no_publication, admission_failed, expires
+        if not admitted and not no_publication:
             lock_path, ready_fd = waiting_lock
             try:
                 notification = os.read(ready_fd, 1)
                 admitted = notification == b"1"
-                admission_failed = not admitted
+                # 0 explicitly finishes without publication; it never claims an owner
+                # or starts a deadline. EOF and every other byte remain fail-closed.
+                no_publication = notification == b"0"
+                admission_failed = not (admitted or no_publication)
             except BlockingIOError:
                 pass
             if admitted:
@@ -183,7 +187,7 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admissio
                 print(f"Editor-view publication admitted on lock {lock_path} after waiting {now - started:.3f}s.", file=sys.stderr, flush=True)
     while not interrupted and not admission_failed and time.monotonic() < expires:
         observe_admission()
-        if waiting_lock is not None and not admitted:
+        if waiting_lock is not None and not admitted and not no_publication:
             diagnostic.observe(waiting_lock[0], started)
         elif diagnostic.child is not None:
             diagnostic.close()
@@ -198,7 +202,7 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admissio
             pass
     diagnostic.close()
     status = 1 if admission_failed else 128 + interrupted[0] if interrupted else 124
-    if waiting_lock is not None and not admitted:
+    if waiting_lock is not None and not admitted and not no_publication:
         print(f"Editor-view publication was waiting for another publication on lock {waiting_lock[0]}.", file=sys.stderr, flush=True)
     reason = ("failed to notify owner admission" if admission_failed else
               "was interrupted" if interrupted else f"exceeded its {deadline:g}s execution deadline")
