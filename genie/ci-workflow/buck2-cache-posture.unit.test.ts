@@ -154,6 +154,7 @@ describe('declared Buck2 job cache posture', () => {
       Object.entries(jobs).map(([id, job]) => [
         id,
         standaloneCachePostureConfig({
+          base: {},
           current: '',
           env: { ...job.env, BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
         }),

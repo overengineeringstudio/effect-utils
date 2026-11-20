@@ -762,6 +762,7 @@ if (ciUnitTest === false) {
 const editorPublishers = [...dependencies.keys()].filter(
   (name) =>
     name === 'buck2:editor:bootstrap' ||
+    name === 'content-address:contract:prepare' ||
     name === 'buck2:editor:publish' ||
     name.startsWith('buck2:editor:publish:'),
 )
@@ -856,10 +857,25 @@ for (const name of editorPublishers) {
         actualDeadline === 'none' && body.includes('# editor-view-batch-budget:') === false,
       name: `${name} has no total publication deadline or unused budget metadata`,
     })
+  } else if (/editor-view-authority\.ts"\s+bootstrap\s/u.test(body) === true) {
+    const expectedDeadline = 300 * (1 + packages.length)
+    ok({
+      condition: Number(actualDeadline) === expectedDeadline,
+      name: `${name} reserves 300s startup plus 300s per bootstrap package (${expectedDeadline}s)`,
+    })
+  } else if (name === 'buck2:editor:publish:standalone-staging') {
+    ok({
+      condition:
+        actualDeadline === '600' &&
+        packages.length === 1 &&
+        packages[0] === 'packages/@overeng/genie' &&
+        /editor-view-authority\.ts"\s+publish\s/u.test(body) === true,
+      name: `${name} reserves 300s preparation plus 300s payload for its single Genie view`,
+    })
   } else {
     ok({
       condition: actualDeadline === '300',
-      name: `${name} retains the 300s scoped/bootstrap publication cap`,
+      name: `${name} retains the 300s scoped publication cap`,
     })
   }
   publisherStateRoots.set(
@@ -1136,6 +1152,9 @@ ok({
 ok({
   condition:
     editorViewHelper.includes('deadlineSeconds ? 300') &&
+    /deadlineSeconds\s*\?\s*\(?\s*if mode == "bootstrap" && packagePaths != null then\s+300 \* \(1 \+ builtins\.length packagePaths\)\s+else\s+300\s*\)?,/u.test(
+      editorViewHelper,
+    ) &&
     editorViewHelper.includes(
       'if deadlineSeconds == null then "none" else toString deadlineSeconds',
     ) &&
