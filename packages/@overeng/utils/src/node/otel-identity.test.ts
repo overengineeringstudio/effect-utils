@@ -97,7 +97,10 @@ const resourceAttrsBySignal = (
     return out
   })
 
-const runWorkload = (endpoint: string) =>
+const runWorkload = (
+  endpoint: string,
+  resourceAttributes: Readonly<Record<string, string | number | boolean>> = {},
+) =>
   Effect.scoped(
     workload.pipe(
       Effect.provide(
@@ -107,6 +110,7 @@ const runWorkload = (endpoint: string) =>
           exportInterval: 50,
           metricsExportInterval: 100,
           shutdownTimeout: 4000,
+          resourceAttributes,
         }),
       ),
     ),
@@ -120,11 +124,20 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
         const otelite = yield* Otelite
         const cap = yield* otelite.capture({})
 
-        // Isolate from any ambient resource env so this test measures only the
-        // explicit identity.
+        // Caller attributes override ambient values; explicit identity overrides both.
         yield* Effect.scoped(
-          scopedEnv({ OTEL_RESOURCE_ATTRIBUTES: undefined, OTEL_SERVICE_NAME: undefined }).pipe(
-            Effect.andThen(runWorkload(cap.endpoints.http)),
+          scopedEnv({
+            OTEL_RESOURCE_ATTRIBUTES: 'deployment.environment=ambient',
+            OTEL_SERVICE_NAME: undefined,
+          }).pipe(
+            Effect.andThen(
+              runWorkload(cap.endpoints.http, {
+                'deployment.environment': 'caller',
+                'service.name': 'ignored-name',
+                'service.namespace': 'ignored-namespace',
+                'service.version': 'ignored-version',
+              }),
+            ),
           ),
         )
 
@@ -141,6 +154,7 @@ Vitest.describe('makeOtelCliLayer — typed ServiceIdentity', () => {
           expect(attrs[signal]?.['service.name']).toBe('identity-cli')
           expect(attrs[signal]?.['service.namespace']).toBe('overeng.test')
           expect(attrs[signal]?.['service.version']).toBe('9.9.9')
+          expect(attrs[signal]?.['deployment.environment']).toBe('caller')
         }
       }).pipe(Effect.provide(Layer.provideMerge(Otelite.layer, NodeServices.layer))),
   )

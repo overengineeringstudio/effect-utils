@@ -948,6 +948,11 @@ in
             description = "Publish only bootstrap and ${pkg.name} test dependency views";
             packagePaths = lib.unique (editorBootstrapPackagePaths ++ [ pkg.path ]);
             traceScope = "test:${pkg.name}";
+            # A cold megarepo unbounded publication spent 135.8s reserving and
+            # entered materialization at 160.5s before the default 300s cap
+            # killed it after Buck had already succeeded. Keep the 2696-style
+            # split: 300s preparation plus a 300s payload allowance.
+            deadlineSeconds = if pkg.name == "megarepo:unbounded" then 600 else 300;
           })
         ) standaloneTestPublicationPackages
       );
@@ -1184,6 +1189,9 @@ in
     description = "Publish compiler dependencies for the standalone staging guard";
     packagePaths = [ "packages/@overeng/genie" ];
     traceScope = "standalone-staging";
+    # Measured cold preparation takes 203s before the staging payload starts.
+    # Keep a separate 300s payload allowance, rounded to the next 300s boundary.
+    deadlineSeconds = 600;
   };
 
   # PR lint CI checks every standalone-staged source and inventory completeness.

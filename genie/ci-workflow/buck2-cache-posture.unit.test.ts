@@ -168,7 +168,9 @@ describe('declared Buck2 job cache posture', () => {
     expect(configs.pullRequest).not.toContain('http_headers')
     expect(configs.inert).toContain('remote_cache_enabled = false')
     expect(configs.inert).toContain('allow_cache_uploads = false')
-    expect(configs.inert).not.toContain('http_headers')
+    expect(configs.inert).toContain('http_headers = x-buck2-local-only: 1')
+    expect(configs.inert).not.toContain('authorization:')
+    expect(configs.inert).not.toContain(credential)
   })
 
   it('rejects conflicting explicit cache settings instead of silently overriding them', () => {

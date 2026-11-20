@@ -38,10 +38,16 @@ BUILD.BUCK-R06 and BUILD.BUCK-R07. Service deployment authority is dotfiles-owne
   platform/host proof independently under BUILD.BUCK-R07. Budget values remain
   open until the first honest measurement pass; a regression against a set lane
   budget blocks admission widening.
-- **BUILD.BUCK.REUSE-R04 Outage posture:** An unreachable cache is a hard action failure
-  in the pinned Buck2. The consumer contract provides a one-line disable
-  toggle, and the service is monitored and alerted so an outage is an
-  operations event, not a silent slowdown.
+- **BUILD.BUCK.REUSE-R04 Outage posture:** A cleanly classified transient cache
+  capabilities/connect/transport failure on an effective reader or explicitly
+  optional writer permits exactly one loud, bounded LOCAL native re-execution.
+  The original failed occurrence and trace remain diagnostic and link to the
+  local attempt/result; successful recovery is not complete action or reuse proof.
+  Required writers and trusted qualification fail closed. Authentication,
+  authorization, integrity, unknown/mixed diagnostics, interruption and capture
+  overflow never authorize replay. Interactive/user-binary commands retain native
+  safety semantics. The explicit disable toggle remains available, and monitoring
+  and alerting make an outage an operations event, not a silent slowdown.
 - **BUILD.BUCK.REUSE-R05 Digest and transport discipline:** SHA256 digests are pinned
   explicitly; the client configuration lives in a buckconfig file (CLI
   overrides do not reach the RE client); batched transfers stay below Buck2's
