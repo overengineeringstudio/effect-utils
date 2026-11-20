@@ -218,6 +218,11 @@ nonblocking lease or defers to an existing owner; release is idempotent.
 The Bun regressions genuinely clear and restore inherited CLOEXEC, check atomic opening before
 protection, and retain contention and flags across awaited callbacks and inherited FD3 descendants.
 
+Megarepo maintenance independently acquires that owner around reserved-isolation
+clean and the final daemon checks/stop. A live publisher defers maintenance;
+unknown ownership is a protective refusal, not a successful native operation.
+Default-isolation maintenance does not acquire the publication owner.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
