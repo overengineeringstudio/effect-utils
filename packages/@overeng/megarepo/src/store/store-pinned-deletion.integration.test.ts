@@ -131,7 +131,7 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
   )
 
   it.effect(
-    'admits a producer-proven thread alias only when every exact binding holds',
+    'checks consumer alias bindings under real pins without claiming kernel qualification',
     Effect.fnUntraced(
       function* () {
         const { fs, rootPath, path } = yield* fixture
@@ -166,6 +166,9 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
                 alias,
               }
               expect(view.has(reference)).toBe(true)
+              // Constructed data exercises only consumer matching, not real kcmp/pidfd proof.
+              expect(view.has({ ...reference, pid: process.pid, alias: { ...alias, tid: process.pid } })).toBe(false)
+              expect(view.has({ ...reference, pid: 0, alias: { ...alias, tid: 0 } })).toBe(false)
               // A different fd number, foreign leader, mismatched task or wrong
               // proof veto even when the identity strings look identical.
               expect(

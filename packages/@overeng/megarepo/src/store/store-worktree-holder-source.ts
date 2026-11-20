@@ -114,7 +114,7 @@ export const classifyWorktreeHolderEvidence = ({
           }) === true
         const alias = reference.leaderFdAlias
         const ownedThreadFd =
-          leader === false &&
+          reference.tid !== reference.tgid &&
           ownIdentity &&
           ownStartTime !== undefined &&
           reference.reference === 'fd' &&

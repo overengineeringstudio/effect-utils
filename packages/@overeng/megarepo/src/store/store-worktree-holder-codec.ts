@@ -93,7 +93,7 @@ const Reference = Schema.Struct({
         (reference.reference === 'fd' &&
           reference.fd !== null &&
           // Nonleader tasks only: an alias for the leader itself is malformed.
-          (reference.tid !== reference.tgid || reference.taskStart !== reference.leaderStart) &&
+          reference.tid !== reference.tgid &&
           reference.leaderFdAlias.tgid === reference.tgid &&
           reference.leaderFdAlias.leaderStart === reference.leaderStart &&
           reference.leaderFdAlias.tid === reference.tid &&

@@ -113,7 +113,7 @@ export interface OwnedDeletionPin {
  * engine still vetoes the reference. Never a heuristic fd/dev/ino whitelist.
  */
 export interface LeaderFdAliasEvidence {
-  readonly proof: 'pidfd-kcmp-files-and-file-v1'
+  readonly proof: string
   readonly tgid: number
   readonly leaderStart: string
   readonly tid: number
@@ -249,6 +249,9 @@ const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
       return (
         alias.proof === 'pidfd-kcmp-files-and-file-v1' &&
         alias.tgid === process.pid &&
+        Number.isSafeInteger(alias.tid) &&
+        alias.tid > 0 &&
+        alias.tid !== alias.tgid &&
         alias.tid === reference.pid &&
         alias.fd === reference.fd &&
         matchesPin(alias.fd, reference.dev, reference.ino)

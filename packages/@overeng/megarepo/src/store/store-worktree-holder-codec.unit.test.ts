@@ -274,6 +274,12 @@ describe('native holder evidence Rust codec authority', () => {
           taskStart: thread.leaderStart,
           leaderFdAlias: { ...alias, tid: thread.tgid, taskStart: thread.leaderStart },
         },
+        // A contradictory start time cannot turn the leader TID into a nonleader.
+        {
+          ...thread,
+          tid: thread.tgid,
+          leaderFdAlias: { ...alias, tid: thread.tgid },
+        },
       ]
       for (const reference of invalid) {
         const value = {
