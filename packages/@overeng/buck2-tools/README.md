@@ -12,6 +12,9 @@ mounted `noexec`. Shell teardown fixtures call the same TypeScript data-root
 selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run in
 the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
 the merge-group test lane.
+The directory-restoration fault fixture runs with both `0077` and `0022` umasks.
+It faults a writable-to-readonly transition, not initial normalization of a
+new readonly directory, so restrictive creation modes do not change its intent.
 
 Source consumers install the bootstrap lease preload as
 `preload-<sha256>.cjs` in a private `editor-view-lease` runtime directory:
