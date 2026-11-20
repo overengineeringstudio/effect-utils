@@ -566,6 +566,9 @@ Fresh reserved UUID execution roots have an explicit disposable-ignored contract
 ignored bytes in a proven-fresh, never-authored, never-promoted root are execution
 outputs and may be reset. Only canonical reservation records establish this class;
 legacy, adopted and unrecorded roots gain no disposal authority by conversion.
+The canonical ready/unclaimed predicate requires that same fresh, unauthored
+provenance. Structurally ready authored or unproven roots remain HOLD in the
+read-only projection and are refused before retirement can reach a remover.
 Authoring and promotion must durably mark the originating slot before handoff.
 That marker is permanent: marked or unknown-provenance roots are retained, never reset.
 This contract does not change source/history, dependency, process or lease checks.

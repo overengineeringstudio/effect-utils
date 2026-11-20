@@ -167,7 +167,11 @@ export const poolTerminalRootActivity = (activity: PoolActivity): PoolTerminalRo
     return { kind: 'claim-release', observedAtUtc: activity.event.observedAtUtc }
   return undefined
 }
+const hasDisposableExecutionRoot = (slot: PoolSlot) =>
+  slot.executionRoot?.origin === 'fresh-reserved-uuid' && slot.executionRoot.authored === false
+
 export const isPoolReadyUnclaimed = (slot: PoolSlot) =>
+  hasDisposableExecutionRoot(slot) &&
   slot.state === 'ready' && slot.chargeKnown === true && slot.identity !== '' && slot.barrierToken !== '' &&
   slot.owner === '' && slot.token === '' && slot.reservation === undefined &&
   slot.initialPreparation === undefined && slot.retarget === undefined && slot.retirement === undefined
@@ -208,7 +212,7 @@ export const beginPoolRetirement = ({
 
 /** Disposal authority follows this physical root, never a copied canonical destination. */
 export const requireDisposablePoolRoot = (slot: PoolSlot): Effect.Effect<void, PoolError> =>
-  slot.executionRoot?.origin === 'fresh-reserved-uuid' && slot.executionRoot.authored === false
+  hasDisposableExecutionRoot(slot)
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Authored or unproven pool root retained; reset forbidden' }))
 

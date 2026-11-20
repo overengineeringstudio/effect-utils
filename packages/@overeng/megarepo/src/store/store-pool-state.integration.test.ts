@@ -1,6 +1,3 @@
-import { randomUUID } from 'node:crypto'
-import { dirname } from 'node:path'
-
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Cause, Effect, Exit, Schema } from 'effect'
@@ -19,6 +16,7 @@ import {
   claimPoolGeneration,
   consumePoolReservation,
   finishPoolRetarget,
+  isPoolReadyUnclaimed,
   type PoolActivity,
   type PoolSlot,
   requirePoolLease,
@@ -243,7 +241,10 @@ describe('pool authoritative lifecycle', () => {
   it.effect('exports only bearer-free HOLD observations, including ready roots and every pending intent', () =>
     Effect.gen(function* () {
       const leased: PoolSlot = { ...slot, token: 'secret-claim-capability', barrierToken: 'secret-barrier-capability' }
-      const ready: PoolSlot = { ...leased, state: 'ready', token: '', owner: '' }
+      const ready: PoolSlot = {
+        ...leased, state: 'ready', token: '', owner: '',
+        executionRoot: { origin: 'fresh-reserved-uuid', authored: false },
+      }
       const reserved = (yield* reservePoolGeneration({
         state: { version: 2, maxSlots: 1, maxBytes: 64, slots: [] },
         bare: slot.bare, commit: slot.commit, charge: 64,
@@ -293,6 +294,7 @@ describe('pool authoritative lifecycle', () => {
       const ready: PoolSlot = {
         ...slot, state: 'ready', token: '', owner: '', activity: birth,
         barrierToken: 'never-export-this-barrier',
+        executionRoot: { origin: 'fresh-reserved-uuid', authored: false },
       }
       const claimed = {
         ...birth.event, ownerLabel: 'caller label, not a seat', ownerLabelOrigin: 'claim-argument' as const,
@@ -315,6 +317,20 @@ describe('pool authoritative lifecycle', () => {
           expect(observation.ownerActivity.event.providerIdentityComplete).toBe(true)
         }
         expect(JSON.stringify(observation)).not.toContain(root.barrierToken)
+        expect(isPoolReadyUnclaimed(root)).toBe(true)
+        for (const executionRoot of [
+          undefined, { origin: 'fresh-reserved-uuid', authored: true },
+        ] as const) {
+          const held = { ...root, executionRoot }
+          expect(isPoolReadyUnclaimed(held)).toBe(false)
+          expect(projectPoolProvenance(held)).toMatchObject({
+            disposition: 'HOLD', readyUnclaimed: false, authorizesRemoval: false,
+            holdReasons: ['not-ready-unclaimed'],
+          })
+          expect(Exit.isFailure(yield* beginPoolRetirement({
+            slot: held, generation: held.generation, identity: held.identity,
+          }).pipe(Effect.exit))).toBe(true)
+        }
       }
       const activity = released.activity!
       const uncertain: ReadonlyArray<PoolSlot> = [
@@ -357,10 +373,15 @@ describe('pool authoritative lifecycle', () => {
           ownerLabel: '', ownerLabelOrigin: 'none',
         },
       }
-      const id = randomUUID()
+      const reserved = (yield* withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 1048576 },
+        use: (current, save) => reservePoolGeneration({
+          state: current, bare, commit: slot.commit, charge: slot.charge,
+        }).pipe(Effect.tap(save)),
+      })).slots[0]!
       const ready: PoolSlot = {
-        ...slot, id, path: `${dirname(bare)}/pool/${id}`, bare,
-        state: 'ready', token: '', owner: '', activity, barrierToken: 'retirement-barrier-sentinel',
+        ...reserved, generation: activity.generation, identity: activity.identity,
+        state: 'ready', token: '', owner: '', activity, reservation: undefined,
       }
       const persist = (next: PoolSlot) => withPoolState({
         base, limits: { maxSlots: 1, maxBytes: 1048576 },
