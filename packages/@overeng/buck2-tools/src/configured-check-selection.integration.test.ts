@@ -172,7 +172,15 @@ describe('configured selection CLI with real source pins', () => {
     withFixture(({ candidate, run }) => {
       git({
         root: candidate,
-        args: ['-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '--allow-empty', '-m', 'moved'],
+        args: [
+          '-c',
+          'core.hooksPath=/dev/null',
+          'commit',
+          '--quiet',
+          '--allow-empty',
+          '-m',
+          'moved',
+        ],
       })
       expectRejected({ result: run(), error: 'snapshot worktree does not match pinned revision' })
     })
@@ -204,7 +212,11 @@ describe('configured selection CLI with real source pins', () => {
           const result = run({ mode, side })
           expect(result.status, result.stderr).toBe(0)
           const selection = JSON.parse(result.stdout)
-          expect(selection).toMatchObject({ mode: 'full', targets: inventory, fullTargets: inventory })
+          expect(selection).toMatchObject({
+            mode: 'full',
+            targets: inventory,
+            fullTargets: inventory,
+          })
           expect(selection.reasons).toContain('incomplete-configured-query')
           expect(selection[`${side}Graph`]).toMatchObject({
             complete: false,
@@ -217,7 +229,10 @@ describe('configured selection CLI with real source pins', () => {
 
   it('exits nonzero instead of emitting an empty selection when candidate inventory fails', () => {
     withFixture(({ run }) => {
-      expectRejected({ result: run({ mode: 'inventory' }), error: 'fixture inventory query failure' })
+      expectRejected({
+        result: run({ mode: 'inventory' }),
+        error: 'fixture inventory query failure',
+      })
     })
   })
 
