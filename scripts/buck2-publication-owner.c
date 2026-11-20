@@ -14,14 +14,6 @@ int buck2_publication_owner_lock(int fd, int mode) {
   return flock(fd, mode) == 0 ? 0 : errno;
 }
 
-int buck2_publication_owner_cloexec(int fd, int enabled) {
-  int flags = fcntl(fd, F_GETFD);
-  if (flags < 0) return errno;
-  int next = enabled ? flags | FD_CLOEXEC : flags & ~FD_CLOEXEC;
-  if (next == flags) return 0;
-  return fcntl(fd, F_SETFD, next) == 0 ? 0 : errno;
-}
-
 int buck2_publication_owner_fd_flags(int fd) {
   return fcntl(fd, F_GETFD);
 }
