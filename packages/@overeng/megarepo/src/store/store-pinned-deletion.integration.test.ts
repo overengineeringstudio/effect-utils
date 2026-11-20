@@ -156,9 +156,7 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
               }
               expect(view.has(reference)).toBe(false)
               if (view.has(reference) === false)
-                return yield* Effect.fail(
-                  new PinnedDeletionError({ path, message: 'Live extra fd' }),
-                )
+                return yield* new PinnedDeletionError({ path, message: 'Live extra fd' })
             }),
         }).pipe(Effect.result)
         expect(result._tag).toBe('Failure')
@@ -241,9 +239,7 @@ process.stdin.resume()`,
               expect(reference.pid).not.toBe(process.pid)
               expect(view.has(reference)).toBe(false)
               if (view.has(reference) === false)
-                return yield* Effect.fail(
-                  new PinnedDeletionError({ path, message: 'Live foreign fd' }),
-                )
+                return yield* new PinnedDeletionError({ path, message: 'Live foreign fd' })
             }),
         }).pipe(Effect.result)
         expect(result._tag).toBe('Failure')
