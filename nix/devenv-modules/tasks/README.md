@@ -165,6 +165,11 @@ on the same-binary constructor. It defaults to false through every constructor,
 has no runtime/environment switch, and produces distinctly named diagnostic artifacts.
 The server's direct and mounted-library dependencies select the same proc variant,
 so their transitive Rust crate identities remain coherent.
+The exact bare `anon_inode:btf` BPF type-metadata descriptor is also a typed
+non-path object; bracketed, prefixed and child-path variants remain unknown.
+The ignored root-only `actual_loaded_btf_is_nonpath` regression loads a real
+minimal BTF object with `BPF_BTF_LOAD` and qualifies its retained descriptor
+inside the disposable Linux VM, without loading a BPF program.
 Only that proc-library build includes rejection-site class formatting: the same
 held name is emitted as a bounded ASCII, prefix-free exact class (brackets and
 spaces preserved), or a fixed unprintable marker. No PID, FD, path or wire output

@@ -23,7 +23,7 @@ fn incomplete(reason: &'static str) -> io::Error {
 /// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AnonymousKernelObject {
-    BpfMap, BpfProgram, BpfLink, EventFd, TimerFd, SignalFd, Epoll, Inotify,
+    BpfMap, BpfProgram, BpfLink, Btf, EventFd, TimerFd, SignalFd, Epoll, Inotify,
     PidFd, UserfaultFd, PerfEvent, IoUring, Fanotify, Unrecognized,
 }
 
@@ -33,7 +33,7 @@ enum KernelObjectPathClass { NonPathKernelObject, PathBearingOrUnknown }
 impl AnonymousKernelObject {
     fn path_class(self) -> KernelObjectPathClass {
         match self {
-            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::EventFd
+            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::Btf | Self::EventFd
             | Self::TimerFd | Self::SignalFd | Self::Epoll | Self::Inotify
             | Self::PidFd | Self::UserfaultFd | Self::PerfEvent =>
                 KernelObjectPathClass::NonPathKernelObject,
@@ -56,6 +56,7 @@ fn anonymous_kernel_object(name: &Path) -> AnonymousKernelObject {
         Some("anon_inode:bpf-map") => AnonymousKernelObject::BpfMap,
         Some("anon_inode:bpf-prog") => AnonymousKernelObject::BpfProgram,
         Some("anon_inode:bpf-link") => AnonymousKernelObject::BpfLink,
+        Some("anon_inode:btf") => AnonymousKernelObject::Btf,
         Some("anon_inode:[eventfd]") => AnonymousKernelObject::EventFd,
         Some("anon_inode:[timerfd]") => AnonymousKernelObject::TimerFd,
         Some("anon_inode:[signalfd]") => AnonymousKernelObject::SignalFd,
@@ -104,6 +105,7 @@ mod diagnostic_tests {
             ("anon_inode:bpf-map", Object::BpfMap),
             ("anon_inode:bpf-prog", Object::BpfProgram),
             ("anon_inode:bpf-link", Object::BpfLink),
+            ("anon_inode:btf", Object::Btf),
             ("anon_inode:[eventfd]", Object::EventFd),
             ("anon_inode:[timerfd]", Object::TimerFd),
             ("anon_inode:[signalfd]", Object::SignalFd),
@@ -122,6 +124,7 @@ mod diagnostic_tests {
         for name in [
             "anon_inode:[io_uring]", "anon_inode:[fanotify]", "anon_inode:fanotify",
             "anon_inode:bpf-map-unknown", "anon_inode:bpf-prog/child",
+            "anon_inode:[btf]", "anon_inode:btf-unknown", "anon_inode:btf/child",
             "/untrusted/proc-link-target",
         ] {
             assert_eq!(super::anonymous_kernel_object(std::path::Path::new(name)).path_class(),
