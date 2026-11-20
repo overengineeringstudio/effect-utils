@@ -192,6 +192,14 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+`withEditorPublicationOwner` owns a callback's complete flow on that persistent inode.
+Inherited `BUCK2_EDITOR_PUBLICATION_OWNER_FD` values require a real exclusive
+kernel lock on the canonical root's inode; callbacks never unlock borrowed owners.
+`tryAcquireEditorPublicationOwner` instead returns an independent, nonblocking lease
+or defers when another owner holds the lock; release is idempotent.
+The exported `editorPublicationIsolation` constant names `editor-publication`.
+These primitives do not themselves activate isolation in callers.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
