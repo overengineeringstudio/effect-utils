@@ -230,8 +230,9 @@ failures retain their underlying causes, not a busy diagnosis or an early escape
 No incomplete migration publishes a success receipt. Retry after resolving the
 failure or after the active owner finishes.
 
-`requireEditorPublicationInputs` validates lexical Buck carriers as well as resolved
-paths: every Buck boundary must belong to this root's reserved isolation and owner.
+`requireEditorPublicationInputs` walks filesystem components and intermediate symlink
+targets, including parent-directory aliases: every reached Buck boundary must belong
+to this root's reserved isolation and owner, even if the final target is immutable.
 Direct immutable Nix inputs and ordinary files remain valid. Declaring the helper
 does not yet move publisher callers onto the reserved isolation.
 

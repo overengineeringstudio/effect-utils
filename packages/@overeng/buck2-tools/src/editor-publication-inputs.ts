@@ -1,12 +1,11 @@
-import { realpathSync } from 'node:fs'
-import { isAbsolute, join, sep } from 'node:path'
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute, join, sep } from 'node:path'
 
 import {
   editorPublicationIsolation,
   editorPublicationOwnerFdEnv,
   requireEditorPublicationOwner,
 } from './editor-publication-owner.ts'
-import { realpathThroughName } from './real-path.ts'
 
 const isMutableBuckPath = (path: string | undefined): path is string =>
   path !== undefined &&
@@ -27,16 +26,49 @@ export const requireEditorPublicationInputs = ({
   let ownerValidated = false
   for (const path of paths) {
     const absolute = isAbsolute(path) === true ? path : `${process.cwd()}${sep}${path}`
-    const output = `${absolute}${sep}`.indexOf(`${sep}buck-out${sep}`)
-    const reached =
-      output < 0
-        ? undefined
-        : join(realpathThroughName(absolute.slice(0, output) || sep), absolute.slice(output + 1))
-    // Preserve the reached filename on Darwin; realpathSync may choose another hardlink alias.
-    const resolved = realpathThroughName(path)
-    const reachedMutable = isMutableBuckPath(reached)
-    const resolvedMutable = isMutableBuckPath(resolved)
-    if (reachedMutable === false && resolvedMutable === false) continue
+    const pending = absolute.split(sep).filter((component) => component.length > 0)
+    if (absolute.endsWith(sep) === true) pending.push('.')
+    let resolved: string = sep
+    let hops = 0
+    let mutable = false
+    let outside = false
+    while (pending.length > 0) {
+      const component = pending.shift()!
+      if (component === '.') continue
+      if (component === '..') {
+        resolved = dirname(resolved)
+        continue
+      }
+      const candidate = join(resolved, component)
+      if (isMutableBuckPath(candidate) === true) {
+        mutable = true
+        // Inspect a Buck directory before following it, including directory symlinks.
+        const allowed =
+          candidate === dirname(owned)
+            ? pending.find((part) => part !== '.') === editorPublicationIsolation
+            : candidate === owned
+              ? pending.length > 0
+              : candidate.startsWith(`${owned}${sep}`)
+        outside ||= allowed === false
+      }
+      const status = lstatSync(candidate)
+      if (status.isSymbolicLink() === true) {
+        if (++hops > 40)
+          throw Object.assign(new Error(`too many symbolic links: ${path}`), { code: 'ELOOP' })
+        const target = readlinkSync(candidate)
+        if (isAbsolute(target) === true) resolved = sep
+        const components = target.split(sep).filter((part) => part.length > 0)
+        if (target.endsWith(sep) === true) components.push('.')
+        pending.unshift(...components)
+      } else {
+        if (pending.length > 0 && status.isDirectory() === false)
+          throw Object.assign(new Error(`not a directory: ${candidate}`), { code: 'ENOTDIR' })
+        // Keep the reached filename: Darwin realpath may report a different hardlink.
+        resolved = candidate
+      }
+    }
+    // Finish filesystem traversal first so native resolution failures remain visible.
+    if (mutable === false) continue
     if (ownerValidated === false) {
       requireEditorPublicationOwner({
         root,
@@ -46,10 +78,7 @@ export const requireEditorPublicationInputs = ({
       })
       ownerValidated = true
     }
-    if (
-      (reachedMutable === true && reached.startsWith(`${owned}${sep}`) === false) ||
-      (resolvedMutable === true && resolved.startsWith(`${owned}${sep}`) === false)
-    )
+    if (outside === true)
       throw new Error(`Editor publication input is outside its reserved Buck isolation: ${path}`)
   }
 }
