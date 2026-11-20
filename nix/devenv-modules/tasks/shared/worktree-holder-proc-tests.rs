@@ -168,3 +168,34 @@ fn actual_loaded_btf_is_nonpath() {
         std::path::Path::new("anon_inode:btf"));
     scopes::qualify_object(&held).unwrap();
 }
+
+#[test]
+#[ignore = "requires root CAP_SYS_ADMIN inside the isolated Linux VM"]
+fn actual_bpf_stats_lease_is_nonpath() {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::raw::{c_int, c_long};
+    use std::time::{Duration, Instant};
+    unsafe extern "C" { fn syscall(number: c_long, ...) -> c_long; }
+    #[cfg(target_arch = "x86_64")]
+    const BPF_SYSCALL: c_long = 321;
+    #[cfg(target_arch = "aarch64")]
+    const BPF_SYSCALL: c_long = 280;
+    // BPF_ENABLE_STATS(32) reads only the initialized u32 runtime type(0).
+    // A successful descriptor enables the guest-wide statistics static key
+    // until close; it does not load a program or target a filesystem object.
+    let runtime_type = 0u32;
+    // SAFETY: supported architecture's bpf syscall receives a live aligned
+    // four-byte attribute with exactly its initialized UAPI size.
+    let raw = unsafe { syscall(BPF_SYSCALL, 32u32, &runtime_type, 4usize) };
+    assert!(raw >= 0, "BPF_ENABLE_STATS: {}", std::io::Error::last_os_error());
+    // SAFETY: successful enable transfers this fresh descriptor exactly once.
+    let stats = unsafe { OwnedFd::from_raw_fd(c_int::try_from(raw).unwrap()) };
+    let held = scopes::Held::pin(
+        format!("/proc/self/fd/{}", stats.as_raw_fd()),
+        Instant::now() + Duration::from_secs(10),
+    ).unwrap();
+    assert_eq!(linux::filesystem_type(&held.file).unwrap(), 0x09041934);
+    assert_eq!(std::fs::read_link(scopes::scope_path(&held.file)).unwrap(),
+        std::path::Path::new("anon_inode:bpf-stats"));
+    scopes::qualify_object(&held).unwrap();
+}

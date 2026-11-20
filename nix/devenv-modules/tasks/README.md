@@ -170,7 +170,106 @@ non-path object; bracketed, prefixed and child-path variants remain unknown.
 The ignored root-only `actual_loaded_btf_is_nonpath` regression loads a real
 minimal BTF object with `BPF_BTF_LOAD` and qualifies its retained descriptor
 inside the disposable Linux VM, without loading a BPF program.
-Only that proc-library build includes rejection-site class formatting: the same
+The exact `bpf_link` and `bpf-link` constructor spellings share typed BpfLink.
+The exact `bpf-stats` statistics-enable lease is independently typed non-path:
+its private data is NULL, creation increments a global static key, and its sole
+release callback decrements that key. The root-only ignored regression
+`actual_bpf_stats_lease_is_nonpath` enables real runtime statistics with
+`BPF_ENABLE_STATS`, qualifies the retained descriptor and closes it via RAII.
+`bpf_iter` is **not** covered by a BPF-prefix exemption: target-specific seq
+state can retain resources, including a DMA-buffer reference across reads,
+so it remains UNKNOWN. Every unapproved or future name remains UNKNOWN.
+
+Anonymous-object inventory is pinned to the complete Linux **6.18.62** source,
+including optional architectures, drivers, samples and tests, not only the
+guest's enabled configuration. Source archive:
+`https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.62.tar.xz`,
+SHA256 `490a7aedf1b355c565d3a6c05333ccccb5da82064eca46b590448a7099d7d651`.
+Review all five public constructors from `include/linux/anon_inodes.h:17-32`:
+`anon_inode_getfile`, `anon_inode_getfile_fmode`, `anon_inode_create_getfile`,
+`anon_inode_getfd`, `anon_inode_create_getfd`; trace variable-name wrappers too.
+`fs/anon_inodes.c:74-77,134-177` preserves the constructor suffix exactly after
+`anon_inode:`; it does not add brackets. `getfile_fmode` changes mode, not name.
+This manually reviewed snapshot and the colocated classifier regressions must
+be revisited on kernel/policy changes; inventory alone never grants admission.
+
+Approved exact emitted suffixes and source sites (paths below are kernel-relative):
+
+| Suffix | Source |
+| --- | --- |
+| `bpf-map`, `bpf-prog` | `kernel/bpf/syscall.c:1191,2552` |
+| `bpf_link`, `bpf-link` | `kernel/bpf/syscall.c:3454,3484`, same link/fops |
+| `btf` | `kernel/bpf/btf.c:8092` |
+| `bpf-stats` | `kernel/bpf/syscall.c:5985-6035`, NULL-private statistics lease |
+| `[eventfd]`, `[timerfd]`, `[signalfd]` | `fs/eventfd.c:409`, `fs/timerfd.c:441`, `fs/signalfd.c:280` |
+| `[eventpoll]`, `inotify` | `fs/eventpoll.c:2456`, `fs/notify/inotify/inotify_user.c:699` |
+| `[userfaultfd]` | `fs/userfaultfd.c:975,2153` |
+| `[perf_event]` | `kernel/events/core.c:13792` |
+
+Every other fixed emitted suffix below is classified **UNKNOWN/veto**,
+including objects not yet semantically qualified (not asserted path-bearing):
+
+| Exact suffixes | Source |
+| --- | --- |
+| `kvm-htab`, `kvm-spapr-tce` | `arch/powerpc/kvm/book3s_64_mmu_hv.c:1956`, `book3s_64_vio.c:333` |
+| `[papr-hvpipe]`, `[papr-platform-dump]` | `arch/powerpc/platforms/pseries/papr-hvpipe.c:514`, `papr-platform-dump.c:343` |
+| `[papr-indices]`, `[papr-physical-attestation]`, `[papr-vpd]` | `arch/powerpc/platforms/pseries/papr-indices.c:264`, `papr-phy-attest.c:252`, `papr-vpd.c:233` via `papr-rtas-common.c:222` |
+| `binder_alloc_kunit`, `[vtpms]` | `drivers/android/tests/binder_alloc_kunit.c:519`, `drivers/char/tpm/tpm_vtpm_proxy.c:557` |
+| `sync_file` | `drivers/dma-buf/sync_file.c:31` |
+| `gpio-linehandle`, `gpio-line`, `gpio-event` | `drivers/gpio/gpiolib-cdev.c:386,1748,2173` |
+| `drm`, `syncobj_file` | `drivers/gpu/drm/drm_file.c:1067`, `drm_syncobj.c:684` |
+| `kfd_smi_ev` | `drivers/gpu/drm/amd/amdkfd/kfd_smi_events.c:55,397` |
+| `[i915_perf]`, `i915.gem` | `drivers/gpu/drm/i915/i915_perf.c:3902`, `gem/i915_gem_mman.c:975` |
+| `[xe_eu_stall]`, `[xe_oa]` | `drivers/gpu/drm/xe/xe_eu_stall.c:897`, `xe_oa.c:1899` |
+| `mshv_vp`, `mshv_partition` | `drivers/hv/mshv_root_main.c:975,1792` |
+| `iio:buffer`, `iio:event` | `drivers/iio/industrialio-buffer.c:2054`, `industrialio-event.c:214` |
+| `[infinibandevent]` | `drivers/infiniband/core/uverbs_std_types.c:176`, `uverbs_std_types_async_fd.c:69` |
+| `[devx_async_cmd]`, `[devx_async_event]` | `drivers/infiniband/hw/mlx5/devx.c:3196,3214` |
+| `[iommufd-pgfault]`, `[iommufd-viommu-event]` | `drivers/iommu/iommufd/eventq.c:461,546` via `:428` |
+| `[iommufd_test_staccess]` | `drivers/iommu/iommufd/selftest.c:1538` |
+| `request`, `ntsync`, `tee_shm` | `drivers/media/mc/mc-request.c:311`, `drivers/misc/ntsync.c:731`, `drivers/tee/tee_shm.c:610` |
+| `[vduse-domain]`, `[vfio-device]` | `drivers/vdpa/vdpa_user/iova_domain.c:653`, `drivers/vfio/group.c:268` |
+| `hisi_acc_vf_mig`, `mlx5vf_mig` | `drivers/vfio/pci/hisilicon/hisi_acc_vfio_pci.c:819,941`, `mlx5/main.c:615,996` |
+| `pds_vfio_lm`, `qat_vf_mig`, `virtiovf_mig` | `drivers/vfio/pci/pds/lm.c:33`, `qat/main.c:268,363`, `virtio/migrate.c:684,1074` |
+| `ne-vm` | `drivers/virt/nitro_enclaves/ne_misc_dev.c:1664` |
+| `[fscontext]`, `[cachefiles]`, `[fanotify]` | `fs/fsopen.c:96`, `fs/cachefiles/ondemand.c:318`, `fs/notify/fanotify/fanotify_user.c:1756` |
+| `[io_uring]`, `[io_uring_mock]` | `io_uring/io_uring.c:3647`, `io_uring/mock_file.c:261` |
+| `seccomp notify`, `bpf_iter` | `kernel/seccomp.c:1903`, `kernel/bpf/bpf_iter.c:649` |
+| `mtty_mig`, `[landlock-ruleset]` | `samples/vfio-mdev/mtty.c:988,1096`, `security/landlock/syscalls.c:252` |
+| `[kvm-gmem]`, `kvm-vm-stats`, `kvm-vm` | `virt/kvm/guest_memfd.c:499,515`, `virt/kvm/kvm_main.c:5150,5522` |
+
+Variable-name constructor inputs are fully traced, not wildcard admissions:
+
+- RDMA `fd_type->name` (`drivers/infiniband/core/rdma_core.c:481`) comes from
+  the four `UVERBS_TYPE_ALLOC_FD` declarations above; the macro preserves `_name`
+  (`include/rdma/uverbs_types.h:192-203`). The two core event declarations share
+  `[infinibandevent]`.
+- PAPR's wrapper has exactly the three named callers above; iommufd's wrapper
+  exactly two. KFD's fixed variable is `kfd_smi_ev`; guest-memfd's is `[kvm-gmem]`.
+- KVM device `ops->name` (`virt/kvm/kvm_main.c:4870`) resolves to exact vetoed
+  `kvm-vfio` (`virt/kvm/vfio.c:347`), `kvm-arm-vgic-its`
+  (`arch/arm64/kvm/vgic/vgic-its.c:2841`), `kvm-arm-vgic-v2`/`kvm-arm-vgic-v3`
+  (`arch/arm64/kvm/vgic/vgic-kvm-device.c:471,710`),
+  `kvm-loongarch-eiointc`/`kvm-loongarch-ipi`/`kvm-loongarch-pch-pic`
+  (`arch/loongarch/kvm/intc/eiointc.c:691`, `ipi.c:467`, `pch_pic.c:486`),
+  `kvm-xics`/`kvm-xive`/`kvm-xive-native`/`kvm-mpic`
+  (`arch/powerpc/kvm/book3s_xics.c:1439`, `book3s_xive.c:2968`,
+  `book3s_xive_native.c:1275`, `mpic.c:1723`), `kvm-riscv-aia`
+  (`arch/riscv/kvm/aia_device.c:477`) and `kvm-flic`
+  (`arch/s390/kvm/interrupt.c:2762`).
+- Dynamic `kvm-vcpu:%d` and `kvm-vcpu-stats:%d`
+  (`virt/kvm/kvm_main.c:4144-4145,4344-4350`) are wholly vetoed families.
+  `snd-utimer0` through `snd-utimer127` (`sound/core/timer.c:115,2066,2162,2226`)
+  are all vetoed; classifier source tests enumerate all128 sound suffixes.
+- `[pidfd]` is separately rendered by **pidfs** (`fs/pidfs.c:771`), not an
+  anon_inodefs constructor in this tree. Existing pidfd qualification remains.
+  Secretmem uses its own filesystem (`mm/secretmem.c:284-295,369-380`), so its
+  security class `[secretmem]` is not an added anon_inodefs suffix.
+
+The full unapproved fixed list and dynamic-family representatives are exercised
+by `linux_6_18_62_unapproved_emitter_inventory_stays_unknown`; unknown/future
+suffixes remain the default veto, not a prefix-acceptance rule.
+Only explicitly cfg-enabled diagnostic proc-library builds include rejection-site class formatting: the same
 held name is emitted as a bounded ASCII, prefix-free exact class (brackets and
 spaces preserved), or a fixed unprintable marker. No PID, FD, path or wire output
 is added, and rejection remains UNKNOWN; ordinary libraries compile the formatter out.
