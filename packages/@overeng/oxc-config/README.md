@@ -114,6 +114,8 @@ property's validation and limits. Transition names/classes follow CSS identifier
 syntax, including escapes, and decoded reserved keywords remain invalid. Consume
 the registered workspace patch through the owning dependency workflow; do not edit
 installed plugin files or replace fallbacks with non-equivalent legacy arrays.
+The package's Buck admission includes `patches/*.patch` through `testDataRoots`,
+so dependency publication can resolve the registered patch as an exported source.
 
 The shared compatibility work is tracked in
 https://github.com/overengineeringstudio/effect-utils/issues/2684.
