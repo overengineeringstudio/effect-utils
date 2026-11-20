@@ -16,6 +16,29 @@
 
 let
   inventory = builtins.fromJSON (builtins.readFile ./compiled-targets.json);
+  publicationOwner = import ../buck2-publication-owner.nix { inherit pkgs; };
+  # Only the outer runtime wrapper references the shim. Native realization must
+  # still validate the sealed portable payload without any store references.
+  withPublicationOwner =
+    product: realized:
+    if builtins.elem product.name [ "genie" "megarepo" ] then
+      pkgs.symlinkJoin {
+        name = "${product.name}-compiled-runtime";
+        inherit (product) version;
+        inherit (realized) meta;
+        paths = [ realized ];
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        passthru = realized.passthru;
+        postBuild = ''
+          for executable in "$out"/bin/*; do
+            wrapProgram "$executable" \
+              --set BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY \
+                '${publicationOwner}/lib/${publicationOwner.libraryName}'
+          done
+        '';
+      }
+    else
+      realized;
   rootProjection = import ./root-projection.nix { inherit pkgs repositoryRoot; };
   validProduct =
     product:
@@ -66,7 +89,7 @@ assert
 builtins.listToAttrs (
   map (product: {
     name = "${product.name}-compiled";
-    value = mkBuckProductFromSource {
+    value = withPublicationOwner product (mkBuckProductFromSource {
       inherit
         pnpmArchives
         product
@@ -76,6 +99,6 @@ builtins.listToAttrs (
       sourcePaths = product.sourcePaths;
       capabilities = capabilities.selectProduct product;
       importNative = true;
-    };
+    });
   }) inventory.products
 )

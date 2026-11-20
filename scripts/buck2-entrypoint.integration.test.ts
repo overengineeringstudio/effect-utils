@@ -45,6 +45,10 @@ import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 // Register the lifecycle suites in the existing devenv test entrypoint.
 void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
 
+const publicationOwnerLibrary = process.env['BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY']
+if (publicationOwnerLibrary === undefined || publicationOwnerLibrary.length === 0)
+  throw new Error('Launcher fixtures require BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
+
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
 const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/cas/'): string => {
@@ -419,7 +423,11 @@ await new Promise<void>((resolve) => process.stdin.once('data', () => resolve())
   }
   const child = Bun.spawn([process.execPath, '--preload', preload, ...args], {
     cwd: root,
-    env: { ...env, BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'] },
+    env: {
+      ...env,
+      BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+      BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
+    },
     detached: true,
     stdin: 'pipe',
     stdout: 'pipe',
@@ -608,6 +616,7 @@ exit 42
           HOME: root,
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdin: 'ignore',
         stdout: 'pipe',
@@ -893,6 +902,7 @@ describe('native build ID registry', () => {
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -1016,6 +1026,7 @@ writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).j
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -1115,6 +1126,7 @@ console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(
           PATH: process.env.PATH,
           HOME: root,
           BUCK2_STDIO_LIBRARY: process.env.BUCK2_STDIO_LIBRARY,
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -1207,6 +1219,7 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ..
             HOME: root,
             XDG_CACHE_HOME: join(root, 'cache'),
             BUCK2_STDIO_LIBRARY: library,
+            BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
           },
           detached: true,
           stdin: 'ignore',
@@ -1326,6 +1339,7 @@ Object.defineProperty(process, 'execve', {
           PATH: process.env['PATH'],
           HOME: root,
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         detached: true,
         stdin: 'ignore',
@@ -2037,6 +2051,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
         .replaceAll('@shell@', bash)
         .replaceAll('@native@', '/unused-native')
         .replaceAll('@launcher@', launcher)
+        .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
         .replaceAll('@sha256@', sha256),
       { mode: 0o700 },
     )
@@ -2696,6 +2711,7 @@ describe('direct pinned Buck watcher admission', () => {
         .replaceAll('@shell@', bash)
         .replaceAll('@native@', join(root, 'native-must-not-run'))
         .replaceAll('@launcher@', launcher)
+        .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
         .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
       { mode: 0o700 },
     )
@@ -3032,6 +3048,7 @@ if (args.at(-1) === 'status') {
           .replaceAll('@shell@', bash)
           .replaceAll('@native@', native)
           .replaceAll('@launcher@', launcher)
+          .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
           .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
         { mode: 0o700 },
       )
