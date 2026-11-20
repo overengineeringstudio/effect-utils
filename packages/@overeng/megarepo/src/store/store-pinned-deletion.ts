@@ -212,7 +212,7 @@ const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
       Object.freeze({ pid: process.pid, fd, dev: dev.toString(), ino: ino.toString() }),
     ),
   )
-  const view: OwnedDeletionPins = Object.freeze({
+  const view = Object.freeze<OwnedDeletionPins>({
     [ownedDeletionPinsBrand]: true,
     pins,
     has: (reference: Parameters<OwnedDeletionPins['has']>[0]) => {
