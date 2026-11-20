@@ -18,7 +18,7 @@ let
   );
   protocol = import ./worktree-holder-evidence-protocol.nix { inherit pkgs; };
   kernel = import ./worktree-holder-proc.nix { inherit pkgs ownedVmClassDiagnostics; };
-  mounted = import ./worktree-holder-evidence-mounted.nix { inherit pkgs allowedRoots; };
+  mounted = import ./worktree-holder-evidence-mounted.nix { inherit pkgs allowedRoots ownedVmClassDiagnostics; };
   sources = map (suffix: "worktree-holder-evidence${suffix}.rs") (
     [
       "-server"
