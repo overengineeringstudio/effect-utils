@@ -2441,8 +2441,11 @@ const observeNativeCommand = (options: NativeExecution & {
 
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
-if (import.meta.main === true) {
-  try {
+const runManagedCommand = async ({ native, requestedArgs, launchCache }: {
+  readonly native: string
+  readonly requestedArgs: readonly string[]
+  readonly launchCache?: string
+}): Promise<NativeCommandResult | undefined> => {
     let restoreStdio: (() => void) | undefined
     try {
       const symbols = {
@@ -2478,31 +2481,6 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
     }
-    const native = process.argv[2]
-    if (native === undefined) throw new Error('expected pinned Buck binary')
-    if (process.argv[3] === '--initialize-watchman-root') {
-      const root = findRoot(process.cwd())
-      const budget = process.argv[4]
-      if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
-      if (budget === undefined || /^[1-9]\d*$/u.test(budget) === false || process.argv.length !== 5)
-        throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
-      if (process.env['WATCHMAN_SOCK'] === undefined)
-        throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
-      await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
-      process.exit(0)
-    }
-    if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
-      const root = findRoot(process.cwd())
-      if (root !== undefined)
-        reconcileGateDaemon({
-          native,
-          root,
-          args: process.argv.slice(4),
-          env: process.env,
-          phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
-        })
-      process.exit(0)
-    }
     const auth = process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
     if (
       auth !== undefined &&
@@ -2518,8 +2496,6 @@ if (import.meta.main === true) {
     delete process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
     // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
     process.env['BUCK_WRAPPER_UUID'] ??= randomUUID()
-    const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
-    const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
     const root = findRoot(process.cwd())
     const watchmanDirectory =
       root !== undefined &&
@@ -2725,6 +2701,39 @@ if (import.meta.main === true) {
       nativeResult = await runNativeWithEvidence({ native, args, root })
       if (nativeResult === undefined) process.execve(native, [native, ...args], process.env)
     }
+    return nativeResult
+}
+
+if (import.meta.main === true) {
+  try {
+    const native = process.argv[2]
+    if (native === undefined) throw new Error('expected pinned Buck binary')
+    if (process.argv[3] === '--initialize-watchman-root') {
+      const root = findRoot(process.cwd())
+      const budget = process.argv[4]
+      if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
+      if (budget === undefined || /^[1-9]\d*$/u.test(budget) === false || process.argv.length !== 5)
+        throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
+      if (process.env['WATCHMAN_SOCK'] === undefined)
+        throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
+      await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
+      process.exit(0)
+    }
+    if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
+      const root = findRoot(process.cwd())
+      if (root !== undefined)
+        reconcileGateDaemon({
+          native,
+          root,
+          args: process.argv.slice(4),
+          env: process.env,
+          phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
+        })
+      process.exit(0)
+    }
+    const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
+    const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
+    const nativeResult = await runManagedCommand({ native, requestedArgs, launchCache })
     if (nativeResult !== undefined) {
       process.exitCode = nativeResult.exitCode
       if (nativeResult.signalCode !== null) {
