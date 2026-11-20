@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4d99618c9c24e44ee42df8d7af7585a6080daad663ece8adf617dbe27b0615de
+# Semantic fingerprint: sha256:2023fe5bc105db529a72142a9e5b7ad158ad93c87d70a14852aedd4a74de0f0c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -30,6 +30,7 @@ export_materialization_inputs([
     "src/bun-test-timeout.ts",
     "src/bun-test-timeout.unit.test.ts",
     "src/canonical.ts",
+    "src/configured-check-selection.unit.test.ts",
     "src/editor-view-authority.integration.test.ts",
     "src/editor-view-authority.ts",
     "src/editor-view-budget.integration.test.ts",
@@ -129,6 +130,7 @@ package_view(
         "src/bun-test-timeout.ts": "src/bun-test-timeout.ts",
         "src/bun-test-timeout.unit.test.ts": "src/bun-test-timeout.unit.test.ts",
         "src/canonical.ts": "src/canonical.ts",
+        "src/configured-check-selection.unit.test.ts": "src/configured-check-selection.unit.test.ts",
         "src/editor-view-authority.integration.test.ts": "src/editor-view-authority.integration.test.ts",
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
@@ -206,6 +208,7 @@ package_view(
         "src/bun-test-timeout.ts": "src/bun-test-timeout.ts",
         "src/bun-test-timeout.unit.test.ts": "src/bun-test-timeout.unit.test.ts",
         "src/canonical.ts": "src/canonical.ts",
+        "src/configured-check-selection.unit.test.ts": "src/configured-check-selection.unit.test.ts",
         "src/editor-view-authority.integration.test.ts": "src/editor-view-authority.integration.test.ts",
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",

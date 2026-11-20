@@ -252,6 +252,7 @@ describe('generated CI cache trust behavior', () => {
           }
           // Reader policy wins even if an accidental credential reaches the resolver.
           const config = standaloneCachePostureConfig({
+            base: {},
             current: '',
             env: { ...env, BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-credential' },
           })

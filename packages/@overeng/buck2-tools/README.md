@@ -29,6 +29,83 @@ an existing mismatched file fails closed rather
 than being silently repaired. Remove only the reported invalid preload after
 investigating its provenance, then launch again.
 
+## Configured affected-check selection
+
+`selectConfiguredChecks` consumes complete configured snapshots from two pinned
+revisions and a complete, rename-blind changed-path list. Each snapshot records
+its execution-configuration identity, required configured check IDs, transitive
+dependency-graph digests, file/package reverse closure, and ownership coverage.
+The selector unions old and new ownership (including deleted inputs), selects
+changed configured graphs, and returns candidate configured targets with explicit
+full-set fallback reasons. Empty selection requires complete equal graphs and no
+affected owner. Unknown ownership, failed queries, required-inventory changes,
+lockfiles, toolchains, BUCK/macros, or changed configuration select the full set.
+
+This is a selection, **not passing evidence**. The caller verifies the evidence
+base, required inventory/policy and complete delta before using it; non-Buck
+checks remain explicit obligations. Removed required targets are reported, not
+silently considered passed. Package ownership/reverse closure continues to use
+`affectedPackagePaths` and `buildTargetsFor`; file-query decoding continues to
+use `parseBuckOwnershipQuery`, rather than a second package convention.
+
+## Opt-in NativeLink TypeScript pilot
+
+The default remains local execution with the existing cache policy. On Linux,
+only `//packages/@overeng/kdl:typecheck`, `//packages/@overeng/kdl:dist`, and the
+dependency `//packages/@overeng/utils-dev:dist` request the pilot executor when
+`nativelink_pilot.enabled=true`. Other TypeScript, tests, tiny actions and dependency
+materialization stay local. macOS does not enter the pilot. The pilot executor is
+remote-only: no local fallback or hybrid racing conceals a missing worker.
+
+Provision the worker's exact Nix closure **before** starting either daemon.
+Build/export the same pinned effect-utils `buck2-capabilities` profile used by the
+Linux client; the measured TS families are `buck2-action-env`, `buck2-rust-shell`,
+`buck2-bubblewrap` (Linux only), `bun`, `effect-tsgo`, `buck2-fingerprint`, and
+`buck2-coreutils` (the readlink wrapper). Publish that profile through
+`scripts/buck2-capability-publish.ts --root "$PWD" --profile "$PROFILE"` using the
+pinned runtime. Keep its store closure alive on the worker. Pool properties do not
+realize store paths. Exact closure read-only binds, clean environment, input
+fingerprinting, private scratch and Bubblewrap guards are unchanged.
+
+Before a new client daemon starts, configure all three REAPI endpoints, instance,
+TLS policy and the worker's exact pool properties in untracked `.buckconfig.local`.
+For a protected, operator-owned loopback endpoint, an example is:
+
+```ini
+[buck2_re_client]
+  engine_address = grpc://127.0.0.1:50051
+  cas_address = grpc://127.0.0.1:50051
+  action_cache_address = grpc://127.0.0.1:50051
+  instance_name = main
+  tls = false
+[nativelink_pilot]
+  enabled = true
+  cpu_arch = x86_64
+  nix_store = /nix/store/REPLACE_WITH_EXACT_PROFILE-buck2-capabilities
+```
+
+Use the actual endpoint/instance and `aarch64` for an aarch64 Linux client.
+`nix_store` must equal the immutable profile store path published by the client
+and provisioned by the worker, **not** a hostname or arbitrary pool tag. Configure
+NativeLink Exact matching for `OSFamily=linux`, `cpu_arch`, and `nix_store`;
+Command.platform carries these properties at the pinned Buck revision.
+Missing endpoint/property settings or a mismatched client architecture fail
+analysis; an unavailable/mismatched worker cannot fall back to local execution.
+For non-loopback deployments, configure transport/auth at the deployment boundary;
+the example is not authorization to expose an unauthenticated listener.
+
+Replace the old daemon after changing endpoints, TLS, instance, capability profile
+or the flag: stop this worktree's selected isolation with
+`buck2 --isolation-dir <isolation> kill`, then start the next invocation with that
+same isolation and the new configuration already installed. Do not kill unrelated
+worktrees' daemons. Keep a bounded worker and independent pilot cache endpoint;
+do not redirect ordinary clients or change host admission.
+
+Rollback: set `nativelink_pilot.enabled=false` (or remove the section), restore
+the previous cache endpoints/TLS/instance, then replace the selected daemon again.
+This unregisters the pilot platform and restores the original local TS action path.
+No source-rule edits, materialization changes or cache deletion are needed.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.

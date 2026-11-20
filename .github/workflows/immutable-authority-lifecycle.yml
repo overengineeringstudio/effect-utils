@@ -1,0 +1,76 @@
+# Generated file - DO NOT EDIT
+# Source: immutable-authority-lifecycle.yml.genie.ts
+
+name: Immutable Authority Lifecycle
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      [
+        nix/immutable-microvm/**,
+        .github/workflows/immutable-authority-lifecycle.yml*,
+        genie/ci-workflow/**,
+        packages/@overeng/genie/src/runtime/github-workflow/**,
+      ]
+
+jobs:
+  lifecycle:
+    if: ${{ github.event.repository.private == false && (github.event_name == 'push' || github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    runs-on: [namespace-profile-linux-x86-64;container.privileged=true]
+    concurrency:
+      group: namespace-public-linux-x64-8x16
+      cancel-in-progress: false
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - id: buck2-ci-job-instance
+        name: Initialize Buck2 CI job instance
+        shell: bash
+        run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Require real KVM access
+        run: test -r /dev/kvm && test -w /dev/kvm
+      - # v3.24.1
+        name: Install Nix without provider credentials or cache publishing
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            sandbox = true
+            sandbox-fallback = false
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
+      - name: Build fixture and both immutable runner closures
+        run: |
+          nix build ./nix/immutable-microvm#packages.x86_64-linux.a ./nix/immutable-microvm#packages.x86_64-linux.b \
+            --no-write-lock-file --no-link --print-out-paths --show-trace -L \
+            --option builders "" --max-jobs 1
+      - name: Prove cold boot, update, rollback and private state persistence
+        run: |
+          nix build ./nix/immutable-microvm#checks.x86_64-linux.lifecycle \
+            --no-write-lock-file --no-link --print-out-paths --show-trace -L \
+            --option builders "" --max-jobs 1
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'

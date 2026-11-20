@@ -2073,6 +2073,58 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/scg-authority:test_collect",
+      "excludes": [],
+      "packageName": "scg-authority",
+      "packagePath": "packages/@overeng/scg-authority",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.integration.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/scg-authority:test",
+      "taskName": "test:scg-authority",
+      "testFiles": ["src/mod.integration.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/scg-discord:test_collect",
+      "excludes": [],
+      "packageName": "scg-discord",
+      "packagePath": "packages/@overeng/scg-discord",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/card.unit.test.ts",
+        "src/interaction.unit.test.ts",
+        "src/listener.integration.test.ts",
+        "src/signer.integration.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/scg-discord:test",
+      "taskName": "test:scg-discord",
+      "testFiles": [
+        "src/card.unit.test.ts",
+        "src/interaction.unit.test.ts",
+        "src/listener.integration.test.ts",
+        "src/signer.integration.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/scg-protocol:test_collect",
+      "excludes": [],
+      "packageName": "scg-protocol",
+      "packagePath": "packages/@overeng/scg-protocol",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/scg-protocol:test",
+      "taskName": "test:scg-protocol",
+      "testFiles": ["src/mod.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/tui-core:test_collect",
       "excludes": [],
       "packageName": "tui-core",

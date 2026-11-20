@@ -335,6 +335,48 @@ EOF
   assert_eq "1" "$(cat "$test_dir/$failure-attempt")" "$failure is not retried"
 done
 
+echo "Test 4h: retries terminal NAR transfer and substitution failures"
+for failure in send send-partial receive timeout substitutes warning-only dependency-only; do
+  case "$failure" in
+    send) message="error: unable to download 'https://example.com/nar/body.nar.zst': HTTP error 200 (curl error: Failed sending data to the peer)" ;;
+    send-partial) message="error: unable to download 'https://example.com/nar/body.nar.zst': HTTP error 206 (curl error: Failed sending data to the peer)" ;;
+    receive) message="error: unable to download 'https://example.com/nar/body.nar.zst': HTTP error 206 (curl error: Failure when receiving data from the peer)" ;;
+    timeout) message="error: unable to download 'https://example.com/nar/body.nar.zst': HTTP error 200 (curl error: Timeout was reached)" ;;
+    substitutes) message="error: some substitutes for the outputs of derivation '/nix/store/example-otel-scrape-buck2-import.drv' failed (usually happens due to networking issues); try '--fallback' to build derivation from source" ;;
+    warning-only) message="warning: unable to download 'https://example.com/nar/body.nar.zst': HTTP error 200 (curl error: Failed sending data to the peer); retrying in 10 ms (attempt 1/3)" ;;
+    dependency-only) message="error: Cannot build '/nix/store/example-devenv-shell.drv'. Reason: 1 dependency failed." ;;
+  esac
+  transfer_fixture="$test_dir/transfer-$failure.sh"
+  cat > "$transfer_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/transfer-$failure-attempt"
+attempt=0
+if [ -f "\$attempt_file" ]; then attempt=\$(cat "\$attempt_file"); fi
+echo "\$((attempt + 1))" > "\$attempt_file"
+if [ "\$attempt" -eq 0 ]; then
+  printf '%s\n' "$message" >&2
+  echo "error: Cannot build '/nix/store/example-devenv-shell.drv'. Reason: 1 dependency failed." >&2
+  exit 8
+fi
+EOF
+  chmod +x "$transfer_fixture"
+  set +e
+  CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "transfer-$failure" "$transfer_fixture" >/dev/null 2>&1
+  exit_code=$?
+  set -e
+  case "$failure" in
+    warning-only|dependency-only)
+      assert_exit_code 8 "$exit_code" "$failure preserves the original failure"
+      assert_eq "1" "$(cat "$test_dir/transfer-$failure-attempt")" "$failure is not retried"
+      ;;
+    *)
+      assert_exit_code 0 "$exit_code" "$failure recovers"
+      assert_eq "2" "$(cat "$test_dir/transfer-$failure-attempt")" "$failure retries once"
+      ;;
+  esac
+done
+
 echo "Test 5: retries missing Nix daemon socket failures without host mutation"
 daemon_fixture="$test_dir/daemon-fixture.sh"
 cat > "$daemon_fixture" <<EOF
