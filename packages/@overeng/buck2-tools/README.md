@@ -230,6 +230,11 @@ failures retain their underlying causes, not a busy diagnosis or an early escape
 No incomplete migration publishes a success receipt. Retry after resolving the
 failure or after the active owner finishes.
 
+`requireEditorPublicationInputs` validates lexical Buck carriers as well as resolved
+paths: every Buck boundary must belong to this root's reserved isolation and owner.
+Direct immutable Nix inputs and ordinary files remain valid. Declaring the helper
+does not yet move publisher callers onto the reserved isolation.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
