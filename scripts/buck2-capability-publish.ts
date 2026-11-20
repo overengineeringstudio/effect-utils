@@ -25,9 +25,10 @@ import { parseArgs } from 'node:util'
 import {
   editorPublicationIsolation,
   type EditorPublicationOwner,
-  editorPublicationOwnerFdEnv,
+  releaseEditorPublicationOwner,
   tryAcquireEditorPublicationOwner,
 } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import { stopOwnedEditorPublicationDaemon } from './buck2-entrypoint.ts'
 
 const generationPattern = /^[0-9a-f]{64}$/u
 
@@ -330,9 +331,11 @@ export const capabilityPruningDeferred = ({
 const stopMigrationDaemons = ({
   roots,
   buck2,
+  buck2Native,
 }: {
   readonly roots: readonly string[]
   readonly buck2: string
+  readonly buck2Native?: string
 }): readonly string[] => {
   const stopped: string[] = []
   const deferred: string[] = []
@@ -367,15 +370,20 @@ const stopMigrationDaemons = ({
       }
       try {
         console.error(`Capability cell migration: stopping Buck daemon ${root} (${isolation})`)
-        const result = spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
-          cwd: root,
-          encoding: 'utf8',
-          env:
-            owner === undefined
-              ? process.env
-              : { ...process.env, [editorPublicationOwnerFdEnv]: '3' },
-          stdio: owner === undefined ? 'pipe' : ['ignore', 'pipe', 'pipe', owner.fd],
-        })
+        if (owner !== undefined && buck2Native === undefined)
+          throw new Error('Capability migration requires the declared pinned Buck native binary')
+        const result = owner === undefined
+          ? spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
+              cwd: root,
+              encoding: 'utf8',
+              stdio: 'pipe',
+            })
+          : stopOwnedEditorPublicationDaemon({
+              native: buck2Native!,
+              cwd: root,
+              env: process.env,
+              owner,
+            })
         if (result.error !== undefined) throw result.error
         if (result.status !== 0)
           throw new Error(
@@ -389,7 +397,7 @@ const stopMigrationDaemons = ({
           }),
         )
       } finally {
-        owner?.release()
+        if (owner !== undefined) releaseEditorPublicationOwner(owner)
       }
     }
   }
@@ -444,11 +452,13 @@ export const publishCapabilities = ({
   profile,
   nixStore = 'nix-store',
   buck2 = process.env.BUCK2_BIN ?? 'buck2',
+  buck2Native = process.env.BUCK2_NATIVE_BIN,
 }: {
   readonly root: string
   readonly profile: string
   readonly nixStore?: string
   readonly buck2?: string
+  readonly buck2Native?: string
 }): CapabilityPublicationResult => {
   const absoluteRoot = resolve(root)
   const projectRoot = realpathSync(absoluteRoot)
@@ -622,7 +632,7 @@ export const publishCapabilities = ({
     const migrationDaemonStops =
       statIfPresent(migrationMarker) === undefined
         ? []
-        : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2 })
+        : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2, buck2Native })
     if (statIfPresent(migrationMarker) !== undefined) {
       rmSync(migrationMarker)
     }
@@ -689,13 +699,14 @@ const main = (): void => {
       profile: { type: 'string' },
       'nix-store': { type: 'string' },
       buck2: { type: 'string' },
+      'buck2-native': { type: 'string' },
     },
     strict: true,
     allowPositionals: false,
   })
   if (values.root === undefined || values.profile === undefined)
     throw new Error(
-      'Usage: bun scripts/buck2-capability-publish.ts --root ROOT --profile REALIZED_NIX_OUTPUT [--nix-store PATH] [--buck2 PATH]',
+      'Usage: bun scripts/buck2-capability-publish.ts --root ROOT --profile REALIZED_NIX_OUTPUT [--nix-store PATH] [--buck2 PATH] [--buck2-native PINNED_NATIVE_PATH]',
     )
   console.log(
     JSON.stringify(
@@ -704,6 +715,7 @@ const main = (): void => {
         profile: values.profile,
         nixStore: values['nix-store'],
         buck2: values.buck2,
+        buck2Native: values['buck2-native'],
       }),
     ),
   )

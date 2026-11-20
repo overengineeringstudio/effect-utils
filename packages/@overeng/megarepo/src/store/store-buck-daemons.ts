@@ -6,7 +6,11 @@ import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
-import { editorPublicationIsolation, tryAcquireEditorPublicationOwner } from '@overeng/buck2-tools'
+import {
+  editorPublicationIsolation,
+  releaseEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
+} from '@overeng/buck2-tools'
 
 import {
   isInsideWorktree,
@@ -426,7 +430,8 @@ export const withBuckIsolationMaintenance = <TResult, TError, TEnv>({
     },
     (owner) =>
       Effect.sync(() => {
-        if (Option.isSome(owner) === true) owner.value?.release()
+        if (Option.isSome(owner) === true && owner.value !== undefined)
+          releaseEditorPublicationOwner(owner.value)
       }),
   )
 }

@@ -179,21 +179,22 @@ TERM/KILL cleanup on expiry, with separate handling for queued lock admission.
 Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
-per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
-The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-with a **5 s kill grace** on interruption or deadline expiry. The execution clock
-starts only after admission: scoped/bootstrap work keeps its 300 s cap and
-Storybook play tests keep their derived 380 s cap, excluding queue time.
+per-worktree `.devenv/editor-view-publication.lock` before build/publish.
+The authority process owns the kernel `flock` across its complete in-process
+build/publication flow; the supervisor receives only a one-byte admission notification.
+Its execution clock starts after acquisition, excluding queue time. Existing explicit
+600/900 s cold-publication budgets and derived scoped budgets remain unchanged;
+the supervisor retains its **5 s kill grace** on interruption or deadline expiry.
 Each admitted invocation logs the lock path and admission wait in seconds.
 Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
 treated as termination only after a process census proves no live members remain;
-live-member permission failures still fail closed. The supervisor retains ownership through
-process-group cleanup; process exit releases it automatically. The persistent
-flock file must not be unlinked while publishers are active.
+live-member permission failures still fail closed. Cancellation joins native Buck,
+fingerprint workers and asynchronous copies before the owning callback releases its lock.
+The persistent flock file must not be unlinked while publishers are active.
 
-The declared Bun, genie, mr, and managed Buck wrappers select a precompiled owner
-library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
+The declared Bun, genie and mr runtimes select a precompiled owner library through
+`BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`; authority calls receive the pinned native Buck path explicitly.
 The library has no runtime compiler, profile lookup, or variadic JavaScript FFI.
 Its fixed-arity `buck2_publication_owner_open(path)` opens with
 `O_RDWR | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC`, mode `0600`, returning
@@ -209,14 +210,25 @@ Portable compiled payloads remain unchanged; native wrappers own this dependency
 The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate every Bun tool closure.
 
-`withEditorPublicationOwner` owns its full callback on the canonical root's persistent lock inode.
-Inherited `BUCK2_EDITOR_PUBLICATION_OWNER_FD` values require its exclusive kernel lock;
-borrowed owners are never unlocked. `tryAcquireEditorPublicationOwner` provides an independent,
-nonblocking lease or defers to an existing owner; release is idempotent.
-`editorPublicationIsolation` is `editor-publication`; these APIs do not activate isolation.
+`withEditorPublicationOwner` owns its entire callback on the canonical root's persistent lock inode.
+Its opaque object is registered in a module-private map; validation checks live identity,
+canonical root and inode without acquiring, upgrading or unlocking anything.
+Descriptors are always CLOEXEC and are **never lent** to children or native daemons.
+Serialized/copied objects, numeric descriptors and the former
+`BUCK2_EDITOR_PUBLICATION_OWNER_FD` environment value confer no authority.
+`tryAcquireEditorPublicationOwner` obtains an independent nonblocking owner or defers;
+`releaseEditorPublicationOwner` is idempotent. Cancellation interrupts queued acquisition,
+but cannot release an active callback before its subordinate work has joined.
+This protects against accidental and foreign-descriptor misuse, not an adversarial
+same-uid process that can directly invoke the unmanaged native binary.
+No token is stored in the lock file or shared cursor.
 
-The Bun regressions genuinely clear and restore inherited CLOEXEC, check atomic opening before
-protection, and retain contention and flags across awaited callbacks and inherited FD3 descendants.
+The public managed CLI rejects the reserved `editor-publication` namespace.
+Only the same-process managed launcher accepts its real opaque owner; it retains
+normal admission, cache posture, tracing and native lifecycle policy.
+Publication dispatch also runs in process with that object rather than a borrowed FD.
+Kernel regressions cover atomic CLOEXEC, child non-inheritance, callback-wide contention,
+foreign/copied/released objects, cancellation joins and exact native error diagnostics.
 
 Megarepo maintenance independently acquires that owner around reserved-isolation
 clean and the final daemon checks/stop. A live publisher defers maintenance;

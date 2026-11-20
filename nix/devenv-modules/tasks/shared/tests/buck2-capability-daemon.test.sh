@@ -20,6 +20,7 @@ case "$PUBLISHER" in production|legacy) ;; *) echo "invalid publisher: $PUBLISHE
 case "$WATCHER" in notify|watchman|both) ;; *) echo "invalid watcher: $WATCHER" >&2; exit 2 ;; esac
 BUN="${BUN_BIN:-$(command -v bun)}"
 BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
+BUCK2_NATIVE="${BUCK2_NATIVE_BIN:?required declared pinned native Buck binary}"
 NIX="${NIX_BIN:-$(command -v nix)}"
 NIX_STORE_COMMAND="${NIX_STORE_BIN:-$(command -v nix-store)}"
 for tool in jq tar env; do command -v "$tool" >/dev/null; done
@@ -42,20 +43,20 @@ cleanup() {
   for ((index=0; index<${#daemon_roots[@]}; index++)); do
     if [ "${daemon_isolations[$index]}" = editor-publication ]; then
       OWNER_MODULE="$ROOT/packages/@overeng/buck2-tools/src/editor-publication-owner.ts" \
-        OWNER_ROOT="${daemon_roots[$index]}" OWNER_BUCK2="$BUCK2" HOME="$TEST_HOME" "$BUN" --eval '
-        const { spawnSync } = require("node:child_process");
-        const { editorPublicationIsolation, editorPublicationOwnerFdEnv, tryAcquireEditorPublicationOwner } =
+        LAUNCHER_MODULE="$ROOT/scripts/buck2-entrypoint.ts" \
+        OWNER_ROOT="${daemon_roots[$index]}" OWNER_NATIVE_BUCK2="$BUCK2_NATIVE" HOME="$TEST_HOME" "$BUN" --eval '
+        const { releaseEditorPublicationOwner, tryAcquireEditorPublicationOwner } =
           await import(process.env.OWNER_MODULE);
+        const { stopOwnedEditorPublicationDaemon } = await import(process.env.LAUNCHER_MODULE);
         const owner = tryAcquireEditorPublicationOwner({ root: process.env.OWNER_ROOT });
         if (owner === undefined) throw new Error("fixture cleanup owner unexpectedly busy");
         try {
-          const result = spawnSync(process.env.OWNER_BUCK2, ["--isolation-dir", editorPublicationIsolation, "kill"], {
-            cwd: process.env.OWNER_ROOT,
-            env: { ...process.env, [editorPublicationOwnerFdEnv]: "3" },
-            stdio: ["ignore", "ignore", "ignore", owner.fd],
+          const result = stopOwnedEditorPublicationDaemon({
+            native: process.env.OWNER_NATIVE_BUCK2,
+            cwd: process.env.OWNER_ROOT, env: process.env, owner,
           });
           if (result.error || result.status !== 0) throw new Error("fixture reserved daemon cleanup failed");
-        } finally { owner.release(); }
+        } finally { releaseEditorPublicationOwner(owner); }
       ' || exit_code=1
     else
       (cd "${daemon_roots[$index]}" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "${daemon_isolations[$index]}" kill) >/dev/null 2>&1 || true
@@ -308,28 +309,28 @@ CONFIG
     exec 8<>"$fixture/owner-ready"
     exec 9<>"$fixture/owner-release"
     OWNER_MODULE="$ROOT/packages/@overeng/buck2-tools/src/editor-publication-owner.ts" \
-      OWNER_FIXTURE="$fixture" OWNER_BUCK2="$BUCK2" HOME="$TEST_HOME" "$BUN" --eval '
-      const { spawnSync } = require("node:child_process");
+      LAUNCHER_MODULE="$ROOT/scripts/buck2-entrypoint.ts" \
+      OWNER_FIXTURE="$fixture" OWNER_NATIVE_BUCK2="$BUCK2_NATIVE" HOME="$TEST_HOME" "$BUN" --eval '
       const fs = require("node:fs");
-      const { editorPublicationIsolation, editorPublicationOwnerFdEnv, tryAcquireEditorPublicationOwner } =
+      const { editorPublicationIsolation, releaseEditorPublicationOwner, tryAcquireEditorPublicationOwner } =
         await import(process.env.OWNER_MODULE);
+      const { runOwnedEditorPublicationCommand } = await import(process.env.LAUNCHER_MODULE);
       const root = process.env.OWNER_FIXTURE;
       const owner = tryAcquireEditorPublicationOwner({ root });
       if (owner === undefined) throw new Error("fixture owner unexpectedly busy");
       try {
-        const run = (args) => {
-          const result = spawnSync(process.env.OWNER_BUCK2,
-            ["--isolation-dir", editorPublicationIsolation, ...args], {
-              cwd: root, encoding: "utf8",
-              env: { ...process.env, [editorPublicationOwnerFdEnv]: "3" },
-              stdio: ["ignore", "pipe", "pipe", owner.fd],
-            });
-          if (result.error || result.status !== 0)
-            throw new Error(`owned native ${args[0]} failed: ${result.stderr}`, { cause: result.error });
+        const run = async (args) => {
+          const result = await runOwnedEditorPublicationCommand({
+            native: process.env.OWNER_NATIVE_BUCK2,
+            args: ["--isolation-dir", editorPublicationIsolation, ...args],
+            cwd: root, env: process.env, owner, stdin: "ignore",
+          });
+          if (result.exitCode !== 0 || result.signalCode !== null)
+            throw new Error(`owned native ${args[0]} failed: ${result.stderr}`);
           return result.stdout;
         };
-        run(["targets", "root//:pnpm_extract"]);
-        fs.writeFileSync(`${root}/owner-before.status`, run(["status"]));
+        await run(["targets", "root//:pnpm_extract"]);
+        fs.writeFileSync(`${root}/owner-before.status`, await run(["status"]));
         const release = fs.openSync(`${root}/owner-release`, "r");
         const next = () => {
           if (fs.readSync(release, Buffer.alloc(1), 0, 1, null) !== 1)
@@ -337,11 +338,11 @@ CONFIG
         };
         fs.writeFileSync(`${root}/owner-ready`, "ready\n");
         next();
-        fs.writeFileSync(`${root}/owner-after.status`, run(["status"]));
+        fs.writeFileSync(`${root}/owner-after.status`, await run(["status"]));
         fs.writeFileSync(`${root}/owner-ready`, "checked\n");
         next();
         fs.closeSync(release);
-      } finally { owner.release(); }
+      } finally { releaseEditorPublicationOwner(owner); }
     ' >"$fixture/owner.stdout" 2>"$fixture/owner.stderr" &
     owner_pid=$!
     read -r -t 60 -u 8 owner_ready || { cat "$fixture/owner.stderr" >&2; fail "editor owner did not become ready"; }

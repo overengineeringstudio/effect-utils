@@ -11,6 +11,7 @@ import {
   statSync,
   symlinkSync,
   writeFileSync,
+  watch,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,7 +23,83 @@ import {
   copyWritableTree,
   darwinEmitCommand,
   runEmit,
+  runFingerprintTool,
+  withFingerprintScope,
 } from './typescript-runner.ts'
+
+const waitForFingerprintFile = (path: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    // A real subprocess readiness deadline, not a sleep: success resolves from the file event.
+    const timer = setTimeout(() => finish(new Error(`Fingerprint child did not create ${path}`)), 10_000)
+    const watcher = watch(dirname(path), () => {
+      if (existsSync(path)) finish()
+    })
+    const finish = (error?: Error): void => {
+      clearTimeout(timer)
+      watcher.close()
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    if (existsSync(path)) finish()
+  })
+
+it.each(['abort', 'parent-failure'] as const)(
+  'joins a real native fingerprint child before publication scope exits after %s',
+  async (failure) => {
+    const root = mkdtempSync(join(tmpdir(), 'fingerprint-scope-'))
+    const ready = join(root, 'ready')
+    const terminated = join(root, 'terminated')
+    const controller = new AbortController()
+    let child: Promise<string> | undefined
+    try {
+      const scoped = withFingerprintScope({
+        signal: controller.signal,
+        run: async () => {
+          child = runFingerprintTool({
+            tool: process.execPath,
+            args: ['-e', `
+              const fs = require('node:fs');
+              const watcher = fs.watch(${JSON.stringify(root)}, () => {});
+              process.on('SIGTERM', () => {
+                fs.writeFileSync(${JSON.stringify(terminated)}, 'joined');
+                watcher.close();
+                process.exit(0);
+              });
+              fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid));
+            `],
+          })
+          // Observe this intentionally outstanding request without replacing its result.
+          void child.catch(() => {})
+          await waitForFingerprintFile(ready)
+          if (failure === 'abort') {
+            controller.abort()
+            await child
+          } else {
+            throw new Error('parent publication failed')
+          }
+        },
+      })
+      await expect(scoped).rejects.toThrow(
+        failure === 'abort' ? 'fingerprint admission closed' : 'parent publication failed',
+      )
+      expect(readFileSync(terminated, 'utf8')).toBe('joined')
+      const pid = Number(readFileSync(ready, 'utf8'))
+      expect(() => process.kill(pid, 0)).toThrow()
+      await expect(child).rejects.toThrow('fingerprint admission closed')
+      // A finished/cancelled scope cannot poison the next invocation's admission or cache.
+      await expect(withFingerprintScope({
+        run: () => runFingerprintTool({
+          tool: process.execPath,
+          args: ['-e', 'process.stdout.write("fresh-scope")'],
+        }),
+      })).resolves.toBe('fresh-scope')
+    } finally {
+      controller.abort()
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+  20_000,
+)
 
 it('creates removable scratch copies of immutable inputs without following symlinks', async () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-scratch-copy-'))

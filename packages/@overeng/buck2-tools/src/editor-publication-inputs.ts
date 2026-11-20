@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, sep } from 'node:path'
 
 import {
   editorPublicationIsolation,
-  editorPublicationOwnerFdEnv,
+  type EditorPublicationOwner,
   requireEditorPublicationOwner,
 } from './editor-publication-owner.ts'
 
@@ -16,11 +16,11 @@ const isMutableBuckPath = (path: string | undefined): path is string =>
 export const requireEditorPublicationInputs = ({
   root,
   paths,
-  ownerFd,
+  owner,
 }: {
   readonly root: string
   readonly paths: readonly string[]
-  readonly ownerFd?: number
+  readonly owner?: EditorPublicationOwner
 }): void => {
   const owned = join(realpathSync(root), 'buck-out', editorPublicationIsolation)
   let ownerValidated = false
@@ -70,12 +70,7 @@ export const requireEditorPublicationInputs = ({
     // Finish filesystem traversal first so native resolution failures remain visible.
     if (mutable === false) continue
     if (ownerValidated === false) {
-      requireEditorPublicationOwner({
-        root,
-        ...(ownerFd === undefined
-          ? {}
-          : { env: { [editorPublicationOwnerFdEnv]: String(ownerFd) } }),
-      })
+      requireEditorPublicationOwner({ root, owner })
       ownerValidated = true
     }
     if (outside === true)

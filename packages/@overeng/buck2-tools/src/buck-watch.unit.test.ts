@@ -1,6 +1,17 @@
 import * as ChildProcess from 'node:child_process'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -12,16 +23,37 @@ import {
   buildTargetsFor,
   CommandFailure,
   exitCodeOf,
-  reconcileBuckViews,
+  reconcileBuckViews as reconcileBuckViewsUnscoped,
   runCommand,
   runBuckWatchLoop,
+  type BuckReconcileTiming,
   type BuckWatchPlan,
   type WatchChangeSource,
   type WatchLoopStatus,
 } from './buck-watch.ts'
+import {
+  requireEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
+  releaseEditorPublicationOwner,
+  type EditorPublicationOwner,
+} from './editor-publication-owner.ts'
+import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
+import {
+  scopeEditorViewTestProcesses,
+  trackEditorViewTestSpawn,
+} from './editor-view-test-processes.ts'
+
+const fixtureProcessIds = new Set([process.pid])
+const reconcileBuckViews = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: reconcileBuckViewsUnscoped,
+})
 
 // Stable forwarding exports observe the named imports used by Bun's native modules.
-const nativeChildProcess = { ...ChildProcess }
+const nativeChildProcess = {
+  ...ChildProcess,
+  spawn: trackEditorViewTestSpawn({ processIds: fixtureProcessIds, spawnProcess: ChildProcess.spawn }),
+}
 const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
@@ -29,15 +61,35 @@ const savedWatchTraceContext = {
   TRACEPARENT: process.env.TRACEPARENT,
   OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
 }
+const savedHostBudgetState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+const savedContentStore = process.env.EDITOR_VIEW_CONTENT_STORE
+let hostBudgetState: string
+
+/** Unlock directories only: immutable snapshot files may share CAS inodes. */
+const unlockFixtureDirectories = (path: string): void => {
+  const status = lstatSync(path)
+  if (status.isDirectory() === false || status.isSymbolicLink() === true) return
+  chmodSync(path, (status.mode & 0o777) | 0o700)
+  for (const name of readdirSync(path)) unlockFixtureDirectories(join(path, name))
+}
 beforeAll(() => {
   // Only explicit telemetry fixtures may consume the process-wide exporter slots.
   delete process.env.TRACEPARENT
   delete process.env.OTEL_TASK_TRACEPARENT
+  hostBudgetState = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'buck-watch-budget-')))
+  process.env.EDITOR_VIEW_HOST_BUDGET_STATE = hostBudgetState
+  process.env.EDITOR_VIEW_CONTENT_STORE = join(hostBudgetState, 'content')
 })
 afterAll(() => {
   for (const [key, value] of Object.entries(savedWatchTraceContext))
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
+  if (savedHostBudgetState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+  else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedHostBudgetState
+  if (savedContentStore === undefined) delete process.env.EDITOR_VIEW_CONTENT_STORE
+  else process.env.EDITOR_VIEW_CONTENT_STORE = savedContentStore
+  unlockFixtureDirectories(hostBudgetState)
+  rmSync(hostBudgetState, { recursive: true, force: true })
 })
 
 /** Every gate input the OTEL helpers read; tests pin each one explicitly. */
@@ -176,6 +228,77 @@ const until = async (predicate: () => boolean): Promise<void> => {
     await Promise.resolve()
   }
   throw new Error('condition was not reached')
+}
+
+/** Real finite immutable inputs: both external roots must survive snapshot relocation. */
+const makePublicationFixture = () => {
+  const requireTool = (name: string): string => {
+    const value = process.env[name]
+    if (value === undefined || value === '') throw new Error(`declared test tool is unavailable: ${name}`)
+    return value
+  }
+  const cp = requireTool('CP_BIN')
+  const mv = requireTool('MV_BIN')
+  const fingerprintTool = requireTool('FINGERPRINT_BIN')
+  const root = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'buck-watch-')))
+  const manifest = join(root, 'editor-inputs.json')
+  const nodeModules = join(root, 'inputs/app/node_modules')
+  const packageTree = join(root, 'inputs/app/package_tree')
+  const dependency = join(root, 'inputs/store/dep')
+  const workspaceAuthority = join(root, 'authority.json')
+  mkdirSync(join(root, 'packages/app'), { recursive: true })
+  writeFileSync(join(root, 'packages/app/package.json'), '{}\n')
+  for (const path of [nodeModules, packageTree, dependency]) mkdirSync(path, { recursive: true })
+  writeFileSync(join(packageTree, 'index.js'), 'export const workspace = "λ"\n')
+  writeFileSync(join(dependency, 'index.js'), 'export const dependency = "雪"\n')
+  symlinkSync('../package_tree', join(nodeModules, 'workspace'))
+  symlinkSync('../../store/dep', join(nodeModules, 'dep'))
+  writeFileSync(manifest, JSON.stringify({
+    schema: 'effect-utils/editor-view-inputs/v1',
+    editorInputs: nodeModules,
+    packageTree,
+    readRoots: [packageTree, dependency],
+  }))
+  writeFileSync(workspaceAuthority, JSON.stringify({
+    schema: 'effect-utils/workspace-dependency-authority/v1',
+    requiredPackages: ['packages/app'],
+    ownedPackages: ['packages/app'],
+  }))
+  const current = join(root, 'packages/.editor-view/app')
+  const options = {
+    plan,
+    mode: 'publish' as const,
+    repoRoot: root,
+    workspaceRoot: root,
+    buck2: '/tools/buck2',
+    workspaceAuthority,
+    cp,
+    mv,
+    fingerprintTool,
+    snapshotRetention: 3,
+    runOwned: async (_command: Parameters<typeof runCommand>[0], owner: EditorPublicationOwner) => {
+      requireEditorPublicationOwner({ root, owner })
+      return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+    },
+  }
+  const record = () => JSON.parse(readFileSync(join(current, 'editor-view.json'), 'utf8')) as {
+    package: string
+    cell: string
+    target: string
+    snapshot: string
+    normalizedStoreDigest: string
+  }
+  const cleanup = () => {
+    unlockFixtureDirectories(root)
+    rmSync(root, { recursive: true, force: true })
+  }
+  return { root, manifest, nodeModules, packageTree, dependency, current, options, record, cleanup }
+}
+
+const publicationRequest = {
+  packagePaths: ['packages/app'],
+  changedPaths: ['packages/app/src/main.ts'],
+  buildTargets: ['//packages/app:editor_view_inputs', '//packages/app:typecheck'],
 }
 
 describe('Buck watch reconciliation', () => {
@@ -329,140 +452,81 @@ describe('Buck watch reconciliation', () => {
     expect(failed?.lastSuccessfulAt).toEqual(expect.any(String))
   })
 
-  it('passes every provider read root to publication and never publishes after a failed build', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+  it.each([false, true])('publishes every provider read root and never publishes after a failed build (batch=%s)', async (batchPublication) => {
+    const fixture = makePublicationFixture()
+    const shutdown = new AbortController()
+    const invocations: Parameters<typeof runCommand>[0][] = []
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: ['buck-out/app/package_tree', 'buck-out/store/dep'],
-        })}\n`,
-      )
-      const shutdown = new AbortController()
-      const invocations: {
-        command: string
-        detached: boolean | undefined
-        args: readonly string[]
-        signal: AbortSignal | undefined
-      }[] = []
       await reconcileBuckViews({
-        request: {
-          packagePaths: ['packages/app'],
-          changedPaths: ['packages/app/src/main.ts'],
-          buildTargets: ['//packages/app:editor_view_inputs', '//packages/app:typecheck'],
-        },
+        request: publicationRequest,
         options: {
-          plan,
-          mode: 'publish',
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          mv: '/tools/mv',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          snapshotRetention: 3,
+          ...fixture.options,
+          batchPublication,
           signal: shutdown.signal,
-          run: async ({ command, args, detached, signal }) => {
-            invocations.push({ command, args, detached, signal })
-            return command === '/tools/buck2'
-              ? {
-                  stdout: `//packages/app:editor_view_inputs ${manifest}\n`,
-                  stderr: '',
-                }
-              : { stdout: '', stderr: '' }
+          runOwned: async (command, owner) => {
+            requireEditorPublicationOwner({ root: fixture.root, owner })
+            expect(JSON.stringify(owner)).toBe('{}')
+            expect(() => requireEditorPublicationOwner({
+              root: fixture.root,
+              owner: JSON.parse(JSON.stringify(owner)) as EditorPublicationOwner,
+            })).toThrow()
+            invocations.push(command)
+            expect(tryAcquireEditorPublicationOwner({ root: fixture.root })).toBeUndefined()
+            // Authority is process-local, never a numeric FD or argv/environment payload.
+            expect(command).not.toHaveProperty('editorPublicationOwnerFd')
+            expect(command.args.some((arg) => arg.includes('owner-fd'))).toBe(false)
+            return fixture.options.runOwned(command, owner)
           },
         },
       })
-      expect(invocations).toHaveLength(2)
+      // Publisher argv capture disappeared with the subprocess. Assert the real parsed
+      // identities and relocated provider bytes instead of pretending a tool path ran it.
+      expect(invocations).toHaveLength(1)
+      expect(invocations[0]?.command).toBe('/tools/buck2')
+      expect(invocations[0]?.args).toEqual([
+        '--isolation-dir', 'editor-publication', 'build',
+        ...publicationRequest.buildTargets,
+        '--show-full-output', '--event-log', expect.stringMatching(/editor-view-.*\.pb\.zst$/u),
+      ])
       expect(invocations[0]?.signal).toBe(shutdown.signal)
       expect(invocations[0]?.detached).toBeUndefined()
-      expect(invocations[1]?.detached).toBeUndefined()
-      expect(invocations[1]?.signal).toBeUndefined()
-      expect(invocations[1]?.command).toBe('/tools/bun')
-      expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
-      expect(invocations[1]?.args).toContain('--backing-root')
-      expect(invocations[1]?.args).toEqual(
-        expect.arrayContaining([
-          join(root, 'buck-out/app/node_modules'),
-          join(root, 'buck-out/app/package_tree'),
-          join(root, 'buck-out/store/dep'),
-        ]),
-      )
-
-      const batchInvocations: {
-        command: string
-        args: readonly string[]
-        input: string | undefined
-        detached: boolean | undefined
-      }[] = []
-      await reconcileBuckViews({
-        request: {
-          packagePaths: ['packages/app'],
-          changedPaths: [],
-          buildTargets: ['//packages/app:editor_view_inputs'],
-        },
-        options: {
-          plan,
-          mode: 'publish',
-          batchPublication: true,
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          mv: '/tools/mv',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          snapshotRetention: 3,
-          run: async ({ command, args, input, detached }) => {
-            batchInvocations.push({ command, args, input, detached })
-            return command === '/tools/buck2'
-              ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-              : { stdout: '', stderr: '' }
-          },
-        },
+      const first = fixture.record()
+      expect(first).toMatchObject({
+        package: 'packages/app',
+        cell: 'effect_utils',
+        target: '//packages/app:editor_inputs',
       })
-      expect(batchInvocations).toHaveLength(2)
-      expect(batchInvocations[1]?.args).toEqual(['/tools/editor-view', 'publish-batch'])
-      expect(batchInvocations[1]?.detached).toBeUndefined()
-      expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
+      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8'))
+        .toBe('export const workspace = "λ"\n')
+      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8'))
+        .toBe('export const dependency = "雪"\n')
+      expect(existsSync(join(fixture.current, 'editor-view-sources-v1.json'))).toBe(true)
+      writeFileSync(join(fixture.dependency, 'index.js'), 'export const dependency = "changed"\n')
+      await reconcileBuckViews({ request: publicationRequest, options: { ...fixture.options, batchPublication } })
+      const second = fixture.record()
+      expect(second.normalizedStoreDigest).not.toBe(first.normalizedStoreDigest)
+      expect(second.snapshot).not.toBe(first.snapshot)
 
       const failedInvocations: string[] = []
-      await expect(
-        reconcileBuckViews({
-          request: {
-            packagePaths: ['packages/app'],
-            changedPaths: ['packages/app/src/main.ts'],
-            buildTargets: ['//packages/app:editor_view_inputs'],
+      await expect(reconcileBuckViews({
+        request: publicationRequest,
+        options: {
+          ...fixture.options,
+          batchPublication,
+          runOwned: async ({ command }, owner) => {
+            requireEditorPublicationOwner({ root: fixture.root, owner })
+            failedInvocations.push(command)
+            throw new Error('stale build')
           },
-          options: {
-            plan,
-            mode: 'publish',
-            repoRoot: root,
-            workspaceRoot: root,
-            buck2: '/tools/buck2',
-            editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-            workspaceAuthority: '/repo/authority.json',
-            cp: '/tools/cp',
-            fingerprintTool: '/tools/buck2-fingerprint',
-            mv: '/tools/mv',
-            snapshotRetention: 3,
-            run: async ({ command }) => {
-              failedInvocations.push(command)
-              throw new Error('stale build')
-            },
-          },
-        }),
-      ).rejects.toThrow('stale build')
+        },
+      })).rejects.toThrow('stale build')
       expect(failedInvocations).toEqual(['/tools/buck2'])
+      expect(fixture.record()).toEqual(second)
+      const released = tryAcquireEditorPublicationOwner({ root: fixture.root })
+      expect(released).toBeDefined()
+      if (released !== undefined) releaseEditorPublicationOwner(released)
     } finally {
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
@@ -472,112 +536,55 @@ describe('Buck watch reconciliation', () => {
     [false, 'payload'],
     [true, 'payload'],
   ] as const)(
-    'forwards publisher diagnostics before exit (batch=%s, prefix=%s)',
+    'emits real publisher diagnostics before reconciliation completes (batch=%s, prefix=%s)',
     async (batchPublication, diagnosticPrefix) => {
-      const root = await mkdtemp(join(tmpdir(), 'buck-watch-budget-'))
-      const release = join(root, 'release')
-      const publisher = join(root, 'publisher.mjs')
-      const manifest = join(root, 'editor-inputs.json')
-      const diagnostic = `[editor-view-${diagnosticPrefix}] {"event":"working","reason":"census"}\n`
-      const observed = Promise.withResolvers<void>()
-      const shutdown = new AbortController()
+      const fixture = makePublicationFixture()
+      const observed: string[] = []
+      const onTiming = vi.fn<(timing: BuckReconcileTiming) => void>()
+      let completed = false
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
-        // Wait for the assertion's exact condition, not an unrelated raw stderr newline.
-        if (line === diagnostic) observed.resolve()
+        if (typeof line === 'string' && line.startsWith(`[editor-view-${diagnosticPrefix}] `)) {
+          expect(completed).toBe(false)
+          expect(tryAcquireEditorPublicationOwner({ root: fixture.root })).toBeUndefined()
+          observed.push(line)
+        }
         return true
       })
-      const onTiming = vi.fn()
-      let publisherCompleted = false
-      let running: Promise<void> | undefined
       try {
-        await runCommand({ command: 'mkfifo', args: [release], cwd: root })
-        await writeFile(
-          publisher,
-          [
-            "import { closeSync, openSync, readSync, writeSync } from 'node:fs'",
-            // A blocking FIFO read keeps the publisher alive even when the runtime
-            // does not keep fs.watch or an unresolved top-level await alive.
-            `writeSync(2, 'publisher startup\\n')`,
-            `writeSync(2, ${JSON.stringify(diagnostic.slice(0, 12))})`,
-            `writeSync(2, ${JSON.stringify(diagnostic.slice(12))})`,
-            `const release = openSync(${JSON.stringify(release)}, 'r')`,
-            'readSync(release, Buffer.alloc(1), 0, 1, null)',
-            'closeSync(release)',
-            `process.stderr.write('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\\n')`,
-          ].join('\n'),
-        )
-        await writeFile(
-          manifest,
-          JSON.stringify({
-            schema: 'effect-utils/editor-view-inputs/v1',
-            editorInputs: 'buck-out/app/node_modules',
-            packageTree: 'buck-out/app/package_tree',
-            readRoots: ['buck-out/app/package_tree'],
-          }),
-        )
-        running = reconcileBuckViews({
-          request: {
-            packagePaths: ['packages/app'],
-            changedPaths: [],
-            buildTargets: ['//packages/app:editor_view_inputs'],
-          },
-          options: {
-            plan,
-            mode: 'publish',
-            batchPublication,
-            repoRoot: root,
-            workspaceRoot: root,
-            buck2: '/tools/buck2',
-            editorViewCommand: [process.execPath, publisher],
-            workspaceAuthority: '/repo/authority.json',
-            cp: '/tools/cp',
-            mv: '/tools/mv',
-            fingerprintTool: '/tools/buck2-fingerprint',
-            snapshotRetention: 3,
-            onTiming,
-            run: async (invocation) => {
-              if (invocation.command === '/tools/buck2')
-                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-              try {
-                return await runCommand({
-                  ...invocation,
-                  signal: shutdown.signal,
-                  onStderr: (chunk) => {
-                    // Force every possible character boundary, even if the OS coalesces writes.
-                    for (const character of chunk) invocation.onStderr?.(character)
-                  },
-                })
-              } finally {
-                publisherCompleted = true
-              }
-            },
-          },
+        // No pipe decoder remains between publisher and watch. Real diagnostics now
+        // arrive as in-process writes; arbitrary subprocess chunk boundaries and the
+        // former batch stderr replay duplicate are no longer part of this contract.
+        await reconcileBuckViews({
+          request: publicationRequest,
+          options: { ...fixture.options, batchPublication, onTiming },
         })
-        await observed.promise
-        expect(publisherCompleted).toBe(false)
-        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(1)
-        writeFileSync(release, 'x')
-        await running
-        expect(publisherCompleted).toBe(true)
+        completed = true
+        expect(observed.length).toBeGreaterThan(0)
+        for (const line of observed) {
+          expect(line.endsWith('\n')).toBe(true)
+          expect(() => JSON.parse(line.slice(line.indexOf(' ') + 1))).not.toThrow()
+        }
         expect(onTiming).toHaveBeenCalledWith({
           phase: 'editor-view',
           packagePath: 'packages/app',
-          durationMs: batchPublication === true ? 12 : expect.any(Number),
+          durationMs: expect.any(Number),
         })
-        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(
-          batchPublication === true ? 2 : 1,
-        )
+        const publicationTimings = onTiming.mock.calls
+          .map(([timing]) => timing)
+          .filter((timing) => timing.phase === 'editor-view')
+        expect(publicationTimings).toHaveLength(1)
+        expect(publicationTimings[0]?.durationMs).toBeGreaterThanOrEqual(0)
+        expect(fixture.record().package).toBe('packages/app')
       } finally {
-        shutdown.abort()
-        await running?.catch(() => undefined)
         stderr.mockRestore()
-        await rm(root, { recursive: true, force: true })
+        fixture.cleanup()
       }
     },
   )
 
-  it('emits command spans for the build and each publication without wrapping commands', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+  it('emits command spans for the build and real view validation without wrapping commands', async () => {
+    const fixture = makePublicationFixture()
+    await reconcileBuckViews({ request: publicationRequest, options: fixture.options })
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
     const otelSpan = join(otelDirectory, 'otel-span')
     const capture = join(otelDirectory, 'captured.txt')
@@ -592,16 +599,8 @@ describe('Buck watch reconciliation', () => {
     const savedEnvironment = hermeticOtelGate()
     const telemetry = observeExporters(otelSpan)
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: [],
-        })}\n`,
-      )
+      // Seed publication before enabling telemetry: this isolates command spans from
+      // the real publisher's independent phase/host-budget exporter traffic.
       const invocations: { command: string; args: readonly string[] }[] = []
       await reconcileBuckViews({
         request: {
@@ -610,32 +609,23 @@ describe('Buck watch reconciliation', () => {
           buildTargets: ['//packages/app:editor_view_inputs'],
         },
         options: {
-          plan,
-          mode: 'publish',
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          mv: '/tools/mv',
-          snapshotRetention: 3,
-          run: async ({ command, args }) => {
-            invocations.push({ command, args })
-            return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+          ...fixture.options,
+          mode: 'check',
+          runOwned: async (invocation, owner) => {
+            invocations.push(invocation)
+            return fixture.options.runOwned(invocation, owner)
           },
         },
       })
-      // The real commands run unwrapped; spans are emitted afterwards.
+      // Buck runs unwrapped; the dispatcher validates the real published snapshot.
       expect(invocations[0]?.command).toBe('/tools/buck2')
       expect(invocations[0]?.args.slice(0, 3)).toEqual([
         '--isolation-dir',
         'editor-publication',
         'build',
       ])
-      expect(invocations[1]?.command).toBe('/tools/bun')
-      expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
+      expect(invocations).toHaveLength(1)
+      expect(fixture.record().package).toBe('packages/app')
       await telemetry.settle()
       expect(telemetry.children).toHaveLength(2)
       const captured = readFileSync(capture, 'utf8')
@@ -655,12 +645,13 @@ describe('Buck watch reconciliation', () => {
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
       restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
   it.each(['fails', 'hangs'])('keeps watch cycles green when telemetry %s', async (delivery) => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const fixture = makePublicationFixture()
+    await reconcileBuckViews({ request: publicationRequest, options: fixture.options })
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
     const otelSpan = join(otelDirectory, 'otel-span')
     writeFileSync(
@@ -679,16 +670,8 @@ describe('Buck watch reconciliation', () => {
     const savedEnvironment = hermeticOtelGate()
     const telemetry = observeExporters(otelSpan)
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: [],
-        })}\n`,
-      )
+      // Validation emits the same command spans without consuming slots for the
+      // publisher's separate phase/budget spans; all publisher work above was real.
       const commands: string[] = []
       const source = new ControlledChanges()
       const abort = new AbortController()
@@ -701,20 +684,11 @@ describe('Buck watch reconciliation', () => {
           reconcileBuckViews({
             request,
             options: {
-              plan,
-              mode: 'publish',
-              repoRoot: root,
-              workspaceRoot: root,
-              buck2: '/tools/buck2',
-              editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-              workspaceAuthority: '/repo/authority.json',
-              cp: '/tools/cp',
-              fingerprintTool: '/tools/buck2-fingerprint',
-              mv: '/tools/mv',
-              snapshotRetention: 3,
-              run: async ({ command }) => {
-                commands.push(command)
-                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              ...fixture.options,
+              mode: 'check',
+              runOwned: async (invocation, owner) => {
+                commands.push(invocation.command)
+                return fixture.options.runOwned(invocation, owner)
               },
             },
           }),
@@ -725,7 +699,8 @@ describe('Buck watch reconciliation', () => {
           else abort.abort()
         },
       })
-      expect(commands).toEqual(['/tools/buck2', '/tools/bun', '/tools/buck2', '/tools/bun'])
+      expect(commands).toEqual(['/tools/buck2', '/tools/buck2'])
+      expect(fixture.record().package).toBe('packages/app')
       expect(
         statuses.filter((status) => status.phase === 'idle').map(({ generation }) => generation),
       ).toEqual([1, 2])
@@ -761,7 +736,7 @@ describe('Buck watch reconciliation', () => {
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
       restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 

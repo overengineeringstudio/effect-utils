@@ -497,7 +497,8 @@ let
   publishBuckCapabilities = ''
     ${sourceBun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
       --root "$root" --profile ${buck2Capabilities} \
-      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
+      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" \
+      --buck2-native ${buck2Machine}/libexec/buck2 >&2
   '';
 
   buck2BuildExec =
@@ -815,9 +816,9 @@ let
         --workspace-root "$root" \
         --cell effect_utils \
         --buck2 "$BUCK2_BIN" \
+        --buck2-native ${buck2Machine}/libexec/buck2 \
         --git ${pkgs.git}/bin/git \
         --output "$root/.devenv/editor-workspace-authority.json" \
-        --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \
         --fingerprint-tool ${
@@ -1170,6 +1171,7 @@ in
     MV_BIN = "${pkgs.coreutils}/bin/mv";
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+    NIX_STORE_BIN = "${pkgs.nix}/bin/nix-store";
   };
   # The source deploy complement evaluates real Nix task launchers against fake
   # providers; pin its evaluator and jq instead of relying on host PATH tools.
@@ -1299,6 +1301,7 @@ in
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
+  env.BUCK2_NATIVE_BIN = "${buck2Machine}/libexec/buck2";
   env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
   env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;

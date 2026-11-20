@@ -16,11 +16,12 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, it } from 'vitest'
+import { runOwnedEditorPublicationCommand } from '../../../../scripts/buck2-entrypoint.ts'
 
 import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import {
   editorPublicationIsolation,
-  editorPublicationOwnerFdEnv,
+  type EditorPublicationOwner,
   requireEditorPublicationOwner,
   withEditorPublicationOwner,
 } from './editor-publication-owner.ts'
@@ -62,14 +63,26 @@ it('keeps private publication inputs intact while default Buck restarts and rema
   const started = performance.now()
   const savedBudget = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
   process.env.EDITOR_VIEW_HOST_BUDGET_STATE = join(root, 'host-budget.json')
-  const run = async (args: string[], fd?: number): Promise<string> => {
+  const run = async (args: string[], owner?: EditorPublicationOwner): Promise<string> => {
     const env = { ...process.env }
-    delete env[editorPublicationOwnerFdEnv]
-    if (fd !== undefined) env[editorPublicationOwnerFdEnv] = '3'
+    if (owner !== undefined) {
+      const result = await runOwnedEditorPublicationCommand({
+        native: tool('BUCK2_NATIVE_BIN'),
+        args,
+        cwd: root,
+        env,
+        owner,
+        signal: AbortSignal.timeout(120_000),
+        stdin: 'ignore',
+      })
+      if (result.exitCode !== 0 || result.signalCode !== null)
+        throw new Error(`Owned Buck ${args.join(' ')} failed (${result.signalCode ?? result.exitCode}): ${result.stderr}`)
+      return result.stdout
+    }
     const child = spawn(buck, args, {
       cwd: root,
       env,
-      stdio: ['ignore', 'pipe', 'pipe', ...(fd === undefined ? [] : [fd])],
+      stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 120_000,
       killSignal: 'SIGKILL',
     })
@@ -98,10 +111,10 @@ it('keeps private publication inputs intact while default Buck restarts and rema
       timings[name] = performance.now() - start
     }
   }
-  const build = async (fd?: number): Promise<string> => {
-    const selection = fd === undefined ? [] : ['--isolation-dir', editorPublicationIsolation]
+  const build = async (owner?: EditorPublicationOwner): Promise<string> => {
+    const selection = owner === undefined ? [] : ['--isolation-dir', editorPublicationIsolation]
     const result: unknown = JSON.parse(
-      await run([...selection, 'build', '--show-full-json-output', '//:inputs'], fd),
+      await run([...selection, 'build', '--show-full-json-output', '//:inputs'], owner),
     )
     assert(result !== null && typeof result === 'object')
     const outputs = Object.values(result)
@@ -147,8 +160,8 @@ inputs = rule(impl = _impl, attrs = {})
     const defaultOutput = await measured('warmDefaultBuildMs', () => build())
     await withEditorPublicationOwner({
       root,
-      run: async (fd) => {
-        const output = await measured('coldPrivateBuildMs', () => build(fd))
+      run: async (owner) => {
+        const output = await measured('coldPrivateBuildMs', () => build(owner))
         expect(output).toContain(`/buck-out/${editorPublicationIsolation}/`)
         expect(output).not.toBe(defaultOutput)
         const before = inventory(output)
@@ -159,7 +172,7 @@ inputs = rule(impl = _impl, attrs = {})
           viewName: 'root',
           cell: 'fixture',
           target: '//:inputs',
-          publicationOwnerFd: fd,
+          publicationOwner: owner,
           editorInputs: join(output, 'editor_inputs'),
           nodeModules: join(output, 'node_modules'),
           backingRoots: [join(output, 'node_modules')],
@@ -178,9 +191,9 @@ inputs = rule(impl = _impl, attrs = {})
               expect(
                 requireEditorPublicationOwner({
                   root,
-                  env: { [editorPublicationOwnerFdEnv]: String(fd) },
+                  owner,
                 }),
-              ).toBe(fd)
+              ).toBe(owner)
               await measured('defaultDaemonStopMs', () => run(['kill']))
               unlockDirectories(defaultOutput)
               rmSync(defaultOutput, { recursive: true })
@@ -197,7 +210,7 @@ inputs = rule(impl = _impl, attrs = {})
         expect(reachedVerify).toBe(true)
         expect(inventory(output)).toEqual(before)
         expect(await verifyEditorViewSnapshot(options)).toEqual(record)
-        await run(['--isolation-dir', editorPublicationIsolation, 'kill'], fd)
+        await run(['--isolation-dir', editorPublicationIsolation, 'kill'], owner)
       },
     })
     timings.totalMs = performance.now() - started
@@ -209,7 +222,7 @@ inputs = rule(impl = _impl, attrs = {})
       try {
         await withEditorPublicationOwner({
           root,
-          run: (fd) => run(['--isolation-dir', editorPublicationIsolation, 'kill'], fd),
+          run: (owner) => run(['--isolation-dir', editorPublicationIsolation, 'kill'], owner),
         })
       } finally {
         if (savedBudget === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE

@@ -19,7 +19,7 @@ it.effect(
       import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
       import { join } from 'node:path'
       import { Deferred, Effect, Exit, Fiber } from 'effect'
-      import { withEditorPublicationOwner, tryAcquireEditorPublicationOwner, editorPublicationIsolation } from '@overeng/buck2-tools'
+      import { withEditorPublicationOwner, releaseEditorPublicationOwner, tryAcquireEditorPublicationOwner, editorPublicationIsolation } from '@overeng/buck2-tools'
       import { withBuckIsolationMaintenance } from ${JSON.stringify(new URL('./store-buck-daemons.ts', import.meta.url).href)}
       const root = process.argv[1]
       const marker = join(root, 'maintenance-write')
@@ -42,7 +42,7 @@ it.effect(
       const assertReleased = () => {
         const owner = tryAcquireEditorPublicationOwner({ root })
         assert.notEqual(owner, undefined)
-        owner.release()
+        releaseEditorPublicationOwner(owner)
       }
       assertReleased()
       const failed = await Effect.runPromise(withBuckIsolationMaintenance({

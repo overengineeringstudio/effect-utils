@@ -4,12 +4,12 @@
 # Managed argv is literal or a plain-text @argfile; Python/stdin/config-cell
 # argfiles fail closed. For unmanaged projects only, the package's libexec/buck2
 # is the native escape hatch. Never use it for the reserved editor-publication
-# namespace: that materializer requires its real inherited root-owner descriptor.
+# namespace: only the in-process authority's opaque owner can authorize it.
 # Run payloads never select isolation. With an unfamiliar run option before a
 # later isolation selector, fail closed: put Buck options before run and use --
 # before executable arguments so their boundary is unambiguous.
 set -euo pipefail
-# The managed executable owns this binding, including every early dispatch.
+# Runtime library binding is not authority: the public CLI cannot mint an owner.
 export BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY='@publicationOwnerLibrary@'
 # Lifecycle initialization never starts native Buck or participates in its
 # launch cache/daemon wrapper, including when called from an admitted gate.
@@ -71,10 +71,9 @@ fi
 root="$PWD"
 while [[ ! -f "$root/.buckroot" && "$root" != / ]]; do root="${root%/*}"; [[ -n "$root" ]] || root=/; done
 cache=""
-# Descriptor 3 belongs to the publication owner, not the launch-cache reader.
-# Reserved calls always pass the ownership guard, including local-only cache hits.
+# Reserved calls always reach the rejecting public ownership guard, including
+# local-only cache hits; no environment variable can convey an owner.
 if [[ $# -gt 0 && -n "${HOME:-}${XDG_CACHE_HOME:-}" && -f "$root/.buckroot" && -f "$root/.buckconfig" && ! -d "$root/.buckconfig.d" \
-  && -z "${BUCK2_EDITOR_PUBLICATION_OWNER_FD:-}" \
   && "${BUCK_ISOLATION_DIR:-v2}" != editor-publication \
   && "$*" != *editor-publication* \
   && -z "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" \

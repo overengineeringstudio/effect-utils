@@ -26,7 +26,7 @@ import { isatty } from 'node:tty'
 
 import {
   editorPublicationIsolation,
-  editorPublicationOwnerFdEnv,
+  type EditorPublicationOwner,
   requireEditorPublicationOwner,
 } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
@@ -979,11 +979,13 @@ const editorPublicationInvocation = ({
   args,
   cwd,
   env,
+  owner,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
   readonly env: Readonly<Record<string, string | undefined>>
-}): { readonly root: string; readonly fd: number } | undefined => {
+  readonly owner?: EditorPublicationOwner
+}): { readonly root: string; readonly owner: EditorPublicationOwner } | undefined => {
   const invocation = resolveManagedInvocation({ args, cwd, env })
   if (invocation.isolation !== editorPublicationIsolation) return undefined
   const canonicalCwd = realpathSync(cwd)
@@ -1007,13 +1009,13 @@ const editorPublicationInvocation = ({
     throw new Error(
       `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
     )
-  return { root, fd: requireEditorPublicationOwner({ root, env }) }
+  return { root, owner: requireEditorPublicationOwner({ root, owner }) }
 }
 
 /** No other caller may mutate the publication materializer without its real owner capability. */
 export const requireEditorPublicationInvocationOwner = (
   options: Parameters<typeof editorPublicationInvocation>[0],
-): number | undefined => editorPublicationInvocation(options)?.fd
+): EditorPublicationOwner | undefined => editorPublicationInvocation(options)?.owner
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
 export const cacheDaemonPolicyArguments = ({
@@ -1065,14 +1067,16 @@ export const reconcileGateDaemon = ({
   args,
   env,
   phase,
+  cwd = process.cwd(),
 }: {
   readonly native: string
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly phase: 'start' | 'exit'
+  readonly cwd?: string
 }): void => {
-  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  const invocation = resolveGateInvocation({ args, env, cwd })
   if (invocation === undefined) {
     if (phase === 'start')
       writeSync(
@@ -1270,6 +1274,7 @@ export const admitCacheDaemonCommand = async ({
   env,
   admit,
   deadlineMs = 30000,
+  cwd = process.cwd(),
 }: {
   readonly native: string
   readonly root: string
@@ -1277,6 +1282,7 @@ export const admitCacheDaemonCommand = async ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
   readonly deadlineMs?: number
+  readonly cwd?: string
 }): Promise<string[]> => {
   const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
   // Validation precedes lock/state creation, including on cache-less roots.
@@ -1304,7 +1310,7 @@ export const admitCacheDaemonCommand = async ({
   const invocation = resolveGateInvocation({
     args,
     env,
-    cwd: process.cwd(),
+    cwd,
     strictRunArguments: false,
   })
   if (invocation === undefined)
@@ -1542,7 +1548,7 @@ export const admitCacheDaemonCommand = async ({
     }
     // Expand once and execute the resulting argv, so Buck cannot later move our
     // policy behind a separator introduced by a nested user argfile.
-    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd: process.cwd(), env })
+    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd, env })
   } finally {
     closeSync(descriptor)
     library.close()
@@ -1661,15 +1667,18 @@ export const runNativeWithEvidence = async ({
   root,
   stderr = 'inherit',
   deadlineMs,
+  execution = {},
 }: {
   native: string
   args: string[]
   root: string | undefined
   stderr?: 'inherit' | 'pipe'
   deadlineMs?: number
+  execution?: NativeExecution
 }): Promise<NativeCommandResult | undefined> => {
-  const output = process.env.CI_BUCK2_CACHE_EVIDENCE_PATH
-  const wrapperId = process.env.BUCK_WRAPPER_UUID
+  const { env = process.env, cwd = process.cwd() } = execution
+  const output = env.CI_BUCK2_CACHE_EVIDENCE_PATH
+  const wrapperId = env.BUCK_WRAPPER_UUID
   if (output === undefined || root === undefined || wrapperId === undefined) return undefined
   const buildId = canonicalCacheAdmissionInvocationId(wrapperId)
   try {
@@ -1680,8 +1689,8 @@ export const runNativeWithEvidence = async ({
   }
   const invocation = resolveGateInvocation({
     args,
-    cwd: process.cwd(),
-    env: process.env,
+    cwd,
+    env,
     strictRunArguments: false,
     includePayload: true,
   })
@@ -1705,10 +1714,12 @@ export const runNativeWithEvidence = async ({
   let reapCollector: (() => Promise<void>) | undefined
   let reapNative: (() => Promise<void>) | undefined
   let reapDecoder: (() => Promise<void>) | undefined
+  let cancelEvidence: (() => void) | undefined
   try {
+    execution.signal?.throwIfAborted()
     createPrivateEvidenceSink(sink)
     keeper = openSync(sink, 'r+')
-    const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
+    const marker = env.CI_BUCK2_CACHE_EVIDENCE_START
     const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'
     const bun =
       typeof BUCK2_EVIDENCE_BUN_BINARY === 'string' ? BUCK2_EVIDENCE_BUN_BINARY : process.execPath
@@ -1725,16 +1736,19 @@ export const runNativeWithEvidence = async ({
         '--root-id',
         createHash('sha256').update(realpathSync(root)).digest('hex'),
         ...(fresh === true ? ['--fresh-root'] : []),
-        ...(process.env['BUCK2_NO_REMOTE_CACHE'] === '1'
+        ...(env['BUCK2_NO_REMOTE_CACHE'] === '1'
           ? ['--cache-read-policy', 'disabled-by-design']
           : []),
       ],
-      { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+      { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
     )
     reapCollector = async () => {
       if (collector.exitCode === null) collector.kill('SIGKILL')
       await collector.exited
     }
+    cancelEvidence = () => collector.kill('SIGKILL')
+    execution.signal?.addEventListener('abort', cancelEvidence, { once: true })
+    if (execution.signal?.aborted === true) cancelEvidence()
     const ready = await collector.stdout.getReader().read()
     if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
       throw new Error('Evidence collector did not open its sink')
@@ -1753,7 +1767,7 @@ export const runNativeWithEvidence = async ({
               ...payload,
             ]
           : [...before, '--event-log', sink, ...payload]
-    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr, deadlineMs })
+    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr, deadlineMs, ...execution })
     reapNative = async () => {
       if (child.exitCode === null) child.kill('SIGKILL')
       await child.exited
@@ -1768,13 +1782,15 @@ export const runNativeWithEvidence = async ({
       if (finished.source === 'collector') child.kill('SIGTERM')
       nativeResult = await result
       if (callerSink !== undefined) {
+        execution.signal?.throwIfAborted()
         // Preserve the caller's OTEL/profiling sink and decode that exact file,
         // outside native rotation. Never rediscover it through --recent.
-        const decoder = Bun.spawn([native, 'log', 'show', resolve(callerSink)], {
+        const decoder = Bun.spawn([native, 'log', 'show', resolve(cwd, callerSink)], {
           stdin: 'ignore',
           stdout: keeper,
           stderr: 'ignore',
-          env: process.env,
+          cwd,
+          env,
         })
         reapDecoder = async () => {
           if (decoder.exitCode === null) decoder.kill('SIGKILL')
@@ -1811,6 +1827,7 @@ export const runNativeWithEvidence = async ({
     renameSync(`${completion}.pending`, completion)
     return nativeResult
   } finally {
+    if (cancelEvidence !== undefined) execution.signal?.removeEventListener('abort', cancelEvidence)
     if (keeper !== undefined) closeSync(keeper)
     await reapNative?.()
     await reapDecoder?.()
@@ -2264,14 +2281,19 @@ type NativeCommandResult = {
   output: string
   signalCode: NodeJS.Signals | null
   durationMs: number
+  stdout?: string
+  stderr?: string
 }
 
-/** Native children do not inherit the supervisor's owner descriptor or a stale claim to it. */
-const nativeCommandEnvironment = (): NodeJS.ProcessEnv => {
-  if (process.env[editorPublicationOwnerFdEnv] === undefined) return process.env
-  const env = { ...process.env }
-  delete env[editorPublicationOwnerFdEnv]
-  return env
+type NativeExecution = {
+  readonly cwd?: string
+  readonly env?: NodeJS.ProcessEnv
+  readonly signal?: AbortSignal
+  readonly stdin?: 'inherit' | 'ignore'
+  readonly capture?: boolean
+  readonly captureStderr?: boolean
+  readonly onStdout?: (chunk: Uint8Array) => void
+  readonly onStderr?: (chunk: Uint8Array) => void
 }
 
 /** Spawn exactly once, preserving inherited stdout and forwarding redirected stderr byte-for-byte. */
@@ -2280,7 +2302,15 @@ const spawnNativeCommand = ({
   args,
   stderr,
   deadlineMs,
-}: {
+  cwd,
+  env = process.env,
+  signal,
+  stdin = 'inherit',
+  capture = false,
+  captureStderr = true,
+  onStdout,
+  onStderr,
+}: NativeExecution & {
   readonly native: string
   readonly args: readonly string[]
   readonly stderr: 'inherit' | 'pipe'
@@ -2288,10 +2318,11 @@ const spawnNativeCommand = ({
 }) => {
   const started = performance.now()
   const child = Bun.spawn([native, ...args], {
-    env: nativeCommandEnvironment(),
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr,
+    cwd,
+    env,
+    stdin,
+    stdout: capture ? 'pipe' : 'inherit',
+    stderr: capture ? 'pipe' : stderr,
   })
   let interrupted = false
   let timedOut = false
@@ -2301,40 +2332,85 @@ const spawnNativeCommand = ({
     durationMs = Math.max(0, Math.round(performance.now() - started))
     return exitCode
   })
+  let hardDeadline: NodeJS.Timeout | undefined
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
     writes.abort()
     child.kill(signal)
+    hardDeadline ??= setTimeout(() => child.kill('SIGKILL'), 5000)
   }
+  const cancel = () => forward('SIGTERM')
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted === true) cancel()
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((signal) => () => forward(signal))
-  for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
-  let hardDeadline: NodeJS.Timeout | undefined
+  if (capture === false)
+    for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
   const deadline =
     deadlineMs === undefined
       ? undefined
       : setTimeout(() => {
           timedOut = true
           forward('SIGTERM')
-          hardDeadline = setTimeout(() => child.kill('SIGKILL'), 5000)
         }, deadlineMs)
+  let diagnosticBytes = 0
+  let diagnosticComplete = true
+  const collect = async (
+    stream: AsyncIterable<Uint8Array> | null,
+    callback?: (chunk: Uint8Array) => void,
+    diagnostic = false,
+  ): Promise<string> => {
+    if (stream === null) return ''
+    const decoder = new TextDecoder()
+    let text = ''
+    let forwarding = true
+    try {
+      for await (const chunk of stream) {
+        if (diagnostic) {
+          diagnosticBytes += chunk.byteLength
+          if (diagnosticBytes > 262144) {
+            diagnosticComplete = false
+            text = ''
+          } else text += decoder.decode(chunk, { stream: true })
+        } else text += decoder.decode(chunk, { stream: true })
+        if (forwarding) {
+          try {
+            callback?.(chunk)
+          } catch {
+            forwarding = false
+            if (diagnostic) diagnosticComplete = false
+          }
+        }
+      }
+    } catch {
+      // A failed output consumer/stream never short-circuits joining native.
+      if (diagnostic) diagnosticComplete = false
+    }
+    return diagnostic && diagnosticBytes > 262144 ? '' : text + decoder.decode()
+  }
   const result = (async (): Promise<NativeCommandResult> => {
     try {
-      const output =
-        child.stderr === null
-          ? ''
-          : await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const stdoutPromise = capture ? collect(child.stdout, onStdout) : Promise.resolve('')
+      const stderrPromise = capture
+        ? collect(child.stderr, onStderr, true)
+        : child.stderr === null
+          ? Promise.resolve('')
+          : captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const [stdout, output] = await Promise.all([stdoutPromise, stderrPromise])
       const exitCode = await exited
       const signalCode = child.signalCode
       return {
         exitCode: timedOut === true ? 124 : exitCode,
         signalCode,
         durationMs,
-        output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+        output: interrupted === true || signalCode !== null || diagnosticComplete === false ? '' : (output ?? ''),
+        stdout,
+        stderr: captureStderr ? (output ?? '') : '',
       }
     } finally {
       clearTimeout(deadline)
       clearTimeout(hardDeadline)
+      signal?.removeEventListener('abort', cancel)
       for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
     }
   })()
@@ -2342,16 +2418,71 @@ const spawnNativeCommand = ({
 }
 
 /** Preserve stdout and supervise only redirected native stderr. */
-const observeNativeCommand = (options: {
+const observeNativeCommand = (options: NativeExecution & {
   readonly native: string
   readonly args: readonly string[]
 }): Promise<NativeCommandResult> => spawnNativeCommand({ ...options, stderr: 'pipe' }).result
 
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
-if (import.meta.main === true) {
-  try {
+/** Credentials and trace identity belong to this invocation, not process.env. */
+const prepareNativeEnvironment = (env: NodeJS.ProcessEnv): void => {
+    const auth = env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
+    if (
+      auth !== undefined &&
+      auth !== '' &&
+      env['BUCK2_PUBLIC_CACHE_READ_ONLY'] !== '1' &&
+      env['BUCK2_NO_REMOTE_CACHE'] !== '1'
+    ) {
+      const colon = auth.indexOf(':')
+      if (colon <= 0 || colon === auth.length - 1 || auth.startsWith('publisher:') === true)
+        throw new Error('private cache writer requires a per-host username:password credential')
+      env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] = Buffer.from(auth).toString('base64')
+    }
+    delete env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
+    // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
+    env['BUCK_WRAPPER_UUID'] ??= randomUUID()
+}
+
+type ManagedCommandOptions = NativeExecution & {
+  readonly native: string
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly owner?: EditorPublicationOwner
+  readonly launchCache?: string
+}
+
+/** One admission/execution path for both the executable and its in-process owner. */
+const runManagedCommand = async (options: ManagedCommandOptions): Promise<NativeCommandResult | undefined> => {
+    const { native, cwd, owner, launchCache } = options
+    const env = { ...options.env }
+    prepareNativeEnvironment(env)
+    const execution: NativeExecution = {
+      cwd, env, signal: options.signal, stdin: options.stdin, capture: options.capture,
+      onStdout: options.onStdout, onStderr: options.onStderr,
+      captureStderr: options.captureStderr,
+    }
+    options.signal?.throwIfAborted()
+    if (options.capture === true && owner === undefined)
+      throw new Error('Owned native invocation requires a process-local editor publication owner')
+    // Snapshot once before admission, including the owner/root decision.
+    const requestedArgs = resolveManagedInvocation({ args: options.args, cwd, env }).args
+    const publication = editorPublicationInvocation({ args: requestedArgs, cwd, env, owner })
+    if (owner !== undefined && publication === undefined)
+      throw new Error('Owned native invocation requires the reserved editor-publication isolation')
+    const root = publication?.root ?? findRoot(cwd)
     let restoreStdio: (() => void) | undefined
+    const finishStdio = () => {
+      const restore = restoreStdio
+      restoreStdio = undefined
+      try {
+        restore?.()
+      } catch (error) {
+        warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
+      }
+    }
+    try {
     try {
       const symbols = {
         eu_getfl: { args: ['i32'], returns: 'i32' },
@@ -2360,7 +2491,7 @@ if (import.meta.main === true) {
       const library =
         typeof BUCK2_STDIO_LIBRARY === 'string'
           ? BUCK2_STDIO_LIBRARY
-          : process.env['BUCK2_STDIO_LIBRARY']
+          : env['BUCK2_STDIO_LIBRARY']
       if (library === undefined || library === '')
         throw new Error('BUCK2_STDIO_LIBRARY does not name the built stdio protection library')
       const stdio = dlopen(library, symbols)
@@ -2386,73 +2517,6 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
     }
-    const native = process.argv[2]
-    if (native === undefined) throw new Error('expected pinned Buck binary')
-    if (process.argv[3] === '--initialize-watchman-root') {
-      const root = findRoot(process.cwd())
-      const budget = process.argv[4]
-      if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
-      if (budget === undefined || /^[1-9]\d*$/u.test(budget) === false || process.argv.length !== 5)
-        throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
-      if (process.env['WATCHMAN_SOCK'] === undefined)
-        throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
-      await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
-      process.exit(0)
-    }
-    if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
-      const invocation = resolveGateInvocation({
-        args: process.argv.slice(4),
-        cwd: process.cwd(),
-        env: process.env,
-        includePayload: true,
-      })
-      // An opaque cleanup request retains its daemon without executing or rereading its input.
-      if (invocation !== undefined) {
-        const publication = editorPublicationInvocation({
-          args: invocation.args,
-          cwd: process.cwd(),
-          env: process.env,
-        })
-        const root = publication?.root ?? findRoot(process.cwd())
-        if (root !== undefined)
-          reconcileGateDaemon({
-            native,
-            root,
-            args: invocation.args,
-            env: process.env,
-            phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
-          })
-      }
-      process.exit(0)
-    }
-    const auth = process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
-    if (
-      auth !== undefined &&
-      auth !== '' &&
-      process.env['BUCK2_PUBLIC_CACHE_READ_ONLY'] !== '1' &&
-      process.env['BUCK2_NO_REMOTE_CACHE'] !== '1'
-    ) {
-      const colon = auth.indexOf(':')
-      if (colon <= 0 || colon === auth.length - 1 || auth.startsWith('publisher:') === true)
-        throw new Error('private cache writer requires a per-host username:password credential')
-      process.env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] = Buffer.from(auth).toString('base64')
-    }
-    delete process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
-    // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
-    process.env['BUCK_WRAPPER_UUID'] ??= randomUUID()
-    const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
-    // Snapshot mutable text argfiles once. The same literal stream is admitted and executed.
-    const requestedArgs = resolveManagedInvocation({
-      args: process.argv.slice(launchCache === undefined ? 3 : 5),
-      cwd: process.cwd(),
-      env: process.env,
-    }).args
-    const publication = editorPublicationInvocation({
-      args: requestedArgs,
-      cwd: process.cwd(),
-      env: process.env,
-    })
-    const root = publication?.root ?? findRoot(process.cwd())
     const watchmanDirectory =
       root !== undefined &&
       skipsWatcherAdmission(requestedArgs) === false &&
@@ -2461,19 +2525,19 @@ if (import.meta.main === true) {
       ] ??
         buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))['buck2.file_watcher']) ===
         'watchman'
-        ? prepareWatchmanEnvironment(process.env)
+        ? prepareWatchmanEnvironment(env)
         : undefined
     let fallbackEligible = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
       const prepared = await directBuckArguments({
         args: requestedArgs,
-        cwd: process.cwd(),
-        env: process.env,
-        workflowCommands: process.env['GITHUB_ACTIONS'] === 'true',
+        cwd,
+        env,
+        workflowCommands: env['GITHUB_ACTIONS'] === 'true',
         watchmanDirectory,
         beforeCachePosture,
         onCachePosture: (values) => {
-          fallbackEligible = cacheLocalFallbackEligible({ values, env: process.env })
+          fallbackEligible = cacheLocalFallbackEligible({ values, env })
         },
       })
       const sentinel = prepared.indexOf('--')
@@ -2490,7 +2554,7 @@ if (import.meta.main === true) {
             native,
             repoRoot: root,
             args: configArgs,
-            env: process.env,
+            env,
             provider,
           })
       }
@@ -2503,13 +2567,14 @@ if (import.meta.main === true) {
             native,
             root,
             args: requestedArgs,
-            env: process.env,
+            cwd,
+            env,
             admit,
           })
     const args = nativeBuildIdArguments({
       args: admittedArgs,
-      cwd: process.cwd(),
-      env: process.env,
+      cwd,
+      env,
     })
     if (launchCache !== undefined && launchCache !== '' && failedOpen === false) {
       const candidate = `${launchCache}.${randomUUID()}`
@@ -2530,29 +2595,27 @@ if (import.meta.main === true) {
         }
       }
     }
-    if (process.execve === undefined)
+    if (options.capture !== true && process.execve === undefined)
       throw new Error('pinned Buck launcher requires a runtime with process.execve')
     // Synchronous diagnostics are the primary fix. Native flag restoration is
     // defence in depth and must not prevent Buck from running.
-    try {
-      restoreStdio?.()
-    } catch (error) {
-      warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
-    }
+    finishStdio()
     const localBuildId = randomUUID()
     const replayArgs = localCacheReplayArguments({
       args: requestedArgs,
-      cwd: process.cwd(),
-      env: process.env,
+      cwd,
+      env,
       buildId: localBuildId,
     })
     const superviseReader = shouldSuperviseReaderCommand({
       reader: fallbackEligible && replayArgs !== undefined,
-      stderrIsTTY: isatty(2),
+      stderrIsTTY: options.capture === true ? false : isatty(2),
       args: requestedArgs,
-      cwd: process.cwd(),
-      env: process.env,
+      cwd,
+      env,
     })
+    options.signal?.throwIfAborted()
+    if (publication !== undefined) requireEditorPublicationOwner({ root: publication.root, owner })
     let nativeResult: NativeCommandResult | undefined
     if (superviseReader === true) {
       const command = buckSubcommand(args)?.command
@@ -2562,41 +2625,41 @@ if (import.meta.main === true) {
         command: { subcommand: command ?? 'unknown', argumentCount: args.length },
         run: async () => {
           nativeResult =
-            (await runNativeWithEvidence({ native, args, root, stderr: 'pipe' })) ??
-            (await observeNativeCommand({ native, args }))
+            (await runNativeWithEvidence({ native, args, root, stderr: 'pipe', execution })) ??
+            (await observeNativeCommand({ native, args, ...execution }))
           return nativeResult
         },
         onFallback: (value) => {
           classification = value
           warnStdio(
-            `warning: Buck2 transient REAPI ${value.cause.capabilitiesUnavailable === true ? 'capabilities' : value.cause.clientInitialization === true ? 'init' : 'connect'} failure: original_build_id=${process.env['BUCK_WRAPPER_UUID']} original_exit=${value.nativeExitCode}; exactly one bounded LOCAL re-execution follows; original failed trace retained\n`,
+            `warning: Buck2 transient REAPI ${value.cause.capabilitiesUnavailable === true ? 'capabilities' : value.cause.clientInitialization === true ? 'init' : 'connect'} failure: original_build_id=${env['BUCK_WRAPPER_UUID']} original_exit=${value.nativeExitCode}; exactly one bounded LOCAL re-execution follows; original failed trace retained\n`,
           )
         },
         local: async () => {
           if (root === undefined || classification === undefined || replayArgs === undefined)
             throw new Error('Buck2 LOCAL fallback requires an admitted root and classification')
           const originalBuildId = canonicalCacheAdmissionInvocationId(
-            process.env['BUCK_WRAPPER_UUID'],
+            env['BUCK_WRAPPER_UUID'],
           )
           const startedAt = Date.now()
           // Apply the existing offline overlay under the daemon lifecycle lock.
           // Same-isolation admission restarts only an idle mismatched daemon;
           // busy/unknown ownership refuses instead of reusing remote credentials.
-          process.env['BUCK_WRAPPER_UUID'] = localBuildId
-          process.env['BUCK2_NO_REMOTE_CACHE'] = '1'
-          delete process.env['BUCK2_PUBLIC_CACHE_WRITE_AUTH']
-          delete process.env['BUCK2_CACHE_WRITE_BASIC_AUTH']
-          delete process.env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH']
-          const localEnv = { ...process.env, BUCK2_CI_POSTURE: '1' }
+          options.signal?.throwIfAborted()
+          const localEnv: NodeJS.ProcessEnv = { ...env, BUCK_WRAPPER_UUID: localBuildId, BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CI_POSTURE: '1' }
+          delete localEnv['BUCK2_PUBLIC_CACHE_WRITE_AUTH']
+          delete localEnv['BUCK2_CACHE_WRITE_BASIC_AUTH']
+          delete localEnv['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH']
           const localArgs = await admitCacheDaemonCommand({
             native,
             root,
+            cwd,
             args: replayArgs,
             env: localEnv,
             admit: (beforeCachePosture) =>
               directBuckArguments({
                 args: replayArgs,
-                cwd: process.cwd(),
+                cwd,
                 env: localEnv,
                 beforeCachePosture,
                 watchmanDirectory,
@@ -2604,8 +2667,8 @@ if (import.meta.main === true) {
           })
           const localInvocation = nativeBuildIdArguments({
             args: localArgs,
-            cwd: process.cwd(),
-            env: process.env,
+            cwd,
+            env: localEnv,
           })
           nativeResult =
             (await runNativeWithEvidence({
@@ -2614,12 +2677,15 @@ if (import.meta.main === true) {
               root,
               stderr: 'pipe',
               deadlineMs: 600000,
+              execution: { ...execution, env: localEnv },
             })) ??
             (await spawnNativeCommand({
               native,
               args: localInvocation,
               stderr: 'pipe',
               deadlineMs: 600000,
+              ...execution,
+              env: localEnv,
             }).result)
           const relationship = decodeCacheLocalFallback({
             schemaVersion: 1,
@@ -2639,7 +2705,7 @@ if (import.meta.main === true) {
             startedAt,
             finishedAt: Date.now(),
           })
-          const evidencePath = process.env['CI_BUCK2_CACHE_EVIDENCE_PATH']
+          const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
           if (evidencePath !== undefined && evidencePath !== '')
             appendFileSync(
               `${evidencePath}.local-fallbacks.jsonl`,
@@ -2654,19 +2720,121 @@ if (import.meta.main === true) {
       })
       if (nativeResult !== undefined) nativeResult.exitCode = exitCode
     } else {
-      nativeResult = await runNativeWithEvidence({ native, args, root })
+      nativeResult = await runNativeWithEvidence({ native, args, root, execution })
       if (nativeResult === undefined) {
-        if (publication === undefined)
-          process.execve(native, [native, ...args], nativeCommandEnvironment())
-        // Keep the borrowed owner in this client, never inherited by the persistent buckd.
-        else nativeResult = await spawnNativeCommand({ native, args, stderr: 'inherit' }).result
+        if (options.capture !== true)
+          process.execve!(native, [native, ...args], env)
+        else nativeResult = await spawnNativeCommand({ native, args, stderr: 'pipe', ...execution }).result
       }
     }
-    if (nativeResult !== undefined) {
-      process.exitCode = nativeResult.exitCode
-      if (nativeResult.signalCode !== null) {
-        process.removeAllListeners(nativeResult.signalCode)
-        process.kill(process.pid, nativeResult.signalCode)
+    return nativeResult
+    } finally {
+      // Imported execution must release the FFI library even when admission fails.
+      finishStdio()
+    }
+}
+
+/**
+ * Run inside withEditorPublicationOwner's callback. The caller retains the owner
+ * until this promise and publisher work settle; abort then await before release.
+ * Native signals are returned, never delivered to the owner process.
+ */
+export const runOwnedEditorPublicationCommand = async (
+  options: Omit<ManagedCommandOptions, 'capture' | 'launchCache' | 'owner'> & {
+    readonly owner: EditorPublicationOwner
+  },
+): Promise<{ exitCode: number; signalCode: NodeJS.Signals | null; stdout: string; stderr: string }> => {
+  options.signal?.throwIfAborted()
+  const args = resolveManagedInvocation(options).args
+  const publication = editorPublicationInvocation({ ...options, args })
+  if (publication === undefined)
+    throw new Error('Owned native invocation requires the reserved editor-publication isolation')
+  // The in-process authority bypasses the shell, not its gate lifecycle policy.
+  // Re-entry is object-validated even if an outer shell set WRAPPER_ACTIVE.
+  const gated = (options.env['GATE_SLOT_CLASS'] ?? '') !== ''
+  const env = gated ? { ...options.env, BUCK2_GATE_WRAPPER_ACTIVE: '1' } : options.env
+  const invocation = gated
+    ? resolveGateInvocation({ args, cwd: options.cwd, env, includePayload: true })
+    : undefined
+  const reconcile = (phase: 'start' | 'exit') => {
+    if (invocation === undefined) return
+    const current = editorPublicationInvocation({ ...options, env, args: invocation.args })
+    if (current === undefined) throw new Error('Gate lifecycle lost publication isolation')
+    reconcileGateDaemon({
+      native: options.native, root: current.root, args: invocation.args,
+      cwd: options.cwd, env, phase,
+    })
+  }
+  try {
+    reconcile('start')
+    const result = await runManagedCommand({ ...options, env, args, capture: true })
+    if (result === undefined) throw new Error('Owned native command did not produce an exit result')
+    return { exitCode: result.exitCode, signalCode: result.signalCode, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+  } finally {
+    reconcile('exit')
+  }
+}
+
+/** Kill is ExistingOnly and skips watcher/cache admission and build evidence. */
+export const stopOwnedEditorPublicationDaemon = ({
+  native, cwd, env: inputEnv, owner,
+}: {
+  readonly native: string
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly owner: EditorPublicationOwner
+}) => {
+  const env = { ...inputEnv }
+  prepareNativeEnvironment(env)
+  const args = ['--isolation-dir', editorPublicationIsolation, 'kill']
+  editorPublicationInvocation({ args, cwd, env, owner })
+  // Match the pre-skip routing validation in cache daemon admission.
+  if ((env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== '')
+    standaloneCachePostureConfig({ current: '', env, base: {} })
+  return spawnSync(native, args, {
+    cwd, env, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 30000,
+  })
+}
+
+if (import.meta.main === true) {
+  try {
+    const native = process.argv[2]
+    if (native === undefined) throw new Error('expected pinned Buck binary')
+    if (process.argv[3] === '--initialize-watchman-root') {
+      const root = findRoot(process.cwd())
+      const budget = process.argv[4]
+      if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
+      if (budget === undefined || /^[1-9]\d*$/u.test(budget) === false || process.argv.length !== 5)
+        throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
+      if (process.env['WATCHMAN_SOCK'] === undefined)
+        throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
+      await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
+    } else if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
+      const invocation = resolveGateInvocation({
+        args: process.argv.slice(4), cwd: process.cwd(), env: process.env, includePayload: true,
+      })
+      if (invocation !== undefined) {
+        // Public lifecycle dispatch has no process-local owner either.
+        editorPublicationInvocation({ args: invocation.args, cwd: process.cwd(), env: process.env })
+        const root = findRoot(process.cwd())
+        if (root !== undefined)
+          reconcileGateDaemon({
+            native, root, args: invocation.args, env: process.env,
+            phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
+          })
+      }
+    } else {
+      const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
+      const result = await runManagedCommand({
+        native, args: process.argv.slice(launchCache === undefined ? 3 : 5),
+        cwd: process.cwd(), env: process.env, launchCache,
+      })
+      if (result !== undefined) {
+        process.exitCode = result.exitCode
+        if (result.signalCode !== null) {
+          process.removeAllListeners(result.signalCode)
+          process.kill(process.pid, result.signalCode)
+        }
       }
     }
   } catch (error) {
