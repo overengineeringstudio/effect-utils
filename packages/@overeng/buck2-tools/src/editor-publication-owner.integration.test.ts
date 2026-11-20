@@ -44,14 +44,26 @@ it('accepts an inherited FD3 and never unlocks a borrowed owner, including callb
             '--eval',
             `
         import { strict as assert } from 'node:assert';
+        import { dlopen } from 'bun:ffi';
         import { requireEditorPublicationOwner, withEditorPublicationOwner } from ${JSON.stringify(moduleUrl)};
         const root = ${JSON.stringify(root)};
+        const library = process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY;
+        assert.ok(library);
+        const probe = dlopen(library, {
+          buck2_publication_owner_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
+          buck2_publication_owner_fd_flags: { args: ['i32'], returns: 'i32' },
+        });
+        assert.equal(probe.symbols.buck2_publication_owner_cloexec(3, 0), 0);
+        assert.equal(probe.symbols.buck2_publication_owner_fd_flags(3), 0);
         assert.equal(requireEditorPublicationOwner({ root }), 3);
+        assert.equal(probe.symbols.buck2_publication_owner_fd_flags(3), 1);
         assert.equal(await withEditorPublicationOwner({ root, run: async fd => fd }), 3);
         await assert.rejects(withEditorPublicationOwner({ root, run: async fd => {
           assert.equal(fd, 3); throw new Error('borrowed failure');
         } }), /borrowed failure/);
         assert.equal(requireEditorPublicationOwner({ root }), 3);
+        assert.equal(probe.symbols.buck2_publication_owner_fd_flags(3), 1);
+        probe.close();
       `,
           ],
           {

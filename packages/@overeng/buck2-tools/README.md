@@ -215,6 +215,9 @@ borrowed owners are never unlocked. `tryAcquireEditorPublicationOwner` provides 
 nonblocking lease or defers to an existing owner; release is idempotent.
 `editorPublicationIsolation` is `editor-publication`; these APIs do not activate isolation.
 
+The Bun regressions genuinely clear and restore inherited CLOEXEC, check atomic opening before
+protection, and retain contention and flags across awaited callbacks and inherited FD3 descendants.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by

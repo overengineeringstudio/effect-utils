@@ -29,6 +29,7 @@ const ownerLibrary = process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY
 if (ownerLibrary === undefined || ownerLibrary.length === 0)
   throw new Error('Owner regression requires BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
 const ownerNative = dlopen(ownerLibrary, {
+  buck2_publication_owner_open: { args: ['cstring'], returns: 'i32' },
   buck2_publication_owner_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
   buck2_publication_owner_fd_flags: { args: ['i32'], returns: 'i32' },
 })
@@ -127,4 +128,35 @@ it('holds the persistent inode through the whole callback and releases on failur
     mkdirSync(foreign)
     symlinkSync(foreign, join(root, '.devenv'))
     expect(() => tryAcquireEditorPublicationOwner({ root })).toThrow('canonical control directory')
+  }))
+
+it('opens the owner close-on-exec before any descriptor protection call', () =>
+  withRoot(async (root) => {
+    const path = editorPublicationLockPath(root)
+    mkdirSync(dirname(path), { recursive: true })
+    const fd = ownerNative.symbols.buck2_publication_owner_open(path)
+    expect(fd).toBeGreaterThanOrEqual(0)
+    try {
+      expect(ownerNative.symbols.buck2_publication_owner_fd_flags(fd)).toBe(1)
+    } finally {
+      closeSync(fd)
+    }
+  }))
+
+it('protects a freshly acquired owner throughout the complete callback', () =>
+  withRoot(async (root) => {
+    let ownerFd: number | undefined
+    await withEditorPublicationOwner({
+      root,
+      run: async (fd) => {
+        ownerFd = fd
+        expect(ownerNative.symbols.buck2_publication_owner_fd_flags(fd)).toBe(1)
+        expect(canAcquire(root)).toBe(false)
+        await Promise.resolve()
+        expect(ownerNative.symbols.buck2_publication_owner_fd_flags(fd)).toBe(1)
+        expect(canAcquire(root)).toBe(false)
+      },
+    })
+    expect(ownerFd).toBeDefined()
+    expect(canAcquire(root)).toBe(true)
   }))
