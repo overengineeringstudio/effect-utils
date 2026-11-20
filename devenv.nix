@@ -767,7 +767,12 @@ let
       traceScope ? null,
       changedSince ? null,
       publicationBudget ? null,
-      deadlineSeconds ? 300,
+      # Cold bootstrap includes build/authority work and first-view publication.
+      deadlineSeconds ?
+        if mode == "bootstrap" && packagePaths != null then
+          300 * (1 + builtins.length packagePaths)
+        else
+          300,
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
