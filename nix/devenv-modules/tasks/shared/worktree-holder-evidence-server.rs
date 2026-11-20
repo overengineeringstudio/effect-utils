@@ -59,25 +59,34 @@ fn host_identity(deadline: Instant) -> io::Result<(String,String)> {
 fn unknown(request: &Request, cause: UnknownReason) -> Observation {
     Observation {complete:false,process_count:0,task_count:0,receipt:b"incomplete-holder-observation-v1\0".to_vec(),roots:request.paths.iter().map(|path|RootEvidence {path:path.clone(),identity:None,complete:false,status:Status::Unknown,references_complete:false,references:Vec::new(),unknown_reasons:vec![cause]}).collect()}
 }
+// Diagnostics never format the underlying error: it can contain foreign paths.
+// Static stage, error kind and errno preserve the conservative error unchanged.
+fn collect_step<T>(stage: &'static str, result: io::Result<T>) -> io::Result<T> {
+    if let Err(error) = &result {
+        eprintln!("worktree-holder-evidence: census stage={stage} kind={:?} errno={:?}",
+            error.kind(), error.raw_os_error());
+    }
+    result
+}
 fn collect(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots)> {
-    let candidates=candidates::CandidateSet::pin(request,peer.uid,deadline)?;
-    let peer_roots=client::PeerRoots::pin(peer,&candidates,deadline)?;
+    let candidates=collect_step("candidate-pin",candidates::CandidateSet::pin(request,peer.uid,deadline))?;
+    let peer_roots=collect_step("peer-root-pin",client::PeerRoots::pin(peer,&candidates,deadline))?;
     // Store pinning opens roots only. Inventory starts ONLY after the original
     // collector's root and EX FLOCK OFDs have been authenticated and retained.
     let store_client=match &request.store {
-        Some(store)=>Some(client::Client::attest_from_peer(peer,store,peer.uid,peer_roots.root(0))?),
+        Some(store)=>Some(collect_step("store-attest",client::Client::attest_from_peer(peer,store,peer.uid,peer_roots.root(0)))?),
         None=>None,
     };
-    let census=census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,deadline)?;
-    census.recheck(&candidates,store_client.as_ref(),deadline)?;
-    candidates.recheck(deadline)?;
-    peer_roots.recheck(peer,deadline)?;
-    if let (Some(client),Some(store))=(&store_client,&request.store) { client.recheck(store)?; }
-    peer.recheck(deadline)?;
-    role.recheck(deadline)?;
+    let census=collect_step("census-capture",census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,deadline))?;
+    collect_step("census-recheck",census.recheck(&candidates,store_client.as_ref(),deadline))?;
+    collect_step("candidate-recheck",candidates.recheck(deadline))?;
+    collect_step("peer-root-recheck",peer_roots.recheck(peer,deadline))?;
+    if let (Some(client),Some(store))=(&store_client,&request.store) { collect_step("store-recheck",client.recheck(store))?; }
+    collect_step("peer-recheck",peer.recheck(deadline))?;
+    collect_step("server-role-recheck",role.recheck(deadline))?;
     if Instant::now()>=deadline { return Err(io::Error::new(io::ErrorKind::TimedOut,"holder capture deadline")); }
     let mut observation=census.into_observation();
-    peer_roots.bind(&mut observation)?;
+    collect_step("peer-root-bind",peer_roots.bind(&mut observation))?;
     Ok((observation,candidates,store_client,peer_roots))
 }
 fn scope_receipt(response: &Response, receipt: &[u8]) -> Vec<u8> {
@@ -146,5 +155,23 @@ fn main() -> ExitCode {
     match run() {
         Ok(())=>ExitCode::SUCCESS,
         Err(error)=>{eprintln!("worktree-holder-evidence: unknown ({:?})",error.kind());ExitCode::from(1)},
+    }
+}
+#[cfg(test)]
+mod census_diagnostic_tests {
+    use super::collect_step;
+    use std::io;
+
+    #[test]
+    fn stage_diagnostics_preserve_success_and_original_errors() {
+        assert_eq!(collect_step("test-success", Ok(37)).unwrap(), 37);
+        let error = collect_step::<()>("test-errno", Err(io::Error::from_raw_os_error(13)))
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(error.raw_os_error(), Some(13));
+        let error = collect_step::<()>("test-other", Err(io::Error::other("private detail")))
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "private detail");
     }
 }
