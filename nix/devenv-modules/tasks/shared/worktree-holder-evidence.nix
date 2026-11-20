@@ -5,6 +5,7 @@
   allowedRoots,
   ownerUid,
   managedPolicy ? null,
+  ownedVmClassDiagnostics ? false,
 }:
 let
   server = import ./worktree-holder-evidence-server.nix {
@@ -13,6 +14,7 @@ let
       allowedRoots
       ownerUid
       managedPolicy
+      ownedVmClassDiagnostics
       ;
     withClients = true;
   };
@@ -20,7 +22,7 @@ let
     exec ${evidence}/bin/worktree-holder-evidence --pnpm-client-v1 "$@"
   '';
   evidence = server.overrideAttrs (old: {
-    name = "worktree-holder-evidence";
+    name = if ownedVmClassDiagnostics then "worktree-holder-evidence-owned-vm-diagnostics" else "worktree-holder-evidence";
     passthru = (old.passthru or { }) // {
       processEvidenceCommand = adapter;
       holderEvidenceClient = {

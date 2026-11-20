@@ -70,6 +70,23 @@ fn anonymous_kernel_object(name: &Path) -> AnonymousKernelObject {
     }
 }
 
+/// Only the disposable-VM build can format this bounded, prefix-free class.
+#[cfg(any(test, holder_owned_vm_class_diagnostics))]
+fn owned_vm_anonymous_class(name: &Path) -> Option<&str> {
+    let suffix = name.to_str()?.strip_prefix("anon_inode:")?;
+    let body = if let Some(bracketed) = suffix.strip_prefix('[') {
+        bracketed.strip_suffix(']')?
+    } else {
+        suffix
+    };
+    if body.is_empty() || body.len() > 80 || !body.bytes().all(|byte|
+        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-' | b' '))
+    {
+        return None;
+    }
+    Some(suffix)
+}
+
 #[cfg(test)]
 mod diagnostic_tests {
     #[test]
@@ -113,6 +130,32 @@ mod diagnostic_tests {
         use std::os::unix::ffi::OsStrExt;
         let non_utf8 = std::ffi::OsStr::from_bytes(b"anon_inode:bpf-map\xff");
         assert_eq!(super::anonymous_kernel_object(std::path::Path::new(non_utf8)), Object::Unrecognized);
+    }
+
+    #[test]
+    fn owned_vm_class_preserves_exact_safe_spelling_only() {
+        for (name, expected) in [
+            ("anon_inode:bpf-map", Some("bpf-map")),
+            ("anon_inode:[pidfd]", Some("[pidfd]")),
+            ("anon_inode:seccomp notify", Some("seccomp notify")),
+            ("anon_inode:[seccomp notify]", Some("[seccomp notify]")),
+            ("anon_inode:[nested[bracket]]", None),
+            ("anon_inode:[unclosed", None),
+            ("anon_inode:closed]", None),
+            ("anon_inode:has/slash", None),
+            ("anon_inode:line\nbreak", None),
+            ("anon_inode:", None),
+            ("/untrusted/path", None),
+        ] {
+            assert_eq!(super::owned_vm_anonymous_class(std::path::Path::new(name)), expected);
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let mut oversized = [b'x'; 92];
+        oversized[..11].copy_from_slice(b"anon_inode:");
+        let path = std::path::Path::new(std::ffi::OsStr::from_bytes(&oversized));
+        assert_eq!(super::owned_vm_anonymous_class(path), None);
+        let non_utf8 = std::ffi::OsStr::from_bytes(b"anon_inode:\xff");
+        assert_eq!(super::owned_vm_anonymous_class(std::path::Path::new(non_utf8)), None);
     }
 }
 
@@ -287,6 +330,11 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
         let name = fs::read_link(scope_path(&held.file))?;
         let object = anonymous_kernel_object(&name);
         if object.path_class() == KernelObjectPathClass::PathBearingOrUnknown {
+            #[cfg(holder_owned_vm_class_diagnostics)]
+            {
+                let class = owned_vm_anonymous_class(&name).unwrap_or("unprintable");
+                eprintln!("worktree-holder-proc-owned-vm-rejected-anon class={class}");
+            }
             eprintln!("worktree-holder-proc-unsupported-anon kind={}", object.rejected_kind());
             return Err(incomplete("unsupported path-bearing kernel object"));
         }
