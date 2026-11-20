@@ -8,11 +8,28 @@ import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
 import { resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
-import { acquireDeletionLease } from './store-deletion-lease.ts'
+import {
+  acquireDeletionLease,
+  adoptPersistentDeletionLease,
+  deletionLeasePath,
+  persistentDeletionLeaseOwnerAlive,
+} from './store-deletion-lease.ts'
 import { readWorktreeReferencesInUse } from './store-inuse.ts'
 import { poolBytes, poolInstallIdentity, preparePoolInstall } from './store-pool-install.ts'
-import { PoolError, type PoolSlot, reservePoolSlot, withPoolState } from './store-pool-state.ts'
+import {
+  claimPoolGeneration,
+  PoolError,
+  type PoolSlot,
+  requirePoolLease,
+  reservePoolSlot,
+  withPoolState,
+} from './store-pool-state.ts'
 
+const barrier = ({ base, slot }: { base: AbsoluteDirPath; slot: PoolSlot }) => ({
+  leasePath: deletionLeasePath({ storeBasePath: base, ownerPath: slot.path }),
+  ownerPath: slot.path,
+  token: slot.barrierToken,
+})
 const cleanSource = (slot: PoolSlot) =>
   Effect.gen(function* () {
     if (
@@ -162,4 +179,135 @@ export const prewarmPool = (args: {
         )
       }),
     limits: { maxSlots: args.maxSlots, maxBytes: args.maxBytes },
+  })
+
+/** Claim is serialized with capacity and generations; it never resets a root. */
+export const claimPool = (args: { base: AbsoluteDirPath; identity: string; owner: string }) =>
+  withPoolState({
+    base: args.base,
+    use: (state, save) =>
+      Effect.gen(function* () {
+        const slot = state.slots.find(
+          (item) => item.state === 'ready' && item.identity === args.identity,
+        )
+        if (slot === undefined)
+          return yield* new PoolError({ message: 'No matching ready pool generation' })
+        const update = (next: PoolSlot) =>
+          save({ ...state, slots: state.slots.map((item) => (item.id === slot.id ? next : item)) })
+        return yield* Effect.gen(function* () {
+          yield* adoptPersistentDeletionLease(barrier({ base: args.base, slot }))
+          yield* cleanSource(slot)
+          yield* free(slot)
+          if (
+            (yield* poolInstallIdentity({
+              path: slot.path,
+              commit: slot.commit,
+              base: args.base,
+            })) !== slot.identity ||
+            (yield* poolBytes(slot.path)) > slot.charge
+          )
+            return yield* new PoolError({ message: 'Pool install identity or byte charge changed' })
+          yield* cleanSource(slot)
+          yield* free(slot)
+          const next = yield* claimPoolGeneration({
+            slot,
+            identity: args.identity,
+            owner: args.owner,
+          })
+          yield* update(next)
+          return next
+        }).pipe(
+          withGitContainerLock({ path: slot.bare, mode: 'shared' }),
+          Effect.tapError((error) =>
+            Effect.flatMap(retainPoolSlot({ slot, reason: String(error) }), update),
+          ),
+        )
+      }),
+  })
+
+/** A successful provider publishes completion before exiting; it remains non-reusable. */
+export const completePool = ({
+  base,
+  id,
+  token,
+  generation,
+}: {
+  base: AbsoluteDirPath
+  id: string
+  token: string
+  generation: number
+}) =>
+  withPoolState({
+    base,
+    use: (state, save) =>
+      Effect.gen(function* () {
+        const slot = state.slots.find((item) => item.id === id)
+        if (slot === undefined) return yield* new PoolError({ message: 'Unknown pool slot' })
+        yield* requirePoolLease({ slot, token, generation })
+        yield* save({
+          ...state,
+          slots: state.slots.map((item) =>
+            item.id === id ? { ...item, state: 'completed' as const, chargeKnown: false } : item,
+          ),
+        })
+      }),
+  })
+
+/** Retain a failed provider generation without discarding its native protection. */
+export const quarantinePool = ({
+  base,
+  id,
+  token,
+  reason,
+}: {
+  base: AbsoluteDirPath
+  id: string
+  token: string
+  reason: string
+}) =>
+  withPoolState({
+    base,
+    use: (state, save) =>
+      Effect.gen(function* () {
+        const slots: Array<PoolSlot> = []
+        for (const slot of state.slots)
+          slots.push(
+            slot.id === id && slot.token === token ? yield* retainPoolSlot({ slot, reason }) : slot,
+          )
+        yield* save({ ...state, slots })
+      }),
+  })
+
+/** Inspection reconciles abandoned providers only toward retention, never readiness. */
+export const inspectPool = (base: AbsoluteDirPath) =>
+  withPoolState({
+    base,
+    use: (state, save) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const slots: Array<PoolSlot> = []
+        for (const slot of state.slots) {
+          const pathKnown = yield* fs.exists(slot.path).pipe(Effect.orElseSucceed(() => false))
+          const uncertain =
+            pathKnown === false ||
+            slot.state === 'preparing' ||
+            (slot.state === 'leased' &&
+              (yield* persistentDeletionLeaseOwnerAlive(barrier({ base, slot }))) === false)
+          const mutable = slot.state === 'leased' || slot.state === 'completed'
+          const reason =
+            pathKnown === false
+              ? 'Root path lost or unknown'
+              : uncertain === true
+                ? 'Provider lost or unknown'
+                : slot.reason
+          slots.push(
+            uncertain === true || (slot.chargeKnown !== true && mutable === false)
+              ? yield* retainPoolSlot({ slot, reason })
+              : slot,
+          )
+        }
+        const next = { ...state, slots }
+        yield* save(next)
+        return next
+      }),
   })
