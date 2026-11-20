@@ -26,6 +26,7 @@ import { isatty } from 'node:tty'
 
 import {
   buckConfigValues,
+  readConfig,
   canonicalCacheAdmissionInvocationId,
   decodeCacheLocalFallback,
   type ReaderReapiUnavailableShadow,
@@ -39,6 +40,7 @@ import {
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
 import {
+  initializeWatchmanRoot,
   prepareWatchmanEnvironment,
   probeWatchman,
   reconcileFileWatcher,
@@ -60,23 +62,6 @@ const configCommands: Record<string, true> = {
 }
 const readOptional = (path: string): string =>
   existsSync(path) === true ? readFileSync(path, 'utf8') : ''
-
-const readConfig = ({
-  path,
-  seen = new Set<string>(),
-}: {
-  readonly path: string
-  readonly seen?: Set<string>
-}): string => {
-  const absolute = resolve(path)
-  if (seen.has(absolute) === true) throw new Error('Buck cache posture: recursive config include')
-  seen.add(absolute)
-  const text = readOptional(absolute).replace(/^\s*<file:([^>]+)>\s*$/gmu, (_, include: string) =>
-    readConfig({ path: resolve(dirname(absolute), include), seen }),
-  )
-  seen.delete(absolute)
-  return text
-}
 
 const findRoot = (cwd: string): string | undefined => {
   let root = resolve(cwd)
@@ -385,12 +370,31 @@ export const directBuckArguments = async ({
   const tracked = readConfig({ path: join(root, '.buckconfig') })
   const trackedValues = buckConfigValues(tracked)
   const currentLocal = readConfig({ path: join(root, '.buckconfig.local') })
+  // Validate host routing before watcher admission can mutate the root.
+  if ((env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== '')
+    standaloneCachePostureConfig({
+      current: '',
+      env,
+      base: buckConfigValues(`${tracked}\n${withoutManagedBlock(currentLocal).content}`),
+    })
   const localWithoutWatcher = withoutManagedWatcherBlock(currentLocal)
   const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
   if (selectedWatcher === 'watchman') {
-    const watchmanProbe = () =>
-      probeWatchman({
+    const crawlBudget = env['BUCK2_WATCHMAN_CRAWL_BUDGET_MS']
+    if (crawlBudget !== undefined && /^[1-9]\d*$/u.test(crawlBudget) === false)
+      throw new Error('BUCK2_WATCHMAN_CRAWL_BUDGET_MS must be a positive integer crawl budget')
+    const watchmanProbe = async () => {
+      // Root reuse can outlive Watchman's idle-reap interval while admission waits.
+      // Finish bounded registration before the independent short liveness check.
+      if (crawlBudget !== undefined)
+        await initializeWatchmanRoot({
+          env,
+          repoRoot: root,
+          deadlineMs: Number(crawlBudget),
+          managedDirectory: watchmanDirectory,
+        })
+      return probeWatchman({
         env,
         repoRoot: root,
         deadlineMs: deadlineMs ?? 2500,
@@ -398,6 +402,7 @@ export const directBuckArguments = async ({
         makeDeadlineSignal:
           probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
       })
+    }
     const available = await cachedProbe({
       cacheDirectory,
       root: realpathSync(root),
@@ -470,15 +475,25 @@ export const directBuckArguments = async ({
     configArgs.includes('--no-remote-cache') === true ||
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
-  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv })
+  // Eligibility follows the effective invocation policy, including explicit
+  // pre-payload writer flags. Reconciliation must use this same decision.
+  const effectiveBase = { ...base, ...cliValues }
+  const posture = standaloneCachePostureConfig({
+    current: '',
+    env: postureEnv,
+    base: effectiveBase,
+  })
   const overrides = buckConfigValues(posture)
   const values = { ...base, ...overrides, ...cliValues }
-  for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
+  const mappedReader = overrides['buck2_re_client.http_headers'] === 'x-buck2-reader: read-only'
+  if (mappedReader === true) Object.assign(values, overrides)
+  else for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
   if (cacheDisabled === true || env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1') {
     const disabled = buckConfigValues(
       standaloneCachePostureConfig({
         current: '',
         env: postureEnv,
+        base: effectiveBase,
       }),
     )
     Object.assign(values, disabled)
@@ -680,7 +695,7 @@ export const directBuckArguments = async ({
       (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
     ) === true
   )
-    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
+    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv, base: effectiveBase })
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
@@ -1184,22 +1199,41 @@ export const admitCacheDaemonCommand = async ({
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
   readonly deadlineMs?: number
 }): Promise<string[]> => {
-  if (ciPostureDeclared(env) === false && env['GITHUB_ACTIONS'] !== 'true') return admit()
-  const initialValues = buckConfigValues(
-    `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
+  const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
+  // Validation precedes lock/state creation, including on cache-less roots.
+  if (routedReader === true) standaloneCachePostureConfig({ current: '', env, base: {} })
+  const local = readConfig({ path: join(root, '.buckconfig.local') })
+  const previousReaderRoute =
+    buckConfigValues(withoutManagedBlock(local).managed)['buck2_re_client.http_headers'] ===
+    'x-buck2-reader: read-only'
+  if (
+    ciPostureDeclared(env) === false &&
+    env['GITHUB_ACTIONS'] !== 'true' &&
+    routedReader === false &&
+    previousReaderRoute === false
   )
+    return admit()
+  const initialValues = {
+    ...buckConfigValues(readConfig({ path: join(root, '.buckconfig') })),
+    ...buckConfigValues(local),
+  }
   if (
     initialValues['buck2_re_client.action_cache_address'] === undefined &&
     initialValues['buck2.remote_cache_enabled'] !== 'true'
   )
     return admit()
-  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  const invocation = resolveGateInvocation({
+    args,
+    env,
+    cwd: process.cwd(),
+    strictRunArguments: false,
+  })
   if (invocation === undefined)
-    throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
+    throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
   // Check here, before any daemon access: cache-less roots and skipped commands
   // need no admission, but GitHub jobs must never silently inherit local policy.
-  if (ciPostureDeclared(env) === false)
+  if (env['GITHUB_ACTIONS'] === 'true' && ciPostureDeclared(env) === false)
     throw new Error('Buck2 cache posture: GitHub Actions job without BUCK2_CI_POSTURE declaration')
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
@@ -2267,6 +2301,17 @@ if (import.meta.main === true) {
     }
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
+    if (process.argv[3] === '--initialize-watchman-root') {
+      const root = findRoot(process.cwd())
+      const budget = process.argv[4]
+      if (root === undefined) throw new Error('Watchman crawl requires a Buck root')
+      if (budget === undefined || /^[1-9]\d*$/u.test(budget) === false || process.argv.length !== 5)
+        throw new Error('usage: buck2 --initialize-watchman-root <crawl-budget-ms>')
+      if (process.env['WATCHMAN_SOCK'] === undefined)
+        throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
+      await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
+      process.exit(0)
+    }
     if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
       const root = findRoot(process.cwd())
       if (root !== undefined)

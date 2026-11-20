@@ -53,11 +53,14 @@ runs:
         # No consumer Nix configuration, runtime options, or user configuration
         # enters either bootstrap or validation. Only signed substitution is
         # permitted: compilation and remote builders remain disabled.
+        printf 'ci-policy: selecting pinned runtime\n' >&2
         bun_package=$(env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
           "$nix_bin" eval --impure --raw --file "$CI_POLICY_ACTION_PATH/bun-package.nix")
+        printf 'ci-policy: realizing pinned runtime (substitution only)\n' >&2
         bun_root=$(env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
           "$nix_bin" build --no-link --print-out-paths \
           --option builders '' --option max-jobs 0 "$bun_package")
+        printf 'ci-policy: checking consumer workflows\n' >&2
         env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
           "$bun_root/bin/bun" "$policy_root/genie/ci-workflow/check-policy.ts" \
           "$consumer_root" "$CI_POLICY_REPOSITORY" "$CI_POLICY_EXCEPTIONS"

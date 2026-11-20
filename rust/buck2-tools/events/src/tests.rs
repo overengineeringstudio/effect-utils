@@ -1037,7 +1037,14 @@ fn metric_resource_reuses_writer_host_without_build_identity() {
         &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
     );
     let out = dir.path().join("out");
-    ingest(&[log], None, Some(&out), &dir.path().join("pending")).unwrap();
+    ingest(
+        &[log],
+        None,
+        Some(&out),
+        &dir.path().join("pending"),
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let metrics: Value =
         serde_json::from_slice(&fs::read(out.join("0-metrics.json")).unwrap()).unwrap();
     let traces: Value =
@@ -1096,7 +1103,14 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     );
     let spool = dir.path().join("pending");
     let out = dir.path().join("dump");
-    ingest(&[log], None, Some(&out), &spool).unwrap();
+    ingest(
+        &[log],
+        None,
+        Some(&out),
+        &spool,
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let pending: Vec<_> = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1123,7 +1137,14 @@ fn ingest_reports_spool_failure(signal: &str) {
         &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
     );
     let spool = dir.path().join("pending");
-    ingest(std::slice::from_ref(&log), None, None, &spool).unwrap();
+    ingest(
+        std::slice::from_ref(&log),
+        None,
+        None,
+        &spool,
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let target = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -1141,6 +1162,7 @@ fn ingest_reports_spool_failure(signal: &str) {
             sidecar: None,
             out: None,
             spool_dir: Some(spool),
+            records_dir: Some(dir.path().join("records")),
         },
     });
     let error = result.expect_err("an unspooled chunk must fail ingest");

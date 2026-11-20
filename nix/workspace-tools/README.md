@@ -17,6 +17,9 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
     Mach-O load commands. Diagnostic tool failures are recorded without hiding
     the original failure; successful inspections remain silent.
   - `buck2-product-candidates.nix` — package candidates backed by Buck products.
+    The Notion wrapper checks database help with shell pattern matching, not an
+    early-closing `grep -q` pipeline: long help must not fail under `pipefail`
+    when the producer receives SIGPIPE.
   - `javascript-product-import.nix` — JavaScript module and runtime-tree import;
     dispatches to `javascript-published-import.nix` (eval-time validation of
     the pinned descriptor) or `javascript-source-import.nix` (build-time

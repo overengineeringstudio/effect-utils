@@ -546,7 +546,7 @@ const retainRepresentative = ({
 }
 
 /** Pinned log-show serializes protobuf timestamps as [seconds, nanoseconds]. */
-const eventTime = (event: unknown): number | null => {
+const eventTimeNs = (event: unknown): bigint | null => {
   const value = field({ value: event, key: 'timestamp' })
   if (Array.isArray(value) === false || value.length !== 2) return null
   const [seconds, nanos] = value
@@ -560,8 +560,13 @@ const eventTime = (event: unknown): number | null => {
     nanos >= 1e9
   )
     return null
-  const result = seconds * 1000 + Math.floor(nanos / 1e6)
-  return Number.isSafeInteger(result) === true ? result : null
+  return BigInt(seconds) * 1_000_000_000n + BigInt(nanos)
+}
+const eventTime = (event: unknown): number | null => {
+  const nanos = eventTimeNs(event)
+  if (nanos === null) return null
+  const millis = Number(nanos / 1_000_000n)
+  return Number.isSafeInteger(millis) === true ? millis : null
 }
 const safeIdentity = ({
   value,
@@ -612,7 +617,11 @@ export const createCacheEvidenceProjector = ({
   finish: () => CacheEvidence
 } => {
   let buildId: string | undefined
-  const starts = new Map<string, { identity: Identity; startedAt: number | null }>()
+  let host: string | null = null
+  const starts = new Map<
+    string,
+    { identity: Identity; startedAt: number | null; startedAtNs: bigint | null }
+  >()
   const ended = new Set<string>()
   const parents = new Map<string, string>()
   const uploadErrorsByAction = new Map<string, CacheUploadError[]>()
@@ -645,6 +654,14 @@ export const createCacheEvidenceProjector = ({
     const data = field({ value: event, key: 'data' })
     const time = eventTime(event)
     const startData = field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' })
+    const commandStart = field({ value: startData, key: 'Command' })
+    if (commandStart !== undefined)
+      host = safeIdentity({
+        value: text(
+          field({ value: field({ value: commandStart, key: 'metadata' }), key: 'hostname' }),
+        ),
+        grammar: /^[a-zA-Z0-9_.-]+$/,
+      })
     const endData = field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' })
     if (startData !== undefined && spanKey !== undefined && parentKey !== undefined)
       parents.set(spanKey, parentKey)
@@ -680,7 +697,11 @@ export const createCacheEvidenceProjector = ({
       key: 'ActionExecution',
     })
     if (start !== undefined && spanKey !== undefined && ended.has(spanKey) === false)
-      starts.set(spanKey, { identity: identityFor(start), startedAt: time })
+      starts.set(spanKey, {
+        identity: identityFor(start),
+        startedAt: time,
+        startedAtNs: eventTimeNs(event),
+      })
     const end = field({
       value: field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' }),
       key: 'ActionExecution',
@@ -751,8 +772,45 @@ export const createCacheEvidenceProjector = ({
         : undefined
     const nativeName = field({ value: end, key: 'name' })
     const nativeIdentifier = field({ value: nativeName, key: 'identifier' })
+    const completedAtNs = eventTimeNs(event)
+    const durationNs =
+      fallback?.startedAtNs !== null &&
+      fallback?.startedAtNs !== undefined &&
+      completedAtNs !== null
+        ? Number(completedAtNs - fallback.startedAtNs)
+        : null
     const row: ActionRecord = {
       type: 'action',
+      ...(buildId !== undefined && spanKey !== undefined
+        ? {
+            occurrenceId: `occurrence-sha256-v1:${createHash('sha256')
+              .update(`${buildId}:${spanKey}`)
+              .digest('hex')}`,
+          }
+        : {}),
+      host,
+      executionOutcome:
+        field({ value: end, key: 'failed' }) === true
+          ? 'unknown'
+          : executionKind === 1 || executionKind === 8
+            ? 'local-exec'
+            : executionKind === 2 || executionKind === 11
+              ? 'remote-exec'
+              : executionKind === 3 ||
+                  executionKind === 7 ||
+                  executionKind === 9 ||
+                  executionKind === 10
+                ? 'cache-hit'
+                : 'unknown',
+      durationNs:
+        durationNs !== null && durationNs >= 0 && Number.isSafeInteger(durationNs) === true
+          ? durationNs
+          : null,
+      totalBytes:
+        typeof field({ value: end, key: 'output_size' }) === 'number' &&
+        Number.isSafeInteger(field({ value: end, key: 'output_size' })) === true
+          ? Number(field({ value: end, key: 'output_size' }))
+          : null,
       buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
       context: safeIdentity({ value: context, grammar: /^[a-zA-Z0-9_.:-]+$/ }),
       category: safeIdentity({ value: category, grammar: /^[a-zA-Z0-9_.-]+$/ }),

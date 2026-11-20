@@ -1,4 +1,4 @@
-load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "portable_product_platform", "product_platform", "ts_action_execution_policy")
+load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "nativelink_pilot_enabled", "nativelink_pilot_platform", "portable_product_platform", "product_platform", "ts_action_execution_policy")
 
 constraint_setting(name = "cache_admission", visibility = ["PUBLIC"])
 
@@ -7,6 +7,18 @@ constraint_value(
     constraint_setting = ":cache_admission",
     visibility = ["PUBLIC"],
 )
+
+constraint_setting(name = "compute_lane", visibility = ["PUBLIC"])
+
+constraint_value(
+    name = "nativelink_pilot",
+    constraint_setting = ":compute_lane",
+    visibility = ["PUBLIC"],
+)
+
+# Only register the remote-only lane under explicit opt-in. Ordinary actions
+# retain the earlier local platforms; only the closed TS cohort requests this.
+nativelink_pilot_platform(name = "exec_nativelink_pilot")
 
 config_setting(
     name = "ts_cache_admitted",
@@ -68,6 +80,7 @@ native_execution_platform(
 native_execution_platform(
     name = "exec_linux_x86_64",
     hermetic_platform = ":exec_linux_x86_64_hermetic",
+    pilot_platform = ":exec_nativelink_pilot" if nativelink_pilot_enabled() and host_info().os.is_linux and host_info().arch.is_x86_64 else None,
     constraint_values = [
         "prelude//abi/constraints:gnu",
         "prelude//cpu/constraints:x86_64",
@@ -79,6 +92,7 @@ native_execution_platform(
 native_execution_platform(
     name = "exec_linux_aarch64",
     hermetic_platform = ":exec_linux_aarch64_hermetic",
+    pilot_platform = ":exec_nativelink_pilot" if nativelink_pilot_enabled() and host_info().os.is_linux and host_info().arch.is_aarch64 else None,
     constraint_values = [
         "prelude//abi/constraints:gnu",
         "prelude//cpu/constraints:arm64",
