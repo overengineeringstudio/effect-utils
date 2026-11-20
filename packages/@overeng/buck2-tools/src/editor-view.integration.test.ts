@@ -2630,6 +2630,7 @@ describe('editor view publisher', () => {
       const entered = Promise.withResolvers<string>()
       const failPayload = Promise.withResolvers<void>()
       const proceed = Promise.withResolvers<void>()
+      const payloadFailure = new Error('payload fingerprint failed')
       const runFingerprintTool = fingerprintRunner.runFingerprintTool
       let publication: Promise<unknown> | undefined
       let failure: unknown
@@ -2640,7 +2641,7 @@ describe('editor view publisher', () => {
           if (tree.includes('/.candidate-') === true) {
             if (tree.endsWith(`/${failedRoot}`) === true) {
               await failPayload.promise
-              throw new Error('payload fingerprint failed')
+              throw payloadFailure
             }
             if (tree.endsWith('/.backing/0000') === true) {
               entered.resolve(tree)
@@ -2676,9 +2677,7 @@ describe('editor view publisher', () => {
         proceed.resolve()
         await publication
         expect(failure).toBeInstanceOf(Error)
-        expect(failure instanceof Error ? failure.cause : undefined).toEqual(
-          new Error('payload fingerprint failed'),
-        )
+        expect(failure).toBe(payloadFailure)
         expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
         expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
       } finally {
@@ -2841,11 +2840,10 @@ describe('editor view publisher', () => {
       expect(siblingStarted).toBe(true)
       expect(failure).toBeInstanceOf(Error)
       if (!(failure instanceof Error)) throw new Error('publication did not fail')
-      expect(failure.cause).toBe(original)
+      expect(failure).toBe(original)
       expect('exitCode' in failure ? failure.exitCode : undefined).toBe(17)
-      const states: unknown = JSON.parse(
-        failure.message.split('; publication workers=')[1] ?? 'null',
-      )
+      const states: unknown =
+        'publicationWorkers' in failure ? failure.publicationWorkers : undefined
       expect(states).toEqual(
         expect.arrayContaining([
           {
@@ -3973,9 +3971,7 @@ process.stderr.write = (...args) => {
         chmodSync(alias, 0o644)
         writeFileSync(alias, 'mutated bytes\n')
         await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
-          cause: expect.objectContaining({
-            message: expect.stringContaining('existing snapshot byte digest mismatch'),
-          }),
+          message: expect.stringContaining('existing snapshot byte digest mismatch'),
         })
         for (const path of [clean, mutated, alias]) expect(statSync(path).mode & 0o777).toBe(0o644)
       } finally {
@@ -4037,9 +4033,7 @@ process.stderr.write = (...args) => {
         })
         const started = Date.now()
         await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
-          cause: expect.objectContaining({
-            message: expect.stringContaining('snapshot file changed after mode repair:'),
-          }),
+          message: expect.stringContaining('snapshot file changed after mode repair:'),
         })
         expect(Date.now() - started).toBeLessThan(5000)
         expect(repairedDescriptor).toBeDefined()
@@ -4098,9 +4092,7 @@ process.stderr.write = (...args) => {
         }
       })
       await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
-        cause: expect.objectContaining({
-          message: expect.stringContaining('snapshot file changed after hash verification:'),
-        }),
+        message: expect.stringContaining('snapshot file changed after hash verification:'),
       })
       expect(mutations).toBe(1)
       for (const [payload, alias, original] of [
@@ -4154,12 +4146,14 @@ process.stderr.write = (...args) => {
         await expect(pending).rejects.toThrow('snapshot byte digest mismatch')
         pending = publishEditorView(options)
         await expect(pending).rejects.toMatchObject({
-          message: expect.stringContaining('; publication workers='),
-          cause: expect.objectContaining({
-            message: expect.stringMatching(
-              /^editor view: existing snapshot byte digest mismatch:/u,
-            ),
-          }),
+          message: expect.stringMatching(/^editor view: existing snapshot byte digest mismatch:/u),
+          publicationWorkers: expect.arrayContaining([
+            expect.objectContaining({
+              package: options.package,
+              viewName: options.viewName,
+              editorRoot: realpathSync(first.editorRoot),
+            }),
+          ]),
         })
       })
     }

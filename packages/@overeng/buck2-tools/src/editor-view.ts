@@ -1,5 +1,6 @@
 #!/usr/bin/env -S bun
-import { execFile, spawnSync } from 'node:child_process'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { execFile, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -30,7 +31,9 @@ import {
 import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
 
+import type { EditorPublicationOwner } from './editor-publication-owner.ts'
 import {
   EditorViewCapacityError,
   editorViewHostBudgetBytes,
@@ -174,6 +177,8 @@ export type EditorViewOptions = {
    * Omission preserves the legacy tree-confined policy.
    */
   readonly backingRoots?: readonly string[]
+  /** Process-local publication authority, held live until every subordinate operation completes. */
+  readonly publicationOwner?: EditorPublicationOwner
   readonly nodeModules: string
   /**
    * Synchronization hook invoked after the admitted roots are fingerprinted and
@@ -181,6 +186,8 @@ export type EditorViewOptions = {
    * changed inside that window are caught by the publication stability check.
    */
   readonly beforeMaterialize?: () => void | Promise<void>
+  /** Real-process barrier before reading declared roots, used to prove producer isolation. */
+  readonly beforeVerify?: () => void | Promise<void>
   /** Fault barrier after a direct CAS link, before leaving its exclusion. */
   readonly afterDirectLink?: () => void
   /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
@@ -1125,6 +1132,52 @@ const requireImmutableTool = ({ tool, label }: { tool: string; label: string }):
     fail(`${label} tool must resolve into the immutable Nix store: ${immutableTool}`)
 }
 
+type EditorViewDispatchScope = {
+  readonly signal: AbortSignal | undefined
+  readonly copies: Set<Promise<void>>
+  readonly children: Set<ChildProcess>
+}
+
+const editorViewDispatchScope = new AsyncLocalStorage<EditorViewDispatchScope>()
+
+/** Native tool failure with its actual termination outcome and original cause intact. */
+export class EditorViewCommandFailure extends Error {
+  readonly signal?: NodeJS.Signals
+  readonly exitCode?: number
+  readonly stdout: string
+  readonly stderr: string
+
+  constructor({
+    label,
+    detail,
+    signal,
+    exitCode,
+    cause,
+    stdout,
+    stderr,
+  }: {
+    readonly label: string
+    readonly detail: string
+    readonly signal?: NodeJS.Signals
+    readonly exitCode?: number
+    readonly cause?: unknown
+    readonly stdout: string
+    readonly stderr: string
+  }) {
+    super(
+      signal === undefined
+        ? `editor view: ${label} failed with exit ${exitCode ?? 'unknown'}: ${detail}`
+        : `editor view: ${label} failed with signal ${signal}`,
+      { cause },
+    )
+    this.name = 'EditorViewCommandFailure'
+    this.stdout = stdout
+    this.stderr = stderr
+    if (signal !== undefined) this.signal = signal
+    if (exitCode !== undefined) this.exitCode = exitCode
+  }
+}
+
 const runTool = ({
   tool,
   args,
@@ -1134,6 +1187,7 @@ const runTool = ({
   args: readonly string[]
   label: string
 }): void => {
+  editorViewDispatchScope.getStore()?.signal?.throwIfAborted()
   requireImmutableTool({ tool, label })
   const result = spawnSync(tool, args, {
     cwd: '/',
@@ -1142,9 +1196,19 @@ const runTool = ({
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   if (result.status !== 0)
-    fail(
-      `${label} failed with exit ${result.status ?? 'unknown'}: ${result.stderr.toString().trim() || result.stdout.toString().trim()}`,
-    )
+    throw new EditorViewCommandFailure({
+      label,
+      detail:
+        result.stderr?.toString().trim() ||
+        result.stdout?.toString().trim() ||
+        result.error?.message ||
+        '',
+      ...(result.signal === null ? {} : { signal: result.signal }),
+      ...(result.status === null ? {} : { exitCode: result.status }),
+      cause: result.error,
+      stdout: result.stdout?.toString() ?? '',
+      stderr: result.stderr?.toString() ?? '',
+    })
 }
 
 /** Keep private payload copies off the event loop so bounded views can overlap. */
@@ -1157,20 +1221,40 @@ const copyWithTool = ({
   args: readonly string[]
   label: string
 }): Promise<void> => {
+  const scope = editorViewDispatchScope.getStore()
+  scope?.signal?.throwIfAborted()
   requireImmutableTool({ tool, label })
   const { promise, resolve: resolveCopy, reject: rejectCopy } = Promise.withResolvers<void>()
-  execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
+  const child = execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
     if (error !== null) {
       rejectCopy(
-        new Error(
-          `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`,
-        ),
+        new EditorViewCommandFailure({
+          label,
+          detail: stderr.trim() || stdout.trim() || error.message,
+          ...(error.signal == null ? {} : { signal: error.signal }),
+          ...(typeof error.code === 'number' ? { exitCode: error.code } : {}),
+          cause: error,
+          stdout,
+          stderr,
+        }),
       )
       return
     }
     resolveCopy()
   })
-  return promise
+  const { promise: closed, resolve: resolveClosed } = Promise.withResolvers<void>()
+  child.once('close', () => {
+    scope?.children.delete(child)
+    resolveClosed()
+  })
+  scope?.children.add(child)
+  const completed = promise.finally(() => closed)
+  scope?.copies.add(completed)
+  void completed.then(
+    () => scope?.copies.delete(completed),
+    () => scope?.copies.delete(completed),
+  )
+  return completed
 }
 
 const collectFileIdentities = (tree: string): ReadonlySet<string> => {
@@ -2463,7 +2547,9 @@ const acquirePublicationLock = async ({
   // Wait only for identified live eviction; recover only positively abandoned same-host owners.
   // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
   let acquisition: EditorViewPublicationLockProof['acquisition'] = 'normal'
+  const signal = editorViewDispatchScope.getStore()?.signal
   for (;;) {
+    signal?.throwIfAborted()
     try {
       const lock = acquireLock({ editorRoot, recoveryCommand })
       try {
@@ -2491,7 +2577,7 @@ const acquirePublicationLock = async ({
       const path = join(editorRoot, '.publish.lock')
       if (pathExists(path) === false) {
         // eslint-disable-next-line no-await-in-loop -- Yield when the contending lock vanished.
-        await Bun.sleep(10)
+        await delay(10, undefined, { signal })
         continue
       }
       let owner: LockOwner
@@ -2500,16 +2586,17 @@ const acquirePublicationLock = async ({
       } catch {
         if (pathExists(path) === false) {
           // eslint-disable-next-line no-await-in-loop -- Yield when owner inspection races release.
-          await Bun.sleep(10)
+          await delay(10, undefined, { signal })
           continue
         }
         throw error
       }
+      signal?.throwIfAborted()
       // eslint-disable-next-line no-await-in-loop -- Recovery repeats proof under the host fence.
       if ((await recoverAbandonedPublicationLock({ editorRoot, owner })) === true) {
         acquisition = 'recovered-dead-owner'
         // eslint-disable-next-line no-await-in-loop -- Yield before retrying the now-free root lock.
-        await Bun.sleep(10)
+        await delay(10, undefined, { signal })
         continue
       }
       if (
@@ -2522,7 +2609,7 @@ const acquirePublicationLock = async ({
       )
         throw error
       // eslint-disable-next-line no-await-in-loop -- Only the same live eviction incarnation is retried.
-      await Bun.sleep(10)
+      await delay(10, undefined, { signal })
     }
   }
 }
@@ -3432,6 +3519,7 @@ const publishEditorViewCoordinated = async ({
       }
     })()
     enterPhase('verify')
+    await options.beforeVerify?.()
     const declaredRoots =
       finite === true
         ? await fingerprintDeclaredRoots({
@@ -3834,18 +3922,10 @@ const publishEditorViewCoordinated = async ({
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
     if (error instanceof EditorViewCapacityError) throw error
-    const contextual = new Error(
-      `${error instanceof Error ? error.message : String(error)}; publication workers=${JSON.stringify(failureStates)}`,
-      { cause: error },
+    throw Object.assign(
+      error instanceof Error ? error : new Error(String(error), { cause: error }),
+      { publicationWorkers: failureStates },
     )
-    if (
-      error !== null &&
-      typeof error === 'object' &&
-      'exitCode' in error &&
-      typeof error.exitCode === 'number'
-    )
-      Object.assign(contextual, { exitCode: error.exitCode })
-    throw contextual
   } finally {
     interruptedPublicationPhases.delete(reportInterruption)
     if (candidate !== undefined && pathExists(candidate) === true) {
@@ -3995,6 +4075,7 @@ export const publishEditorViews = async ({
           })
         }
         try {
+          editorViewDispatchScope.getStore()?.signal?.throwIfAborted()
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
           // eslint-disable-next-line no-await-in-loop -- Each worker must finish before claiming its next view.
@@ -4036,6 +4117,11 @@ export const publishEditorViews = async ({
         phase: 'cas-cleanup',
         run: () => collectEditorViewContentStore({ contentStore }),
       })
+    const failures = results.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    )
+    if (failures.length > 1)
+      throw new AggregateError(failures, 'editor view: multiple batch publications failed')
     return results.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value
