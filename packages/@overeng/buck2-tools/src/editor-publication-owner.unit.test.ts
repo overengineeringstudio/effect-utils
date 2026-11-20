@@ -20,7 +20,13 @@ import {
 
 const native = dlopen(process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6', {
   flock: { args: ['i32', 'i32'], returns: 'i32' },
-  fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+})
+const ownerLibrary = process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY
+if (ownerLibrary === undefined || ownerLibrary.length === 0)
+  throw new Error('Owner regression requires BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
+const ownerNative = dlopen(ownerLibrary, {
+  buck2_publication_owner_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
+  buck2_publication_owner_fd_flags: { args: ['i32'], returns: 'i32' },
 })
 const withRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-publication-owner-')))
@@ -66,8 +72,10 @@ it('rejects absent, malformed, closed, wrong-inode, unlocked and shared-lock des
       expect(native.symbols.flock(fd, 1 | 4)).toBe(0)
       expect(() => requireEditorPublicationOwner({ root, env: env(String(fd)) })).toThrow()
       expect(native.symbols.flock(fd, 2 | 4)).toBe(0)
+      expect(ownerNative.symbols.buck2_publication_owner_cloexec(fd, 0)).toBe(0)
+      expect(ownerNative.symbols.buck2_publication_owner_fd_flags(fd)).toBe(0)
       expect(requireEditorPublicationOwner({ root, env: env(String(fd)) })).toBe(fd)
-      expect(native.symbols.fcntl(fd, 1, 0) & 1).toBe(1)
+      expect(ownerNative.symbols.buck2_publication_owner_fd_flags(fd)).toBe(1)
     } finally {
       closeSync(other)
       closeSync(fd)

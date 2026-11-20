@@ -209,13 +209,11 @@ Portable compiled payloads remain unchanged; native wrappers own this dependency
 The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate every Bun tool closure.
 
-`withEditorPublicationOwner` owns a callback's complete flow on that persistent inode.
-Inherited `BUCK2_EDITOR_PUBLICATION_OWNER_FD` values require a real exclusive
-kernel lock on the canonical root's inode; callbacks never unlock borrowed owners.
-`tryAcquireEditorPublicationOwner` instead returns an independent, nonblocking lease
-or defers when another owner holds the lock; release is idempotent.
-The exported `editorPublicationIsolation` constant names `editor-publication`.
-These primitives do not themselves activate isolation in callers.
+`withEditorPublicationOwner` owns its full callback on the canonical root's persistent lock inode.
+Inherited `BUCK2_EDITOR_PUBLICATION_OWNER_FD` values require its exclusive kernel lock;
+borrowed owners are never unlocked. `tryAcquireEditorPublicationOwner` provides an independent,
+nonblocking lease or defers to an existing owner; release is idempotent.
+`editorPublicationIsolation` is `editor-publication`; these APIs do not activate isolation.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress

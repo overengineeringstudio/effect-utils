@@ -26,64 +26,66 @@ export const editorPublicationLockPath = (root: string): string => {
   return join(directory, 'editor-view-publication.lock')
 }
 
-const openOwner = (root: string): number => {
+const openOwner = (root: string, lock: PublicationFlock): number => {
   const path = editorPublicationLockPath(root)
   mkdirSync(dirname(path), { recursive: true })
-  return openSync(
-    path,
-    constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    0o600,
-  )
+  const fd = lock.open(path)
+  if (fd < 0)
+    throw new Error(`Could not open Buck editor publication owner (errno ${-fd})`)
+  return fd
 }
 
 // Read-only Node consumers can import buck2-tools; native locking itself requires Bun.
 let ffi: typeof NativeFfi | undefined
 
 type PublicationFlock = {
+  readonly open: (path: string) => number
   readonly acquire: (fd: number, mode?: number) => number
   readonly closeOnExec: (fd: number) => void
   readonly close: () => void
 }
 
 const openFlock = (): PublicationFlock => {
+  const path = process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY
+  if (path === undefined || path.length === 0)
+    throw new Error('Buck editor publication requires BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
   ffi ??= createRequire(import.meta.url)('bun:ffi') as typeof NativeFfi
-  const { dlopen, read } = ffi
-  const library =
-    process.platform === 'darwin'
-      ? dlopen('/usr/lib/libSystem.B.dylib', {
-          flock: { args: ['i32', 'i32'], returns: 'i32' },
-          fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
-          __error: { args: [], returns: 'ptr' },
-        })
-      : dlopen('libc.so.6', {
-          flock: { args: ['i32', 'i32'], returns: 'i32' },
-          fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
-          __errno_location: { args: [], returns: 'ptr' },
-        })
-  const errnoAddress =
-    '__error' in library.symbols ? library.symbols.__error : library.symbols.__errno_location
+  const { dlopen } = ffi
+  const library = (() => {
+    try {
+      return dlopen(path, {
+        buck2_publication_owner_open: { args: ['cstring'], returns: 'i32' },
+        buck2_publication_owner_lock: { args: ['i32', 'i32'], returns: 'i32' },
+        buck2_publication_owner_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
+      })
+    } catch (cause) {
+      throw new Error(`Could not load Buck editor publication owner library: ${path}`, { cause })
+    }
+  })()
   return {
-    acquire: (fd: number, mode = 2): number => {
-      if (library.symbols.flock(fd, mode | 4) === 0) return 0
-      const pointer = errnoAddress()
-      return pointer === null ? -1 : read.i32(pointer)
-    },
+    open: (path: string): number => library.symbols.buck2_publication_owner_open(path),
+    acquire: (fd: number, mode = 2): number =>
+      library.symbols.buck2_publication_owner_lock(fd, mode | 4),
     closeOnExec: (fd: number): void => {
-      const flags = library.symbols.fcntl(fd, 1, 0)
-      if (flags < 0 || library.symbols.fcntl(fd, 2, flags | 1) !== 0)
-        throw new Error('Could not protect Buck publication owner from native daemon inheritance')
+      const error = library.symbols.buck2_publication_owner_cloexec(fd, 1)
+      if (error !== 0)
+        throw new Error(
+          `Could not protect Buck publication owner from native daemon inheritance (errno ${error})`,
+        )
     },
     close: (): void => library.close(),
   }
 }
 
 /** A descriptor is a capability only when it names and really locks this root's owner inode. */
-export const requireEditorPublicationOwner = ({
+const validateOwner = ({
   root,
-  env = process.env,
+  env,
+  lock,
 }: {
   readonly root: string
-  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly lock: PublicationFlock
 }): number => {
   const value = env[editorPublicationOwnerFdEnv]
   if (value === undefined || /^[3-9][0-9]*$|^[1-9][0-9]+$/u.test(value) === false)
@@ -105,12 +107,10 @@ export const requireEditorPublicationOwner = ({
     editorPublicationLockPath(root),
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   )
-  let lock: PublicationFlock | undefined
   try {
     const observed = fstatSync(probe)
     if (observed.dev !== actual.dev || observed.ino !== actual.ino || observed.nlink !== 1)
       throw new Error('Buck editor publication owner inode changed during validation')
-    lock = openFlock()
     const contention = lock.acquire(probe, 1)
     if (contention !== 11 && contention !== 35)
       throw new Error('Buck editor publication requires a pre-existing exclusive owner')
@@ -120,9 +120,23 @@ export const requireEditorPublicationOwner = ({
   } finally {
     // Never unlock a borrowed open-file description: the supervisor and its children share it.
     closeSync(probe)
-    lock?.close()
   }
   return fd
+}
+
+export const requireEditorPublicationOwner = ({
+  root,
+  env = process.env,
+}: {
+  readonly root: string
+  readonly env?: Readonly<Record<string, string | undefined>>
+}): number => {
+  const lock = openFlock()
+  try {
+    return validateOwner({ root, env, lock })
+  } finally {
+    lock.close()
+  }
 }
 
 /** Own the complete build/read/publication flow, not just a publisher's final snapshot. */
@@ -135,10 +149,10 @@ export const withEditorPublicationOwner = async <TResult>({
 }): Promise<TResult> => {
   if (process.env[editorPublicationOwnerFdEnv] !== undefined)
     return run(requireEditorPublicationOwner({ root }))
-  const fd = openOwner(root)
-  let lock: PublicationFlock | undefined
+  const lock = openFlock()
+  let fd: number | undefined
   try {
-    lock = openFlock()
+    fd = openOwner(root, lock)
     for (;;) {
       const error = lock.acquire(fd)
       if (error === 0) break
@@ -148,11 +162,11 @@ export const withEditorPublicationOwner = async <TResult>({
       // eslint-disable-next-line no-await-in-loop -- Wait for this specific owner, not another job.
       await setTimeout(50)
     }
-    requireEditorPublicationOwner({ root, env: { [editorPublicationOwnerFdEnv]: String(fd) } })
+    validateOwner({ root, env: { [editorPublicationOwnerFdEnv]: String(fd) }, lock })
     return await run(fd)
   } finally {
-    closeSync(fd)
-    lock?.close()
+    if (fd !== undefined) closeSync(fd)
+    lock.close()
   }
 }
 
@@ -168,27 +182,28 @@ export const tryAcquireEditorPublicationOwner = ({
 }: {
   readonly root: string
 }): EditorPublicationOwner | undefined => {
-  const fd = openOwner(root)
-  let lock: PublicationFlock | undefined
+  const lock = openFlock()
+  let fd: number | undefined
   let owned = false
   try {
-    lock = openFlock()
-    const error = lock.acquire(fd)
+    const ownerFd = openOwner(root, lock)
+    fd = ownerFd
+    const error = lock.acquire(ownerFd)
     if (error === 11 || error === 35) return undefined
     if (error !== 0)
       throw new Error(`Could not acquire Buck editor publication owner (errno ${error})`)
-    requireEditorPublicationOwner({ root, env: { [editorPublicationOwnerFdEnv]: String(fd) } })
+    validateOwner({ root, env: { [editorPublicationOwnerFdEnv]: String(ownerFd) }, lock })
     owned = true
     return {
-      fd,
+      fd: ownerFd,
       release: (): void => {
         if (owned === false) return
         owned = false
-        closeSync(fd)
+        closeSync(ownerFd)
       },
     }
   } finally {
-    if (owned === false) closeSync(fd)
-    lock?.close()
+    if (owned === false && fd !== undefined) closeSync(fd)
+    lock.close()
   }
 }
