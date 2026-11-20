@@ -196,6 +196,10 @@ flock file must not be unlinked while publishers are active.
 Inherited `BUCK2_EDITOR_PUBLICATION_OWNER_FD` values require a real exclusive
 kernel lock on the canonical root's inode; callbacks never unlock borrowed owners.
 The reserved `editor-publication` namespace identifies those exclusively owned inputs.
+Megarepo maintenance independently acquires that owner around reserved-isolation
+clean and the final daemon checks/stop. A live publisher defers maintenance;
+unknown ownership is a protective refusal, not a successful native operation.
+Default-isolation maintenance does not acquire the publication owner.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
