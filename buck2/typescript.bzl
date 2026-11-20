@@ -7,7 +7,7 @@ before and after execution so TypeScript actions remain write-free.
 
 load("//buck2:hermetic.bzl", "hermetic_bun_command", "ts_action", "ts_action_attrs")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
-load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "ts_action_admission_status", "ts_action_cache_eligible", "ts_action_execution_constraints")
+load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "nativelink_pilot_execution_constraints", "nativelink_pilot_target", "ts_action_admission_status", "ts_action_cache_eligible", "ts_action_execution_constraints")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
@@ -66,7 +66,7 @@ def _tsgo_typecheck_impl(ctx):
         tool_inputs = toolchain.inputs + [fingerprint.executable, fingerprint.manifest],
         category = "tsgo_typecheck",
         identifier = ctx.attrs.name,
-        local_only = True,
+        remote_pilot = nativelink_pilot_target(ctx.label.package, ctx.attrs.name),
     )
     return [
         DefaultInfo(default_output = verdict),
@@ -97,7 +97,7 @@ _tsgo_typecheck = cache_guarded_rule(
 def tsgo_typecheck(name, **kwargs):
     _tsgo_typecheck(
         name = name,
-        exec_compatible_with = ts_action_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = nativelink_pilot_execution_constraints(name, ts_action_execution_constraints(kwargs.pop("exec_compatible_with", []))),
         **kwargs
     )
 
@@ -147,7 +147,7 @@ def _tsgo_emit_impl(ctx):
         tool_inputs = toolchain.inputs + [fingerprint.executable, fingerprint.manifest],
         category = "tsgo_emit",
         identifier = ctx.attrs.name,
-        local_only = True,
+        remote_pilot = nativelink_pilot_target(ctx.label.package, ctx.attrs.name),
         inherit_nix_build_environment = isolation == "nix-build-sandbox",
     )
     return [
@@ -189,6 +189,6 @@ _tsgo_emit = cache_guarded_rule(
 def tsgo_emit(name, **kwargs):
     _tsgo_emit(
         name = name,
-        exec_compatible_with = ts_action_execution_constraints(kwargs.pop("exec_compatible_with", [])),
+        exec_compatible_with = nativelink_pilot_execution_constraints(name, ts_action_execution_constraints(kwargs.pop("exec_compatible_with", []))),
         **kwargs
     )

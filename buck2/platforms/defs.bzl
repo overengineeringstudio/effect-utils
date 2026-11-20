@@ -133,6 +133,37 @@ def root_remote_cache_enabled():
 def root_allow_cache_uploads():
     return read_root_config("buck2", "allow_cache_uploads", "true") == "true"
 
+def nativelink_pilot_enabled():
+    value = read_root_config("nativelink_pilot", "enabled", "false")
+    if value not in ["true", "false"]:
+        fail("nativelink_pilot.enabled must be true or false")
+    return value == "true"
+
+def nativelink_pilot_target(package, name):
+    # Deliberately a closed compute cohort, not all TS or all hermetic actions.
+    return nativelink_pilot_enabled() and host_info().os.is_linux and (
+        (package == "packages/@overeng/kdl" and name in ["typecheck", "dist"]) or
+        (package == "packages/@overeng/utils-dev" and name == "dist")
+    )
+
+def _nativelink_pilot_properties():
+    properties = {}
+    for key in ["cpu_arch", "nix_store"]:
+        value = read_root_config("nativelink_pilot", key, "")
+        if not value:
+            fail("NativeLink pilot requires nativelink_pilot.{}".format(key))
+        properties[key] = value
+    expected_arch = "x86_64" if host_info().arch.is_x86_64 else "aarch64"
+    if properties["cpu_arch"] != expected_arch:
+        fail("NativeLink pilot cpu_arch must match the Linux client capability platform")
+    if not properties["nix_store"].startswith("/nix/store/") or not properties["nix_store"].endswith("-buck2-capabilities"):
+        fail("NativeLink pilot nix_store must be the exact published buck2-capabilities store path")
+    for key in ["engine_address", "cas_address", "action_cache_address", "instance_name"]:
+        if not read_root_config("buck2_re_client", key, ""):
+            fail("NativeLink pilot requires explicit buck2_re_client.{} before daemon startup".format(key))
+    properties["OSFamily"] = "linux"
+    return properties
+
 def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
     """Owns shared-cache admission at rule definition, never at a call site."""
     rule_attrs = dict(attrs)
@@ -209,21 +240,35 @@ def ts_action_execution_constraints(constraints = []):
             result = result + [admission]
     return result
 
+
+def nativelink_pilot_execution_constraints(name, constraints):
+    if nativelink_pilot_target(package_name(), name):
+        return constraints + ["@rules//buck2/platforms:nativelink_pilot"]
+    return constraints
+
 def _native_execution_platform_impl(ctx):
     constraints = {}
     for dep in ctx.attrs.constraint_values:
         value = dep[ConstraintValueInfo]
         constraints[value.setting.label] = value
     configuration = ConfigurationInfo(constraints = constraints, values = {})
+    pilot = ctx.attrs.nativelink_pilot
+    if pilot and (not nativelink_pilot_enabled() or not host_info().os.is_linux):
+        fail("NativeLink pilot platform requires explicit Linux opt-in")
     platform = ExecutionPlatformInfo(
         label = ctx.label.raw_target(),
         configuration = configuration,
         executor_config = CommandExecutorConfig(
-            local_enabled = True,
-            remote_enabled = False,
+            local_enabled = not pilot,
+            remote_enabled = pilot,
             remote_cache_enabled = ctx.attrs.cache_hermetic and root_remote_cache_enabled(),
             allow_cache_uploads = ctx.attrs.cache_hermetic and root_allow_cache_uploads(),
             use_windows_path_separators = False,
+            **({
+                "remote_execution_properties": _nativelink_pilot_properties(),
+                "remote_execution_use_case": "buck2-default",
+                "remote_output_paths": "output_paths",
+            } if pilot else {})
         ),
     )
     return [
@@ -231,7 +276,8 @@ def _native_execution_platform_impl(ctx):
         platform,
         PlatformInfo(label = str(ctx.label.raw_target()), configuration = configuration),
         ExecutionPlatformRegistrationInfo(
-            platforms = [platform] + ([ctx.attrs.hermetic_platform[ExecutionPlatformInfo]] if ctx.attrs.hermetic_platform != None else []),
+            # Local platforms always precede the constrained remote-only lane.
+            platforms = [platform] + ([ctx.attrs.hermetic_platform[ExecutionPlatformInfo]] if ctx.attrs.hermetic_platform != None else []) + ([ctx.attrs.pilot_platform[ExecutionPlatformInfo]] if ctx.attrs.pilot_platform != None else []),
             exec_marker_constraint = get_exec_platform_marker(),
         ),
     ]
@@ -241,9 +287,28 @@ native_execution_platform = rule(
     attrs = {
         "constraint_values": attrs.list(attrs.dep(providers = [ConstraintValueInfo])),
         "cache_hermetic": attrs.bool(default = False),
+        "nativelink_pilot": attrs.bool(default = False),
+        "pilot_platform": attrs.option(attrs.dep(providers = [ExecutionPlatformInfo]), default = None),
         "hermetic_platform": attrs.option(attrs.dep(providers = [ExecutionPlatformInfo]), default = None),
     },
 )
+
+def nativelink_pilot_platform(name):
+    if not nativelink_pilot_enabled() or not host_info().os.is_linux:
+        return
+    native_execution_platform(
+        name = name,
+        nativelink_pilot = True,
+        cache_hermetic = True,
+        constraint_values = [
+            ":nativelink_pilot",
+            ":cache_hermetic",
+            "prelude//abi/constraints:gnu",
+            "prelude//cpu/constraints:x86_64" if host_info().arch.is_x86_64 else "prelude//cpu/constraints:arm64",
+            "prelude//os/constraints:linux",
+        ],
+        visibility = ["PUBLIC"],
+    )
 
 def host_platform_label(cell = ""):
     """Selects the host product platform.

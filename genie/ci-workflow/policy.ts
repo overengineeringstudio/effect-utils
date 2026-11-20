@@ -14,7 +14,13 @@ import type {
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import exceptions from './policy-exceptions.json' with { type: 'json' }
 import migrationLedger from './policy-migration-ledger.json' with { type: 'json' }
-import { fleetRunnerLabels, nixRunnerSelector } from './runners.ts'
+import {
+  fleetRunnerLabels,
+  nixRunnerSelector,
+  publicNamespaceKvmRunner,
+  publicNamespaceKvmConcurrency,
+  publicNamespaceKvmIf,
+} from './runners.ts'
 
 const admittedRunnerLabels = [...Object.values(fleetRunnerLabels), nixRunnerSelector]
 
@@ -35,8 +41,20 @@ export const fleetWorkflowPolicy = ({
   repository,
   workflow,
   mode,
-  admittedRunnerLabels,
-  // Any admitted selector, including nix alone, can reach the fleet.
+  admittedRunnerLabels:
+    repository === 'overengineeringstudio/effect-utils'
+      ? [...admittedRunnerLabels, publicNamespaceKvmRunner]
+      : admittedRunnerLabels,
+  ...(repository === 'overengineeringstudio/effect-utils'
+    ? {
+        boundedPublicRunner: {
+          label: publicNamespaceKvmRunner,
+          concurrencyGroup: publicNamespaceKvmConcurrency.group,
+          ifExpression: publicNamespaceKvmIf,
+        },
+      }
+    : {}),
+  // Only fleet selectors reach private infrastructure and require same-repo admission.
   sameRepoGuardRunnerLabels: admittedRunnerLabels,
   exclusiveRunnerLabels: [fleetRunnerLabels.linuxX64Heavy],
   bannedActions: [
