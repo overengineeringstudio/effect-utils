@@ -1,5 +1,13 @@
 import { expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import type { ReaderReapiUnavailableShadow } from './buck2-cache-posture.ts'
 import {
@@ -11,6 +19,7 @@ import {
   gateDaemonStopDecision,
   gateScopeIdentity,
   isOnlyReapiUnavailable,
+  resolveManagedInvocation,
   runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
@@ -573,3 +582,54 @@ it('pins local replay flags before payload and keeps original native identity si
   ])
     expect(localCacheReplayArguments({ ...options, args })).toBeUndefined()
 })
+
+const withPublicationRoot = async (run: (fixtureRoot: string) => Promise<void>): Promise<void> => {
+  const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'buck-publication-invocation-')))
+  writeFileSync(join(fixtureRoot, '.buckroot'), '')
+  writeFileSync(join(fixtureRoot, '.buckconfig'), '')
+  try {
+    await run(fixtureRoot)
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true })
+  }
+}
+
+it('keeps the executed literal snapshot when a supported argfile is rewritten after admission', () =>
+  withPublicationRoot(async (cwd) => {
+    const path = join(cwd, 'mutable.args')
+    writeFileSync(path, '--isolation-dir\nv2\nbuild\n//:quick\n')
+    const admitted = resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} })
+    writeFileSync(path, '--isolation-dir\neditor-publication\nclean\n')
+    expect(admitted).toEqual({
+      isolation: 'v2',
+      args: ['--isolation-dir', 'v2', 'build', '//:quick'],
+      nativeArgumentCount: 4,
+    })
+  }))
+
+it('never lets a trailing run payload override the native isolation owner selection', () =>
+  withPublicationRoot(async (cwd) => {
+    const args = ['run', '//:tool', 'payload', '--isolation-dir', 'v2']
+    const env = { BUCK_ISOLATION_DIR: 'editor-publication' }
+    expect(resolveManagedInvocation({ args, cwd, env })).toEqual({
+      isolation: 'editor-publication',
+      args,
+      nativeArgumentCount: 2,
+    })
+    const ordinary = ['run', '//:tool', 'payload', '--isolation-dir', 'editor-publication']
+    expect(resolveManagedInvocation({ args: ordinary, cwd, env: {} }).isolation).toBe('v2')
+    expect(
+      resolveManagedInvocation({
+        args: ['run', '--unfamiliar-option', '//:tool', 'payload'],
+        cwd,
+        env,
+      }).isolation,
+    ).toBe('editor-publication')
+    expect(() =>
+      resolveManagedInvocation({
+        args: ['run', '--unfamiliar-option', '//:tool', '--isolation-dir', 'v2'],
+        cwd,
+        env,
+      }),
+    ).toThrow('ambiguous run option')
+  }))
