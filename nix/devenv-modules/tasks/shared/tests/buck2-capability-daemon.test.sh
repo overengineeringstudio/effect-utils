@@ -378,6 +378,23 @@ CONFIG
     alternate_pid="$(cat "$TEST_HOME/.buck/buckd/${fixture#/}/$alternate_isolation/buckd.pid")"
     mv "$lock_path" "$lock_path.saved"
     mkdir "$lock_path"
+    # A real spawn ENOENT must retain the malformed-owner cause and still
+    # attempt every later ordinary stop; no substitute native binary is used.
+    migration_unknown_native=0
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$fixture/missing-buck2" \
+      >"$fixture/unknown-native-publication.json" 2>"$fixture/unknown-native-publication.stderr" || migration_unknown_native=$?
+    [ "$migration_unknown_native" -ne 0 ] || fail "unknown ownership plus native failure incorrectly completed migration"
+    for expected in \
+      "Cannot acquire capability migration editor-publication owner: $fixture" EISDIR ENOENT \
+      "Cannot stop capability migration Buck daemon: $fixture ($isolation)" \
+      "Cannot stop capability migration Buck daemon: $fixture ($alternate_isolation)"; do
+      grep -Fq "$expected" "$fixture/unknown-native-publication.stderr" || fail "native failure lost cause or later stop attempt: $expected"
+    done
+    [ -f "$fixture/.buck2/capabilities.migration" ] || fail "native failure cleared migration marker"
+    [ ! -s "$fixture/unknown-native-publication.json" ] || fail "native failure emitted a success receipt"
+    kill -0 "$private_pid" 2>/dev/null || fail "native failure stopped the unknown-owned reserved daemon"
+    kill -0 "$alternate_pid" 2>/dev/null || fail "missing native binary unexpectedly stopped the ordinary daemon"
+    if grep -Fq "(editor-publication)" "$fixture/unknown-native-publication.stderr"; then fail "native failure attempted an unknown-owned private stop"; fi
     migration_unknown=0
     HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" \
       >"$fixture/unknown-publication.json" 2>"$fixture/unknown-publication.stderr" || migration_unknown=$?

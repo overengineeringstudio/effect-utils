@@ -382,6 +382,12 @@ const stopMigrationDaemons = ({
             `Buck daemon stop failed during capability cell migration (${isolation}): ${result.stderr.trim()}`,
           )
         stopped.push(`${root}:${isolation}`)
+      } catch (cause) {
+        failures.push(
+          new Error(`Cannot stop capability migration Buck daemon: ${root} (${isolation})`, {
+            cause,
+          }),
+        )
       } finally {
         owner?.release()
       }
