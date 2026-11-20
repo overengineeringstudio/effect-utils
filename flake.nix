@@ -149,10 +149,26 @@ rec {
               inherit pkgs;
               nixpkgsRevision = nixpkgs.rev;
             };
+        publicationOwnerLibrary = import ./nix/buck2-publication-owner.nix { inherit pkgs; };
+        # Only the executing capability is wrapped; the portable compile runtime stays unchanged.
+        capabilityBun = pkgs.symlinkJoin {
+          name = "bun-${pkgs.bun.version}-publication-runtime";
+          inherit (pkgs.bun) version meta;
+          paths = [ pkgs.bun ];
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+          postBuild = ''
+            wrapProgram "$out/bin/bun" \
+              --set BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY \
+              "${publicationOwnerLibrary}/lib/${publicationOwnerLibrary.libraryName}"
+            wrapProgram "$out/bin/bunx" \
+              --set BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY \
+              "${publicationOwnerLibrary}/lib/${publicationOwnerLibrary.libraryName}"
+          '';
+        };
         capabilityPackages = {
           inherit buck2 buck2-go buck2-bun-compile-runtime;
           inherit pnpm;
-          bun = pkgs.bun;
+          bun = capabilityBun;
           buck2-node = pkgs.writeShellScriptBin "node" ''
             exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
           '';
@@ -311,6 +327,9 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+          publication-owner-identity =
+            assert import ./nix/buck2-publication-owner.test.nix { inherit pkgs; };
+            pkgs.runCommand "publication-owner-identity" { } ''touch "$out"'';
           worktree-tools-identity =
             pkgs.runCommand "worktree-tools-identity"
               {
