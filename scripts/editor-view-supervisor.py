@@ -160,6 +160,7 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     child_env = os.environ.copy()
     child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
     child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
+    child_env.pop("BUCK2_EDITOR_PUBLICATION_OWNER_FD", None)
     child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
     interrupted = []
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
@@ -249,6 +250,7 @@ if __name__ == "__main__":
         os.write(ready_fd, b"1")
         os.close(ready_fd)
         os.set_inheritable(lock_fd, True)
+        os.environ["BUCK2_EDITOR_PUBLICATION_OWNER_FD"] = str(lock_fd)
         os.execvp(sys.argv[4], sys.argv[4:])
     else:
         deadline = None if sys.argv[1] == "none" else float(sys.argv[1])
