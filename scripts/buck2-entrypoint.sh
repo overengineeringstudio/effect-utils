@@ -5,6 +5,9 @@
 # argfiles fail closed. For unmanaged projects only, the package's libexec/buck2
 # is the native escape hatch. Never use it for the reserved editor-publication
 # namespace: that materializer requires its real inherited root-owner descriptor.
+# Run payloads never select isolation. With an unfamiliar run option before a
+# later isolation selector, fail closed: put Buck options before run and use --
+# before executable arguments so their boundary is unambiguous.
 set -euo pipefail
 # Lifecycle initialization never starts native Buck or participates in its
 # launch cache/daemon wrapper, including when called from an admitted gate.

@@ -876,7 +876,7 @@ export const resolveGateInvocation = ({
     (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
   )
     return undefined
-  if (selectionOnly === false && strictRunArguments === false && runIndex !== -1) {
+  if (strictRunArguments === false && runIndex !== -1) {
     let targetSeen = false
     for (let index = runIndex + 1; index < buckArgs.length; index++) {
       const arg = buckArgs[index] ?? ''
@@ -918,7 +918,13 @@ export const resolveGateInvocation = ({
         arg.includes('=') === false &&
         ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
       ) {
-        // Unknown option arity cannot establish the start of a run payload.
+        // An unknown arity is harmless to ownership only when no later token
+        // can select an isolation. Otherwise do not guess where payload starts.
+        if (
+          selectionOnly === true &&
+          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false)
+        )
+          break
         return undefined
       }
     }
@@ -966,7 +972,7 @@ export const resolveManagedInvocation = ({
   })
   if (invocation === undefined)
     throw new Error(
-      'Buck entrypoint cannot safely resolve publication ownership: managed Buck accepts literal argv and plain-text @argfiles only, not Python, stdin or config-cell argfiles. Use literal arguments, or the package libexec/buck2 only for unmanaged projects (never editor-publication).',
+      'Buck entrypoint cannot safely resolve publication ownership: use literal argv or plain-text @argfiles, not Python, stdin or config-cell argfiles. For an ambiguous run option followed by an isolation selector, put Buck options before run and delimit executable arguments with --. The package libexec/buck2 is only for unmanaged projects (never editor-publication).',
     )
   return invocation
 }
