@@ -871,6 +871,10 @@ checkout root, removes only its isolation state, deletes its Watchman watch when
 the service is reachable, and removes only its root-keyed admission cache entries.
 Without `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`, any owned `.editor-view`, including
 lease-only state, refuses with exit 3 before mutation and reports the opt-in retry.
+After that refusal check, teardown holds the persistent root publication flock
+across every destructive step and passes its actual inherited descriptor to
+reserved-isolation shutdown. A busy or invalid owner refuses without mutation;
+the control inode remains persistent, so a live publisher cannot lose its fence.
 Only editor-free checkouts skip release successfully. Opt-in permits the checkout's
 `buck2:editor:release` task with final retirement enabled; Nix builds/substitutions
 remain disabled. The command makes

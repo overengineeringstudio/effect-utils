@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: worktree-teardown <worktree-path> (absolute or relative).
-# Requires Bash, Git, GNU coreutils/findutils and awk with NUL record support.
+# Requires Bash, Git, flock, GNU coreutils/findutils and awk with NUL record support.
 # buck2 is required when root-owned daemon state exists; Watchman is optional
 # and never spawned, with jq required only when its service is reachable.
 # HOME locates Buck state; XDG_CACHE_HOME overrides the admission cache location;
@@ -57,6 +57,41 @@ if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" != 1 ]; then
       exit 3
     done
 fi
+
+# The persistent root publication owner fences every destructive step, including
+# editor release below (which directly releases/retires, not the supervisor).
+# Allocate our own inheritable descriptor: FD 3 may belong to the caller.
+# Never unlink this file: every publisher and maintenance writer locks its inode.
+publication_directory="$root/.devenv"
+publication_lock="$publication_directory/editor-view-publication.lock"
+if [ -L "$publication_directory" ] || [ -L "$publication_lock" ]; then
+  echo "worktree-teardown: refusing symlinked editor publication owner path" >&2
+  exit 1
+fi
+mkdir -p -- "$publication_directory"
+if [ "$(realpath -- "$publication_directory")" != "$publication_directory" ] || \
+  { [ -e "$publication_lock" ] && [ ! -f "$publication_lock" ]; }; then
+  echo "worktree-teardown: invalid editor publication owner path" >&2
+  exit 1
+fi
+exec {publication_owner_fd}>>"$publication_lock"
+if ! flock -n "$publication_owner_fd"; then
+  echo "worktree-teardown: editor publication is active or its owner lock is unavailable; leave the worktree intact and retry after publication finishes or the lock error is resolved" >&2
+  exit 1
+fi
+publication_fd_identity="$(stat -Lc '%d:%i' -- "/dev/fd/$publication_owner_fd")"
+publication_path_identity="$(stat -Lc '%d:%i' -- "$publication_lock")"
+publication_fd_links="$(stat -Lc '%h' -- "/dev/fd/$publication_owner_fd")"
+if [ -L "$publication_directory" ] || [ -L "$publication_lock" ] || \
+  [ ! -f "$publication_lock" ] || \
+  [ ! -f "/dev/fd/$publication_owner_fd" ] || [ "$publication_fd_links" != 1 ] || \
+  [ "$(realpath -- "$publication_directory")" != "$publication_directory" ] || \
+  [ "$publication_fd_identity" != "$publication_path_identity" ]; then
+  echo "worktree-teardown: editor publication owner path/inode changed; leave the worktree intact" >&2
+  exit 1
+fi
+# Keep this exec-open descriptor until shell exit, including all child commands.
+# It is the actual flock owner, not an inherited/reentrant ownership assertion.
 
 home="$(realpath -m -- "$HOME")"
 for component_path in "$home/.buck" "$home/.buck/buckd"; do
@@ -143,7 +178,8 @@ if [ -d "$state" ]; then
     verify_isolation_contents "$directory"
     # Native kill is offline and never starts a daemon. Use its protocol rather
     # than signaling a potentially recycled PID from buckd.pid.
-    buck2 --isolation-dir "${directory##*/}" kill
+    BUCK2_EDITOR_PUBLICATION_OWNER_FD="$publication_owner_fd" \
+      buck2 --isolation-dir "${directory##*/}" kill
     verify_isolation_contents "$directory"
     # Never recursively delete an isolation or its history. Shallow regular-file
     # deletion plus rmdir leaves any newly appearing unknown directory intact.
