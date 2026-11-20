@@ -20,6 +20,18 @@ fn incomplete(reason: &'static str) -> io::Error {
     io::Error::other(reason)
 }
 
+/// Return only a fixed diagnostic class, never the observed proc-link target.
+fn unsupported_anonymous_kind(name: &Path) -> &'static str {
+    match name.to_str() {
+        Some("anon_inode:[io_uring]") => "io-uring",
+        Some("anon_inode:[pidfd]" | "anon_inode:pidfd") => "pidfd",
+        Some("anon_inode:[fanotify]" | "anon_inode:fanotify") => "fanotify",
+        Some("anon_inode:bpf-map" | "anon_inode:bpf-prog" | "anon_inode:bpf-link") => "bpf",
+        Some("anon_inode:[userfaultfd]" | "anon_inode:userfaultfd") => "userfaultfd",
+        _ => "other",
+    }
+}
+
 #[cfg(test)]
 mod diagnostic_tests {
     #[test]
@@ -28,6 +40,25 @@ mod diagnostic_tests {
         assert_eq!(error.kind(), std::io::ErrorKind::Other);
         assert_eq!(error.raw_os_error(), None);
         assert_eq!(error.to_string(), "process reference changed");
+    }
+
+    #[test]
+    fn anonymous_kind_never_returns_an_observed_target() {
+        for (name, expected) in [
+            ("anon_inode:[io_uring]", "io-uring"),
+            ("anon_inode:[pidfd]", "pidfd"),
+            ("anon_inode:pidfd", "pidfd"),
+            ("anon_inode:[fanotify]", "fanotify"),
+            ("anon_inode:fanotify", "fanotify"),
+            ("anon_inode:bpf-map", "bpf"),
+            ("anon_inode:bpf-prog", "bpf"),
+            ("anon_inode:bpf-link", "bpf"),
+            ("anon_inode:[userfaultfd]", "userfaultfd"),
+            ("anon_inode:userfaultfd", "userfaultfd"),
+            ("/untrusted/proc-link-target", "other"),
+        ] {
+            assert_eq!(super::unsupported_anonymous_kind(std::path::Path::new(name)), expected);
+        }
     }
 }
 
@@ -202,7 +233,11 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
         let name = fs::read_link(scope_path(&held.file))?;
         if !matches!(name.to_str(), Some("anon_inode:[eventfd]" | "anon_inode:[eventpoll]"
             | "anon_inode:inotify" | "anon_inode:[timerfd]" | "anon_inode:[signalfd]"))
-        { return Err(incomplete("unsupported path-bearing kernel object")); }
+        {
+            eprintln!("worktree-holder-proc-unsupported-anon kind={}",
+                unsupported_anonymous_kind(&name));
+            return Err(incomplete("unsupported path-bearing kernel object"));
+        }
         return Ok(());
     }
     if metadata.file_type().is_char_device()
