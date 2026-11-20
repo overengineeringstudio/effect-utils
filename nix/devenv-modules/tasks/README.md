@@ -332,6 +332,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
     graph instances. Stores are writable state for trusted same-user consumers;
     verify tools that depend on package realpaths or implicit dependencies
     before opting in.
+  - `pnpm:doctor` validates current install, storage and complete declared projection
+    receipts (including executable wrappers). Its version-1 JSON includes exact
+    install/projection hashes and resolved tools. Set `PNPM_DOCTOR_OUTPUT_FILE` to
+    an absent caller-owned path for an exclusive mode-0600 machine report; consumers
+    must read it only after successful task completion, not parse runner logs.
+    Doctor and install must use the same evaluated module options, including
+    post-install projection hooks; a different configuration is not healthy evidence.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
