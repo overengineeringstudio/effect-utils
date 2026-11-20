@@ -185,6 +185,24 @@ pkgs.testers.nixosTest {
                 identity = receipt["evidence"]["root"]["identity"]
                 assert machine.succeed("stat -c '%d:%i' " + shlex.quote(root)).strip() == identity["dev"] + ":" + identity["ino"], receipt
                 assert machine.succeed("cat " + shlex.quote(root + "/payload")) == "disposable holder integration payload\n"
+    except Exception:
+        # This inventory runs only in the disposable guest, never on a host.
+        # Emit kernel anonymous-object class names, not link targets or owners.
+        inventory = "\n".join([
+            "import json, os, pathlib, re",
+            "classes = set(); unreadable = 0; rejected = 0",
+            "for fd in pathlib.Path('/proc').glob('[0-9]*/fd/[0-9]*'):",
+            "    try: target = os.readlink(fd)",
+            "    except OSError: unreadable += 1; continue",
+            "    if not target.startswith('anon_inode:'): continue",
+            "    name = target[len('anon_inode:'):]",
+            "    if name.startswith('[') and name.endswith(']'): name = name[1:-1]",
+            "    if re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', name): classes.add(name)",
+            "    else: rejected += 1",
+            "print(json.dumps({'guestAnonClasses': sorted(classes), 'unreadableLinks': unreadable, 'rejectedAnonNames': rejected}))",
+        ])
+        print(machine.execute("${pkgs.python3}/bin/python3 -c " + shlex.quote(inventory))[1])
+        raise
     finally:
         print(machine.execute("journalctl --no-pager -b -u 'worktree-holder-evidence*' -o short-precise")[1])
         print(machine.execute("uname -a; grep '^Cap' /proc/self/status; cat /proc/sys/kernel/yama/ptrace_scope; systemctl show 'worktree-holder-evidence@*' -p CapabilityBoundingSet -p Result")[1])
