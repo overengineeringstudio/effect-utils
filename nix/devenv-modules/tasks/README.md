@@ -142,10 +142,17 @@ Capture failures remain protective UNKNOWN. Root-journal diagnostics identify
 only a static capture/reclosure stage, `io::ErrorKind`, and numeric OS errno.
 Native-scope failures additionally emit only their audited source-literal reason
 through an `&'static str` helper, preserving the original `Other` kind and message.
-Rejected anonymous kernel objects also report only a finite static diagnostic
-class (io-uring, pidfd, fanotify, BPF, userfaultfd, or other), never their proc-link target.
-They never format an underlying error object, foreign paths, process identities,
-or pseudo-file contents; the original error and wire classification are unchanged.
+Anonymous-object qualification uses a closed enum of exact kernel spellings.
+BPF map/program/link, eventfd, timerfd, signalfd, epoll, inotify, pidfd,
+userfaultfd and perf_event are typed non-path kernel objects in the agreed
+accidental-breakage model; a bpffs pin is a separate filesystem path.
+io_uring, fanotify and every unrecognized spelling remain protective UNKNOWN.
+Rejected objects report only a fixed diagnostic class, never their proc-link target.
+The isolated proc-test runner includes a real eventfd qualification and a real
+io_uring with a registered candidate file (ordinary candidate FD closed) veto.
+Diagnostics never format an underlying error object, foreign paths, process
+identities or pseudo-file contents. Remaining rejections keep their original
+error; the wire format and consumer authority rules are unchanged.
 
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
