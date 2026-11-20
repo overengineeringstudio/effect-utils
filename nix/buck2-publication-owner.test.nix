@@ -10,7 +10,7 @@ let
     lib.fileset.toSource {
       root = ../.;
       fileset = lib.fileset.unions (
-        files ++ lib.optional includeDocs ../packages/@overeng/buck2-tools/README.md
+        files ++ lib.optional includeDocs (../packages + "/@overeng/buck2-tools/README.md")
       );
     };
   library =
