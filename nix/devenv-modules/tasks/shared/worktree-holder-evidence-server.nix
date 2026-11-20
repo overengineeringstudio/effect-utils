@@ -4,6 +4,7 @@
   ownerUid,
   managedPolicy ? null,
   withClients ? false,
+  ownedVmClassDiagnostics ? false,
 }:
 let
   inherit (pkgs) lib;
@@ -16,7 +17,7 @@ let
     }
   );
   protocol = import ./worktree-holder-evidence-protocol.nix { inherit pkgs; };
-  kernel = import ./worktree-holder-proc.nix { inherit pkgs; };
+  kernel = import ./worktree-holder-proc.nix { inherit pkgs ownedVmClassDiagnostics; };
   mounted = import ./worktree-holder-evidence-mounted.nix { inherit pkgs allowedRoots; };
   sources = map (suffix: "worktree-holder-evidence${suffix}.rs") (
     [
@@ -37,7 +38,7 @@ let
     ]
   );
   evidence =
-    pkgs.runCommand "worktree-holder-evidence-server"
+    pkgs.runCommand (if ownedVmClassDiagnostics then "worktree-holder-evidence-server-owned-vm-diagnostics" else "worktree-holder-evidence-server")
       {
         nativeBuildInputs = [
           pkgs.rustc
@@ -78,6 +79,7 @@ let
             ownerUid
             managedPolicy
             policyId
+            ownedVmClassDiagnostics
             ;
         };
         meta = {

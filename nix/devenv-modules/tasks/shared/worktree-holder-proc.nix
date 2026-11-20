@@ -1,5 +1,6 @@
 # Inactive library and test runner only: no adapter, socket, unit or service.
-{ pkgs }:
+# The explicit diagnostic variant is only for a controlled, disposable VM.
+{ pkgs, ownedVmClassDiagnostics ? false }:
 let
   sources = map (suffix: "worktree-holder-proc${suffix}.rs") [
     ""
@@ -10,7 +11,7 @@ let
     "-tests"
   ];
 in
-pkgs.runCommand "worktree-holder-proc"
+pkgs.runCommand (if ownedVmClassDiagnostics then "worktree-holder-proc-owned-vm-diagnostics" else "worktree-holder-proc")
   {
     nativeBuildInputs = [
       pkgs.rustc
@@ -28,10 +29,10 @@ pkgs.runCommand "worktree-holder-proc"
     ${pkgs.lib.concatMapStringsSep "\n" (
       name: "cp ${./. + "/${name}"} ${pkgs.lib.escapeShellArg name}"
     ) sources}
-    rustc --edition=2024 -D warnings --test worktree-holder-proc.rs -o proc-tests
+    rustc --edition=2024 -D warnings --check-cfg 'cfg(test)' --check-cfg 'cfg(holder_owned_vm_class_diagnostics)' ${pkgs.lib.optionalString ownedVmClassDiagnostics "--cfg holder_owned_vm_class_diagnostics"} --test worktree-holder-proc.rs -o proc-tests
     ./proc-tests
     mkdir -p "$out/lib" "$out/libexec" "$out/share/worktree-holder-proc"
-    rustc --edition=2024 -D warnings --crate-name worktree_holder_proc --crate-type rlib worktree-holder-proc.rs -o "$out/lib/libworktree_holder_proc.rlib"
+    rustc --edition=2024 -D warnings --check-cfg 'cfg(test)' --check-cfg 'cfg(holder_owned_vm_class_diagnostics)' ${pkgs.lib.optionalString ownedVmClassDiagnostics "--cfg holder_owned_vm_class_diagnostics"} --crate-name worktree_holder_proc --crate-type rlib worktree-holder-proc.rs -o "$out/lib/libworktree_holder_proc.rlib"
     cp worktree-holder-proc*.rs "$out/share/worktree-holder-proc/"
     cp proc-tests "$out/libexec/worktree-holder-proc-tests"
   ''

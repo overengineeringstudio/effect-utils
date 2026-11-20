@@ -160,6 +160,13 @@ io_uring with a registered candidate file (ordinary candidate FD closed) veto.
 Diagnostics never format an underlying error object, foreign paths, process
 identities or pseudo-file contents. Remaining rejections keep their original
 error; the wire format and consumer authority rules are unchanged.
+Controlled disposable VMs may explicitly set `ownedVmClassDiagnostics = true`
+on the same-binary constructor. It defaults to false through every constructor,
+has no runtime/environment switch, and produces distinctly named diagnostic artifacts.
+Only that proc-library build includes rejection-site class formatting: the same
+held name is emitted as a bounded ASCII, prefix-free exact class (brackets and
+spaces preserved), or a fixed unprintable marker. No PID, FD, path or wire output
+is added, and rejection remains UNKNOWN; ordinary libraries compile the formatter out.
 
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
