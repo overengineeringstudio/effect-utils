@@ -4723,22 +4723,31 @@ const dispatchEditorViewRequest = async ({
 }
 
 const main = async (): Promise<void> => {
-  process.once('SIGTERM', () => {
+  const controller = new AbortController()
+  const terminate = (): void => {
     closeFingerprintAdmission()
     for (const report of interruptedPublicationPhases) report()
-    // Give asynchronous span emission a bounded chance to flush before failing closed.
-    setTimeout(() => process.exit(143), 100)
-  })
-  const args = process.argv.slice(2)
-  const result = await dispatchEditorView({
-    args,
-    onStdout: (value) => process.stdout.write(value),
-    onStderr: (value) => process.stderr.write(value),
-    ...(args[0] === 'publish-batch' && args.length === 1
-      ? { batchRequests: JSON.parse(readFileSync(0, 'utf8')) as unknown }
-      : {}),
-  })
-  if (result.exitCode !== 0) process.exitCode = result.exitCode
+    process.exitCode = 143
+    controller.abort()
+  }
+  process.once('SIGTERM', terminate)
+  try {
+    const args = process.argv.slice(2)
+    const result = await dispatchEditorView({
+      args,
+      signal: controller.signal,
+      onStdout: (value) => process.stdout.write(value),
+      onStderr: (value) => process.stderr.write(value),
+      ...(args[0] === 'publish-batch' && args.length === 1
+        ? { batchRequests: JSON.parse(readFileSync(0, 'utf8')) as unknown }
+        : {}),
+    })
+    if (result.exitCode !== 0) process.exitCode = result.exitCode
+  } catch (error) {
+    if (controller.signal.aborted === false) throw error
+  } finally {
+    process.removeListener('SIGTERM', terminate)
+  }
 }
 
 if (import.meta.main === true) await main()

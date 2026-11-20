@@ -63,6 +63,7 @@ it.each(['abort', 'parent-failure'] as const)(
     const controller = new AbortController()
     let handshake: number | undefined
     let child: Promise<string> | undefined
+    let sibling: Promise<string> | undefined
     try {
       const created = spawnSync(lifetimeTool('MKFIFO_BIN'), [release], { encoding: 'utf8' })
       if (created.status !== 0)
@@ -78,14 +79,19 @@ it.each(['abort', 'parent-failure'] as const)(
             tool: lifetimeTool('FINGERPRINT_LIFETIME_TEST_BIN'),
             args: [ready, terminated, release],
           })
+          sibling = runFingerprintTool({
+            tool: lifetimeTool('FINGERPRINT_LIFETIME_TEST_BIN'),
+            args: [join(root, 'sibling-ready'), join(root, 'sibling-terminated'), release],
+          })
+          void sibling.catch(() => {})
           // Observe this intentionally outstanding request without replacing its result.
           void child.catch(() => {})
-          await waitForFingerprintFile(ready)
+          await Promise.all([waitForFingerprintFile(ready), waitForFingerprintFile(join(root, 'sibling-ready'))])
           if (failure === 'abort') {
             controller.abort()
-            await child
+            await Promise.all([child, sibling])
           } else {
-            throw new Error('parent publication failed')
+            await Promise.all([Promise.reject(new Error('parent publication failed')), child, sibling])
           }
         },
       })
@@ -93,6 +99,9 @@ it.each(['abort', 'parent-failure'] as const)(
         failure === 'abort' ? 'fingerprint admission closed' : 'parent publication failed',
       )
       expect(readFileSync(terminated, 'utf8')).toBe('joined')
+      expect(readFileSync(join(root, 'sibling-terminated'), 'utf8')).toBe('joined')
+      expect(() => process.kill(Number(readFileSync(join(root, 'sibling-ready'), 'utf8')), 0)).toThrow()
+      await expect(sibling).rejects.toThrow('fingerprint admission closed')
       const pid = Number(readFileSync(ready, 'utf8'))
       expect(() => process.kill(pid, 0)).toThrow()
       await expect(child).rejects.toThrow('fingerprint admission closed')
