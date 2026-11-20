@@ -116,6 +116,8 @@ the registered workspace patch through the owning dependency workflow; do not ed
 installed plugin files or replace fallbacks with non-equivalent legacy arrays.
 The package's Buck admission includes `patches/*.patch` through `testDataRoots`,
 so dependency publication can resolve the registered patch as an exported source.
+Regenerate patches with pinned `pnpm patch` / `pnpm patch-commit` against the exact
+published archive; preserve the EOF markers required by Buck's strict patch applier.
 
 The shared compatibility work is tracked in
 https://github.com/overengineeringstudio/effect-utils/issues/2684.
