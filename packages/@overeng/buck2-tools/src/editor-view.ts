@@ -1711,7 +1711,7 @@ const hardenSnapshot = (snapshotDir: string): void => {
   }
   chmodSync(join(snapshotDir, 'editor-view.json'), 0o444)
   const sourceManifest = join(snapshotDir, editorViewSourceManifestName)
-  if (pathExists(sourceManifest)) chmodSync(sourceManifest, 0o444)
+  if (pathExists(sourceManifest) === true) chmodSync(sourceManifest, 0o444)
   visit(snapshotDir)
 }
 /**

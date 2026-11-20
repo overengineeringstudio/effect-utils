@@ -834,7 +834,7 @@ describe('editor view publisher', () => {
       let child: Bun.Subprocess<'ignore', 'pipe', 'pipe'> | undefined
       try {
         const rootView = viewName === 'root'
-        if (rootView) {
+        if (rootView === true) {
           writeFileSync(join(fixture.root, 'package.json'), '{"private":true}\n')
           writeFileSync(
             fixture.workspaceAuthority,
@@ -847,7 +847,9 @@ describe('editor view publisher', () => {
         }
         const options: EditorViewOptions = {
           ...fixture.options,
-          ...(rootView ? { package: '.', cell: 'effect_utils', target: '//:editor_inputs' } : {}),
+          ...(rootView === true
+            ? { package: '.', cell: 'effect_utils', target: '//:editor_inputs' }
+            : {}),
           backingRoots: [fixture.editorInputs],
         }
         child = Bun.spawn(
@@ -879,7 +881,8 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
         const snapshots = JSON.parse(stdout) as string[]
         expect(snapshots).toHaveLength(2)
         expect(snapshots[0]).not.toBe(snapshots[1])
-        const editorRoot = rootView ? join(fixture.root, '.editor-view') : fixture.editorRoot
+        const editorRoot =
+          rootView === true ? join(fixture.root, '.editor-view') : fixture.editorRoot
         for (const snapshot of snapshots) {
           const manifest = join(editorRoot, snapshot, 'editor-view-sources-v1.json')
           expect(lstatSync(manifest).mode & 0o777).toBe(0o444)
