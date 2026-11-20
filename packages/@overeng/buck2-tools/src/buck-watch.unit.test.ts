@@ -629,7 +629,9 @@ describe('Buck watch reconciliation', () => {
       })
       // The real commands run unwrapped; spans are emitted afterwards.
       expect(invocations[0]?.command).toBe('/tools/buck2')
-      expect(invocations[0]?.args[0]).toBe('build')
+      expect(invocations[0]?.args.slice(0, 3)).toEqual([
+        '--isolation-dir', 'editor-publication', 'build',
+      ])
       expect(invocations[1]?.command).toBe('/tools/bun')
       expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
       await telemetry.settle()

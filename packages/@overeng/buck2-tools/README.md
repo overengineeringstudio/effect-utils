@@ -196,6 +196,11 @@ flock file must not be unlinked while publishers are active.
 Inherited `BUCK2_EDITOR_PUBLICATION_OWNER_FD` values require a real exclusive
 kernel lock on the canonical root's inode; callbacks never unlock borrowed owners.
 The reserved `editor-publication` namespace identifies those exclusively owned inputs.
+Reconciliation builds in that stable isolation and holds ownership through every
+publisher child's budget scan and final verification, including batch/check/watch.
+Mutable Buck inputs outside that namespace or without its actual owner fail closed;
+immutable Nix inputs remain valid. Default Buck work has a separate daemon/output
+tree; published snapshots still own their bytes and outlive either materializer.
 Megarepo maintenance independently acquires that owner around reserved-isolation
 clean and the final daemon checks/stop. A live publisher defers maintenance;
 unknown ownership is a protective refusal, not a successful native operation.
