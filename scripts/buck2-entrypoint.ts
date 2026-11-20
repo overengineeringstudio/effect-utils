@@ -25,6 +25,11 @@ import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
 import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  requireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import {
   buckConfigValues,
   readConfig,
   canonicalCacheAdmissionInvocationId,
@@ -779,6 +784,7 @@ export const resolveGateInvocation = ({
   cwd,
   strictRunArguments = true,
   includePayload = false,
+  selectionOnly = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -792,6 +798,8 @@ export const resolveGateInvocation = ({
   readonly cwd: string
   readonly strictRunArguments?: boolean
   readonly includePayload?: boolean
+  /** Ownership selection does not impose gate cleanup's conservative run-payload grammar. */
+  readonly selectionOnly?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }):
   | {
@@ -828,6 +836,7 @@ export const resolveGateInvocation = ({
         requested === undefined ||
         requested === '' ||
         requested === '-' ||
+        requested.endsWith('.py') === true ||
         requested.includes('//') === true ||
         requested.includes('#') === true ||
         (requested.startsWith('/') === true && resolve(requested) !== requested)
@@ -907,7 +916,12 @@ export const resolveGateInvocation = ({
         arg.includes('=') === false &&
         ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
       ) {
-        // Unknown option arity cannot establish the start of a run payload.
+        // Unknown arity is harmless only when no later token can select isolation.
+        if (
+          selectionOnly === true &&
+          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false)
+        )
+          break
         return undefined
       }
     }
@@ -935,6 +949,61 @@ export const resolveGateInvocation = ({
       : { isolation, args: buckArgs }
     : undefined
 }
+
+export const resolveManagedInvocation = ({
+  args, cwd, env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): { readonly isolation: string; readonly args: readonly string[] } => {
+  const invocation = resolveGateInvocation({
+    args, cwd, env, strictRunArguments: false, selectionOnly: true, includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck entrypoint cannot safely resolve publication ownership: use literal argv or plain-text @argfiles, not Python, stdin or config-cell argfiles. For an ambiguous run option followed by an isolation selector, put Buck options before run and delimit executable arguments with --. The package libexec/buck2 is only for unmanaged projects (never editor-publication).',
+    )
+  return invocation
+}
+
+const editorPublicationInvocation = ({
+  args, cwd, env, owner,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly owner?: EditorPublicationOwner
+}): { readonly root: string; readonly owner: EditorPublicationOwner } | undefined => {
+  const invocation = resolveManagedInvocation({ args, cwd, env })
+  if (invocation.isolation !== editorPublicationIsolation) return undefined
+  const canonicalCwd = realpathSync(cwd)
+  const root = findRoot(canonicalCwd)
+  const home = resolve(env['HOME'] ?? homedir())
+  let current = canonicalCwd
+  let nativeRoot: string | undefined
+  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
+  for (;;) {
+    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
+      if (current === home) break
+      nativeRoot = current
+    }
+    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  if (root === undefined || nativeRoot !== root)
+    throw new Error(
+      `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
+    )
+  return { root, owner: requireEditorPublicationOwner({ root, owner }) }
+}
+
+/** No other caller may mutate the publication materializer without its real owner capability. */
+export const requireEditorPublicationInvocationOwner = (
+  options: Parameters<typeof editorPublicationInvocation>[0],
+): EditorPublicationOwner | undefined => editorPublicationInvocation(options)?.owner
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
 export const cacheDaemonPolicyArguments = ({
