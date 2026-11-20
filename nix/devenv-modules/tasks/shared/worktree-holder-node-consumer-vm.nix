@@ -196,8 +196,7 @@ pkgs.testers.nixosTest {
             "    except OSError: unreadable += 1; continue",
             "    if not target.startswith('anon_inode:'): continue",
             "    name = target[len('anon_inode:'):]",
-            "    if name.startswith('[') and name.endswith(']'): name = name[1:-1]",
-            "    if re.fullmatch(r'[A-Za-z0-9_.:-]{1,80}', name): classes.add(name)",
+            "    if re.fullmatch(r'(?:[A-Za-z0-9_.: -]{1,80}|\\[[A-Za-z0-9_.: -]{1,80}\\])', name): classes.add(name)",
             "    else: rejected += 1",
             "print(json.dumps({'guestAnonClasses': sorted(classes), 'unreadableLinks': unreadable, 'rejectedAnonNames': rejected}))",
         ])
