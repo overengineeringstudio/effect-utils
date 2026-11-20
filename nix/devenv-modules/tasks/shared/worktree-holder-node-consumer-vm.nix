@@ -139,6 +139,9 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%g:%a' /run/worktree-holder-evidence) = 0:0:755")
     machine.succeed("test $(stat -c '%U:%G:%a' /run/worktree-holder-evidence/evidence.sock) = root:users:660")
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
+    btf = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_loaded_btf_is_nonpath --ignored --nocapture")
+    print(btf)
+    assert "1 passed; 0 failed" in btf, "the actual BTF_LOAD metadata fixture must execute"
     nonpath = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_nonpath_eventfd_and_registered_io_uring_veto --ignored --nocapture")
     print(nonpath)
     assert "1 passed; 0 failed" in nonpath, "the real eventfd and registered-file io_uring fixture must execute"
