@@ -482,3 +482,22 @@ it('keeps the executed literal snapshot when a supported argfile is rewritten af
     expect(requireEditorPublicationInvocationOwner({ args: admitted.args, cwd, env: {} })).toBeUndefined()
     expect(() => requireEditorPublicationInvocationOwner({ args: ['@mutable.args'], cwd, env: {} })).toThrow()
   }))
+
+it('never lets a trailing run payload override the native isolation owner selection', () =>
+  withPublicationRoot(async (cwd) => {
+    const args = ['run', '//:tool', 'payload', '--isolation-dir', 'v2']
+    const env = { BUCK_ISOLATION_DIR: editorPublicationIsolation }
+    expect(resolveManagedInvocation({ args, cwd, env })).toEqual({
+      isolation: editorPublicationIsolation, args,
+    })
+    expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env })).toThrow(/owner/i)
+    const ordinary = ['run', '//:tool', 'payload', '--isolation-dir', editorPublicationIsolation]
+    expect(resolveManagedInvocation({ args: ordinary, cwd, env: {} }).isolation).toBe('v2')
+    expect(requireEditorPublicationInvocationOwner({ args: ordinary, cwd, env: {} })).toBeUndefined()
+    expect(resolveManagedInvocation({
+      args: ['run', '--unfamiliar-option', '//:tool', 'payload'], cwd, env,
+    }).isolation).toBe(editorPublicationIsolation)
+    expect(() => resolveManagedInvocation({
+      args: ['run', '--unfamiliar-option', '//:tool', '--isolation-dir', 'v2'], cwd, env,
+    })).toThrow('ambiguous run option')
+  }))
