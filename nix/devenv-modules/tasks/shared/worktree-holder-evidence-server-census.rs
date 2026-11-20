@@ -172,7 +172,7 @@ impl References {
             }
             Pins::Management(ManagementReferences { root, cwd, exe, descriptors, mappings })
         } else {
-            Pins::Ordinary(process.collect_resources(index, deadline)?)
+            Pins::Ordinary(super::collect_step("native-task-resources",process.collect_resources(index, deadline))?)
         };
         let (root, cwd, exe, descriptors, mappings) =
             (pins.root(), pins.cwd(), pins.exe(), pins.descriptors(), pins.mappings());
@@ -187,14 +187,14 @@ impl References {
             .chain(mappings.iter().map(|(_, held)| (ReferenceKind::Map, None, held)))
         {
             deadline_check(deadline)?;
-            qualify_object(held)?;
+            super::collect_step("object-qualification",qualify_object(held))?;
             let exempt = match fd {
                 Some(number) => exempt_descriptor(store_client, request, pid.pid, task, number, held)?,
                 None => false,
             };
             // Canonical store positives are resolved by CandidateSet before
             // any proxy policy. Management slots alone may omit those matches.
-            let outcome = candidates.matches(&held.file, &task.scope, kind, deadline)?;
+            let outcome = super::collect_step("candidate-object-membership",candidates.matches(&held.file, &task.scope, kind, deadline))?;
             match &outcome {
                 MatchOutcome::Native(matches) => {
                     if !exempt {
@@ -231,7 +231,7 @@ impl References {
             }
         }
         let mounted = if root.is_some() {
-            let coverage = candidates.capture_mounts(&task.scope, deadline)?;
+            let coverage = super::collect_step("mounted-root-capture",candidates.capture_mounts(&task.scope, deadline))?;
             append_matches(observation, coverage.references(), pid, task, ReferenceKind::Mount,
                 None, reference_count, None);
             Some(coverage)
@@ -357,13 +357,13 @@ impl<'a> Census<'a> {
         let mut census = Self { runtime: None, processes: Vec::new(), self_role, request,
             observation: protocol::Observation { complete: true, process_count: 0, task_count: 0,
                 roots, receipt: Vec::new() } };
-        let pids = numbers("/proc", deadline)?;
+        let pids = super::collect_step("process-enumeration",numbers("/proc", deadline))?;
         let mut total_tasks = 0usize;
         let mut total_objects = 0usize;
         let mut reference_count = 0usize;
         for pid in &pids {
             // No unpinned process_gone shortcut: discovery churn is UNKNOWN.
-            let process = ProcessScope::discover(*pid, deadline)?;
+            let process = super::collect_step("process-scope-capture",ProcessScope::discover(*pid, deadline))?;
             let management = *pid == self_role.pid();
             if management && process.tasks.len() != 1 {
                 return Err(io::Error::other("server management task set changed"));
@@ -373,9 +373,9 @@ impl<'a> Census<'a> {
             let mut resources = Vec::with_capacity(process.tasks.len());
             for index in 0..process.tasks.len() {
                 // Still inspect any root/cwd held by a proven no-mm task.
-                let references = References::collect(&process, index, request, candidates,
+                let references = super::collect_step("task-reference-capture",References::collect(&process, index, request, candidates,
                     store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, deadline)?;
+                    &mut reference_count, deadline))?;
                 total_objects += 3 + references.pins.descriptors().len() + references.pins.mappings().len();
                 if total_objects > OBJECT_LIMIT { return Err(io::Error::other("object census capacity")); }
                 resources.push(references);
@@ -383,13 +383,13 @@ impl<'a> Census<'a> {
             census.processes.push(ObservedProcess { scope: process, references: resources });
         }
         if numbers("/proc", deadline)? != pids {
-            return Err(io::Error::other("full process membership changed"));
+            return super::collect_step("process-membership-capture-close",Err(io::Error::other("full process membership changed")));
         }
         census.observation.process_count = u32::try_from(census.processes.len())
             .map_err(|_| io::Error::other("process count overflow"))?;
         census.observation.task_count = u32::try_from(total_tasks)
             .map_err(|_| io::Error::other("task count overflow"))?;
-        census.recheck(candidates, store_client, deadline)?;
+        super::collect_step("captured-census-recheck",census.recheck(candidates, store_client, deadline))?;
         for root in &mut census.observation.roots {
             if !root.complete || !root.references_complete { root.status = Status::Unknown; }
             else if root.references.iter().any(|reference| reference.effect == ReferenceEffect::InUse) {
@@ -407,16 +407,16 @@ impl<'a> Census<'a> {
     fn recheck_selection(&self, deadline: Instant) -> io::Result<()> {
         let pids = numbers("/proc", deadline)?;
         if !pids.iter().copied().eq(self.processes.iter().map(|process| process.scope.identity.pid)) {
-            return Err(io::Error::other("full process membership did not close"));
+            return super::collect_step("process-membership-recheck",Err(io::Error::other("full process membership did not close")));
         }
         for retained in &self.processes {
-            let current = ProcessScope::discover(retained.scope.identity.pid, deadline)?;
+            let current = super::collect_step("process-scope-recapture",ProcessScope::discover(retained.scope.identity.pid, deadline))?;
             if !retained.scope.same_selection(&current)? {
-                return Err(io::Error::other("all-task identity credentials or membership changed"));
+                return super::collect_step("process-selection-recheck",Err(io::Error::other("all-task identity credentials or membership changed")));
             }
         }
         if numbers("/proc", deadline)? != pids {
-            return Err(io::Error::other("full process membership changed during closure"));
+            return super::collect_step("process-membership-recheck-close",Err(io::Error::other("full process membership changed during closure")));
         }
         Ok(())
     }
@@ -430,12 +430,12 @@ impl<'a> Census<'a> {
         }
         self.self_role.recheck(deadline)?;
         candidates.recheck(deadline)?;
-        self.recheck_selection(deadline)?;
+        super::collect_step("selection-before-reference-recheck",self.recheck_selection(deadline))?;
         for process in &self.processes {
-            process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline)?;
+            super::collect_step("process-reference-recheck",process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline))?;
         }
         if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
-        self.recheck_selection(deadline)?;
+        super::collect_step("selection-after-reference-recheck",self.recheck_selection(deadline))?;
         candidates.recheck(deadline)?;
         self.self_role.recheck(deadline)?;
         if let (Some(store), Some(client)) = (&self.request.store, store_client) { client.recheck(store)?; }
