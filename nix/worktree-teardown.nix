@@ -6,6 +6,7 @@ pkgs.writeShellApplication {
     pkgs.coreutils
     pkgs.findutils
     pkgs.gawk
+    pkgs.flock
     pkgs.jq
   ];
   text = builtins.readFile ./devenv-modules/tasks/shared/worktree-teardown.sh;
