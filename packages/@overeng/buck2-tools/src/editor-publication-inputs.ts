@@ -69,6 +69,14 @@ export const requireEditorPublicationInputs = ({
     }
     // Finish filesystem traversal first so native resolution failures remain visible.
     if (mutable === false) continue
+    // A terminal ".." (including a symlink target) can select an unowned
+    // materializer or its ancestor without another candidate being inspected.
+    const reachedOwned = resolved === owned || resolved.startsWith(`${owned}${sep}`)
+    outside ||=
+      reachedOwned === false &&
+      (isMutableBuckPath(resolved) ||
+        resolved === sep ||
+        owned.startsWith(`${resolved}${sep}`))
     if (ownerValidated === false) {
       requireEditorPublicationOwner({ root, owner })
       ownerValidated = true

@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -63,6 +63,38 @@ it('rejects forged or copied owner objects and owners for another root', () =>
             }),
           ).toThrow()
         })
+        expect(() =>
+          requireEditorPublicationInputs({ root, paths: [privateInput], owner }),
+        ).not.toThrow()
+      },
+    })
+  }))
+
+it('rejects terminal parent traversal and private symlinks that select an unowned namespace', () =>
+  withInputs(async (root, privateInput) => {
+    const privateDirectory = join(root, 'buck-out', editorPublicationIsolation)
+    const parentCarrier = join(privateDirectory, 'parent-materializer')
+    symlinkSync('..', parentCarrier)
+    const toFilesystemRoot = privateDirectory
+      .split('/')
+      .filter(Boolean)
+      .map(() => '..')
+      .join('/')
+    await withEditorPublicationOwner({
+      root,
+      run: async (owner) => {
+        for (const path of [
+          `${privateDirectory}/..`,
+          `${privateDirectory}/../`,
+          parentCarrier,
+          `${parentCarrier}/..`,
+          `${privateDirectory}/../..`,
+          `${privateDirectory}/${toFilesystemRoot}`,
+        ]) {
+          expect(() => requireEditorPublicationInputs({ root, paths: [path], owner })).toThrow(
+            'outside its reserved Buck isolation',
+          )
+        }
         expect(() =>
           requireEditorPublicationInputs({ root, paths: [privateInput], owner }),
         ).not.toThrow()
