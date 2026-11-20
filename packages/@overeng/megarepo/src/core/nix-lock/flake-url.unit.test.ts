@@ -17,6 +17,13 @@ import {
 // =============================================================================
 
 describe('parseNixFlakeUrl', () => {
+  it('reads and round-trips a GitHub query ref', () => {
+    const url = 'github:example/library?ref=published&dir=nix/tool'
+    const parsed = parseNixFlakeUrl(url)!
+    expect(getRef(parsed)).toBe('published')
+    expect(serializeNixFlakeUrl(parsed)).toBe(url)
+  })
+
   it('should parse github:owner/repo', () => {
     const result = parseNixFlakeUrl('github:overengineeringstudio/effect-utils')
     expect(result).toMatchInlineSnapshot(`
@@ -150,6 +157,22 @@ describe('serializeNixFlakeUrl', () => {
 
 describe('updateNixFlakeUrl', () => {
   describe('github: scheme', () => {
+    it('updates or removes a query ref without introducing a duplicate path selector', () => {
+      const url = 'github:example/library?ref=published&dir=nix/tool'
+      expect(updateNixFlakeUrl({ url, updates: { ref: 'feature/query' } })).toBe(
+        'github:example/library?ref=feature/query&dir=nix/tool',
+      )
+      expect(updateNixFlakeUrl({ url, updates: { ref: null } })).toBe(
+        'github:example/library?dir=nix/tool',
+      )
+      expect(
+        updateNixFlakeUrl({
+          url: 'github:example/library/old?ref=other&dir=nix/tool',
+          updates: { ref: 'feature/query' },
+        }),
+      ).toBe('github:example/library?ref=feature/query&dir=nix/tool')
+    })
+
     it('should update ref (path-embedded)', () => {
       const url = 'github:overengineeringstudio/effect-utils/main'
       const result = updateNixFlakeUrl({ url, updates: { ref: 'schickling/feature' } })

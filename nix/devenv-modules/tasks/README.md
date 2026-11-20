@@ -397,8 +397,44 @@ for outer tasks that must complete before the nested devenv process can evaluate
     each regular-file/directory reference. Overlay, FUSE, remote/proxy views,
     detached/unobservable mounts and incomplete mount evidence fail closed:
     different device/inode numbers do not prove unrelated backing objects.
-    This does not qualify otherwise unreadable container processes, introduce
-    a privileged helper, or authorize namespace-path translation.
+    By default this does not qualify unreadable container processes or authorize
+    namespace-path translation. The package optionally accepts a
+    `processEvidenceCommand` derivation, compiled to its fixed Nix-store executable;
+    no environment, PATH or CLI override selects privileged evidence. It is not
+    configured by the normal pnpm module. Only incomplete process evidence can
+    request a fresh proof while holding the exclusive maintenance lease; a
+    positive native process reference always vetoes collection. Candidate native
+    mount, ownership, shared-store exclusions and identity checks still apply.
+    The helper must independently pin and validate the actual client's candidate
+    and lease FDs, identity/start time, complete process census, current namespace,
+    backing origins, complete mount graph and declared host IPC scope. The
+    authenticated root helper must establish genuine host authority. The
+    consumer's full-identity uid-map check only rejects rootless mappings; it
+    does not prove the initial user namespace, since a privileged parent can
+    create a nested full-identity-mapped namespace. Rootless UID0 is not host
+    authority. A live helper invocation is not a periodic file.
+    The fixed command receives `--pnpm-store-evidence-v1`, candidate path,
+    decimal device/inode, root/lease FD numbers, random 32-hex nonce and decimal
+    client start time. Its only stdout is one newline-terminated tab-separated
+    record: `pnpm-store-evidence-v1`, nonce, device, inode, `absent`, 64-lowercase-hex
+    manifest digest, start time. Nonzero exit, mismatches, malformed records,
+    stdout over 256 bytes, stderr over 4096 bytes or a 30-second invocation
+    deadline fail closed. Before launch the unsafe-free consumer reads Linux's
+    suspend-inclusive boot clock through `/proc/uptime`, conservatively charging
+    its full centisecond truncation uncertainty. Evidence expires no later than
+    that start plus 30 seconds, including queued output and successful exits after
+    collector suspend/descheduling.
+    It rechecks freshness after strict record validation; the lease cannot extend
+    proof lifetime. Both output pipes are drained concurrently. No production
+    helper is supplied or enabled here; deployment requires independent security
+    review and actual namespace/IPC qualification.
+    This is a cooperative accidental-breakage contract: direct directory
+    capabilities and declared host IPC paths must be qualified, including the
+    absence of host-shared sockets to store-touching services. Safety concerns
+    future path reachability. Retained regular-file FDs and mmaps survive unlink
+    and defer reclaimed bytes rather than invalidating existing holders.
+    Adversarial queued directory-FD smuggling is outside this contract; mere
+    absence of a candidate mount does not prove absence of directory capabilities.
     The isolated bind-alias test closes inherited non-stdio gate/Nix
     descriptors before its namespace exec: cloned mount IDs cannot attest
     descriptors retained from the parent mount namespace. Production keeps

@@ -52,6 +52,7 @@ import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.
 import restateEffectPkg from './packages/@overeng/restate-effect/package.json.genie.ts'
 import rpcDevtoolsPkg from './packages/@overeng/rpc-devtools/package.json.genie.ts'
 import scgAuthorityPkg from './packages/@overeng/scg-authority/package.json.genie.ts'
+import scgDiscordPkg from './packages/@overeng/scg-discord/package.json.genie.ts'
 import scgProtocolPkg from './packages/@overeng/scg-protocol/package.json.genie.ts'
 import stylexTokensPkg from './packages/@overeng/stylex-tokens/package.json.genie.ts'
 import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
@@ -116,6 +117,7 @@ export const rootWorkspacePackages = [
   reactInspectorPkg,
   restateEffectPkg,
   scgAuthorityPkg,
+  scgDiscordPkg,
   scgProtocolPkg,
   stylexTokensPkg,
   tuiCorePkg,
