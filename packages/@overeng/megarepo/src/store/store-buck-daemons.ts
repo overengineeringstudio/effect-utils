@@ -180,24 +180,14 @@ export interface WorktreeBuckDaemon {
   readonly memoryKiB: number
 }
 
-/** Lifetime-bound discovery also lets teardown admit all non-Buck activity first. */
-export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons')(function* ({
-  worktreePath,
-}: {
-  worktreePath: string
-}) {
+/** One host-wide daemon observation; suitable for shared report-only candidate selection. */
+export const readBuckDaemonCensus = Effect.fn('store.readBuckDaemonCensus')(function* () {
   if (process.env['MEGAREPO_GC_BUCK2_BIN'] === '') return []
-  const fs = yield* FileSystem.FileSystem
-  const canonical = yield* fs.realPath(worktreePath).pipe(Effect.orElseSucceed(() => worktreePath))
   const processes = yield* readBuckProcesses()
   const daemons: WorktreeBuckDaemon[] = []
   for (const entry of processes) {
     const daemon = recognizeBuckDaemon({ pid: entry.pid, argv: entry.argv, cwd: entry.cwd })
-    if (
-      daemon === undefined ||
-      isInsideWorktree({ candidate: daemon.path, worktreePath: canonical }) === false
-    )
-      continue
+    if (daemon === undefined) continue
     const forkserver = processes.find(
       (child) => child.parentPid === daemon.pid && child.argv[1] === 'forkserver',
     )
@@ -209,6 +199,23 @@ export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons'
     })
   }
   return daemons
+})
+
+/** Lifetime-bound discovery also lets teardown admit all non-Buck activity first. */
+export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons')(function* ({
+  worktreePath,
+  preflightCensus,
+}: {
+  worktreePath: string
+  /** Candidate selection only. Omit for every authoritative daemon identity recheck. */
+  preflightCensus?: ReadonlyArray<WorktreeBuckDaemon> | undefined
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const canonical = yield* fs.realPath(worktreePath).pipe(Effect.orElseSucceed(() => worktreePath))
+  const census = preflightCensus ?? (yield* readBuckDaemonCensus())
+  return census.filter((entry) =>
+    isInsideWorktree({ candidate: entry.daemon.path, worktreePath: canonical }),
+  )
 })
 
 /** Filesystem observations in cwd-to-root order, as used by pinned Buck's get_roots. */

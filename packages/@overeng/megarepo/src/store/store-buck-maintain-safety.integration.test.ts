@@ -25,6 +25,7 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
   const bin = join(store, 'bin')
   const duCalls = join(store, 'du-calls')
   const nativeCalls = join(store, 'native-calls')
+  const activityCalls = join(store, 'activity-calls')
   const measured = join(store, 'measured')
   const manifestPath = join(store, 'activity.json')
   const configPath = join(store, 'maintain.json')
@@ -34,6 +35,7 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
   yield* fs.makeDirectory(source)
   yield* fs.writeFileString(duCalls, '')
   yield* fs.writeFileString(nativeCalls, '')
+  yield* fs.writeFileString(activityCalls, '')
   yield* Effect.sync(() => {
     execFileSync('git', ['init', source])
     execFileSync('git', [
@@ -67,7 +69,7 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
   yield* fs.symlink(buck, join(store, 'libexec', 'buck2'))
   const st3 = yield* executable(
     'st3',
-    `case "$1" in\n  agents) cat ${shellQuote(agentsPath)} ;;\n  subject) cat ${shellQuote(subjectPath)} ;;\n  *) exit 1 ;;\nesac`,
+    `printf '%s\\n' "$*" >> ${shellQuote(activityCalls)}\ncase "$1" in\n  agents) cat ${shellQuote(agentsPath)} ;;\n  subject) cat ${shellQuote(subjectPath)} ;;\n  *) exit 1 ;;\nesac`,
   )
   const pty = yield* executable('pty', "printf '[]\\n'")
   yield* Effect.acquireRelease(
@@ -221,6 +223,7 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
     duCalls,
     nativeCalls,
     measured,
+    activityCalls,
     st3,
     subjectPath,
     addWorktree,
@@ -232,6 +235,88 @@ const makeFixture = Effect.fn('test.buckMaintainSafety.fixture')(function* () {
     expectUnsupportedPlatform,
   }
 })
+
+for (const complete of [true, false]) {
+  it.live(
+    `shares initial host censuses across no-op roots while retaining ${complete === true ? 'complete' : 'unknown'} evidence`,
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture()
+        const worktrees: string[] = []
+        for (const name of ['a', 'b', 'c', 'd']) {
+          const worktree = yield* fixture.addWorktree(name)
+          yield* fixture.fs.remove(join(worktree, 'buck-out'), { recursive: true })
+          worktrees.push(worktree)
+        }
+        let procListings = 0
+        const boundary: FileSystem.FileSystem = {
+          ...fixture.idleFs,
+          readDirectory: (path, options) => {
+            if (path !== '/proc') return fixture.idleFs.readDirectory(path, options)
+            procListings++
+            return complete === true
+              ? Effect.succeed([])
+              : fixture.fs.readDirectory(join(fixture.store, 'unavailable-proc'))
+          },
+        }
+        const receipt = yield* fixture.run(boundary)
+        if (process.platform !== 'linux') {
+          yield* fixture.expectUnsupportedPlatform(receipt, worktrees)
+          expect(procListings).toBe(0)
+          return
+        }
+        expect(receipt.entries).toHaveLength(worktrees.length)
+        expect(receipt.entries.every((entry) => entry.action === 'none')).toBe(true)
+        expect(new Set(receipt.entries.map((entry) => entry.reason))).toEqual(
+          new Set([complete === true ? 'no-buck-out' : 'holder-census-incomplete']),
+        )
+        // One daemon enumeration and one reference census, not one per root.
+        expect(procListings).toBe(2)
+        const captures = (yield* fixture.fs.readFileString(fixture.activityCalls))
+          .trim()
+          .split('\n')
+        expect(captures).toHaveLength(1)
+        expect(captures[0]).toContain('agents ls')
+        yield* fixture.expectNoCommands()
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+}
+
+it.live('rechecks foreign ownership after measurement despite a free shared preflight', () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeFixture()
+    const worktree = yield* fixture.addWorktree('owner-arrives')
+    const manifestPath = join(fixture.store, 'activity.json')
+    const boundary: FileSystem.FileSystem = {
+      ...fixture.idleFs,
+      readFileString: (path, encoding) =>
+        Effect.gen(function* () {
+          if (path === manifestPath && (yield* fixture.fs.exists(fixture.measured)) === true) {
+            yield* fixture.writeManifest([
+              { workspace: worktree, owner: 'seat/foreign', active: false },
+            ])
+          }
+          return yield* fixture.idleFs.readFileString(path, encoding)
+        }),
+    }
+    const receipt = yield* fixture.run(boundary)
+    if (process.platform !== 'linux') {
+      yield* fixture.expectUnsupportedPlatform(receipt, [worktree])
+      return
+    }
+    expect(receipt.entries[0]).toMatchObject({
+      action: 'none',
+      reason: 'foreign-owner',
+    })
+    expect(receipt.entries[0]?.ownerEvidence).toContainEqual({
+      source: 'st3-seat',
+      owner: 'seat/foreign',
+      workspace: worktree,
+    })
+    expect(yield* fixture.fs.readFileString(fixture.duCalls)).not.toBe('')
+    expect(yield* fixture.fs.readFileString(fixture.nativeCalls)).toBe('')
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+)
 
 it.live('vetoes a complete unrelated holder first observed after output measurement', () =>
   Effect.gen(function* () {
