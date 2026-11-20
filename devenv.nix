@@ -1575,6 +1575,7 @@ in
       inputs="$(nix build --impure --no-link --print-out-paths --file nix/stage0-cargo/refresh-inputs.nix)"
       export STAGE0_GENIE="$inputs/genie/bin/genie" STAGE0_CARGO="$inputs/cargo/bin/cargo"
       export STAGE0_RUSTC="$inputs/rustc/bin/rustc" STAGE0_VENDOR="$inputs/vendor"
+      export BUCK2_EDITOR_PUBLICATION_TEST_PYTHON=${pkgs.python3}/bin/python3
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
