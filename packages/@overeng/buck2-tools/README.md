@@ -218,6 +218,10 @@ This guards accidental misuse, not adversarial same-uid processes using unmanage
 Successful acquisition records bounded advisory PID, command and system-monotonic start
 metadata for diagnostics. Contents never grant authority; validation does not rewrite them.
 
+`requireEditorPublicationInputs` traverses every path component and symlink carrier.
+Mutable inputs require that live owner and its reserved isolation, even when a carrier reaches Nix.
+Native missing-file, non-directory and symlink-loop diagnostics remain visible.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
