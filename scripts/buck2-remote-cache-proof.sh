@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Qualification must never inherit an opportunistic gate's availability policy.
+export BUCK2_CACHE_TRUSTED_QUALIFICATION=1
+unset BUCK2_CACHE_WRITE_OPTIONAL
 
 source_root="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
 cd "$source_root"
