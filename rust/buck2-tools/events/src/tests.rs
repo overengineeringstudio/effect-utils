@@ -1490,3 +1490,100 @@ fn command_success_uses_final_response_not_deprecated_span_flag() {
         assert_command_success(&decode(&path).unwrap(), expected);
     }
 }
+
+#[test]
+fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = write_log(
+        &dir,
+        "compact.pb.zst",
+        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+    );
+    let mut model = decode(&log).unwrap();
+    model.resource_attrs.push(attr("host.name", "fixture-host"));
+    model
+        .spans
+        .iter_mut()
+        .find(|span| span.action)
+        .unwrap()
+        .attrs
+        .push(attr("buck2.path", "/private/raw"));
+    let records = dir.path().join("new-parent/nested/records");
+    retained::capture(&model, &records).unwrap();
+    retained::capture(&model, &records).unwrap();
+    assert_eq!(fs::read_dir(&records).unwrap().count(), 4);
+    assert!(records.join(".directory-synced").is_file());
+    let bodies: Vec<_> = fs::read_dir(&records)
+        .unwrap()
+        .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    let body = bodies
+        .iter()
+        .find(|body| body.contains("\"conversion\""))
+        .unwrap();
+    assert!(!body.contains("/private/raw"));
+    assert!(body.contains("\"occurrence\""));
+    assert!(body.contains("buck2.occurrence_id"));
+    model.truncated = true;
+    retained::capture(&model, &records).unwrap();
+    assert_eq!(fs::read_dir(&records).unwrap().count(), 5);
+}
+
+#[test]
+fn census_survives_without_native_log_or_otlp_export() {
+    let dir = tempfile::tempdir().unwrap();
+    for phase in ["open", "terminal"] {
+        run(Cli::parse_from([
+            "buck2-events",
+            "census",
+            "--invocation-id",
+            "fixture-invocation",
+            "--phase",
+            phase,
+            "--host",
+            "fixture-host",
+            "--records-dir",
+            dir.path().to_str().unwrap(),
+        ]))
+        .unwrap();
+    }
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
+    let path = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            fs::read_to_string(path)
+                .unwrap()
+                .contains("\"phase\":\"open\"")
+        })
+        .unwrap();
+    let old = UNIX_EPOCH + Duration::from_secs(1);
+    File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    // A daily scan, not every census, expires only records older than 30 days.
+    // Clear this test-owned claim to exercise the next scan without sleeping.
+    for entry in fs::read_dir(dir.path()).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name().to_string_lossy().starts_with(".prune-") {
+            fs::remove_file(entry.path()).unwrap();
+        }
+    }
+    run(Cli::parse_from([
+        "buck2-events",
+        "census",
+        "--invocation-id",
+        "next",
+        "--phase",
+        "open",
+        "--host",
+        "fixture-host",
+        "--records-dir",
+        dir.path().to_str().unwrap(),
+    ]))
+    .unwrap();
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
+}

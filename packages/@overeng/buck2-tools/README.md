@@ -48,6 +48,49 @@ silently considered passed. Package ownership/reverse closure continues to use
 `affectedPackagePaths` and `buildTargetsFor`; file-query decoding continues to
 use `parseBuckOwnershipQuery`, rather than a second package convention.
 
+`bun packages/@overeng/buck2-tools/src/configured-check-selection.mjs manifest.json`
+collects both snapshots and emits a selection plus graph/query provenance. Run
+inside an admitted slot on the query host. The manifest has this shape:
+
+```json
+{
+  "scratch": "/owned/scratch/selection",
+  "base": {
+    "revision": "<full verified evidence-base SHA>",
+    "root": "/owned/worktree/base",
+    "buck2": "/immutable/toolchain/bin/buck2",
+    "buckArgs": [],
+    "queryArgs": ["--target-platforms", "//platforms:linux"],
+    "requiredQuery": "set(//checks:canonical-check)",
+    "universeQuery": "//...",
+    "watchPlan": { "globalPaths": [], "packages": [] }
+  },
+  "candidate": {
+    "revision": "<full candidate merge SHA>",
+    "root": "/owned/worktree/candidate",
+    "buck2": "/immutable/toolchain/bin/buck2",
+    "buckArgs": [],
+    "queryArgs": ["--target-platforms", "//platforms:linux"],
+    "requiredQuery": "set(//checks:canonical-check)",
+    "universeQuery": "//...",
+    "watchPlan": { "globalPaths": [], "packages": [] }
+  }
+}
+```
+
+Queries/inventory are caller policy, not defaults: enumerate every required Buck
+check and supply the existing watch plan for package products. `queryArgs` are
+configured-query options; `buckArgs` apply to all queries and config audit.
+The adapter derives the complete Git delta itself, rejects dirty pinned roots,
+and binds snapshots to the effective all-cell Buck configuration (including
+ignored local overrides), tool version, query arguments and policy. Owners are
+queried for files **and ancestor directories** on both sides; reverse configured
+dependencies and graph changes are unioned. A failed base/graph/owner query
+selects the full candidate inventory; failure to discover that inventory or
+verify the pinned source/configuration exits nonzero instead of emitting an empty
+success. Retain the JSON beside the caller's evidence receipt. No Buck inventory,
+however complete, replaces an unmodeled Nix or other residual check lane.
+
 ## Opt-in NativeLink TypeScript pilot
 
 The default remains local execution with the existing cache policy. On Linux,
@@ -717,6 +760,11 @@ per-file digests; its private materializer database is not an admission contract
 
 Each finite generation keeps a private, read-only `editor-view-sources-v1.json`
 manifest mapping payload paths to source stat keys and SHA-256-plus-mode addresses.
+Its exact mode is `0444`, independent of the publisher's umask: creation seals the
+private file through its descriptor, and candidate hardening normalizes private
+manifests without changing shared payload modes. Older wrong-mode manifests require
+the supported editor-root release and republish route after readers exit; shared
+CAS collection does not rewrite private generation metadata.
 Incremental materialization links unchanged content directly from the CAS after
 rechecking its recorded inode identity under the store lock. Only source-stat
 misses are copied and hashed; source Buck inodes are never linked. Stat keys
