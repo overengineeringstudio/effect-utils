@@ -20,15 +20,53 @@ fn incomplete(reason: &'static str) -> io::Error {
     io::Error::other(reason)
 }
 
-/// Return only a fixed diagnostic class, never the observed proc-link target.
-fn unsupported_anonymous_kind(name: &Path) -> &'static str {
+/// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnonymousKernelObject {
+    BpfMap, BpfProgram, BpfLink, EventFd, TimerFd, SignalFd, Epoll, Inotify,
+    PidFd, UserfaultFd, PerfEvent, IoUring, Fanotify, Unrecognized,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KernelObjectPathClass { NonPathKernelObject, PathBearingOrUnknown }
+
+impl AnonymousKernelObject {
+    fn path_class(self) -> KernelObjectPathClass {
+        match self {
+            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::EventFd
+            | Self::TimerFd | Self::SignalFd | Self::Epoll | Self::Inotify
+            | Self::PidFd | Self::UserfaultFd | Self::PerfEvent =>
+                KernelObjectPathClass::NonPathKernelObject,
+            Self::IoUring | Self::Fanotify | Self::Unrecognized =>
+                KernelObjectPathClass::PathBearingOrUnknown,
+        }
+    }
+
+    fn rejected_kind(self) -> &'static str {
+        match self {
+            Self::IoUring => "io-uring",
+            Self::Fanotify => "fanotify",
+            _ => "other",
+        }
+    }
+}
+
+fn anonymous_kernel_object(name: &Path) -> AnonymousKernelObject {
     match name.to_str() {
-        Some("anon_inode:[io_uring]") => "io-uring",
-        Some("anon_inode:[pidfd]" | "anon_inode:pidfd") => "pidfd",
-        Some("anon_inode:[fanotify]" | "anon_inode:fanotify") => "fanotify",
-        Some("anon_inode:bpf-map" | "anon_inode:bpf-prog" | "anon_inode:bpf-link") => "bpf",
-        Some("anon_inode:[userfaultfd]" | "anon_inode:userfaultfd") => "userfaultfd",
-        _ => "other",
+        Some("anon_inode:bpf-map") => AnonymousKernelObject::BpfMap,
+        Some("anon_inode:bpf-prog") => AnonymousKernelObject::BpfProgram,
+        Some("anon_inode:bpf-link") => AnonymousKernelObject::BpfLink,
+        Some("anon_inode:[eventfd]") => AnonymousKernelObject::EventFd,
+        Some("anon_inode:[timerfd]") => AnonymousKernelObject::TimerFd,
+        Some("anon_inode:[signalfd]") => AnonymousKernelObject::SignalFd,
+        Some("anon_inode:[eventpoll]") => AnonymousKernelObject::Epoll,
+        Some("anon_inode:inotify") => AnonymousKernelObject::Inotify,
+        Some("anon_inode:[pidfd]" | "anon_inode:pidfd") => AnonymousKernelObject::PidFd,
+        Some("anon_inode:[userfaultfd]" | "anon_inode:userfaultfd") => AnonymousKernelObject::UserfaultFd,
+        Some("anon_inode:[perf_event]") => AnonymousKernelObject::PerfEvent,
+        Some("anon_inode:[io_uring]") => AnonymousKernelObject::IoUring,
+        Some("anon_inode:[fanotify]" | "anon_inode:fanotify") => AnonymousKernelObject::Fanotify,
+        _ => AnonymousKernelObject::Unrecognized,
     }
 }
 
@@ -43,22 +81,38 @@ mod diagnostic_tests {
     }
 
     #[test]
-    fn anonymous_kind_never_returns_an_observed_target() {
-        for (name, expected) in [
-            ("anon_inode:[io_uring]", "io-uring"),
-            ("anon_inode:[pidfd]", "pidfd"),
-            ("anon_inode:pidfd", "pidfd"),
-            ("anon_inode:[fanotify]", "fanotify"),
-            ("anon_inode:fanotify", "fanotify"),
-            ("anon_inode:bpf-map", "bpf"),
-            ("anon_inode:bpf-prog", "bpf"),
-            ("anon_inode:bpf-link", "bpf"),
-            ("anon_inode:[userfaultfd]", "userfaultfd"),
-            ("anon_inode:userfaultfd", "userfaultfd"),
-            ("/untrusted/proc-link-target", "other"),
+    fn anonymous_kind_is_closed_and_typed() {
+        use super::{AnonymousKernelObject as Object, KernelObjectPathClass as Class};
+        for (name, object) in [
+            ("anon_inode:bpf-map", Object::BpfMap),
+            ("anon_inode:bpf-prog", Object::BpfProgram),
+            ("anon_inode:bpf-link", Object::BpfLink),
+            ("anon_inode:[eventfd]", Object::EventFd),
+            ("anon_inode:[timerfd]", Object::TimerFd),
+            ("anon_inode:[signalfd]", Object::SignalFd),
+            ("anon_inode:[eventpoll]", Object::Epoll),
+            ("anon_inode:inotify", Object::Inotify),
+            ("anon_inode:[pidfd]", Object::PidFd),
+            ("anon_inode:pidfd", Object::PidFd),
+            ("anon_inode:[userfaultfd]", Object::UserfaultFd),
+            ("anon_inode:userfaultfd", Object::UserfaultFd),
+            ("anon_inode:[perf_event]", Object::PerfEvent),
         ] {
-            assert_eq!(super::unsupported_anonymous_kind(std::path::Path::new(name)), expected);
+            let actual = super::anonymous_kernel_object(std::path::Path::new(name));
+            assert_eq!(actual, object);
+            assert_eq!(actual.path_class(), Class::NonPathKernelObject);
         }
+        for name in [
+            "anon_inode:[io_uring]", "anon_inode:[fanotify]", "anon_inode:fanotify",
+            "anon_inode:bpf-map-unknown", "anon_inode:bpf-prog/child",
+            "/untrusted/proc-link-target",
+        ] {
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(name)).path_class(),
+                Class::PathBearingOrUnknown);
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let non_utf8 = std::ffi::OsStr::from_bytes(b"anon_inode:bpf-map\xff");
+        assert_eq!(super::anonymous_kernel_object(std::path::Path::new(non_utf8)), Object::Unrecognized);
     }
 }
 
@@ -218,8 +272,8 @@ impl Held {
         Ok(())
     }
 }
-/// These are event/byte objects, not a blanket pseudo-filesystem exemption.
-/// In particular io_uring, pidfds, fanotify and BPF remain unqualified.
+/// Exact non-path object classes do not grant access to a candidate payload.
+/// io_uring, fanotify and unrecognized anonymous objects remain unqualified.
 pub fn qualify_object(held: &Held) -> io::Result<()> {
     let metadata = held.file.metadata()?;
     let filesystem = linux::filesystem_type(&held.file)?;
@@ -231,11 +285,9 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     }
     if filesystem == 0x09041934 {
         let name = fs::read_link(scope_path(&held.file))?;
-        if !matches!(name.to_str(), Some("anon_inode:[eventfd]" | "anon_inode:[eventpoll]"
-            | "anon_inode:inotify" | "anon_inode:[timerfd]" | "anon_inode:[signalfd]"))
-        {
-            eprintln!("worktree-holder-proc-unsupported-anon kind={}",
-                unsupported_anonymous_kind(&name));
+        let object = anonymous_kernel_object(&name);
+        if object.path_class() == KernelObjectPathClass::PathBearingOrUnknown {
+            eprintln!("worktree-holder-proc-unsupported-anon kind={}", object.rejected_kind());
             return Err(incomplete("unsupported path-bearing kernel object"));
         }
         return Ok(());
