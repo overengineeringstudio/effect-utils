@@ -146,7 +146,7 @@ fn verify_file_reread(
     first: &Sha256,
     buffer: &mut [u8],
 ) -> io::Result<bool> {
-    if !same_file_identity(before, after) {
+    if !same_file_identity(before, after) || !same_file_identity(after, &file.metadata()?) {
         return Ok(false);
     }
     // A sibling hardlink can disappear while an assembled Buck input is read.
@@ -752,6 +752,7 @@ mod tests {
             let path = scratch.path().join("file");
             let alias = scratch.path().join("peer");
             fs::write(&path, b"original bytes").unwrap();
+            fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
             fs::hard_link(&path, &alias).unwrap();
             let read = interrupted_read(&path, || {
                 fs::remove_file(&alias).unwrap();
@@ -784,6 +785,36 @@ mod tests {
         let read = interrupted_read(&path, || fs::remove_file(&alias).unwrap());
         fs::hard_link(&path, scratch.path().join("later-peer")).unwrap();
         assert!(!read.verify(&path));
+    }
+
+    #[test]
+    fn writable_file_rejects_descriptor_from_temporarily_replaced_path() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("file");
+        let original = scratch.path().join("original");
+        fs::write(&path, b"original bytes").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::rename(&path, &original).unwrap();
+        fs::write(&path, b"modified bytes").unwrap();
+        let mut file = File::open(&path).unwrap();
+        fs::rename(&original, &path).unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+        assert_eq!(before.ino(), after.ino());
+        assert_ne!(file.metadata().unwrap().ino(), after.ino());
+        let mut prefix = Sha256::new();
+        prefix.update(b"tree prefix");
+        let mut hash = prefix.clone();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        hash.update(bytes);
+        assert!(!InterruptedRead {
+            file,
+            before,
+            after,
+            prefix,
+            hash,
+        }
+        .verify(&path));
     }
 
     #[test]
