@@ -1084,6 +1084,10 @@ process.stdout.write(String(process.pid) + '\\n')
 const withOwnedCacheProtocol = async (
   run: (fixture: { cwd: string; native: string; env: NodeJS.ProcessEnv }) => Promise<void>,
 ): Promise<void> => withPublicationRoot(async (cwd) => {
+  const ownerLibrary = process.env['BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY']
+  if (ownerLibrary === undefined)
+    throw new Error('Owned cache protocol tests require the declared publication owner library')
+  let home: string | undefined
   const grpc = createServer()
   grpc.on('stream', (stream) => {
     stream.on('data', () => {})
@@ -1096,6 +1100,7 @@ const withOwnedCacheProtocol = async (
   grpc.listen(0, '127.0.0.1', listening.resolve)
   await listening.promise
   try {
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'buck-publication-protocol-home-')))
     const address = grpc.address()
     if (address === null || typeof address === 'string') throw new Error('missing protocol address')
     writeFileSync(join(cwd, '.buckconfig'),
@@ -1125,14 +1130,19 @@ else if (args.includes('audit')) {
     await run({
       cwd, native,
       env: {
-        HOME: cwd, XDG_CACHE_HOME: join(cwd, 'probe-cache'), BUCK2_CI_POSTURE: '1',
+        HOME: home, XDG_CACHE_HOME: join(cwd, 'probe-cache'), BUCK2_CI_POSTURE: '1',
+        BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: ownerLibrary,
         REMOTE_DIAGNOSTIC: reUnavailable, LOCAL_DIAGNOSTIC: reUnavailable, LOCAL_EXIT: '29',
       },
     })
   } finally {
-    const closed = Promise.withResolvers<void>()
-    grpc.close((error) => error ? closed.reject(error) : closed.resolve())
-    await closed.promise
+    try {
+      const closed = Promise.withResolvers<void>()
+      grpc.close((error) => error ? closed.reject(error) : closed.resolve())
+      await closed.promise
+    } finally {
+      if (home !== undefined) rmSync(home, { recursive: true, force: true })
+    }
   }
 })
 
