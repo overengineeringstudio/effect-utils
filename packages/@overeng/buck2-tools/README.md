@@ -206,6 +206,8 @@ Darwin arm64 passes variadic arguments differently from fixed-arity FFI argument
 The Nix build checks atomic CLOEXEC, genuine flag clearing/restoration, and
 independent-descriptor lock contention against the produced shared library.
 Portable compiled payloads remain unchanged; native wrappers own this dependency.
+The C source is projected independently of the repository snapshot. An evaluated
+identity regression ensures unrelated documentation cannot invalidate every Bun tool closure.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
