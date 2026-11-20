@@ -2018,8 +2018,12 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
-  it('releases the flock when directory restoration fails and repairs on the next acquisition', async () => {
-    await withStore(async ({ contentStore, candidate }) => {
+  it.each([0o077, 0o022])(
+    'releases the flock when directory restoration fails and repairs on the next acquisition (umask %s)',
+    async (mask) => {
+      const previousMask = process.umask(mask)
+      try {
+        await withStore(async ({ contentStore, candidate }) => {
       const seed = candidate('seed')
       payload(seed, 'payload', 'seed bytes')
       await shareSnapshotFiles({ candidate: seed, contentStore })
@@ -2031,14 +2035,18 @@ describe('host-wide editor snapshot content store', () => {
         (path === contentStore || path.startsWith(`${contentStore}/`) === true)
       let unrestored: string | undefined
       const originalOpen = fsPromises.open
-      // Fault only the first readonly restoration of a store directory handle.
+      // Fault a writable-to-readonly transition, never initial readonly mode normalization.
       const open = vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
         const handle = await originalOpen(...args)
         const path = args[0]
         if (inStore(path) === true) {
           const originalChmod = handle.chmod.bind(handle)
           vi.spyOn(handle, 'chmod').mockImplementation(async (next) => {
-            if (unrestored === undefined && next === 0o555) {
+            if (
+              unrestored === undefined &&
+              next === 0o555 &&
+              ((await handle.stat()).mode & 0o222) !== 0
+            ) {
               unrestored = path
               throw failure
             }
@@ -2072,8 +2080,12 @@ describe('host-wide editor snapshot content store', () => {
       expect(inode(file)).toBe(inode(blobPath(contentStore, 'restoration bytes')))
       expectReadonlyStore(contentStore)
       expectIdleStoreLock(contentStore)
-    })
-  })
+        })
+      } finally {
+        process.umask(previousMask)
+      }
+    },
+  )
 
   it('refuses a symbolic-link flock without following or replacing it', async () => {
     await withStore(async ({ contentStore, candidate }) => {
