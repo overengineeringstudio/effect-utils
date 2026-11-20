@@ -92,6 +92,7 @@ import {
   closeFingerprintAdmission,
   editorViewTimingContext,
   runFingerprintTool,
+  withFingerprintScope,
 } from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
@@ -4540,6 +4541,187 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   }
 }
 
+export type EditorViewDispatchResult = {
+  readonly stdout: string
+  readonly stderr: string
+  readonly exitCode: number
+}
+
+/** Run the literal CLI flow without process-global arguments, environment, or signal handlers. */
+export const dispatchEditorView = async ({
+  signal,
+  ...request
+}: {
+  readonly args: readonly string[]
+  readonly batchRequests?: unknown
+  readonly publicationOwner?: EditorPublicationOwner
+  readonly onStdout?: (value: string) => void
+  readonly onStderr?: (value: string) => void
+  readonly signal?: AbortSignal
+}): Promise<EditorViewDispatchResult> => {
+  signal?.throwIfAborted()
+  const controller = new AbortController()
+  const cancel = (): void => controller.abort(signal?.reason)
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted === true) cancel()
+  const scope: EditorViewDispatchScope = {
+    signal: controller.signal,
+    copies: new Set(),
+    children: new Set(),
+  }
+  let killTimer: NodeJS.Timeout | undefined
+  const terminate = (): void => {
+    for (const child of scope.children) child.kill('SIGTERM')
+    killTimer = setTimeout(() => {
+      for (const child of scope.children) child.kill('SIGKILL')
+    }, 5_000)
+    killTimer.unref()
+  }
+  controller.signal.addEventListener('abort', terminate, { once: true })
+  try {
+    return await withFingerprintScope({
+      signal: controller.signal,
+      run: () =>
+        editorViewDispatchScope.run(scope, async () => {
+          try {
+            const result = await dispatchEditorViewRequest(request)
+            signal?.throwIfAborted()
+            return result
+          } finally {
+            controller.abort()
+            while (scope.copies.size > 0)
+              // eslint-disable-next-line no-await-in-loop -- Late siblings must close before ownership returns.
+              await Promise.allSettled([...scope.copies])
+          }
+        }),
+    })
+  } finally {
+    clearTimeout(killTimer)
+    controller.signal.removeEventListener('abort', terminate)
+    signal?.removeEventListener('abort', cancel)
+  }
+}
+
+const dispatchEditorViewRequest = async ({
+  args,
+  batchRequests,
+  publicationOwner,
+  onStdout,
+  onStderr,
+}: {
+  readonly args: readonly string[]
+  readonly batchRequests?: unknown
+  readonly publicationOwner?: EditorPublicationOwner
+  readonly onStdout?: (value: string) => void
+  readonly onStderr?: (value: string) => void
+}): Promise<EditorViewDispatchResult> => {
+  let stdout = ''
+  let stderr = ''
+  let exitCode = 0
+  const writeOutput = (value: string): void => {
+    stdout += value
+    onStdout?.(value)
+  }
+  if (args[0] === 'budget') {
+    if (args.length !== 2 || args[1] !== 'recount') fail('expected budget recount')
+    writeOutput(`${JSON.stringify(await recountEditorViewBudget())}\n`)
+    return { stdout, stderr, exitCode }
+  }
+  if (args[0] === 'publish-batch') {
+    if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')
+    if (isUnknownArray(batchRequests) === false) return fail('batch requests must be an array')
+    const requests = batchRequests.map((request) => {
+      if (
+        isUnknownArray(request) === false ||
+        request.every((value): value is string => typeof value === 'string') === false
+      )
+        return fail('each batch request must be an array of publish arguments')
+      const parsed = parseCli(request)
+      if (parsed.command !== 'publish') fail('batch requests may only publish views')
+      return publicationOwner === undefined
+        ? parsed.options
+        : { ...parsed.options, publicationOwner }
+    })
+    await publishEditorViews({
+      options: requests,
+      onPublished: (record, durationMs) => {
+        const timing = `[editor-view-timing] ${JSON.stringify({
+          phase: 'editor-view',
+          packagePath: record.package,
+          durationMs,
+        })}\n`
+        stderr += timing
+        onStderr?.(timing)
+        writeOutput(`published ${record.package} editor view ${record.editorInputsFingerprint}\n`)
+      },
+    })
+    return { stdout, stderr, exitCode }
+  }
+  const parsed = parseCli(args)
+  const options =
+    publicationOwner === undefined ? parsed.options : { ...parsed.options, publicationOwner }
+  if (parsed.command === 'publish') {
+    const record = await publishEditorView(options)
+    writeOutput(`published ${record.package} editor view ${record.editorInputsFingerprint}\n`)
+  } else if (parsed.command === 'check') {
+    const record = await checkEditorView(options)
+    writeOutput(`checked ${record.package} editor view ${record.editorInputsFingerprint}\n`)
+  } else if (parsed.command === 'verify') {
+    const record = await verifyEditorViewSnapshot(options)
+    writeOutput(`verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`)
+  } else if (parsed.command === 'release') {
+    await releaseEditorViewRoot(options)
+    writeOutput(`released editor dependency root for ${options.package}\n`)
+  } else if (parsed.command === 'retire') {
+    const paths = makePaths(options)
+    const roots = new Set([
+      paths.editorRoot,
+      join(paths.packageDir, '.editor-view'),
+      ...(options.package === '.'
+        ? editorViewRootSuffixes.map((suffix) => join(paths.repoRoot, suffix))
+        : []),
+    ])
+    for (const root of roots) {
+      // eslint-disable-next-line no-await-in-loop -- Shared roots retire sequentially under their fences.
+      await retireEditorViewRoot({ options, editorRoot: root })
+    }
+    writeOutput(`retired editor dependency roots for ${options.package}\n`)
+  } else if (parsed.command === 'collect-content') {
+    const collected = await collectEditorViewContentStore({
+      contentStore: makePaths(options).contentStore,
+    })
+    writeOutput(`collected editor content ${JSON.stringify(collected)}\n`)
+  } else if (parsed.command === 'repair-content') {
+    const contentStore = makePaths(options).contentStore
+    const repaired =
+      parsed.dryRun === true
+        ? await inspectEditorViewContentStore({ contentStore })
+        : await repairEditorViewContentStore({ contentStore, quiesced: true })
+    writeOutput(
+      `${parsed.dryRun === true ? 'inspected' : 'repaired'} editor content ${JSON.stringify(repaired)}\n`,
+    )
+    if (repaired.mismatchedBlobs.length > 0) exitCode = 1
+  } else if (parsed.command === 'pin') {
+    const pin = await pinEditorView({
+      options,
+      name: parsed.name ?? fail('missing required option --name'),
+      ...(parsed.snapshot !== undefined ? { snapshot: parsed.snapshot } : {}),
+    })
+    writeOutput(`pinned editor view ${pin.name} ${pin.snapshot}\n`)
+  } else if (parsed.command === 'unpin') {
+    const name = parsed.name ?? fail('missing required option --name')
+    await unpinEditorView({ options, name })
+    writeOutput(`unpinned editor view ${name}\n`)
+  } else {
+    recoverEditorViewLock({
+      options,
+      token: parsed.token ?? fail('missing required option --token'),
+    })
+    writeOutput('recovered editor view publication lock\n')
+  }
+  return { stdout, stderr, exitCode }
+}
+
 const main = async (): Promise<void> => {
   process.once('SIGTERM', () => {
     closeFingerprintAdmission()
@@ -4548,108 +4730,15 @@ const main = async (): Promise<void> => {
     setTimeout(() => process.exit(143), 100)
   })
   const args = process.argv.slice(2)
-  if (args[0] === 'budget') {
-    if (args.length !== 2 || args[1] !== 'recount') fail('expected budget recount')
-    process.stdout.write(`${JSON.stringify(await recountEditorViewBudget())}\n`)
-    return
-  }
-  if (args[0] === 'publish-batch') {
-    if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')
-    const raw: unknown = JSON.parse(readFileSync(0, 'utf8'))
-    if (isUnknownArray(raw) === false) fail('batch requests must be an array')
-    const requests = raw.map((request) => {
-      if (
-        isUnknownArray(request) === false ||
-        request.every((value): value is string => typeof value === 'string') === false
-      )
-        return fail('each batch request must be an array of publish arguments')
-      const parsed = parseCli(request)
-      if (parsed.command !== 'publish') fail('batch requests may only publish views')
-      return parsed.options
-    })
-    await publishEditorViews({
-      options: requests,
-      onPublished: (record, durationMs) => {
-        process.stderr.write(
-          `[editor-view-timing] ${JSON.stringify({
-            phase: 'editor-view',
-            packagePath: record.package,
-            durationMs,
-          })}\n`,
-        )
-        process.stdout.write(
-          `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
-        )
-      },
-    })
-    return
-  }
-  const parsed = parseCli(process.argv.slice(2))
-  if (parsed.command === 'publish') {
-    const record = await publishEditorView(parsed.options)
-    process.stdout.write(
-      `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
-    )
-  } else if (parsed.command === 'check') {
-    const record = await checkEditorView(parsed.options)
-    process.stdout.write(
-      `checked ${record.package} editor view ${record.editorInputsFingerprint}\n`,
-    )
-  } else if (parsed.command === 'verify') {
-    const record = await verifyEditorViewSnapshot(parsed.options)
-    process.stdout.write(
-      `verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`,
-    )
-  } else if (parsed.command === 'release') {
-    await releaseEditorViewRoot(parsed.options)
-    process.stdout.write(`released editor dependency root for ${parsed.options.package}\n`)
-  } else if (parsed.command === 'retire') {
-    const paths = makePaths(parsed.options)
-    const roots = new Set([
-      paths.editorRoot,
-      join(paths.packageDir, '.editor-view'),
-      ...(parsed.options.package === '.'
-        ? editorViewRootSuffixes.map((suffix) => join(paths.repoRoot, suffix))
-        : []),
-    ])
-    for (const root of roots) {
-      // eslint-disable-next-line no-await-in-loop -- Shared roots retire sequentially under their fences.
-      await retireEditorViewRoot({ options: parsed.options, editorRoot: root })
-    }
-    process.stdout.write(`retired editor dependency roots for ${parsed.options.package}\n`)
-  } else if (parsed.command === 'collect-content') {
-    const collected = await collectEditorViewContentStore({
-      contentStore: makePaths(parsed.options).contentStore,
-    })
-    process.stdout.write(`collected editor content ${JSON.stringify(collected)}\n`)
-  } else if (parsed.command === 'repair-content') {
-    const contentStore = makePaths(parsed.options).contentStore
-    const repaired =
-      parsed.dryRun === true
-        ? await inspectEditorViewContentStore({ contentStore })
-        : await repairEditorViewContentStore({ contentStore, quiesced: true })
-    process.stdout.write(
-      `${parsed.dryRun === true ? 'inspected' : 'repaired'} editor content ${JSON.stringify(repaired)}\n`,
-    )
-    if (repaired.mismatchedBlobs.length > 0) process.exitCode = 1
-  } else if (parsed.command === 'pin') {
-    const pin = await pinEditorView({
-      options: parsed.options,
-      name: parsed.name ?? fail('missing required option --name'),
-      ...(parsed.snapshot !== undefined ? { snapshot: parsed.snapshot } : {}),
-    })
-    process.stdout.write(`pinned editor view ${pin.name} ${pin.snapshot}\n`)
-  } else if (parsed.command === 'unpin') {
-    const name = parsed.name ?? fail('missing required option --name')
-    await unpinEditorView({ options: parsed.options, name })
-    process.stdout.write(`unpinned editor view ${name}\n`)
-  } else {
-    recoverEditorViewLock({
-      options: parsed.options,
-      token: parsed.token ?? fail('missing required option --token'),
-    })
-    process.stdout.write('recovered editor view publication lock\n')
-  }
+  const result = await dispatchEditorView({
+    args,
+    onStdout: (value) => process.stdout.write(value),
+    onStderr: (value) => process.stderr.write(value),
+    ...(args[0] === 'publish-batch' && args.length === 1
+      ? { batchRequests: JSON.parse(readFileSync(0, 'utf8')) as unknown }
+      : {}),
+  })
+  if (result.exitCode !== 0) process.exitCode = result.exitCode
 }
 
 if (import.meta.main === true) await main()
