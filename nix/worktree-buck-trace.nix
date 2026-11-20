@@ -26,8 +26,10 @@ pkgs.writeShellScript "worktree-buck-trace" ''
   spool="''${PIPELINE_SPOOL_DIR:-$WORKSPACE_ROOT/.worktree-tools/otel}/buck2"
   event_log=""
   sidecar=""
-  unset BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
+  caller_uuid="''${BUCK2_CALLER_UUID:-}"
+  unset BUCK2_CALLER_UUID BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
     BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID
+  if [ -n "$caller_uuid" ]; then export BUCK_WRAPPER_UUID="$caller_uuid"; fi
   if ${pkgs.coreutils}/bin/mkdir -p "$spool"; then
     command_key="buck-$(${pkgs.coreutils}/bin/date +%s%N)-$$"
     event_log="$spool/$command_key.pb.zst"
@@ -35,7 +37,9 @@ pkgs.writeShellScript "worktree-buck-trace" ''
     prefix_count=$((command_index + 1))
     buck_args=("''${buck_args[@]:0:prefix_count}" --event-log "$event_log" \
       --write-build-id "$spool/$command_key.buck-trace-id" "''${buck_args[@]:prefix_count}")
-    if prepared="$(${otelSpan}/bin/otel-span buck2 --sidecar "$sidecar")"; then
+    identity_args=(--sidecar "$sidecar")
+    if [ -n "$caller_uuid" ]; then identity_args+=(--uuid "$caller_uuid"); fi
+    if prepared="$(${otelSpan}/bin/otel-span buck2 "''${identity_args[@]}")"; then
       eval "$prepared"
     fi
   fi
