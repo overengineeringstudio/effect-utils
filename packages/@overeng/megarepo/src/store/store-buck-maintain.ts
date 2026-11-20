@@ -10,6 +10,7 @@ import {
   findWorktreeBuckDaemons,
   hasWorktreeBuckClients,
   newestBuckLogWriteMs,
+  readBuckDaemonCensus,
   readBuckProjectRoot,
   runBuck2,
   stopWorktreeBuckDaemons,
@@ -36,9 +37,11 @@ import { loadStoreGcConfig } from './store-gc-config.ts'
 import { isInsideWorktree, parseProcStat, readProcessReferences } from './store-inuse.ts'
 import {
   isWorkspaceActive,
+  makeBudgetActivityPreflight,
   readBudgetWorkspaceActivity,
   readBudgetWorktreeInUse,
   readWorkspaceActivity,
+  type BudgetActivityPreflight,
 } from './store-workspace-activity.ts'
 import { Store, StoreLayer } from './store.ts'
 
@@ -134,9 +137,13 @@ const nativeBinary = Effect.fn('store.buckMaintain.nativeBinary')(function* (
 const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
   worktree: string,
   daemons: ReadonlyArray<WorktreeBuckDaemon>,
+  preflight?: BudgetActivityPreflight,
 ) {
   const fs = yield* FileSystem.FileSystem
-  const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope: 'all-uids' })
+  const scan =
+    preflight === undefined
+      ? yield* readProcessReferences({ fs, selfPid: process.pid, scope: 'all-uids' })
+      : yield* preflight.scan({ scope: 'all-uids' })
   const references = scan._tag === 'complete' ? scan.references : []
   const pids = new Set(
     references
@@ -190,6 +197,10 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
   const reportOnly = dryRun || (currentAgent === undefined && config.maintainOwners.length === 0)
   const blackout = isInBlackout({ now: Date.now(), blackout: config.blackout })
   const entries: BuckMaintainEntry[] = []
+  // Shared observations select candidates only. capture() without an argument
+  // always takes fresh evidence under the lease before EACH native action.
+  let preflight: BudgetActivityPreflight | undefined
+  let daemonCensus: ReadonlyArray<WorktreeBuckDaemon> | undefined
   for (const worktree of yield* discoverBuckMaintainWorktrees(roots)) {
     if (process.platform !== 'linux') {
       entries.push({
@@ -203,10 +214,17 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       })
       continue
     }
-    let daemons = yield* findWorktreeBuckDaemons({ worktreePath: worktree })
+    preflight ??= yield* makeBudgetActivityPreflight(fs)
+    daemonCensus ??= yield* readBuckDaemonCensus()
+    let daemons = yield* findWorktreeBuckDaemons({
+      worktreePath: worktree,
+      preflightCensus: daemonCensus,
+    })
     let ignoredProcesses = daemons.flatMap((entry) => entry.processes)
     const ownerEvidence: BuckMaintainOwnerEvidence[] = []
-    const capture = Effect.fn('store.buckMaintain.capture')(function* () {
+    const capture = Effect.fn('store.buckMaintain.capture')(function* (
+      initialPreflight?: BudgetActivityPreflight,
+    ) {
       const preflightGit = yield* readBuckMaintainGitEvidence(worktree)
       if (preflightGit.locked !== false || preflightGit.lastActivityMs === undefined)
         return {
@@ -221,11 +239,13 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         config: activityConfig,
         ignoredOwnProcesses: ignoredProcesses,
         ignoredManifestProcesses: ignoredProcesses,
+        preflight: initialPreflight,
       })
       const preflightHolder = yield* readBudgetWorktreeInUse({
         worktreePath: worktree,
         activity,
         ignoredProcesses,
+        preflight: initialPreflight,
       })
       if (preflightHolder._tag !== 'free')
         return {
@@ -235,7 +255,10 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
           activity,
           fullLastActivityMs: undefined,
         }
-      const native = yield* readWorkspaceActivity({ fs })
+      const native =
+        initialPreflight === undefined
+          ? yield* readWorkspaceActivity({ fs })
+          : yield* initialPreflight.nativeActivity
       const seatEvidence: BuckMaintainOwnerEvidence[] = []
       const canonicalWorktree = yield* fs.realPath(worktree).pipe(Effect.option)
       for (const claim of [...(activity?.ownerClaims ?? []), ...(native?.ownerClaims ?? [])]) {
@@ -264,7 +287,10 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
       }
       // Ownership is monotonic within a run: a later scan must not erase an earlier owner
       // or uncertainty, and one unknown source must never hide a known foreign owner.
-      ownerEvidence.push(...(yield* processOwners(worktree, daemons)), ...seatEvidence)
+      ownerEvidence.push(
+        ...(yield* processOwners(worktree, daemons, initialPreflight)),
+        ...seatEvidence,
+      )
       // Refresh filesystem and holder gates after the potentially slow native
       // claim and owner captures, not before them.
       const git = yield* readBuckMaintainGitEvidence(worktree)
@@ -272,6 +298,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         worktreePath: worktree,
         activity,
         ignoredProcesses,
+        preflight: initialPreflight,
       })
       const evidence = ownerEvidence
       const owners = evidence.map((entry) => entry.owner)
@@ -323,7 +350,7 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         fullLastActivityMs,
       }
     })
-    const initial = blackout === true ? undefined : yield* capture()
+    const initial = blackout === true ? undefined : yield* capture(preflight)
     // Skip gates precede all output accounting; a no-op must not walk buck-out.
     const base = {
       worktree,

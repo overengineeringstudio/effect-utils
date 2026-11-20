@@ -134,6 +134,14 @@
         "rationale": "State-store and storage-policy tests exercise real on-disk object persistence, replacement and garbage collection on Darwin."
       },
       {
+        "task": "test:scg-authority",
+        "rationale": "Bun Vitest integration tests open real on-disk SQLite databases and exercise durable authority state, reopen recovery and scoped temporary filesystem cleanup on Darwin."
+      },
+      {
+        "task": "test:scg-discord",
+        "rationale": "Bun Vitest signer integration tests exercise real on-disk authority and Discord SQLite persistence, close/reopen restart receipts and local HTTP lifecycle on Darwin."
+      },
+      {
         "task": "test:utils",
         "rationale": "Host filesystem backing, FileLogger and native filesystem/process utilities execute against the Darwin runner. Vite identity metadata fixtures cover linked-worktree gitdir/commondir resolution, packed-to-loose ref precedence and detached HEAD object readability."
       },
@@ -310,6 +318,10 @@
       {
         "task": "test:restate-effect",
         "rationale": "restate-effect bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:scg-protocol",
+        "rationale": "Bun Vitest canonical JSON, schema, digest and deterministic Ed25519 protocol-vector assertions; no host filesystem, process-lifecycle or Darwin-specific behavior."
       },
       {
         "task": "test:tui-core",
