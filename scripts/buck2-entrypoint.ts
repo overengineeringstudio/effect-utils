@@ -2254,6 +2254,19 @@ type NativeCommandResult = {
   output: string
   signalCode: NodeJS.Signals | null
   durationMs: number
+  stdout?: string
+  stderr?: string
+}
+
+type NativeExecution = {
+  readonly cwd?: string
+  readonly env?: NodeJS.ProcessEnv
+  readonly signal?: AbortSignal
+  readonly stdin?: 'inherit' | 'ignore'
+  readonly capture?: boolean
+  readonly captureStderr?: boolean
+  readonly onStdout?: (chunk: Uint8Array) => void
+  readonly onStderr?: (chunk: Uint8Array) => void
 }
 
 /** Spawn exactly once, preserving inherited stdout and forwarding redirected stderr byte-for-byte. */
@@ -2262,7 +2275,15 @@ const spawnNativeCommand = ({
   args,
   stderr,
   deadlineMs,
-}: {
+  cwd,
+  env = process.env,
+  signal,
+  stdin = 'inherit',
+  capture = false,
+  captureStderr = true,
+  onStdout,
+  onStderr,
+}: NativeExecution & {
   readonly native: string
   readonly args: readonly string[]
   readonly stderr: 'inherit' | 'pipe'
@@ -2270,53 +2291,127 @@ const spawnNativeCommand = ({
 }) => {
   const started = performance.now()
   const child = Bun.spawn([native, ...args], {
-    env: process.env,
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr,
+    cwd,
+    env,
+    stdin,
+    stdout: capture ? 'pipe' : 'inherit',
+    stderr: capture ? 'pipe' : stderr,
   })
   let interrupted = false
   let timedOut = false
   const writes = new AbortController()
   let durationMs = 0
-  const exited = child.exited.then((exitCode) => {
-    durationMs = Math.max(0, Math.round(performance.now() - started))
-    return exitCode
-  })
+  let processingFailed = false
+  let processingError: unknown
+  const retainProcessingError = (error: unknown): void => {
+    if (processingFailed === false) {
+      processingFailed = true
+      processingError = error
+    }
+  }
+  const exited = child.exited.then(
+    (exitCode) => {
+      durationMs = Math.max(0, Math.round(performance.now() - started))
+      return exitCode
+    },
+    (error: unknown) => {
+      retainProcessingError(error)
+      throw error
+    },
+  )
+  let hardDeadline: NodeJS.Timeout | undefined
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
     writes.abort()
     child.kill(signal)
+    hardDeadline ??= setTimeout(() => child.kill('SIGKILL'), 5000)
   }
+  const cancel = () => forward('SIGTERM')
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted === true) cancel()
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((signal) => () => forward(signal))
-  for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
-  let hardDeadline: NodeJS.Timeout | undefined
+  if (capture === false)
+    for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
   const deadline =
     deadlineMs === undefined
       ? undefined
       : setTimeout(() => {
           timedOut = true
           forward('SIGTERM')
-          hardDeadline = setTimeout(() => child.kill('SIGKILL'), 5000)
         }, deadlineMs)
+  let diagnosticBytes = 0
+  let diagnosticComplete = true
+  const collect = async (
+    stream: AsyncIterable<Uint8Array> | null,
+    callback?: (chunk: Uint8Array) => void,
+    diagnostic = false,
+  ): Promise<string> => {
+    if (stream === null) return ''
+    const decoder = new TextDecoder()
+    let text = ''
+    let forwarding = true
+    try {
+      for await (const chunk of stream) {
+        if (diagnostic) {
+          diagnosticBytes += chunk.byteLength
+          if (diagnosticBytes > 262144) {
+            diagnosticComplete = false
+            text = ''
+          } else text += decoder.decode(chunk, { stream: true })
+        } else text += decoder.decode(chunk, { stream: true })
+        if (forwarding) {
+          try {
+            callback?.(chunk)
+          } catch (error) {
+            retainProcessingError(error)
+            forwarding = false
+            if (diagnostic) diagnosticComplete = false
+          }
+        }
+      }
+    } catch (error) {
+      // A failed output consumer/stream never short-circuits joining native.
+      retainProcessingError(error)
+      if (diagnostic) diagnosticComplete = false
+    }
+    return diagnostic && diagnosticBytes > 262144 ? '' : text + decoder.decode()
+  }
   const result = (async (): Promise<NativeCommandResult> => {
     try {
-      const output =
-        child.stderr === null
-          ? ''
-          : await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
-      const exitCode = await exited
+      const stdoutPromise = capture ? collect(child.stdout, onStdout) : Promise.resolve('')
+      const stderrPromise = capture
+        ? collect(child.stderr, onStderr, true)
+        : child.stderr === null
+          ? Promise.resolve('')
+          : captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const [stdoutResult, outputResult, exitResult] = await Promise.allSettled([
+        stdoutPromise,
+        stderrPromise,
+        exited,
+      ])
+      for (const settled of [stdoutResult, outputResult, exitResult])
+        if (settled.status === 'rejected') retainProcessingError(settled.reason)
+      if (processingFailed === true) throw processingError
+      if (stdoutResult.status === 'rejected') throw stdoutResult.reason
+      if (outputResult.status === 'rejected') throw outputResult.reason
+      if (exitResult.status === 'rejected') throw exitResult.reason
+      const stdout = stdoutResult.value
+      const output = outputResult.value
+      const exitCode = exitResult.value
       const signalCode = child.signalCode
       return {
         exitCode: timedOut === true ? 124 : exitCode,
         signalCode,
         durationMs,
-        output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+        output: interrupted === true || signalCode !== null || diagnosticComplete === false ? '' : (output ?? ''),
+        stdout,
+        stderr: captureStderr ? (output ?? '') : '',
       }
     } finally {
       clearTimeout(deadline)
       clearTimeout(hardDeadline)
+      signal?.removeEventListener('abort', cancel)
       for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
     }
   })()
@@ -2324,7 +2419,7 @@ const spawnNativeCommand = ({
 }
 
 /** Preserve stdout and supervise only redirected native stderr. */
-const observeNativeCommand = (options: {
+const observeNativeCommand = (options: NativeExecution & {
   readonly native: string
   readonly args: readonly string[]
 }): Promise<NativeCommandResult> => spawnNativeCommand({ ...options, stderr: 'pipe' }).result
