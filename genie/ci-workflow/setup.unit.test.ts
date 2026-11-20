@@ -40,6 +40,7 @@ import {
   ciPnpmStore,
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
+  ciJobConcurrency,
   defaultRefPolicyVerdictStepId,
   linuxSandboxAdmissionStepId,
   withCiAdmissionCleanup,
@@ -55,6 +56,42 @@ import {
   preparationDiagnosticSeconds,
 } from './support-files.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
+
+describe('CI rerun concurrency', () => {
+  it('isolates historical reruns from current code heads and the retired code group', () => {
+    const concurrency = ciWorkflow.data.jobs.quality!.concurrency
+    expect(concurrency).toBeObject()
+    if (typeof concurrency !== 'object' || concurrency === null) {
+      throw new Error('Expected job concurrency object')
+    }
+    expect(concurrency).toMatchObject({
+      'cancel-in-progress':
+        "${{ github.run_attempt == 1 && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}",
+    })
+    expect(concurrency.group).toContain(
+      "(github.run_attempt > 1 && format('code-rerun-{0}', github.run_id) || 'code-head')",
+    )
+  })
+
+  it.each([
+    {},
+    { labelEvents: false },
+    { measurementBaselineBackfill: true },
+    { measurementBaselineBackfill: true, labelEvents: false },
+  ])('never lets a rerun cancel in-progress work with options %j', (opts) => {
+    const concurrency = ciJobConcurrency({ jobId: 'quality', ...opts })
+    expect(concurrency['cancel-in-progress']).toStartWith('${{ github.run_attempt == 1')
+    expect(concurrency.group).toContain("format('code-rerun-{0}', github.run_id)")
+    expect(concurrency.group).toContain("'code-head'")
+    expect(concurrency.group).toContain("format('manual-run-{0}', github.run_id)")
+    if (opts.measurementBaselineBackfill === true) {
+      expect(concurrency.group).toContain("format('measurement-baseline-{0}'")
+    }
+    if (opts.labelEvents !== false) {
+      expect(concurrency['cancel-in-progress']).toContain("github.event.action != 'labeled'")
+    }
+  })
+})
 
 describe('Resolve devenv hang diagnostics', () => {
   it('streams stderr to the job and a retained repair log', () => {

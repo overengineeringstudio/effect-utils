@@ -231,7 +231,7 @@ const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
   )
   const matchesPin = (fd: number, dev: string, ino: string) =>
     pins.some((pin) => pin.fd === fd && pin.dev === dev && pin.ino === ino)
-  const view: OwnedDeletionPins = Object.freeze({
+  const view = Object.freeze<OwnedDeletionPins>({
     [ownedDeletionPinsBrand]: true,
     pins,
     has: (reference: Parameters<OwnedDeletionPins['has']>[0]) => {
