@@ -182,6 +182,7 @@ assert_result() {
 }
 assert_retained() {
   local root="$1" count="$2" version gen directory root_link target manifest expected
+  local -a targets=()
   [ -d "$root/.buck2/capabilities" ] && [ ! -L "$root/.buck2/capabilities" ] || fail "capability cell is not a stable real directory"
   "$BUN" -e '
     const fs = require("fs");
@@ -197,15 +198,18 @@ assert_retained() {
       process.exit(1);
     }
   ' "$root/.buck2/capabilities" "$count" "$TEMP_ROOT" || fail "generation set does not match selected defs or expected retained count"
+  for version in "${versions[@]}"; do targets+=("$(profile "$version")"); done
+  # Scan machine-wide GC roots once, freshly for this assertion phase.
+  "$NIX_STORE_COMMAND" --query --roots "${targets[@]}" >"$TEMP_ROOT/gc-roots" \
+    || fail "could not query real Nix GC roots"
   for version in "${versions[@]}"; do
     target="$(profile "$version")"
     gen="$(generation "$target")"
     directory="$(published_tool_directory "$root" "$version" archive-tool)"
     root_link="$root/.buck2/capability-roots/$gen"
-    "$NIX_STORE_COMMAND" --query --roots "$target" >"$TEMP_ROOT/gc-roots"
     if [ -f "$root/.buck2/capability-references/$gen.json" ]; then
       [ "$(readlink "$root_link")" = "$target" ] || fail "retained generation $gen lost its profile root"
-      grep -Fq -- "$root_link" "$TEMP_ROOT/gc-roots" || fail "retained generation $gen is not registered with the real Nix GC"
+      grep -Fq -- "$root_link -> $target" "$TEMP_ROOT/gc-roots" || fail "retained generation $gen is not registered with the real Nix GC"
       manifest="$directory/manifest.json"
       expected="$(jq -er '.executableStorePath' "$manifest")"
       [ "$(readlink "$directory/executable")" = "$expected" ] || fail "executable link was rewritten through aggregate output"
