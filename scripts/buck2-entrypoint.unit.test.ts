@@ -8,6 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { createServer } from 'node:http2'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -989,3 +990,231 @@ it('forwards small native stderr without duplicate capture when captureStderr is
       },
     })
   }))
+
+// These real subprocess protocol fixtures exercise launcher ownership/lifecycle,
+// not full NativeBuck, remote ABI, Linux kill policy or Darwin DICE qualification.
+for (const stream of ['stdout', 'stderr'] as const) {
+  for (const cause of [new Error('original forwarding failure'), undefined, null]) {
+    it(`rejects the exact ${stream} callback cause (${String(cause)}) only after draining and native close`, () =>
+      withPublicationRoot(async (cwd) => {
+        const native = join(cwd, 'native')
+        writeFileSync(native, `#!${process.execPath}
+import { writeFileSync } from 'node:fs'
+writeFileSync('child.pid', String(process.pid))
+await Bun.write(Bun.stdout, new Uint8Array(1048577).fill(111))
+await Bun.write(Bun.stderr, new Uint8Array(1048577).fill(101))
+writeFileSync('finished', 'both streams written')
+`, { mode: 0o700 })
+        await withEditorPublicationOwner({
+          root: cwd,
+          run: async (owner) => {
+            let callbackCalls = 0
+            let otherBytes = 0
+            const fail = () => { callbackCalls++; throw cause }
+            const collect = (chunk: Uint8Array) => { otherBytes += chunk.byteLength }
+            const args = ['--isolation-dir', editorPublicationIsolation, 'kill']
+            const outcome = await runOwnedEditorPublicationCommand({
+              native, cwd, env: {}, owner, args, stdin: 'ignore',
+              onStdout: stream === 'stdout' ? fail : collect,
+              onStderr: stream === 'stderr' ? fail : collect,
+            }).then(
+              (result) => ({ status: 'fulfilled' as const, result }),
+              (error: unknown) => ({ status: 'rejected' as const, error }),
+            )
+            expect(outcome.status).toBe('rejected')
+            if (outcome.status !== 'rejected') throw new Error('callback failure was swallowed')
+            expect(outcome.error).toBe(cause)
+            expect(callbackCalls).toBe(1)
+            expect(otherBytes).toBe(1048577)
+            expect(readFileSync(join(cwd, 'finished'), 'utf8')).toBe('both streams written')
+            const pid = Number(readFileSync(join(cwd, 'child.pid'), 'utf8'))
+            expect(() => process.kill(pid, 0)).toThrow()
+            expect(requireEditorPublicationInvocationOwner({ cwd, env: {}, owner, args })).toBe(owner)
+          },
+        })
+      }))
+  }
+}
+
+// The real subprocess must outlive TERM: fake time cannot drive its OS signal
+// handlers or the launcher's real five-second escalation/close contract.
+it('joins actual close after the five-second KILL bound for a TERM-resistant owned child', () =>
+  withPublicationRoot(async (cwd) => {
+    const native = join(cwd, 'native')
+    writeFileSync(native, `#!${process.execPath}
+process.on('SIGTERM', () => { process.stderr.write('term-received') })
+// Keep the real child alive; readiness is its stdout pipe, not this interval.
+setInterval(() => {}, 1000)
+process.stdout.write(String(process.pid) + '\\n')
+`, { mode: 0o700 })
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        const controller = new AbortController()
+        let ready = ''
+        let abortedAt: number | undefined
+        const args = ['--isolation-dir', editorPublicationIsolation, 'kill']
+        const beforeListeners = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => process.listenerCount(signal))
+        const result = await runOwnedEditorPublicationCommand({
+          native, cwd, env: {}, owner, args, signal: controller.signal, stdin: 'ignore',
+          onStdout: (chunk) => {
+            ready += Buffer.from(chunk).toString()
+            if (ready.includes('\n') && abortedAt === undefined) {
+              abortedAt = performance.now()
+              controller.abort()
+            }
+          },
+        })
+        expect(abortedAt).toBeDefined()
+        const elapsed = performance.now() - abortedAt!
+        expect(elapsed).toBeGreaterThanOrEqual(4900)
+        expect(elapsed).toBeLessThan(8000)
+        expect(result.signalCode).toBe('SIGKILL')
+        expect(result.stderr).toBe('term-received')
+        expect(() => process.kill(Number(ready.trim()), 0)).toThrow()
+        expect(['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => process.listenerCount(signal))).toEqual(beforeListeners)
+        controller.abort()
+        expect(requireEditorPublicationInvocationOwner({ cwd, env: {}, owner, args })).toBe(owner)
+      },
+    })
+  }), 12000)
+
+// Same declared HTTP/2 capabilities protocol as the existing posture integration
+// fixtures; native is always an explicit absolute path, never a PATH replacement.
+const withOwnedCacheProtocol = async (
+  run: (fixture: { cwd: string; native: string; env: NodeJS.ProcessEnv }) => Promise<void>,
+): Promise<void> => withPublicationRoot(async (cwd) => {
+  const grpc = createServer()
+  grpc.on('stream', (stream) => {
+    stream.on('data', () => {})
+    stream.on('end', () => {
+      stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+      stream.end(Buffer.from([0, 0, 0, 0, 0]))
+    })
+  })
+  const listening = Promise.withResolvers<void>()
+  grpc.listen(0, '127.0.0.1', listening.resolve)
+  await listening.promise
+  try {
+    const address = grpc.address()
+    if (address === null || typeof address === 'string') throw new Error('missing protocol address')
+    writeFileSync(join(cwd, '.buckconfig'),
+      `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\nfile_watcher = fs_hash_crawler\n[buck2_re_client]\naction_cache_address = grpc://127.0.0.1:${address.port}\ntls = false\n`)
+    const native = join(cwd, 'native')
+    writeFileSync(native, `#!${process.execPath}
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync, writeSync } from 'node:fs'
+const args = process.argv.slice(2)
+const isolation = args[args.indexOf('--isolation-dir') + 1]
+if (args.includes('status')) {
+  if (existsSync('daemon.json')) console.log(readFileSync('daemon.json', 'utf8'))
+} else if (args.includes('kill')) rmSync('daemon.json', { force: true })
+else if (args.includes('audit')) {
+  writeFileSync('daemon.json', JSON.stringify({
+    project_root: process.cwd(), isolation_dir: isolation, active_commands: [],
+    process_info: { pid: process.pid }, start_time: 'protocol-fixture',
+  }))
+} else if (args.includes('build')) {
+  const local = process.env.BUCK2_NO_REMOTE_CACHE === '1'
+  const policy = readFileSync(args[args.lastIndexOf('--config-file') + 1], 'utf8')
+  appendFileSync('commands.jsonl', JSON.stringify({ args, local, policy }) + '\\n')
+  if (local && (!args.includes('--local-only') || !args.includes('--no-remote-cache'))) process.exit(99)
+  writeSync(2, local ? process.env.LOCAL_DIAGNOSTIC : process.env.REMOTE_DIAGNOSTIC)
+  process.exit(local ? Number(process.env.LOCAL_EXIT) : 41)
+} else process.exit(98)
+`, { mode: 0o700 })
+    await run({
+      cwd, native,
+      env: {
+        HOME: cwd, XDG_CACHE_HOME: join(cwd, 'probe-cache'), BUCK2_CI_POSTURE: '1',
+        REMOTE_DIAGNOSTIC: reUnavailable, LOCAL_DIAGNOSTIC: reUnavailable, LOCAL_EXIT: '29',
+      },
+    })
+  } finally {
+    const closed = Promise.withResolvers<void>()
+    grpc.close((error) => error ? closed.reject(error) : closed.resolve())
+    await closed.promise
+  }
+})
+
+it('completes two overlapping same-root CI owned cache admissions without blocking their event loop', () =>
+  withOwnedCacheProtocol(async ({ cwd, native, env }) => {
+    const worker = join(cwd, 'overlapping.ts')
+    writeFileSync(worker, `
+import { withEditorPublicationOwner, editorPublicationIsolation } from ${JSON.stringify(new URL('../packages/@overeng/buck2-tools/src/editor-publication-owner.ts', import.meta.url).pathname)}
+import { runOwnedEditorPublicationCommand, requireEditorPublicationInvocationOwner } from ${JSON.stringify(new URL('./buck2-entrypoint.ts', import.meta.url).pathname)}
+await withEditorPublicationOwner({
+  root: process.cwd(),
+  run: async (owner) => {
+    const args = ['--isolation-dir', editorPublicationIsolation, 'build', '//:protocol']
+    const results = await Promise.all([0, 1].map(() => runOwnedEditorPublicationCommand({
+      native: ${JSON.stringify(native)}, cwd: process.cwd(), env: process.env, owner, args, stdin: 'ignore',
+    })))
+    if (results.some((result) => result.exitCode !== 41 || result.stderr !== 'fatal protocol diagnostic')) throw new Error('lost invocation result')
+    if (requireEditorPublicationInvocationOwner({ cwd: process.cwd(), env: process.env, owner, args }) !== owner) throw new Error('owner released early')
+    console.log('both-settled')
+  },
+})
+`)
+    const child = Bun.spawn([process.execPath, worker], {
+      cwd, env: { ...env, REMOTE_DIAGNOSTIC: 'fatal protocol diagnostic' },
+      stdin: 'ignore', stdout: 'pipe', stderr: 'pipe',
+    })
+    let expired = false
+    // A separate OS process is necessary: a blocking flock wedges its event
+    // loop, so no in-process fake clock or timeout can bound the regression.
+    const deadline = setTimeout(() => { expired = true; child.kill('SIGKILL') }, 10000)
+    try {
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+      ])
+      expect(expired).toBe(false)
+      expect({ exitCode, stdout, signal: child.signalCode }).toEqual({
+        exitCode: 0, stdout: 'both-settled\n', signal: null,
+      })
+      expect(stderr).not.toContain('refusing')
+      const commands = readFileSync(join(cwd, 'commands.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+      expect(commands).toHaveLength(2)
+      expect(commands.every((command) => command.local === false)).toBe(true)
+    } finally {
+      clearTimeout(deadline)
+      child.kill('SIGKILL')
+      await child.exited
+    }
+  }), 15000)
+
+for (const diagnostic of [
+  reUnavailable.replace('The service is currently unavailable', 'DATA_LOSS'),
+  reUnavailable.replace('The service is currently unavailable', 'Unauthenticated'),
+  reUnavailable.replace('tls handshake eof', 'invalid argument: invalid configuration'),
+  reUnavailable,
+]) {
+  it(`preserves callable R04 diagnostics and ${diagnostic === reUnavailable ? 'replays availability exactly once' : 'never replays fatal failure'}`, () =>
+    withOwnedCacheProtocol(async ({ cwd, native, env }) => {
+      await withEditorPublicationOwner({
+        root: cwd,
+        run: async (owner) => {
+          const forwarded: Uint8Array[] = []
+          const result = await runOwnedEditorPublicationCommand({
+            native, cwd, owner, env: { ...env, REMOTE_DIAGNOSTIC: diagnostic },
+            args: ['--isolation-dir', editorPublicationIsolation, 'build', '//:protocol'],
+            stdin: 'ignore', onStderr: (chunk) => { forwarded.push(chunk) },
+          })
+          const replay = diagnostic === reUnavailable
+          expect(result.exitCode).toBe(replay ? 29 : 41)
+          expect(result.signalCode).toBeNull()
+          expect(result.stderr).toBe(replay ? reUnavailable : diagnostic)
+          expect(Buffer.concat(forwarded).toString()).toBe(replay ? diagnostic + reUnavailable : diagnostic)
+          const commands = readFileSync(join(cwd, 'commands.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+          expect(commands.map((command) => command.local)).toEqual(replay ? [false, true] : [false])
+          if (replay) {
+            expect(commands[1].args).toContain('--local-only')
+            expect(commands[1].args).toContain('--no-remote-cache')
+            expect(commands[1].policy).toContain('remote_cache_enabled = false')
+          }
+          expect(requireEditorPublicationInvocationOwner({
+            cwd, env, owner, args: ['--isolation-dir', editorPublicationIsolation, 'build', '//:protocol'],
+          })).toBe(owner)
+        },
+      })
+    }), 15000)
+}
