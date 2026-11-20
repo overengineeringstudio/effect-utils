@@ -229,6 +229,204 @@ export const aggregate = ({
   }
 }
 
+export type OccurrenceCounts = {
+  occurrences: number
+  localExecutions: number
+  remoteExecutions: number
+  cacheHits: number
+  coalesced: number
+  repeatExecutions: number
+  /** Null means at least one counted occurrence has no native measurement. */
+  durationNs: number | null
+  totalBytes: number | null
+  unavailableDurationCount: number
+  unavailableBytesCount: number
+}
+export type OccurrenceScorecard = {
+  proof: 'known' | 'unknown'
+  reasons: string[]
+  windowStartMs: number
+  windowEndMs: number
+  totals: OccurrenceCounts
+  perHost: ({ host: string } & OccurrenceCounts)[]
+}
+const emptyOccurrenceCounts = (): OccurrenceCounts => ({
+  occurrences: 0,
+  localExecutions: 0,
+  remoteExecutions: 0,
+  cacheHits: 0,
+  coalesced: 0,
+  repeatExecutions: 0,
+  durationNs: 0,
+  totalBytes: 0,
+  unavailableDurationCount: 0,
+  unavailableBytesCount: 0,
+})
+
+/** Exact completion-window census; callers must declare sampling/retention gaps. */
+export const aggregateOccurrences = ({
+  artifacts,
+  windowStartMs,
+  windowEndMs,
+  evidenceGaps,
+}: {
+  artifacts: readonly ActionArtifact[]
+  windowStartMs: number
+  windowEndMs: number
+  evidenceGaps: readonly string[]
+}): OccurrenceScorecard => {
+  const reasons = new Set(evidenceGaps)
+  const validWindow =
+    Number.isFinite(windowStartMs) && Number.isFinite(windowEndMs) && windowStartMs < windowEndMs
+  if (validWindow !== true) reasons.add('invalid-window')
+  type Row = Pick<OccurrenceCounts, 'durationNs' | 'totalBytes'> & {
+    id: string
+    host: string
+    root: string
+    build: string
+    key: string
+    time: number
+    outcome: 'local-exec' | 'remote-exec' | 'cache-hit' | 'coalesced'
+  }
+  const rows = new Map<string, Row>()
+  const conflicts = new Set<string>()
+  const nonempty = (value: string | null | undefined): value is string =>
+    typeof value === 'string' && value.length > 0
+  const measurement = (value: number | null | undefined): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+  for (const artifact of artifacts) {
+    const { header } = artifact
+    if (
+      header.complete !== true ||
+      header.status !== 'collected' ||
+      header.droppedActionCount !== 0 ||
+      header.rows !== artifact.actions.length ||
+      header.actionCount !== artifact.actions.length
+    )
+      reasons.add('incomplete-artifact')
+    for (const gap of header.evidenceGaps) reasons.add(gap)
+    if (header.missingDigestCount !== 0) reasons.add('missing-digest')
+    if (header.missingIdentityCount !== 0) reasons.add('missing-occurrence-identity')
+    if (header.missingTimestampCount !== 0) reasons.add('missing-native-time')
+    if (!nonempty(header.metadata.runId)) reasons.add('missing-run')
+    if (header.metadata.lane === null) reasons.add('missing-lane')
+    if (!nonempty(header.metadata.repo)) reasons.add('missing-repo')
+    for (const invocation of header.invocations) {
+      if (invocation.complete !== true) reasons.add('incomplete-invocation')
+      if (!nonempty(invocation.rootId)) reasons.add('missing-root')
+    }
+    for (const action of artifact.actions) {
+      const time = action.completedAt
+      if (time === null || !Number.isFinite(time)) {
+        reasons.add('missing-native-time')
+        continue
+      }
+      if (validWindow !== true || time < windowStartMs || time >= windowEndMs) continue
+      const invocation = header.invocations.find((entry) => entry.buildId === action.buildId)
+      const host = action.host ?? header.metadata.host
+      let valid = true
+      const requireField = (present: boolean, reason: string) => {
+        if (present !== true) {
+          reasons.add(reason)
+          valid = false
+        }
+      }
+      requireField(nonempty(action.occurrenceId), 'missing-occurrence-identity')
+      requireField(nonempty(action.buildId), 'missing-build-identity')
+      requireField(nonempty(invocation?.rootId), 'missing-root')
+      requireField(nonempty(host), 'missing-host')
+      requireField(nonempty(action.digest), 'missing-digest')
+      requireField(
+        action.startedAt !== null && Number.isFinite(action.startedAt) && action.startedAt <= time,
+        'missing-native-time',
+      )
+      const outcome = action.executionOutcome
+      if (outcome === undefined || outcome === 'unknown') {
+        reasons.add('missing-execution-outcome')
+        continue
+      }
+      if (outcome === 'remote-exec' || outcome === 'coalesced')
+        reasons.add('unlinked-worker-attempt')
+      if (
+        valid !== true ||
+        !nonempty(action.occurrenceId) ||
+        !nonempty(action.buildId) ||
+        !nonempty(invocation?.rootId) ||
+        !nonempty(host) ||
+        !nonempty(action.digest)
+      )
+        continue
+      const row: Row = {
+        id: action.occurrenceId,
+        host,
+        root: invocation.rootId,
+        build: action.buildId,
+        key: action.digest,
+        time,
+        outcome,
+        durationNs: measurement(action.durationNs),
+        totalBytes: measurement(action.totalBytes),
+      }
+      const previous = rows.get(row.id)
+      if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(row)) {
+        reasons.add('conflicting-occurrence')
+        conflicts.add(row.id)
+      } else {
+        rows.set(row.id, row)
+      }
+    }
+  }
+  const totals = emptyOccurrenceCounts()
+  const hosts = new Map<string, OccurrenceCounts>()
+  const executed = new Set<string>()
+  for (const row of [...rows.values()].sort(
+    (left, right) => left.time - right.time || left.id.localeCompare(right.id),
+  )) {
+    if (conflicts.has(row.id)) continue
+    let host = hosts.get(row.host)
+    if (host === undefined) {
+      host = emptyOccurrenceCounts()
+      hosts.set(row.host, host)
+    }
+    const execution = row.outcome === 'local-exec' || row.outcome === 'remote-exec'
+    const repeat = execution && executed.has(row.key)
+    if (execution) executed.add(row.key)
+    for (const counts of [totals, host]) {
+      counts.occurrences++
+      if (row.outcome === 'local-exec') counts.localExecutions++
+      if (row.outcome === 'remote-exec') counts.remoteExecutions++
+      if (row.outcome === 'cache-hit') counts.cacheHits++
+      if (row.outcome === 'coalesced') counts.coalesced++
+      if (repeat) counts.repeatExecutions++
+      for (const [key, unavailable, overflow] of [
+        ['durationNs', 'unavailableDurationCount', 'duration-total-overflow'],
+        ['totalBytes', 'unavailableBytesCount', 'byte-total-overflow'],
+      ] as const) {
+        const value = row[key]
+        const current = counts[key]
+        if (value === null) {
+          counts[unavailable]++
+          counts[key] = null
+        } else if (current !== null) {
+          const sum = current + value
+          counts[key] = Number.isSafeInteger(sum) ? sum : null
+          if (counts[key] === null) reasons.add(overflow)
+        }
+      }
+    }
+  }
+  return {
+    proof: reasons.size === 0 ? 'known' : 'unknown',
+    reasons: [...reasons].sort(),
+    windowStartMs,
+    windowEndMs,
+    totals,
+    perHost: [...hosts]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([host, counts]) => ({ host, ...counts })),
+  }
+}
+
 type MetricPoint = { labels: Record<string, string>; value: number }
 type WindowMetric = { name: string; description: string; points: MetricPoint[] }
 const metrics = (report: JoinReport): WindowMetric[] => [

@@ -166,7 +166,21 @@ describe('gate wrapper native-only death and real gate-slot expiry', () => {
     if (gate === null) throw new Error('actual gate-slot required for the max-hold regression')
     const fixture = teardownFixture()
     const child = Bun.spawn(
-      [gate, '--class', 'heavy', '--max-wait', '10', '--max-hold', '8', '--', ...fixture.argv],
+      // This fixture only writes bounded readiness/kill JSON, not build outputs.
+      // Keep the real disk floor while declaring its actual tiny disk posture.
+      [
+        gate,
+        '--class',
+        'heavy',
+        '--max-wait',
+        '10',
+        '--max-hold',
+        '8',
+        '--profile',
+        'disk=1048576',
+        '--',
+        ...fixture.argv,
+      ],
       {
         cwd: fixture.root,
         env: {
@@ -200,7 +214,14 @@ describe('gate wrapper native-only death and real gate-slot expiry', () => {
     const stderr = new Response(child.stderr).text()
     try {
       child.stdin.write('fixture stdin\n')
-      await waitFor('gate-admitted native client', () => existsSync(fixture.ready))
+      await waitFor(
+        'gate-admitted native client',
+        () => existsSync(fixture.ready) || child.exitCode !== null,
+      )
+      if (existsSync(fixture.ready) === false)
+        throw new Error(
+          `gate exited before native readiness (exit=${await child.exited}):\n${await stderr}`,
+        )
       if (process.platform === 'linux') {
         const { cgroup } = JSON.parse(readFileSync(fixture.ready, 'utf8'))
         expect(cgroup).toBe(readFileSync('/proc/self/cgroup', 'utf8'))
