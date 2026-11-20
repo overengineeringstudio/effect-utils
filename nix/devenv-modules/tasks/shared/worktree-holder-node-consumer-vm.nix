@@ -15,6 +15,7 @@ let
     managedPolicy = null;
   };
   client = evidence.holderEvidenceClient;
+  proc = import ./worktree-holder-proc.nix { inherit pkgs; };
   # Reuse the canonical immutable source projection and pinned dependency view.
   # These test-only Buck rules exist solely in the derivation, not the product
   # registry or generated checkout BUCK. Both bundles use the real local source.
@@ -71,6 +72,7 @@ pkgs.testers.nixosTest {
     systemd.tmpfiles.rules = [ "d /var/lib/holder-fixture 0700 fixture users -" ];
     environment.systemPackages = [ pkgs.bun pkgs.util-linux evidence ];
     virtualisation.memorySize = 2048;
+    boot.kernel.sysctl."kernel.io_uring_disabled" = 0;
     systemd.sockets.worktree-holder-evidence = {
       wantedBy = [ "sockets.target" ];
       socketConfig = {
@@ -135,6 +137,12 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%g:%a' /run/worktree-holder-evidence) = 0:0:755")
     machine.succeed("test $(stat -c '%U:%G:%a' /run/worktree-holder-evidence/evidence.sock) = root:users:660")
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
+    nonpath = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_nonpath_eventfd_and_registered_io_uring_veto --ignored --nocapture")
+    print(nonpath)
+    assert "1 passed; 0 failed" in nonpath, "the real eventfd and registered-file io_uring fixture must execute"
+    aliases = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact linux::alias_tests::actual_worker_shared_unshared_and_reopened_descriptions --ignored --nocapture")
+    print(aliases)
+    assert "1 passed; 0 failed" in aliases, "the real kernel alias fixture must execute"
     try:
         for mode in ["shared", "unshared", "different-fd"]:
             root = "/var/lib/holder-fixture/" + mode

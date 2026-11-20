@@ -101,6 +101,13 @@ The ignored real worker test exercises table sharing, private-table inheritance
 and reopening the same inode with another OFD; it requires isolated Linux
 `CAP_SYS_PTRACE` and does not run as part of ordinary sandboxed unit tests.
 
+The disposable `worktree-holder-node-consumer` VM runs the actual eventfd
+non-path qualification and registered-file io_uring veto, then the real kernel
+alias fixture, before its authenticated Bun worker positive/negative cases.
+Its guest explicitly enables io_uring; missing kernel support or any ignored
+fixture not executing fails the check rather than skipping it. This recipe
+does not itself assert that qualification has passed.
+
 ## Native holder membership library (inactive)
 
 `shared/worktree-holder-evidence-mounted.nix { inherit pkgs; allowedRoots = [ ]; }`
