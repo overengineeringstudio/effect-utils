@@ -500,10 +500,13 @@ optimization is tracked in [#1915](https://github.com/overengineeringstudio/effe
 devenv tasks run buck2:editor:publish:all
 ```
 
-Each authority/bootstrap/publication invocation has a **300-second total deadline**
-(plus a 5-second forced-kill grace), including Buck builds, filesystem work and
-lock waits. A separate supervisor owns the publication session and always escalates
-to a group-wide kill after the grace, even if the authority already exited.
+Authority and default scoped-publication invocations retain a **300-second execution
+deadline**. Source bootstrap reserves **300 seconds for startup plus 300 seconds per
+requested package**, so cold build/authority work and first-view publication fit the
+same invocation. Aggregate batch policies are unchanged. Execution deadlines begin
+after per-worktree publication-lock admission and cover Buck builds and filesystem
+work. A separate supervisor owns the publication session and always escalates to a
+group-wide kill after a 5-second grace, even if the authority already exited.
 Fingerprint admission closes on termination. Expiry prints a deadline diagnostic and fails nonzero; partial
 publication is never reported as success. This bounds shared-lane occupancy
 well below the 53-minute TT-148 incident. Both view preparations and fingerprint
@@ -874,6 +877,10 @@ which can contain isolation-looking options. Lifecycle resolution conservatively
 supports `run TARGET [-- payload]` with Buck options before `run`; other run
 forms retain daemons with the same fail-closed warning rather than guessing
 where Buck options end.
+CI cache admission separately uses the native arity-aware resolver for declared
+`run` trace flags; unknown arity and unsafe isolation/argfiles still fail closed.
+The ordinary-clone runtime CAS is ignored state, not source; other untracked
+sources refuse with at most ten JSON-escaped paths.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
 At exit it invokes native `buck2 kill` only when a fresh status identifies the
