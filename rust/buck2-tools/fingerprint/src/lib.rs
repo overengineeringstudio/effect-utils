@@ -741,7 +741,10 @@ mod tests {
         });
         assert_eq!(read.before.ino(), read.after.ino());
         assert_eq!(read.before.size(), read.after.size());
-        assert_eq!(read.before.modified().unwrap(), read.after.modified().unwrap());
+        assert_eq!(
+            read.before.modified().unwrap(),
+            read.after.modified().unwrap()
+        );
         assert!(!read.verify(&path));
     }
 
