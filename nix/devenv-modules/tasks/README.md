@@ -140,8 +140,10 @@ runtime policy remain in the server assembly. The sole source-authenticated
 bootstrap role still classifies its actual root/cwd/exe/stdio and mappings.
 Capture failures remain protective UNKNOWN. Root-journal diagnostics identify
 only a static capture/reclosure stage, `io::ErrorKind`, and numeric OS errno.
-They never format the underlying error, foreign paths, process identities, or
-pseudo-file contents; the original error and wire classification are unchanged.
+Native-scope failures additionally emit only their audited source-literal reason
+through an `&'static str` helper, preserving the original `Other` kind and message.
+They never format an underlying error object, foreign paths, process identities,
+or pseudo-file contents; the original error and wire classification are unchanged.
 
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound

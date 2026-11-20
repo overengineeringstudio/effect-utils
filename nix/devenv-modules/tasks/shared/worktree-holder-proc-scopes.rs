@@ -13,6 +13,24 @@ use super::process::Process;
 const TASK_LIMIT: usize = 262144;
 const OBJECT_LIMIT: usize = 1048576;
 
+/// Only audited source literals reach this diagnostic; never format an error
+/// object, proc value, object name or caller-provided string here.
+fn incomplete(reason: &'static str) -> io::Error {
+    eprintln!("worktree-holder-proc-incomplete reason={reason}");
+    io::Error::other(reason)
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    #[test]
+    fn static_reason_preserves_original_other_error() {
+        let error = super::incomplete("process reference changed");
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(error.raw_os_error(), None);
+        assert_eq!(error.to_string(), "process reference changed");
+    }
+}
+
 pub struct ProcessScope {
     pub identity: Process,
     pidfd: OwnedFd,
@@ -52,21 +70,21 @@ fn no_mm_role(task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Re
     deadline_check(deadline)?;
     let base = scope_path(&task.scope);
     let stat = objects::bounded_text(format!("{base}/stat"), 64 * 1024)?;
-    let (_, tail) = stat.rsplit_once(')').ok_or_else(|| io::Error::other("malformed task stat"))?;
+    let (_, tail) = stat.rsplit_once(')').ok_or_else(|| incomplete("malformed task stat"))?;
     let fields: Vec<_> = tail.split_whitespace().collect();
-    if fields.len() < 20 { return Err(io::Error::other("truncated task stat")); }
-    let flags = fields[6].parse::<u64>().map_err(|_| io::Error::other("invalid task flags"))?;
+    if fields.len() < 20 { return Err(incomplete("truncated task stat")); }
+    let flags = fields[6].parse::<u64>().map_err(|_| incomplete("invalid task flags"))?;
     let terminal = matches!(fields[0], "Z" | "X");
     if flags & 0x00200000 == 0 && !(all_terminal && terminal) { return Ok(false); }
     if !objects::bounded_text(format!("{base}/maps"), 1024 * 1024)?.is_empty() {
-        return Err(io::Error::other("resource-empty task retains mappings"));
+        return Err(incomplete("resource-empty task retains mappings"));
     }
     let statm = objects::bounded_text(format!("{base}/statm"), 4096)?;
     let pages = statm.split_whitespace().map(str::parse::<u64>)
-        .collect::<Result<Vec<_>, _>>().map_err(|_| io::Error::other("invalid task statm"))?;
+        .collect::<Result<Vec<_>, _>>().map_err(|_| incomplete("invalid task statm"))?;
     if pages.len() != 7 || pages.iter().any(|page| *page != 0)
         || !numbers(format!("{base}/fd"), deadline)?.is_empty()
-    { return Err(io::Error::other("resource-empty task retains mm or descriptors")); }
+    { return Err(incomplete("resource-empty task retains mm or descriptors")); }
     Ok(true)
 }
 
@@ -82,16 +100,16 @@ pub fn recheck_namespaces(task: &TaskScope) -> io::Result<()> {
     for (name, retained) in ["user", "pid", "mnt", "net"].into_iter().zip(&task.namespaces) {
         let actual = objects::pin_magic(format!("{}/ns/{name}", scope_path(&task.scope)))?;
         if objects::identity(&actual)? != objects::identity(retained)? {
-            return Err(io::Error::other("task namespace changed"));
+            return Err(incomplete("task namespace changed"));
         }
     }
-    if task.namespaces.len() != 4 { return Err(io::Error::other("incomplete task namespaces")); }
+    if task.namespaces.len() != 4 { return Err(incomplete("incomplete task namespaces")); }
     Ok(())
 }
 
 pub fn deadline_check(deadline: Instant) -> io::Result<()> {
     if Instant::now() >= deadline {
-        Err(io::Error::other("process census deadline"))
+        Err(incomplete("process census deadline"))
     } else {
         Ok(())
     }
@@ -111,13 +129,13 @@ pub fn numbers(path: impl AsRef<Path>, deadline: Instant) -> io::Result<Vec<u32>
             continue;
         }
         if values.len() >= TASK_LIMIT {
-            return Err(io::Error::other("proc census capacity"));
+            return Err(incomplete("proc census capacity"));
         }
-        values.push(name.parse().map_err(|_| io::Error::other("proc numeric identifier overflow"))?);
+        values.push(name.parse().map_err(|_| incomplete("proc numeric identifier overflow"))?);
     }
     values.sort_unstable();
     if values.windows(2).any(|pair| pair[0] == pair[1]) {
-        return Err(io::Error::other("duplicate proc identifier"));
+        return Err(incomplete("duplicate proc identifier"));
     }
     Ok(values)
 }
@@ -127,23 +145,23 @@ pub fn mapping_names(scope: &File, deadline: Instant) -> io::Result<Vec<String>>
     for entry in fs::read_dir(format!("{}/map_files", scope_path(scope)))? {
         deadline_check(deadline)?;
         let name = entry?.file_name().into_string()
-            .map_err(|_| io::Error::other("invalid map_files name"))?;
-        let (start, end) = name.split_once('-').ok_or_else(|| io::Error::other("invalid map_files range"))?;
+            .map_err(|_| incomplete("invalid map_files name"))?;
+        let (start, end) = name.split_once('-').ok_or_else(|| incomplete("invalid map_files range"))?;
         if start.is_empty() || end.is_empty()
             || !start.bytes().chain(end.bytes()).all(|byte| byte.is_ascii_hexdigit())
         {
-            return Err(io::Error::other("invalid map_files address"));
+            return Err(incomplete("invalid map_files address"));
         }
-        let start = u64::from_str_radix(start, 16).map_err(|_| io::Error::other("invalid map start"))?;
-        let end = u64::from_str_radix(end, 16).map_err(|_| io::Error::other("invalid map end"))?;
+        let start = u64::from_str_radix(start, 16).map_err(|_| incomplete("invalid map start"))?;
+        let end = u64::from_str_radix(end, 16).map_err(|_| incomplete("invalid map end"))?;
         if start >= end || names.len() >= OBJECT_LIMIT {
-            return Err(io::Error::other("invalid or excessive map_files ranges"));
+            return Err(incomplete("invalid or excessive map_files ranges"));
         }
         names.push(name);
     }
     names.sort_unstable();
     if names.windows(2).any(|pair| pair[0] == pair[1]) {
-        return Err(io::Error::other("duplicate mapping range"));
+        return Err(incomplete("duplicate mapping range"));
     }
     Ok(names)
 }
@@ -164,7 +182,7 @@ impl Held {
             || objects::identity(&self.file)? != self.identity
             || objects::mount_id(&self.file)? != self.mount
         {
-            return Err(io::Error::other("process reference changed"));
+            return Err(incomplete("process reference changed"));
         }
         Ok(())
     }
@@ -178,13 +196,13 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     // SCM_RIGHTS capability transfer. Sockets/nsfs and terminal devices do not
     // themselves identify a candidate payload path.
     if metadata.file_type().is_block_device() {
-        return Err(io::Error::other("unqualified block device"));
+        return Err(incomplete("unqualified block device"));
     }
     if filesystem == 0x09041934 {
         let name = fs::read_link(scope_path(&held.file))?;
         if !matches!(name.to_str(), Some("anon_inode:[eventfd]" | "anon_inode:[eventpoll]"
             | "anon_inode:inotify" | "anon_inode:[timerfd]" | "anon_inode:[signalfd]"))
-        { return Err(io::Error::other("unsupported path-bearing kernel object")); }
+        { return Err(incomplete("unsupported path-bearing kernel object")); }
         return Ok(());
     }
     if metadata.file_type().is_char_device()
@@ -192,7 +210,7 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
         || held.directory || metadata.file_type().is_file()
         || metadata.file_type().is_fifo() || metadata.file_type().is_socket()
     { return Ok(()); }
-    Err(io::Error::other("unqualified held object"))
+    Err(incomplete("unqualified held object"))
 }
 
 impl ProcessScope {
@@ -202,7 +220,7 @@ impl ProcessScope {
         let pidfd = linux::pin_process(pid)?;
         let scope = objects::pin_magic(format!("/proc/{pid}"))?;
         if !process::process(pid)?.same_identity(&identity) {
-            return Err(io::Error::other("process changed during pin"));
+            return Err(incomplete("process changed during pin"));
         }
         let base = scope_path(&scope);
         let tids = numbers(format!("{base}/task"), deadline)?;
@@ -216,14 +234,14 @@ impl ProcessScope {
                 namespaces.push(objects::pin_magic(format!("{}/ns/{name}", scope_path(&task_scope)))?);
             }
             if !process::process(*tid)?.same_identity(&identity) {
-                return Err(io::Error::other("task changed during pin"));
+                return Err(incomplete("task changed during pin"));
             }
             tasks.push(TaskScope { identity, uids, scope: task_scope, namespaces });
         }
         if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid)
             || numbers(format!("{base}/task"), deadline)? != tids
         {
-            return Err(io::Error::other("process task discovery did not close"));
+            return Err(incomplete("process task discovery did not close"));
         }
         Ok(Self { identity, pidfd, scope, tasks })
     }
@@ -251,19 +269,19 @@ impl ProcessScope {
         deadline_check(deadline)?;
         let pid = self.identity.pid;
         if !process::process(pid)?.same_identity(&self.identity) {
-            return Err(io::Error::other("process identity changed"));
+            return Err(incomplete("process identity changed"));
         }
         let tids: Vec<_> = self.tasks.iter().map(|task| task.identity.pid).collect();
         let base = scope_path(&self.scope);
         if numbers(format!("{base}/task"), deadline)? != tids {
-            return Err(io::Error::other("process task membership changed"));
+            return Err(incomplete("process task membership changed"));
         }
         for task in &self.tasks {
             task.recheck(deadline)?;
         }
         if numbers(format!("{base}/task"), deadline)? != tids
             || !process::process(pid)?.same_identity(&self.identity)
-        { return Err(io::Error::other("process changed during closure")); }
+        { return Err(incomplete("process changed during closure")); }
         Ok(())
     }
 
@@ -284,7 +302,7 @@ impl ProcessScope {
 
     pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<References> {
         let all_terminal = self.terminal_group(deadline)?;
-        let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+        let task = self.tasks.get(index).ok_or_else(|| incomplete("unknown task index"))?;
         let references = References::collect(task, all_terminal, deadline)?;
         references.recheck_task(task, all_terminal, deadline)?;
         self.recheck(deadline)?;
@@ -294,7 +312,7 @@ impl ProcessScope {
     pub fn recheck_resources(&self, index: usize, references: &References,
         deadline: Instant) -> io::Result<()> {
         let all_terminal = self.terminal_group(deadline)?;
-        let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+        let task = self.tasks.get(index).ok_or_else(|| incomplete("unknown task index"))?;
         references.recheck_task(task, all_terminal, deadline)?;
         self.recheck(deadline)
     }
@@ -305,7 +323,7 @@ impl TaskScope {
         deadline_check(deadline)?;
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
             || process::uids(self.identity.pid)? != self.uids
-        { return Err(io::Error::other("task identity or credentials changed")); }
+        { return Err(incomplete("task identity or credentials changed")); }
         recheck_namespaces(self)
     }
 }
@@ -319,7 +337,7 @@ impl References {
         let exe = pin_optional(format!("{base}/exe"), no_mm, deadline)?;
         if root.as_ref().is_some_and(|held| !held.directory)
             || cwd.as_ref().is_some_and(|held| !held.directory)
-        { return Err(io::Error::other("invalid task directory capability")); }
+        { return Err(incomplete("invalid task directory capability")); }
         let mut descriptors = Vec::new();
         for number in numbers(format!("{base}/fd"), deadline)? {
             let held = Held::pin(format!("{base}/fd/{number}"), deadline)?;
@@ -330,12 +348,12 @@ impl References {
         for name in mapping_names(&task.scope, deadline)? {
             let held = Held::pin(format!("{base}/map_files/{name}"), deadline)?;
             if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
-                return Err(io::Error::other("unqualified mapped kernel object"));
+                return Err(incomplete("unqualified mapped kernel object"));
             }
             mappings.push((name, held));
         }
         if no_mm && (exe.is_some() || !descriptors.is_empty() || !mappings.is_empty()) {
-            return Err(io::Error::other("resource-empty task gained user resources"));
+            return Err(incomplete("resource-empty task gained user resources"));
         }
         for held in root.iter().chain(cwd.iter()).chain(exe.iter()) { qualify_object(held)?; }
         Ok(Self { root, cwd, exe, descriptors, mappings, no_mm })
@@ -345,19 +363,19 @@ impl References {
         task.recheck(deadline)?;
         let base = scope_path(&task.scope);
         if no_mm_role(task, all_terminal, deadline)? != self.no_mm {
-            return Err(io::Error::other("task mm resource role changed"));
+            return Err(incomplete("task mm resource role changed"));
         }
         for (name, held) in [("root", &self.root), ("cwd", &self.cwd), ("exe", &self.exe)] {
             match held {
                 Some(held) => { held.recheck(format!("{base}/{name}"), deadline)?; qualify_object(held)?; }
                 None => if pin_optional(format!("{base}/{name}"), self.no_mm, deadline)?.is_some() {
-                    return Err(io::Error::other("task gained root cwd or executable"));
+                    return Err(incomplete("task gained root cwd or executable"));
                 },
             }
         }
         let expected: Vec<_> = self.descriptors.iter().map(|(number, _)| *number).collect();
         if numbers(format!("{base}/fd"), deadline)? != expected {
-            return Err(io::Error::other("task descriptor membership changed"));
+            return Err(incomplete("task descriptor membership changed"));
         }
         for (number, held) in &self.descriptors {
             held.recheck(format!("{base}/fd/{number}"), deadline)?;
@@ -365,13 +383,13 @@ impl References {
         }
         let names = mapping_names(&task.scope, deadline)?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
-            return Err(io::Error::other("task mapping membership changed"));
+            return Err(incomplete("task mapping membership changed"));
         }
         for (name, held) in &self.mappings { held.recheck(format!("{base}/map_files/{name}"), deadline)?; }
         if numbers(format!("{base}/fd"), deadline)? != expected
             || mapping_names(&task.scope, deadline)? != names
             || no_mm_role(task, all_terminal, deadline)? != self.no_mm
-        { return Err(io::Error::other("task resources changed during recheck")); }
+        { return Err(incomplete("task resources changed during recheck")); }
         task.recheck(deadline)
     }
 }
