@@ -276,7 +276,7 @@ CONFIG
   assert_native_log before
   assert_output before one before
   if [ "$PUBLISHER" != legacy ]; then
-    alternate_isolation="$isolation-alternate"
+    alternate_isolation="v2-$isolation-alternate"
     daemon_roots+=("$fixture")
     daemon_isolations+=("$alternate_isolation")
     (cd "$fixture" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "$alternate_isolation" targets root//:pnpm_extract) \
@@ -371,6 +371,30 @@ CONFIG
     buck targets root//:pnpm_extract >"$fixture/restarted.targets" 2>"$fixture/restarted.stderr"
     (cd "$fixture" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "$alternate_isolation" targets root//:pnpm_extract) \
       >"$fixture/restarted-alternate.targets" 2>"$fixture/restarted-alternate.stderr"
+    # With no publisher active, preserve the actual lock inode while making its
+    # path genuinely unopenable. The v2 isolation sorts after editor-publication.
+    lock_path="$fixture/.devenv/editor-view-publication.lock"
+    private_pid="$(cat "$TEST_HOME/.buck/buckd/${fixture#/}/editor-publication/buckd.pid")"
+    alternate_pid="$(cat "$TEST_HOME/.buck/buckd/${fixture#/}/$alternate_isolation/buckd.pid")"
+    mv "$lock_path" "$lock_path.saved"
+    mkdir "$lock_path"
+    migration_unknown=0
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" \
+      >"$fixture/unknown-publication.json" 2>"$fixture/unknown-publication.stderr" || migration_unknown=$?
+    rmdir "$lock_path"
+    mv "$lock_path.saved" "$lock_path"
+    [ "$migration_unknown" -ne 0 ] || fail "unknown editor owner incorrectly completed migration"
+    grep -Fq "Cannot acquire capability migration editor-publication owner: $fixture" "$fixture/unknown-publication.stderr" || fail "unknown owner lacked root-specific diagnostic"
+    grep -Fq EISDIR "$fixture/unknown-publication.stderr" || fail "unknown owner lost its actual malformed-inode cause"
+    if grep -Fq "active editor-publication owner" "$fixture/unknown-publication.stderr"; then fail "unknown owner was disguised as busy"; fi
+    [ -f "$fixture/.buck2/capabilities.migration" ] || fail "unknown editor owner cleared migration marker"
+    [ ! -s "$fixture/unknown-publication.json" ] || fail "unknown migration emitted a success receipt"
+    kill -0 "$private_pid" 2>/dev/null || fail "unknown ownership stopped the reserved daemon"
+    if grep -Fq "(editor-publication)" "$fixture/unknown-publication.stderr"; then fail "unknown ownership attempted a private daemon kill"; fi
+    if kill -0 "$alternate_pid" 2>/dev/null; then fail "unknown editor owner prevented later ordinary daemon stop"; fi
+    buck targets root//:pnpm_extract >"$fixture/restarted-unknown.targets" 2>"$fixture/restarted-unknown.stderr"
+    (cd "$fixture" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "$alternate_isolation" targets root//:pnpm_extract) \
+      >"$fixture/restarted-unknown-alternate.targets" 2>"$fixture/restarted-unknown-alternate.stderr"
     HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/publication.json"
     jq -e --arg gen "$GEN_TWO" --arg primary "$fixture:$isolation" --arg alternate "$fixture:$alternate_isolation" --arg editor "$fixture:editor-publication" '
       .generation == $gen and .retainedCount == 2 and

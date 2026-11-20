@@ -24,6 +24,7 @@ import { parseArgs } from 'node:util'
 
 import {
   editorPublicationIsolation,
+  type EditorPublicationOwner,
   editorPublicationOwnerFdEnv,
   tryAcquireEditorPublicationOwner,
 } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
@@ -335,6 +336,7 @@ const stopMigrationDaemons = ({
 }): readonly string[] => {
   const stopped: string[] = []
   const deferred: string[] = []
+  const failures: Error[] = []
   for (const root of new Set(roots)) {
     const state = join(homedir(), '.buck', 'buckd', root.replace(/^\//u, ''))
     if (statIfPresent(state) === undefined) continue
@@ -345,16 +347,20 @@ const stopMigrationDaemons = ({
         throw new Error(`Invalid capability migration isolation state: ${join(state, isolation)}`)
       // Only the reserved isolation shares the editor publisher's physical-root
       // owner. Keep the independent lease through the complete native stop.
-      const owner = (() => {
-        if (isolation !== editorPublicationIsolation) return undefined
-        try {
-          return tryAcquireEditorPublicationOwner({ root })
-        } catch (cause) {
-          throw new Error(`Cannot acquire capability migration editor-publication owner: ${root}`, {
+      let owner: EditorPublicationOwner | undefined
+      try {
+        owner =
+          isolation === editorPublicationIsolation
+            ? tryAcquireEditorPublicationOwner({ root })
+            : undefined
+      } catch (cause) {
+        failures.push(
+          new Error(`Cannot acquire capability migration editor-publication owner: ${root}`, {
             cause,
-          })
-        }
-      })()
+          }),
+        )
+        continue
+      }
       if (isolation === editorPublicationIsolation && owner === undefined) {
         deferred.push(root)
         continue
@@ -382,8 +388,15 @@ const stopMigrationDaemons = ({
     }
   }
   if (deferred.length !== 0)
-    throw new Error(
-      `Capability cell migration deferred: active editor-publication owner (${deferred.join(', ')}); migration marker remains pending`,
+    failures.push(
+      new Error(
+        `Capability cell migration deferred: active editor-publication owner (${deferred.join(', ')}); migration marker remains pending`,
+      ),
+    )
+  if (failures.length !== 0)
+    throw new AggregateError(
+      failures,
+      'Capability cell migration incomplete; migration marker remains pending',
     )
   return stopped
 }

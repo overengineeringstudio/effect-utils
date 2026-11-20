@@ -223,9 +223,11 @@ clean and the final daemon checks/stop. A live publisher defers maintenance;
 unknown ownership is a protective refusal, not a successful native operation.
 Default-isolation maintenance does not acquire the publication owner.
 Capability-cell migration also leases the reserved isolation before stopping it.
-A busy publication leaves `capabilities.migration` pending and returns a nonzero
-deferral after independent ordinary-isolation stops; it never publishes a success
-receipt for that incomplete migration. Retry after the owner finishes.
+A busy publication or unknown owner leaves `capabilities.migration` pending and
+returns nonzero after independent ordinary-isolation stops across the remaining
+roots; unknown-owner failures retain their underlying causes, not a busy diagnosis.
+Neither incomplete migration publishes a success receipt. Retry after resolving
+the ownership failure or after the active owner finishes.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
