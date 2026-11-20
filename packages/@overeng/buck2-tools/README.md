@@ -717,6 +717,11 @@ per-file digests; its private materializer database is not an admission contract
 
 Each finite generation keeps a private, read-only `editor-view-sources-v1.json`
 manifest mapping payload paths to source stat keys and SHA-256-plus-mode addresses.
+Its exact mode is `0444`, independent of the publisher's umask: creation seals the
+private file through its descriptor, and candidate hardening normalizes private
+manifests without changing shared payload modes. Older wrong-mode manifests require
+the supported editor-root release and republish route after readers exit; shared
+CAS collection does not rewrite private generation metadata.
 Incremental materialization links unchanged content directly from the CAS after
 rechecking its recorded inode identity under the store lock. Only source-stat
 misses are copied and hashed; source Buck inodes are never linked. Stat keys
