@@ -6,6 +6,7 @@
  */
 
 import { parseNixFlakeUrl, updateNixFlakeUrl } from './flake-url.ts'
+import { flakeNixInputUrlPattern } from './input-discovery.ts'
 
 // =============================================================================
 // Types
@@ -38,8 +39,7 @@ export const rewriteFlakeNixUrls = (args: {
   const { content, updates } = args
   const updatedInputs: string[] = []
 
-  // Same regex as extractFlakeNixInputs in input-discovery.ts
-  const pattern = /(?:inputs\.)?([a-zA-Z0-9_-]+)\.url\s*=\s*"([^"]+)"/g
+  const pattern = flakeNixInputUrlPattern()
 
   const newContent = content.replace(pattern, (fullMatch, inputName: string, url: string) => {
     const update = updates.get(inputName)

@@ -43,8 +43,8 @@
 [archive_origin]
   # Reviewed destination for optional archive seeding; runtime fetches use
   # canonical registry URLs or the configured Nix archive tree.
-  trusted_url_prefix = http://dev3:41046/cas/
+  trusted_url_prefix = http://dev3:41069/cas/
   trusted_tier = private
 
 [project]
-  ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,buck-out,node_modules,packages/.editor-view,target,tmp
+  ignore = **/__pycache__,**/dist,**/node_modules,**/node_modules/**,**/target,**/target/**,.buck2/capabilities.candidate.*,.devenv,.git,.worktree-tools,buck-out,node_modules,packages/.editor-view,target,tmp
