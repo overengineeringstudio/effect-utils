@@ -22,6 +22,7 @@
   },
 }:
 let
+  publicationOwner = import ./buck2-publication-owner.nix { inherit pkgs; };
   release = rec {
     version = "2026-09-01";
     releaseBaseUrl = "https://github.com/facebook/buck2/releases/download/${version}";
@@ -119,6 +120,7 @@ pkgs.runCommand native.name
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \
       --replace-fail '@launcher@' "$out/libexec/buck2-entrypoint" \
+      --replace-fail '@publicationOwnerLibrary@' '${publicationOwner}/lib/${publicationOwner.libraryName}' \
       --replace-fail '@sha256@' '${pkgs.coreutils}/bin/sha256sum'
     chmod +x "$out/bin/buck2"
   ''

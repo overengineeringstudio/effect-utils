@@ -2,6 +2,8 @@
 # Keep a warm pinned-Buck loop out of the JavaScript runtime. Cache only complete
 # read-only invocations with identical config, arguments and exported environment.
 set -euo pipefail
+# The managed executable owns this binding, including every early dispatch.
+export BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY='@publicationOwnerLibrary@'
 # Lifecycle initialization never starts native Buck or participates in its
 # launch cache/daemon wrapper, including when called from an admitted gate.
 if [[ "${1:-}" == --initialize-watchman-root ]]; then
