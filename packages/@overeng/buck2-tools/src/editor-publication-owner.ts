@@ -13,8 +13,12 @@ import { basename, dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import { getSystemErrorName } from 'node:util'
 
+/** Process-local authority. Only acquisition can mint an owner; descriptors are never exposed. */
+export type EditorPublicationOwner = { readonly [ownerBrand]: true }
+
 /** Stable across invocations: publication owns a separate materializer and DICE graph. */
 export const editorPublicationIsolation = 'editor-publication'
+/** Resolve the canonical, persistent per-worktree publication lock inode. */
 export const editorPublicationLockPath = (root: string): string => {
   const directory = join(realpathSync(root), '.devenv')
   const observed = lstatSync(directory, { throwIfNoEntry: false })
@@ -26,6 +30,96 @@ export const editorPublicationLockPath = (root: string): string => {
   return join(directory, 'editor-view-publication.lock')
 }
 
+/** Validate existing in-process authority without opening, acquiring, upgrading or unlocking. */
+export const requireEditorPublicationOwner = ({
+  root,
+  owner,
+}: {
+  readonly root: string
+  readonly owner?: EditorPublicationOwner
+}): EditorPublicationOwner => {
+  const state = owner === undefined ? undefined : owners.get(owner)
+  if (state === undefined)
+    throw new Error('Buck editor publication requires a live in-process publication owner')
+  validateOwner({ root, state })
+  return owner!
+}
+
+/** Release only this process's acquired lease. Repeated releases have no effect. */
+export const releaseEditorPublicationOwner = (owner: EditorPublicationOwner): void => {
+  const state = owners.get(owner)
+  if (state === undefined) throw new Error('Invalid Buck editor publication owner')
+  if (state.live === false) return
+  state.live = false
+  closeSync(state.fd)
+}
+
+/** Hold ownership until the callback has joined every subordinate build/read/publication operation. */
+export const withEditorPublicationOwner = async <TResult>({
+  root,
+  signal,
+  run,
+}: {
+  readonly root: string
+  readonly signal?: AbortSignal
+  readonly run: (owner: EditorPublicationOwner) => Promise<TResult>
+}): Promise<TResult> => {
+  signal?.throwIfAborted()
+  const lock = openFlock()
+  let fd: number | undefined
+  let owner: EditorPublicationOwner | undefined
+  try {
+    fd = openOwner({ root, lock })
+    for (;;) {
+      signal?.throwIfAborted()
+      const error = lock.acquire(fd)
+      if (error === 0) break
+      // EAGAIN/EWOULDBLOCK are 11 on Linux and 35 on Darwin. Other failures are not contention.
+      if (error !== 11 && error !== 35)
+        throw new Error(`Could not acquire Buck editor publication owner (errno ${error})`)
+      // eslint-disable-next-line no-await-in-loop -- Wait for this specific owner, not another job.
+      await setTimeout(50, undefined, { signal })
+    }
+    owner = mintOwner({ root, fd, lock })
+    signal?.throwIfAborted()
+    return await run(owner)
+  } finally {
+    try {
+      if (owner !== undefined) releaseEditorPublicationOwner(owner)
+      else if (fd !== undefined) closeSync(fd)
+    } finally {
+      lock.close()
+    }
+  }
+}
+
+/** Maintenance defers rather than waiting behind a publisher. */
+export const tryAcquireEditorPublicationOwner = ({
+  root,
+}: {
+  readonly root: string
+}): EditorPublicationOwner | undefined => {
+  const lock = openFlock()
+  let fd: number | undefined
+  let owner: EditorPublicationOwner | undefined
+  try {
+    fd = openOwner({ root, lock })
+    const error = lock.acquire(fd)
+    if (error === 11 || error === 35) return undefined
+    if (error !== 0)
+      throw new Error(`Could not acquire Buck editor publication owner (errno ${error})`)
+    owner = mintOwner({ root, fd, lock })
+    return owner
+  } finally {
+    try {
+      if (owner === undefined && fd !== undefined) closeSync(fd)
+    } finally {
+      lock.close()
+    }
+  }
+}
+
+declare const ownerBrand: unique symbol
 // Read-only Node consumers can import buck2-tools; native locking itself requires Bun.
 let ffi: typeof NativeFfi | undefined
 
@@ -70,7 +164,7 @@ const openFlock = (): PublicationFlock => {
   }
 }
 
-const openOwner = (root: string, lock: PublicationFlock): number => {
+const openOwner = ({ root, lock }: Pick<OwnerInput, 'root' | 'lock'>): number => {
   const path = editorPublicationLockPath(root)
   mkdirSync(dirname(path), { recursive: true })
   // The fixed-arity C ABI opens atomically O_CLOEXEC. No owner is ever lent to a child.
@@ -82,13 +176,10 @@ const openOwner = (root: string, lock: PublicationFlock): number => {
   return fd
 }
 
-declare const ownerBrand: unique symbol
-/** Process-local authority. Only acquisition can mint an owner; descriptors are never exposed. */
-export type EditorPublicationOwner = { readonly [ownerBrand]: true }
 type OwnerState = { readonly root: string; readonly fd: number; live: boolean }
 const owners = new WeakMap<EditorPublicationOwner, OwnerState>()
 
-const validateOwner = (root: string, state: OwnerState): void => {
+const validateOwner = ({ root, state }: { root: string; state: OwnerState }): void => {
   if (state.live === false) throw new Error('Buck editor publication owner has been released')
   if (realpathSync(root) !== state.root)
     throw new Error('Buck editor publication owner belongs to a different root')
@@ -104,25 +195,10 @@ const validateOwner = (root: string, state: OwnerState): void => {
   )
     throw new Error('Buck editor publication owner names a different lock inode')
 }
-
-/** Validate existing in-process authority without opening, acquiring, upgrading or unlocking. */
-export const requireEditorPublicationOwner = ({
-  root,
-  owner,
-}: {
-  readonly root: string
-  readonly owner?: EditorPublicationOwner
-}): EditorPublicationOwner => {
-  const state = owner === undefined ? undefined : owners.get(owner)
-  if (state === undefined)
-    throw new Error('Buck editor publication requires a live in-process publication owner')
-  validateOwner(root, state)
-  return owner!
-}
-
-const mintOwner = (root: string, fd: number, lock: PublicationFlock): EditorPublicationOwner => {
+type OwnerInput = { root: string; fd: number; lock: PublicationFlock }
+const mintOwner = ({ root, fd, lock }: OwnerInput): EditorPublicationOwner => {
   const state: OwnerState = { root: realpathSync(root), fd, live: true }
-  validateOwner(root, state)
+  validateOwner({ root, state })
   // Diagnostic only: admission_dump reads at most 1024 bytes of this historical schema.
   // Use the system monotonic clock shared with Python, not a process-relative runtime clock.
   // Write only after exclusive acquisition and inode validation; contents never mint authority.
@@ -136,78 +212,4 @@ const mintOwner = (root: string, fd: number, lock: PublicationFlock): EditorPubl
   const owner = Object.freeze(Object.create(null)) as EditorPublicationOwner
   owners.set(owner, state)
   return owner
-}
-
-/** Release only this process's acquired lease. Repeated releases have no effect. */
-export const releaseEditorPublicationOwner = (owner: EditorPublicationOwner): void => {
-  const state = owners.get(owner)
-  if (state === undefined) throw new Error('Invalid Buck editor publication owner')
-  if (state.live === false) return
-  state.live = false
-  closeSync(state.fd)
-}
-
-/** Hold ownership until the callback has joined every subordinate build/read/publication operation. */
-export const withEditorPublicationOwner = async <TResult>({
-  root,
-  signal,
-  run,
-}: {
-  readonly root: string
-  readonly signal?: AbortSignal
-  readonly run: (owner: EditorPublicationOwner) => Promise<TResult>
-}): Promise<TResult> => {
-  signal?.throwIfAborted()
-  const lock = openFlock()
-  let fd: number | undefined
-  let owner: EditorPublicationOwner | undefined
-  try {
-    fd = openOwner(root, lock)
-    for (;;) {
-      signal?.throwIfAborted()
-      const error = lock.acquire(fd)
-      if (error === 0) break
-      // EAGAIN/EWOULDBLOCK are 11 on Linux and 35 on Darwin. Other failures are not contention.
-      if (error !== 11 && error !== 35)
-        throw new Error(`Could not acquire Buck editor publication owner (errno ${error})`)
-      // eslint-disable-next-line no-await-in-loop -- Wait for this specific owner, not another job.
-      await setTimeout(50, undefined, { signal })
-    }
-    owner = mintOwner(root, fd, lock)
-    signal?.throwIfAborted()
-    return await run(owner)
-  } finally {
-    try {
-      if (owner !== undefined) releaseEditorPublicationOwner(owner)
-      else if (fd !== undefined) closeSync(fd)
-    } finally {
-      lock.close()
-    }
-  }
-}
-
-/** Maintenance defers rather than waiting behind a publisher. */
-export const tryAcquireEditorPublicationOwner = ({
-  root,
-}: {
-  readonly root: string
-}): EditorPublicationOwner | undefined => {
-  const lock = openFlock()
-  let fd: number | undefined
-  let owner: EditorPublicationOwner | undefined
-  try {
-    fd = openOwner(root, lock)
-    const error = lock.acquire(fd)
-    if (error === 11 || error === 35) return undefined
-    if (error !== 0)
-      throw new Error(`Could not acquire Buck editor publication owner (errno ${error})`)
-    owner = mintOwner(root, fd, lock)
-    return owner
-  } finally {
-    try {
-      if (owner === undefined && fd !== undefined) closeSync(fd)
-    } finally {
-      lock.close()
-    }
-  }
 }
