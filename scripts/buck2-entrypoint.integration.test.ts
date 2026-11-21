@@ -772,7 +772,12 @@ await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));`
         ],
         {
           cwd: process.cwd(),
-          env: { ...process.env, ...env, PATH: join(root, 'no-host-utilities'), BUN_BIN: undefined },
+          env: {
+            ...process.env,
+            ...env,
+            PATH: join(root, 'no-host-utilities'),
+            BUN_BIN: undefined,
+          },
           stdin: 'ignore',
           stdout: 'pipe',
           stderr: 'pipe',
@@ -789,15 +794,11 @@ await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));`
       const result = JSON.parse(readFileSync(resultPath, 'utf8'))
       expect(result?.exitCode).toBe(0)
       expect(result?.signalCode).toBeNull()
-      const shard = JSON.parse(
-        readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'),
-      )
+      const shard = JSON.parse(readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'))
       expect(shard.complete).toBe(true)
       expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
       if (requested[0] === 'run') {
-        const observed: string[] = JSON.parse(
-          readFileSync(join(root, 'native-args.json'), 'utf8'),
-        )
+        const observed: string[] = JSON.parse(readFileSync(join(root, 'native-args.json'), 'utf8'))
         expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
         expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
       }
