@@ -35,6 +35,23 @@ oxfmt -c packages/@overeng/oxc-config/fmt.jsonc .
 | `overeng/exports-first`         | warn     | Exports should come before non-exports        |
 | `overeng/jsdoc-require-exports` | warn     | Require JSDoc on type/wildcard exports        |
 
+### Shared StyleX preset
+
+`stylexOxlintRules()` in `genie/oxlint-base.ts` retains error-level upstream
+validation, semantic-color limits, focus-visible outline ownership and the ban on
+lookahead selectors. Its property limits explicitly support `WebkitUserSelect`
+(`auto`, `text`, `none`, `contain`, `all`), `WebkitTouchCallout` (`default`, `none`)
+and `WebkitBackdropFilter` (strings, matching standard `backdropFilter` validation).
+All three also accept upstream's CSS-wide keywords and `null`.
+
+These exact names fill omissions in the StyleX 0.19 validator, not a blanket
+`Webkit*` exemption: the compiler emits separate `-webkit-*` declarations and
+does not automatically prefix their standard counterparts. Keep both authored
+properties when both declarations are needed for browser compatibility.
+Regression cases in
+`nix/devenv-modules/tasks/shared/tests/oxlint-rule-policy.test.sh` exercise the
+serialized shared preset with the real oxlint binary and both plugins.
+
 ### `overeng/named-args`
 
 Enforces that functions use named arguments (options objects) instead of multiple positional parameters, improving readability and maintainability.

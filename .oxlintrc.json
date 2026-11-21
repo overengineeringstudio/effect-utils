@@ -122,6 +122,15 @@
       "error",
       {
         "propLimits": {
+          "WebkitUserSelect": {
+            "limit": ["auto", "text", "none", "contain", "all"]
+          },
+          "WebkitTouchCallout": {
+            "limit": ["default", "none"]
+          },
+          "WebkitBackdropFilter": {
+            "limit": "string"
+          },
           "accentColor": {
             "limit": ["transparent", "currentColor", "currentcolor"],
             "reason": "Read colours from a semantic token exported by a `*.stylex.ts` module."
