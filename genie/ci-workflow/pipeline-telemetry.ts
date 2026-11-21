@@ -6,6 +6,7 @@ import {
   pipelineJobIdentityForName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { fleetRunnerLabels } from './runners.ts'
 import {
   ciJobAdmission,
   linuxNixSandboxFallbackConf,
@@ -125,7 +126,14 @@ export const pipelineCloseJob = ({
       ...pinnedAction({ name: 'installNix' }),
       with: { extra_nix_config: linuxNixSandboxFallbackConf },
     },
-    joinTailnetStep,
+    // Fleet hosts already belong to the tailnet; do not start another tailscaled.
+    ...((
+      typeof runsOn === 'string'
+        ? runsOn === fleetRunnerLabels.linuxX64
+        : runsOn.includes(fleetRunnerLabels.linuxX64)
+    )
+      ? []
+      : [joinTailnetStep]),
     {
       name: 'Link started job roots',
       if: `\${{ always() && (${namespacePrivilegeTrustedPredicate})${Object.hasOwn(jobs, 'default-ref-policy') === true ? " && needs.default-ref-policy.result == 'success'" : ''} }}`,

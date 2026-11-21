@@ -1928,14 +1928,12 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 90,
   },
   /**
-   * Review-thread resolution gate. Checkout-free: only calls `gh api` on fleet
-   * capacity. The native ruleset flag is the live merge gate;
-   * this job is the early visible PR signal (thread resolution
+   * Review-thread resolution gate. Checkout-free: only calls `gh api`, so it runs on
+   * GitHub-hosted capacity instead of scarce Nix runners. The native ruleset flag is
+   * the live merge gate; this job is the early visible PR signal (thread resolution
    * does not retrigger workflows, so re-run after resolving threads to refresh).
    */
-  [prReviewsResolvedJobId]: prReviewsResolvedJob({
-    runsOn: fleetRunnerLabels.linuxX64,
-  }),
+  [prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' }),
   'nix-closure-sizes': {
     if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
@@ -2542,7 +2540,7 @@ const withGuardedMacosMeasurementDispatch = (
   args: Parameters<typeof withMacosMeasurementDispatch>[0],
 ): CiWorkflowArgs['jobs'] => {
   const jobs = withMacosMeasurementDispatch(args)
-  for (const id of ['tested-tree', prReviewsResolvedJobId, 'pipeline-attempt-close']) {
+  for (const id of ['tested-tree', 'pipeline-attempt-close']) {
     const job = jobs[id]!
     const condition = job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'
     jobs[id] = {

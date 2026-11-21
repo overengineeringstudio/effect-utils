@@ -4940,8 +4940,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.run_attempt > 1 && format('code-rerun-{0}', github.run_id) || 'code-head')) }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ github.run_attempt == 1 && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-reviews-resolved:
-    if: ${{ ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name != 'schedule')) }}
-    runs-on: sh-linux-x64
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name != 'schedule') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -7398,15 +7398,6 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
         timeout-minutes: 2
-      - # v4.4.0
-        if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
-          args: --accept-dns=true
       - name: Link started job roots
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.default-ref-policy.result == 'success' }}
         shell: bash

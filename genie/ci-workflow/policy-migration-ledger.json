@@ -412,6 +412,22 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
+      "job": "pr-reviews-resolved",
+      "rule": "hosted-runner",
+      "path": "jobs.pr-reviews-resolved.runs-on",
+      "value": "ubuntu-latest"
+    },
+    {
+      "repository": "overengineeringstudio/effect-utils",
+      "workflow": "ci.yml",
+      "job": "pr-reviews-resolved",
+      "rule": "runner-not-admitted",
+      "path": "jobs.pr-reviews-resolved.runs-on",
+      "value": "ubuntu-latest"
+    },
+    {
+      "repository": "overengineeringstudio/effect-utils",
+      "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "runner-fallback",
       "path": "jobs.source-shape.runs-on",
