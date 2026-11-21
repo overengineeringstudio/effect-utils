@@ -1,4 +1,3 @@
-import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import type { dlopen as openNativeLibrary } from 'bun:ffi'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawnSync } from 'node:child_process'
@@ -18,6 +17,7 @@ import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { isLinuxReaderInfrastructureIdentity } from './reader-infrastructure.ts'
 
 /**
@@ -995,7 +995,9 @@ const collectEditorViewProcesses = ({
       }
       if (reasons.length !== previousReasons) unknown++
     }
-    writeEditorViewDiagnostic(`editor-view-process-census: allowlisted=${allowlisted} unknown=${unknown}\n`)
+    writeEditorViewDiagnostic(
+      `editor-view-process-census: allowlisted=${allowlisted} unknown=${unknown}\n`,
+    )
     return reasons
   }
   if (process.platform !== 'darwin') return [`unsupported-process-platform: ${process.platform}`]
@@ -1183,7 +1185,9 @@ const collectEditorViewProcesses = ({
       reason: 'lsof-incomplete: no process identity records',
       call: 'lsof.process-identity',
     })
-  writeEditorViewDiagnostic(`editor-view-process-census: deadVnode=${deadVnode} unknown=${reasons.length}\n`)
+  writeEditorViewDiagnostic(
+    `editor-view-process-census: deadVnode=${deadVnode} unknown=${reasons.length}\n`,
+  )
   return reasons
 }
 

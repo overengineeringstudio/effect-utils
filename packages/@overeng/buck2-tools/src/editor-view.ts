@@ -31,8 +31,6 @@ import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
-import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
-
 import {
   EditorViewCapacityError,
   editorViewHostBudgetBytes,
@@ -50,6 +48,7 @@ import {
   type EditorViewBudgetCensusSession,
   type EditorViewPublicationLockProof,
 } from './editor-view-budget.ts'
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import {
   ensureEditorViewLeaseControl,
   probeEditorViewLease,

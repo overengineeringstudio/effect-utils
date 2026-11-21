@@ -33,13 +33,13 @@ import {
   reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   type EditorViewBudgetRootLock,
 } from './editor-view-budget.ts'
+import { editorViewDiagnostics } from './editor-view-diagnostics.ts'
 import { acquireEditorViewLease, probeReleasedEditorViewLease } from './editor-view-leases.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
 import {
   editorViewStagingCreatorIdentity,
   readEditorViewSourceManifest,
 } from './editor-view-sharing.ts'
-import { editorViewDiagnostics } from './editor-view-diagnostics.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
   scopeEditorViewTestProcesses,
@@ -546,8 +546,11 @@ const withPublisherTelemetry = async <TValue>(
 describe('editor view publisher', () => {
   it('captures real publication diagnostics without writing host stderr and restores the fallback', async () => {
     const fixture = makeFixture()
-    const child = Bun.spawn([
-      requireTool('BUN_BIN'), '--eval', `
+    const child = Bun.spawn(
+      [
+        requireTool('BUN_BIN'),
+        '--eval',
+        `
 import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
 import { editorViewDiagnostics, writeEditorViewDiagnostic } from ${JSON.stringify(new URL('./editor-view-diagnostics.ts', import.meta.url).href)};
 import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
@@ -561,11 +564,15 @@ catch (error) { propagated = error === original }
 writeEditorViewDiagnostic('fallback probe\\n');
 process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, propagated, restored: editorViewDiagnostics.getStore() === undefined }));
 `,
-    ], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+      ],
+      { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+    )
     editorCliProcesses.add(child)
     try {
       const [status, stdout, stderr] = await Promise.all([
-        child.exited, Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr),
+        child.exited,
+        Bun.readableStreamToText(child.stdout),
+        Bun.readableStreamToText(child.stderr),
       ])
       expect({ status, stderr }).toEqual({ status: 0, stderr: 'fallback probe\n' })
       const report = JSON.parse(stdout)
@@ -573,8 +580,12 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
       expect(report.restored).toBe(true)
       expect(typeof report.snapshot).toBe('string')
       expect(report.diagnostics.join('')).toContain('[editor-view-phase] ')
-      expect(report.diagnostics.join('')).toContain('"event":"editor-view.host-budget.reserve-start"')
-      expect(report.diagnostics.join('')).toContain('"event":"editor-view.host-budget.reserve-granted"')
+      expect(report.diagnostics.join('')).toContain(
+        '"event":"editor-view.host-budget.reserve-start"',
+      )
+      expect(report.diagnostics.join('')).toContain(
+        '"event":"editor-view.host-budget.reserve-granted"',
+      )
     } finally {
       editorCliProcesses.delete(child)
       cleanup(fixture)
@@ -4711,13 +4722,17 @@ describe('budget failures reject admission and preserve uncertain readers', () =
       const logged: string[] = []
       let cleanupEntered = false
       try {
-        publication = editorViewDiagnostics.run((line) => logged.push(line), () => publishEditorView({
-          ...fixture.options,
-          beforeSnapshotCleanup: () => {
-            cleanupEntered = true
-            throw new Error('injected post-commit cleanup error')
-          },
-        }))
+        publication = editorViewDiagnostics.run(
+          (line) => logged.push(line),
+          () =>
+            publishEditorView({
+              ...fixture.options,
+              beforeSnapshotCleanup: () => {
+                cleanupEntered = true
+                throw new Error('injected post-commit cleanup error')
+              },
+            }),
+        )
         const record = await publication
         expect(cleanupEntered).toBe(true)
         expect(currentTarget(fixture)).toBe(record.snapshot)
@@ -4855,20 +4870,24 @@ describe('same-host abandoned publication lock recovery', () => {
     it('recovers the dead owner through exact-token recovery and publishes', async () => {
       const logged: string[] = []
       try {
-        publication = editorViewDiagnostics.run((line) => logged.push(line), () => publishEditorView({
-          ...fixture.options,
-          beforeMaterialize: () => {
-            expect(
-              JSON.parse(
-                readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8'),
-              ),
-            ).toMatchObject({
-              pid: process.pid,
-              host: hostname(),
-              process: editorViewStagingCreatorIdentity({ pid: process.pid }),
-            })
-          },
-        }))
+        publication = editorViewDiagnostics.run(
+          (line) => logged.push(line),
+          () =>
+            publishEditorView({
+              ...fixture.options,
+              beforeMaterialize: () => {
+                expect(
+                  JSON.parse(
+                    readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8'),
+                  ),
+                ).toMatchObject({
+                  pid: process.pid,
+                  host: hostname(),
+                  process: editorViewStagingCreatorIdentity({ pid: process.pid }),
+                })
+              },
+            }),
+        )
         const record = await publication
         expect(currentTarget(fixture)).toBe(record.snapshot)
         expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
@@ -4895,12 +4914,13 @@ describe('same-host abandoned publication lock recovery', () => {
     const logged: string[] = []
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = editorViewDiagnostics.run((line) => logged.push(line), () => publishEditorView(fixture.options))
+      publication = editorViewDiagnostics.run(
+        (line) => logged.push(line),
+        () => publishEditorView(fixture.options),
+      )
       const record = await publication
       expect(currentTarget(fixture)).toBe(record.snapshot)
-      expect(logged.some((line) => String(line).includes('"reason":"reused-pid"'))).toBe(
-        true,
-      )
+      expect(logged.some((line) => String(line).includes('"reason":"reused-pid"'))).toBe(true)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
       cleanup(fixture)

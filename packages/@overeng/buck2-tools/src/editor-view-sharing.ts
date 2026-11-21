@@ -1,4 +1,3 @@
-import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { dlopen, read as ffiRead } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID, webcrypto } from 'node:crypto'
@@ -26,6 +25,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { editorViewTimingContext, recordViewTiming } from './typescript-runner.ts'
 
 const batchSize = 128

@@ -1,4 +1,3 @@
-import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   type BigIntStats,
@@ -24,6 +23,7 @@ import { homedir, hostname } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { probeEditorViewLeaseUnderFence } from './editor-view-leases.ts'
 import {
   editorViewAutomaticEvictionEvidence,

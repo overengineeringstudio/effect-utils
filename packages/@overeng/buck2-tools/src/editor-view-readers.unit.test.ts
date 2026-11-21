@@ -3,8 +3,8 @@ import process from 'node:process'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import * as Leases from './editor-view-leases.ts'
 import { editorViewDiagnostics } from './editor-view-diagnostics.ts'
+import * as Leases from './editor-view-leases.ts'
 import * as ReaderDirectory from './editor-view-reader-directory.ts'
 import {
   classifyEditorViewProcessCandidates,
