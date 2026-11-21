@@ -1027,3 +1027,192 @@ if (command === 'status')
     })
   }))
 
+for (const captureStderr of [true, false]) {
+  it(`bounds owned stderr capture while draining every overflow byte (captureStderr=${captureStderr})`, () =>
+    withPublicationRoot(async (cwd) => {
+      const native = join(cwd, 'native')
+      const bytes = 1048577
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+await Bun.write(Bun.stderr, new Uint8Array(${bytes}).fill(120))
+process.stdout.write('complete')
+process.exit(23)
+`,
+        { mode: 0o755 },
+      )
+      await withEditorPublicationOwner({
+        root: cwd,
+        run: async (owner) => {
+          let forwarded = 0
+          const result = await runOwnedEditorPublicationCommand({
+            native,
+            cwd,
+            owner,
+            env: {},
+            captureStderr,
+            args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
+            onStderr: (chunk) => {
+              forwarded += chunk.byteLength
+            },
+          })
+          expect(forwarded).toBe(bytes)
+          expect(result).toEqual({
+            exitCode: 23,
+            signalCode: null,
+            stdout: 'complete',
+            stderr: '',
+          })
+        },
+      })
+    }))
+}
+
+it('forwards small native stderr without duplicate capture when captureStderr is false', () =>
+  withPublicationRoot(async (cwd) => {
+    const native = join(cwd, 'native')
+    writeFileSync(native, '#!/bin/sh\nprintf diagnostic >&2\n', { mode: 0o755 })
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        const forwarded: Uint8Array[] = []
+        const result = await runOwnedEditorPublicationCommand({
+          native,
+          cwd,
+          owner,
+          env: {},
+          captureStderr: false,
+          args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
+          onStderr: (chunk) => {
+            forwarded.push(chunk)
+          },
+        })
+        expect(Buffer.concat(forwarded).toString()).toBe('diagnostic')
+        expect(result.stderr).toBe('')
+        expect(result.exitCode).toBe(0)
+      },
+    })
+  }))
+
+// These real subprocess protocol fixtures exercise launcher ownership/lifecycle,
+// not full NativeBuck, remote ABI, Linux kill policy or Darwin DICE qualification.
+for (const stream of ['stdout', 'stderr'] as const) {
+  for (const cause of [new Error('original forwarding failure'), undefined, null]) {
+    it(`rejects the exact ${stream} callback cause (${String(cause)}) only after draining and native close`, () =>
+      withPublicationRoot(async (cwd) => {
+        const native = join(cwd, 'native')
+        writeFileSync(
+          native,
+          `#!${process.execPath}
+import { writeFileSync } from 'node:fs'
+writeFileSync('child.pid', String(process.pid))
+await Bun.write(Bun.stdout, new Uint8Array(1048577).fill(111))
+await Bun.write(Bun.stderr, new Uint8Array(1048577).fill(101))
+writeFileSync('finished', 'both streams written')
+`,
+          { mode: 0o700 },
+        )
+        await withEditorPublicationOwner({
+          root: cwd,
+          run: async (owner) => {
+            let callbackCalls = 0
+            let otherBytes = 0
+            const fail = () => {
+              callbackCalls++
+              throw cause
+            }
+            const collect = (chunk: Uint8Array) => {
+              otherBytes += chunk.byteLength
+            }
+            const args = ['--isolation-dir', editorPublicationIsolation, 'kill']
+            const outcome = await runOwnedEditorPublicationCommand({
+              native,
+              cwd,
+              env: {},
+              owner,
+              args,
+              stdin: 'ignore',
+              onStdout: stream === 'stdout' ? fail : collect,
+              onStderr: stream === 'stderr' ? fail : collect,
+            }).then(
+              (result) => ({ status: 'fulfilled' as const, result }),
+              (error: unknown) => ({ status: 'rejected' as const, error }),
+            )
+            expect(outcome.status).toBe('rejected')
+            if (outcome.status !== 'rejected') throw new Error('callback failure was swallowed')
+            expect(outcome.error).toBe(cause)
+            expect(callbackCalls).toBe(1)
+            expect(otherBytes).toBe(1048577)
+            expect(readFileSync(join(cwd, 'finished'), 'utf8')).toBe('both streams written')
+            const pid = Number(readFileSync(join(cwd, 'child.pid'), 'utf8'))
+            expect(() => process.kill(pid, 0)).toThrow()
+            expect(requireEditorPublicationInvocationOwner({ cwd, env: {}, owner, args })).toBe(
+              owner,
+            )
+          },
+        })
+      }))
+  }
+}
+
+// The real subprocess must outlive TERM: fake time cannot drive its OS signal
+// handlers or the launcher's real five-second escalation/close contract.
+it(
+  'joins actual close after the five-second KILL bound for a TERM-resistant owned child',
+  () =>
+    withPublicationRoot(async (cwd) => {
+      const native = join(cwd, 'native')
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+process.on('SIGTERM', () => { process.stderr.write('term-received') })
+// Keep the real child alive; readiness is its stdout pipe, not this interval.
+setInterval(() => {}, 1000)
+process.stdout.write(String(process.pid) + '\\n')
+`,
+        { mode: 0o700 },
+      )
+      await withEditorPublicationOwner({
+        root: cwd,
+        run: async (owner) => {
+          const controller = new AbortController()
+          let ready = ''
+          let abortedAt: number | undefined
+          const args = ['--isolation-dir', editorPublicationIsolation, 'kill']
+          const beforeListeners = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) =>
+            process.listenerCount(signal),
+          )
+          const result = await runOwnedEditorPublicationCommand({
+            native,
+            cwd,
+            env: {},
+            owner,
+            args,
+            signal: controller.signal,
+            stdin: 'ignore',
+            onStdout: (chunk) => {
+              ready += Buffer.from(chunk).toString()
+              if (ready.includes('\n') === true && abortedAt === undefined) {
+                abortedAt = performance.now()
+                controller.abort()
+              }
+            },
+          })
+          expect(abortedAt).toBeDefined()
+          const elapsed = performance.now() - abortedAt!
+          expect(elapsed).toBeGreaterThanOrEqual(4900)
+          expect(elapsed).toBeLessThan(8000)
+          expect(result.signalCode).toBe('SIGKILL')
+          expect(result.stderr).toBe('term-received')
+          expect(() => process.kill(Number(ready.trim()), 0)).toThrow()
+          expect(
+            ['SIGINT', 'SIGTERM', 'SIGHUP'].map((signal) => process.listenerCount(signal)),
+          ).toEqual(beforeListeners)
+          controller.abort()
+          expect(requireEditorPublicationInvocationOwner({ cwd, env: {}, owner, args })).toBe(owner)
+        },
+      })
+    }),
+  12000,
+)
+
