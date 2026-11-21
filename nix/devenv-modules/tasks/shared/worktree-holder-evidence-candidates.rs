@@ -724,8 +724,9 @@ mod tests {
         before.recheck(deadline()).unwrap();
         retained.recheck(&before, deadline()).unwrap();
         assert_eq!(file.metadata().unwrap().nlink(), 0);
-        let MatchOutcome::Native(matches) = before.matches(&file, &task, ReferenceKind::Fd,
-            deadline()).unwrap() else { panic!("refused bind changed native classification") };
+        let MatchOutcome::Native(matches) = before.recheck_matches(&file, &task,
+            ReferenceKind::Fd, Some(&retained), deadline()).unwrap()
+            else { panic!("refused bind changed native classification") };
         assert!(matches.is_empty());
     }
     #[test]
