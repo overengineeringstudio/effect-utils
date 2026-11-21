@@ -1055,8 +1055,8 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
-const hostCacheInputs = taskSource('buck2:cache-posture:test')
-  .split('execIfModified = [')[1]?.split('];')[0] ?? ''
+const hostCacheInputs =
+  taskSource('buck2:cache-posture:test').split('execIfModified = [')[1]?.split('];')[0] ?? ''
 for (const input of [
   'packages/@overeng/buck2-tools/src/bun-test-runner.ts',
   'packages/@overeng/buck2-tools/src/bun-test-preload.ts',
