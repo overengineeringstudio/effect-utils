@@ -652,10 +652,10 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
       let failure: unknown
       try {
         await publishEditorViews({
-          options: [fixture.options, sibling.options].map((options) => ({
-            ...options,
-            cp: falseTool,
-          })),
+          options: [
+            { ...fixture.options, cp: falseTool },
+            { ...sibling.options, cp: falseTool },
+          ],
         })
       } catch (error) {
         failure = error

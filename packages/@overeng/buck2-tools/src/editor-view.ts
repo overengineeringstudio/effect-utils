@@ -4607,9 +4607,9 @@ export const dispatchEditorView = async ({
           run: () =>
             editorViewDispatchScope.run(scope, async () => {
               try {
-                const result = await dispatchEditorViewRequest(request)
+                const dispatched = await dispatchEditorViewRequest(request)
                 signal?.throwIfAborted()
-                return result
+                return dispatched
               } finally {
                 controller.abort()
                 while (scope.copies.size > 0)
