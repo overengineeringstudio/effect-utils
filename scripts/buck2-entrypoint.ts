@@ -2462,18 +2462,78 @@ const observeNativeCommand = (
 
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
-if (import.meta.main === true) {
+/** Credentials and trace identity belong to this invocation, not process.env. */
+const prepareNativeEnvironment = (env: NodeJS.ProcessEnv): void => {
+  const auth = env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
+  if (
+    auth !== undefined &&
+    auth !== '' &&
+    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] !== '1' &&
+    env['BUCK2_NO_REMOTE_CACHE'] !== '1'
+  ) {
+    const colon = auth.indexOf(':')
+    if (colon <= 0 || colon === auth.length - 1 || auth.startsWith('publisher:') === true)
+      throw new Error('private cache writer requires a per-host username:password credential')
+    env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] = Buffer.from(auth).toString('base64')
+  }
+  delete env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
+  // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
+  env['BUCK_WRAPPER_UUID'] ??= randomUUID()
+}
+
+type ManagedCommandOptions = NativeExecution & {
+  readonly native: string
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly owner?: EditorPublicationOwner
+  readonly launchCache?: string
+}
+
+/** One admission/execution path for both the executable and its in-process owner. */
+const runManagedCommand = async (
+  options: ManagedCommandOptions,
+): Promise<NativeCommandResult | undefined> => {
+  const { native, cwd, owner, launchCache } = options
+  const env = { ...options.env }
+  prepareNativeEnvironment(env)
+  const execution: NativeExecution = {
+    cwd,
+    env,
+    signal: options.signal,
+    stdin: options.stdin,
+    capture: options.capture,
+    onStdout: options.onStdout,
+    onStderr: options.onStderr,
+    captureStderr: options.captureStderr,
+  }
+  options.signal?.throwIfAborted()
+  if (options.capture === true && owner === undefined)
+    throw new Error('Owned native invocation requires a process-local editor publication owner')
+  // Snapshot once before admission, including the owner/root decision.
+  const requestedArgs = resolveManagedInvocation({ args: options.args, cwd, env }).args
+  const publication = editorPublicationInvocation({ args: requestedArgs, cwd, env, owner })
+  if (owner !== undefined && publication === undefined)
+    throw new Error('Owned native invocation requires the reserved editor-publication isolation')
+  const root = publication?.root ?? findRoot(cwd)
+  let restoreStdio: (() => void) | undefined
+  const finishStdio = () => {
+    const restore = restoreStdio
+    restoreStdio = undefined
+    try {
+      restore?.()
+    } catch (error) {
+      warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
+    }
+  }
   try {
-    let restoreStdio: (() => void) | undefined
     try {
       const symbols = {
         eu_getfl: { args: ['i32'], returns: 'i32' },
         eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
       } as const
       const library =
-        typeof BUCK2_STDIO_LIBRARY === 'string'
-          ? BUCK2_STDIO_LIBRARY
-          : process.env['BUCK2_STDIO_LIBRARY']
+        typeof BUCK2_STDIO_LIBRARY === 'string' ? BUCK2_STDIO_LIBRARY : env['BUCK2_STDIO_LIBRARY']
       if (library === undefined || library === '')
         throw new Error('BUCK2_STDIO_LIBRARY does not name the built stdio protection library')
       const stdio = dlopen(library, symbols)
@@ -2499,6 +2559,229 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
     }
+    const watchmanDirectory =
+      root !== undefined &&
+      skipsWatcherAdmission(requestedArgs) === false &&
+      (buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))[
+        'buck2.file_watcher'
+      ] ??
+        buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))['buck2.file_watcher']) ===
+        'watchman'
+        ? prepareWatchmanEnvironment(env)
+        : undefined
+    let fallbackEligible = false
+    const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
+      const prepared = await directBuckArguments({
+        args: requestedArgs,
+        cwd,
+        env,
+        workflowCommands: env['GITHUB_ACTIONS'] === 'true',
+        watchmanDirectory,
+        beforeCachePosture,
+        onCachePosture: (values) => {
+          fallbackEligible = cacheLocalFallbackEligible({ values, env })
+        },
+      })
+      const sentinel = prepared.indexOf('--')
+      const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
+      if (root !== undefined && skipsWatcherAdmission(configArgs) === false) {
+        const tracked = buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))
+        const local = buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))
+        const provider = local['buck2.file_watcher'] ?? tracked['buck2.file_watcher']
+        if (
+          provider !== undefined &&
+          (provider === 'watchman' || tracked['buck2.file_watcher'] === 'watchman')
+        )
+          reconcileWatcherDaemon({
+            native,
+            repoRoot: root,
+            args: configArgs,
+            env,
+            provider,
+          })
+      }
+      return prepared
+    }
+    const admittedArgs =
+      root === undefined
+        ? await admit()
+        : await admitCacheDaemonCommand({
+            native,
+            root,
+            args: requestedArgs,
+            cwd,
+            env,
+            admit,
+          })
+    const args = nativeBuildIdArguments({
+      args: admittedArgs,
+      cwd,
+      env,
+    })
+    if (launchCache !== undefined && launchCache !== '' && failedOpen === false) {
+      const candidate = `${launchCache}.${randomUUID()}`
+      try {
+        mkdirSync(dirname(launchCache), { recursive: true, mode: 0o700 })
+        writeFileSync(candidate, `${Math.floor(admissionExpires / 1000)}\n${args.join('\0')}\0`, {
+          flag: 'wx',
+          mode: 0o600,
+        })
+        renameSync(candidate, launchCache)
+      } catch {
+        /* Warm launch caching is optional. */
+      } finally {
+        try {
+          rmSync(candidate, { force: true })
+        } catch {
+          /* An inaccessible cache directory must not turn cleanup into a build failure. */
+        }
+      }
+    }
+    if (options.capture !== true && process.execve === undefined)
+      throw new Error('pinned Buck launcher requires a runtime with process.execve')
+    // Synchronous diagnostics are the primary fix. Native flag restoration is
+    // defence in depth and must not prevent Buck from running.
+    finishStdio()
+    const localBuildId = randomUUID()
+    const replayArgs = localCacheReplayArguments({
+      args: requestedArgs,
+      cwd,
+      env,
+      buildId: localBuildId,
+    })
+    const superviseReader = shouldSuperviseReaderCommand({
+      reader: fallbackEligible && replayArgs !== undefined,
+      stderrIsTTY: options.capture === true ? false : isatty(2),
+      args: requestedArgs,
+      cwd,
+      env,
+    })
+    options.signal?.throwIfAborted()
+    if (publication !== undefined) requireEditorPublicationOwner({ root: publication.root, owner })
+    let nativeResult: NativeCommandResult | undefined
+    if (superviseReader === true) {
+      const command = buckSubcommand(args)?.command
+      let classification: ReaderReapiUnavailableShadow | undefined
+      const exitCode = await runWithCacheLocalFallback({
+        eligible: fallbackEligible,
+        command: { subcommand: command ?? 'unknown', argumentCount: args.length },
+        run: async () => {
+          nativeResult =
+            (await runNativeWithEvidence({ native, args, root, stderr: 'pipe', execution })) ??
+            (await observeNativeCommand({ native, args, ...execution }))
+          return nativeResult
+        },
+        onFallback: (value) => {
+          classification = value
+          warnStdio(
+            `warning: Buck2 transient REAPI ${value.cause.capabilitiesUnavailable === true ? 'capabilities' : value.cause.clientInitialization === true ? 'init' : 'connect'} failure: original_build_id=${env['BUCK_WRAPPER_UUID']} original_exit=${value.nativeExitCode}; exactly one bounded LOCAL re-execution follows; original failed trace retained\n`,
+          )
+        },
+        local: async () => {
+          if (root === undefined || classification === undefined || replayArgs === undefined)
+            throw new Error('Buck2 LOCAL fallback requires an admitted root and classification')
+          const originalBuildId = canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'])
+          const startedAt = Date.now()
+          // Apply the existing offline overlay under the daemon lifecycle lock.
+          // Same-isolation admission restarts only an idle mismatched daemon;
+          // busy/unknown ownership refuses instead of reusing remote credentials.
+          options.signal?.throwIfAborted()
+          const localEnv: NodeJS.ProcessEnv = {
+            ...env,
+            BUCK_WRAPPER_UUID: localBuildId,
+            BUCK2_NO_REMOTE_CACHE: '1',
+            BUCK2_CI_POSTURE: '1',
+          }
+          delete localEnv['BUCK2_PUBLIC_CACHE_WRITE_AUTH']
+          delete localEnv['BUCK2_CACHE_WRITE_BASIC_AUTH']
+          delete localEnv['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH']
+          const localArgs = await admitCacheDaemonCommand({
+            native,
+            root,
+            cwd,
+            args: replayArgs,
+            env: localEnv,
+            admit: (beforeCachePosture) =>
+              directBuckArguments({
+                args: replayArgs,
+                cwd,
+                env: localEnv,
+                beforeCachePosture,
+                watchmanDirectory,
+              }),
+          })
+          const localInvocation = nativeBuildIdArguments({
+            args: localArgs,
+            cwd,
+            env: localEnv,
+          })
+          nativeResult =
+            (await runNativeWithEvidence({
+              native,
+              args: localInvocation,
+              root,
+              stderr: 'pipe',
+              deadlineMs: 600000,
+              execution: { ...execution, env: localEnv },
+            })) ??
+            (await spawnNativeCommand({
+              native,
+              args: localInvocation,
+              stderr: 'pipe',
+              deadlineMs: 600000,
+              ...execution,
+              env: localEnv,
+            }).result)
+          const relationship = decodeCacheLocalFallback({
+            schemaVersion: 1,
+            originalBuildId,
+            localBuildId,
+            reason:
+              classification.cause.capabilitiesUnavailable === true
+                ? 'capabilities'
+                : classification.cause.clientInitialization === true
+                  ? 'init'
+                  : 'connect',
+            classification,
+            originalExitCode: classification.nativeExitCode,
+            localExitCode: nativeResult.exitCode,
+            localSignalCode: nativeResult.signalCode,
+            localOnly: true,
+            startedAt,
+            finishedAt: Date.now(),
+          })
+          const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
+          if (evidencePath !== undefined && evidencePath !== '')
+            appendFileSync(
+              `${evidencePath}.local-fallbacks.jsonl`,
+              `${JSON.stringify(relationship)}\n`,
+              { mode: 0o600 },
+            )
+          warnStdio(
+            `warning: Buck2 LOCAL fallback finished: original_build_id=${originalBuildId} local_build_id=${localBuildId} local_exit=${nativeResult.exitCode} local_signal=${nativeResult.signalCode ?? 'none'}; original failure remains diagnostic\n`,
+          )
+          return nativeResult.exitCode
+        },
+      })
+      if (nativeResult !== undefined) nativeResult.exitCode = exitCode
+    } else {
+      nativeResult = await runNativeWithEvidence({ native, args, root, execution })
+      if (nativeResult === undefined) {
+        if (options.capture !== true) process.execve!(native, [native, ...args], env)
+        else
+          nativeResult = await spawnNativeCommand({ native, args, stderr: 'pipe', ...execution })
+            .result
+      }
+    }
+    return nativeResult
+  } finally {
+    // Imported execution must release the FFI library even when admission fails.
+    finishStdio()
+  }
+}
+
+if (import.meta.main === true) {
+  try {
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
     if (process.argv[3] === '--initialize-watchman-root') {
@@ -2524,228 +2807,15 @@ if (import.meta.main === true) {
         })
       process.exit(0)
     }
-    const auth = process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
-    if (
-      auth !== undefined &&
-      auth !== '' &&
-      process.env['BUCK2_PUBLIC_CACHE_READ_ONLY'] !== '1' &&
-      process.env['BUCK2_NO_REMOTE_CACHE'] !== '1'
-    ) {
-      const colon = auth.indexOf(':')
-      if (colon <= 0 || colon === auth.length - 1 || auth.startsWith('publisher:') === true)
-        throw new Error('private cache writer requires a per-host username:password credential')
-      process.env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH'] = Buffer.from(auth).toString('base64')
-    }
-    delete process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
-    // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
-    process.env['BUCK_WRAPPER_UUID'] ??= randomUUID()
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
     const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
-    const root = findRoot(process.cwd())
-    const watchmanDirectory =
-      root !== undefined &&
-      skipsWatcherAdmission(requestedArgs) === false &&
-      (buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))[
-        'buck2.file_watcher'
-      ] ??
-        buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))['buck2.file_watcher']) ===
-        'watchman'
-        ? prepareWatchmanEnvironment(process.env)
-        : undefined
-    let fallbackEligible = false
-    const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
-      const prepared = await directBuckArguments({
-        args: requestedArgs,
-        cwd: process.cwd(),
-        env: process.env,
-        workflowCommands: process.env['GITHUB_ACTIONS'] === 'true',
-        watchmanDirectory,
-        beforeCachePosture,
-        onCachePosture: (values) => {
-          fallbackEligible = cacheLocalFallbackEligible({ values, env: process.env })
-        },
-      })
-      const sentinel = prepared.indexOf('--')
-      const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
-      if (root !== undefined && skipsWatcherAdmission(configArgs) === false) {
-        const tracked = buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))
-        const local = buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))
-        const provider = local['buck2.file_watcher'] ?? tracked['buck2.file_watcher']
-        if (
-          provider !== undefined &&
-          (provider === 'watchman' || tracked['buck2.file_watcher'] === 'watchman')
-        )
-          reconcileWatcherDaemon({
-            native,
-            repoRoot: root,
-            args: configArgs,
-            env: process.env,
-            provider,
-          })
-      }
-      return prepared
-    }
-    const admittedArgs =
-      root === undefined
-        ? await admit()
-        : await admitCacheDaemonCommand({
-            native,
-            root,
-            args: requestedArgs,
-            env: process.env,
-            admit,
-          })
-    const args = nativeBuildIdArguments({
-      args: admittedArgs,
-      cwd: process.cwd(),
-      env: process.env,
-    })
-    if (launchCache !== undefined && launchCache !== '' && failedOpen === false) {
-      const candidate = `${launchCache}.${randomUUID()}`
-      try {
-        mkdirSync(dirname(launchCache), { recursive: true, mode: 0o700 })
-        writeFileSync(candidate, `${Math.floor(admissionExpires / 1000)}\n${args.join('\0')}\0`, {
-          flag: 'wx',
-          mode: 0o600,
-        })
-        renameSync(candidate, launchCache)
-      } catch {
-        /* Warm launch caching is optional. */
-      } finally {
-        try {
-          rmSync(candidate, { force: true })
-        } catch {
-          /* An inaccessible cache directory must not turn cleanup into a build failure. */
-        }
-      }
-    }
-    if (process.execve === undefined)
-      throw new Error('pinned Buck launcher requires a runtime with process.execve')
-    // Synchronous diagnostics are the primary fix. Native flag restoration is
-    // defence in depth and must not prevent Buck from running.
-    try {
-      restoreStdio?.()
-    } catch (error) {
-      warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
-    }
-    const localBuildId = randomUUID()
-    const replayArgs = localCacheReplayArguments({
+    const nativeResult = await runManagedCommand({
+      native,
       args: requestedArgs,
       cwd: process.cwd(),
       env: process.env,
-      buildId: localBuildId,
+      launchCache,
     })
-    const superviseReader = shouldSuperviseReaderCommand({
-      reader: fallbackEligible && replayArgs !== undefined,
-      stderrIsTTY: isatty(2),
-      args: requestedArgs,
-      cwd: process.cwd(),
-      env: process.env,
-    })
-    let nativeResult: NativeCommandResult | undefined
-    if (superviseReader === true) {
-      const command = buckSubcommand(args)?.command
-      let classification: ReaderReapiUnavailableShadow | undefined
-      const exitCode = await runWithCacheLocalFallback({
-        eligible: fallbackEligible,
-        command: { subcommand: command ?? 'unknown', argumentCount: args.length },
-        run: async () => {
-          nativeResult =
-            (await runNativeWithEvidence({ native, args, root, stderr: 'pipe' })) ??
-            (await observeNativeCommand({ native, args }))
-          return nativeResult
-        },
-        onFallback: (value) => {
-          classification = value
-          warnStdio(
-            `warning: Buck2 transient REAPI ${value.cause.capabilitiesUnavailable === true ? 'capabilities' : value.cause.clientInitialization === true ? 'init' : 'connect'} failure: original_build_id=${process.env['BUCK_WRAPPER_UUID']} original_exit=${value.nativeExitCode}; exactly one bounded LOCAL re-execution follows; original failed trace retained\n`,
-          )
-        },
-        local: async () => {
-          if (root === undefined || classification === undefined || replayArgs === undefined)
-            throw new Error('Buck2 LOCAL fallback requires an admitted root and classification')
-          const originalBuildId = canonicalCacheAdmissionInvocationId(
-            process.env['BUCK_WRAPPER_UUID'],
-          )
-          const startedAt = Date.now()
-          // Apply the existing offline overlay under the daemon lifecycle lock.
-          // Same-isolation admission restarts only an idle mismatched daemon;
-          // busy/unknown ownership refuses instead of reusing remote credentials.
-          process.env['BUCK_WRAPPER_UUID'] = localBuildId
-          process.env['BUCK2_NO_REMOTE_CACHE'] = '1'
-          delete process.env['BUCK2_PUBLIC_CACHE_WRITE_AUTH']
-          delete process.env['BUCK2_CACHE_WRITE_BASIC_AUTH']
-          delete process.env['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH']
-          const localEnv = { ...process.env, BUCK2_CI_POSTURE: '1' }
-          const localArgs = await admitCacheDaemonCommand({
-            native,
-            root,
-            args: replayArgs,
-            env: localEnv,
-            admit: (beforeCachePosture) =>
-              directBuckArguments({
-                args: replayArgs,
-                cwd: process.cwd(),
-                env: localEnv,
-                beforeCachePosture,
-                watchmanDirectory,
-              }),
-          })
-          const localInvocation = nativeBuildIdArguments({
-            args: localArgs,
-            cwd: process.cwd(),
-            env: process.env,
-          })
-          nativeResult =
-            (await runNativeWithEvidence({
-              native,
-              args: localInvocation,
-              root,
-              stderr: 'pipe',
-              deadlineMs: 600000,
-            })) ??
-            (await spawnNativeCommand({
-              native,
-              args: localInvocation,
-              stderr: 'pipe',
-              deadlineMs: 600000,
-            }).result)
-          const relationship = decodeCacheLocalFallback({
-            schemaVersion: 1,
-            originalBuildId,
-            localBuildId,
-            reason:
-              classification.cause.capabilitiesUnavailable === true
-                ? 'capabilities'
-                : classification.cause.clientInitialization === true
-                  ? 'init'
-                  : 'connect',
-            classification,
-            originalExitCode: classification.nativeExitCode,
-            localExitCode: nativeResult.exitCode,
-            localSignalCode: nativeResult.signalCode,
-            localOnly: true,
-            startedAt,
-            finishedAt: Date.now(),
-          })
-          const evidencePath = process.env['CI_BUCK2_CACHE_EVIDENCE_PATH']
-          if (evidencePath !== undefined && evidencePath !== '')
-            appendFileSync(
-              `${evidencePath}.local-fallbacks.jsonl`,
-              `${JSON.stringify(relationship)}\n`,
-              { mode: 0o600 },
-            )
-          warnStdio(
-            `warning: Buck2 LOCAL fallback finished: original_build_id=${originalBuildId} local_build_id=${localBuildId} local_exit=${nativeResult.exitCode} local_signal=${nativeResult.signalCode ?? 'none'}; original failure remains diagnostic\n`,
-          )
-          return nativeResult.exitCode
-        },
-      })
-      if (nativeResult !== undefined) nativeResult.exitCode = exitCode
-    } else {
-      nativeResult = await runNativeWithEvidence({ native, args, root })
-      if (nativeResult === undefined) process.execve(native, [native, ...args], process.env)
-    }
     if (nativeResult !== undefined) {
       process.exitCode = nativeResult.exitCode
       if (nativeResult.signalCode !== null) {
