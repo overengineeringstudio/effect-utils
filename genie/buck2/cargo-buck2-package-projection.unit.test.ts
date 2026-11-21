@@ -27,6 +27,37 @@ const consumerProjectionOptions = {
 } as const
 
 describe('Cargo Buck2 package projection', () => {
+  it.each(['', '..', '../outside', 'a/../b', '/workspace', './a', 'a/.'])(
+    'rejects invalid workspaceRoot %j',
+    (workspaceRoot) => {
+      expect(() =>
+        defineCargoBuck2PackageProjection({ ...consumerProjectionOptions, workspaceRoot }),
+      ).toThrow('workspaceRoot must be a normalized repository-relative path')
+    },
+  )
+
+  it.each(['cargoManifestPath', 'cargoLockPath', 'reindeerConfigPath', 'thirdPartyBuckPath'] as const)(
+    'keeps root and empty paths invalid for %s',
+    (field) => {
+      for (const value of ['.', '']) {
+        expect(() =>
+          defineCargoBuck2PackageProjection({ ...consumerProjectionOptions, [field]: value }),
+        ).toThrow(`${field} must be a normalized repository-relative path`)
+      }
+    },
+  )
+
+  it('keeps root and empty generator paths invalid', () => {
+    for (const value of ['.', '']) {
+      expect(() =>
+        defineCargoBuck2PackageProjection({
+          ...consumerProjectionOptions,
+          generatorSourcePaths: [value],
+        }),
+      ).toThrow('generatorSourcePaths[0] must be a normalized repository-relative path')
+    }
+  })
+
   it('rejects lexical and physical repository escapes', () => {
     expect(() =>
       defineCargoBuck2PackageProjection({
@@ -47,6 +78,12 @@ describe('Cargo Buck2 package projection', () => {
           cargoManifestPath: 'escape-Cargo.toml',
         }),
       ).toThrow('cargoManifestPath resolves outside the repository')
+      expect(() =>
+        defineCargoBuck2PackageProjection({
+          ...consumerProjectionOptions,
+          workspaceRoot: 'escape-Cargo.toml',
+        }),
+      ).toThrow('workspaceRoot resolves outside the repository')
     } finally {
       rmSync(linkedManifest, { force: true })
       rmSync(outsideRoot, { recursive: true, force: true })
@@ -109,11 +146,13 @@ type CargoFixtureMember = {
 }
 
 /**
- * Render one member of a throwaway `rust/` Cargo workspace through the projector. Member `.`
- * is the workspace root package, declared in `rust/Cargo.toml` itself.
+ * Render one member of a throwaway Cargo workspace. Member `.` is the workspace root
+ * package, declared in the workspace Cargo.toml itself.
  */
 const renderCargoFixture = ({
   members,
+  workspaceRoot = 'rust',
+  thirdPartyDirectory = 'third-party',
   edition = '2024',
   workspaceVersion = '0.1.0',
   workspacePackageFields = '',
@@ -128,6 +167,8 @@ const renderCargoFixture = ({
   prepareFixture,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
+  readonly workspaceRoot?: string
+  readonly thirdPartyDirectory?: string
   readonly edition?: string
   readonly workspaceVersion?: string
   readonly workspacePackageFields?: string
@@ -173,8 +214,9 @@ const renderCargoFixture = ({
   try {
     write('megarepo.kdl', '')
     write(
-      'rust/Cargo.toml',
+      path.posix.join(workspaceRoot, 'Cargo.toml'),
       `[workspace]\nresolver = "2"\nmembers = [${Object.keys(members)
+        .filter((member) => member !== '.')
         .map((member) => JSON.stringify(member))
         .join(
           ', ',
@@ -183,7 +225,7 @@ const renderCargoFixture = ({
       }`,
     )
     write(
-      'rust/Cargo.lock',
+      path.posix.join(workspaceRoot, 'Cargo.lock'),
       `version = 4\n${registryPackages
         .map(
           (name) =>
@@ -192,11 +234,11 @@ const renderCargoFixture = ({
         .join('')}`,
     )
     write(
-      'rust/reindeer.toml',
-      'vendor = false\ncargo_env = true\nthird_party_dir = "third-party"\n',
+      path.posix.join(workspaceRoot, 'reindeer.toml'),
+      `vendor = false\ncargo_env = true\nthird_party_dir = "${thirdPartyDirectory}"\n`,
     )
     write(
-      'rust/third-party/BUCK',
+      path.posix.join(workspaceRoot, thirdPartyDirectory, 'BUCK'),
       thirdPartyTargets
         .map((name) => `alias(\n    name = "${name}",\n    actual = ":${name}-1.0.0",\n)\n`)
         .join('\n'),
@@ -208,44 +250,133 @@ const renderCargoFixture = ({
     }
     if (Object.keys(foreignPackages).length > 0) {
       write(
-        'rust/foreign-packages.json',
+        path.posix.join(workspaceRoot, 'foreign-packages.json'),
         JSON.stringify({
           foreignPackageManifestPaths: Object.keys(foreignPackages).map(
             (packagePath) => `${packagePath}/Cargo.toml`,
           ),
         }),
       )
-      write('rust/third-party/cargo-resolution.json', '{"dependencies":[]}\n')
+      write(
+        path.posix.join(workspaceRoot, thirdPartyDirectory, 'cargo-resolution.json'),
+        '{"dependencies":[]}\n',
+      )
     }
     for (const file of extraFiles) write(file, '// fixture\n')
     if (rootManifest !== undefined) write('Cargo.toml', rootManifest)
     for (const [memberPath, member] of Object.entries(members)) {
       if (memberPath !== '.') {
-        write(`rust/${memberPath}/Cargo.toml`, memberManifest(memberPath, member.manifest))
+        write(
+          path.posix.join(workspaceRoot, memberPath, 'Cargo.toml'),
+          memberManifest(memberPath, member.manifest),
+        )
       }
-      for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
-      write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
+      for (const file of member.files)
+        write(path.posix.join(workspaceRoot, memberPath, file), '// fixture\n')
+      write(
+        path.posix.join(workspaceRoot, memberPath, 'BUCK.genie.ts'),
+        '// Runtime-only projection fixture.\n',
+      )
       if (projectionFilename !== 'BUCK.genie.ts')
-        write(`rust/${memberPath}/${projectionFilename}`, '// Foreign source projection fixture.\n')
+        write(
+          path.posix.join(workspaceRoot, memberPath, projectionFilename),
+          '// Foreign source projection fixture.\n',
+        )
     }
     prepareFixture?.(root)
     const project = defineCargoBuck2PackageProjection({
       repoName: 'discovery-fixture',
       repoImportMetaUrl: pathToFileURL(path.join(root, 'projection.ts')).href,
-      workspaceRoot: 'rust',
+      workspaceRoot,
       workspaceMemberManifestPaths: Object.keys(members).map((memberPath) =>
-        memberPath === '.' ? 'rust/Cargo.toml' : `rust/${memberPath}/Cargo.toml`,
+        path.posix.join(workspaceRoot, memberPath, 'Cargo.toml'),
       ),
+      thirdPartyBuckPath: path.posix.join(workspaceRoot, thirdPartyDirectory, 'BUCK'),
+      thirdPartyPackage: `//${path.posix.join(workspaceRoot, thirdPartyDirectory)}`,
       generatorSourcePaths: [],
     })
     return project({
       ...projectOptions,
-      sourceUrl: pathToFileURL(path.join(root, 'rust', render, projectionFilename)).href,
+      sourceUrl: pathToFileURL(path.join(root, workspaceRoot, render, projectionFilename)).href,
     }).stringify({ cwd: root, location: '' })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('repository-root Cargo workspaces', () => {
+  const rootWorkspace = {
+    workspaceRoot: '.',
+    thirdPartyDirectory: 'buck2/dependencies',
+  } as const
+
+  it.each(['crates/a', 'crates/b'])('projects root virtual workspace member %s', (render) => {
+    const output = renderCargoFixture({
+      ...rootWorkspace,
+      members: {
+        'crates/a': {
+          manifest:
+            '[package]\nname = "a"\n[dependencies]\nb = { path = "../b" }\nserde.workspace = true',
+          files: ['src/lib.rs'],
+        },
+        'crates/b': {
+          manifest: '[package]\nname = "b"\n[dependencies]\nserde.workspace = true',
+          files: ['src/lib.rs'],
+        },
+      },
+      render,
+    })
+    expect(output).toContain(`# Projection source: ${render}/BUCK.genie.ts`)
+    expect(output).toContain('//buck2/dependencies:serde')
+    if (render === 'crates/a') expect(output).toContain('//crates/b:lib')
+    expect(output).toContain('Cargo.lock')
+    expect(output).toContain('Cargo.toml')
+    expect(output).toContain('reindeer.toml')
+    expect(output).not.toContain('./Cargo')
+  })
+
+  it.each(['.', 'crates/member'])(
+    'normalizes the root package and unifies features for %s',
+    (render) => {
+      const output = renderCargoFixture({
+        ...rootWorkspace,
+        members: {
+          '.': {
+            manifest: '[package]\nname = "root-lib"\n[features]\nshared = []',
+            files: ['src/lib.rs', 'build.rs', 'schema.json'],
+          },
+          'crates/member': {
+            manifest:
+              '[package]\nname = "member"\n[dependencies]\nroot-lib = { path = "../..", features = ["shared"] }',
+            files: ['src/lib.rs'],
+          },
+        },
+        render,
+        projectOptions: render === '.' ? { compileTimeResources: [{ path: 'schema.json' }] } : {},
+      })
+      if (render === '.') {
+        expect(output).toContain('"shared"')
+        expect(output).toContain('"schema.json": "schema.json"')
+        expect(output).toContain('build-script')
+      } else {
+        expect(output).toContain('//:lib')
+      }
+      expect(output).not.toContain('//.:')
+      expect(output).not.toContain('./src/')
+    },
+  )
+
+  it.each(['.', ''])('keeps resource path %j invalid', (resourcePath) => {
+    expect(() =>
+      renderCargoFixture({
+        ...rootWorkspace,
+        members: { '.': { manifest: '[package]\nname = "root-lib"', files: ['src/lib.rs'] } },
+        render: '.',
+        projectOptions: { compileTimeResources: [{ path: resourcePath }] },
+      }),
+    ).toThrow('compileTimeResources[0].path must be a normalized repository-relative path')
+  })
+})
 
 describe('foreign Cargo source exports', () => {
   it('exports the same complete library inputs without producer rules or dependencies', () => {

@@ -111,6 +111,7 @@ export type CargoBuck2PackageProjection = (
 export type DefineCargoBuck2PackageProjectionOptions = {
   readonly repoName: string
   readonly repoImportMetaUrl: string
+  /** Normalized repository-relative directory; `.` selects the repository root. */
   readonly workspaceRoot: string
   readonly cargoManifestPath?: string
   readonly cargoLockPath?: string
@@ -167,6 +168,7 @@ export const defineCargoBuck2PackageProjection = ({
     repo,
     value: configuredWorkspaceRoot,
     field: 'workspaceRoot',
+    allowRootDirectory: true,
   })
   const cargoManifestPath = validateRepoPath({
     repo,
@@ -280,7 +282,8 @@ export const defineCargoBuck2PackageProjection = ({
     hasForeignPackagesFile === true
       ? [...generatorSourcePaths, foreignPackagesPath]
       : generatorSourcePaths
-  const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace
+  const workspaceManifest = Bun.TOML.parse(repo.readText(cargoManifestPath)) as CargoWorkspace &
+    CargoManifest
   const lock = Bun.TOML.parse(repo.readText(cargoLockPath)) as CargoLock
   const workspaceMembers = workspaceMemberManifestPaths.map((manifestPath) => ({
     packagePath: path.posix.dirname(manifestPath),
@@ -324,11 +327,14 @@ export const defineCargoBuck2PackageProjection = ({
   const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
   if (workspace.resolver !== '2')
     throw new Error('The Buck projection supports only Cargo resolver = "2"')
-  const declaredMemberPaths = sorted(
-    requireValue({ value: workspace.members, field: 'workspace.members' }).map((member) =>
-      path.posix.normalize(path.posix.join(workspaceRoot, member)),
-    ),
-  )
+  const declaredMemberPaths = sorted([
+    ...new Set([
+      ...requireValue({ value: workspace.members, field: 'workspace.members' }).map((member) =>
+        path.posix.join(workspaceRoot, member),
+      ),
+      ...(workspaceManifest.package === undefined ? [] : [workspaceRoot]),
+    ]),
+  ])
   const importedMemberPaths = sorted(workspaceMembers.map((member) => member.packagePath))
   if (JSON.stringify(declaredMemberPaths) !== JSON.stringify(importedMemberPaths)) {
     throw new Error(
@@ -738,8 +744,9 @@ const cargoBuck2PackageProjectionFor = ({
     ...resources
       .filter((resource) => resource.label === undefined)
       .map((resource) =>
-        requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(
-          packagePath.length + 1,
+        path.posix.relative(
+          packagePath,
+          requireValue({ value: resource.path, field: 'local compileTimeResources path' }),
         ),
       ),
     ...(buildScript === undefined
@@ -748,7 +755,7 @@ const cargoBuck2PackageProjectionFor = ({
           buildScript.path,
           ...buildScript.inputs
             .filter((input) => input.label === undefined)
-            .map((input) => input.path.slice(packagePath.length + 1)),
+            .map((input) => path.posix.relative(packagePath, input.path)),
         ]),
   ])
   // The files a consumer's foreign instance of this library reads (see foreign-packages.json).
@@ -759,8 +766,9 @@ const cargoBuck2PackageProjectionFor = ({
       ...resources
         .filter((resource) => resource.label === undefined)
         .map((resource) =>
-          requireValue({ value: resource.path, field: 'local compileTimeResources path' }).slice(
-            packagePath.length + 1,
+          path.posix.relative(
+            packagePath,
+            requireValue({ value: resource.path, field: 'local compileTimeResources path' }),
           ),
         ),
       ...(buildScript === undefined
@@ -769,7 +777,7 @@ const cargoBuck2PackageProjectionFor = ({
             buildScript.path,
             ...buildScript.inputs
               .filter((input) => input.label === undefined)
-              .map((input) => input.path.slice(packagePath.length + 1)),
+              .map((input) => path.posix.relative(packagePath, input.path)),
           ]),
     ]),
   ])
@@ -887,11 +895,11 @@ const cargoBuck2PackageProjectionFor = ({
         }),
         'Cargo.toml',
       ),
-      `${foreignPackage.packagePath}/src/**/*.rs`,
+      path.posix.join(foreignPackage.packagePath, 'src/**/*.rs'),
     ]),
     projectionSource,
-    `${packagePath}/src/**/*.rs`,
-    `${packagePath}/tests/**/*.rs`,
+    path.posix.join(packagePath, 'src/**/*.rs'),
+    path.posix.join(packagePath, 'tests/**/*.rs'),
     ...resources.flatMap((resource) => (resource.path === undefined ? [] : [resource.path])),
   ])
   const resourceFingerprints: Readonly<Record<string, string>> = Object.fromEntries(
@@ -1017,10 +1025,13 @@ const cargoBuck2PackageProjectionFor = ({
               `        ${starlarkString(
                 resource.label ??
                   sourceLabel({
-                    file: requireValue({
-                      value: resource.path,
-                      field: 'local compileTimeResources path',
-                    }).slice(packagePath.length + 1),
+                    file: path.posix.relative(
+                      packagePath,
+                      requireValue({
+                        value: resource.path,
+                        field: 'local compileTimeResources path',
+                      }),
+                    ),
                     foreignMember,
                   }),
               )}: ${starlarkString(resource.destination)},`,
@@ -1080,7 +1091,7 @@ const cargoBuck2PackageProjectionFor = ({
       .filter(
         (input) =>
           input.label === undefined &&
-          packageFiles.includes(input.path.slice(packagePath.length + 1)) === true,
+          packageFiles.includes(path.posix.relative(packagePath, input.path)) === true,
       )
       .map((input) => input.path)
     if (duplicateInputs.length > 0) {
@@ -1090,14 +1101,14 @@ const cargoBuck2PackageProjectionFor = ({
     }
     const manifestEntries: readonly (readonly [string, string])[] = [
       ...packageFiles.map(
-        (file) => [`${packagePath}/${file}`, sourceLabel({ file, foreignMember })] as const,
+        (file) => [path.posix.join(packagePath, file), sourceLabel({ file, foreignMember })] as const,
       ),
       ...buildScript.inputs.map(
         (input) =>
           [
             input.path,
             input.label ??
-              sourceLabel({ file: input.path.slice(packagePath.length + 1), foreignMember }),
+              sourceLabel({ file: path.posix.relative(packagePath, input.path), foreignMember }),
           ] as const,
       ),
     ].toSorted(([left], [right]) => compareStrings({ left, right }))
@@ -1396,10 +1407,12 @@ const validateRepoPath = ({
   repo,
   value,
   field,
+  allowRootDirectory = false,
 }: {
   readonly repo: RepoContext
   readonly value: string
   readonly field: string
+  readonly allowRootDirectory?: boolean
 }): string => {
   if (
     value === '' ||
@@ -1408,8 +1421,9 @@ const validateRepoPath = ({
     path.posix.normalize(value) !== value ||
     // oxlint-disable-next-line no-control-regex -- Repository paths must reject ASCII control characters.
     /[\u0000-\u001f\u007f]/.test(value) === true ||
-    value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') ===
-      true
+    (value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') ===
+      true &&
+      !(allowRootDirectory === true && value === '.'))
   ) {
     throw new Error(`${field} must be a normalized repository-relative path: ${value}`)
   }
@@ -1972,7 +1986,7 @@ const resolveMemberPathDependency = ({
     label:
       context.foreignPackageByPath.has(dependencyPath) === true
         ? `//${context.foreignTargetPackage}:${foreignTargetName(dependencyMember)}`
-        : `//${dependencyPath}:lib`,
+        : `//${dependencyPath === '.' ? '' : dependencyPath}:lib`,
     name: dependencyName,
     ...(request.optional === true ? { optional: true as const } : {}),
     requestSource,
@@ -2321,7 +2335,9 @@ const resolveCompileTimeResources = ({
           throw new Error(`${field}.path must be a file: ${resource.path}`)
         }
       }
-      const inPackage = resource.path?.startsWith(`${packagePath}/`) === true
+      const inPackage =
+        resource.path !== undefined &&
+        (packagePath === '.' || resource.path.startsWith(`${packagePath}/`) === true)
       if (resource.label !== undefined) {
         const label =
           /^(?:(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*))?:([A-Za-z0-9_.+=,@~/-]+)$/.exec(
@@ -2354,10 +2370,10 @@ const resolveCompileTimeResources = ({
       }
       const destination =
         resource.destination ??
-        requireValue({
-          value: resource.path,
-          field: `${field}.path`,
-        }).slice(packagePath.length + 1)
+        path.posix.relative(
+          packagePath,
+          requireValue({ value: resource.path, field: `${field}.path` }),
+        )
       if (
         destination === '' ||
         path.posix.isAbsolute(destination) === true ||
@@ -2508,11 +2524,11 @@ const resolveBuildScript = ({
     }
     return undefined
   }
-  validateRepoPath({ repo, value: `${packagePath}/${scriptPath}`, field: 'package.build' })
+  validateRepoPath({ repo, value: path.posix.join(packagePath, scriptPath), field: 'package.build' })
   const inputs = (buildScriptInputs ?? []).map((input, index) => {
     const field = `buildScriptInputs[${index}]`
     validateRepoPath({ repo, value: input.path, field: `${field}.path` })
-    const inPackage = input.path.startsWith(`${packagePath}/`)
+    const inPackage = packagePath === '.' || input.path.startsWith(`${packagePath}/`)
     if (inPackage === true && input.label !== undefined) {
       throw new Error(`${field} is inside ${packagePath} and takes no label: ${input.path}`)
     }
@@ -2822,7 +2838,7 @@ const resolveWorkspaceFeatures = ({
     members.map((member) => [
       context.foreignPackageByPath.has(member.packagePath) === true
         ? `//${context.foreignTargetPackage}:${foreignTargetName(member)}`
-        : `//${member.packagePath}:lib`,
+        : `//${member.packagePath === '.' ? '' : member.packagePath}:lib`,
       member.packagePath,
     ]),
   )
