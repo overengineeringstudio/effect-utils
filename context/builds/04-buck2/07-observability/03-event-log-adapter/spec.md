@@ -132,10 +132,11 @@ unlimited disk capacity. Existing OTLP delivery remains diagnostic until the
 reader reconciles census opens, terminals, and converted native build IDs.
 Unmatched opens, missing mappings/conversions, capture errors, truncated/conflicting
 snapshots, unknown native fields, unsupported entrypoints and unenrolled hosts
-must remain unknown, not zero. Operator 24-hour per-host counts consume these
-retained files through the existing join reader/read authority, not Tempo counts
-or CI's public artifact credentials. No new daemon, remote store, or exporter is
-introduced; worktree teardown must not remove this host-owned evidence.
+must remain unknown, not zero. Operator 24-hour per-host counts reconcile exact
+retained snapshots through the existing join reader/read authority, not Tempo
+counts or CI's public artifact credentials. Worktree teardown must not remove
+this host-owned evidence; no new daemon, remote store, exporter or transport
+service is introduced.
 
 Backfill retained native logs without fabricating historical census:
 
@@ -150,6 +151,28 @@ the requested window without sampling; native timestamps govern reader windows,
 not capture time. Backfilled occurrences remain observed-only under unknown
 coverage when independent wrapper census is absent. Ingest queues existing OTLP
 chunks but does not require or invoke export.
+
+Conversion, census and enrollment snapshots also queue through the existing typed
+OTLP chunk spool as logs (`/v1/logs`). Census `--spool-dir` selects the same pending
+directory used by ingest/export; pipeline closure owns later export. Each log body
+is a JSON string `{type:"buck2.occurrence.ledger",version:1,snapshotSha256,ordinal,recordCount,line}`:
+SHA-256 covers the exact LF-terminated retained JSONL bytes, ordinal is zero-based,
+recordCount includes every line, and line is exact UTF-8 without its final LF.
+Reassemble `line + "\n"` in ordinal order and verify the hash before reconciliation.
+Resources carry the snapshot's observed `host.name`, `service.name=buck2-events`,
+and scope `buck2-events.occurrence-ledger`; outer timestamps are emission time,
+while exact native epoch-nanosecond strings remain inside the original line.
+Envelope bodies exceed neither 8 KiB nor 12 KiB as serialized OTLP log records;
+resource metadata is bounded to 4 KiB. Oversize fails with unknown coverage and
+retains source; no row is silently dropped or truncated.
+
+HTTP acceptance can delete pending chunks but never proves downstream durability.
+`buck2-events export --replay-records [--records-dir DIR] --spool-dir DIR` repairs
+downstream loss from retained snapshots, without decoding native logs or a timer.
+Replay fails explicitly on 100,000 scanned entries, 512 MiB source/queued bytes,
+or the shared export time budget, and reports counters; it never silently samples.
+Normal export does not scan 30 days of sources. Transport loss, rejection,
+truncation, incomplete snapshots and conflicts remain unknown until reconciled.
 
 ## Producer Metrics
 

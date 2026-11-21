@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { NodeRuntime, NodeServices } from '@effect/platform-node'
+import * as NodeRuntime from '@effect/platform-node/NodeRuntime'
+import * as NodeServices from '@effect/platform-node/NodeServices'
 import { Effect, Schema } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
@@ -27,7 +28,14 @@ import {
   makeDownloadBudget,
   readBoundedBytes,
 } from './buck2-cache-join-download.ts'
-import { aggregate, previousUtcDay, renderPrometheus, renderOtlp } from './buck2-cache-join.ts'
+import {
+  aggregate,
+  aggregateOccurrences,
+  previousUtcDay,
+  renderPrometheus,
+  renderOtlp,
+  renderOccurrenceOtlp,
+} from './buck2-cache-join.ts'
 import {
   planProofHistory,
   selectProofRelevantRuns,
@@ -52,7 +60,7 @@ class RetryError extends Schema.TaggedError<RetryError>()('RetryError', {
   message: Schema.String,
 }) {}
 const failure = (message: string) => new JoinError({ message })
-const io = <A>(message: string, body: () => Promise<A>) =>
+const io = <A>({ message, body }: { message: string; body: () => Promise<A> }) =>
   Effect.tryPromise({
     try: body,
     catch: (cause) => (cause instanceof JoinError ? cause : failure(message)),
@@ -96,14 +104,16 @@ const evidenceWorkflows = [
 const Json = Schema.fromJsonString(Schema.Unknown)
 const ReportJson = Schema.fromJsonString(Schema.Unknown)
 
-const timestamp = (value: string, now: number) => {
+const timestamp = ({ value, now }: { value: string; now: number }) => {
   const duration = /^(\d+(?:\.\d+)?)(m|h|d)$/.exec(value)
   if (duration !== null)
     return (
       now -
       Number(duration[1]) * { m: 60000, h: 3600000, d: 86400000 }[duration[2] as 'm' | 'h' | 'd']
     )
-  return /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN
+  return /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) === true
+    ? Date.parse(value)
+    : NaN
 }
 
 const help = `buck2-cache-join --repo owner/name (--since <ISO-8601|24h> [--until <ISO-8601|duration>] | --previous-utc-day) [--format prometheus|json] [--otlp-spool <pending-directory>]
@@ -118,8 +128,8 @@ Trusted presence: only complete main-writer uploads or verified remote-hit obser
 and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
 API safety: about 700 calls daily target, 800 maximum, stop at 200 remaining, two downloads with 250 ms pacing.
-Per UTC day: all main-writer runs; at most 50 evenly ID-spaced merge_group and 25 time-spaced main-reader/pr runs.
-Sampled readers make metrics a lower bound; coverage gauges show selected/seen runs.
+Every discovered supported reader/writer run is selected without sampling.
+Missing fleet invocation census or bounded collection gaps make execute-once proof unknown.
 Transient HTTP 5xx and transport failures retry at most three attempts, all charged to the cap.
 Budget exhaustion emits an explicit join evidence gap; resource caps fail clearly.
 Invalid or unavailable evidence contributes evidence_gaps without discarding valid evidence.
@@ -131,7 +141,7 @@ const readZip = Effect.fn('buck2-cache-join.read-zip')(function* (
   directory: string,
 ) {
   const archive = join(directory, 'evidence.zip')
-  yield* io('Cannot write evidence ZIP', () => writeFile(archive, bytes))
+  yield* io({ message: 'Cannot write evidence ZIP', body: () => writeFile(archive, bytes) })
   const spawner = yield* ChildProcessSpawner
   const unzip = Effect.fn('buck2-cache-join.unzip')(function* (args: string[], maxBytes: number) {
     const handle = yield* spawner.spawn(
@@ -198,7 +208,7 @@ const program = Effect.gen(function* () {
     return
   }
   const repo = options.repo
-  if (repo === undefined || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo))
+  if (repo === undefined || /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo) === false)
     return yield* failure('--repo must be owner/name')
   const now = Date.now()
   if (
@@ -212,12 +222,14 @@ const program = Effect.gen(function* () {
       ? day.until
       : options.until === undefined
         ? now
-        : timestamp(options.until, now)
+        : timestamp({ value: options.until, now })
   const since =
-    options['previous-utc-day'] === true ? day.since : timestamp(options.since ?? '', until)
+    options['previous-utc-day'] === true
+      ? day.since
+      : timestamp({ value: options.since ?? '', now: until })
   if (
-    !Number.isFinite(since) ||
-    !Number.isFinite(until) ||
+    Number.isFinite(since) === false ||
+    Number.isFinite(until) === false ||
     since >= until ||
     until > now ||
     until - since > 31 * 86400000
@@ -243,10 +255,10 @@ const program = Effect.gen(function* () {
     maxBytes: number,
   ) {
     if (
-      !apiBudgetAvailable({
+      apiBudgetAvailable({
         calls: apiCalls,
         remaining: remaining === undefined ? undefined : remaining - limits.concurrency,
-      })
+      }) === false
     ) {
       budgetStopped = true
       return yield* new BudgetError({
@@ -273,7 +285,7 @@ const program = Effect.gen(function* () {
         Effect.mapError(() => new RetryError({ message: 'GitHub transport failed' })),
       )
     const rateRemaining = response.headers['x-ratelimit-remaining']
-    if (rateRemaining !== undefined && /^\d+$/.test(rateRemaining))
+    if (rateRemaining !== undefined && /^\d+$/.test(rateRemaining) === true)
       remaining = Math.min(remaining ?? Infinity, Number(rateRemaining))
     if (
       response.status === 429 ||
@@ -295,9 +307,9 @@ const program = Effect.gen(function* () {
         location.username !== '' ||
         location.password !== '' ||
         !(
-          location.hostname.endsWith('.blob.core.windows.net') ||
-          location.hostname.endsWith('.actions.githubusercontent.com') ||
-          location.hostname.endsWith('.githubusercontent.com')
+          location.hostname.endsWith('.blob.core.windows.net') === true ||
+          location.hostname.endsWith('.actions.githubusercontent.com') === true ||
+          location.hostname.endsWith('.githubusercontent.com') === true
         )
       )
         return yield* failure('GitHub artifact storage redirect rejected')
@@ -315,7 +327,7 @@ const program = Effect.gen(function* () {
     return yield* readBoundedBytes(
       payload.stream,
       maxBytes,
-      path.startsWith('/actions/artifacts/') ? downloadBudget : undefined,
+      path.startsWith('/actions/artifacts/') === true ? downloadBudget : undefined,
     ).pipe(
       Effect.mapError((cause) =>
         cause instanceof DownloadLimitError
@@ -364,7 +376,7 @@ const program = Effect.gen(function* () {
       }
       if (result.success.workflow_runs.length < 100) break
     }
-    if (budgetStopped) break
+    if (budgetStopped === true) break
   }
   const selection = selectRuns(discovered)
   const proofDirectory =
@@ -373,7 +385,10 @@ const program = Effect.gen(function* () {
   const proofRelevantRuns = selectProofRelevantRuns(discovered)
   const expectedJobs: ExpectedHistoryJob[] = []
   if (proofDirectory !== undefined) {
-    yield* io('Cannot create proof directory', () => mkdir(proofDirectory, { recursive: true }))
+    yield* io({
+      message: 'Cannot create proof directory',
+      body: () => mkdir(proofDirectory, { recursive: true }),
+    })
     for (const run of proofRelevantRuns) {
       for (let page = 1; page <= 10; page++) {
         const result = yield* jsonRequest(
@@ -431,19 +446,19 @@ const program = Effect.gen(function* () {
         break
       }
       for (const artifact of result.success.artifacts) {
-        if (!artifact.name.startsWith('buck2-cache-evidence-')) continue
+        if (artifact.name.startsWith('buck2-cache-evidence-') === false) continue
         artifactCount++
         if (runs.has(run.id) === true) metricArtifactCount++
         if (artifactCount > limits.artifacts)
           return yield* failure('Artifact cap hit; narrow the window')
-        if (artifact.expired) {
+        if (artifact.expired === true) {
           if (runs.has(run.id) === true) {
             skippedExpired++
             unlabelledEvidenceGaps++
           }
           continue
         }
-        if (!artifactCanMatter(artifact.name)) {
+        if (artifactCanMatter(artifact.name) === false) {
           if (runs.has(run.id) === true) skippedByPolicy++
           continue
         }
@@ -453,19 +468,21 @@ const program = Effect.gen(function* () {
       }
       if (result.success.artifacts.length < 100) break
     }
-    if (budgetStopped) break
+    if (budgetStopped === true) break
   }
   const declaredBytes = selected.reduce((sum, artifact) => sum + artifact.size_in_bytes, 0)
   if (declaredBytes > limits.totalBytes)
     return yield* failure(`Total artifact byte cap hit (${limits.totalBytes})`)
   const root = yield* Effect.acquireRelease(
-    io('Cannot create temporary evidence directory', () =>
-      mkdtemp(join(tmpdir(), 'buck2-cache-join-')),
-    ),
+    io({
+      message: 'Cannot create temporary evidence directory',
+      body: () => mkdtemp(join(tmpdir(), 'buck2-cache-join-')),
+    }),
     (path) =>
-      io('Cannot remove temporary evidence directory', () =>
-        rm(path, { recursive: true, force: true }),
-      ).pipe(Effect.orDie),
+      io({
+        message: 'Cannot remove temporary evidence directory',
+        body: () => rm(path, { recursive: true, force: true }),
+      }).pipe(Effect.orDie),
   )
   const observations = yield* Effect.forEach(
     selected,
@@ -476,9 +493,10 @@ const program = Effect.gen(function* () {
             `/actions/artifacts/${artifact.id}/zip`,
             limits.artifactBytes,
           )
-          const directory = yield* io('Cannot create artifact directory', () =>
-            mkdtemp(join(root, 'artifact-')),
-          )
+          const directory = yield* io({
+            message: 'Cannot create artifact directory',
+            body: () => mkdtemp(join(root, 'artifact-')),
+          })
           return yield* Effect.gen(function* () {
             const files = yield* readZip(bytes, directory)
             const summary = yield* Schema.decodeUnknownEffect(Json)(files.summary)
@@ -512,13 +530,16 @@ const program = Effect.gen(function* () {
                 ) {
                   retainedProofBytes += size
                   const destination = join(proofDirectory, 'sources', String(artifact.id))
-                  yield* io('Cannot retain authoritative proof source', async () => {
-                    await mkdir(destination, { recursive: true })
-                    await writeFile(join(destination, 'buck2-cache-evidence.json'), files.summary)
-                    await writeFile(
-                      join(destination, 'buck2-cache-actions.jsonl.gz'),
-                      files.actions,
-                    )
+                  yield* io({
+                    message: 'Cannot retain authoritative proof source',
+                    body: async () => {
+                      await mkdir(destination, { recursive: true })
+                      await writeFile(join(destination, 'buck2-cache-evidence.json'), files.summary)
+                      await writeFile(
+                        join(destination, 'buck2-cache-actions.jsonl.gz'),
+                        files.actions,
+                      )
+                    },
                   })
                   const nativeStarts = evidence.header.invocations.flatMap((invocation) =>
                     invocation.startedAt === null ? [] : [invocation.startedAt],
@@ -555,9 +576,10 @@ const program = Effect.gen(function* () {
             }
           }).pipe(
             Effect.ensuring(
-              io('Cannot remove artifact directory', () =>
-                rm(directory, { recursive: true, force: true }),
-              ).pipe(Effect.orDie),
+              io({
+                message: 'Cannot remove artifact directory',
+                body: () => rm(directory, { recursive: true, force: true }),
+              }).pipe(Effect.orDie),
             ),
           )
         }).pipe(Effect.result)
@@ -569,7 +591,7 @@ const program = Effect.gen(function* () {
         // Resource caps must never become a partial, apparently successful day.
         if (
           result.failure instanceof JoinError &&
-          /cap hit|cap exceeded|limit exceeded/.test(result.failure.message)
+          /cap hit|cap exceeded|limit exceeded/.test(result.failure.message) === true
         )
           return yield* result.failure
         if (runs.has(artifact.workflow_run.id) === true) unlabelledEvidenceGaps++
@@ -587,7 +609,9 @@ const program = Effect.gen(function* () {
     windowEndTimestampSeconds: until / 1000,
     unlabelledEvidenceGaps,
     samples: selection.lanes.map((sample) => ({
-      ...sample,
+      lane: sample.lane,
+      seen: sample.seen,
+      selected: sample.selected,
       artifacts: selected.filter((artifact) =>
         selection.selected.some(
           (run) => run.id === artifact.workflow_run.id && classifyRun(run) === sample.lane,
@@ -598,8 +622,22 @@ const program = Effect.gen(function* () {
   const relevantArtifacts = observations.filter(
     (value) => value !== undefined && runs.has(Number(value.runId)),
   ).length
+  const executeOnce = aggregateOccurrences({
+    artifacts: observations.flatMap((value) => (value === undefined ? [] : [value.artifact])),
+    windowStartMs: since,
+    windowEndMs: until,
+    evidenceGaps: [
+      // CI workflow discovery cannot certify local/other-repository invocation coverage.
+      'fleet-expected-invocation-census-unavailable',
+      ...proofCollectionGaps,
+      ...(budgetStopped === true ? ['collection-budget-exhausted'] : []),
+      ...(unlabelledEvidenceGaps > 0 ? ['artifact-evidence-unavailable'] : []),
+      ...(skippedExpired > 0 ? ['expired-action-evidence'] : []),
+    ],
+  })
   const outputReport = {
     ...report,
+    executeOnce,
     collection: {
       api_calls: apiCalls,
       remaining,
@@ -612,7 +650,7 @@ const program = Effect.gen(function* () {
       api_reserve_floor: 200,
     },
   }
-  if (budgetStopped)
+  if (budgetStopped === true)
     process.stderr.write(
       'buck2-cache-join: API budget stopped collection; unexamined artifacts are evidence gaps (cap=800 floor=200)\n',
     )
@@ -623,55 +661,68 @@ const program = Effect.gen(function* () {
       expectedJobs,
     })
     const manifestPath = join(proofDirectory, 'buck2-cache-warm99-observations.json')
-    yield* io('Cannot publish authoritative historical proof', async () => {
-      await writeFile(
-        manifestPath,
-        `${JSON.stringify({ ...planned.manifest, nixSubstitutionEvidence: 'unavailable' }, null, 2)}\n`,
-      )
-      const first = historySources[0]
-      const summaryPath = join(proofDirectory, 'buck2-cache-evidence.json')
-      const actionsPath = join(proofDirectory, 'buck2-cache-actions.jsonl.gz')
-      if (first !== undefined) {
-        await Bun.write(
+    yield* io({
+      message: 'Cannot publish authoritative historical proof',
+      body: async () => {
+        await writeFile(
+          join(proofDirectory, 'buck2-execute-once-scorecard.json'),
+          `${JSON.stringify(executeOnce, null, 2)}\n`,
+        )
+        await writeFile(
+          manifestPath,
+          `${JSON.stringify({ ...planned.manifest, nixSubstitutionEvidence: 'unavailable' }, null, 2)}\n`,
+        )
+        const first = historySources[0]
+        const summaryPath = join(proofDirectory, 'buck2-cache-evidence.json')
+        const actionsPath = join(proofDirectory, 'buck2-cache-actions.jsonl.gz')
+        if (first !== undefined) {
+          await Bun.write(
+            summaryPath,
+            Bun.file(
+              join(proofDirectory, 'sources', String(first.id), 'buck2-cache-evidence.json'),
+            ),
+          )
+          await Bun.write(
+            actionsPath,
+            Bun.file(
+              join(proofDirectory, 'sources', String(first.id), 'buck2-cache-actions.jsonl.gz'),
+            ),
+          )
+        }
+        await writeBuck2CacheProofReports({
           summaryPath,
-          Bun.file(join(proofDirectory, 'sources', String(first.id), 'buck2-cache-evidence.json')),
-        )
-        await Bun.write(
           actionsPath,
-          Bun.file(
-            join(proofDirectory, 'sources', String(first.id), 'buck2-cache-actions.jsonl.gz'),
-          ),
-        )
-      }
-      await writeBuck2CacheProofReports({
-        summaryPath,
-        actionsPath,
-        manifestPath,
-        expectedJobs,
-        nixSubstitutionObserved: false,
-        collectionEvidenceGaps: [
-          ...proofCollectionGaps,
-          ...planned.evidenceGaps,
-          ...(budgetStopped === true ? ['artifact-collection-incomplete'] : []),
-        ],
-      })
-      const acceptance: unknown = await Bun.file(
-        join(proofDirectory, 'buck2-cache-warm99.json'),
-      ).json()
-      if (
-        typeof acceptance !== 'object' ||
-        acceptance === null ||
-        !('accepted' in acceptance) ||
-        acceptance.accepted !== true
-      ) {
-        process.stderr.write(`${renderWarm99Diagnostics(acceptance)}\n`)
-        process.exitCode = 1
-      }
+          manifestPath,
+          expectedJobs,
+          nixSubstitutionObserved: false,
+          collectionEvidenceGaps: [
+            ...proofCollectionGaps,
+            ...planned.evidenceGaps,
+            ...(budgetStopped === true ? ['artifact-collection-incomplete'] : []),
+          ],
+        })
+        const acceptance: unknown = await Bun.file(
+          join(proofDirectory, 'buck2-cache-warm99.json'),
+        ).json()
+        if (
+          typeof acceptance !== 'object' ||
+          acceptance === null ||
+          !('accepted' in acceptance) ||
+          acceptance.accepted !== true
+        ) {
+          process.stderr.write(`${renderWarm99Diagnostics(acceptance)}\n`)
+          process.exitCode = 1
+        }
+      },
     })
   }
   if (options['otlp-spool'] !== undefined) {
     const directory = options['otlp-spool']
-    const body = yield* Schema.encodeEffect(ReportJson)(renderOtlp(report))
+    const occurrenceMetrics = renderOccurrenceOtlp(executeOnce)
+    const cacheMetrics = renderOtlp(report)
+    const body = yield* Schema.encodeEffect(ReportJson)({
+      resourceMetrics: [...cacheMetrics.resourceMetrics, ...occurrenceMetrics.resourceMetrics],
+    })
     const bytes = Buffer.from(body)
     const id = createHash('sha256').update(bytes).digest('hex')
     const header = yield* Schema.encodeEffect(ReportJson)({
@@ -680,18 +731,21 @@ const program = Effect.gen(function* () {
       destination: 'OTEL_EXPORTER_OTLP_ENDPOINT',
       byte_count: bytes.length,
     })
-    yield* io('Cannot write pending OTLP metrics chunk', async () => {
-      await mkdir(directory, { recursive: true })
-      const temporary = join(directory, `${id}.metrics.chunk.${process.pid}.tmp`)
-      await writeFile(temporary, `${header}\n${body}`, { mode: 0o600 })
-      await rename(temporary, join(directory, `${id}.metrics.chunk`))
+    yield* io({
+      message: 'Cannot write pending OTLP metrics chunk',
+      body: async () => {
+        await mkdir(directory, { recursive: true })
+        const temporary = join(directory, `${id}.metrics.chunk.${process.pid}.tmp`)
+        await writeFile(temporary, `${header}\n${body}`, { mode: 0o600 })
+        await rename(temporary, join(directory, `${id}.metrics.chunk`))
+      },
     })
   }
   const output =
     format === 'prometheus'
       ? renderPrometheus(report)
       : yield* Schema.encodeEffect(ReportJson)(outputReport)
-  process.stdout.write(`${output}${output.endsWith('\n') ? '' : '\n'}`)
+  process.stdout.write(`${output}${output.endsWith('\n') === true ? '' : '\n'}`)
   process.stderr.write(
     `buck2-cache-join: runtime_ms=${Date.now() - started} api_calls=${apiCalls} runs=${runs.size} artifacts=${artifactCount} selected_artifacts=${selected.length} relevant_artifacts=${relevantArtifacts} skipped_expired=${skippedExpired} skipped_by_policy=${skippedByPolicy} budget_stopped=${budgetStopped} remaining=${remaining ?? 'unknown'} downloaded_bytes=${downloadBudget.bytes}\n`,
   )
