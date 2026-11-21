@@ -114,7 +114,7 @@ printf 'PASS: full-profile-only Notion script is excluded from unit graph calls\
 # Removing any transitive source must invalidate the host-contract declaration.
 cache_fixture="$fixture_root/cache-inputs"
 mkdir -p "$cache_fixture"
-for directory in genie packages buck2; do
+for directory in genie packages buck2 nix scripts; do
   ln -s "$ROOT/$directory" "$cache_fixture/$directory"
 done
 ln -s "$ROOT/buck2-test-authority.json" "$cache_fixture/buck2-test-authority.json"
