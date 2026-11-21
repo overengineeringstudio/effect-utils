@@ -562,6 +562,79 @@ export const renderOtlp = (report: JoinReport): OtlpChunk => {
   }
 }
 
+/**
+ * Daily window gauges for the occurrence census, including partial observations.
+ * Only host is a point dimension: proof gates exactness, not row availability.
+ */
+export const renderOccurrenceOtlp = (scorecard: OccurrenceScorecard): OtlpChunk => {
+  const timeUnixNano = BigInt(Math.round(scorecard.windowEndMs * 1e6)).toString()
+  const definitions = [
+    ['occurrences', 'occurrences', '1'],
+    ['local_executions', 'localExecutions', '1'],
+    ['remote_executions', 'remoteExecutions', '1'],
+    ['cache_hits', 'cacheHits', '1'],
+    ['coalesced', 'coalesced', '1'],
+    ['repeat_executions', 'repeatExecutions', '1'],
+    ['duration_ns', 'durationNs', 'ns'],
+    ['output_bytes', 'totalBytes', 'By'],
+    ['unavailable_duration_count', 'unavailableDurationCount', '1'],
+    ['unavailable_bytes_count', 'unavailableBytesCount', '1'],
+  ] as const
+  return {
+    resourceMetrics: [
+      {
+        resource: {
+          attributes: [
+            { key: 'service.name', value: { stringValue: 'effect-utils-buck2' } },
+            { key: 'service.namespace', value: { stringValue: 'infra' } },
+          ],
+        },
+        scopeMetrics: [
+          {
+            scope: { name: 'buck2-cache-join' },
+            metrics: [
+              {
+                name: 'buck2.cache.execute_once.proof_known',
+                description:
+                  'One when the entire occurrence window is exact; zero for incomplete evidence.',
+                unit: '1',
+                gauge: {
+                  dataPoints: [
+                    {
+                      attributes: [],
+                      timeUnixNano,
+                      asDouble: scorecard.proof === 'known' ? 1 : 0,
+                    },
+                  ],
+                },
+              },
+              ...definitions.map(([name, key, unit]) => ({
+                name: `buck2.cache.execute_once.${name}`,
+                description: `Observed window ${name.replaceAll('_', ' ')} by native host; consult proof_known for exactness.`,
+                unit,
+                gauge: {
+                  dataPoints: scorecard.perHost.flatMap((row) => {
+                    const value = row[key]
+                    return value === null
+                      ? []
+                      : [
+                          {
+                            attributes: [{ key: 'host', value: { stringValue: row.host } }],
+                            timeUnixNano,
+                            asDouble: value,
+                          },
+                        ]
+                  }),
+                },
+              })),
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
 /** Previous complete UTC day, in Unix milliseconds; `until` is exclusive. */
 export const previousUtcDay = (now: number): { since: number; until: number } => {
   const until = Math.floor(now / 86_400_000) * 86_400_000
