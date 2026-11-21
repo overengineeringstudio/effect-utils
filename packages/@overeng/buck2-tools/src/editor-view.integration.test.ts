@@ -4921,6 +4921,87 @@ describe('same-host abandoned publication lock recovery', () => {
     return owner
   }
 
+  it('cancels a dispatch waiting for a real live eviction owner without changing its lock', async () => {
+    const fixture = makeFixture()
+    mkdirSync(fixture.editorRoot, { recursive: true })
+    const eviction = await tryAcquireEditorViewBudgetRootLock({
+      repoRoot: fixture.root,
+      editorRoot: fixture.editorRoot,
+    })
+    expect(eviction).toBeDefined()
+    const ownerPath = join(fixture.editorRoot, '.publish.lock', 'owner.json')
+    const owner = readFileSync(ownerPath, 'utf8')
+    expect(JSON.parse(owner)).toMatchObject({
+      kind: 'eviction',
+      pid: process.pid,
+      process: editorViewStagingCreatorIdentity({ pid: process.pid }),
+    })
+    const controller = new AbortController()
+    let pending: Promise<unknown> | undefined
+    let watchdog: NodeJS.Timeout | undefined
+    let settled = false
+    try {
+      pending = dispatchEditorView({
+        signal: controller.signal,
+        args: [
+          'publish',
+          ...Object.entries({
+            '--repo-root': fixture.root,
+            '--package': fixture.options.package,
+            '--cell': fixture.options.cell,
+            '--target': fixture.options.target,
+            '--editor-inputs': fixture.editorInputs,
+            '--node-modules': fixture.nodeModules,
+            '--cp': cp,
+            '--mv': mv,
+            '--fingerprint-tool': fingerprintTool,
+            '--workspace-authority': fixture.workspaceAuthority,
+            '--consumer-cache': fixture.consumerCache,
+            '--snapshot-retention': '2',
+            '--content-store': fixture.options.contentStore!,
+          }).flat(),
+        ],
+      }).then(
+        (result) => {
+          settled = true
+          return result
+        },
+        (error: unknown) => {
+          settled = true
+          return error
+        },
+      )
+      const turn = Promise.withResolvers<void>()
+      setImmediate(turn.resolve)
+      await turn.promise
+      expect(settled).toBe(false)
+      controller.abort()
+      // A native live-owner wait needs a real watchdog so regressions release the
+      // held lock in finally instead of leaving the integration runner wedged.
+      const timedOut = Promise.withResolvers<Error>()
+      watchdog = setTimeout(
+        () =>
+          timedOut.resolve(
+            new Error('dispatch ignored cancellation while eviction owner remained live'),
+          ),
+        1_000,
+      )
+      const outcome = await Promise.race([pending, timedOut.promise])
+      expect(outcome).toMatchObject({ name: 'AbortError' })
+      expect(settled).toBe(true)
+      expect(readFileSync(ownerPath, 'utf8')).toBe(owner)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+      expect(existsSync(join(fixture.packageDir, '.editor-view'))).toBe(false)
+      expect(editorViewStagingCreatorIdentity({ pid: process.pid })).toBe(JSON.parse(owner).process)
+    } finally {
+      clearTimeout(watchdog)
+      controller.abort()
+      eviction?.release()
+      if (pending !== undefined) await Promise.allSettled([pending])
+      cleanup(fixture)
+    }
+  })
+
   describe('a killed publisher process', () => {
     let fixture: Fixture
     let child: ChildProcess.ChildProcess | undefined

@@ -173,7 +173,9 @@ preserving an authoritative content-store trust rejection if incident logging fa
 arguments, batch requests, and output callbacks, returning stdout, stderr, and
 the exit code without changing process globals or installing signal handlers.
 Every dispatch has its own native fingerprint scope; it joins subordinate
-fingerprints before returning. The CLI remains the process-I/O adapter.
+fingerprints before returning. Optional dispatch cancellation also interrupts
+live eviction-lock waits and terminates native copies, joining their close before
+returning. The CLI remains the process-I/O adapter and drains on SIGTERM.
 
 The reconciliation command runner waits for child close after a stdin write
 failure. A nonzero or signaled child exit takes precedence over a concurrent

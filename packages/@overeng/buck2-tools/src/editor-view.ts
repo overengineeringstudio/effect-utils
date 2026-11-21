@@ -1,5 +1,6 @@
 #!/usr/bin/env -S bun
-import { execFile, spawnSync } from 'node:child_process'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { execFile, spawnSync, type ChildProcess } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
@@ -30,6 +31,7 @@ import {
 import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as delay } from 'node:timers/promises'
 
 import {
   EditorViewCapacityError,
@@ -1127,6 +1129,14 @@ const requireImmutableTool = ({ tool, label }: { tool: string; label: string }):
     fail(`${label} tool must resolve into the immutable Nix store: ${immutableTool}`)
 }
 
+type EditorViewDispatchScope = {
+  readonly signal: AbortSignal | undefined
+  readonly copies: Set<Promise<void>>
+  readonly children: Set<ChildProcess>
+}
+
+const editorViewDispatchScope = new AsyncLocalStorage<EditorViewDispatchScope>()
+
 const runTool = ({
   tool,
   args,
@@ -1136,6 +1146,7 @@ const runTool = ({
   args: readonly string[]
   label: string
 }): void => {
+  editorViewDispatchScope.getStore()?.signal?.throwIfAborted()
   requireImmutableTool({ tool, label })
   const result = spawnSync(tool, args, {
     cwd: '/',
@@ -1159,9 +1170,11 @@ const copyWithTool = ({
   args: readonly string[]
   label: string
 }): Promise<void> => {
+  const scope = editorViewDispatchScope.getStore()
+  scope?.signal?.throwIfAborted()
   requireImmutableTool({ tool, label })
   const { promise, resolve: resolveCopy, reject: rejectCopy } = Promise.withResolvers<void>()
-  execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
+  const child = execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
     if (error !== null) {
       rejectCopy(
         new Error(
@@ -1172,7 +1185,19 @@ const copyWithTool = ({
     }
     resolveCopy()
   })
-  return promise
+  const { promise: closed, resolve: resolveClosed } = Promise.withResolvers<void>()
+  child.once('close', () => {
+    scope?.children.delete(child)
+    resolveClosed()
+  })
+  scope?.children.add(child)
+  const completed = promise.finally(() => closed)
+  scope?.copies.add(completed)
+  void completed.then(
+    () => scope?.copies.delete(completed),
+    () => scope?.copies.delete(completed),
+  )
+  return completed
 }
 
 const collectFileIdentities = (tree: string): ReadonlySet<string> => {
@@ -2467,7 +2492,9 @@ const acquirePublicationLock = async ({
   // Wait only for identified live eviction; recover only positively abandoned same-host owners.
   // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
   let acquisition: EditorViewPublicationLockProof['acquisition'] = 'normal'
+  const signal = editorViewDispatchScope.getStore()?.signal
   for (;;) {
+    signal?.throwIfAborted()
     try {
       const lock = acquireLock({ editorRoot, recoveryCommand })
       try {
@@ -2495,7 +2522,7 @@ const acquirePublicationLock = async ({
       const path = join(editorRoot, '.publish.lock')
       if (pathExists(path) === false) {
         // eslint-disable-next-line no-await-in-loop -- Yield when the contending lock vanished.
-        await Bun.sleep(10)
+        await delay(10, undefined, { signal })
         continue
       }
       let owner: LockOwner
@@ -2504,16 +2531,17 @@ const acquirePublicationLock = async ({
       } catch {
         if (pathExists(path) === false) {
           // eslint-disable-next-line no-await-in-loop -- Yield when owner inspection races release.
-          await Bun.sleep(10)
+          await delay(10, undefined, { signal })
           continue
         }
         throw error
       }
+      signal?.throwIfAborted()
       // eslint-disable-next-line no-await-in-loop -- Recovery repeats proof under the host fence.
       if ((await recoverAbandonedPublicationLock({ editorRoot, owner })) === true) {
         acquisition = 'recovered-dead-owner'
         // eslint-disable-next-line no-await-in-loop -- Yield before retrying the now-free root lock.
-        await Bun.sleep(10)
+        await delay(10, undefined, { signal })
         continue
       }
       if (
@@ -2526,7 +2554,7 @@ const acquirePublicationLock = async ({
       )
         throw error
       // eslint-disable-next-line no-await-in-loop -- Only the same live eviction incarnation is retried.
-      await Bun.sleep(10)
+      await delay(10, undefined, { signal })
     }
   }
 }
@@ -4006,6 +4034,7 @@ export const publishEditorViews = async ({
           })
         }
         try {
+          editorViewDispatchScope.getStore()?.signal?.throwIfAborted()
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
           // eslint-disable-next-line no-await-in-loop -- Each worker must finish before claiming its next view.
@@ -4472,23 +4501,67 @@ export type EditorViewDispatchResult = {
 }
 
 /** Run the literal CLI flow without process-global arguments, environment, or signal handlers. */
-export const dispatchEditorView = async (request: {
+export const dispatchEditorView = async ({
+  signal,
+  ...request
+}: {
   readonly args: readonly string[]
   readonly batchRequests?: unknown
   readonly onStdout?: (value: string) => void
   readonly onStderr?: (value: string) => void
+  readonly signal?: AbortSignal | undefined
 }): Promise<EditorViewDispatchResult> => {
+  signal?.throwIfAborted()
+  const controller = new AbortController()
+  const cancel = (): void => controller.abort(signal?.reason)
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted === true) cancel()
+  const scope: EditorViewDispatchScope = {
+    signal: controller.signal,
+    copies: new Set(),
+    children: new Set(),
+  }
+  let killTimer: NodeJS.Timeout | undefined
+  const terminate = (): void => {
+    for (const child of scope.children) child.kill('SIGTERM')
+    killTimer = setTimeout(() => {
+      for (const child of scope.children) child.kill('SIGKILL')
+    }, 5_000)
+    killTimer.unref()
+  }
+  controller.signal.addEventListener('abort', terminate, { once: true })
   let stderr = ''
-  return editorViewDiagnostics.run(
-    (value) => {
-      stderr += value
-      request.onStderr?.(value)
-    },
-    async () => {
-      const result = await withFingerprintScope({ run: () => dispatchEditorViewRequest(request) })
-      return { ...result, stderr }
-    },
-  )
+  try {
+    return await editorViewDiagnostics.run(
+      (value) => {
+        stderr += value
+        request.onStderr?.(value)
+      },
+      async () => {
+        const result = await withFingerprintScope({
+          signal: controller.signal,
+          run: () =>
+            editorViewDispatchScope.run(scope, async () => {
+              try {
+                const result = await dispatchEditorViewRequest(request)
+                signal?.throwIfAborted()
+                return result
+              } finally {
+                controller.abort()
+                while (scope.copies.size > 0)
+                  // eslint-disable-next-line no-await-in-loop -- Late siblings must close before ownership returns.
+                  await Promise.allSettled([...scope.copies])
+              }
+            }),
+        })
+        return { ...result, stderr }
+      },
+    )
+  } finally {
+    clearTimeout(killTimer)
+    controller.signal.removeEventListener('abort', terminate)
+    signal?.removeEventListener('abort', cancel)
+  }
 }
 
 const dispatchEditorViewRequest = async ({
@@ -4608,22 +4681,31 @@ const dispatchEditorViewRequest = async ({
 }
 
 const main = async (): Promise<void> => {
-  process.once('SIGTERM', () => {
+  const controller = new AbortController()
+  const terminate = (): void => {
     closeFingerprintAdmission()
     for (const report of interruptedPublicationPhases) report()
-    // Give asynchronous span emission a bounded chance to flush before failing closed.
-    setTimeout(() => process.exit(143), 100)
-  })
-  const args = process.argv.slice(2)
-  const result = await dispatchEditorView({
-    args,
-    onStdout: (value) => process.stdout.write(value),
-    onStderr: (value) => process.stderr.write(value),
-    ...(args[0] === 'publish-batch' && args.length === 1
-      ? { batchRequests: JSON.parse(readFileSync(0, 'utf8')) as unknown }
-      : {}),
-  })
-  if (result.exitCode !== 0) process.exitCode = result.exitCode
+    process.exitCode = 143
+    controller.abort()
+  }
+  process.once('SIGTERM', terminate)
+  try {
+    const args = process.argv.slice(2)
+    const result = await dispatchEditorView({
+      args,
+      signal: controller.signal,
+      onStdout: (value) => process.stdout.write(value),
+      onStderr: (value) => process.stderr.write(value),
+      ...(args[0] === 'publish-batch' && args.length === 1
+        ? { batchRequests: JSON.parse(readFileSync(0, 'utf8')) as unknown }
+        : {}),
+    })
+    if (result.exitCode !== 0) process.exitCode = result.exitCode
+  } catch (error) {
+    if (controller.signal.aborted === false) throw error
+  } finally {
+    process.removeListener('SIGTERM', terminate)
+  }
 }
 
 if (import.meta.main === true) await main()
