@@ -652,6 +652,7 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
       '--editor-inputs': fixture.editorInputs, '--node-modules': fixture.nodeModules,
       '--cp': cp, '--mv': mv, '--fingerprint-tool': fingerprintTool,
       '--workspace-authority': fixture.workspaceAuthority,
+      '--snapshot-retention': '2',
       '--consumer-cache': fixture.consumerCache, '--content-store': fixture.options.contentStore!,
     }).flat()]
     const request = command === 'publish' ? { args } : { args: [command], batchRequests: [args] }
