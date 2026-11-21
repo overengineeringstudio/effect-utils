@@ -256,6 +256,16 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
     let (survivor, descriptor, identity) = reports.recv().unwrap();
     let deadline = Instant::now() + Duration::from_secs(120);
     let pid = std::process::id();
+    let wait_departures = |tids: &[u32]| {
+        loop {
+            let current = scopes::numbers(format!("/proc/{pid}/task"), deadline).unwrap();
+            let remaining = tids.iter().filter(|tid| current.binary_search(tid).is_ok()).count();
+            if remaining == 0 { break; }
+            assert!(Instant::now() < deadline,
+                "joined fixture tasks still listed at deadline: count={remaining}");
+            std::thread::yield_now();
+        }
+    };
     for _ in 0..16 {
         let (stop, stopped) = mpsc::channel();
         let (ready, entered) = mpsc::channel();
@@ -269,9 +279,23 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
         let scope = scopes::ProcessScope::discover(pid, deadline).unwrap();
         let departed_index = scope.tasks.iter().position(|task| task.identity.pid == departed).unwrap();
         drop(transient);
+        // pthread join observes clear_child_tid, which precedes exit_notify /
+        // release_task in Linux6.18.62. Require actual task-list disappearance,
+        // not a userspace completion signal, before testing departed closure.
+        wait_departures(&[departed]);
         // Real births and exits occur after discovery and before resource
         // closure, while the original surviving candidate FD remains live.
-        for _ in 0..16 { std::thread::spawn(|| ()).join().unwrap(); }
+        let mut born = Vec::with_capacity(16);
+        for _ in 0..16 {
+            let (ready, entered) = mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                // SAFETY: argument-free current-task identity query.
+                ready.send(u32::try_from(unsafe { gettid() }).unwrap()).unwrap();
+            });
+            born.push(entered.recv().unwrap());
+            thread.join().unwrap();
+        }
+        wait_departures(&born);
         scope.recheck(deadline).unwrap();
         assert!(scope.task_departed(departed_index, deadline).unwrap());
         assert!(scope.collect_resources(departed_index, deadline).unwrap().is_none());
