@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { constants } from 'node:os'
 import { join, posix } from 'node:path'
 import process from 'node:process'
 
@@ -253,6 +254,28 @@ const reportTiming = (timing: EditorViewTiming): void => {
   process.stderr.write(`[editor-view-timing] ${JSON.stringify(timing)}\n`)
 }
 
+/** Join all cancellable publication work before the authority CLI exits. */
+const withPublicationCancellation = async (
+  run: (signal: AbortSignal) => Promise<void>,
+): Promise<void> => {
+  const controller = new AbortController()
+  const signals = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
+  const handlers = signals.map((signal) => {
+    const handler = (): void => {
+      process.exitCode = 128 + constants.signals[signal]
+      controller.abort(new Error(`Editor publication interrupted by ${signal}`))
+    }
+    process.on(signal, handler)
+    return { signal, handler }
+  })
+  try {
+    await run(controller.signal)
+    controller.signal.throwIfAborted()
+  } finally {
+    for (const { signal, handler } of handlers) process.removeListener(signal, handler)
+  }
+}
+
 const commands = new Set<Command>(['authority', 'bootstrap', 'check', 'publish'])
 
 const parseCli = (args: readonly string[]) => {
@@ -304,7 +327,7 @@ const parseCli = (args: readonly string[]) => {
   }
 }
 
-const main = async (): Promise<void> => {
+const main = async (signal: AbortSignal): Promise<void> => {
   const options = parseCli(process.argv.slice(2))
   if (
     Number.isInteger(options.snapshotRetention) === false ||
@@ -380,6 +403,7 @@ const main = async (): Promise<void> => {
     },
     options: {
       plan,
+      signal,
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,
@@ -406,8 +430,8 @@ const main = async (): Promise<void> => {
 
 if (import.meta.main === true)
   try {
-    await main()
+    await withPublicationCancellation(main)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    process.exitCode = 1
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 1
   }

@@ -1180,6 +1180,7 @@ in
     CP_BIN = "${pkgs.coreutils}/bin/cp";
     MV_BIN = "${pkgs.coreutils}/bin/mv";
     JQ_BIN = "${pkgs.jq}/bin/jq";
+    NIX_STORE_BIN = "${pkgs.nix}/bin/nix-store";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   # The source deploy complement evaluates real Nix task launchers against fake
@@ -1311,6 +1312,7 @@ in
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+  env.BUCK2_NATIVE_BIN = "${buck2Machine}/libexec/buck2";
   env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
   # Explicit digest-tool input for the JavaScript product contract test, including
@@ -1335,6 +1337,8 @@ in
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
       export BUN_BIN=${pkgs.bun}/bin/bun
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export PS_BIN=${if pkgs.stdenv.isDarwin then "/bin/ps" else "${pkgs.procps}/bin/ps"}
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
