@@ -368,6 +368,13 @@ impl CandidateSet {
         }
         let filesystem = membership_step("held-filesystem", linux::filesystem_type(file))?;
         if matches!(filesystem, 0x794c7630 | 0x65735546) {
+            #[cfg(holder_owned_vm_class_diagnostics)]
+            {
+                let filesystem_class = if filesystem == 0x794c7630 { "overlay" } else { "fuse" };
+                let object = if metadata.is_file() { "file" }
+                    else if metadata.is_dir() { "directory" } else { "other" };
+                eprintln!("worktree-holder-membership-owned-vm needs-proxy reference={kind:?} object={object} filesystem={filesystem_class}");
+            }
             return Ok(PreparedMatch::Complete(MatchOutcome::NeedsProxy));
         }
         if !membership_step("native-filesystem-class", objects::native_filesystem(file))? {

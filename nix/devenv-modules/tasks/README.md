@@ -145,6 +145,12 @@ memfd bind. Real detached tmpfs file/directory and candidate-submounted tmpfs
 unlinked-file negatives remain distinct mandatory cases; no generic tmpfs
 exclusion follows from the memfd refusal.
 
+Owned-VM class diagnostics also label an already-selected proxy fallback with
+only the closed reference kind, object category and exact overlay/FUSE class.
+They reuse existing metadata and filesystem results: no new observations or
+derived paths/identifiers, and no provider activation or qualification change.
+A disabled managed provider still returns protective Unsupported.
+
 ## Privileged holder server (inactive)
 
 `shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,
