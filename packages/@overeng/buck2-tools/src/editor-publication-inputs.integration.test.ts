@@ -171,7 +171,7 @@ it('keeps private publication inputs intact while default Buck restarts and rema
     writeFileSync(join(root, 'package.json'), '{}\n')
     const immutableInput = realpathSync(tool('BUN_BIN'))
     expect(() => requireEditorPublicationInputs({ root, paths: [immutableInput] })).not.toThrow()
-    const immutableCarrier = join(root, 'buck-out', 'v2', 'immutable-carrier')
+    const immutableCarrier = join(root, 'buck-out', 'unowned-carrier', 'immutable-carrier')
     mkdirSync(dirname(immutableCarrier), { recursive: true })
     symlinkSync(immutableInput, immutableCarrier)
     expect(() => requireEditorPublicationInputs({ root, paths: [immutableCarrier] })).toThrow()
