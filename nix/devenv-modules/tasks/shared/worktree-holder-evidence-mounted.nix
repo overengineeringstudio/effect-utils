@@ -13,6 +13,8 @@ let
     "-inventory"
     "-mounts"
     "-candidates"
+    "-scope-devices"
+    "-shmem"
   ];
   roots = pkgs.writeText "holder-evidence-roots.rs" (
     "const ALLOWED_ROOTS: &[&str] = &["
@@ -44,8 +46,9 @@ pkgs.runCommand (if ownedVmClassDiagnostics then "holder-evidence-native-members
     )
     rustc --edition=2024 -D warnings --check-cfg 'cfg(test)' --check-cfg 'cfg(holder_owned_vm_class_diagnostics)' ${lib.optionalString ownedVmClassDiagnostics "--cfg holder_owned_vm_class_diagnostics"} "''${externs[@]}" --test worktree-holder-evidence-mounted-lib.rs -o mounted-tests
     ./mounted-tests
-    mkdir -p "$out/lib" "$out/share/holder-evidence-mounted/src"
+    mkdir -p "$out/lib" "$out/libexec" "$out/share/holder-evidence-mounted/src"
     rustc --edition=2024 -D warnings --check-cfg 'cfg(test)' --check-cfg 'cfg(holder_owned_vm_class_diagnostics)' ${lib.optionalString ownedVmClassDiagnostics "--cfg holder_owned_vm_class_diagnostics"} "''${externs[@]}" --crate-name holder_evidence_mounted --crate-type rlib \
       worktree-holder-evidence-mounted-lib.rs -o "$out/lib/libholder_evidence_mounted.rlib"
     cp worktree-holder-evidence*.rs "$out/share/holder-evidence-mounted/src/"
+    cp mounted-tests "$out/libexec/worktree-holder-mounted-tests"
   ''

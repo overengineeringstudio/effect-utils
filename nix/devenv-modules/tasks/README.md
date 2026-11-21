@@ -350,6 +350,27 @@ of the six supported native filesystem classes (or fixed other), and the closed
 ReferenceKind. These are same-object snapshot tags, not retained-byte absence,
 memfd identity or detached-mount reachability proofs; they never change UNKNOWN.
 
+Unlinked tmpfs is not a blanket exemption. Only FD/MAP regular files with zero
+links, exact tmpfs magic and the exact device **and mount ID** of a fresh live
+transaction memfd witness can be non-holding, and only when that device is absent
+from the complete verified candidate/scope device inventory. Exact historical
+store inode positives still run first. Ordinary detached tmpfs, directories,
+root/cwd/mount references and missing/changed proofs retain their veto.
+
+That inventory includes physical-source aliases in both component-prefix
+directions, every mount at/beneath each potential alias, file binds and covering
+ancestor mounts. Hidden candidates may conservatively add devices, never lose
+them. The enrolled view and every contributing task view retain complete mount
+snapshots and verified mountpoint pins. The cache moves into each observation's
+MountCoverage. Before full object reclosure, a ledger requires all contributions
+retained and the cache empty, then freezes the union. Every earlier reference,
+including provisional empty matches, is recomputed with its original retained
+view and that complete frozen union; no later view registration is admitted.
+Enrollment, all scope snapshots/pins and the witness reclose before publication.
+New/changed/unresolvable submounts yield UNKNOWN, not an incomplete device set.
+The fixed memfd syscall creates an empty CLOEXEC/no-exec-sealed non-hugetlb file,
+retained only for this transaction and recreated on its sole whole-scan retry.
+
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
 to that same output's `bin/worktree-holder-evidence`. A later combined client
