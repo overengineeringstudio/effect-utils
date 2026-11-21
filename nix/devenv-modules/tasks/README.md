@@ -334,6 +334,11 @@ An unsupported-filesystem diagnostic distinguishes only the already-read exact
 9p magic from a fixed `other` class. It grants neither filesystem support nor a
 fallback. No path, mount/process identity or underlying error is formatted, and
 ordinary builds compile all these diagnostic emissions out.
+On that same failing native-location result only, owned-VM diagnostics also
+classify the already-read metadata as file/directory/other, linked/unlinked, one
+of the six supported native filesystem classes (or fixed other), and the closed
+ReferenceKind. These are same-object snapshot tags, not retained-byte absence,
+memfd identity or detached-mount reachability proofs; they never change UNKNOWN.
 
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound

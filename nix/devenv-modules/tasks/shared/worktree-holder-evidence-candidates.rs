@@ -324,7 +324,24 @@ impl CandidateSet {
                 *cached = Some(membership_step("native-view-capture", mounts::NativeView::capture(task_scope, deadline))?);
             }
             let view = cached.as_ref().ok_or_else(|| io::Error::other("missing native view"))?;
-            membership_step("native-location", view.location(file, deadline))?
+            let result = view.location(file, deadline);
+            #[cfg(holder_owned_vm_class_diagnostics)]
+            if result.is_err() {
+                let object = if metadata.is_file() { "file" }
+                    else if metadata.is_dir() { "directory" } else { "other" };
+                let links = if metadata.nlink() == 0 { "unlinked" } else { "linked" };
+                let filesystem_class = match filesystem {
+                    0xef53 => "ext4",
+                    0x2fc12fc1 => "zfs",
+                    0x9123683e => "btrfs",
+                    0x58465342 => "xfs",
+                    0x01021994 => "tmpfs",
+                    0x858458f6 => "ramfs",
+                    _ => "other",
+                };
+                eprintln!("worktree-holder-membership-owned-vm rejected-native-object reference={kind:?} object={object} links={links} filesystem={filesystem_class}");
+            }
+            membership_step("native-location", result)?
         };
         membership_step("native-candidate-match", self.matches_native(&location, &identity, effect, deadline))
             .map(MatchOutcome::Native)
