@@ -282,6 +282,8 @@ This guards accidental misuse, not adversarial same-uid processes using unmanage
 against the live owner and reserved publication isolation, preserving native filesystem errors.
 Ordinary source and immutable store inputs need no publication owner; terminal parent traversal
 cannot select an unowned materializer or ancestor.
+Real-owner input tests cover intermediate leaf and directory carriers to ordinary/Nix inputs,
+filesystem-order dot segments, native ENOENT/ENOTDIR/ELOOP errors, and terminal-parent escapes.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
