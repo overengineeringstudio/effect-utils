@@ -196,17 +196,21 @@ impl NativeView {
     use std::io;
     use std::os::fd::AsRawFd;
     use super::{linux, objects};
-    let unknown = || io::Error::other("native mount backing unobservable or changed");
+    let unknown = |_stage: &'static str| {
+        #[cfg(holder_owned_vm_class_diagnostics)]
+        eprintln!("worktree-holder-native-location-owned-vm reason={_stage}");
+        io::Error::other("native mount backing unobservable or changed")
+    };
     if std::time::Instant::now() >= deadline || !objects::native_filesystem(file)? {
-        return Err(unknown());
+        return Err(unknown("deadline-or-nonnative-filesystem"));
     }
     let held_mount = objects::mount_id(file)?;
-    let mount = self.graph.get(&held_mount).ok_or_else(unknown)?;
+    let mount = self.graph.get(&held_mount).ok_or_else(|| unknown("held-mount-not-listed"))?;
     if !canonical(&mount.root) || !canonical(&mount.point) {
-        return Err(unknown());
+        return Err(unknown("noncanonical-mount-coordinate"));
     }
     let task_root = &self.root;
-    let point_relative = mount.point.strip_prefix("/").map_err(|_| unknown())?;
+    let point_relative = mount.point.strip_prefix("/").map_err(|_| unknown("mount-point-relative"))?;
     let point = objects::pin_beneath(task_root,
         if point_relative.as_os_str().is_empty() { std::ffi::OsStr::new(".") }
         else { point_relative.as_os_str() })?;
@@ -216,7 +220,7 @@ impl NativeView {
         || device_pair(held_identity.0) != (mount.device_major, mount.device_minor)
         || linux::filesystem_type(&point)? != linux::filesystem_type(file)?
     {
-        return Err(unknown());
+        return Err(unknown("mount-point-identity"));
     }
     let spelling = fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
     let root_spelling = fs::read_link(format!("/proc/self/fd/{}", task_root.as_raw_fd()))?;
@@ -229,7 +233,7 @@ impl NativeView {
     for spelling in spellings {
         if !canonical(&spelling) { continue; }
         let Ok(relative) = spelling.strip_prefix(&mount.point) else { continue };
-        let root_relative = spelling.strip_prefix("/").map_err(|_| unknown())?;
+        let root_relative = spelling.strip_prefix("/").map_err(|_| unknown("held-spelling-relative"))?;
         let reopened = match objects::pin_beneath(task_root,
             if root_relative.as_os_str().is_empty() { std::ffi::OsStr::new(".") }
             else { root_relative.as_os_str() })
@@ -241,9 +245,9 @@ impl NativeView {
             || objects::mount_id(&reopened)? != held_mount { continue; }
         let path = if relative.as_os_str().is_empty() { mount.root.clone() }
             else { mount.root.join(relative) };
-        if !canonical(&path) { return Err(unknown()); }
+        if !canonical(&path) { return Err(unknown("invalid-object-coordinate")); }
         if coordinate.as_ref().is_some_and(|previous| previous != &path) {
-            return Err(unknown());
+            return Err(unknown("ambiguous-object-coordinate"));
         }
         coordinate = Some(path);
     }
@@ -253,11 +257,11 @@ impl NativeView {
         || objects::mount_id(file)? != held_mount
         || fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))? != spelling
     {
-        return Err(unknown());
+        return Err(unknown("held-view-recheck"));
     }
     Ok(NativeLocation { device: held_identity.0,
         filesystem: linux::filesystem_type(file)?,
-        path: coordinate.ok_or_else(unknown)?, _mountpoint: point })
+        path: coordinate.ok_or_else(|| unknown("no-reopenable-coordinate"))?, _mountpoint: point })
 }
 }
 

@@ -326,6 +326,15 @@ asserts nested map_files is absent, top-level same-TID mappings are nonempty,
 and an actual retained read-only private candidate-file mmap is observed
 alongside the surviving FD through production capture and reclosure.
 
+The same default-false owned-VM flag also enables the actual mounted-membership
+RLIB and its test compilation. Membership failures emit only finite static
+boundary labels, error kind and numeric errno; native-location proof failures
+add a finite source-literal rejection tag while returning their original error.
+An unsupported-filesystem diagnostic distinguishes only the already-read exact
+9p magic from a fixed `other` class. It grants neither filesystem support nor a
+fallback. No path, mount/process identity or underlying error is formatted, and
+ordinary builds compile all these diagnostic emissions out.
+
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
 to that same output's `bin/worktree-holder-evidence`. A later combined client
