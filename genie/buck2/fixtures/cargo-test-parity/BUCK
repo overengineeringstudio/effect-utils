@@ -4,7 +4,7 @@
 # Projection source: genie/buck2/fixtures/cargo-test-parity/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:5f731bb2173332c0a44a2811675fb7044e3bb18e731b723ac0b4b2600afa99c1
+# Semantic fingerprint: sha256:15094101ca9b7cfdb54a80c6348dd8f31675ae902fb8c8ccfa95f807c37405d1
 # Semantic inputs: genie/buck2/fixtures/cargo-test-parity/BUCK.genie.ts, genie/buck2/fixtures/cargo-test-parity/Cargo.lock, genie/buck2/fixtures/cargo-test-parity/Cargo.toml, genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt, genie/buck2/fixtures/cargo-test-parity/reindeer.toml, genie/buck2/fixtures/cargo-test-parity/src/**/*.rs, genie/buck2/fixtures/cargo-test-parity/tests/**/*.rs, genie/buck2/fixtures/cargo-test-parity/vendor/BUCK
 # Test projection: unit and integration harnesses enabled.
 # Doctests: unsupported (unit and integration harnesses only).

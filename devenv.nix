@@ -1563,6 +1563,8 @@ in
       "genie/buck2/**/*.ts"
       "genie/buck2/cargo-buck2-test-parity.integration.test.sh"
       "genie/buck2/fixtures/**/*"
+      "buck2/rust/defs.bzl"
+      "nix/buck2.nix"
       "nix/stage0-cargo/*"
       "rust/**/Cargo.toml"
       "rust/Cargo.lock"

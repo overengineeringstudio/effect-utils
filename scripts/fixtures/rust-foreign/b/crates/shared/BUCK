@@ -4,7 +4,7 @@
 # Projection source: scripts/fixtures/rust-foreign/b/crates/shared/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:1eb30a32084993e427b4f181926ab5ac65d1daa926c0027545ff0c7503cc709a
+# Semantic fingerprint: sha256:53f00f6973805733c56b2134b2bf33f8b9b2c76ea0689b61521c346273c2d76a
 # Semantic inputs: genie/buck2/mod.ts, rust/buck2-tools/core/cargo-buck2-package-projection.ts, scripts/fixtures/rust-foreign/b/Cargo.lock, scripts/fixtures/rust-foreign/b/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/BUCK.genie.ts, scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/src/**/*.rs, scripts/fixtures/rust-foreign/b/crates/shared/tests/**/*.rs, scripts/fixtures/rust-foreign/b/reindeer.toml, scripts/fixtures/rust-foreign/b/third-party/BUCK, scripts/fixtures/rust-foreign/projection.ts
 # Test projection: disabled (opt in with testPackagePaths).
 # Doctests: unsupported (unit and integration harnesses only).

@@ -353,6 +353,7 @@ export const defineCargoBuck2PackageProjection = ({
     }),
     cargoResolution,
     cargoResolutionPath: cargoResolution === undefined ? undefined : cargoResolutionPath,
+    lockPackages: lock.package ?? [],
     lockPackageNames: new Set(
       (lock.package ?? []).map((entry) =>
         requireValue({ value: entry.name, field: 'Cargo.lock package.name' }),
@@ -715,10 +716,19 @@ const cargoBuck2PackageProjectionFor = ({
       source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
   )
   const testsEnabled = foreignMember === undefined && definition.testPackagePaths.has(packagePath)
+  if (
+    testsEnabled === true &&
+    (member.manifest.lib?.harness === false ||
+      member.manifest.bin?.some((binary) => binary.harness === false) === true)
+  ) {
+    throw new CargoTestTargetUnsupported(
+      `Cargo harness = false is unsupported in ${member.manifestPath}`,
+    )
+  }
   const testHarnesses =
     testsEnabled === true
       ? [
-          ...(library === undefined
+          ...(library === undefined || library.test === false
             ? []
             : [
                 {
@@ -728,13 +738,15 @@ const cargoBuck2PackageProjectionFor = ({
                   kind: 'lib' as const,
                 },
               ]),
-          ...binaries.map((binary) => ({
-            name: `unit-bin-${binary.name}`,
-            crate: crateIdentifier(binary.name),
-            crateRoot: binary.crateRoot,
-            kind: 'bin' as const,
-            binName: binary.name,
-          })),
+          ...binaries
+            .filter((binary) => binary.test !== false)
+            .map((binary) => ({
+              name: `unit-bin-${binary.name}`,
+              crate: crateIdentifier(binary.name),
+              crateRoot: binary.crateRoot,
+              kind: 'bin' as const,
+              binName: binary.name,
+            })),
           ...integrationTestRoots.map((root) => ({
             name: `integration-${path.posix.basename(root, '.rs')}`,
             crate: crateIdentifier(path.posix.basename(root, '.rs')),
@@ -1685,12 +1697,16 @@ type CargoManifest = {
   readonly lib?: {
     readonly name?: string
     readonly path?: string
+    readonly test?: boolean
+    readonly harness?: boolean
     readonly 'crate-type'?: readonly string[]
     readonly 'proc-macro'?: boolean
   }
   readonly bin?: readonly {
     readonly name?: string
     readonly path?: string
+    readonly test?: boolean
+    readonly harness?: boolean
     readonly 'required-features'?: readonly string[]
   }[]
   readonly test?: readonly unknown[]
@@ -1735,6 +1751,7 @@ type ProjectionContext = {
   readonly foreignPackageByPath: ReadonlyMap<string, WorkspaceMember>
   readonly foreignTargetPackage: string
   readonly lockPackageNames: ReadonlySet<string>
+  readonly lockPackages: NonNullable<CargoLock['package']>
   readonly memberByPath: ReadonlyMap<string, WorkspaceMember>
   readonly cargoResolution?: CargoResolution
   readonly cargoResolutionPath?: string
@@ -1944,6 +1961,10 @@ class CargoTestDependencyUnavailable extends Error {
   readonly _tag = 'CargoTestDependencyUnavailable'
 }
 
+class CargoTestTargetUnsupported extends Error {
+  readonly _tag = 'CargoTestTargetUnsupported'
+}
+
 /** Cargo unifies normal/dev requests; never silently replace an extern binding. */
 const mergeTestDependencies = ({
   dependencies,
@@ -1954,6 +1975,11 @@ const mergeTestDependencies = ({
 }): readonly ResolvedDependency[] => {
   const merged = new Map<string, ResolvedDependency>()
   for (const dependency of dependencies) {
+    if (dependency.resolvedIdentity === undefined) {
+      throw new CargoTestDependencyUnavailable(
+        `Cannot identify locked test dependency ${dependency.name} in ${manifestPath}; regenerate cargo-resolution.json`,
+      )
+    }
     const previous = merged.get(dependency.name)
     if (
       previous !== undefined &&
@@ -2087,6 +2113,19 @@ const resolveDependency = ({
       `Cargo resolution has no dependency ${dependencyName} at ${member.manifestPath} ${field}`,
     )
   }
+  // Requirements are not identities: e.g. "1" and "1.0" can select the same crate.
+  // Without resolution metadata only an unambiguous locked package is safe.
+  const lockedPackages = context.lockPackages.filter(
+    (entry) =>
+      entry.name === (resolved?.package ?? packageName) &&
+      (resolved === undefined || entry.version === resolved.version) &&
+      (effectiveRequest.source === undefined
+        ? entry.source === undefined || entry.source.startsWith('registry+') === true
+        : entry.source?.startsWith('git+') === true &&
+          entry.source.slice('git+'.length).split(/[?#]/)[0] ===
+            effectiveRequest.source.split('#')[0]),
+  )
+  const locked = lockedPackages.length === 1 ? lockedPackages[0] : undefined
   const targetName =
     resolved?.alias ??
     (effectiveRequest.package === undefined ||
@@ -2103,7 +2142,9 @@ const resolveDependency = ({
     requestSource,
     targetAvailable: context.thirdPartyTargets.has(targetName),
     ...(effectiveRequest.version === undefined ? {} : { version: effectiveRequest.version }),
-    resolvedIdentity: `${resolved?.package ?? packageName}@${resolved?.version ?? effectiveRequest.version ?? ''}:${effectiveRequest.source ?? 'registry'}`,
+    ...(locked === undefined
+      ? {}
+      : { resolvedIdentity: `${locked.name}@${locked.version}:${locked.source ?? 'registry'}` }),
   }
 }
 
@@ -2201,6 +2242,7 @@ const resolveMemberPathDependency = ({
     ...(request.optional === true ? { optional: true as const } : {}),
     requestSource,
     targetAvailable: true,
+    resolvedIdentity: `path:${dependencyPath}`,
     ...(request.version === undefined ? {} : { version: request.version }),
   }
 }
@@ -2231,12 +2273,14 @@ const resolveDependencyTable = ({
 type CargoLibraryTarget = {
   readonly name: string
   readonly path: string
+  readonly test?: boolean
   readonly crateTypes?: readonly string[]
   readonly procMacro?: boolean
 }
 type CargoBinaryTarget = {
   readonly crateRoot: string
   readonly name: string
+  readonly test?: boolean
   /** `required-features`: Cargo builds the binary only when all are enabled. */
   readonly requiredFeatures?: readonly string[]
 }
@@ -2292,6 +2336,7 @@ const discoverCargoTargets = ({
     library = {
       name: explicitLibrary.name ?? crateIdentifier(packageName),
       path: libraryPath,
+      test: explicitLibrary.test ?? true,
       ...(crateTypes === undefined ? {} : { crateTypes }),
       ...(procMacro === true ? { procMacro } : {}),
     }
@@ -2336,9 +2381,12 @@ const discoverCargoTargets = ({
     if (sourceSet.has(crateRoot) === false) {
       throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
     }
-    return requiredFeatures.length === 0
-      ? { crateRoot, name }
-      : { crateRoot, name, requiredFeatures }
+    return {
+      crateRoot,
+      name,
+      test: binary.test ?? true,
+      ...(requiredFeatures.length === 0 ? {} : { requiredFeatures }),
+    }
   })
   const explicitNames = new Set(explicitBinaries.map((binary) => binary.name))
   const explicitRoots = new Set(explicitBinaries.map((binary) => binary.crateRoot))

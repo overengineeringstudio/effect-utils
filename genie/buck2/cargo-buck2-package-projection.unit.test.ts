@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -1992,6 +1992,50 @@ describe('Cargo test harness projection', () => {
     expect(output).toContain('# Doctests: unsupported')
   })
 
+  it.each([
+    ['[lib]\ntest = false', 'unit-lib'],
+    ['[[bin]]\nname = "pkg"\ntest = false', 'unit-bin-pkg'],
+  ])('honors test = false in %s without removing production targets', (target, skipped) => {
+    const output = render({ members: { pkg: { manifest: `${manifest}\n${target}`, files } } })
+    expect(harnesses(output).some((test) => test.includes(`name = "${skipped}"`))).toBe(false)
+    expect(output).toContain('name = "lib"')
+    expect(output).toContain('name = "pkg"')
+    for (const test of harnesses(output).filter((test) => test.includes('name = "integration-'))) {
+      expect(test).toContain('"CARGO_BIN_EXE_pkg": "$(location //rust/pkg:pkg)"')
+      expect(test).toContain('"//rust/pkg:lib"')
+    }
+  })
+
+  it.each(['[lib]', '[[bin]]\nname = "pkg"'])(
+    'rejects harness = false in opted-in %s with a typed error',
+    (target) => {
+      const options = {
+        members: { pkg: { manifest: `${manifest}\n${target}\nharness = false`, files } },
+      }
+      expect(() => render(options)).toThrow('Cargo harness = false is unsupported')
+      try {
+        render(options)
+        throw new Error('Expected unsupported harness')
+      } catch (error) {
+        expect(error).toMatchObject({ _tag: 'CargoTestTargetUnsupported' })
+      }
+      expect(harnesses(render({ ...options, testMembers: [] }))).toEqual([])
+    },
+  )
+
+  it('unifies equivalent requirements selecting one locked version without resolution metadata', () => {
+    const output = render({
+      members: {
+        pkg: {
+          manifest:
+            '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "1.0"',
+          files,
+        },
+      },
+    })
+    expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
+  })
+
   it.each(['unit-lib', 'unit-bin-pkg', 'integration-one'])(
     'rejects reserved binary name %s',
     (name) => {
@@ -2068,6 +2112,35 @@ describe('Cargo test harness projection', () => {
             files,
           },
         },
+        prepareFixture: (root) => {
+          appendFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            '\n[[package]]\nname = "serde"\nversion = "2.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+          )
+          writeFileSync(
+            path.join(root, 'rust/third-party/cargo-resolution.json'),
+            JSON.stringify({
+              dependencies: [
+                {
+                  manifestPath: 'rust/pkg/Cargo.toml',
+                  name: 'serde',
+                  package: 'serde',
+                  version: '1.0.0',
+                  alias: 'serde',
+                  kind: 'normal',
+                },
+                {
+                  manifestPath: 'rust/pkg/Cargo.toml',
+                  name: 'serde',
+                  package: 'serde',
+                  version: '2.0.0',
+                  alias: 'serde',
+                  kind: 'dev',
+                },
+              ],
+            }),
+          )
+        },
       }),
     ).toThrow('Conflicting normal/dev Cargo dependency serde')
   })
@@ -2122,6 +2195,12 @@ describe('Cargo test harness projection', () => {
               '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = { git = "https://example.invalid/serde", rev = "123", version = "1" }',
             files,
           },
+        },
+        prepareFixture: (root) => {
+          appendFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            '\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "git+https://example.invalid/serde#123"\n',
+          )
         },
       }),
     ).toThrow('Conflicting normal/dev Cargo dependency serde')
