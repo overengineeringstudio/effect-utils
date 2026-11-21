@@ -1103,12 +1103,12 @@ describe('native Buck cache evidence projection', () => {
       ['invalid argument', 'invalid-argument'],
       ['arbitrary! secret', 'other'],
     ]) {
-      expect(classifyCacheUploadError(message, 'unknown!code')).toEqual({
+      expect(classifyCacheUploadError({ error: message, code: 'unknown!code' })).toEqual({
         category,
         reErrorCode: null,
       })
     }
-    expect(classifyCacheUploadError('', 'PERMISSION_DENIED')).toEqual({
+    expect(classifyCacheUploadError({ error: '', code: 'PERMISSION_DENIED' })).toEqual({
       category: 'permission-denied',
       reErrorCode: 7,
     })

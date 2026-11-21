@@ -71,6 +71,11 @@ enum Command {
     Export {
         #[arg(long)]
         spool_dir: Option<PathBuf>,
+        /// Requeue retained source after downstream loss, not just ingress ACK.
+        #[arg(long)]
+        replay_records: bool,
+        #[arg(long, requires = "replay_records")]
+        records_dir: Option<PathBuf>,
         /// Upper bound for one OTLP request, connect through response body.
         #[arg(long, default_value_t = 5)]
         request_timeout_secs: u64,
@@ -86,7 +91,8 @@ pub fn main_entry() -> Result<(), Box<dyn std::error::Error>> {
 }
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
-        Command::Census(args) => Ok(retained::census(args)?),
+        Command::Census(args) => Ok(retained::census(args)
+            .map_err(|error| format!("coverage UNKNOWN: census capture/queue: {error}"))?),
         Command::Ingest {
             logs,
             sidecar,
@@ -102,13 +108,22 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         ),
         Command::Export {
             spool_dir,
+            replay_records,
+            records_dir,
             request_timeout_secs,
             export_budget_secs,
         } => {
+            let started = Instant::now();
+            let budget = Duration::from_secs(export_budget_secs);
+            let spool = spool_directory(spool_dir);
+            if replay_records {
+                retained::replay(&retained::directory(records_dir)?, &spool, started + budget)
+                    .map_err(|error| format!("coverage UNKNOWN: retained replay: {error}"))?;
+            }
             drain_pending(
-                &spool_directory(spool_dir),
+                &spool,
                 Duration::from_secs(request_timeout_secs),
-                Duration::from_secs(export_budget_secs),
+                budget.saturating_sub(started.elapsed()),
             );
             Ok(())
         }
@@ -155,7 +170,8 @@ fn ingest(
         let model = decode(log)?;
         // Publish compact authoritative input before acknowledging conversion.
         // Failure leaves the native input and independent census for recovery.
-        retained::capture(&model, records_dir)?;
+        retained::capture(&model, records_dir, spool_dir)
+            .map_err(|error| format!("coverage UNKNOWN: compact capture/queue: {error}"))?;
         let parent = sidecars.get(&model.uuid);
         let views = make_views(&model, parent);
         for (kind, trace_id, spans) in views {
@@ -260,10 +276,10 @@ fn sha256_hex(body: &[u8]) -> String {
 }
 
 fn spool_chunk(dir: &Path, signal: &str, body: &[u8]) -> io::Result<PathBuf> {
-    if body.len() > MAX_OTLP_BODY {
+    if body.len() > MAX_OTLP_BODY || !matches!(signal, "traces" | "metrics" | "logs") {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "OTLP chunk exceeds collector limit",
+            "OTLP chunk exceeds collector limit or has invalid signal",
         ));
     }
     fs::create_dir_all(dir)?;
@@ -316,7 +332,7 @@ fn read_chunk(path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         .ok_or("invalid chunk name")?;
     let signal = meta["signal"].as_str().ok_or("invalid OTLP signal")?;
     let id = sha256_hex(body);
-    if !matches!(signal, "traces" | "metrics")
+    if !matches!(signal, "traces" | "metrics" | "logs")
         || meta["id"].as_str() != Some(id.as_str())
         || meta["destination"].as_str() != Some(DESTINATION)
         || meta["byte_count"].as_u64() != Some(body.len() as u64)
@@ -336,6 +352,9 @@ fn export(
     signal: &str,
     chunk: &[u8],
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if !matches!(signal, "traces" | "metrics" | "logs") {
+        return Err("invalid OTLP signal".into());
+    }
     let response = agent
         .post(url)
         .header("content-type", "application/json")
@@ -348,10 +367,11 @@ fn export(
         .or_else(|| response.get("partial_success"));
     if let Some(partial) = partial {
         let partial = partial.as_object().ok_or("invalid OTLP partial success")?;
-        let (camel, snake, unit) = if signal == "metrics" {
-            ("rejectedDataPoints", "rejected_data_points", "data points")
-        } else {
-            ("rejectedSpans", "rejected_spans", "spans")
+        let (camel, snake, unit) = match signal {
+            "metrics" => ("rejectedDataPoints", "rejected_data_points", "data points"),
+            "logs" => ("rejectedLogRecords", "rejected_log_records", "log records"),
+            "traces" => ("rejectedSpans", "rejected_spans", "spans"),
+            _ => return Err("invalid OTLP signal".into()),
         };
         let rejected = partial.get(camel).or_else(|| partial.get(snake));
         let rejected = match rejected {
@@ -415,6 +435,7 @@ fn drain_to_url(dir: &Path, url: &str, request_timeout: Duration, budget: Durati
     let deadline = Instant::now() + budget;
     let agent = otlp_agent(request_timeout);
     let metric_url = format!("{}/v1/metrics", url.trim_end_matches("/v1/traces"));
+    let logs_url = format!("{}/v1/logs", url.trim_end_matches("/v1/traces"));
     let mut paths: Vec<_> = entries
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -433,12 +454,14 @@ fn drain_to_url(dir: &Path, url: &str, request_timeout: Duration, budget: Durati
                 continue;
             }
         };
-        let metrics = path
+        let name = path
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(".metrics.chunk"));
-        let (route, signal) = if metrics {
+            .unwrap_or("");
+        let (route, signal) = if name.ends_with(".metrics.chunk") {
             (metric_url.as_str(), "metrics")
+        } else if name.ends_with(".logs.chunk") {
+            (logs_url.as_str(), "logs")
         } else {
             (url, "traces")
         };
@@ -460,7 +483,10 @@ fn drain_to_url(dir: &Path, url: &str, request_timeout: Duration, budget: Durati
                     std::thread::sleep(Duration::from_millis(100));
                 }
                 Err(error) => {
-                    eprintln!("buck2-events: retaining {}: {error}", path.display());
+                    eprintln!(
+                        "buck2-events: coverage UNKNOWN; retaining {}: {error}",
+                        path.display()
+                    );
                     break;
                 }
             }
