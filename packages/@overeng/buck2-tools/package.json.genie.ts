@@ -28,6 +28,13 @@ export default packageJson(
         { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
         { environment: 'node' },
       ),
+      './editor-publication-owner': exportEntry(
+        {
+          types: './dist/src/editor-publication-owner.d.ts',
+          default: './src/editor-publication-owner.ts',
+        },
+        { environment: 'node' },
+      ),
       './editor-view-lifecycle': exportEntry(
         {
           types: './dist/src/editor-view-lifecycle.d.ts',
@@ -40,6 +47,7 @@ export default packageJson(
       access: 'public',
       exports: {
         '.': publishedSourceExport('mod'),
+        './editor-publication-owner': publishedSourceExport('editor-publication-owner'),
         './editor-view-lifecycle': publishedSourceExport('editor-view-lifecycle'),
       },
     },
