@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
-import { withPipelineTelemetry } from './pipeline-telemetry.ts'
+import { pipelineCloseJob, withPipelineTelemetry } from './pipeline-telemetry.ts'
+import { fleetRunnerLabels, linuxX64Runner } from './runners.ts'
 
 test('each task step in a job shares the pipeline run prefix', () => {
   const jobs = withPipelineTelemetry({
@@ -30,6 +31,23 @@ test('each task step in a job shares the pipeline run prefix', () => {
     if: '${{ always() }}',
     run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true",
   })
+})
+
+test('pipeline close uses the fleet tailnet and retains evidence closing', () => {
+  for (const runsOn of [fleetRunnerLabels.linuxX64, [...linuxX64Runner]]) {
+    const job = pipelineCloseJob({ jobs: {}, runsOn })
+    expect(job.steps.some((step) => step.uses?.startsWith('tailscale/github-action@'))).toBe(
+      false,
+    )
+    expect(job.steps.at(-1)).toMatchObject({
+      name: 'Link started job roots',
+      run: 'nix shell .#bun .#otel-span .#buck2-events --command bash genie/ci-scripts/evidence-job.sh close || true',
+    })
+  }
+  const hosted = pipelineCloseJob({ jobs: {}, runsOn: 'ubuntu-latest' })
+  expect(
+    hosted.steps.some((step) => step.uses?.startsWith('tailscale/github-action@')),
+  ).toBe(true)
 })
 
 test('GitBucket adds OIDC authority only to the same-repo PR reporter override', () => {
