@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:17dfedf297881469e151dc8210e21c5fcb710deb6404fe7329b99828e89ef471
+# Semantic fingerprint: sha256:7872817c58c70beb75238c3684a45ddb9d9d51c04d2fd69e47fbd57b0a6ca6e8
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -40,6 +40,7 @@ export_materialization_inputs([
     "src/editor-view-authority.ts",
     "src/editor-view-budget.integration.test.ts",
     "src/editor-view-budget.ts",
+    "src/editor-view-diagnostics.ts",
     "src/editor-view-leases.integration.test.ts",
     "src/editor-view-leases.ts",
     "src/editor-view-lifecycle.integration.test.ts",
@@ -145,6 +146,7 @@ package_view(
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
         "src/editor-view-budget.ts": "src/editor-view-budget.ts",
+        "src/editor-view-diagnostics.ts": "src/editor-view-diagnostics.ts",
         "src/editor-view-leases.integration.test.ts": "src/editor-view-leases.integration.test.ts",
         "src/editor-view-leases.ts": "src/editor-view-leases.ts",
         "src/editor-view-lifecycle.integration.test.ts": "src/editor-view-lifecycle.integration.test.ts",
@@ -228,6 +230,7 @@ package_view(
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
         "src/editor-view-budget.ts": "src/editor-view-budget.ts",
+        "src/editor-view-diagnostics.ts": "src/editor-view-diagnostics.ts",
         "src/editor-view-leases.integration.test.ts": "src/editor-view-leases.integration.test.ts",
         "src/editor-view-leases.ts": "src/editor-view-leases.ts",
         "src/editor-view-lifecycle.integration.test.ts": "src/editor-view-lifecycle.integration.test.ts",
