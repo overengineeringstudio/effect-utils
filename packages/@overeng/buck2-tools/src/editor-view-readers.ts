@@ -109,10 +109,10 @@ export const editorViewProcessLease = {
   },
 }
 
-let darwinUnknownLogger: ((pid: number, fd: number) => void) | undefined
+let darwinUnknownDescription: ((pid: number, fd: number, buffer: Uint8Array, capacity: number) => number) | undefined
 
-/** Observations for diagnosis only; logging must never change reader evidence. */
-const logUnknownRecord = (record: {
+/** Advisory observations only; reporting never supplies classification or retirement authority. */
+export const reportEditorViewReaderUnknown = (record: {
   readonly pid: string | null
   readonly comm: string | null
   readonly fd: string | null
@@ -128,19 +128,25 @@ const logUnknownRecord = (record: {
   if (pid <= 0 || pid > 0x7fffffff) return
   const fd = record.fd !== null && /^\d+$/.test(record.fd) === true ? Number(record.fd) : -1
   if (fd > 0x7fffffff) return
+  let description: string
   try {
-    if (darwinUnknownLogger === undefined) {
+    if (darwinUnknownDescription === undefined) {
       const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
       if (library === undefined || isAbsolute(library) === false)
         throw new Error('packaged native diagnostic library is unavailable')
       const { dlopen }: { readonly dlopen: typeof openNativeLibrary } = createRequire(
         import.meta.url,
       )('bun:ffi')
-      darwinUnknownLogger = dlopen(library, {
-        eu_darwin_log_unknown: { args: ['i32', 'i32'], returns: 'void' },
-      }).symbols.eu_darwin_log_unknown
+      darwinUnknownDescription = dlopen(library, {
+        eu_darwin_describe_unknown: { args: ['i32', 'i32', 'ptr', 'i32'], returns: 'i32' },
+      }).symbols.eu_darwin_describe_unknown
     }
-    darwinUnknownLogger(pid, fd)
+    // Five bounded numeric records plus the kernel's fixed-size command name fit in 2 KiB.
+    const buffer = Buffer.alloc(2048)
+    const length = darwinUnknownDescription(pid, fd, buffer, buffer.length)
+    if (length < 0 || length >= buffer.length)
+      throw new Error('native diagnostic description exceeded its buffer')
+    description = buffer.toString('utf8', 0, length)
   } catch (error) {
     console.error(
       `editor-view-reader-unknown: ${JSON.stringify({
@@ -149,7 +155,10 @@ const logUnknownRecord = (record: {
         errno: failureErrno(error),
       })}`,
     )
+    return
   }
+  // Output failures are not native observation failures.
+  if (description.length > 0) process.stderr.write(description)
 }
 
 const vanished = (error: unknown): boolean =>
@@ -683,13 +692,13 @@ const processIncarnation = (base: string): ProcessIncarnation => {
 const scanEditorViewProcesses = (
   observer: ProcessObserver & { readonly processIds?: readonly number[] },
 ): readonly string[] => {
-  const records = new Map<string, Parameters<typeof logUnknownRecord>[0]>()
+  const records = new Map<string, Parameters<typeof reportEditorViewReaderUnknown>[0]>()
   try {
     return collectEditorViewProcesses({
       observer,
       recordUnknown: (record) => {
         if (record.pid === null) {
-          logUnknownRecord({ ...record, failures: 1 })
+          reportEditorViewReaderUnknown({ ...record, failures: 1 })
           return
         }
         const previous = records.get(record.pid)
@@ -702,7 +711,7 @@ const scanEditorViewProcesses = (
       },
     })
   } finally {
-    for (const record of records.values()) logUnknownRecord(record)
+    for (const record of records.values()) reportEditorViewReaderUnknown(record)
   }
 }
 
@@ -711,7 +720,7 @@ const collectEditorViewProcesses = ({
   recordUnknown,
 }: {
   readonly observer: ProcessObserver & { readonly processIds?: readonly number[] }
-  readonly recordUnknown: (record: Omit<Parameters<typeof logUnknownRecord>[0], 'failures'>) => void
+  readonly recordUnknown: (record: Omit<Parameters<typeof reportEditorViewReaderUnknown>[0], 'failures'>) => void
 }): readonly string[] => {
   const processIds = observer.processIds ?? editorViewProcessTestScope.getStore()?.()
   const reasons: string[] = []

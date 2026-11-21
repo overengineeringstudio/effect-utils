@@ -596,6 +596,20 @@ describe('editor generation native leases (Linux and macOS)', () => {
     assert.equal(result.error, undefined); assert.equal(result.status, 23);
     assert.equal(fs.readFileSync(marker, 'utf8'), 'ran');
   `))
+
+  it.skipIf(process.platform === 'darwin')('keeps Darwin diagnostic description a no-op on Linux', () =>
+    run(`
+      // bun:ffi is available in this real Bun child, not the portable Vitest host.
+      const { dlopen } = await import('bun:ffi');
+      const native = dlopen(process.env.EDITOR_VIEW_LEASE_LIBRARY, {
+        eu_darwin_describe_unknown: { args: ['i32', 'i32', 'ptr', 'i32'], returns: 'i32' },
+      });
+      const buffer = Buffer.alloc(2048, 65);
+      try {
+        assert.equal(native.symbols.eu_darwin_describe_unknown(process.pid, 0, buffer, buffer.length), 0);
+        assert.equal(buffer[0], 0);
+      } finally { native.close(); }
+    `))
 })
 
 describe.skipIf(process.platform !== 'darwin')('Darwin native dead-vnode proof', () => {
@@ -672,22 +686,35 @@ describe.skipIf(process.platform !== 'darwin')('Darwin native dead-vnode proof',
       } finally { fs.closeSync(file); fs.closeSync(directory); }
     `))
 
-  it('logs kernel calls and errno without changing live-vnode evidence', () =>
+  it('describes bounded native observations and preserves default stderr and live-vnode evidence', () =>
     run(`
       const program = [
         "import { dlopen } from 'bun:ffi';",
-        "import { openSync, closeSync } from 'node:fs';",
-        "const native = dlopen(process.env.EDITOR_VIEW_LEASE_LIBRARY, { eu_darwin_log_unknown: { args: ['i32', 'i32'], returns: 'void' }, eu_darwin_dead_vnode: { args: ['i32', 'i32'], returns: 'i32' } });",
+        "import assert from 'node:assert/strict';",
+        "import { openSync, closeSync, fstatSync } from 'node:fs';",
+        "import { reportEditorViewReaderUnknown } from " + ${JSON.stringify(JSON.stringify(readersModule))} + ";",
+        "const native = dlopen(process.env.EDITOR_VIEW_LEASE_LIBRARY, { eu_darwin_describe_unknown: { args: ['i32', 'i32', 'ptr', 'i32'], returns: 'i32' }, eu_darwin_dead_vnode: { args: ['i32', 'i32'], returns: 'i32' } });",
         "const fd = openSync(" + JSON.stringify(payload) + ", 'r');",
-        "native.symbols.eu_darwin_log_unknown(process.pid, fd);",
-        "process.stdout.write(String(native.symbols.eu_darwin_dead_vnode(process.pid, fd)));",
-        "closeSync(fd); native.close();",
+        "const live = native.symbols.eu_darwin_dead_vnode(process.pid, fd);",
+        "const buffer = Buffer.alloc(2048);",
+        "const length = native.symbols.eu_darwin_describe_unknown(process.pid, fd, buffer, buffer.length);",
+        "assert.ok(length > 0 && length < buffer.length); process.stderr.write(buffer.toString('utf8', 0, length));",
+        "const tiny = Buffer.alloc(8, 65);",
+        "assert.equal(native.symbols.eu_darwin_describe_unknown(process.pid, fd, tiny, 1), -1);",
+        "assert.equal(tiny[0], 0); assert.ok(tiny.subarray(1).every(value => value === 65));",
+        "closeSync(fd);",
+        "let observation; try { fstatSync(fd) } catch (error) { assert.equal(error.code, 'EBADF'); observation = error.errno }",
+        "assert.equal(typeof observation, 'number');",
+        "reportEditorViewReaderUnknown({ pid: String(process.pid), comm: 'diagnostic-fixture', fd: String(fd), call: 'closed-fd-observation', errno: observation, failures: 1 });",
+        "process.stdout.write(String(live)); native.close();",
       ].join("\\n");
       const observed = spawnSync(process.execPath, ['--eval', program], { encoding: 'utf8', env: process.env });
       assert.equal(observed.status, 0, observed.stderr);
       assert.equal(observed.stdout, '0');
+      assert.match(observed.stderr, /"call":"closed-fd-observation","errno":-?\\d+/);
       for (const call of ['PROC_PIDTBSDINFO-before', 'PROC_PIDLISTFDS', 'PROC_PIDFDVNODEINFO', 'PROC_PIDFDVNODEPATHINFO', 'PROC_PIDTBSDINFO-after'])
-        assert.match(observed.stderr, new RegExp('editor-view-reader-kernel: pid=\\\\d+ comm=\\\\S+ fd=\\\\d+ call=' + call + ' result=\\\\d+ errno=\\\\d+'));
+        assert.equal([...observed.stderr.matchAll(new RegExp('editor-view-reader-kernel: pid=\\\\d+ comm=\\\\S+ fd=\\\\d+ call=' + call + ' result=\\\\d+ errno=\\\\d+', 'g'))].length, 2);
+      assert.equal(observed.stderr.split('editor-view-reader-kernel: ').length - 1, 10);
     `))
 
   it('does not mistake an invalid or closed descriptor for a proven dead vnode', () =>

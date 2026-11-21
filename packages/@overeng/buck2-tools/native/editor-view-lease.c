@@ -134,17 +134,26 @@ int eu_darwin_dead_vnode(int pid, int fd) {
 #endif
 }
 
-/* Diagnostic observations only: none of these results authorize retirement. */
-void eu_darwin_log_unknown(int pid, int fd) {
+/* Diagnostic observations only: none of these results authorize retirement.
+ * Return bytes excluding NUL, or -1 with errno; never publish truncated output. */
+int eu_darwin_describe_unknown(int pid, int fd, char *buffer, int capacity) {
+  if (!buffer || capacity <= 0) { errno = EINVAL; return -1; }
+  buffer[0] = '\0';
 #ifdef __APPLE__
-  if (pid <= 0) return;
+  if (pid <= 0) return 0;
+  int used = 0;
+#define EU_DIAGNOSTIC_APPEND(...) do { \
+  int written = snprintf(buffer + used, (size_t)(capacity - used), __VA_ARGS__); \
+  if (written < 0 || written >= capacity - used) { errno = ENOBUFS; return -1; } \
+  used += written; \
+} while (0)
   struct proc_bsdinfo before = {0}, after = {0};
   char comm[sizeof(before.pbi_comm) + 1] = {0};
   errno = 0;
   int initial = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &before, sizeof(before));
   int initial_error = errno;
   if (initial == (int)sizeof(before)) memcpy(comm, before.pbi_comm, sizeof(before.pbi_comm));
-  fprintf(stderr, "editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDTBSDINFO-before result=%d errno=%d start=%llu.%llu status=%u\n",
+  EU_DIAGNOSTIC_APPEND("editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDTBSDINFO-before result=%d errno=%d start=%llu.%llu status=%u\n",
     pid, comm, fd, initial, initial_error,
     (unsigned long long)before.pbi_start_tvsec, (unsigned long long)before.pbi_start_tvusec, before.pbi_status);
   if (fd >= 0) {
@@ -156,31 +165,34 @@ void eu_darwin_log_unknown(int pid, int fd) {
     if (count > 0 && count <= (int)sizeof(descriptors) && count % (int)sizeof(descriptors[0]) == 0)
       for (size_t i = 0; i < (size_t)count / sizeof(descriptors[0]); i++)
         if (descriptors[i].proc_fd == fd) type = descriptors[i].proc_fdtype;
-    fprintf(stderr, "editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDLISTFDS result=%d errno=%d type=%d sampleMayBePartial=%d\n",
+    EU_DIAGNOSTIC_APPEND("editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDLISTFDS result=%d errno=%d type=%d sampleMayBePartial=%d\n",
       pid, comm, fd, count, list_error, type, count == (int)sizeof(descriptors));
     struct vnode_fdinfo vnode = {0};
     errno = 0;
     int simple = proc_pidfdinfo(pid, fd, PROC_PIDFDVNODEINFO, &vnode, sizeof(vnode));
     int simple_error = errno;
-    fprintf(stderr, "editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDFDVNODEINFO result=%d errno=%d dev=%u ino=%llu mode=%o\n",
+    EU_DIAGNOSTIC_APPEND("editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDFDVNODEINFO result=%d errno=%d dev=%u ino=%llu mode=%o\n",
       pid, comm, fd, simple, simple_error, (unsigned)vnode.pvi.vi_stat.vst_dev,
       (unsigned long long)vnode.pvi.vi_stat.vst_ino, (unsigned)vnode.pvi.vi_stat.vst_mode);
     struct vnode_fdinfowithpath named = {0};
     errno = 0;
     int path = proc_pidfdinfo(pid, fd, PROC_PIDFDVNODEPATHINFO, &named, sizeof(named));
     int path_error = errno;
-    fprintf(stderr, "editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDFDVNODEPATHINFO result=%d errno=%d\n",
+    EU_DIAGNOSTIC_APPEND("editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDFDVNODEPATHINFO result=%d errno=%d\n",
       pid, comm, fd, path, path_error);
   }
   errno = 0;
   int final = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &after, sizeof(after));
   int final_error = errno;
-  fprintf(stderr, "editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDTBSDINFO-after result=%d errno=%d start=%llu.%llu status=%u\n",
+  EU_DIAGNOSTIC_APPEND("editor-view-reader-kernel: pid=%d comm=%s fd=%d call=PROC_PIDTBSDINFO-after result=%d errno=%d start=%llu.%llu status=%u\n",
     pid, comm, fd, final, final_error,
     (unsigned long long)after.pbi_start_tvsec, (unsigned long long)after.pbi_start_tvusec, after.pbi_status);
+#undef EU_DIAGNOSTIC_APPEND
+  return used;
 #else
   (void)pid;
   (void)fd;
+  return 0;
 #endif
 }
 

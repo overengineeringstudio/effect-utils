@@ -690,11 +690,13 @@ supplies the command name, descriptor, call and errno; `failures` counts all fai
 observations for that process. Unavailable fields are explicitly `null`, never
 invented. Failures without a process identity emit individual records with
 `failures: 1`. Returned reasons and census counters remain unchanged. On Darwin
-the packaged fixed-arity `eu_darwin_log_unknown` helper additionally emits correlated
+the packaged fixed-arity `eu_darwin_describe_unknown` helper supplies correlated
 kernel diagnostics with numeric errno/results for BSD process info before and
 after the query, a bounded descriptor-type sample, and vnode/path-info calls.
 These observations help distinguish an exit race from an inaccessible live
 process; they never change classification or authorize retirement.
+The caller supplies a bounded buffer; truncation fails rather than publishing a
+partial description. The advisory reporter preserves existing stderr output.
 
 This narrow rule follows the Darwin vnode-query implementation in
 [XNU `proc_info.c`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c#L2555-L2608):
