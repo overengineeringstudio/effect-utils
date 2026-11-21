@@ -1,7 +1,8 @@
-{ pkgs }:
+{ pkgs, buck2 }:
 pkgs.writeShellApplication {
   name = "worktree-teardown";
   runtimeInputs = [
+    buck2
     pkgs.git
     pkgs.coreutils
     pkgs.findutils
