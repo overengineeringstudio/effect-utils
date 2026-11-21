@@ -35,6 +35,7 @@ import {
   type BudgetActivityConfig,
   type BudgetWorkspaceActivity,
 } from './store-workspace-activity.ts'
+import { makeStoreLayer, Store, StoreUnaccounted } from './store.ts'
 
 const Bytes = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0),
@@ -156,6 +157,8 @@ export const BudgetClassSummary = Schema.Struct({
 /** Plan-hash-bound budget dry-run or single-root apply receipt. */
 export const BudgetPlan = Schema.Struct({
   schemaVersion: Schema.Literal('megarepo.build-output-budget-plan.v3'),
+  complete: Schema.Boolean,
+  unaccounted: Schema.Array(StoreUnaccounted),
   planSha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
   results: Schema.Array(BudgetCandidate),
   classes: Schema.Record(Schema.String, BudgetClassSummary),
@@ -711,6 +714,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   activity,
   now,
   ignoreLeaseOwners,
+  unaccounted = [],
 }: {
   policy: BuildOutputBudgets
   storeBasePath: AbsoluteDirPath
@@ -719,6 +723,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   activity: BudgetWorkspaceActivity | undefined
   now: number
   ignoreLeaseOwners?: ReadonlyArray<string> | undefined
+  unaccounted?: ReadonlyArray<StoreUnaccounted> | undefined
 }) {
   if ((yield* storeDeletionPlatform) !== 'linux')
     return yield* fail('unsupported-platform: build-output budgets require Linux pinned deletion')
@@ -763,6 +768,18 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
       if (
         canonicalOwner === undefined ||
         isInsideWorktree({ candidate: canonicalOwner, worktreePath: canonicalStore }) === false
+      ) {
+        for (const name of Object.keys(policy.classes)) incomplete.add(name)
+        continue
+      }
+      // Expanded Git registrations can live beneath an overflow boundary.
+      // Do not scan or account for owners overlapping either side of that boundary.
+      if (
+        unaccounted.some(
+          ({ path }) =>
+            isInsideWorktree({ candidate: canonicalOwner, worktreePath: path }) ||
+            isInsideWorktree({ candidate: path, worktreePath: canonicalOwner }),
+        ) === true
       ) {
         for (const name of Object.keys(policy.classes)) incomplete.add(name)
         continue
@@ -931,6 +948,16 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
             .exists(deletionLeasePath({ storeBasePath, ownerPath: container }))
             .pipe(Effect.orElseSucceed(() => undefined))
     for (const path of roots) {
+      if (
+        unaccounted.some(
+          (entry) =>
+            isInsideWorktree({ candidate: path, worktreePath: entry.path }) ||
+            isInsideWorktree({ candidate: entry.path, worktreePath: path }),
+        ) === true
+      ) {
+        incomplete.add(artifactClass)
+        continue
+      }
       const identity = yield* captureDeletionIdentity({ rootPath: canonicalStore, path }).pipe(
         Effect.orElseSucceed(() => undefined),
       )
@@ -1073,6 +1100,8 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
     .update(
       encodeBudgetPlanEvidence({
         schemaVersion: 'megarepo.build-output-budget-plan.v3',
+        complete: unaccounted.length === 0,
+        unaccounted,
         policy,
         activityEpoch: activity?.epoch,
         processWorktreeCoverage: activity?.processWorktreeCoverage,
@@ -1093,6 +1122,8 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
     .digest('hex')
   return {
     schemaVersion: 'megarepo.build-output-budget-plan.v3' as const,
+    complete: unaccounted.length === 0,
+    unaccounted,
     planSha256,
     results: sorted,
     classes,
@@ -1123,6 +1154,12 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if ((yield* storeDeletionPlatform) !== 'linux')
       return yield* fail('unsupported-platform: build-output budgets require Linux pinned deletion')
     const fs = yield* FileSystem.FileSystem
+    const requireCompleteCensus = Effect.gen(function* () {
+      const store = yield* Store
+      if ((yield* store.listRepos).complete === false)
+        return yield* fail('Store census is incomplete; refusing budget application')
+    }).pipe(Effect.provide(makeStoreLayer({ basePath: storeBasePath })))
+    yield* requireCompleteCensus
     const policy = yield* loadBuildOutputBudgets({ path: policyPath })
     const activity = yield* readBudgetWorkspaceActivity({ fs, config: activityConfig })
     const initial = yield* planBuildOutputBudgets({
@@ -1195,6 +1232,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         ...(activity === undefined ? {} : { admittedEpoch: activity.epoch }),
       })
       const freshNow = yield* Clock.currentTimeMillis
+      yield* requireCompleteCensus
       const fresh = yield* planBuildOutputBudgets({
         policy: freshPolicy,
         storeBasePath,
@@ -1270,6 +1308,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
               config: activityConfig,
               ...(freshActivity === undefined ? {} : { admittedEpoch: freshActivity.epoch }),
             })
+            yield* requireCompleteCensus
             if (
               finalActivity === undefined ||
               ((current.kind === 'repo-build-output' ||
