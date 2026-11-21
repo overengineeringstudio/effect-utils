@@ -3936,7 +3936,10 @@ const publishEditorViewCoordinated = async ({
     const contextual = error instanceof Error ? error : new Error(String(error), { cause: error })
     // Worker context is advisory; an opaque error may reject extension without losing its identity.
     Reflect.defineProperty(contextual, 'publicationWorkers', {
-      value: failureStates, enumerable: true, configurable: true, writable: true,
+      value: failureStates,
+      enumerable: true,
+      configurable: true,
+      writable: true,
     })
     throw contextual
   } finally {
@@ -4681,19 +4684,13 @@ const dispatchEditorViewRequest = async ({
     publicationOwner === undefined ? parsed.options : { ...parsed.options, publicationOwner }
   if (parsed.command === 'publish') {
     const record = await publishEditorView(options)
-    writeOutput(
-      `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
-    )
+    writeOutput(`published ${record.package} editor view ${record.editorInputsFingerprint}\n`)
   } else if (parsed.command === 'check') {
     const record = await checkEditorView(options)
-    writeOutput(
-      `checked ${record.package} editor view ${record.editorInputsFingerprint}\n`,
-    )
+    writeOutput(`checked ${record.package} editor view ${record.editorInputsFingerprint}\n`)
   } else if (parsed.command === 'verify') {
     const record = await verifyEditorViewSnapshot(options)
-    writeOutput(
-      `verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`,
-    )
+    writeOutput(`verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`)
   } else if (parsed.command === 'release') {
     await releaseEditorViewRoot(options)
     writeOutput(`released editor dependency root for ${options.package}\n`)
