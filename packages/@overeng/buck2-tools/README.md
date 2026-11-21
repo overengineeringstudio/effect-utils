@@ -248,6 +248,13 @@ live-member permission failures still fail closed. Cancellation joins native Buc
 fingerprint workers and asynchronous copies before the owning callback releases its lock.
 The persistent flock file must not be unlinked while publishers are active.
 
+Devenv selects one immutable production supervisor executable. Owner integration
+tests call that same executable's `--admission-dump` interface; they do not import
+the implementation through a separate test interpreter. Timestamp bounds use the
+owner's fixed-arity native boot clock, and metadata-write failures use Bash's
+inherited file-size limit before exec. Neither fixture changes publication budgets,
+the admission protocol, or the no-Python Buck graph boundary.
+
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
 The generic Bun capability stays unwrapped so hermetic actions do not acquire

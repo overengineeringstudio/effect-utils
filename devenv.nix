@@ -129,6 +129,10 @@ let
   editorViewLease = pkgs.callPackage ./nix/editor-view-lease/default.nix { };
   publicationOwner = import ./nix/buck2-publication-owner.nix { inherit pkgs; };
   publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
+  # One immutable production supervisor, shared with the owner integration diagnostic.
+  editorViewSupervisor = pkgs.writeShellScript "editor-view-supervisor" ''
+    exec ${pkgs.python3}/bin/python ${./scripts/editor-view-supervisor.py} "$@"
+  '';
   # Real kernel child for lifetime tests, not an implementation of the Rust digest algorithm.
   fingerprintLifetimeTestChild = pkgs.writeShellScriptBin "buck2-fingerprint" ''
     set -euo pipefail
@@ -818,7 +822,7 @@ let
         # Max-measured fallback covers: ${lib.concatStringsSep ", " publicationBudget.missingConsumers}
       ''}
       status=0
-      ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" ${
+      ${editorViewSupervisor} ${
         if deadlineSeconds == null then "none" else toString deadlineSeconds
       } 5 \
         --lock "$root/.devenv/editor-view-publication.lock" \
@@ -1350,7 +1354,8 @@ in
       }/bin/buck2-fingerprint
       export FINGERPRINT_LIFETIME_TEST_BIN=${fingerprintLifetimeTestChild}/bin/buck2-fingerprint
       export MKFIFO_BIN=${pkgs.coreutils}/bin/mkfifo
-      export BUCK2_EDITOR_PUBLICATION_TEST_PYTHON=${pkgs.python3}/bin/python3
+      export BUCK2_EDITOR_PUBLICATION_SUPERVISOR=${editorViewSupervisor}
+      export BASH_BIN=${pkgs.bash}/bin/bash
       ${tsSandboxTestEnvironment}
       cd "$root"
       ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts

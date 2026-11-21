@@ -1,4 +1,4 @@
-import { dlopen } from 'bun:ffi'
+import { dlopen, ptr } from 'bun:ffi'
 import { expect, it } from 'bun:test'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
@@ -13,7 +13,6 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import {
   editorPublicationLockPath,
@@ -26,15 +25,23 @@ import {
 const ownerLibrary = process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY
 if (ownerLibrary === undefined || ownerLibrary.length === 0)
   throw new Error('Owner regression requires BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
-const python = process.env.BUCK2_EDITOR_PUBLICATION_TEST_PYTHON
-if (python === undefined || python.startsWith('/') === false)
-  throw new Error('Owner regression requires absolute BUCK2_EDITOR_PUBLICATION_TEST_PYTHON')
-const supervisor = fileURLToPath(
-  new URL('../../../../scripts/editor-view-supervisor.py', import.meta.url),
-)
+const supervisor = process.env.BUCK2_EDITOR_PUBLICATION_SUPERVISOR
+if (supervisor === undefined || supervisor.startsWith('/') === false)
+  throw new Error('Owner regression requires absolute BUCK2_EDITOR_PUBLICATION_SUPERVISOR')
+const bash = process.env.BASH_BIN
+if (bash === undefined || bash.startsWith('/') === false)
+  throw new Error('Owner regression requires absolute BASH_BIN')
 const native = dlopen(ownerLibrary, {
   buck2_publication_owner_lock: { args: ['i32', 'i32'], returns: 'i32' },
+  clock_gettime: { args: ['i32', 'ptr'], returns: 'i32' },
 })
+// Retain both the timespec storage and pointer, using the owner's boot-relative clock.
+const time = Buffer.alloc(16)
+const timePointer = ptr(time)
+const monotonicSeconds = (): number => {
+  expect(native.symbols.clock_gettime(process.platform === 'darwin' ? 8 : 1, timePointer)).toBe(0)
+  return Number(time.readBigInt64LE(0)) + Number(time.readBigInt64LE(8)) / 1e9
+}
 const moduleUrl = new URL('./editor-publication-owner.ts', import.meta.url).href
 const withRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-publication-descendant-')))
@@ -213,35 +220,17 @@ it('holds exclusive ownership until the callback interrupts and joins its non-ow
 
 it('records advisory metadata from both real acquirers usable by the genuine admission diagnostic', () =>
   withRoot(async (root) => {
-    const clock = spawnSync(python, ['-c', 'import time; print(time.monotonic())'], {
-      encoding: 'utf8',
-      timeout: 10000,
-    })
-    expect({
-      status: clock.status,
-      signal: clock.signal,
-      error: clock.error,
-      stderr: clock.stderr,
-    }).toEqual({ status: 0, signal: null, error: undefined, stderr: '' })
-    const before = Number(clock.stdout.trim())
+    const before = monotonicSeconds()
     expect(Number.isFinite(before)).toBe(true)
     const inspect = (): void => {
       const path = editorPublicationLockPath(root)
       expect(readFileSync(path).byteLength).toBeLessThanOrEqual(1024)
+      const metadata = JSON.parse(readFileSync(path, 'utf8'))
+      expect(metadata.started).toBeGreaterThanOrEqual(before)
+      expect(metadata.started).toBeLessThanOrEqual(monotonicSeconds())
       const dump = spawnSync(
-        python,
-        [
-          '-c',
-          `
-import json, runpy, sys, time
-owner = json.load(open(sys.argv[2]))
-assert float(sys.argv[3]) <= owner["started"] <= time.monotonic(), owner
-runpy.run_path(sys.argv[1])["admission_dump"](sys.argv[2])
-`,
-          supervisor,
-          path,
-          String(before),
-        ],
+        supervisor,
+        ['--admission-dump', path],
         {
           env: { ...process.env, BUCK2_NATIVE_BIN: '', DEVENV_ROOT: root },
           encoding: 'utf8',
@@ -300,19 +289,13 @@ runpy.run_path(sys.argv[1])["admission_dump"](sys.argv[2])
 it('closes and unlocks both acquisition paths when real metadata writes fail', () =>
   withRoot(async (root) => {
     const child = spawnSync(
-      python,
+      bash,
       [
         '-c',
-        `
-import resource, signal, subprocess, sys
-def limit():
-    signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
-    resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
-result = subprocess.run([sys.argv[1], "--eval", sys.argv[2]], preexec_fn=limit,
-                        timeout=10)
-sys.exit(result.returncode)
-`,
+        'set -euo pipefail; ulimit -f 0; trap "" XFSZ; exec "$@"',
+        'editor-publication-write-failure',
         process.execPath,
+        '--eval',
         `
       import { strict as assert } from 'node:assert';
       import { dlopen } from 'bun:ffi';
@@ -320,7 +303,6 @@ sys.exit(result.returncode)
       import {
         editorPublicationLockPath, tryAcquireEditorPublicationOwner, withEditorPublicationOwner
       } from ${JSON.stringify(moduleUrl)};
-      process.on('SIGXFSZ', () => {});
       const root = ${JSON.stringify(root)};
       let entered = false;
       assert.throws(() => tryAcquireEditorPublicationOwner({ root }), { code: 'EFBIG' });

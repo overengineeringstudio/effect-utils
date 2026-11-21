@@ -802,7 +802,14 @@ for (const name of editorPublishers) {
   const body =
     typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
   const packages = JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')
-  const actualDeadline = body.match(/editor-view-supervisor\.py" (\d+|none) 5/u)?.[1]
+  const supervisorInvocation = body.match(
+    /\/nix\/store\/[a-z0-9]{32}-editor-view-supervisor (\d+|none) 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u,
+  )
+  const actualDeadline = supervisorInvocation?.[1]
+  ok({
+    condition: supervisorInvocation !== null,
+    name: `${name} uses the immutable production publication supervisor`,
+  })
   const bootstrapReceipt = ciUnitTest === true && name === 'buck2:editor:bootstrap'
   ok({
     condition: body.includes('scripts/editor-view-receipt.py') === bootstrapReceipt,
@@ -813,7 +820,7 @@ for (const name of editorPublishers) {
       condition:
         body.includes('"$1" "$root" bootstrap') === true &&
         body.includes('if receipt check; then exit 0; fi') === true &&
-        body.indexOf('if receipt check;') < body.indexOf('editor-view-supervisor.py') &&
+        body.indexOf('if receipt check;') < (supervisorInvocation?.index ?? -1) &&
         body.includes('receipt begin || true') === true &&
         body.includes('if [ "$status" -eq 0 ]; then receipt write || true; fi') === true,
       name: 'CI bootstrap reuses proven inputs before admission and issues receipts only after success',
@@ -892,12 +899,7 @@ for (const name of editorPublishers) {
       path === '.' ? '.editor-view' : posix.join(path, '..', '..', '.editor-view'),
     ),
   )
-  publisherAdmissionLocks.set(
-    name,
-    /editor-view-supervisor\.py" (?:\d+|none) 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
-      body,
-    ),
-  )
+  publisherAdmissionLocks.set(name, supervisorInvocation !== null)
 }
 const unorderedPublishers = []
 const unbatchedConsumerFanouts = []
