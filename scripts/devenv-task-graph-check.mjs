@@ -1055,6 +1055,20 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+const hostCacheInputs = taskSource('buck2:cache-posture:test')
+  .split('execIfModified = [')[1]?.split('];')[0] ?? ''
+for (const input of [
+  'packages/@overeng/buck2-tools/src/bun-test-runner.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-preload.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-timeout.ts',
+  'scripts/buck2-gate-isolation.integration.test.ts',
+  'scripts/buck2-gate-teardown.integration.test.ts',
+]) {
+  ok({
+    condition: hostCacheInputs.includes(JSON.stringify(input)),
+    name: `host cache posture watches transitive guard source: ${input}`,
+  })
+}
 ok({
   condition: taskSource('genie:editor-view-closure:check').includes(
     '${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check',

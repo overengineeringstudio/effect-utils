@@ -263,6 +263,10 @@ redacted child output and native-argument/result/shard census before and after c
 Only cases completing every existing assertion remove their fixture. The original
 test deadline and assertions remain authoritative, including late cancellation errors;
 these diagnostics neither identify the underlying stall nor suppress its failure.
+The retained Devenv host-contract cache watches the Bun runner, preload and timeout
+sources plus both imported gate suites, not only the top-level entrypoint test.
+The task-graph regression removes each input in turn and requires rejection;
+immutable Bun/native tool paths remain bound through the watched task command.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress

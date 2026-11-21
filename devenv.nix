@@ -1384,6 +1384,11 @@ in
     execIfModified = [
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+      "scripts/buck2-gate-isolation.integration.test.ts"
+      "scripts/buck2-gate-teardown.integration.test.ts"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"
