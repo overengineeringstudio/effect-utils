@@ -264,7 +264,8 @@ Only cases completing every existing assertion remove their fixture. The origina
 test deadline and assertions remain authoritative, including late cancellation errors;
 these diagnostics neither identify the underlying stall nor suppress its failure.
 The retained Devenv host-contract cache watches the Bun runner, preload and timeout
-sources plus both imported gate suites, not only the top-level entrypoint test.
+sources plus both gate integration suites and their imported isolation unit suite,
+not only the top-level entrypoint test.
 The task-graph regression removes each input in turn and requires rejection;
 immutable Bun/native tool paths remain bound through the watched task command.
 

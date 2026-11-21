@@ -123,6 +123,7 @@ for input in \
   packages/@overeng/buck2-tools/src/bun-test-preload.ts \
   packages/@overeng/buck2-tools/src/bun-test-timeout.ts \
   scripts/buck2-gate-isolation.integration.test.ts \
+  scripts/buck2-gate-isolation.unit.test.ts \
   scripts/buck2-gate-teardown.integration.test.ts
 do
   "$NODE_BIN" --input-type=module --eval '

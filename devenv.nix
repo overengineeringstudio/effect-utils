@@ -1388,6 +1388,7 @@ in
       "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
       "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
       "scripts/buck2-gate-isolation.integration.test.ts"
+      "scripts/buck2-gate-isolation.unit.test.ts"
       "scripts/buck2-gate-teardown.integration.test.ts"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
