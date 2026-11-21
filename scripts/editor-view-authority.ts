@@ -444,50 +444,14 @@ const parseCli = (args: readonly string[]) => {
   }
 }
 
-const main = async (): Promise<void> => {
-  const options = parseCli(process.argv.slice(2))
-  if (
-    Number.isInteger(options.snapshotRetention) === false ||
-    options.snapshotRetention < 2 ||
-    options.snapshotRetention > 32
-  )
-    fail('--snapshot-retention must be an integer from 2 through 32')
-  const authorityPackagePaths = editorViewPackagePaths
-  let serializedPublicationPackages = options.publicationPackages
-  if (options.changedSince !== undefined) {
-    if (options.command !== 'publish') fail('--changed-since is only valid with publish')
-    serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
-    if (serializedPublicationPackages === undefined) {
-      const changed = execFileSync(
-        options.git,
-        ['diff', '--name-only', '-z', options.changedSince, '--'],
-        { cwd: options.repoRoot, encoding: 'utf8' },
-      )
-        .split('\0')
-        .filter((entry) => entry.length > 0)
-      const selected = changedEditorConsumers({
-        changed,
-        packagePaths: authorityPackagePaths,
-        readDependencies: () =>
-          workspaceEditorDependencies({
-            serialized: readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
-            rootBuck: readFileSync(join(options.repoRoot, 'BUCK'), 'utf8'),
-          }),
-      })
-      if (selected.length === 0) {
-        process.stdout.write(
-          'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
-        )
-        return
-      }
-      serializedPublicationPackages = JSON.stringify(selected)
-    }
-  }
-  const packageScope = resolveEditorViewPackageScope({
-    command: options.command,
-    authorityPackagePaths,
-    serializedPublicationPackages,
-  })
+/** Execute the resolved operation independently of literal CLI argument selection. */
+const executeSelectedEditorViewOperation = async ({
+  options,
+  packageScope,
+}: {
+  readonly options: ReturnType<typeof parseCli>
+  readonly packageScope: ReturnType<typeof resolveEditorViewPackageScope>
+}): Promise<void> => {
   // Scope only target construction and publication. Every publisher still refreshes and passes
   // freshly proven whole-workspace authority to each selected package view.
   const authorityStartedAt = performance.now()
@@ -542,6 +506,53 @@ const main = async (): Promise<void> => {
         ? 'published'
         : 'checked'
   process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
+}
+
+const main = async (): Promise<void> => {
+  const options = parseCli(process.argv.slice(2))
+  if (
+    Number.isInteger(options.snapshotRetention) === false ||
+    options.snapshotRetention < 2 ||
+    options.snapshotRetention > 32
+  )
+    fail('--snapshot-retention must be an integer from 2 through 32')
+  const authorityPackagePaths = editorViewPackagePaths
+  let serializedPublicationPackages = options.publicationPackages
+  if (options.changedSince !== undefined) {
+    if (options.command !== 'publish') fail('--changed-since is only valid with publish')
+    serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
+    if (serializedPublicationPackages === undefined) {
+      const changed = execFileSync(
+        options.git,
+        ['diff', '--name-only', '-z', options.changedSince, '--'],
+        { cwd: options.repoRoot, encoding: 'utf8' },
+      )
+        .split('\0')
+        .filter((entry) => entry.length > 0)
+      const selected = changedEditorConsumers({
+        changed,
+        packagePaths: authorityPackagePaths,
+        readDependencies: () =>
+          workspaceEditorDependencies({
+            serialized: readFileSync(join(options.repoRoot, 'pnpm-lock.yaml'), 'utf8'),
+            rootBuck: readFileSync(join(options.repoRoot, 'BUCK'), 'utf8'),
+          }),
+      })
+      if (selected.length === 0) {
+        process.stdout.write(
+          'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
+        )
+        return
+      }
+      serializedPublicationPackages = JSON.stringify(selected)
+    }
+  }
+  const packageScope = resolveEditorViewPackageScope({
+    command: options.command,
+    authorityPackagePaths,
+    serializedPublicationPackages,
+  })
+  await executeSelectedEditorViewOperation({ options, packageScope })
 }
 
 if (import.meta.main === true)
