@@ -115,7 +115,7 @@ const preserveHostlessEvidence = (
       }),
     )
     const phasePath = join(root, 'child-phases.json')
-    const phases = existsSync(phasePath)
+    const phases = existsSync(phasePath) === true
       ? readFileSync(phasePath, 'utf8').slice(0, 8192)
       : undefined
     const census = [
@@ -127,7 +127,7 @@ const preserveHostlessEvidence = (
       return {
         name,
         exists: existsSync(path),
-        bytes: existsSync(path) ? statSync(path).size : null,
+        bytes: existsSync(path) === true ? statSync(path).size : null,
       }
     })
     const receipt = {
