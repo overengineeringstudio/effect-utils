@@ -25,6 +25,11 @@ import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
 import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  requireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import {
   buckConfigValues,
   readConfig,
   canonicalCacheAdmissionInvocationId,
@@ -779,6 +784,7 @@ export const resolveGateInvocation = ({
   cwd,
   strictRunArguments = true,
   includePayload = false,
+  selectionOnly = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -792,6 +798,8 @@ export const resolveGateInvocation = ({
   readonly cwd: string
   readonly strictRunArguments?: boolean
   readonly includePayload?: boolean
+  /** Ownership selection does not impose gate cleanup's conservative run-payload grammar. */
+  readonly selectionOnly?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }):
   | {
@@ -828,6 +836,7 @@ export const resolveGateInvocation = ({
         requested === undefined ||
         requested === '' ||
         requested === '-' ||
+        requested.endsWith('.py') === true ||
         requested.includes('//') === true ||
         requested.includes('#') === true ||
         (requested.startsWith('/') === true && resolve(requested) !== requested)
@@ -907,7 +916,12 @@ export const resolveGateInvocation = ({
         arg.includes('=') === false &&
         ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
       ) {
-        // Unknown option arity cannot establish the start of a run payload.
+        // Unknown arity is harmless only when no later token can select isolation.
+        if (
+          selectionOnly === true &&
+          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false)
+        )
+          break
         return undefined
       }
     }
@@ -935,6 +949,71 @@ export const resolveGateInvocation = ({
       : { isolation, args: buckArgs }
     : undefined
 }
+
+export const resolveManagedInvocation = ({
+  args,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): { readonly isolation: string; readonly args: readonly string[] } => {
+  const invocation = resolveGateInvocation({
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    selectionOnly: true,
+    includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck entrypoint cannot safely resolve publication ownership: use literal argv or plain-text @argfiles, not Python, stdin or config-cell argfiles. For an ambiguous run option followed by an isolation selector, put Buck options before run and delimit executable arguments with --. The package libexec/buck2 is only for unmanaged projects (never editor-publication).',
+    )
+  return invocation
+}
+
+const editorPublicationInvocation = ({
+  args,
+  cwd,
+  env,
+  owner,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly owner?: EditorPublicationOwner
+}): { readonly root: string; readonly owner: EditorPublicationOwner } | undefined => {
+  const invocation = resolveManagedInvocation({ args, cwd, env })
+  if (invocation.isolation !== editorPublicationIsolation) return undefined
+  const canonicalCwd = realpathSync(cwd)
+  const root = findRoot(canonicalCwd)
+  const home = resolve(env['HOME'] ?? homedir())
+  let current = canonicalCwd
+  let nativeRoot: string | undefined
+  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
+  for (;;) {
+    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
+      if (current === home) break
+      nativeRoot = current
+    }
+    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  if (root === undefined || nativeRoot !== root)
+    throw new Error(
+      `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
+    )
+  return { root, owner: requireEditorPublicationOwner({ root, owner }) }
+}
+
+/** No other caller may mutate the publication materializer without its real owner capability. */
+export const requireEditorPublicationInvocationOwner = (
+  options: Parameters<typeof editorPublicationInvocation>[0],
+): EditorPublicationOwner | undefined => editorPublicationInvocation(options)?.owner
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
 export const cacheDaemonPolicyArguments = ({
@@ -986,14 +1065,16 @@ export const reconcileGateDaemon = ({
   args,
   env,
   phase,
+  cwd = process.cwd(),
 }: {
   readonly native: string
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly phase: 'start' | 'exit'
+  readonly cwd?: string
 }): void => {
-  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  const invocation = resolveGateInvocation({ args, env, cwd })
   if (invocation === undefined) {
     if (phase === 'start')
       writeSync(
@@ -1191,6 +1272,7 @@ export const admitCacheDaemonCommand = async ({
   env,
   admit,
   deadlineMs = 30000,
+  cwd = process.cwd(),
 }: {
   readonly native: string
   readonly root: string
@@ -1198,6 +1280,7 @@ export const admitCacheDaemonCommand = async ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly admit: (beforeCachePosture?: CachePostureCheck) => Promise<string[]>
   readonly deadlineMs?: number
+  readonly cwd?: string
 }): Promise<string[]> => {
   const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
   // Validation precedes lock/state creation, including on cache-less roots.
@@ -1225,7 +1308,7 @@ export const admitCacheDaemonCommand = async ({
   const invocation = resolveGateInvocation({
     args,
     env,
-    cwd: process.cwd(),
+    cwd,
     strictRunArguments: false,
   })
   if (invocation === undefined)
@@ -1463,7 +1546,7 @@ export const admitCacheDaemonCommand = async ({
     }
     // Expand once and execute the resulting argv, so Buck cannot later move our
     // policy behind a separator introduced by a nested user argfile.
-    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd: process.cwd(), env })
+    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd, env })
   } finally {
     closeSync(descriptor)
     library.close()
@@ -1582,15 +1665,18 @@ export const runNativeWithEvidence = async ({
   root,
   stderr = 'inherit',
   deadlineMs,
+  execution = {},
 }: {
   native: string
   args: string[]
   root: string | undefined
   stderr?: 'inherit' | 'pipe'
   deadlineMs?: number
+  execution?: NativeExecution
 }): Promise<NativeCommandResult | undefined> => {
-  const output = process.env.CI_BUCK2_CACHE_EVIDENCE_PATH
-  const wrapperId = process.env.BUCK_WRAPPER_UUID
+  const { env = process.env, cwd = process.cwd() } = execution
+  const output = env.CI_BUCK2_CACHE_EVIDENCE_PATH
+  const wrapperId = env.BUCK_WRAPPER_UUID
   if (output === undefined || root === undefined || wrapperId === undefined) return undefined
   const buildId = canonicalCacheAdmissionInvocationId(wrapperId)
   try {
@@ -1601,8 +1687,8 @@ export const runNativeWithEvidence = async ({
   }
   const invocation = resolveGateInvocation({
     args,
-    cwd: process.cwd(),
-    env: process.env,
+    cwd,
+    env,
     strictRunArguments: false,
     includePayload: true,
   })
@@ -1626,10 +1712,12 @@ export const runNativeWithEvidence = async ({
   let reapCollector: (() => Promise<void>) | undefined
   let reapNative: (() => Promise<void>) | undefined
   let reapDecoder: (() => Promise<void>) | undefined
+  let cancelEvidence: (() => void) | undefined
   try {
+    execution.signal?.throwIfAborted()
     createPrivateEvidenceSink(sink)
     keeper = openSync(sink, 'r+')
-    const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
+    const marker = env.CI_BUCK2_CACHE_EVIDENCE_START
     const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'
     const bun =
       typeof BUCK2_EVIDENCE_BUN_BINARY === 'string' ? BUCK2_EVIDENCE_BUN_BINARY : process.execPath
@@ -1646,16 +1734,19 @@ export const runNativeWithEvidence = async ({
         '--root-id',
         createHash('sha256').update(realpathSync(root)).digest('hex'),
         ...(fresh === true ? ['--fresh-root'] : []),
-        ...(process.env['BUCK2_NO_REMOTE_CACHE'] === '1'
+        ...(env['BUCK2_NO_REMOTE_CACHE'] === '1'
           ? ['--cache-read-policy', 'disabled-by-design']
           : []),
       ],
-      { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+      { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
     )
     reapCollector = async () => {
       if (collector.exitCode === null) collector.kill('SIGKILL')
       await collector.exited
     }
+    cancelEvidence = () => collector.kill('SIGKILL')
+    execution.signal?.addEventListener('abort', cancelEvidence, { once: true })
+    if (execution.signal?.aborted === true) cancelEvidence()
     const ready = await collector.stdout.getReader().read()
     if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
       throw new Error('Evidence collector did not open its sink')
@@ -1674,7 +1765,13 @@ export const runNativeWithEvidence = async ({
               ...payload,
             ]
           : [...before, '--event-log', sink, ...payload]
-    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr, deadlineMs })
+    const { child, result } = spawnNativeCommand({
+      native,
+      args: nativeArgs,
+      stderr,
+      deadlineMs,
+      ...execution,
+    })
     reapNative = async () => {
       if (child.exitCode === null) child.kill('SIGKILL')
       await child.exited
@@ -1689,13 +1786,15 @@ export const runNativeWithEvidence = async ({
       if (finished.source === 'collector') child.kill('SIGTERM')
       nativeResult = await result
       if (callerSink !== undefined) {
+        execution.signal?.throwIfAborted()
         // Preserve the caller's OTEL/profiling sink and decode that exact file,
         // outside native rotation. Never rediscover it through --recent.
-        const decoder = Bun.spawn([native, 'log', 'show', resolve(callerSink)], {
+        const decoder = Bun.spawn([native, 'log', 'show', resolve(cwd, callerSink)], {
           stdin: 'ignore',
           stdout: keeper,
           stderr: 'ignore',
-          env: process.env,
+          cwd,
+          env,
         })
         reapDecoder = async () => {
           if (decoder.exitCode === null) decoder.kill('SIGKILL')
@@ -1732,6 +1831,7 @@ export const runNativeWithEvidence = async ({
     renameSync(`${completion}.pending`, completion)
     return nativeResult
   } finally {
+    if (cancelEvidence !== undefined) execution.signal?.removeEventListener('abort', cancelEvidence)
     if (keeper !== undefined) closeSync(keeper)
     await reapNative?.()
     await reapDecoder?.()
@@ -2185,6 +2285,19 @@ type NativeCommandResult = {
   output: string
   signalCode: NodeJS.Signals | null
   durationMs: number
+  stdout?: string
+  stderr?: string
+}
+
+type NativeExecution = {
+  readonly cwd?: string
+  readonly env?: NodeJS.ProcessEnv
+  readonly signal?: AbortSignal
+  readonly stdin?: 'inherit' | 'ignore'
+  readonly capture?: boolean
+  readonly captureStderr?: boolean
+  readonly onStdout?: (chunk: Uint8Array) => void
+  readonly onStderr?: (chunk: Uint8Array) => void
 }
 
 /** Spawn exactly once, preserving inherited stdout and forwarding redirected stderr byte-for-byte. */
@@ -2193,7 +2306,15 @@ const spawnNativeCommand = ({
   args,
   stderr,
   deadlineMs,
-}: {
+  cwd,
+  env = process.env,
+  signal,
+  stdin = 'inherit',
+  capture = false,
+  captureStderr = true,
+  onStdout,
+  onStderr,
+}: NativeExecution & {
   readonly native: string
   readonly args: readonly string[]
   readonly stderr: 'inherit' | 'pipe'
@@ -2201,53 +2322,130 @@ const spawnNativeCommand = ({
 }) => {
   const started = performance.now()
   const child = Bun.spawn([native, ...args], {
-    env: process.env,
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr,
+    cwd,
+    env,
+    stdin,
+    stdout: capture ? 'pipe' : 'inherit',
+    stderr: capture ? 'pipe' : stderr,
   })
   let interrupted = false
   let timedOut = false
   const writes = new AbortController()
   let durationMs = 0
-  const exited = child.exited.then((exitCode) => {
-    durationMs = Math.max(0, Math.round(performance.now() - started))
-    return exitCode
-  })
+  let processingFailed = false
+  let processingError: unknown
+  const retainProcessingError = (error: unknown): void => {
+    if (processingFailed === false) {
+      processingFailed = true
+      processingError = error
+    }
+  }
+  const exited = child.exited.then(
+    (exitCode) => {
+      durationMs = Math.max(0, Math.round(performance.now() - started))
+      return exitCode
+    },
+    (error: unknown) => {
+      retainProcessingError(error)
+      throw error
+    },
+  )
+  let hardDeadline: NodeJS.Timeout | undefined
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
     writes.abort()
     child.kill(signal)
+    hardDeadline ??= setTimeout(() => child.kill('SIGKILL'), 5000)
   }
+  const cancel = () => forward('SIGTERM')
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted === true) cancel()
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((signal) => () => forward(signal))
-  for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
-  let hardDeadline: NodeJS.Timeout | undefined
+  if (capture === false)
+    for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
   const deadline =
     deadlineMs === undefined
       ? undefined
       : setTimeout(() => {
           timedOut = true
           forward('SIGTERM')
-          hardDeadline = setTimeout(() => child.kill('SIGKILL'), 5000)
         }, deadlineMs)
+  let diagnosticBytes = 0
+  let diagnosticComplete = true
+  const collect = async (
+    stream: AsyncIterable<Uint8Array> | null,
+    callback?: (chunk: Uint8Array) => void,
+    diagnostic = false,
+  ): Promise<string> => {
+    if (stream === null) return ''
+    const decoder = new TextDecoder()
+    let text = ''
+    let forwarding = true
+    try {
+      for await (const chunk of stream) {
+        if (diagnostic) {
+          diagnosticBytes += chunk.byteLength
+          if (diagnosticBytes > 262144) {
+            diagnosticComplete = false
+            text = ''
+          } else text += decoder.decode(chunk, { stream: true })
+        } else text += decoder.decode(chunk, { stream: true })
+        if (forwarding) {
+          try {
+            callback?.(chunk)
+          } catch (error) {
+            retainProcessingError(error)
+            forwarding = false
+            if (diagnostic) diagnosticComplete = false
+          }
+        }
+      }
+    } catch (error) {
+      // A failed output consumer/stream never short-circuits joining native.
+      retainProcessingError(error)
+      if (diagnostic) diagnosticComplete = false
+    }
+    return diagnostic && diagnosticBytes > 262144 ? '' : text + decoder.decode()
+  }
   const result = (async (): Promise<NativeCommandResult> => {
     try {
-      const output =
-        child.stderr === null
-          ? ''
-          : await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
-      const exitCode = await exited
+      const stdoutPromise = capture ? collect(child.stdout, onStdout) : Promise.resolve('')
+      const stderrPromise = capture
+        ? collect(child.stderr, onStderr, true)
+        : child.stderr === null
+          ? Promise.resolve('')
+          : captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const [stdoutResult, outputResult, exitResult] = await Promise.allSettled([
+        stdoutPromise,
+        stderrPromise,
+        exited,
+      ])
+      for (const settled of [stdoutResult, outputResult, exitResult])
+        if (settled.status === 'rejected') retainProcessingError(settled.reason)
+      if (processingFailed === true) throw processingError
+      if (stdoutResult.status === 'rejected') throw stdoutResult.reason
+      if (outputResult.status === 'rejected') throw outputResult.reason
+      if (exitResult.status === 'rejected') throw exitResult.reason
+      const stdout = stdoutResult.value
+      const output = outputResult.value
+      const exitCode = exitResult.value
       const signalCode = child.signalCode
       return {
         exitCode: timedOut === true ? 124 : exitCode,
         signalCode,
         durationMs,
-        output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+        output:
+          interrupted === true || signalCode !== null || diagnosticComplete === false
+            ? ''
+            : (output ?? ''),
+        stdout,
+        stderr: captureStderr ? (output ?? '') : '',
       }
     } finally {
       clearTimeout(deadline)
       clearTimeout(hardDeadline)
+      signal?.removeEventListener('abort', cancel)
       for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
     }
   })()
@@ -2255,10 +2453,12 @@ const spawnNativeCommand = ({
 }
 
 /** Preserve stdout and supervise only redirected native stderr. */
-const observeNativeCommand = (options: {
-  readonly native: string
-  readonly args: readonly string[]
-}): Promise<NativeCommandResult> => spawnNativeCommand({ ...options, stderr: 'pipe' }).result
+const observeNativeCommand = (
+  options: NativeExecution & {
+    readonly native: string
+    readonly args: readonly string[]
+  },
+): Promise<NativeCommandResult> => spawnNativeCommand({ ...options, stderr: 'pipe' }).result
 
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
