@@ -1328,6 +1328,7 @@ in
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
+      export BUCK2_EDITOR_PUBLICATION_TEST_PYTHON=${pkgs.python3}/bin/python3
       ${tsSandboxTestEnvironment}
       cd "$root"
       ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts
