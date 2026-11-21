@@ -1379,6 +1379,7 @@ in
     '';
     execIfModified = [
       "nix/buck2.nix"
+      "nix/buck2-release.nix"
       "scripts/buck2-entrypoint.*"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"

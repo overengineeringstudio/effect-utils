@@ -7,7 +7,10 @@
 }:
 let
   trace = import ../lib/trace.nix { inherit lib; };
-  teardown = import ../../../worktree-teardown.nix { inherit pkgs; };
+  teardown = import ../../../worktree-teardown.nix {
+    inherit pkgs;
+    buck2 = import ../../../buck2.nix { inherit pkgs; };
+  };
 in
 {
   tasks."worktree:teardown" = {
