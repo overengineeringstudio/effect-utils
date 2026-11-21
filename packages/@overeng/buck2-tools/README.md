@@ -277,6 +277,7 @@ Its opaque live object validates root and inode without acquiring or upgrading.
 Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant nothing.
 Cancellation wakes queued acquisition, but active subordinate work must join before release.
 `tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
+Selection helpers require that live owner for reserved isolation from literal argv, plain-text argfiles or the environment; ambiguous selection fails closed and default isolation remains disjoint. The Nix launcher declares the pure owner module in its compile context; owned execution is not activated by these helpers.
 This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
 `requireEditorPublicationInputs` validates mutable Buck inputs and their symlink carriers
 against the live owner and reserved publication isolation, preserving native filesystem errors.

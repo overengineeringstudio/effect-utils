@@ -20,6 +20,7 @@
       ../scripts/buck2-entrypoint.sh
     ];
   },
+  publicationOwnerSource ? ../packages + "/@overeng/buck2-tools/src/editor-publication-owner.ts",
 }:
 let
   publicationOwner = import ./buck2-publication-owner.nix { inherit pkgs; };
@@ -97,9 +98,12 @@ pkgs.runCommand native.name
     chmod u+w "$out" "$out/bin"
     mkdir -p "$out/libexec"
     mv "$out/bin/buck2" "$out/libexec/buck2"
-    cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
-    cp ${launcherSource}/buck2-cache-posture.ts "$out/libexec/buck2-cache-posture.ts"
-    cp ${launcherSource}/buck2-file-watcher.ts "$out/libexec/buck2-file-watcher.ts"
+    launcher_context="$(mktemp -d "$TMPDIR/buck2-launcher-src.XXXXXX")"
+    mkdir -p "$launcher_context/scripts" "$launcher_context/packages/@overeng/buck2-tools/src"
+    cp ${launcherSource}/buck2-entrypoint.ts "$launcher_context/scripts/buck2-entrypoint.ts"
+    cp ${launcherSource}/buck2-cache-posture.ts "$launcher_context/scripts/buck2-cache-posture.ts"
+    cp ${launcherSource}/buck2-file-watcher.ts "$launcher_context/scripts/buck2-file-watcher.ts"
+    cp ${publicationOwnerSource} "$launcher_context/packages/@overeng/buck2-tools/src/editor-publication-owner.ts"
     ${pkgs.stdenv.cc}/bin/cc ${
       if pkgs.stdenv.hostPlatform.isDarwin then "-dynamiclib" else "-shared -fPIC"
     } \
@@ -110,12 +114,11 @@ pkgs.runCommand native.name
     # Keep the compile working directory distinct from TMPDIR.
     (
       cd "$(mktemp -d "$TMPDIR/buck2-launcher.XXXXXX")"
-      ${pkgs.bun}/bin/bun build --compile "$out/libexec/buck2-entrypoint.ts" \
+      ${pkgs.bun}/bin/bun build --compile "$launcher_context/scripts/buck2-entrypoint.ts" \
         --define "BUCK2_STDIO_LIBRARY=\"$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}\"" \
         --define "BUCK2_EVIDENCE_BUN_BINARY=\"${pkgs.bun}/bin/bun\"" \
         --outfile "$out/libexec/buck2-entrypoint"
     )
-    rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"
     substitute ${launcherSource}/buck2-entrypoint.sh "$out/bin/buck2" \
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \
