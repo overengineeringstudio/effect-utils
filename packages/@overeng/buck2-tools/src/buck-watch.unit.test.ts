@@ -445,18 +445,8 @@ describe('Buck watch reconciliation', () => {
   })
 
   it('passes every provider read root to publication and never publishes after a failed build', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const fixture = makePublicationFixture()
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: ['buck-out/app/package_tree', 'buck-out/store/dep'],
-        })}\n`,
-      )
       const shutdown = new AbortController()
       const invocations: {
         command: string
@@ -465,32 +455,14 @@ describe('Buck watch reconciliation', () => {
         signal: AbortSignal | undefined
       }[] = []
       await reconcileBuckViews({
-        request: {
-          packagePaths: ['packages/app'],
-          changedPaths: ['packages/app/src/main.ts'],
-          buildTargets: ['//packages/app:editor_view_inputs', '//packages/app:typecheck'],
-        },
+        request: publicationRequest,
         options: {
-          plan,
-          mode: 'publish',
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          mv: '/tools/mv',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          snapshotRetention: 3,
+          ...fixture.options,
           signal: shutdown.signal,
-          run: async ({ command, args, detached, signal }) => {
+          run: async (invocation) => {
+            const { command, args, detached, signal } = invocation
             invocations.push({ command, args, detached, signal })
-            return command === '/tools/buck2'
-              ? {
-                  stdout: `//packages/app:editor_view_inputs ${manifest}\n`,
-                  stderr: '',
-                }
-              : { stdout: '', stderr: '' }
+            return fixture.options.run(invocation)
           },
         },
       })
@@ -499,16 +471,29 @@ describe('Buck watch reconciliation', () => {
       expect(invocations[0]?.detached).toBeUndefined()
       expect(invocations[1]?.detached).toBeUndefined()
       expect(invocations[1]?.signal).toBeUndefined()
-      expect(invocations[1]?.command).toBe('/tools/bun')
-      expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
+      expect(invocations[1]?.command).toBe(fixture.options.editorViewCommand[0])
+      expect(invocations[1]?.args[0]).toBe(fixture.options.editorViewCommand[1])
       expect(invocations[1]?.args).toContain('--backing-root')
       expect(invocations[1]?.args).toEqual(
         expect.arrayContaining([
-          join(root, 'buck-out/app/node_modules'),
-          join(root, 'buck-out/app/package_tree'),
-          join(root, 'buck-out/store/dep'),
+          fixture.nodeModules,
+          fixture.packageTree,
+          fixture.dependency,
         ]),
       )
+      const first = fixture.record()
+      expect(first).toMatchObject({
+        package: 'packages/app',
+        cell: 'effect_utils',
+        target: '//packages/app:editor_inputs',
+      })
+      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toBe(
+        'export const workspace = "λ"\n',
+      )
+      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toBe(
+        'export const dependency = "雪"\n',
+      )
+      writeFileSync(join(fixture.dependency, 'index.js'), 'export const dependency = "changed"\n')
 
       const batchInvocations: {
         command: string
@@ -523,30 +508,22 @@ describe('Buck watch reconciliation', () => {
           buildTargets: ['//packages/app:editor_view_inputs'],
         },
         options: {
-          plan,
-          mode: 'publish',
+          ...fixture.options,
           batchPublication: true,
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          mv: '/tools/mv',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          snapshotRetention: 3,
-          run: async ({ command, args, input, detached }) => {
+          run: async (invocation) => {
+            const { command, args, input, detached } = invocation
             batchInvocations.push({ command, args, input, detached })
-            return command === '/tools/buck2'
-              ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-              : { stdout: '', stderr: '' }
+            return fixture.options.run(invocation)
           },
         },
       })
       expect(batchInvocations).toHaveLength(2)
-      expect(batchInvocations[1]?.args).toEqual(['/tools/editor-view', 'publish-batch'])
+      expect(batchInvocations[1]?.args).toEqual([fixture.options.editorViewCommand[1], 'publish-batch'])
       expect(batchInvocations[1]?.detached).toBeUndefined()
       expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
+      const second = fixture.record()
+      expect(second.normalizedStoreDigest).not.toBe(first.normalizedStoreDigest)
+      expect(second.snapshot).not.toBe(first.snapshot)
 
       const failedInvocations: string[] = []
       await expect(
@@ -557,17 +534,7 @@ describe('Buck watch reconciliation', () => {
             buildTargets: ['//packages/app:editor_view_inputs'],
           },
           options: {
-            plan,
-            mode: 'publish',
-            repoRoot: root,
-            workspaceRoot: root,
-            buck2: '/tools/buck2',
-            editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-            workspaceAuthority: '/repo/authority.json',
-            cp: '/tools/cp',
-            fingerprintTool: '/tools/buck2-fingerprint',
-            mv: '/tools/mv',
-            snapshotRetention: 3,
+            ...fixture.options,
             run: async ({ command }) => {
               failedInvocations.push(command)
               throw new Error('stale build')
@@ -576,8 +543,9 @@ describe('Buck watch reconciliation', () => {
         }),
       ).rejects.toThrow('stale build')
       expect(failedInvocations).toEqual(['/tools/buck2'])
+      expect(fixture.record()).toEqual(second)
     } finally {
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
