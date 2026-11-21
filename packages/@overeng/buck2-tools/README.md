@@ -187,6 +187,15 @@ failure. A nonzero or signaled child exit takes precedence over a concurrent
 broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
 A successful child exit still fails if its input could not be delivered.
 
+Reconciliation prepares publication arguments from validated provider manifests before
+executing the publisher. Batch preparation settles every sibling manifest read before
+returning the first failure in package order; a malformed manifest never leaves pending
+preparation behind. Publication failure classification recognizes native and subprocess
+signals inside aggregate failures without replacing errors or their original causes.
+The reconciliation fixtures use real finite workspace and external dependency bytes,
+the declared publisher CLI/tool closure, isolated budget/content stores, and tracked
+process scopes. FIFO-gated command streaming remains a separate process-boundary proof.
+
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.
 Bootstrap publishes only `.` and `packages/@overeng/otel-contract`, never the

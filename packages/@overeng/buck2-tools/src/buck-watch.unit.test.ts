@@ -14,6 +14,7 @@ import {
   exitCodeOf,
   prepareEditorPublicationRequest,
   settleEditorPublicationRequests,
+  publicationSignal,
   reconcileBuckViews as reconcileBuckViewsUnscoped,
   runCommand,
   runBuckWatchLoop,
@@ -24,6 +25,7 @@ import {
 } from './buck-watch.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import { scopeEditorViewTestProcesses, trackEditorViewTestSpawn } from './editor-view-test-processes.ts'
+import { EditorViewCommandFailure } from './editor-view.ts'
 
 const fixtureProcessIds = new Set([process.pid])
 const reconcileBuckViews = scopeEditorViewTestProcesses({
@@ -284,6 +286,39 @@ const publicationRequest = {
 }
 
 describe('Buck watch reconciliation', () => {
+  it.each([undefined, 'SIGTERM'] as const)(
+    'preserves native publication failure status and cause (signal=%s)',
+    (signal) => {
+      const cause = new Error('native failure')
+      const error = new EditorViewCommandFailure({
+        label: 'copy',
+        detail: 'nested tool exited 0',
+        ...(signal === undefined ? { exitCode: 7 } : { signal }),
+        cause,
+        stdout: '',
+        stderr: 'nested tool exited 0',
+      })
+      expect(exitCodeOf(error)).toBe(signal === undefined ? 7 : 1)
+      expect(publicationSignal(error)).toBe(signal)
+      expect(error.signal).toBe(signal)
+      expect(error.cause).toBe(cause)
+      const nested = new AggregateError([error])
+      const failures = new AggregateError([new Error('ordinary failure'), nested])
+      expect(publicationSignal(failures)).toBe(signal)
+      expect(failures.errors[1]).toBe(nested)
+      expect(nested.errors[0]).toBe(error)
+      expect(error.stdout).toBe('')
+      expect(error.stderr).toBe('nested tool exited 0')
+    },
+  )
+
+  it('classifies subprocess signals without treating ordinary errors as native failures', () => {
+    const failure = new CommandFailure({ message: 'terminated', exitCode: undefined, signal: 'SIGINT' })
+    expect(publicationSignal(new AggregateError([failure]))).toBe('SIGINT')
+    expect(publicationSignal(new Error('interrupted by SIGTERM'))).toBeUndefined()
+    expect(publicationSignal(new AggregateError([new Error('ordinary')]))).toBeUndefined()
+  })
+
   it('publishes real finite fixture bytes through the existing publisher CLI', async () => {
     const fixture = makePublicationFixture()
     try {

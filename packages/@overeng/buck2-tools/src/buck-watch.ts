@@ -7,6 +7,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
+import { EditorViewCommandFailure } from './editor-view.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -320,10 +321,23 @@ const errorMessage = (error: unknown): string =>
  * output cannot forge a status.
  */
 export const exitCodeOf = (error: unknown): number => {
-  if (error instanceof CommandFailure) return error.exitCode ?? 1
+  if (error instanceof CommandFailure || error instanceof EditorViewCommandFailure)
+    return error.exitCode ?? 1
   const firstLine = errorMessage(error).split('\n')[0] ?? ''
   const exited = /exited (\d+)$/.exec(firstLine)
   return exited === null ? 1 : Number(exited[1] ?? '1')
+}
+
+/** Find native or subprocess termination in a settled publication failure tree. */
+export const publicationSignal = (error: unknown): NodeJS.Signals | undefined => {
+  if (error instanceof CommandFailure || error instanceof EditorViewCommandFailure)
+    return error.signal
+  if (error instanceof AggregateError)
+    for (const failure of error.errors) {
+      const signal = publicationSignal(failure)
+      if (signal !== undefined) return signal
+    }
+  return undefined
 }
 
 /** Persistent, coalescing reconciliation state machine. */
@@ -911,9 +925,9 @@ export const reconcileBuckViews = async ({
   const outputs = parseBuildOutputs(built.stdout)
   const selected = new Set(request.packagePaths)
   const publicationFailure = (error: unknown): never => {
-    // A group signal can kill/reap the publisher before this process observes it.
-    if (error instanceof CommandFailure && error.signal !== undefined)
-      reportBuildFailure({ code: 0, interruptedAfterBuild: error.signal })
+    // Preserve native failure identity, including aggregate causes, without wrapping it.
+    const signal = publicationSignal(error)
+    if (signal !== undefined) reportBuildFailure({ code: 0, interruptedAfterBuild: signal })
     throw error
   }
   const publicationArgs = (entry: EditorPublicationEntry): Promise<readonly string[]> =>
