@@ -12,7 +12,6 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -664,7 +663,8 @@ describe('Buck watch reconciliation', () => {
   })
 
   it.each(['fails', 'hangs'])('keeps watch cycles green when telemetry %s', async (delivery) => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const fixture = makePublicationFixture()
+    await reconcileBuckViews({ request: publicationRequest, options: fixture.options })
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
     const otelSpan = join(otelDirectory, 'otel-span')
     writeFileSync(
@@ -683,16 +683,8 @@ describe('Buck watch reconciliation', () => {
     const savedEnvironment = hermeticOtelGate()
     const telemetry = observeExporters(otelSpan)
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: [],
-        })}\n`,
-      )
+      // Validation emits the same command spans without consuming slots for the
+      // publisher's separate phase/budget spans; all publisher work above was real.
       const commands: string[] = []
       const source = new ControlledChanges()
       const abort = new AbortController()
@@ -705,20 +697,11 @@ describe('Buck watch reconciliation', () => {
           reconcileBuckViews({
             request,
             options: {
-              plan,
-              mode: 'publish',
-              repoRoot: root,
-              workspaceRoot: root,
-              buck2: '/tools/buck2',
-              editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-              workspaceAuthority: '/repo/authority.json',
-              cp: '/tools/cp',
-              fingerprintTool: '/tools/buck2-fingerprint',
-              mv: '/tools/mv',
-              snapshotRetention: 3,
-              run: async ({ command }) => {
-                commands.push(command)
-                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              ...fixture.options,
+              mode: 'check',
+              run: async (invocation) => {
+                commands.push(invocation.command)
+                return fixture.options.run(invocation)
               },
             },
           }),
@@ -729,7 +712,8 @@ describe('Buck watch reconciliation', () => {
           else abort.abort()
         },
       })
-      expect(commands).toEqual(['/tools/buck2', '/tools/bun', '/tools/buck2', '/tools/bun'])
+      expect(commands).toEqual(['/tools/buck2', process.execPath, '/tools/buck2', process.execPath])
+      expect(fixture.record().package).toBe('packages/app')
       expect(
         statuses.filter((status) => status.phase === 'idle').map(({ generation }) => generation),
       ).toEqual([1, 2])
@@ -765,7 +749,7 @@ describe('Buck watch reconciliation', () => {
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
       restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
