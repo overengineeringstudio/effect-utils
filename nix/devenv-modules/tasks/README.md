@@ -302,6 +302,23 @@ that output out. A diagnostic VM must separately opt in and assert the
 `ownedVmClassDiagnostics` passthru on its actual proc-tests runner; enabling
 only the serving library does not instrument a separately imported test binary.
 
+`map_files` has a distinct procfs interface: Linux6.18.62
+`fs/proc/base.c:3297-3300` exposes it on top-level `/proc/<actual-tid>`,
+but the complete nested `/proc/<tgid>/task/<tid>` table at3647-3745 does not.
+Top-level lookup3489-3517 resolves that actual TID, including nonleaders;
+it does not substitute the leader's address space.
+Each TaskScope therefore retains a separate same-TID `mapping_scope`, pinned
+inside the original generation/UID/namespace discovery bracket and compared
+with fresh exact top-level scope identity during reclosure/recapture. The
+original nested scope is separately rechecked and still supplies actual-task
+FDs, root/cwd/exe, namespaces and mountinfo. Every ordinary and management
+`map_files` enumeration, member pin and final recheck uses the mapping scope.
+Missing/replaced scopes retain departure-proof/retry/UNKNOWN behavior, never
+an empty-map fallback or a shared/leader-mm assumption. The real churn fixture
+asserts nested map_files is absent, top-level same-TID mappings are nonempty,
+and an actual retained read-only private candidate-file mmap is observed
+alongside the surviving FD through production capture and reclosure.
+
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
 to that same output's `bin/worktree-holder-evidence`. A later combined client

@@ -210,12 +210,22 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
     unsafe extern "C" {
         fn gettid() -> std::os::raw::c_int;
         fn unshare(flags: std::os::raw::c_int) -> std::os::raw::c_int;
+        fn mmap(address: *mut std::ffi::c_void, length: usize, protection: i32,
+            flags: i32, fd: i32, offset: i64) -> *mut std::ffi::c_void;
+        fn munmap(address: *mut std::ffi::c_void, length: usize) -> i32;
     }
     struct Root(std::path::PathBuf);
     impl Drop for Root {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(self.0.join("candidate"));
             let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+    struct Mapping(*mut std::ffi::c_void);
+    impl Drop for Mapping {
+        fn drop(&mut self) {
+            // SAFETY: this owns the successful fixed-length mapping once.
+            let _ = unsafe { munmap(self.0, 4096) };
         }
     }
     struct Worker {
@@ -240,6 +250,12 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
         assert_eq!(unsafe { unshare(0x00000400) }, 0);
         let candidate = std::fs::OpenOptions::new().read(true).write(true)
             .create_new(true).open(candidate_path).unwrap();
+        candidate.set_len(4096).unwrap();
+        // SAFETY: live readable owned file, aligned zero offset, one page,
+        // PROT_READ/MAP_PRIVATE; no payload dereference or shared write.
+        let mapped = unsafe { mmap(std::ptr::null_mut(), 4096, 1, 2, candidate.as_raw_fd(), 0) };
+        assert_ne!(mapped as isize, -1, "mmap: {}", std::io::Error::last_os_error());
+        let _mapping = Mapping(mapped);
         let identity = candidate.metadata().unwrap();
         // SAFETY: gettid is an argument-free current-task identity query.
         let tid = u32::try_from(unsafe { gettid() }).unwrap();
@@ -300,9 +316,17 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
         assert!(scope.task_departed(departed_index, deadline).unwrap());
         assert!(scope.collect_resources(departed_index, deadline).unwrap().is_none());
         let index = scope.tasks.iter().position(|task| task.identity.pid == survivor).unwrap();
+        let task = &scope.tasks[index];
+        let nested = std::fs::read_dir(format!("{}/map_files", scopes::scope_path(&task.scope)))
+            .err().expect("the nested per-task proc table must not expose map_files");
+        assert_eq!(nested.kind(), std::io::ErrorKind::NotFound);
+        assert!(!scopes::mapping_names(&task.mapping_scope, deadline).unwrap().is_empty(),
+            "the same actual TID's top-level mapping scope must expose real mappings");
         let references = scope.collect_resources(index, deadline).unwrap()
             .expect("a surviving task must not become an empty departed slot");
         assert!(references.descriptors.iter().any(|(fd, held)| *fd == descriptor && held.identity == identity));
+        assert!(references.mappings.iter().any(|(_, held)| held.identity == identity),
+            "the actual file-backed candidate mapping must remain observed");
         scope.recheck_resources(index, &references, deadline).unwrap();
         let current = scopes::ProcessScope::discover(pid, deadline).unwrap();
         assert!(scope.same_selection(&current, deadline).unwrap());

@@ -152,6 +152,7 @@ impl References {
         let pid = &process.identity;
         let pins = if management {
             let base = scope_path(&task.scope);
+            let mapping_base = scope_path(&task.mapping_scope);
             let root = Some(Held::pin(format!("{base}/root"), deadline)?);
             let cwd = Some(Held::pin(format!("{base}/cwd"), deadline)?);
             let exe = Some(Held::pin(format!("{base}/exe"), deadline)?);
@@ -163,8 +164,8 @@ impl References {
                 descriptors.push((number, Held::pin(format!("{base}/fd/{number}"), deadline)?));
             }
             let mut mappings = Vec::new();
-            for name in mapping_names(&task.scope, deadline)? {
-                let held = Held::pin(format!("{base}/map_files/{name}"), deadline)?;
+            for name in mapping_names(&task.mapping_scope, deadline)? {
+                let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
                 if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
                     return Err(io::Error::other("unqualified mapped kernel object"));
                 }
@@ -251,6 +252,7 @@ impl References {
         let task = &process.tasks[index];
         let pid = process.identity.pid;
         let base = scope_path(&task.scope);
+        let mapping_base = scope_path(&task.mapping_scope);
         match &self.pins {
             Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline)?,
             Pins::Management(pins) => {
@@ -261,12 +263,12 @@ impl References {
                 for (number, held) in &pins.descriptors {
                     held.recheck(format!("{base}/fd/{number}"), deadline)?;
                 }
-                let names = mapping_names(&task.scope, deadline)?;
+                let names = mapping_names(&task.mapping_scope, deadline)?;
                 if !names.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
                     return Err(io::Error::other("server mapping membership changed"));
                 }
                 for (name, held) in &pins.mappings {
-                    held.recheck(format!("{base}/map_files/{name}"), deadline)?;
+                    held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?;
                 }
             }
         }
@@ -308,7 +310,7 @@ impl References {
         match &self.pins {
             Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline)?,
             Pins::Management(pins) => {
-                if !mapping_names(&task.scope, deadline)?.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
+                if !mapping_names(&task.mapping_scope, deadline)?.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
                     return Err(io::Error::other("server mappings changed during closure"));
                 }
             }
@@ -471,8 +473,9 @@ mod tests {
     use super::*;
 
     fn task() -> TaskScope {
-        TaskScope { identity: Process { pid: 8, parent: 1, start: 101, state: b'S' },
+        TaskScope { tgid: 7, identity: Process { pid: 8, parent: 1, start: 101, state: b'S' },
             uids: [9, 10, 11, 12], scope: File::open("/proc/self").unwrap(),
+            mapping_scope: File::open("/proc/self").unwrap(),
             namespaces: Vec::new() }
     }
 
