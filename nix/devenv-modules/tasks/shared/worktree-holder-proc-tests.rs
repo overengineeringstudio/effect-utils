@@ -311,13 +311,15 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
     let (stop, stopped) = mpsc::channel();
     let (ready, entered) = mpsc::channel();
     let newcomer = std::thread::spawn(move || {
-        ready.send(()).unwrap();
+        // SAFETY: argument-free current-task identity query.
+        ready.send(u32::try_from(unsafe { gettid() }).unwrap()).unwrap();
         let _ = stopped.recv();
     });
     let newcomer = Worker { commands: Some(stop), thread: Some(newcomer) };
-    entered.recv().unwrap();
+    let newcomer_tid = entered.recv().unwrap();
     assert!(scope.recheck(deadline).is_err(), "new live task must not be omitted");
     drop(newcomer);
+    wait_departures(&[newcomer_tid]);
     let mut scope = scopes::ProcessScope::discover(pid, deadline).unwrap();
     let index = scope.tasks.iter().position(|task| task.identity.pid == survivor).unwrap();
     let references = scope.collect_resources(index, deadline).unwrap().unwrap();
