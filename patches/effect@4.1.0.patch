@@ -1,0 +1,261 @@
+diff --git a/dist/observability/OtlpExporter.d.ts b/dist/observability/OtlpExporter.d.ts
+index a778b4209..091db9d71 100644
+--- a/dist/observability/OtlpExporter.d.ts
++++ b/dist/observability/OtlpExporter.d.ts
+@@ -1,11 +1,44 @@
+ import * as Context from "../Context.ts";
+ import * as Duration from "../Duration.ts";
+ import * as Effect from "../Effect.ts";
++import type * as Exit from "../Exit.ts";
+ import * as Headers from "../http/Headers.ts";
+ import type { HttpBody } from "../http/HttpBody.ts";
+ import * as HttpClient from "../http/HttpClient.ts";
++import * as HttpClientError from "../http/HttpClientError.ts";
+ import * as Layer from "../Layer.ts";
+ import * as Scope from "../Scope.ts";
++/**
++ * Terminal batch and shutdown outcomes. Batch outcomes are emitted after retries,
++ * not for individual HTTP attempts. A successful shutdown does not imply that
++ * earlier batches were delivered; observe batch failures as well.
++ *
++ * @stability unstable
++ * @category models
++ * @since 4.0.0
++ */
++export type Event = {
++    readonly _tag: "Batch";
++    readonly label: string;
++    readonly exit: Exit.Exit<void, HttpClientError.HttpClientError>;
++} | {
++    readonly _tag: "Shutdown";
++    readonly label: string;
++    readonly timedOut: boolean;
++    readonly disabled: boolean;
++};
++declare const Observer_base: Context.Reference<((event: Event) => void) | undefined>;
++/**
++ * Optional, synchronous observer captured when an exporter is constructed.
++ * Callbacks must not block. Thrown callback errors are ignored so diagnostics
++ * cannot change export, shutdown, or application exit behavior.
++ *
++ * @stability unstable
++ * @category references
++ * @since 4.0.0
++ */
++export declare class Observer extends Observer_base {
++}
+ declare const Flusher_base: Context.ServiceClass<Flusher, "effect/observability/OtlpExporter/Flusher", {
+     /**
+      * Drains all registered exporters concurrently and cannot fail.
+@@ -109,4 +142,3 @@ export declare const make: (options: {
+     readonly push: (data: unknown) => void;
+ }, never, Flusher | HttpClient.HttpClient | Scope.Scope>;
+ export {};
+-//# sourceMappingURL=OtlpExporter.d.ts.map
+\ No newline at end of file
+diff --git a/dist/observability/OtlpExporter.js b/dist/observability/OtlpExporter.js
+index dbe6535bf..e428eb54b 100644
+--- a/dist/observability/OtlpExporter.js
++++ b/dist/observability/OtlpExporter.js
+@@ -21,6 +21,7 @@ import * as HttpClient from "../http/HttpClient.js";
+ import * as HttpClientError from "../http/HttpClientError.js";
+ import * as HttpClientRequest from "../http/HttpClientRequest.js";
+ import * as Layer from "../Layer.js";
++import * as Option from "../Option.js";
+ import * as Result from "../Result.js";
+ import * as Schedule from "../Schedule.js";
+ import * as Scope from "../Scope.js";
+@@ -41,6 +42,18 @@ const policy = /*#__PURE__*/Schedule.forever.pipe(Schedule.passthrough, /*#__PUR
+   }
+   return Effect.succeed(Duration.seconds(1));
+ }));
++/**
++ * Optional, synchronous observer captured when an exporter is constructed.
++ * Callbacks must not block. Thrown callback errors are ignored so diagnostics
++ * cannot change export, shutdown, or application exit behavior.
++ *
++ * @stability unstable
++ * @category references
++ * @since 4.0.0
++ */
++export class Observer extends /*#__PURE__*/Context.Reference("effect/observability/OtlpExporter/Observer", {
++  defaultValue: () => undefined
++}) {}
+ /**
+  * Registry of exporter flush operations, used to manually drain buffered
+  * telemetry before the surrounding scope closes.
+@@ -122,6 +135,8 @@ export const make = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+   const services = yield* Effect.context();
+   const clock = Context.get(services, Clock);
+   const scope = Context.get(services, Scope.Scope);
++  const observer = yield* Observer;
++  const notify = event => observer === undefined ? Effect.void : Effect.sync(() => observer(event)).pipe(Effect.catchCause(() => Effect.void));
+   const exportInterval = Duration.max(Duration.fromInputUnsafe(options.exportInterval), Duration.zero);
+   let disabledUntil = undefined;
+   const client = Context.get(services, HttpClient.HttpClient).pipe(HttpClient.tap(response => Effect.ignore(response.arrayBuffer)), HttpClient.tapError(error => error.response ? Effect.ignore(error.response.arrayBuffer) : Effect.void), HttpClient.filterStatusOk, HttpClient.transformResponse(Effect.provideService(HttpClient.TracerPropagationEnabled, false)), HttpClient.retryTransient({
+@@ -147,11 +162,17 @@ export const make = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+     }
+     const items = buffer;
+     buffer = [];
+-    const [body, onSuccess] = options.body(items);
+-    const batchRequest = HttpClientRequest.setBody(request, body);
+-    // Compress before client.execute so transient retries reuse the encoded bytes.
+-    const response = options.compression === "gzip" ? HttpClientRequest.compressBody(batchRequest, "gzip").pipe(Effect.flatMap(client.execute)) : client.execute(batchRequest);
+-    return response.pipe(Effect.andThen(onSuccess), Effect.asVoid, Effect.withTracerEnabled(false));
++    return Effect.suspend(() => {
++      const [body, onSuccess] = options.body(items);
++      const batchRequest = HttpClientRequest.setBody(request, body);
++      // Compress before client.execute so transient retries reuse the encoded bytes.
++      const response = options.compression === "gzip" ? HttpClientRequest.compressBody(batchRequest, "gzip").pipe(Effect.flatMap(client.execute)) : client.execute(batchRequest);
++      return response.pipe(Effect.andThen(onSuccess), Effect.asVoid, Effect.withTracerEnabled(false));
++    }).pipe(Effect.onExit(exit => notify({
++      _tag: "Batch",
++      label: options.label,
++      exit
++    })));
+   }).pipe(Effect.catchCause(cause => {
+     if (disabledUntil !== undefined) return Effect.void;
+     disabledUntil = clock.currentTimeMillisUnsafe() + 60_000;
+@@ -169,7 +190,12 @@ export const make = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+     if (disabledUntil !== undefined) return Effect.void;
+     runExportFork(runExport);
+     return FiberSet.awaitEmpty(exportFibers);
+-  }).pipe(Effect.ignore, Effect.interruptible, Effect.timeoutOption(options.shutdownTimeout)));
++  }).pipe(Effect.ignore, Effect.interruptible, Effect.timeoutOption(options.shutdownTimeout), Effect.flatMap(result => notify({
++    _tag: "Shutdown",
++    label: options.label,
++    timedOut: Option.isNone(result),
++    disabled: disabledUntil !== undefined
++  }))));
+   yield* Effect.sleep(exportInterval).pipe(Effect.andThen(FiberSet.run(exportFibers, runExport)), Effect.flatMap(Fiber.await), Effect.forever, Effect.forkIn(scope));
+   return {
+     push(data) {
+@@ -181,4 +207,3 @@ export const make = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+     }
+   };
+ });
+-//# sourceMappingURL=OtlpExporter.js.map
+\ No newline at end of file
+diff --git a/src/observability/OtlpExporter.ts b/src/observability/OtlpExporter.ts
+index a32e18e74..afe4603f6 100644
+--- a/src/observability/OtlpExporter.ts
++++ b/src/observability/OtlpExporter.ts
+@@ -13,6 +13,7 @@ import { Clock } from "../Clock.ts"
+ import * as Context from "../Context.ts"
+ import * as Duration from "../Duration.ts"
+ import * as Effect from "../Effect.ts"
++import type * as Exit from "../Exit.ts"
+ import * as Fiber from "../Fiber.ts"
+ import * as FiberSet from "../FiberSet.ts"
+ import { identity } from "../Function.ts"
+@@ -22,6 +23,7 @@ import * as HttpClient from "../http/HttpClient.ts"
+ import * as HttpClientError from "../http/HttpClientError.ts"
+ import * as HttpClientRequest from "../http/HttpClientRequest.ts"
+ import * as Layer from "../Layer.ts"
++import * as Option from "../Option.ts"
+ import * as Result from "../Result.ts"
+ import * as Schedule from "../Schedule.ts"
+ import * as Scope from "../Scope.ts"
+@@ -53,6 +55,42 @@ const policy = Schedule.forever.pipe(
+   })
+ )
+ 
++/**
++ * Terminal batch and shutdown outcomes. Batch outcomes are emitted after retries,
++ * not for individual HTTP attempts. A successful shutdown does not imply that
++ * earlier batches were delivered; observe batch failures as well.
++ *
++ * @stability unstable
++ * @category models
++ * @since 4.0.0
++ */
++export type Event =
++  | {
++    readonly _tag: "Batch"
++    readonly label: string
++    readonly exit: Exit.Exit<void, HttpClientError.HttpClientError>
++  }
++  | {
++    readonly _tag: "Shutdown"
++    readonly label: string
++    readonly timedOut: boolean
++    readonly disabled: boolean
++  }
++
++/**
++ * Optional, synchronous observer captured when an exporter is constructed.
++ * Callbacks must not block. Thrown callback errors are ignored so diagnostics
++ * cannot change export, shutdown, or application exit behavior.
++ *
++ * @stability unstable
++ * @category references
++ * @since 4.0.0
++ */
++export class Observer extends Context.Reference<((event: Event) => void) | undefined>(
++  "effect/observability/OtlpExporter/Observer",
++  { defaultValue: () => undefined }
++) {}
++
+ /**
+  * Registry of exporter flush operations, used to manually drain buffered
+  * telemetry before the surrounding scope closes.
+@@ -185,6 +223,11 @@ export const make: (
+   const services = yield* Effect.context<Scope.Scope | HttpClient.HttpClient>()
+   const clock = Context.get(services, Clock)
+   const scope = Context.get(services, Scope.Scope)
++  const observer = yield* Observer
++  const notify = (event: Event) =>
++    observer === undefined
++      ? Effect.void
++      : Effect.sync(() => observer(event)).pipe(Effect.catchCause(() => Effect.void))
+   const exportInterval = Duration.max(Duration.fromInputUnsafe(options.exportInterval), Duration.zero)
+   let disabledUntil: number | undefined = undefined
+ 
+@@ -218,16 +261,20 @@ export const make: (
+     }
+     const items = buffer
+     buffer = []
+-    const [body, onSuccess] = options.body(items)
+-    const batchRequest = HttpClientRequest.setBody(request, body)
+-    // Compress before client.execute so transient retries reuse the encoded bytes.
+-    const response = options.compression === "gzip"
+-      ? HttpClientRequest.compressBody(batchRequest, "gzip").pipe(Effect.flatMap(client.execute))
+-      : client.execute(batchRequest)
+-    return response.pipe(
+-      Effect.andThen(onSuccess),
+-      Effect.asVoid,
+-      Effect.withTracerEnabled(false)
++    return Effect.suspend(() => {
++      const [body, onSuccess] = options.body(items)
++      const batchRequest = HttpClientRequest.setBody(request, body)
++      // Compress before client.execute so transient retries reuse the encoded bytes.
++      const response = options.compression === "gzip"
++        ? HttpClientRequest.compressBody(batchRequest, "gzip").pipe(Effect.flatMap(client.execute))
++        : client.execute(batchRequest)
++      return response.pipe(
++        Effect.andThen(onSuccess),
++        Effect.asVoid,
++        Effect.withTracerEnabled(false)
++      )
++    }).pipe(
++      Effect.onExit((exit) => notify({ _tag: "Batch", label: options.label, exit }))
+     )
+   }).pipe(
+     Effect.catchCause((cause) => {
+@@ -257,7 +304,15 @@ export const make: (
+     }).pipe(
+       Effect.ignore,
+       Effect.interruptible,
+-      Effect.timeoutOption(options.shutdownTimeout)
++      Effect.timeoutOption(options.shutdownTimeout),
++      Effect.flatMap((result) =>
++        notify({
++          _tag: "Shutdown",
++          label: options.label,
++          timedOut: Option.isNone(result),
++          disabled: disabledUntil !== undefined
++        })
++      )
+     )
+   )
+ 

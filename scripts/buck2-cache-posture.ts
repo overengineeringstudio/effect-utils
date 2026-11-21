@@ -17,6 +17,32 @@ import process from 'node:process'
 const MANAGED_BEGIN = '# effect-utils standalone cache posture: begin'
 const MANAGED_END = '# effect-utils standalone cache posture: end'
 
+const field = ({ value, key }: { value: unknown; key: string }): unknown =>
+  typeof value === 'object' && value !== null && Array.isArray(value) === false && key in value
+    ? Reflect.get(value, key)
+    : undefined
+const count = (value: unknown): number => {
+  if (typeof value !== 'number' || Number.isSafeInteger(value) === false || value < 0) {
+    throw new Error('Invalid cache evidence count')
+  }
+  return value
+}
+
+/** Strictly classified native transport failure retained beside the original invocation. */
+export type ReaderReapiUnavailableShadow = {
+  cause: {
+    capabilitiesUnavailable: boolean
+    connectRetry: boolean
+    clientInitialization: boolean
+    connectUnavailable: boolean
+    transportMessage: 'tls-handshake-eof' | 'transport-error' | 'none'
+  }
+  command: { subcommand: string; argumentCount: number }
+  nativeExitCode: number
+  durationMs: number
+  failedActionCount: number
+  wouldDisableRemoteCache: true
+}
 /** Match Buck's UUID parser and emit the native lowercase hyphenated trace-ID spelling. */
 export const canonicalCacheAdmissionInvocationId = (value: unknown): string => {
   if (typeof value !== 'string') throw new Error('Invalid cache admission invocation ID')
@@ -33,6 +59,116 @@ export const canonicalCacheAdmissionInvocationId = (value: unknown): string => {
     throw new Error('Invalid cache admission invocation ID')
   const hex = plain.replaceAll('-', '').toLowerCase()
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+/** Reject malformed or unclassified native failure evidence before recovery is considered. */
+export const decodeReaderReapiUnavailableShadow = (
+  value: unknown,
+): ReaderReapiUnavailableShadow => {
+  const cause = field({ value, key: 'cause' })
+  const command = field({ value, key: 'command' })
+  const subcommand = field({ value: command, key: 'subcommand' })
+  const transportMessage = field({ value: cause, key: 'transportMessage' })
+  const capabilitiesUnavailable = field({ value: cause, key: 'capabilitiesUnavailable' })
+  const connectRetry = field({ value: cause, key: 'connectRetry' })
+  const clientInitialization = field({ value: cause, key: 'clientInitialization' })
+  const connectUnavailable = field({ value: cause, key: 'connectUnavailable' })
+  if (
+    typeof subcommand !== 'string' ||
+    ['build', 'test', 'audit', 'cquery', 'uquery', 'aquery', 'targets'].includes(subcommand) ===
+      false ||
+    typeof capabilitiesUnavailable !== 'boolean' ||
+    typeof connectRetry !== 'boolean' ||
+    typeof clientInitialization !== 'boolean' ||
+    typeof connectUnavailable !== 'boolean' ||
+    (capabilitiesUnavailable === false &&
+      clientInitialization === false &&
+      connectUnavailable === false) ||
+    (transportMessage !== 'tls-handshake-eof' &&
+      transportMessage !== 'transport-error' &&
+      transportMessage !== 'none') ||
+    field({ value, key: 'wouldDisableRemoteCache' }) !== true
+  )
+    throw new Error('Invalid reader REAPI shadow classification')
+  const nativeExitCode = count(field({ value, key: 'nativeExitCode' }))
+  if (nativeExitCode === 0 || nativeExitCode > 255)
+    throw new Error('Invalid reader REAPI shadow exit code')
+  return {
+    cause: {
+      capabilitiesUnavailable,
+      connectRetry,
+      clientInitialization,
+      connectUnavailable,
+      transportMessage,
+    },
+    command: { subcommand, argumentCount: count(field({ value: command, key: 'argumentCount' })) },
+    nativeExitCode,
+    durationMs: count(field({ value, key: 'durationMs' })),
+    failedActionCount: count(field({ value, key: 'failedActionCount' })),
+    wouldDisableRemoteCache: true,
+  }
+}
+
+/** A command recovery relationship, never proof that the failed trace was complete. */
+export type CacheLocalFallback = {
+  schemaVersion: 1
+  originalBuildId: string
+  localBuildId: string
+  reason: 'capabilities' | 'connect' | 'init'
+  classification: ReaderReapiUnavailableShadow
+  originalExitCode: number
+  localExitCode: number
+  localSignalCode: string | null
+  localOnly: true
+  startedAt: number
+  finishedAt: number
+}
+
+/** Decode the distinct failed-original and bounded-LOCAL invocation relationship. */
+export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => {
+  const originalBuildId = canonicalCacheAdmissionInvocationId(
+    field({ value, key: 'originalBuildId' }),
+  )
+  const localBuildId = canonicalCacheAdmissionInvocationId(field({ value, key: 'localBuildId' }))
+  const classification = decodeReaderReapiUnavailableShadow(field({ value, key: 'classification' }))
+  const reason = field({ value, key: 'reason' })
+  const originalExitCode = count(field({ value, key: 'originalExitCode' }))
+  const localExitCode = count(field({ value, key: 'localExitCode' }))
+  const localSignalCode = field({ value, key: 'localSignalCode' })
+  const startedAt = count(field({ value, key: 'startedAt' }))
+  const finishedAt = count(field({ value, key: 'finishedAt' }))
+  const expectedReason =
+    classification.cause.capabilitiesUnavailable === true
+      ? 'capabilities'
+      : classification.cause.clientInitialization === true
+        ? 'init'
+        : 'connect'
+  if (
+    field({ value, key: 'schemaVersion' }) !== 1 ||
+    field({ value, key: 'localOnly' }) !== true ||
+    originalBuildId === localBuildId ||
+    originalExitCode !== classification.nativeExitCode ||
+    localExitCode > 255 ||
+    (classification.command.subcommand !== 'build' &&
+      classification.command.subcommand !== 'test') ||
+    reason !== expectedReason ||
+    (localSignalCode !== null &&
+      (typeof localSignalCode !== 'string' || /^SIG[A-Z0-9]+$/u.test(localSignalCode) === false)) ||
+    finishedAt < startedAt
+  )
+    throw new Error('Invalid cache LOCAL fallback relationship')
+  return {
+    schemaVersion: 1,
+    originalBuildId,
+    localBuildId,
+    reason,
+    classification,
+    originalExitCode,
+    localExitCode,
+    localSignalCode,
+    localOnly: true,
+    startedAt,
+    finishedAt,
+  }
 }
 
 /** Resolve the same root/include config sources for admission and FILE reconciliation. */
@@ -81,10 +217,16 @@ const PUBLIC_READ_CACHE_BLOCK = `${MANAGED_BEGIN}
 ${MANAGED_END}`
 
 /** Explicit escape hatch for cache outages, including public CI. */
+// Empty FILE header values are invalid to native Buck; CLI deletion does not
+// reach daemon static RE metadata. Replace inherited authentication with a valid
+// fixed non-credential header (see REUSE-R04's pinned-native parser constraints).
 const NO_REMOTE_CACHE_BLOCK = `${MANAGED_BEGIN}
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
+  default_allow_cache_upload = false
+[buck2_re_client]
+  http_headers = x-buck2-local-only: 1
 ${MANAGED_END}`
 
 /**
@@ -231,9 +373,9 @@ const readerForwarderCacheBlock = ({
   )
     return DEFAULT_CACHE_BLOCK
   const addresses: string[] = []
-  for (const field of ['action_cache_address', 'cas_address', 'engine_address']) {
-    const target = routes.get(base[`buck2_re_client.${field}`] ?? '')
-    if (target !== undefined) addresses.push(`  ${field} = ${target}`)
+  for (const addressField of ['action_cache_address', 'cas_address', 'engine_address']) {
+    const target = routes.get(base[`buck2_re_client.${addressField}`] ?? '')
+    if (target !== undefined) addresses.push(`  ${addressField} = ${target}`)
   }
   if (addresses.length === 0) return DEFAULT_CACHE_BLOCK
   return `${MANAGED_BEGIN}

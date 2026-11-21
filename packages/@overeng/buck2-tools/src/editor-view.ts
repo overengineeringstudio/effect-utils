@@ -1710,6 +1710,8 @@ const hardenSnapshot = (snapshotDir: string): void => {
     chmodSync(directory, mode & ~0o222)
   }
   chmodSync(join(snapshotDir, 'editor-view.json'), 0o444)
+  const sourceManifest = join(snapshotDir, editorViewSourceManifestName)
+  if (pathExists(sourceManifest) === true) chmodSync(sourceManifest, 0o444)
   visit(snapshotDir)
 }
 /**
@@ -3676,12 +3678,19 @@ const publishEditorViewCoordinated = async ({
         (materializedRoots?.reusedFiles.size ?? 0) - (payloadTimings.filesDirectLinked ?? 0)
       payloadTimings.filesProcessed =
         sharing.linkedFiles + sharing.copiedFiles - payloadTimings.filesReused
-      if (materializedRoots !== undefined)
-        writeFileSync(
-          join(candidate, editorViewSourceManifestName),
-          `${JSON.stringify(Object.fromEntries(materializedRoots.manifest))}\n`,
-          { flag: 'wx', mode: 0o444 },
-        )
+      if (materializedRoots !== undefined) {
+        const manifestFd = openSync(join(candidate, editorViewSourceManifestName), 'wx', 0o444)
+        try {
+          writeFileSync(
+            manifestFd,
+            `${JSON.stringify(Object.fromEntries(materializedRoots.manifest))}\n`,
+          )
+          // Creation modes are filtered by umask; the private manifest has an exact mode contract.
+          fchmodSync(manifestFd, 0o444)
+        } finally {
+          closeSync(manifestFd)
+        }
+      }
       if (sharing.copiedFiles > 0)
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
       const durationMs = performance.now() - payloadStartedAt

@@ -124,6 +124,18 @@ case "$check_cargo_home" in
 esac
 [ ! -e "$check_cargo_home" ] || fail "check leaked its temporary Cargo home"
 
+# The authoritative manifest and lock may live at the repository root.
+root_fixture="$TEMP_ROOT/root-repository"
+mkdir -p "$root_fixture/buck2/dependencies"
+printf '[workspace]\nresolver = "2"\nmembers = []\n' >"$root_fixture/Cargo.toml"
+printf 'authoritative root lock bytes\n' >"$root_fixture/Cargo.lock"
+printf 'vendor = false\ncargo_env = true\nthird_party_dir = "buck2/dependencies"\n' >"$root_fixture/reindeer.toml"
+cp "$root_fixture/Cargo.lock" "$TEMP_ROOT/root-original-lock"
+"$GATE" generate "$root_fixture" "." "buck2/dependencies/BUCK" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+cmp -s "$TEMP_ROOT/root-original-lock" "$root_fixture/Cargo.lock" || fail "root generate changed Cargo.lock"
+"$GATE" check "$root_fixture" "." "buck2/dependencies/BUCK" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+cmp -s "$TEMP_ROOT/root-original-lock" "$root_fixture/Cargo.lock" || fail "root check changed Cargo.lock"
+
 # Reject checkout-local TMPDIR (including symlinks) before creating anything.
 ln -s "$FIXTURE" "$TEMP_ROOT/checkout-tmp"
 : >"$FAKE_REINDEER_CALL_LOG"
@@ -206,6 +218,29 @@ invalid_prefix_result="$(
   "
 )"
 [ "$invalid_prefix_result" = false ] || fail "task module accepted an unsafe task prefix"
+
+workspace_paths_result="$(
+  nix-instantiate --eval --strict --expr "
+    let
+      accepts = workspaceRoot:
+        (builtins.tryEval ((import $TASK_MODULE { inherit workspaceRoot; }) {
+          lib = {
+            splitString = separator: value:
+              builtins.filter builtins.isString (builtins.split separator value);
+            hasPrefix = prefix: value:
+              builtins.substring 0 (builtins.stringLength prefix) value == prefix;
+            hasInfix = _: _: false;
+            assertMsg = condition: message: if condition then true else throw message;
+          };
+          pkgs = {};
+        })).success;
+    in accepts \".\" && accepts \"rust\"
+      && builtins.all (value: !(accepts value)) [
+        \"\" \"..\" \"../outside\" \"a/../b\" \"/workspace\" \"./a\" \"a/.\"
+      ]
+  "
+)"
+[ "$workspace_paths_result" = true ] || fail "task module workspace root validation regressed"
 
 mkdir -p "$FIXTURE/decoy"
 printf 'vendor = false\ncargo_env = true\nthird_party_dir = "../../decoy"\n' >"$WORKSPACE/reindeer.toml"

@@ -501,9 +501,18 @@ devenv tasks run buck2:editor:publish:all
 ```
 
 Authority and default scoped-publication invocations retain a **300-second execution
-deadline**. Source bootstrap reserves **300 seconds for startup plus 300 seconds per
-requested package**, so cold build/authority work and first-view publication fit the
-same invocation. Aggregate batch policies are unchanged. Execution deadlines begin
+deadline**. Standalone-staging publication explicitly reserves **600 seconds**:
+300 seconds for preparation plus a 300-second payload allowance. A cold
+run spent 202.793 seconds preparing its single Genie view before the payload
+started; its successful total duration is unknown because the old 300-second cap
+expired. This is a bounded allowance, not a measured completion guarantee. The
+`buck2:editor:publish:test:megarepo:unbounded` publisher likewise reserves
+**600 seconds**: a cold run spent 135.8 seconds reserving its megarepo view and
+entered materialization at 160.5 seconds elapsed, and its Buck build had already
+succeeded when the old 300-second cap killed the publication.
+Source bootstrap reserves **300 seconds for startup plus 300 seconds per requested
+package**. Aggregate batch policies and every other scoped default are unchanged.
+Execution deadlines begin
 after per-worktree publication-lock admission and cover Buck builds and filesystem
 work. A separate supervisor owns the publication session and always escalates to a
 group-wide kill after a 5-second grace, even if the authority already exited.
