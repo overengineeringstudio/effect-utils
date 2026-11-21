@@ -737,29 +737,32 @@ fi
   }
 
   // A missing executable cannot start native work; preserve its ordinary watchdog.
-  registerAdmissionTest('reports an allowlisted spawn errno without its message or path', async () => {
-    const root = fixture()
-    const native = join(root, 'secret-looking-missing-native')
-    let caught: unknown
-    try {
-      await admitCacheDaemonCommand({
-        native,
-        root,
-        args: ['--isolation-dir', 'owned', 'build', '//:app'],
-        env: { BUCK2_CI_POSTURE: '1' },
-        admit: async () => [],
-      })
-    } catch (error) {
-      caught = error
-    }
-    expect(caught).toBeInstanceOf(Error)
-    if (!(caught instanceof Error)) throw new Error('expected admission failure')
-    expect(caught.message).toMatch(
-      /^Buck2 cache posture: native daemon admission command failed \(subcommand=status exit=none signal=none timed_out=false spawn_error=ENOENT elapsed_ms=\d+ deadline_ms=30000\)$/u,
-    )
-    expect(caught.message).not.toContain(native)
-    expect(caught.cause).toBeUndefined()
-  })
+  registerAdmissionTest(
+    'reports an allowlisted spawn errno without its message or path',
+    async () => {
+      const root = fixture()
+      const native = join(root, 'secret-looking-missing-native')
+      let caught: unknown
+      try {
+        await admitCacheDaemonCommand({
+          native,
+          root,
+          args: ['--isolation-dir', 'owned', 'build', '//:app'],
+          env: { BUCK2_CI_POSTURE: '1' },
+          admit: async () => [],
+        })
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(Error)
+      if (!(caught instanceof Error)) throw new Error('expected admission failure')
+      expect(caught.message).toMatch(
+        /^Buck2 cache posture: native daemon admission command failed \(subcommand=status exit=none signal=none timed_out=false spawn_error=ENOENT elapsed_ms=\d+ deadline_ms=30000\)$/u,
+      )
+      expect(caught.message).not.toContain(native)
+      expect(caught.cause).toBeUndefined()
+    },
+  )
 
   it('surfaces only the safe failure message on launcher stderr', async () => {
     const root = fixture()
