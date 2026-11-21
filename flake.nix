@@ -320,8 +320,10 @@ rec {
             # A root-owned lifecycle file forces the packaged entrypoint to
             # resolve and run the real pinned Buck2 client, without a daemon.
             state="$HOME/.buck/buckd/''${root#/}"
-            mkdir -p "$state/runtime-test"
-            touch "$state/runtime-test/buckd.lifecycle"
+            ${pkgs.lib.optionalString (builtins.hasAttr system (import ./nix/buck2-release.nix).platforms) ''
+              mkdir -p "$state/runtime-test"
+              touch "$state/runtime-test/buckd.lifecycle"
+            ''}
             env -i HOME="$HOME" PATH=/nonexistent \
               ${self.packages.${system}.worktree-teardown}/bin/worktree-teardown "$root"
             test ! -e "$state"
