@@ -143,40 +143,40 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%g:%a' /run/worktree-holder-evidence) = 0:0:755")
     machine.succeed("test $(stat -c '%U:%G:%a' /run/worktree-holder-evidence/evidence.sock) = root:users:660")
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
-    churn = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_departed_thread_churn_preserves_survivor_fd --ignored --nocapture")
-    print(churn)
-    assert "1 passed; 0 failed" in churn, "the actual departed-thread churn and surviving-FD fixture must execute"
-    stats = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_bpf_stats_lease_is_nonpath --ignored --nocapture")
-    print(stats)
-    assert "1 passed; 0 failed" in stats, "the actual BPF_ENABLE_STATS lease fixture must execute"
-    btf = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_loaded_btf_is_nonpath --ignored --nocapture")
-    print(btf)
-    assert "1 passed; 0 failed" in btf, "the actual BTF_LOAD metadata fixture must execute"
-    nonpath = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_nonpath_eventfd_and_registered_io_uring_veto --ignored --nocapture")
-    print(nonpath)
-    assert "1 passed; 0 failed" in nonpath, "the real eventfd and registered-file io_uring fixture must execute"
-    aliases = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact linux::alias_tests::actual_worker_shared_unshared_and_reopened_descriptions --ignored --nocapture")
-    print(aliases)
-    assert "1 passed; 0 failed" in aliases, "the real kernel alias fixture must execute"
-    for native_case in [
-        "common_hardlinks_match_only_actual_held_worktree_path",
-        "root_replacement_deadline_and_symlink_confinement_fail_closed",
-        "store_positive_precedes_unlinked_native_mapping_failure",
-        "terminal_devices_do_not_pin_candidate_paths",
-        "actual_internal_memfd_recloses_with_frozen_retained_views",
-        "linked_candidate_and_unlinked_same_filesystem_never_use_shmem_exclusion",
-        "bind_alias_and_detached_mount_fixture",
-    ]:
-        native = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::" + native_case + " --ignored --nocapture")
-        print(native)
-        assert "1 passed; 0 failed" in native, "the actual full-root native fixture must execute: " + native_case
-    memfd_bind = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::internal_memfd_bind_inside_candidate_vetoes_and_invalidates_old_scope --ignored --nocapture")
-    print(memfd_bind)
-    assert "1 passed; 0 failed" in memfd_bind, "actual internal-memfd file-bind and stale scope invalidation must execute"
-    jailed_namespace = machine.succeed("HOLDER_NAMESPACE_BUSYBOX=${pkgs.pkgsStatic.busybox}/bin/busybox ${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::jailed_namespace_outside_candidate_bind_matches_oracle_without_admin --ignored --nocapture")
-    print(jailed_namespace)
-    assert "1 passed; 0 failed" in jailed_namespace, "actual jailed namespace outside-candidate bind must match the privileged reference oracle without SYS_ADMIN"
     try:
+        churn = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_departed_thread_churn_preserves_survivor_fd --ignored --nocapture")
+        print(churn)
+        assert "1 passed; 0 failed" in churn, "the actual departed-thread churn and surviving-FD fixture must execute"
+        stats = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_bpf_stats_lease_is_nonpath --ignored --nocapture")
+        print(stats)
+        assert "1 passed; 0 failed" in stats, "the actual BPF_ENABLE_STATS lease fixture must execute"
+        btf = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_loaded_btf_is_nonpath --ignored --nocapture")
+        print(btf)
+        assert "1 passed; 0 failed" in btf, "the actual BTF_LOAD metadata fixture must execute"
+        nonpath = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_nonpath_eventfd_and_registered_io_uring_veto --ignored --nocapture")
+        print(nonpath)
+        assert "1 passed; 0 failed" in nonpath, "the real eventfd and registered-file io_uring fixture must execute"
+        aliases = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact linux::alias_tests::actual_worker_shared_unshared_and_reopened_descriptions --ignored --nocapture")
+        print(aliases)
+        assert "1 passed; 0 failed" in aliases, "the real kernel alias fixture must execute"
+        for native_case in [
+            "common_hardlinks_match_only_actual_held_worktree_path",
+            "root_replacement_deadline_and_symlink_confinement_fail_closed",
+            "store_positive_precedes_unlinked_native_mapping_failure",
+            "terminal_devices_do_not_pin_candidate_paths",
+            "actual_internal_memfd_recloses_with_frozen_retained_views",
+            "linked_candidate_and_unlinked_same_filesystem_never_use_shmem_exclusion",
+            "bind_alias_and_detached_mount_fixture",
+        ]:
+            native = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::" + native_case + " --ignored --nocapture")
+            print(native)
+            assert "1 passed; 0 failed" in native, "the actual full-root native fixture must execute: " + native_case
+        memfd_bind = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::internal_memfd_bind_inside_candidate_vetoes_and_invalidates_old_scope --ignored --nocapture")
+        print(memfd_bind)
+        assert "1 passed; 0 failed" in memfd_bind, "actual internal-memfd file-bind and stale scope invalidation must execute"
+        jailed_namespace = machine.succeed("HOLDER_NAMESPACE_BUSYBOX=${pkgs.pkgsStatic.busybox}/bin/busybox ${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::jailed_namespace_outside_candidate_bind_matches_oracle_without_admin --ignored --nocapture")
+        print(jailed_namespace)
+        assert "1 passed; 0 failed" in jailed_namespace, "actual jailed namespace outside-candidate bind must match the privileged reference oracle without SYS_ADMIN"
         for mode in ["shared", "unshared", "different-fd", "detached-file", "detached-dir", "nested-unlinked"]:
             boundary = mode in ["detached-file", "detached-dir", "nested-unlinked"]
             root = "/var/lib/holder-fixture/" + mode
