@@ -1062,10 +1062,6 @@ executing assertions. Static parsing is opt-in: the runner passes an explicit
 negative flag otherwise, rather than relying on the pinned Vitest CLI's default.
 This includes cases registered by imported helpers such as rule-test generators.
 
-The owning test task declares `FINGERPRINT_LIFETIME_TEST_BIN` and `MKFIFO_BIN`.
-The shell-only fixture performs real FIFO readiness and TERM/exit for kernel lifetime
-testing, not Rust digest-algorithm simulation. `FINGERPRINT_BIN` remains the real native tool.
-
 ## Bun wall deadlines and failure classification
 
 Repository devenv Bun test tasks and Buck Bun lanes share `src/bun-test-runner.ts`.
