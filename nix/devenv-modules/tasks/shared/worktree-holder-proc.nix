@@ -13,6 +13,7 @@ let
 in
 pkgs.runCommand (if ownedVmClassDiagnostics then "worktree-holder-proc-owned-vm-diagnostics" else "worktree-holder-proc")
   {
+    passthru = { inherit ownedVmClassDiagnostics; };
     nativeBuildInputs = [
       pkgs.rustc
       pkgs.stdenv.cc

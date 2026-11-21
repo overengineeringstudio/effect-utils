@@ -302,6 +302,12 @@ The fixture records each real TID and waits for actual task-list disappearance
 under that same deadline before closure: pthread join's clear-child-TID wake
 precedes kernel task removal and is not itself a departure proof. Listed IDs
 are never discarded on timeout, and unrelated live newcomers remain vetoed.
+The explicit diagnostic proc variant also emits finite static resource-stage
+labels with only error kind and numeric errno at failing capture/recheck
+boundaries, returning the original Result unchanged. Normal builds compile
+that output out. A diagnostic VM must separately opt in and assert the
+`ownedVmClassDiagnostics` passthru on its actual proc-tests runner; enabling
+only the serving library does not instrument a separately imported test binary.
 
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
