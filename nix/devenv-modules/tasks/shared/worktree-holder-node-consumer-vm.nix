@@ -139,6 +139,9 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%g:%a' /run/worktree-holder-evidence) = 0:0:755")
     machine.succeed("test $(stat -c '%U:%G:%a' /run/worktree-holder-evidence/evidence.sock) = root:users:660")
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
+    churn = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_departed_thread_churn_preserves_survivor_fd --ignored --nocapture")
+    print(churn)
+    assert "1 passed; 0 failed" in churn, "the actual departed-thread churn and surviving-FD fixture must execute"
     stats = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_bpf_stats_lease_is_nonpath --ignored --nocapture")
     print(stats)
     assert "1 passed; 0 failed" in stats, "the actual BPF_ENABLE_STATS lease fixture must execute"
