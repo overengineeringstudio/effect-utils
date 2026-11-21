@@ -161,6 +161,9 @@ pkgs.testers.nixosTest {
     memfd_bind = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::internal_memfd_bind_inside_candidate_vetoes_and_invalidates_old_scope --ignored --nocapture")
     print(memfd_bind)
     assert "1 passed; 0 failed" in memfd_bind, "actual internal-memfd file-bind and stale scope invalidation must execute"
+    jailed_namespace = machine.succeed("HOLDER_NAMESPACE_BUSYBOX=${pkgs.pkgsStatic.busybox}/bin/busybox ${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::jailed_namespace_outside_candidate_bind_matches_oracle_without_admin --ignored --nocapture")
+    print(jailed_namespace)
+    assert "1 passed; 0 failed" in jailed_namespace, "actual jailed namespace outside-candidate bind must match the privileged reference oracle without SYS_ADMIN"
     try:
         for mode in ["shared", "unshared", "different-fd", "detached-file", "detached-dir", "nested-unlinked"]:
             boundary = mode in ["detached-file", "detached-dir", "nested-unlinked"]
