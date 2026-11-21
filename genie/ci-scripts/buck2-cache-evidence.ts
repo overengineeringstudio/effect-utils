@@ -13,7 +13,8 @@ import { createHash } from 'node:crypto'
  * from a previous summary. Missing sidecars produce explicit zeros on new evidence.
  * Finalization confirms native --write-build-id outputs from the separate path
  * registry before detecting rotation; admission rows never prove native launch.
- * A written incomplete finalization exits 2; operational failures exit 1.
+ * Incomplete finalization exits 2 except a separately confirmed LOCAL command
+ * recovery; its original action evidence remains incomplete. Operational errors exit 1.
  *
  * Outcomes use data.proto's numeric enums, not command cache_hit booleans.
  * Digests are the exact native RE ActionCache `hash:size`, NOT output tiny_digest.
@@ -29,6 +30,8 @@ import { gzipSync, gunzipSync } from 'node:zlib'
 
 import {
   canonicalCacheAdmissionInvocationId,
+  decodeReaderReapiUnavailableShadow,
+  type ReaderReapiUnavailableShadow,
   decodeReapiAdmissionAttempts,
   type ReapiAdmissionAttempt,
   decodeReapiAdmissionFailure,
@@ -75,20 +78,6 @@ export const cacheEvidenceOutcomes = [
 ] as const
 export type CacheOutcome = (typeof cacheEvidenceOutcomes)[number]
 export type OutcomeCounts = Record<CacheOutcome, number>
-export type ReaderReapiUnavailableShadow = {
-  cause: {
-    capabilitiesUnavailable: boolean
-    connectRetry: boolean
-    clientInitialization: boolean
-    connectUnavailable: boolean
-    transportMessage: 'tls-handshake-eof' | 'transport-error' | 'none'
-  }
-  command: { subcommand: string; argumentCount: number }
-  nativeExitCode: number
-  durationMs: number
-  failedActionCount: number
-  wouldDisableRemoteCache: true
-}
 export type CacheAdmissionInvocation = {
   invocationId: string
   admissionFallbacks: { reapi: number; archiveOrigin: number }
@@ -214,52 +203,6 @@ const decodeAdmissionCounters = (
   reapi: count(field({ value, key: 'reapi' })),
   archiveOrigin: count(field({ value, key: 'archiveOrigin' })),
 })
-export const decodeReaderReapiUnavailableShadow = (
-  value: unknown,
-): ReaderReapiUnavailableShadow => {
-  const cause = field({ value, key: 'cause' })
-  const command = field({ value, key: 'command' })
-  const subcommand = field({ value: command, key: 'subcommand' })
-  const transportMessage = field({ value: cause, key: 'transportMessage' })
-  const capabilitiesUnavailable = field({ value: cause, key: 'capabilitiesUnavailable' })
-  const connectRetry = field({ value: cause, key: 'connectRetry' })
-  const clientInitialization = field({ value: cause, key: 'clientInitialization' })
-  const connectUnavailable = field({ value: cause, key: 'connectUnavailable' })
-  if (
-    typeof subcommand !== 'string' ||
-    ['build', 'test', 'audit', 'cquery', 'uquery', 'aquery', 'targets'].includes(subcommand) ===
-      false ||
-    typeof capabilitiesUnavailable !== 'boolean' ||
-    typeof connectRetry !== 'boolean' ||
-    typeof clientInitialization !== 'boolean' ||
-    typeof connectUnavailable !== 'boolean' ||
-    (capabilitiesUnavailable === false &&
-      clientInitialization === false &&
-      connectUnavailable === false) ||
-    (transportMessage !== 'tls-handshake-eof' &&
-      transportMessage !== 'transport-error' &&
-      transportMessage !== 'none') ||
-    field({ value, key: 'wouldDisableRemoteCache' }) !== true
-  )
-    throw new Error('Invalid reader REAPI shadow classification')
-  const nativeExitCode = count(field({ value, key: 'nativeExitCode' }))
-  if (nativeExitCode === 0 || nativeExitCode > 255)
-    throw new Error('Invalid reader REAPI shadow exit code')
-  return {
-    cause: {
-      capabilitiesUnavailable,
-      connectRetry,
-      clientInitialization,
-      connectUnavailable,
-      transportMessage,
-    },
-    command: { subcommand, argumentCount: count(field({ value: command, key: 'argumentCount' })) },
-    nativeExitCode,
-    durationMs: count(field({ value, key: 'durationMs' })),
-    failedActionCount: count(field({ value, key: 'failedActionCount' })),
-    wouldDisableRemoteCache: true,
-  }
-}
 export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionInvocation => {
   const invocationId = canonicalCacheAdmissionInvocationId(field({ value, key: 'invocationId' }))
   const admissionFallbacks = decodeAdmissionCounters(field({ value, key: 'admissionFallbacks' }))
@@ -603,7 +546,7 @@ const retainRepresentative = ({
 }
 
 /** Pinned log-show serializes protobuf timestamps as [seconds, nanoseconds]. */
-const eventTime = (event: unknown): number | null => {
+const eventTimeNs = (event: unknown): bigint | null => {
   const value = field({ value: event, key: 'timestamp' })
   if (Array.isArray(value) === false || value.length !== 2) return null
   const [seconds, nanos] = value
@@ -617,8 +560,13 @@ const eventTime = (event: unknown): number | null => {
     nanos >= 1e9
   )
     return null
-  const result = seconds * 1000 + Math.floor(nanos / 1e6)
-  return Number.isSafeInteger(result) === true ? result : null
+  return BigInt(seconds) * 1_000_000_000n + BigInt(nanos)
+}
+const eventTime = (event: unknown): number | null => {
+  const nanos = eventTimeNs(event)
+  if (nanos === null) return null
+  const millis = Number(nanos / 1_000_000n)
+  return Number.isSafeInteger(millis) === true ? millis : null
 }
 const safeIdentity = ({
   value,
@@ -669,7 +617,11 @@ export const createCacheEvidenceProjector = ({
   finish: () => CacheEvidence
 } => {
   let buildId: string | undefined
-  const starts = new Map<string, { identity: Identity; startedAt: number | null }>()
+  let host: string | null = null
+  const starts = new Map<
+    string,
+    { identity: Identity; startedAt: number | null; startedAtNs: bigint | null }
+  >()
   const ended = new Set<string>()
   const parents = new Map<string, string>()
   const uploadErrorsByAction = new Map<string, CacheUploadError[]>()
@@ -702,6 +654,14 @@ export const createCacheEvidenceProjector = ({
     const data = field({ value: event, key: 'data' })
     const time = eventTime(event)
     const startData = field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' })
+    const commandStart = field({ value: startData, key: 'Command' })
+    if (commandStart !== undefined)
+      host = safeIdentity({
+        value: text(
+          field({ value: field({ value: commandStart, key: 'metadata' }), key: 'hostname' }),
+        ),
+        grammar: /^[a-zA-Z0-9_.-]+$/,
+      })
     const endData = field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' })
     if (startData !== undefined && spanKey !== undefined && parentKey !== undefined)
       parents.set(spanKey, parentKey)
@@ -737,7 +697,11 @@ export const createCacheEvidenceProjector = ({
       key: 'ActionExecution',
     })
     if (start !== undefined && spanKey !== undefined && ended.has(spanKey) === false)
-      starts.set(spanKey, { identity: identityFor(start), startedAt: time })
+      starts.set(spanKey, {
+        identity: identityFor(start),
+        startedAt: time,
+        startedAtNs: eventTimeNs(event),
+      })
     const end = field({
       value: field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' }),
       key: 'ActionExecution',
@@ -808,8 +772,45 @@ export const createCacheEvidenceProjector = ({
         : undefined
     const nativeName = field({ value: end, key: 'name' })
     const nativeIdentifier = field({ value: nativeName, key: 'identifier' })
+    const completedAtNs = eventTimeNs(event)
+    const durationNs =
+      fallback?.startedAtNs !== null &&
+      fallback?.startedAtNs !== undefined &&
+      completedAtNs !== null
+        ? Number(completedAtNs - fallback.startedAtNs)
+        : null
     const row: ActionRecord = {
       type: 'action',
+      ...(buildId !== undefined && spanKey !== undefined
+        ? {
+            occurrenceId: `occurrence-sha256-v1:${createHash('sha256')
+              .update(`${buildId}:${spanKey}`)
+              .digest('hex')}`,
+          }
+        : {}),
+      host,
+      executionOutcome:
+        field({ value: end, key: 'failed' }) === true
+          ? 'unknown'
+          : executionKind === 1 || executionKind === 8
+            ? 'local-exec'
+            : executionKind === 2 || executionKind === 11
+              ? 'remote-exec'
+              : executionKind === 3 ||
+                  executionKind === 7 ||
+                  executionKind === 9 ||
+                  executionKind === 10
+                ? 'cache-hit'
+                : 'unknown',
+      durationNs:
+        durationNs !== null && durationNs >= 0 && Number.isSafeInteger(durationNs) === true
+          ? durationNs
+          : null,
+      totalBytes:
+        typeof field({ value: end, key: 'output_size' }) === 'number' &&
+        Number.isSafeInteger(field({ value: end, key: 'output_size' })) === true
+          ? Number(field({ value: end, key: 'output_size' }))
+          : null,
       buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
       context: safeIdentity({ value: context, grammar: /^[a-zA-Z0-9_.:-]+$/ }),
       category: safeIdentity({ value: category, grammar: /^[a-zA-Z0-9_.-]+$/ }),
@@ -1383,8 +1384,14 @@ const run = async (): Promise<void> => {
     } else if ((previous?.actionCount ?? 0) > 0)
       full.header.evidenceGaps.push('prior-artifact-missing')
   }
+  let commandRecoveryComplete = false
   if (values.finalize === true && disabled === false) {
     const reconciled = await reconcileNativeShards({ output: values.output })
+    commandRecoveryComplete =
+      reconciled.index.commandRecoveryComplete &&
+      reconciled.index.localFallbacks.length > 0 &&
+      process.env['BUCK2_CACHE_TRUSTED_QUALIFICATION'] !== '1' &&
+      process.env['GITHUB_JOB'] !== 'trusted-buck2-remote-cache-proof'
     evidence = mergeCacheEvidence({ previous: evidence, next: reconciled.summary })
     let mergedBytes = full.actions.reduce(
       (size, row) => size + Buffer.byteLength(JSON.stringify(row)) + 1,
@@ -1707,8 +1714,20 @@ const run = async (): Promise<void> => {
     )
   }
   if (values.finalize === true && header.complete === false) {
-    console.error('Cache action evidence incomplete; observation is invalid.')
-    process.exitCode = 2
+    if (
+      commandRecoveryComplete === true &&
+      metadataComplete === true &&
+      header.evidenceGaps.every(
+        (gap) => gap === 'incomplete-native-invocation' || gap === 'native-shard-incomplete',
+      ) === true
+    ) {
+      console.error(
+        'Cache command recovered through confirmed LOCAL fallback; original action evidence remains incomplete/diagnostic and cannot qualify execute-once or trusted reuse proof.',
+      )
+    } else {
+      console.error('Cache action evidence incomplete; observation is invalid.')
+      process.exitCode = 2
+    }
   }
   const inconsistent = evidence.invocations.reduce(
     (total, invocation) =>

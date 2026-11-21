@@ -4,6 +4,11 @@ import { createReadStream } from 'node:fs'
 import { appendFile, mkdir, readdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import {
+  decodeCacheLocalFallback,
+  decodeReaderReapiUnavailableShadow,
+  type CacheLocalFallback,
+} from '../../scripts/buck2-cache-posture.ts'
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import type { ActionRecord, CacheReadPolicy } from './buck2-action-evidence.ts'
 import {
@@ -218,6 +223,31 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
     evidenceGaps.push('native-shard-job-size-limit')
   const expected = new Set<string>()
   const observed = new Set<string>()
+  const completions = new Map<string, { sourceComplete: boolean; classification: unknown }>()
+  const localFallbacks: CacheLocalFallback[] = []
+  try {
+    const file = Bun.file(`${output}.local-fallbacks.jsonl`)
+    if ((await file.exists()) === true) {
+      if (file.size > maxNativeInvocations * 8192) throw new Error('Fallback registry overflow')
+      const used = new Set<string>()
+      for (const line of (await file.text()).split('\n')) {
+        if (line === '') continue
+        const fallback = decodeCacheLocalFallback(JSON.parse(line))
+        if (
+          localFallbacks.length >= maxNativeInvocations ||
+          used.has(fallback.originalBuildId) === true ||
+          used.has(fallback.localBuildId) === true
+        )
+          throw new Error('Duplicate fallback relationship')
+        used.add(fallback.originalBuildId)
+        used.add(fallback.localBuildId)
+        localFallbacks.push(fallback)
+      }
+    }
+  } catch {
+    localFallbacks.length = 0
+    evidenceGaps.push('native-local-fallback-registry-incomplete')
+  }
   const commands: {
     buildId: string
     startedAt: number
@@ -276,6 +306,10 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
         if (end.sourceComplete === false) evidenceGaps.push('native-event-source-incomplete')
         command.finishedAt = end.finishedAt
         command.exitCode = end.exitCode
+        completions.set(row.buildId, {
+          sourceComplete: end.sourceComplete === true,
+          classification: end.reapiUnavailable,
+        })
       } catch {
         evidenceGaps.push('native-command-completion-missing')
       }
@@ -329,9 +363,11 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
     evidenceGaps.push('native-shard-count-limit')
     names = []
   }
+  let invalidShardObserved = false
   for (const name of names.toSorted()) {
     const buildId = name.slice(0, -5)
     if (name.endsWith('.json') === false || idPattern.test(buildId) === false) {
+      invalidShardObserved = true
       evidenceGaps.push('native-shard-unfinalized')
       continue
     }
@@ -345,6 +381,9 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
       // eslint-disable-next-line no-await-in-loop -- Serial decoding bounds peak memory to one shard.
       const body = await Bun.file(path).text()
       const value = JSON.parse(body)
+      const diagnostic =
+        value.complete === false &&
+        localFallbacks.some((fallback) => fallback.originalBuildId === buildId)
       if (value.schemaVersion === 1 && value.buildId === buildId && value.complete === false) {
         const partial = decodeActionArtifact(value.artifact)
         for (const gap of [
@@ -358,7 +397,7 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
       if (
         value.schemaVersion !== 1 ||
         value.buildId !== buildId ||
-        value.complete !== true ||
+        (value.complete !== true && diagnostic !== true) ||
         expected.has(buildId) === false ||
         observed.has(buildId) === false
       )
@@ -368,11 +407,14 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
       if (
         decoded.header.invocations.length !== 1 ||
         decoded.header.invocations[0]?.buildId !== buildId ||
-        decoded.header.invocations[0]?.complete !== true ||
+        decoded.header.invocations[0]?.complete !== (diagnostic !== true) ||
         next.invocations.length !== 1 ||
         next.invocations[0]?.buildId !== buildId ||
         next.actionCount !== decoded.actions.length ||
-        decoded.header.evidenceGaps.length > 0
+        (diagnostic === true
+          ? decoded.header.evidenceGaps.length !== 1 ||
+            decoded.header.evidenceGaps[0] !== 'incomplete-native-invocation'
+          : decoded.header.evidenceGaps.length > 0) === true
       )
         throw new Error('Invalid shard')
       const invocation = decoded.header.invocations[0]
@@ -415,9 +457,11 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
         sha256: createHash('sha256').update(body).digest('hex'),
         bytes: Buffer.byteLength(body),
         rows: decoded.actions.length,
-        complete: true,
+        complete: diagnostic !== true,
       })
+      if (diagnostic === true) evidenceGaps.push('native-shard-incomplete')
     } catch {
+      invalidShardObserved = true
       evidenceGaps.push('native-shard-incomplete')
     }
   }
@@ -427,6 +471,71 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
       evidenceGaps.push('native-shard-missing')
   }
   if (expected.size === 0) evidenceGaps.push('native-invocations-missing')
+  const confirmedFallbacks: CacheLocalFallback[] = []
+  for (const fallback of localFallbacks) {
+    const original = commands.find((command) => command.buildId === fallback.originalBuildId)
+    const local = commands.find((command) => command.buildId === fallback.localBuildId)
+    const originalShard = shards.find((shard) => shard.buildId === fallback.originalBuildId)
+    const localShard = shards.find((shard) => shard.buildId === fallback.localBuildId)
+    const originalInvocation = artifact.header.invocations.find(
+      (invocation) => invocation.buildId === fallback.originalBuildId,
+    )
+    const localInvocation = artifact.header.invocations.find(
+      (invocation) => invocation.buildId === fallback.localBuildId,
+    )
+    try {
+      const classification = decodeReaderReapiUnavailableShadow(
+        completions.get(fallback.originalBuildId)?.classification,
+      )
+      if (
+        original === undefined ||
+        local === undefined ||
+        originalShard === undefined ||
+        localShard?.complete !== true ||
+        original.finishedAt === null ||
+        local.finishedAt === null ||
+        original.exitCode !== fallback.originalExitCode ||
+        local.exitCode !== 0 ||
+        fallback.localExitCode !== 0 ||
+        fallback.localSignalCode !== null ||
+        completions.get(fallback.originalBuildId)?.sourceComplete !== true ||
+        completions.get(fallback.localBuildId)?.sourceComplete !== true ||
+        JSON.stringify(classification) !== JSON.stringify(fallback.classification) ||
+        originalInvocation?.rootId === undefined ||
+        originalInvocation.rootId !== localInvocation?.rootId ||
+        localInvocation.cacheReadPolicy !== 'disabled-by-design' ||
+        original.finishedAt > local.startedAt ||
+        fallback.startedAt < original.finishedAt ||
+        fallback.startedAt > local.startedAt ||
+        fallback.finishedAt < local.finishedAt ||
+        artifact.actions.some(
+          (action) =>
+            action.buildId === fallback.localBuildId &&
+            (action.executionKind === 2 ||
+              action.executionKind === 11 ||
+              action.cacheOutcome === 'remote-hit' ||
+              action.uploadOutcome !== 'not-uploaded'),
+        ) === true
+      )
+        throw new Error('Unconfirmed local fallback')
+      confirmedFallbacks.push(fallback)
+    } catch {
+      evidenceGaps.push('native-local-fallback-unconfirmed')
+    }
+  }
+  // Command recovery never changes the original action-proof completeness.
+  const commandRecoveryComplete =
+    invalidShardObserved === false &&
+    confirmedFallbacks.length > 0 &&
+    confirmedFallbacks.length === localFallbacks.length &&
+    evidenceGaps.every(
+      (gap) => gap === 'incomplete-native-invocation' || gap === 'native-shard-incomplete',
+    ) &&
+    shards.every(
+      (shard) =>
+        shard.complete === true ||
+        confirmedFallbacks.some((fallback) => fallback.originalBuildId === shard.buildId),
+    )
   const index = {
     schemaVersion: 1,
     complete: evidenceGaps.length === 0,
@@ -435,6 +544,8 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
     observedBuildIds: [...observed].toSorted(),
     commands: commands.toSorted((a, b) => a.buildId.localeCompare(b.buildId)),
     shards,
+    commandRecoveryComplete,
+    localFallbacks: confirmedFallbacks,
   }
   await atomic({ path: `${output}.shard-index.json`, bytes: `${JSON.stringify(index)}\n` })
   return { summary, artifact, index }

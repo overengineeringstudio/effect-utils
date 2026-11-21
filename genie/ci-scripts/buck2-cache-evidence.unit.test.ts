@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import type { ReaderReapiUnavailableShadow } from '../../scripts/buck2-cache-posture.ts'
 import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 import {
   classifyCacheUploadError,
@@ -22,7 +23,6 @@ import {
   finalizeNativeLogFreshness,
   maxCacheEvidenceActions,
   mergeCacheEvidence,
-  type ReaderReapiUnavailableShadow,
 } from './buck2-cache-evidence.ts'
 
 // Reduced native `buck2 log show` records from local-build.pb.zst, decoded by
@@ -77,6 +77,47 @@ const project = (values: unknown[], context?: string) => {
 }
 
 describe('native Buck cache evidence projection', () => {
+  it('retains stable native occurrence facts without inferring coalescing or failed success', () => {
+    const rows: ActionRecord[] = []
+    const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+    projector.add({
+      Event: {
+        trace_id: fixtureBuildId,
+        span_id: 1,
+        data: { SpanStart: { data: { Command: { metadata: { hostname: 'worker-a' } } } } },
+      },
+    })
+    for (const [id, execution_kind, failed] of [
+      [10, 1, false],
+      [11, 3, false],
+      [12, 2, true],
+    ]) {
+      projector.add({
+        Event: {
+          ...nativeEvent('SpanStart', fixtureIdentity, id).Event,
+          timestamp: [1700000001, 0],
+        },
+      })
+      const end = {
+        Event: {
+          ...nativeEvent('SpanEnd', actionEnd({ execution_kind, failed, output_size: 42 }), id)
+            .Event,
+          timestamp: [1700000002, 123],
+        },
+      }
+      projector.add(end)
+      projector.add(end)
+    }
+    expect(rows).toHaveLength(3)
+    expect(new Set(rows.map((row) => row.occurrenceId)).size).toBe(3)
+    expect(rows.map((row) => row.executionOutcome)).toEqual(['local-exec', 'cache-hit', 'unknown'])
+    for (const row of rows) {
+      expect(row.occurrenceId).toMatch(/^occurrence-sha256-v1:[a-f0-9]{64}$/)
+      expect(row.host).toBe('worker-a')
+      expect(row.durationNs).toBe(1_000_000_123)
+      expect(row.totalBytes).toBe(42)
+    }
+  })
   it('counts structured archive fallbacks by reason, deduplicates native logs and drops payloads', () => {
     const sha256 = 'a'.repeat(64)
     const reasons = ['not-found', 'headers-timeout', 'connection-error', 'server-error']

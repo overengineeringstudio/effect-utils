@@ -22,9 +22,10 @@ All client configuration, including the overlay below, must exist in
 do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
-In CI, the entrypoint admits each command against the running daemon's RE
-posture while holding one project-root lock from overlay selection
-through daemon initialization and recording:
+For declared CI posture, an explicit host reader-forwarder map, or removal of
+an existing managed reader route, the entrypoint admits each command against
+the running daemon's RE posture while holding one project-root lock from
+overlay selection through daemon initialization and recording:
 
 ```text
 no daemon -> start with current environment -> record identity + keyed posture
@@ -42,7 +43,7 @@ A crash-released root-wide flock is acquired before overlay reconciliation.
 Before changing the overlay, a mismatched live launcher or busy daemon in the
 same isolation fails closed. Legacy live reservations without isolation retain
 root-wide protection until exit. The launcher reservation is written before releasing that lock:
-The launcher stays alive while supervising cache-enabled readers; other commands
+The launcher stays alive while supervising eligible readers/optional writers; other commands
 use `execve`, preserving its PID and process birth identity until the native command
 exits. Both cover the gap before Buck reports an active command without inheriting
 a lock into buckd. Birth is Linux `/proc/<pid>/stat` field 22 or macOS `ps lstart`;
@@ -76,10 +77,13 @@ remains native `false`, and absent HTTP headers remain empty.
 
 Composed workflows explicitly declare `BUCK2_CI_POSTURE=1` through the standard
 CI environment and the posture helper for every cache posture, including `none`.
-Only this marker enables CI daemon admission and
-job probe pinning; ambient `CI=1` or `CI=true` retains local behavior. Admission
-fails closed before daemon access when `GITHUB_ACTIONS=true` lacks the marker
-and remote cache is configured, except for commands that skip admission.
+This marker enables CI daemon admission and is required for CI job probe
+pinning; ambient `CI=1` or `CI=true` alone retains local behavior. Explicit
+host reader-forwarder routing and managed-route removal also enable locked
+daemon admission, without declaring CI posture or enabling job probe pinning.
+Admission fails closed before daemon access when `GITHUB_ACTIONS=true` lacks
+the marker and remote cache is configured, except for commands that skip
+admission.
 
 REAPI admission precedes reservation comparison and overlay mutation while holding
 the startup lock. In CI with a GitHub job-instance identity, the first fresh
@@ -182,6 +186,36 @@ expands the variable at startup. Archive origins do not select the read path.
 The public read-only override takes precedence over either credential.
 No publisher credential is a fallback for a host writer.
 
+Default host readers may declare `BUCK2_REAPI_READ_FORWARDERS`, a JSON object
+mapping exact canonical private `grpc://host:port` origins to
+`grpc://127.0.0.1:port` endpoints of host-owned transparent TCP forwarders.
+Sources are tailnet DNS names (`*.ts.net`) or RFC1918/CGNAT IPv4 addresses;
+ports are decimal integers from 1 through 65535. Userinfo, paths, queries,
+fragments, non-loopback destinations and malformed maps fail before root
+mutation. The host endpoint registry remains the authority for origins and
+ports; the launcher does not infer a tier or enroll an unmatched endpoint.
+
+Only the existing default read-only posture (`allow_cache_uploads = false`,
+including effective pre-payload CLI policy, and TLS disabled for the
+already-plain private tier) applies exact matches to the resolved
+tracked/unmanaged-local addresses. Each unmatched address,
+including the public TLS default and explicit user addresses, remains intact.
+The same managed root FILE overlay supplies resolved addresses to both the
+admission probe and native daemon startup; instance names and TLS settings
+are unchanged. Mapped readers force both upload settings false and replace
+inherited headers with the valid non-auth header
+`x-buck2-reader: read-only` (not an empty FILE header). They never forward
+inherited authorization. CI, public-reader overrides, publishers, private
+writers, trusted qualification and offline posture do not apply reader maps.
+The resolved address participates in the existing probe fingerprint; the
+shell's complete exported-environment warm-launch identity already includes
+`BUCK2_REAPI_READ_FORWARDERS`. Explicit maps and removal of an existing managed
+reader route enter the existing root-locked, idle-only daemon posture
+transition before changing the overlay. A busy mismatched daemon refuses
+before mutation; stable posture reuses its recorded daemon. This does not
+declare CI posture, pin CI probes, or change Darwin daemon lifetime.
+Source fingerprints, watcher admission and payload handling are unchanged.
+
 Public CI declares every job's Buck cache posture in the Genie workflow source:
 
 | Posture  | `BUCK2_NO_REMOTE_CACHE` | `BUCK2_PUBLIC_CACHE_READ_ONLY` | Authority                                                |
@@ -204,40 +238,93 @@ root upload policy. Audited actions request the paired `cache_hermetic` executio
 platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
 config (local execution, remote reuse; `remote_enabled = False`).
 `BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
-Read-only endpoint admission failures fail open; either selected writer posture
-fails closed on REAPI unavailability. When the effective pre-probe posture is a
-reader (`allow_cache_uploads = false`), a failed-open REAPI probe classifies the
-existing admission row as `reader-reapi-unavailable-admission` before native
-launch, with one REAPI fallback and no shadow observation or legacy rerun.
-If an admitted reader command instead fails solely with an RE-client
-initialization/capabilities/connect unavailable diagnostic, the launcher records
-`reader-reapi-unavailable-shadow` evidence and warns that no rerun happened.
-The native failure and exit code stand; there is no second invocation, no
-cache-posture change, and no admission fallback increment.
-This native in-build shadow-only observation preserves BUILD.BUCK.REUSE-R04's
-strict outage posture.
-Unknown/mixed diagnostics, compilation/test failures, authentication/authorization failures,
-integrity errors, and writer postures produce no shadow event.
-Stdout remains inherited. Supervision applies only when stderr is not a TTY;
-terminal invocations and `run`, `install`, and `bxl` execute unchanged without
-shadow classification, preserving superconsole and interactive user-binary behavior. The shared
-subcommand scan skips global option values, so an isolation named `run` is not a
-run command. Captured
-stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
-termination forbids shadow evidence. The stderr tee advances short writes and waits on
-nonblocking backpressure. Launcher interruption cancels a stalled backpressure
-wait and disables shadow evidence; a normal native exit does not cancel forwarding.
-After normal exit, stderr drains completely before returning the child's result.
-A consumer that remains stalled without interruption blocks as native Buck would.
-A failed or interrupted output consumer still drains/discards remaining stderr
-and reaps the child's final result.
+Read-only endpoint admission failures fail open; required writers and trusted
+qualification fail closed. Explicit `BUCK2_CACHE_WRITE_OPTIONAL=1` gate writers
+may use the existing admission fallback. An effective reader's failed-open probe
+records `reader-reapi-unavailable-admission` before native launch with one
+admission fallback; this is distinct from native command recovery.
+
+```text
+admitted remote build/test -> native failure retained -> strict RE classifier
+  eligible transient only -> offline daemon admission -> one LOCAL build/test
+  everything else         -> original native exit
+```
+
+After a successful admission, an effective reader or explicit optional writer
+may re-execute `build`/`test` once only when every captured diagnostic is an
+enumerated RE-client initialization/capabilities/connect unavailable failure.
+Native `test` build-failure footers are accepted only after matching classified
+action summaries and failed targets: the `N BUILDS FAILED` count must match those
+targets, every non-build count in `Tests finished` must be zero, its build-failure
+count must match, and the footer must end with `NO TESTS RAN`. Any executed,
+failed, skipped, incomplete or unknown test diagnostic remains fatal.
+The replay uses the original expanded command, removes `--reuse-current-config`,
+and adds `--local-only --no-remote-cache`. Existing explicit build-ID/event-log
+sinks receive a `.local-<UUID>` suffix so the original evidence is not overwritten.
+The offline root overlay disables reads/uploads/default uploads and replaces the
+entire inherited RE header list with fixed non-authentication,
+non-credential `x-buck2-local-only: 1`; writer credential variables are removed
+before daemon startup. Empty file values are not deletion: the pinned native
+[file parser](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/legacy_configs/parser.rs#L368-L376)
+preserves them and its
+[header parser](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_re_configuration/src/lib.rs#L494-L511)
+rejects the resulting empty header. Although an
+[empty CLI value deletes a key](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/legacy_configs/args.rs#L74-L77),
+[daemon startup reads root configuration without CLI overrides](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_server/src/daemon/state.rs#L369-L377).
+Therefore CLI deletion cannot remove inherited authentication from daemon RE
+metadata; the valid non-credential file replacement is mandatory.
+The existing root lock, posture fingerprint, idle-only restart and per-invocation
+policy file prevent reuse of a credential-bearing remote daemon. Concurrent,
+busy or unrecognized ownership refuses recovery instead of killing or reusing it.
+No per-invocation isolation directory is created.
+
+The local native command has a 600-second deadline (the existing bounded writer
+build budget), TERM forwarding and a five-second KILL grace; it cannot call the
+recovery policy recursively. Its actual exit/signal is returned, including local
+failure. Stderr names the classification, original UUID/exit and local UUID/result;
+the original native completion and shard are never relabeled successful.
+`BUCK2_CACHE_TRUSTED_QUALIFICATION=1` and the trusted proof job identity prohibit
+replay even with `BUCK2_CACHE_WRITE_OPTIONAL=1`; the proof script explicitly sets
+qualification and removes inherited optional-writer policy.
+
+Stdout remains inherited. Supervision requires redirected stderr; TTY invocations,
+`run`, `install`, `bxl`, queries/audits and explicit `--remote-only` commands retain
+the original native path. This is deliberately a build/test recovery policy, not
+a universal interactive retry. Unknown/mixed diagnostics, ordinary compilation/
+test failures, authentication/authorization, integrity, signals, capture overflow
+or interrupted/failed stderr forwarding never authorize a replay. Capture remains
+bounded to 256 KiB before decoding. Short writes and nonblocking backpressure
+preserve the native stderr stream; interruption disables capture while draining
+and reaping the child. A normal exit does not cancel forwarding.
+
+The repository-local `${CI_BUCK2_CACHE_EVIDENCE_PATH}.local-fallbacks.jsonl`
+contract is `CacheLocalFallback`, defined and decoded by `decodeCacheLocalFallback`
+in the already shipped `scripts/buck2-cache-posture.ts` module:
+schema version 1, distinct canonical original/local UUIDs, fixed reason, closed
+classification, actual exits/signal, `localOnly: true`, and ordered timestamps.
+The original completion independently stores the same `reapiUnavailable`
+classification. The shard reconciler confirms both registry entries/native IDs,
+complete event sources, chronological same-root linkage and a complete successful
+local shard with disabled reads and no observed remote execution/hit/upload.
+Duplicate, missing, corrupt or unconfirmed relationships fail collection.
+
+`commandRecoveryComplete` is separate from action `complete`. A confirmed pair
+may satisfy the CI collector's command-recovery exit only when all remaining
+gaps are the paired original's incomplete-native diagnostic; metadata, overflow,
+missing traces and other unknown gaps still fail.
+A retained command terminal may coexist with unclosed actions; a missing native
+`CommandEnd` still leaves an unknown time-window integrity failure.
+Original incomplete shards, action rows and gaps remain retained with
+`complete: false`, so execute-once and
+trusted reuse consumers cannot mistake recovery for complete physical proof.
+Trusted qualification never accepts command recovery.
 
 The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
 timestamps, accepts only enumerated progress/statistics lines, and validates every
 `Action failed:` block as `remote_action_cache` RE-client initialization followed
 by an unavailable capabilities error. Digest identifiers are metadata permitted
 only inside a validated block; digest mismatches remain integrity failures.
-Non-empty action stdout/stderr rejects shadow classification. `BUILD ERRORS (N)` must match the
+Non-empty action stdout/stderr rejects recovery classification. `BUILD ERRORS (N)` must match the
 summary block count; repeated live failure blocks must match the summary's action
 set. The verbatim public CI fixture exercises both live and repeated summary
 diagnostics through the launcher's captured native stderr.
@@ -597,6 +684,27 @@ exemption is asserted regardless of the runner's own priority.
 The exemption never reaches a shared default service. Source authority:
 [`WatchmanConfig.cpp` global loading](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/WatchmanConfig.cpp#L27-L68)
 and [`main.cpp` priority refusal](https://github.com/facebook/watchman/blob/v2026.07.27.00/watchman/main.cpp#L87-L107).
+
+Root lifecycle owners prepare a new or reused checkout outside the check's
+critical path with `WATCHMAN_SOCK=<persistent-user-socket> buck2
+--initialize-watchman-root <crawl-budget-ms>`. This registers the exact root
+and waits for its initial crawl; an already watched root reuses the service's
+watch. The caller sets the crawl budget from measured root initialization
+under its admission/load conditions, with headroom. Start/end
+`buck2.watchman.crawl` events include the root, budget, outcome and elapsed
+milliseconds; initialization failures have reason `crawl`, retaining the
+underlying admission error as their cause. All initialization attempts share
+one total deadline. No managed service is spawned by this command: the
+explicit socket selects an existing persistent service and is also exported
+to subsequent checks. Ordinary admission retains its short deadline and
+exact-root validation; neither phase admits `notify`.
+For admission queues that can outlive Watchman's idle-watch retention, the
+owner additionally exports `BUCK2_WATCHMAN_CRAWL_BUDGET_MS=<crawl-budget-ms>`.
+A cache-miss admission then completes the separately logged, bounded root
+registration before its unchanged short liveness probe. Positive cached
+admission still avoids both calls. This opt-in does not alter other consumers'
+deadlines, service priority, root identity or watcher provider.
+
 Each Watchman attempt uses the caller's flat probe deadline (2500 ms by
 default), replacing the former 900 ms cap. Only a timeout gets one retry; total
 Watchman probing is bounded to two caller deadlines (5000 ms by default). REAPI
