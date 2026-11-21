@@ -263,6 +263,8 @@ Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant no
 Cancellation wakes queued acquisition, but active subordinate work must join before release.
 `tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
 This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
+Successful acquisition records bounded advisory PID, command and system-monotonic start
+metadata for diagnostics. Contents never grant authority; validation does not rewrite them.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
