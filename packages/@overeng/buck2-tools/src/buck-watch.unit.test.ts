@@ -23,7 +23,7 @@ import {
   buildTargetsFor,
   CommandFailure,
   exitCodeOf,
-  reconcileBuckViews,
+  reconcileBuckViews as reconcileBuckViewsUnscoped,
   runCommand,
   runBuckWatchLoop,
   type BuckReconcileTiming,
@@ -32,9 +32,25 @@ import {
   type WatchLoopStatus,
 } from './buck-watch.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
+import {
+  scopeEditorViewTestProcesses,
+  trackEditorViewTestSpawn,
+} from './editor-view-test-processes.ts'
+
+const fixtureProcessIds = new Set([process.pid])
+const reconcileBuckViews = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: reconcileBuckViewsUnscoped,
+})
 
 // Stable forwarding exports observe the named imports used by Bun's native modules.
-const nativeChildProcess = { ...ChildProcess }
+const nativeChildProcess = {
+  ...ChildProcess,
+  spawn: trackEditorViewTestSpawn({
+    processIds: fixtureProcessIds,
+    spawnProcess: ChildProcess.spawn,
+  }),
+}
 const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
@@ -259,16 +275,14 @@ const makePublicationFixture = () => {
     repoRoot: root,
     workspaceRoot: root,
     buck2: '/tools/buck2',
-    editorViewCommand: [process.execPath, join(import.meta.dir, 'editor-view.ts')] as const,
     workspaceAuthority,
     cp,
     mv,
     fingerprintTool,
     snapshotRetention: 3,
-    run: async (command: Parameters<typeof runCommand>[0]) =>
-      command.command === '/tools/buck2'
-        ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-        : runCommand(command),
+    run: async (_command: Parameters<typeof runCommand>[0]) => {
+      return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+    },
   }
   const record = () =>
     JSON.parse(readFileSync(join(current, 'editor-view.json'), 'utf8')) as {
@@ -283,6 +297,12 @@ const makePublicationFixture = () => {
     rmSync(root, { recursive: true, force: true })
   }
   return { root, manifest, nodeModules, packageTree, dependency, current, options, record, cleanup }
+}
+
+const publicationRequest = {
+  packagePaths: ['packages/app'],
+  changedPaths: ['packages/app/src/main.ts'],
+  buildTargets: ['//packages/app:editor_view_inputs', '//packages/app:typecheck'],
 }
 
 describe('Buck watch reconciliation', () => {
@@ -436,105 +456,84 @@ describe('Buck watch reconciliation', () => {
     expect(failed?.lastSuccessfulAt).toEqual(expect.any(String))
   })
 
-  it('passes every provider read root to publication and never publishes after a failed build', async () => {
-    const fixture = makePublicationFixture()
-    try {
+  it.each([false, true])(
+    'publishes every provider read root and never publishes after a failed build (batch=%s)',
+    async (batchPublication) => {
+      const fixture = makePublicationFixture()
       const shutdown = new AbortController()
-      const invocations: {
-        command: string
-        detached: boolean | undefined
-        args: readonly string[]
-        signal: AbortSignal | undefined
-      }[] = []
-      await reconcileBuckViews({
-        request: {
-          packagePaths: ['packages/app'],
-          changedPaths: ['packages/app/src/main.ts'],
-          buildTargets: ['//packages/app:editor_view_inputs', '//packages/app:typecheck'],
-        },
-        options: {
-          ...fixture.options,
-          signal: shutdown.signal,
-          run: async (invocation) => {
-            const { command, args, detached, signal } = invocation
-            invocations.push({ command, args, detached, signal })
-            return fixture.options.run(invocation)
-          },
-        },
-      })
-      const firstRecord = fixture.record()
-      expect(firstRecord.package).toBe('packages/app')
-      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toBe(
-        'export const workspace = "λ"\n',
-      )
-      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toBe(
-        'export const dependency = "雪"\n',
-      )
-      expect(invocations).toHaveLength(2)
-      expect(invocations[0]?.signal).toBe(shutdown.signal)
-      expect(invocations[0]?.detached).toBeUndefined()
-      expect(invocations[1]?.detached).toBeUndefined()
-      expect(invocations[1]?.signal).toBeUndefined()
-      expect(invocations[1]?.command).toBe(process.execPath)
-      expect(invocations[1]?.args[0]).toBe(join(import.meta.dir, 'editor-view.ts'))
-      expect(invocations[1]?.args).toContain('--backing-root')
-      expect(invocations[1]?.args).toEqual(
-        expect.arrayContaining([fixture.nodeModules, fixture.packageTree, fixture.dependency]),
-      )
-
-      const batchInvocations: {
-        command: string
-        args: readonly string[]
-        input: string | undefined
-        detached: boolean | undefined
-      }[] = []
-      await reconcileBuckViews({
-        request: {
-          packagePaths: ['packages/app'],
-          changedPaths: [],
-          buildTargets: ['//packages/app:editor_view_inputs'],
-        },
-        options: {
-          ...fixture.options,
-          batchPublication: true,
-          run: async (invocation) => {
-            const { command, args, input, detached } = invocation
-            batchInvocations.push({ command, args, input, detached })
-            return fixture.options.run(invocation)
-          },
-        },
-      })
-      expect(batchInvocations).toHaveLength(2)
-      expect(batchInvocations[1]?.args).toEqual([
-        join(import.meta.dir, 'editor-view.ts'),
-        'publish-batch',
-      ])
-      expect(batchInvocations[1]?.detached).toBeUndefined()
-      expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
-
-      const failedInvocations: string[] = []
-      await expect(
-        reconcileBuckViews({
-          request: {
-            packagePaths: ['packages/app'],
-            changedPaths: ['packages/app/src/main.ts'],
-            buildTargets: ['//packages/app:editor_view_inputs'],
-          },
+      const invocations: Parameters<typeof runCommand>[0][] = []
+      try {
+        await reconcileBuckViews({
+          request: publicationRequest,
           options: {
             ...fixture.options,
-            run: async ({ command }) => {
-              failedInvocations.push(command)
-              throw new Error('stale build')
+            batchPublication,
+            signal: shutdown.signal,
+            run: async (command) => {
+              invocations.push(command)
+              // Authority is process-local, never a numeric FD or argv/environment payload.
+              expect(command).not.toHaveProperty('editorPublicationOwnerFd')
+              expect(command.args.some((arg) => arg.includes('owner-fd'))).toBe(false)
+              return fixture.options.run(command)
             },
           },
-        }),
-      ).rejects.toThrow('stale build')
-      expect(failedInvocations).toEqual(['/tools/buck2'])
-      expect(fixture.record()).toEqual(firstRecord)
-    } finally {
-      fixture.cleanup()
-    }
-  })
+        })
+        // Publisher argv capture disappeared with the subprocess. Assert the real parsed
+        // identities and relocated provider bytes instead of pretending a tool path ran it.
+        expect(invocations).toHaveLength(1)
+        expect(invocations[0]?.command).toBe('/tools/buck2')
+        expect(invocations[0]?.args).toEqual([
+          'build',
+          ...publicationRequest.buildTargets,
+          '--show-full-output',
+          '--event-log',
+          expect.stringMatching(/editor-view-.*\.pb\.zst$/u),
+        ])
+        expect(invocations[0]?.signal).toBe(shutdown.signal)
+        expect(invocations[0]?.detached).toBeUndefined()
+        const first = fixture.record()
+        expect(first).toMatchObject({
+          package: 'packages/app',
+          cell: 'effect_utils',
+          target: '//packages/app:editor_inputs',
+        })
+        expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toBe(
+          'export const workspace = "λ"\n',
+        )
+        expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toBe(
+          'export const dependency = "雪"\n',
+        )
+        expect(existsSync(join(fixture.current, 'editor-view-sources-v1.json'))).toBe(true)
+        writeFileSync(join(fixture.dependency, 'index.js'), 'export const dependency = "changed"\n')
+        await reconcileBuckViews({
+          request: publicationRequest,
+          options: { ...fixture.options, batchPublication },
+        })
+        const second = fixture.record()
+        expect(second.normalizedStoreDigest).not.toBe(first.normalizedStoreDigest)
+        expect(second.snapshot).not.toBe(first.snapshot)
+
+        const failedInvocations: string[] = []
+        await expect(
+          reconcileBuckViews({
+            request: publicationRequest,
+            options: {
+              ...fixture.options,
+              batchPublication,
+              run: async ({ command }) => {
+                failedInvocations.push(command)
+                throw new Error('stale build')
+              },
+            },
+          }),
+        ).rejects.toThrow('stale build')
+        expect(failedInvocations).toEqual(['/tools/buck2'])
+        expect(fixture.record()).toEqual(second)
+      } finally {
+        fixture.cleanup()
+      }
+    },
+  )
 
   it.each([
     [false, 'budget'],
@@ -556,23 +555,12 @@ describe('Buck watch reconciliation', () => {
         return true
       })
       try {
-        // Exercise the real publisher and every decoder character boundary.
+        // No pipe decoder remains between publisher and watch. Real diagnostics now
+        // arrive as in-process writes; arbitrary subprocess chunk boundaries and the
+        // former batch stderr replay duplicate are no longer part of this contract.
         await reconcileBuckViews({
           request: publicationRequest,
-          options: {
-            ...fixture.options,
-            batchPublication,
-            onTiming,
-            run: (invocation) =>
-              invocation.command === '/tools/buck2'
-                ? fixture.options.run(invocation)
-                : runCommand({
-                    ...invocation,
-                    onStderr: (chunk) => {
-                      for (const character of chunk) invocation.onStderr?.(character)
-                    },
-                  }),
-          },
+          options: { ...fixture.options, batchPublication, onTiming },
         })
         completed = true
         expect(observed.length).toBeGreaterThan(0)
@@ -636,8 +624,7 @@ describe('Buck watch reconciliation', () => {
       // Buck runs unwrapped; the dispatcher validates the real published snapshot.
       expect(invocations[0]?.command).toBe('/tools/buck2')
       expect(invocations[0]?.args[0]).toBe('build')
-      expect(invocations[1]?.command).toBe(process.execPath)
-      expect(invocations[1]?.args[0]).toBe(join(import.meta.dir, 'editor-view.ts'))
+      expect(invocations).toHaveLength(1)
       expect(fixture.record().package).toBe('packages/app')
       await telemetry.settle()
       expect(telemetry.children).toHaveLength(2)
@@ -712,7 +699,7 @@ describe('Buck watch reconciliation', () => {
           else abort.abort()
         },
       })
-      expect(commands).toEqual(['/tools/buck2', process.execPath, '/tools/buck2', process.execPath])
+      expect(commands).toEqual(['/tools/buck2', '/tools/buck2'])
       expect(fixture.record().package).toBe('packages/app')
       expect(
         statuses.filter((status) => status.phase === 'idle').map(({ generation }) => generation),

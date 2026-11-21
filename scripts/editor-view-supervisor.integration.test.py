@@ -423,7 +423,6 @@ await reconcileBuckViews({{
     plan: {{ packages, globalPaths: [] }}, mode: 'publish', signal: shutdown.signal,
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
     buck2: './buck2',
-    editorViewCommand: [process.execPath, {json.dumps(str(module.with_name('editor-view.ts')))}],
     workspaceAuthority: './workspace-authority.json',
     cp: {json.dumps(immutable_copy if publication else '')},
     mv: process.env.MV_BIN ?? '', fingerprintTool: process.env.FINGERPRINT_BIN ?? '',
