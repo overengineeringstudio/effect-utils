@@ -12,6 +12,8 @@ import {
   buildTargetsFor,
   CommandFailure,
   exitCodeOf,
+  prepareEditorPublicationRequest,
+  settleEditorPublicationRequests,
   reconcileBuckViews as reconcileBuckViewsUnscoped,
   runCommand,
   runBuckWatchLoop,
@@ -290,6 +292,66 @@ describe('Buck watch reconciliation', () => {
       expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toContain('雪')
       expect(fixture.record()).toMatchObject({ package: 'packages/app', cell: 'effect_utils', target: '//packages/app:editor_inputs' })
     } finally {
+      fixture.cleanup()
+    }
+  })
+
+  it('settles real sibling manifest reads before returning a malformed manifest failure', async () => {
+    const fixture = makePublicationFixture()
+    const releaseSibling = Promise.withResolvers<void>()
+    let joining: Promise<unknown> | undefined
+    try {
+      const candidate = plan.packages.find((entry) => entry.packagePath === 'packages/app')
+      if (candidate?.editor === undefined) throw new Error('missing fixture editor entry')
+      const entry = { ...candidate, editor: candidate.editor }
+      const malformed = join(fixture.root, 'malformed.json')
+      writeFileSync(malformed, '{"schema":"invalid"}\n')
+      const failed = prepareEditorPublicationRequest({
+        entry,
+        outputs: new Map([[entry.editor.inputsManifestTarget, malformed]]),
+        options: fixture.options,
+      })
+      const failure = await failed.then(
+        () => { throw new Error('malformed manifest was accepted') },
+        (error: unknown) => error,
+      )
+      let siblingRead = false
+      let returned = false
+      const sibling = releaseSibling.promise.then(async () => {
+        const request = await prepareEditorPublicationRequest({
+          entry,
+          outputs: new Map([[entry.editor.inputsManifestTarget, fixture.manifest]]),
+          options: fixture.options,
+        })
+        expect(request).toEqual(expect.arrayContaining([
+          fixture.nodeModules, fixture.packageTree, fixture.dependency,
+          fixture.options.workspaceAuthority, fixture.options.cp, fixture.options.mv,
+          fixture.options.fingerprintTool, join(fixture.root, '.devenv/vite-cache/app'),
+        ]))
+        siblingRead = true
+        return request
+      })
+      const preparing = settleEditorPublicationRequests({ requests: [failed, sibling] }).then(
+        () => { throw new Error('malformed manifest batch was accepted') },
+        (error: unknown) => {
+          expect(siblingRead).toBe(true)
+          returned = true
+          return error
+        },
+      )
+      joining = preparing
+      // Drain the already rejected request's reactions without releasing its sibling.
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(returned).toBe(false)
+      releaseSibling.resolve()
+      expect(await preparing).toBe(failure)
+      expect(siblingRead).toBe(true)
+      expect(existsSync(fixture.current)).toBe(false)
+    } finally {
+      releaseSibling.resolve()
+      await joining?.catch(() => undefined)
       fixture.cleanup()
     }
   })

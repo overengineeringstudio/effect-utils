@@ -644,6 +644,84 @@ const readEditorInputs = async ({
   }
 }
 
+/** An admitted package with a provider manifest and publication identity. */
+export type EditorPublicationEntry = BuckWatchPackage & {
+  readonly editor: NonNullable<BuckWatchPackage['editor']>
+}
+
+/** Paths, identity policy and tool closure needed to prepare a publisher request. */
+export type EditorPublicationPreparation = {
+  readonly mode: 'publish' | 'check'
+  readonly repoRoot: string
+  readonly workspaceRoot: string
+  readonly cp: string
+  readonly mv: string
+  readonly fingerprintTool: string
+  readonly workspaceAuthority: string
+  readonly snapshotRetention: number
+}
+
+/** Decode the provider manifest and resolve every publication read root before execution. */
+export const prepareEditorPublicationRequest = async ({
+  entry,
+  outputs,
+  options,
+}: {
+  readonly entry: EditorPublicationEntry
+  readonly outputs: ReadonlyMap<string, string>
+  readonly options: EditorPublicationPreparation
+}): Promise<readonly string[]> => {
+  const manifest = await readEditorInputs({
+    path: outputForTarget({ outputs, target: entry.editor.inputsManifestTarget }),
+    workspaceRoot: options.workspaceRoot,
+  })
+  const absoluteArtifact = (path: string): string =>
+    isAbsolute(path) === true ? path : resolve(options.workspaceRoot, path)
+  return [
+    options.mode,
+    '--repo-root',
+    options.repoRoot,
+    '--package',
+    entry.packagePath,
+    '--view-name',
+    entry.editor.viewName,
+    '--cell',
+    entry.editor.cell,
+    '--target',
+    entry.editor.target,
+    '--editor-inputs',
+    absoluteArtifact(manifest.editorInputs),
+    '--node-modules',
+    absoluteArtifact(manifest.editorInputs),
+    ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
+    '--cp',
+    options.cp,
+    '--mv',
+    options.mv,
+    '--fingerprint-tool',
+    options.fingerprintTool,
+    '--workspace-authority',
+    options.workspaceAuthority,
+    '--consumer-cache',
+    resolve(options.repoRoot, entry.editor.consumerCache),
+    '--snapshot-retention',
+    String(options.snapshotRetention),
+  ]
+}
+
+/** Join all provider reads before returning the first failure in package order. */
+export const settleEditorPublicationRequests = async ({
+  requests,
+}: {
+  readonly requests: readonly Promise<readonly string[]>[]
+}): Promise<readonly (readonly string[])[]> => {
+  const prepared = await Promise.allSettled(requests)
+  return prepared.map((result) => {
+    if (result.status === 'rejected') throw result.reason
+    return result.value
+  })
+}
+
 /** Wall-clock phase emitted by one reconciliation for CI/bootstrap diagnosis. */
 export type BuckReconcileTiming = {
   readonly phase: 'buck-build' | 'editor-view'
@@ -832,58 +910,15 @@ export const reconcileBuckViews = async ({
   })
   const outputs = parseBuildOutputs(built.stdout)
   const selected = new Set(request.packagePaths)
-  const absoluteArtifact = (path: string): string =>
-    isAbsolute(path) === true ? path : resolve(options.workspaceRoot, path)
-  type EditorEntry = BuckWatchPackage & {
-    readonly editor: NonNullable<BuckWatchPackage['editor']>
-  }
   const publicationFailure = (error: unknown): never => {
     // A group signal can kill/reap the publisher before this process observes it.
     if (error instanceof CommandFailure && error.signal !== undefined)
       reportBuildFailure({ code: 0, interruptedAfterBuild: error.signal })
     throw error
   }
-  const publicationArgs = async (entry: EditorEntry): Promise<readonly string[]> => {
-    const manifestOutput = outputForTarget({
-      outputs,
-      target: entry.editor.inputsManifestTarget,
-    })
-    const manifest = await readEditorInputs({
-      path: manifestOutput,
-      workspaceRoot: options.workspaceRoot,
-    })
-    return [
-      options.mode,
-      '--repo-root',
-      options.repoRoot,
-      '--package',
-      entry.packagePath,
-      '--view-name',
-      entry.editor.viewName,
-      '--cell',
-      entry.editor.cell,
-      '--target',
-      entry.editor.target,
-      '--editor-inputs',
-      absoluteArtifact(manifest.editorInputs),
-      '--node-modules',
-      absoluteArtifact(manifest.editorInputs),
-      ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
-      '--cp',
-      options.cp,
-      '--mv',
-      options.mv,
-      '--fingerprint-tool',
-      options.fingerprintTool,
-      '--workspace-authority',
-      options.workspaceAuthority,
-      '--consumer-cache',
-      resolve(options.repoRoot, entry.editor.consumerCache),
-      '--snapshot-retention',
-      String(options.snapshotRetention),
-    ]
-  }
-  const publish = async (entry: EditorEntry): Promise<void> => {
+  const publicationArgs = (entry: EditorPublicationEntry): Promise<readonly string[]> =>
+    prepareEditorPublicationRequest({ entry, outputs, options })
+  const publish = async (entry: EditorPublicationEntry): Promise<void> => {
     const publicationStartedAt = performance.now()
     // Telemetry is best effort here too: a publication span that cannot be
     // delivered never changes the publisher's own exit status.
@@ -916,11 +951,11 @@ export const reconcileBuckViews = async ({
     })
   }
   const entries = options.plan.packages.filter(
-    (entry): entry is EditorEntry =>
+    (entry): entry is EditorPublicationEntry =>
       selected.has(entry.packagePath) === true && entry.editor !== undefined,
   )
   if (options.batchPublication === true && options.mode === 'publish') {
-    const requests = await Promise.all(entries.map(publicationArgs))
+    const requests = await settleEditorPublicationRequests({ requests: entries.map(publicationArgs) })
     const result = await execute({
       command: options.editorViewCommand[0],
       args: [...options.editorViewCommand.slice(1), 'publish-batch'],
