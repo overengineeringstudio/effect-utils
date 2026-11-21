@@ -30,7 +30,6 @@ import {
   createPrivateEvidenceSink,
   directBuckArguments,
   nativeBuildIdArguments,
-  runNativeWithEvidence,
 } from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
 import {
@@ -761,38 +760,50 @@ describe('native build ID registry', () => {
         args: requested.map((arg) => arg.replace('CALLER_SINK', join(root, 'caller.pb.zst'))),
         env,
       })
-      const previous = Object.fromEntries(
-        [...Object.keys(env), 'PATH', 'BUN_BIN'].map((key) => [key, process.env[key]]),
+      const resultPath = join(root, 'native-result.json')
+      // Keep hostile PATH confined to a child tracked by the group-reaping afterEach hook.
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `import { runNativeWithEvidence } from ${JSON.stringify(new URL('./buck2-entrypoint.ts', import.meta.url).href)};
+const result = await runNativeWithEvidence(${JSON.stringify({ native, args, root })});
+await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));`,
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            ...env,
+            PATH: join(root, 'no-host-utilities'),
+            BUN_BIN: undefined,
+          },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+          detached: true,
+        },
       )
-      const exitCode = process.exitCode
-      try {
-        Object.assign(process.env, env)
-        process.env.PATH = join(root, 'no-host-utilities')
-        delete process.env.BUN_BIN
-        const result = await runNativeWithEvidence({ native, args, root })
-        expect(result?.exitCode).toBe(0)
-        expect(result?.signalCode).toBeNull()
-        const shard = JSON.parse(
-          readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'),
-        )
-        expect(shard.complete).toBe(true)
-        expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
-        if (requested[0] === 'run') {
-          const observed: string[] = JSON.parse(
-            readFileSync(join(root, 'native-args.json'), 'utf8'),
-          )
-          expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
-          expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
-        }
-        if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
-          expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
-      } finally {
-        process.exitCode = exitCode
-        for (const [key, value] of Object.entries(previous)) {
-          if (value === undefined) delete process.env[key]
-          else process.env[key] = value
-        }
+      launchProcesses.add(child)
+      const [exitCode] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      expect(exitCode).toBe(0)
+      const result = JSON.parse(readFileSync(resultPath, 'utf8'))
+      expect(result?.exitCode).toBe(0)
+      expect(result?.signalCode).toBeNull()
+      const shard = JSON.parse(readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'))
+      expect(shard.complete).toBe(true)
+      expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
+      if (requested[0] === 'run') {
+        const observed: string[] = JSON.parse(readFileSync(join(root, 'native-args.json'), 'utf8'))
+        expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
+        expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
       }
+      if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
+        expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
     },
   )
 
