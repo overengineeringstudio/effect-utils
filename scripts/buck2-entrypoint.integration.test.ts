@@ -668,15 +668,18 @@ afterEach(async () => {
     if (retained.has(root) === false) rmSync(root, { recursive: true, force: true })
 })
 
+const registerAdmissionTest = it
 describe('native daemon admission diagnostics', () => {
   const prefix = 'Buck2 cache posture: native daemon admission command failed'
   const secret = 'authorization: Basic fixture-secret-must-not-escape'
+  // Real native-admission cases inherit the command budget plus bounded cleanup.
+  const it = (name: string, run: () => Promise<void>, deadlineMs = 30000) =>
+    registerAdmissionTest(name, run, Math.max(5000, 3 * deadlineMs + 2000))
   for (const subcommand of ['status', 'kill', 'audit'] as const) {
     for (const failure of ['exit', 'signal', 'timeout'] as const) {
       // A kill/audit failure may follow two successful status probes. The test
       // watchdog must cover all three command deadlines and bounded cleanup.
       const deadlineMs = failure === 'timeout' ? 1000 : 30000
-      const testTimeoutMs = Math.max(5000, 3 * deadlineMs + 2000)
       const reportFailure = async () => {
         const root = fixture()
         const native = join(root, 'native-buck')
@@ -729,11 +732,12 @@ fi
         expect(caught.cause).toBeUndefined()
         expect(readFileSync(calls, 'utf8')).toContain(`--isolation-dir owned ${subcommand}`)
       }
-      it(`reports ${subcommand} ${failure} without native output`, reportFailure, testTimeoutMs)
+      it(`reports ${subcommand} ${failure} without native output`, reportFailure, deadlineMs)
     }
   }
 
-  it('reports an allowlisted spawn errno without its message or path', async () => {
+  // A missing executable cannot start native work; preserve its ordinary watchdog.
+  registerAdmissionTest('reports an allowlisted spawn errno without its message or path', async () => {
     const root = fixture()
     const native = join(root, 'secret-looking-missing-native')
     let caught: unknown

@@ -268,6 +268,9 @@ sources plus both gate integration suites and their imported isolation unit suit
 not only the top-level entrypoint test.
 The task-graph regression removes each input in turn and requires rejection;
 immutable Bun/native tool paths remain bound through the watched task command.
+Real native-admission test registration derives its watchdog from the existing
+command budget: `max(5000, 3 * deadlineMs + 2000)`. The missing-executable errno
+fixture and hostless contracts retain their original 5,000 ms watchdogs.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
