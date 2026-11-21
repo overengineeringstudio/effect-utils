@@ -9,6 +9,8 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
 BUN="${BUN_BIN:-$(command -v bun)}"
 BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
+MANAGED_BUCK2="$(command -v buck2)"
+BUCK2_NATIVE="${BUCK2_NATIVE_BIN:?required declared pinned native Buck binary}"
 DEVENV="${DEVENV_BIN:-$(command -v devenv)}"
 FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint tool}"
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
@@ -34,6 +36,9 @@ descendant_state=""
 collision_started=false
 cleanup() {
   local result=$?
+  if [ -n "${publisher_release_fd:-}" ]; then exec {publisher_release_fd}>&-; fi
+  if [ -n "${publisher_pid:-}" ]; then wait "$publisher_pid" || true; fi
+  if [ -n "${fixture_owner_fd:-}" ]; then exec {fixture_owner_fd}>&-; fi
   if [ -n "$descendant_state" ]; then rm -rf -- "$descendant_state"; fi
   if [ -n "$nested_outer" ] && [ -d "$nested_outer" ]; then
     if [ -d "$nested_child" ]; then
@@ -62,8 +67,13 @@ cleanup() {
     git -C "$main" worktree remove --force "$nested_outer" >/dev/null 2>&1 || true
   fi
   if [ -d "$worktree" ]; then
-    for isolation in first .second; do
-      (cd "$worktree" && "$BUCK2" --isolation-dir "$isolation" kill) >/dev/null 2>&1 || true
+    for isolation in first .second editor-publication; do
+      (
+        cd "$worktree"
+        exec {cleanup_owner_fd}>>"$worktree/.devenv/editor-view-publication.lock"
+        flock -n "$cleanup_owner_fd"
+        "$BUCK2_NATIVE" --isolation-dir "$isolation" kill {cleanup_owner_fd}>&-
+      ) >/dev/null 2>&1 || true
     done
     find -P "$worktree" -type d -exec chmod u+w -- {} +
     git -C "$main" worktree remove --force "$worktree" >/dev/null 2>&1 || true
@@ -141,7 +151,7 @@ fake_bin="$(mktemp -d)"
 watch_root="$TEMP_ROOT/watch-root"
 mkdir -p "$fake_bin" "$watch_root" "$TEMP_ROOT/watch-home"
 # Isolate teardown dependencies so ambient jq cannot hide a missing fixture tool.
-for tool in bash git realpath find sort awk xargs chmod sha256sum rm rmdir; do
+for tool in bash git realpath find sort awk xargs chmod sha256sum rm rmdir mkdir flock stat; do
   ln -s "$(command -v "$tool")" "$fake_bin/$tool"
 done
 git -C "$watch_root" init -q
@@ -170,6 +180,38 @@ for suffix in .editor-view packages/.editor-view context/.editor-view packages/e
   rmdir "$watch_root/$suffix/.leases" "$watch_root/$suffix"
 done
 echo 'PASS: editor and lease-only roots refuse with exit 3 before cache or permission mutation'
+# Invalid persistent owner paths fail closed, without touching the old cache or
+# permissions. The actual lock file is never removed by teardown.
+for invalid_owner in directory-link file-link directory hardlink; do
+  mkdir -p "$TEMP_ROOT/owner-outside"
+  case "$invalid_owner" in
+    directory-link) ln -s "$TEMP_ROOT/owner-outside" "$watch_root/.devenv" ;;
+    file-link)
+      mkdir -p "$watch_root/.devenv"
+      ln -s "$TEMP_ROOT/owner-outside/missing" "$watch_root/.devenv/editor-view-publication.lock"
+      ;;
+    directory) mkdir -p "$watch_root/.devenv/editor-view-publication.lock" ;;
+    hardlink)
+      printf sentinel >"$TEMP_ROOT/owner-outside/lock"
+      ln "$TEMP_ROOT/owner-outside/lock" "$watch_root/.devenv/editor-view-publication.lock"
+      ;;
+  esac
+  if PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" \
+    XDG_CACHE_HOME="$TEMP_ROOT/refusal-cache" WORKTREE_TEARDOWN_EDITOR_RELEASE=0 \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$watch_root" \
+    >"$TEMP_ROOT/owner-path-refusal.log" 2>&1; then
+    fail "accepted invalid publication owner path: $invalid_owner"
+  fi
+  [ "$(cat "$refusal_cache")" = sentinel ] || fail 'owner path refusal deleted admission state'
+  [ "$(stat -c %a "$watch_root/owned")" = 555 ] || fail 'owner path refusal changed permissions'
+  case "$invalid_owner" in
+    directory-link) rm "$watch_root/.devenv" ;;
+    file-link) rm "$watch_root/.devenv/editor-view-publication.lock" ;;
+    directory) rmdir "$watch_root/.devenv/editor-view-publication.lock" ;;
+    hardlink) rm "$watch_root/.devenv/editor-view-publication.lock" ;;
+  esac
+done
+echo 'PASS: symlinked, non-file and multiply-linked publication owners refuse before cache or permission mutation'
 (
   cd "$TEMP_ROOT"
   PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" DEVENV_ROOT="$main" \
@@ -356,12 +398,113 @@ done
 for pid in "${pids[@]}"; do kill -0 "$pid" || fail 'refused teardown stopped a daemon'; done
 [ -f "${admission_entries[0]}" ] || fail 'refused teardown deleted admission state'
 
+# Start and hold a real publisher through an opaque owner, never a borrowed FD.
+# These FIFOs carry readiness and lifetime only, not publication authority.
+publication_lock="$worktree/.devenv/editor-view-publication.lock"
+mkfifo "$TEMP_ROOT/publisher-ready" "$TEMP_ROOT/publisher-release"
+OWNER_MODULE="$ROOT/packages/@overeng/buck2-tools/src/editor-publication-owner.ts" \
+  LAUNCHER_MODULE="$ROOT/scripts/buck2-entrypoint.ts" \
+  OWNER_FIXTURE="$worktree" OWNER_NATIVE_BUCK2="$BUCK2_NATIVE" "$BUN" --eval '
+  const { withEditorPublicationOwner } = await import(process.env.OWNER_MODULE);
+  const { runOwnedEditorPublicationCommand } = await import(process.env.LAUNCHER_MODULE);
+  const root = process.env.OWNER_FIXTURE;
+  await withEditorPublicationOwner({ root, run: async (owner) => {
+    const result = await runOwnedEditorPublicationCommand({
+      native: process.env.OWNER_NATIVE_BUCK2,
+      args: ["--isolation-dir", "editor-publication", "targets", "//:"],
+      cwd: root, env: process.env, owner, stdin: "ignore",
+    });
+    if (result.exitCode !== 0 || result.signalCode !== null)
+      throw new Error(`owned private daemon startup failed: ${result.stderr}`);
+    console.log("owner-acquired");
+    await Bun.stdin.text();
+  } });
+' <"$TEMP_ROOT/publisher-release" >"$TEMP_ROOT/publisher-ready" &
+publisher_pid=$!
+exec {publisher_release_fd}>"$TEMP_ROOT/publisher-release"
+IFS= read -r publisher_ready <"$TEMP_ROOT/publisher-ready"
+[ "$publisher_ready" = owner-acquired ] || fail 'publisher did not acquire its actual owner'
+exec {fixture_owner_fd}<"$publication_lock"
+publication_identity="$(stat -Lc '%d:%i' "$publication_lock")"
+(cd "$worktree" && env -u BUCK2_EDITOR_PUBLICATION_OWNER_FD \
+  "$MANAGED_BUCK2" --isolation-dir first status {fixture_owner_fd}>&- >/dev/null)
+if (cd "$worktree" && env -u BUCK2_EDITOR_PUBLICATION_OWNER_FD \
+  "$MANAGED_BUCK2" --isolation-dir editor-publication targets //:) \
+  >"$TEMP_ROOT/private-without-owner.log" 2>&1; then
+  fail 'managed private Buck accepted a missing publication owner'
+fi
+if (cd "$worktree" && BUCK2_EDITOR_PUBLICATION_OWNER_FD="$fixture_owner_fd" \
+  "$MANAGED_BUCK2" --isolation-dir editor-publication targets //: {fixture_owner_fd}>&-) \
+  >"$TEMP_ROOT/private-forged-owner.log" 2>&1; then
+  fail 'managed private Buck accepted an inherited descriptor claim'
+fi
+private_pid="$(cat "$state/editor-publication/buckd.pid")"
+kill -0 "$private_pid" || fail 'private managed fixture daemon is not live'
+pids+=("$private_pid")
+owner_refusal_status=0
+WORKTREE_TEARDOWN_EDITOR_RELEASE=1 BUCK2_EDITOR_PUBLICATION_OWNER_FD="$fixture_owner_fd" \
+  bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$worktree" \
+  >"$TEMP_ROOT/active-owner-refusal.log" 2>&1 || owner_refusal_status=$?
+[ "$owner_refusal_status" -ne 0 ] || fail 'active publication owner did not veto teardown'
+grep -q 'editor publication is active' "$TEMP_ROOT/active-owner-refusal.log" \
+  || fail 'active owner veto lacks protective diagnostic'
+for pid in "${pids[@]}"; do kill -0 "$pid" || fail 'active owner veto stopped a daemon'; done
+[ -f "$state/first/prev/retained.log" ] || fail 'active owner veto removed daemon history'
+[ -f "${admission_entries[0]}" ] || fail 'active owner veto removed admission state'
+[ -d "$worktree/.editor-view/.store" ] || fail 'active owner veto retired editor state'
+[ "$(stat -c %a "$worktree/readonly/nested")" = 555 ] || fail 'active owner veto changed permissions'
+[ "$(pnpm_snapshot_state)" = "$pnpm_before" ] || fail 'active owner veto changed shared payload'
+if [ "$watchman_started" = true ]; then
+  watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local watch-list | \
+    "$JQ" -e --arg root "$worktree" '.roots | index($root) != null' >/dev/null \
+    || fail 'active owner veto removed the live watch'
+fi
+exec {fixture_owner_fd}>&-
+unset fixture_owner_fd
+exec {publisher_release_fd}>&-
+unset publisher_release_fd
+wait "$publisher_pid"
+unset publisher_pid
+echo 'PASS: active real publisher vetoes all teardown mutation, including a forged-owner reentry attempt'
 # Execute the inherited task through devenv, including its real nested release.
 (cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
 for pid in "${pids[@]}"; do
   if kill -0 "$pid" 2>/dev/null; then fail "daemon $pid remains live"; fi
 done
 [ ! -e "$state" ] || fail 'root buckd state remains'
+[ "$(stat -Lc '%d:%i' "$publication_lock")" = "$publication_identity" ] \
+  || fail 'teardown unlinked or replaced the persistent publication owner'
+(
+  exec {probe_owner_fd}>>"$publication_lock"
+  flock -n "$probe_owner_fd" || fail 'publication owner not immediately available after teardown'
+)
+if [ -d /proc/self/fd ]; then
+  # Linux kernel census of real accessible descriptors; no fixture process may pin the inode.
+  "$BUN" --eval '
+    const fs = require("node:fs");
+    const identity = fs.statSync(process.argv[1]);
+    const holders = [];
+    for (const pid of fs.readdirSync("/proc").filter((name) => /^[0-9]+$/.test(name))) {
+      let descriptors;
+      try { descriptors = fs.readdirSync(`/proc/${pid}/fd`); }
+      catch (error) {
+        if (["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(error.code)) continue;
+        throw error;
+      }
+      for (const fd of descriptors) {
+        try {
+          const stat = fs.statSync(`/proc/${pid}/fd/${fd}`);
+          if (stat.dev === identity.dev && stat.ino === identity.ino) holders.push(`${pid}:${fd}`);
+        } catch (error) {
+          if (["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(error.code)) continue;
+          throw error;
+        }
+      }
+    }
+    if (holders.length !== 0) throw new Error(`Publication lock descriptors survived teardown: ${holders.join(", ")}`);
+  ' "$publication_lock"
+fi
+echo 'PASS: shell-owned teardown uses pinned offline native kill; lock is immediately available with no accessible surviving Linux holder'
 [ ! -e "$worktree/.editor-view" ] || fail 'editor root remains after retirement'
 [ ! -e "$worktree/context/.editor-view" ] || fail 'empty legacy context editor root remains'
 [ ! -e "$worktree/packages/.editor-view" ] || fail 'empty legacy packages editor root remains'
