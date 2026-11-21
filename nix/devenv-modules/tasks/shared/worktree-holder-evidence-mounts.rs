@@ -129,8 +129,7 @@ pub fn device_pair(device: u64) -> (u32, u32) {
 pub struct NativeView {
     task: std::fs::File,
     root: std::fs::File,
-    snapshot: String,
-    graph: BTreeMap<u64, Mount>,
+    namespace: super::namespace::NamespaceSnapshot,
 }
 
 impl NativeView {
@@ -141,10 +140,13 @@ impl NativeView {
             return Err(std::io::Error::other("native mount snapshot deadline"));
         }
         let base = format!("/proc/self/fd/{}", task.as_raw_fd());
-        let snapshot = objects::bounded_text(format!("{base}/mountinfo"), 1_048_576)?;
-        let graph = parse(&snapshot).map_err(std::io::Error::other)?;
+        let namespace = super::namespace::NamespaceSnapshot::capture(
+            std::fs::File::open(format!("{base}/ns/mnt"))?, deadline)?;
         let root = objects::pin_magic(format!("{base}/root"))?;
-        Ok(Self { task: task.try_clone()?, root, snapshot, graph })
+        if !namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)? {
+            return Err(std::io::Error::other("native task mount namespace changed"));
+        }
+        Ok(Self { task: task.try_clone()?, root, namespace })
     }
 
     pub fn is_task(&self, task: &std::fs::File) -> std::io::Result<bool> {
@@ -159,16 +161,24 @@ impl NativeView {
         let base = format!("/proc/self/fd/{}", self.task.as_raw_fd());
         let root = objects::pin_magic(format!("{base}/root"))?;
         if std::time::Instant::now() >= deadline
-            || objects::bounded_text(format!("{base}/mountinfo"), 1_048_576)? != self.snapshot
+            || !self.namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)?
             || objects::identity(&root)? != objects::identity(&self.root)?
             || objects::mount_id(&root)? != objects::mount_id(&self.root)?
         { return Err(std::io::Error::other("native task mount view changed")); }
+        self.namespace.recheck(deadline)?;
+        if !self.namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)? {
+            return Err(std::io::Error::other("native task mount namespace changed"));
+        }
         Ok(())
     }
 
-    pub fn mounts(&self) -> impl Iterator<Item = &Mount> { self.graph.values() }
+    pub fn mounts(&self) -> impl Iterator<Item = &super::namespace::NamespaceMount> {
+        self.namespace.records().values()
+    }
 
-    pub fn pin_mount_root(&self, mount: &Mount, deadline: std::time::Instant)
+    pub fn namespace_id(&self) -> u64 { self.namespace.id() }
+
+    pub fn pin_mount_root(&self, mount: &super::namespace::NamespaceMount, deadline: std::time::Instant)
         -> std::io::Result<NativeLocation>
     {
         use std::io;
@@ -181,11 +191,12 @@ impl NativeView {
             if relative.as_os_str().is_empty() { std::ffi::OsStr::new(".") }
             else { relative.as_os_str() })?;
         let device = objects::identity(&point)?.0;
-        if !objects::native_filesystem(&point)?
+        let filesystem = linux::filesystem_type(&point)?;
+        if !objects::native_filesystem_type(filesystem) || filesystem != mount.filesystem
             || objects::mount_id(&point)? != mount.id
             || device_pair(device) != (mount.device_major, mount.device_minor)
         { return Err(io::Error::other("mounted root changed or shadowed")); }
-        Ok(NativeLocation { device, filesystem: linux::filesystem_type(&point)?,
+        Ok(NativeLocation { device, filesystem,
             path: mount.root.clone(), _mountpoint: point })
     }
 
@@ -205,7 +216,7 @@ impl NativeView {
         return Err(unknown("deadline-or-nonnative-filesystem"));
     }
     let held_mount = objects::mount_id(file)?;
-    let mount = self.graph.get(&held_mount).ok_or_else(|| unknown("held-mount-not-listed"))?;
+    let mount = self.namespace.records().get(&held_mount).ok_or_else(|| unknown("held-mount-not-listed"))?;
     if !canonical(&mount.root) || !canonical(&mount.point) {
         return Err(unknown("noncanonical-mount-coordinate"));
     }
