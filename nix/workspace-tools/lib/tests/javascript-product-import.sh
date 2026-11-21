@@ -201,6 +201,24 @@ jq -e '
 jq -e '.script | contains("--no-install") | not' <<<"$valid" >/dev/null
 echo "javascript-product-import-test: GREEN Bun wrapper disables runtime auto-install"
 
+# Compiled Bun CLIs execute their embedded entry without resolving store ancestors.
+write_case "$tmp/bun-compiled.nix" "$tmp/bun-runtime.json" 'compile = true;'
+jq -e '
+  (.script | contains("bun build --compile")) and
+  (.script | contains("--no-compile-autoload-dotenv")) and
+  (.script | contains("--no-compile-autoload-bunfig")) and
+  (.script | contains("makeWrapper \"$out/libexec/fixture\"")) and
+  (.script | contains("--add-flags") | not)
+' <<<"$(eval_case "$tmp/bun-compiled.nix")" >/dev/null
+write_case "$tmp/node-compiled.nix" "$tmp/product.json" 'compile = true;'
+expect_failure "compiled Node product" "compilation requires a self-contained Bun executable" \
+  "$tmp/node-compiled.nix"
+write_case "$tmp/external-compiled.nix" "$tmp/bun-runtime.json" \
+  'compile = true; expectedExternalModules = [ "external" ];'
+expect_failure "compiled external module" "compilation requires a self-contained Bun executable" \
+  "$tmp/external-compiled.nix"
+echo "javascript-product-import-test: GREEN compiled Bun launcher bypasses runtime entry resolution"
+
 # The descriptor bytes have an independently supplied content address.
 write_case "$tmp/wrong-descriptor-digest.nix" "$tmp/product.json" "" \
   0000000000000000000000000000000000000000000000000000000000000000
@@ -315,6 +333,7 @@ expect_failure "unsupported runtime kind" "unsupported JavaScript runtime" "$tmp
 # Source mode must evaluate without opening producer outputs. Its build gate
 # is exercised directly with the same fixtures as the published-mode tests.
 cat >"$tmp/source.nix" <<NIX
+{ compile ? false, runtimeKind ? "node" }:
 let
   pkgs = import $tmp/stub.nix;
 in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
@@ -322,12 +341,15 @@ in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { in
   descriptor = "/absent/source/descriptor.json";
   expectedProductKind = "cli";
   expectedProductName = "fixture";
+  inherit compile;
+  binaryName = "fixture";
+  generateCompletions = false;
   sourceImport = {
     product = "/absent/source";
     hasRuntimeClosure = false;
     facts = {
       expectedModulePath = "tool.js";
-      expectedRuntimeKind = "node";
+      expectedRuntimeKind = runtimeKind;
       expectedRuntimeContract = "javascript-esm";
       expectedRuntimeContractVersion = "v1";
       checkProducerCommit = true;
@@ -337,8 +359,16 @@ in (import $repo_root/nix/workspace-tools/lib/javascript-product-import.nix { in
 }
 NIX
 nix eval --impure --json --option allow-import-from-derivation false \
-  --file "$tmp/source.nix" >/dev/null
+  --file "$tmp/source.nix" --apply 'f: f { }' >/dev/null
 echo "javascript-product-import-test: GREEN source evaluation never reads outputs"
+nix eval --impure --json --option allow-import-from-derivation false \
+  --file "$tmp/source.nix" --apply 'f: { inherit (f { compile = true; runtimeKind = "bun"; }) script; }' \
+  | jq -e '
+    (.script | contains("bun build --compile")) and
+    (.script | contains("makeWrapper \"$out/libexec/fixture\"")) and
+    (.script | contains("--add-flags") | not)
+  ' >/dev/null
+echo "javascript-product-import-test: GREEN source compilation keeps output-independent evaluation"
 source_product="$tmp"
 artifact="$module"
 facts="$tmp/facts.json"

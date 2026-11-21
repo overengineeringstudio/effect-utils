@@ -27,6 +27,7 @@
   expectedRuntimeContract ? "javascript-esm",
   expectedRuntimeContractVersion ? "v1",
   binaryName ? null,
+  compile ? false,
   environment ? { },
   generateCompletions ? binaryName != null,
   # A Buck pnpm_runtime_closure tree and its independently pinned tree digest.
@@ -109,6 +110,16 @@ let
     "$out/bin/${binaryName}" ${lib.escapeShellArgs smokeTestArgs} >/dev/null
   '';
 in
+assert lib.assertMsg (
+  !compile
+  || (
+    value.runtimeKind == "bun"
+    && binaryName != null
+    && runtimeClosure == null
+    && expectedExternalModules == [ ]
+    && nativeNodePackages == [ ]
+  )
+) "javascript-product-import: compilation requires a self-contained Bun executable";
 assert lib.assertMsg (
   actualKeys == expectedKeys
 ) "javascript-product-import: descriptor fields are not exact";
@@ -207,16 +218,31 @@ pkgs.runCommand "${expectedProductName}-buck2-candidate"
     fi
     mkdir -p "$out/libexec"
     mkdir -p "$out/libexec/$module_dir"
-    cp ${lib.escapeShellArg "${artifact}"} "$out/libexec/$module_path"
-    chmod 0444 "$out/libexec/$module_path"
+    ${
+      if compile then
+        ''
+          # Resolve the build input outside /nix/store: Bun enumerates entry ancestors.
+          cp ${lib.escapeShellArg "${artifact}"} entry.js
+          ${runtime}/bin/bun build --compile --no-compile-autoload-dotenv \
+            --no-compile-autoload-bunfig --outfile "$out/libexec/${binaryName}" ./entry.js
+        ''
+      else
+        ''
+          cp ${lib.escapeShellArg "${artifact}"} "$out/libexec/$module_path"
+          chmod 0444 "$out/libexec/$module_path"
+        ''
+    }
     ${closureInstaller}
     ${nativePackageLinks}
     ${lib.optionalString (binaryName != null) ''
       mkdir -p "$out/bin"
-      makeWrapper ${runtime}/bin/${
-        if value.runtimeKind == "bun" then "bun" else "node"
+      makeWrapper ${
+        if compile then
+          ''"$out/libexec/${binaryName}"''
+        else
+          "${runtime}/bin/${if value.runtimeKind == "bun" then "bun" else "node"}"
       } "$out/bin/${binaryName}" \
-        --add-flags "${runtimeFlags}$out/libexec/$module_path" \
+        ${lib.optionalString (!compile) ''--add-flags "${runtimeFlags}$out/libexec/$module_path"''} \
         ${wrapperEnvironment} \
         ${wrapperPath}
     ''}
