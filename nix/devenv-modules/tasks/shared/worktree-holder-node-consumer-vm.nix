@@ -192,9 +192,9 @@ pkgs.testers.nixosTest {
             command = "cd /home/fixture && exec " + shlex.join(argv)
             run = "runuser -u fixture -- sh -c " + shlex.quote(command)
             if boundary:
-                log = "/tmp/holder-" + mode + ".log"
+                fixture_log = "/tmp/holder-" + mode + ".log"
                 done = "/tmp/holder-" + mode + ".exit"
-                machine.succeed("(" + run + "; echo $? > " + shlex.quote(done) + ") > " + shlex.quote(log) + " 2>&1 &")
+                machine.succeed("(" + run + "; echo $? > " + shlex.quote(done) + ") > " + shlex.quote(fixture_log) + " 2>&1 &")
                 machine.wait_until_succeeds("test -f " + shlex.quote(root + "/setup-request"), timeout=30)
                 mount = root + "/submount" if mode == "nested-unlinked" else "/run/holder-negative-" + mode
                 machine.succeed("mkdir " + shlex.quote(mount))
@@ -215,7 +215,7 @@ pkgs.testers.nixosTest {
                     machine.fail("mountpoint -q " + shlex.quote(mount))
                 machine.succeed("touch " + shlex.quote(root + "/capture-ready"))
                 machine.wait_until_succeeds("test -f " + shlex.quote(done), timeout=120)
-                output = machine.succeed("cat " + shlex.quote(log))
+                output = machine.succeed("cat " + shlex.quote(fixture_log))
                 assert machine.succeed("cat " + shlex.quote(done)).strip() == "0", output
                 if mode == "nested-unlinked":
                     machine.succeed("umount " + shlex.quote(mount))
