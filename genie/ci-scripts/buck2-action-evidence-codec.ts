@@ -137,21 +137,31 @@ export const decodeGrpcCode = (value: unknown): number | null => {
 }
 
 /** Classify native diagnostics, then discard all free text at the collection boundary. */
-export const classifyCacheUploadError = (error: unknown, code: unknown): CacheUploadError => {
+export const classifyCacheUploadError = ({
+  error,
+  code,
+}: {
+  error: unknown
+  code: unknown
+}): CacheUploadError => {
   const reErrorCode = decodeGrpcCode(code)
   const message = typeof error === 'string' ? error : ''
   const category =
-    reErrorCode === 16 || /unauthenticated|authentication failed|invalid credentials/i.test(message)
+    reErrorCode === 16 ||
+    /unauthenticated|authentication failed|invalid credentials/i.test(message) === true
       ? 'unauthenticated'
-      : reErrorCode === 7 || /permission.denied|access.denied|write.denied|forbidden/i.test(message)
+      : reErrorCode === 7 ||
+          /permission.denied|access.denied|write.denied|forbidden/i.test(message) === true
         ? 'permission-denied'
-        : reErrorCode === 4 || /deadline|timed? out|timeout/i.test(message)
+        : reErrorCode === 4 || /deadline|timed? out|timeout/i.test(message) === true
           ? 'deadline'
-          : reErrorCode === 14 || /unavailable|connection reset|connection refused/i.test(message)
+          : reErrorCode === 14 ||
+              /unavailable|connection reset|connection refused/i.test(message) === true
             ? 'unavailable'
-            : reErrorCode === 8 || /resource.exhausted|quota exceeded|rate limit/i.test(message)
+            : reErrorCode === 8 ||
+                /resource.exhausted|quota exceeded|rate limit/i.test(message) === true
               ? 'resource-exhausted'
-              : reErrorCode === 3 || /invalid.argument/i.test(message)
+              : reErrorCode === 3 || /invalid.argument/i.test(message) === true
                 ? 'invalid-argument'
                 : 'other'
   return { category, reErrorCode }
