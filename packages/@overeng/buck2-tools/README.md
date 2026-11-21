@@ -176,6 +176,11 @@ Every dispatch has its own native fingerprint scope; it joins subordinate
 fingerprints before returning. Optional dispatch cancellation also interrupts
 live eviction-lock waits and terminates native copies, joining their close before
 returning. The CLI remains the process-I/O adapter and drains on SIGTERM.
+Native command failures preserve their signal or exit code, original cause, and
+captured streams as `EditorViewCommandFailure`; signaled messages omit path details.
+Publication worker context is advisory: extensible errors retain it without
+replacing the error, while ordinary opaque errors may reject extension and still
+keep their original identity. Batches retain multiple failures in an `AggregateError`.
 
 The reconciliation command runner waits for child close after a stdin write
 failure. A nonzero or signaled child exit takes precedence over a concurrent

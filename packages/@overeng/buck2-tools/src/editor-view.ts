@@ -1137,6 +1137,44 @@ type EditorViewDispatchScope = {
 
 const editorViewDispatchScope = new AsyncLocalStorage<EditorViewDispatchScope>()
 
+/** Native tool failure with its actual termination outcome and original cause intact. */
+export class EditorViewCommandFailure extends Error {
+  readonly signal?: NodeJS.Signals
+  readonly exitCode?: number
+  readonly stdout: string
+  readonly stderr: string
+
+  constructor({
+    label,
+    detail,
+    signal,
+    exitCode,
+    cause,
+    stdout,
+    stderr,
+  }: {
+    readonly label: string
+    readonly detail: string
+    readonly signal?: NodeJS.Signals
+    readonly exitCode?: number
+    readonly cause?: unknown
+    readonly stdout: string
+    readonly stderr: string
+  }) {
+    super(
+      signal === undefined
+        ? `editor view: ${label} failed with exit ${exitCode ?? 'unknown'}: ${detail}`
+        : `editor view: ${label} failed with signal ${signal}`,
+      { cause },
+    )
+    this.name = 'EditorViewCommandFailure'
+    this.stdout = stdout
+    this.stderr = stderr
+    if (signal !== undefined) this.signal = signal
+    if (exitCode !== undefined) this.exitCode = exitCode
+  }
+}
+
 const runTool = ({
   tool,
   args,
@@ -1155,9 +1193,19 @@ const runTool = ({
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   if (result.status !== 0)
-    fail(
-      `${label} failed with exit ${result.status ?? 'unknown'}: ${result.stderr.toString().trim() || result.stdout.toString().trim()}`,
-    )
+    throw new EditorViewCommandFailure({
+      label,
+      detail:
+        result.stderr?.toString().trim() ||
+        result.stdout?.toString().trim() ||
+        result.error?.message ||
+        '',
+      ...(result.signal === null ? {} : { signal: result.signal }),
+      ...(result.status === null ? {} : { exitCode: result.status }),
+      cause: result.error,
+      stdout: result.stdout?.toString() ?? '',
+      stderr: result.stderr?.toString() ?? '',
+    })
 }
 
 /** Keep private payload copies off the event loop so bounded views can overlap. */
@@ -1177,9 +1225,15 @@ const copyWithTool = ({
   const child = execFile(tool, args, { cwd: '/', env: { PATH: '' } }, (error, stdout, stderr) => {
     if (error !== null) {
       rejectCopy(
-        new Error(
-          `editor view: ${label} failed with exit ${error.code ?? 'unknown'}: ${stderr.trim() || stdout.trim() || error.message}`,
-        ),
+        new EditorViewCommandFailure({
+          label,
+          detail: stderr.trim() || stdout.trim() || error.message,
+          ...(error.signal == null ? {} : { signal: error.signal }),
+          ...(typeof error.code === 'number' ? { exitCode: error.code } : {}),
+          cause: error,
+          stdout,
+          stderr,
+        }),
       )
       return
     }
@@ -3873,17 +3927,11 @@ const publishEditorViewCoordinated = async ({
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
     if (error instanceof EditorViewCapacityError) throw error
-    const contextual = new Error(
-      `${error instanceof Error ? error.message : String(error)}; publication workers=${JSON.stringify(failureStates)}`,
-      { cause: error },
-    )
-    if (
-      error !== null &&
-      typeof error === 'object' &&
-      'exitCode' in error &&
-      typeof error.exitCode === 'number'
-    )
-      Object.assign(contextual, { exitCode: error.exitCode })
+    const contextual = error instanceof Error ? error : new Error(String(error), { cause: error })
+    // Worker context is advisory; an opaque error may reject extension without losing its identity.
+    Reflect.defineProperty(contextual, 'publicationWorkers', {
+      value: failureStates, enumerable: true, configurable: true, writable: true,
+    })
     throw contextual
   } finally {
     interruptedPublicationPhases.delete(reportInterruption)
@@ -4076,6 +4124,11 @@ export const publishEditorViews = async ({
         phase: 'cas-cleanup',
         run: () => collectEditorViewContentStore({ contentStore }),
       })
+    const failures = results.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    )
+    if (failures.length > 1)
+      throw new AggregateError(failures, 'editor view: multiple batch publications failed')
     return results.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value

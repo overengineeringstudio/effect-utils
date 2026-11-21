@@ -50,6 +50,7 @@ import {
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
   dispatchEditorView,
+  EditorViewCommandFailure,
   editorViewPublicationWorkers,
   pinEditorView,
   publishEditorView as publishEditorViewUnscoped,
@@ -640,6 +641,109 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
         listeners,
       )
     } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('retains every typed native failure when a real batch copy fails', async () => {
+    const fixture = makeFixture()
+    try {
+      const sibling = makeSiblingView({ fixture, packageName: 'genie' })
+      let failure: unknown
+      try {
+        await publishEditorViews({
+          options: [fixture.options, sibling.options].map((options) => ({
+            ...options,
+            cp: falseTool,
+          })),
+        })
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(AggregateError)
+      if (!(failure instanceof AggregateError))
+        throw new Error('batch did not retain both failures')
+      expect(failure.errors).toHaveLength(2)
+      for (const error of failure.errors as unknown[]) {
+        expect(error).toBeInstanceOf(EditorViewCommandFailure)
+        if (!(error instanceof EditorViewCommandFailure))
+          throw new Error('native failure lost its type')
+        expect(error).toMatchObject({ exitCode: 1, stdout: '', stderr: '' })
+        expect(error.signal).toBeUndefined()
+        expect(error).toMatchObject({ publicationWorkers: expect.any(Array) })
+      }
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('keeps a signaled command message safe without losing its original cause or streams', () => {
+    const cause = new Error('native close result')
+    const failure = new EditorViewCommandFailure({
+      label: 'cp',
+      detail: '/private/candidate/path',
+      signal: 'SIGTERM',
+      cause,
+      stdout: 'partial stdout',
+      stderr: 'partial stderr',
+    })
+    expect(failure.message).toBe('editor view: cp failed with signal SIGTERM')
+    expect(failure.signal).toBe('SIGTERM')
+    expect(failure.exitCode).toBeUndefined()
+    expect(failure.cause).toBe(cause)
+    expect(failure.stdout).toBe('partial stdout')
+    expect(failure.stderr).toBe('partial stderr')
+  })
+
+  it('preserves an opaque frozen preparation failure without replacing it with metadata errors', async () => {
+    const fixture = makeFixture()
+    const original = Object.freeze(new Error('frozen preparation failure'))
+    try {
+      await expect(publishEditorView({
+        ...fixture.options, backingRoots: [fixture.nodeModules],
+        beforeMaterialize: () => { throw original },
+      })).rejects.toBe(original)
+      expect(Object.hasOwn(original, 'publicationWorkers')).toBe(false)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('preserves a frozen dispatch abort reason at the real native-copy checkpoint', async () => {
+    const fixture = makeFixture()
+    const args = ['publish', ...Object.entries({
+      '--repo-root': fixture.root, '--package': fixture.options.package,
+      '--cell': fixture.options.cell, '--target': fixture.options.target,
+      '--editor-inputs': fixture.editorInputs, '--node-modules': fixture.nodeModules,
+      '--cp': cp, '--mv': mv, '--fingerprint-tool': fingerprintTool,
+      '--workspace-authority': fixture.workspaceAuthority, '--snapshot-retention': '2',
+      '--consumer-cache': fixture.consumerCache, '--content-store': fixture.options.contentStore!,
+    }).flat()]
+    const child = Bun.spawn([requireTool('BUN_BIN'), '--eval', `
+import { dispatchEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
+import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
+const controller = new AbortController(), original = Object.freeze(new Error('frozen abort reason'));
+let failure, reached = false;
+try { await editorViewProcessTestScope.run(() => [process.pid], () => dispatchEditorView({
+  args: ${JSON.stringify(args)}, signal: controller.signal,
+  onStderr: value => { if (value.includes('"phase":"materialize","event":"enter"')) { reached = true; controller.abort(original) } },
+})) } catch (error) { failure = error }
+process.stdout.write(JSON.stringify({ same: failure === original, reached, attached: Object.hasOwn(original, 'publicationWorkers') }));
+`], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+    editorCliProcesses.add(child)
+    try {
+      const [status, stdout, stderr] = await Promise.all([
+        child.exited, Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr),
+      ])
+      expect({ status, stderr }).toEqual({ status: 0, stderr: '' })
+      expect(JSON.parse(stdout)).toEqual({ same: true, reached: true, attached: false })
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+    } finally {
+      editorCliProcesses.delete(child)
       cleanup(fixture)
     }
   })
@@ -2846,6 +2950,7 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
       const entered = Promise.withResolvers<string>()
       const failPayload = Promise.withResolvers<void>()
       const proceed = Promise.withResolvers<void>()
+      const payloadFailure = new Error('payload fingerprint failed')
       const runFingerprintTool = fingerprintRunner.runFingerprintTool
       let publication: Promise<unknown> | undefined
       let failure: unknown
@@ -2856,7 +2961,7 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
           if (tree.includes('/.candidate-') === true) {
             if (tree.endsWith(`/${failedRoot}`) === true) {
               await failPayload.promise
-              throw new Error('payload fingerprint failed')
+              throw payloadFailure
             }
             if (tree.endsWith('/.backing/0000') === true) {
               entered.resolve(tree)
@@ -2892,9 +2997,7 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
         proceed.resolve()
         await publication
         expect(failure).toBeInstanceOf(Error)
-        expect(failure instanceof Error ? failure.cause : undefined).toEqual(
-          new Error('payload fingerprint failed'),
-        )
+        expect(failure).toBe(payloadFailure)
         expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
         expect(readdirSync(fixture.editorRoot)).not.toContain('.publish.lock')
       } finally {
@@ -3057,11 +3160,10 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
       expect(siblingStarted).toBe(true)
       expect(failure).toBeInstanceOf(Error)
       if (!(failure instanceof Error)) throw new Error('publication did not fail')
-      expect(failure.cause).toBe(original)
+      expect(failure).toBe(original)
       expect('exitCode' in failure ? failure.exitCode : undefined).toBe(17)
-      const states: unknown = JSON.parse(
-        failure.message.split('; publication workers=')[1] ?? 'null',
-      )
+      const states: unknown =
+        'publicationWorkers' in failure ? failure.publicationWorkers : undefined
       expect(states).toEqual(
         expect.arrayContaining([
           {
@@ -4189,9 +4291,7 @@ process.stderr.write = (...args) => {
         chmodSync(alias, 0o644)
         writeFileSync(alias, 'mutated bytes\n')
         await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
-          cause: expect.objectContaining({
-            message: expect.stringContaining('existing snapshot byte digest mismatch'),
-          }),
+          message: expect.stringContaining('existing snapshot byte digest mismatch'),
         })
         for (const path of [clean, mutated, alias]) expect(statSync(path).mode & 0o777).toBe(0o644)
       } finally {
@@ -4253,9 +4353,7 @@ process.stderr.write = (...args) => {
         })
         const started = Date.now()
         await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
-          cause: expect.objectContaining({
-            message: expect.stringContaining('snapshot file changed after mode repair:'),
-          }),
+          message: expect.stringContaining('snapshot file changed after mode repair:'),
         })
         expect(Date.now() - started).toBeLessThan(5000)
         expect(repairedDescriptor).toBeDefined()
@@ -4314,9 +4412,7 @@ process.stderr.write = (...args) => {
         }
       })
       await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
-        cause: expect.objectContaining({
-          message: expect.stringContaining('snapshot file changed after hash verification:'),
-        }),
+        message: expect.stringContaining('snapshot file changed after hash verification:'),
       })
       expect(mutations).toBe(1)
       for (const [payload, alias, original] of [
@@ -4370,12 +4466,14 @@ process.stderr.write = (...args) => {
         await expect(pending).rejects.toThrow('snapshot byte digest mismatch')
         pending = publishEditorView(options)
         await expect(pending).rejects.toMatchObject({
-          message: expect.stringContaining('; publication workers='),
-          cause: expect.objectContaining({
-            message: expect.stringMatching(
-              /^editor view: existing snapshot byte digest mismatch:/u,
-            ),
-          }),
+          message: expect.stringMatching(/^editor view: existing snapshot byte digest mismatch:/u),
+          publicationWorkers: expect.arrayContaining([
+            expect.objectContaining({
+              package: options.package,
+              viewName: options.viewName,
+              editorRoot: realpathSync(first.editorRoot),
+            }),
+          ]),
         })
       })
     }
