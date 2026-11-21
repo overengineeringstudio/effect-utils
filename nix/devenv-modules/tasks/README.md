@@ -158,6 +158,17 @@ proxy evidence; the serving fixture with no managed provider must independently
 veto that file as UNKNOWN. Changing test layout never admits overlay/FUSE as
 native absence.
 
+Block-backed EROFS is ordinary path-bearing evidence only for exact magic
+`0xe0f5e1e2` and a nonzero Linux device major from the same retained descriptor.
+Linux 6.18.62 `fs/erofs/super.c:784-803` routes on-demand/fscache and regular-file
+backing through nodev, whose anonymous device major is zero; both remain
+unsupported. Namespace records must still match the real pinned device, magic
+and legacy mount ID, and complete path/mount closure remains mandatory.
+An actual loop-block EROFS fixture requires an inside-candidate held file to
+produce positive membership and an outside file to prove native absence,
+including frozen original-view reclosure. Neither magic alone nor image labels,
+filesystem UUIDs or caller-supplied source strings authorize admission.
+
 ## Privileged holder server (inactive)
 
 `shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,

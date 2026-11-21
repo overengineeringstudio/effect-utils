@@ -192,7 +192,7 @@ impl NativeView {
             else { relative.as_os_str() })?;
         let device = objects::identity(&point)?.0;
         let filesystem = linux::filesystem_type(&point)?;
-        if !objects::native_filesystem_type(filesystem) || filesystem != mount.filesystem
+        if !objects::native_filesystem_type(filesystem, device) || filesystem != mount.filesystem
             || objects::mount_id(&point)? != mount.id
             || device_pair(device) != (mount.device_major, mount.device_minor)
         { return Err(io::Error::other("mounted root changed or shadowed")); }

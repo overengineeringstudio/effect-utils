@@ -50,12 +50,21 @@ pub fn pin_beneath(directory: &impl AsRawFd, name: &std::ffi::OsStr) -> io::Resu
         .map(File::from)
 }
 
-pub fn native_filesystem(file: &impl AsRawFd) -> io::Result<bool> {
-    Ok(native_filesystem_type(linux::filesystem_type(file)?))
+pub fn native_filesystem(file: &File) -> io::Result<bool> {
+    let kind = linux::filesystem_type(file)?;
+    // Only EROFS needs an additional backing-mode discriminator. Preserve the
+    // existing six classes without a redundant metadata syscall.
+    let device = if kind == 0xe0f5e1e2 { file.metadata()?.dev() } else { 0 };
+    Ok(native_filesystem_type(kind, device))
 }
 
-pub fn native_filesystem_type(kind: u64) -> bool {
+pub fn native_filesystem_type(kind: u64, device: u64) -> bool {
+    let major = ((device >> 8) & 0xfff) | ((device >> 32) & 0xffff_f000);
+    // Linux 6.18.62 erofs/super.c:784-803 sends fsid/on-demand and regular
+    // file-backed modes through get_tree_nodev: anonymous major zero. Only
+    // the real block-device mode enters the ordinary native path proof.
     matches!(kind, 0xef53 | 0x2fc12fc1 | 0x9123683e | 0x58465342 | 0x01021994 | 0x858458f6)
+        || (kind == 0xe0f5e1e2 && major != 0)
 }
 
 
@@ -89,4 +98,26 @@ pub fn contained_directory(directory: &File, root: &File, deadline: Instant) -> 
 
 pub fn duplicate_client_fd(process: &OwnedFd, number: i32) -> io::Result<File> {
     linux::duplicate_process_fd(process, number).map(File::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::native_filesystem_type;
+
+    #[test]
+    fn erofs_requires_exact_magic_and_real_block_device_major() {
+        const EROFS: u64 = 0xe0f5e1e2;
+        for minor_only in [0, 1, 0xff, 1 << 20, (0xffff_ff00u64 << 12) | 0xff] {
+            assert!(!native_filesystem_type(EROFS, minor_only));
+        }
+        for block_device in [1 << 8, 0xfff << 8, 1 << 44, 0xffff_f000_0000_0000] {
+            assert!(native_filesystem_type(EROFS, block_device));
+            assert!(!native_filesystem_type(EROFS ^ 1, block_device));
+        }
+        for existing in [0xef53, 0x2fc12fc1, 0x9123683e, 0x58465342, 0x01021994, 0x858458f6] {
+            assert!(native_filesystem_type(existing, 0));
+        }
+        assert!(!native_filesystem_type(0x794c7630, 1 << 8));
+        assert!(!native_filesystem_type(0x65735546, 1 << 8));
+    }
 }
