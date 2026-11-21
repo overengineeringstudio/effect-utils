@@ -508,7 +508,8 @@ let
   publishBuckCapabilities = ''
     ${sourceBun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
       --root "$root" --profile ${buck2Capabilities} \
-      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
+      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" \
+      --buck2-native ${buck2Machine}/libexec/buck2 >&2
   '';
 
   buck2BuildExec =
@@ -1311,6 +1312,7 @@ in
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+  env.BUCK2_NATIVE_BIN = "${buck2Machine}/libexec/buck2";
   env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
   # Explicit digest-tool input for the JavaScript product contract test, including

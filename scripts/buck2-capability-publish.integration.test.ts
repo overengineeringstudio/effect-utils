@@ -20,6 +20,8 @@ import { projectResolvedCapabilities } from '../packages/@overeng/megarepo/src/b
 import { publishCapabilities } from './buck2-capability-publish.ts'
 
 const nixStore = process.env.NIX_STORE_BIN ?? 'nix-store'
+const buck2Native = process.env.BUCK2_NATIVE_BIN
+if (buck2Native === undefined) throw new Error('required declared native Buck: BUCK2_NATIVE_BIN')
 const temporaryRoots: string[] = []
 
 describe('generated worktree roots contract', () => {
@@ -135,7 +137,7 @@ const preparePublication = async (): Promise<PublicationFixture> => {
     ],
   })
   const profile = addToStore(projection)
-  publishCapabilities({ root, profile, nixStore })
+  publishCapabilities({ root, profile, nixStore, buck2Native })
   const references = join(root, '.buck2', 'capability-references', `${generation}.json`)
   const tools: readonly string[] = JSON.parse(readFileSync(references, 'utf8'))
   return {
@@ -161,7 +163,9 @@ describe('publisher interrupted atomic-write recovery', () => {
       // SIGKILL after atomicWrite writes its private candidate, before rename:
       // only the candidate exists; the committed reference file is untouched.
       writeFileSync(candidate, committed)
-      expect(publishCapabilities({ root, profile, nixStore }).pruningDeferred).toBe(false)
+      expect(publishCapabilities({ root, profile, nixStore, buck2Native }).pruningDeferred).toBe(
+        false,
+      )
       expect(existsSync(candidate)).toBe(false)
       expect(readFileSync(references).equals(committed)).toBe(true)
     },
@@ -174,7 +178,7 @@ describe('publisher interrupted atomic-write recovery', () => {
       const committed = readFileSync(references)
       const unknown = join(root, '.buck2', 'capability-references', name)
       writeFileSync(unknown, 'not publisher-owned')
-      expect(() => publishCapabilities({ root, profile, nixStore })).toThrow(
+      expect(() => publishCapabilities({ root, profile, nixStore, buck2Native })).toThrow(
         'Invalid capability reference identity',
       )
       expect(readFileSync(unknown, 'utf8')).toBe('not publisher-owned')
@@ -187,7 +191,7 @@ describe('publisher interrupted atomic-write recovery', () => {
     const committed = readFileSync(references)
     const candidate = join(root, '.buck2', 'capability-references', `.${randomUUID()}.candidate`)
     symlinkSync(references, candidate)
-    expect(() => publishCapabilities({ root, profile, nixStore })).toThrow(
+    expect(() => publishCapabilities({ root, profile, nixStore, buck2Native })).toThrow(
       'Invalid abandoned capability atomic-write candidate',
     )
     expect(existsSync(candidate)).toBe(true)
@@ -232,15 +236,15 @@ describe('same-generation legacy symlink migration recovery', () => {
           `#!/bin/sh\n${JSON.stringify(nixStore)} "$@" || exit "$?"\nfor arg do\n  if [ "$arg" = ${JSON.stringify(profile)} ]; then exit 73; fi\ndone\n`,
           { mode: 0o755 },
         )
-        expect(() => publishCapabilities({ root, profile, nixStore: wrapper })).toThrow(
-          'Nix rooting failed',
-        )
+        expect(() =>
+          publishCapabilities({ root, profile, nixStore: wrapper, buck2Native }),
+        ).toThrow('Nix rooting failed')
         expect(JSON.parse(readFileSync(references, 'utf8'))).toEqual([])
       } else {
         // An unreplaceable marker aborts after roots, tools and references have
         // committed, but before the atomic cell exchange.
         mkdirSync(marker)
-        expect(() => publishCapabilities({ root, profile, nixStore })).toThrow()
+        expect(() => publishCapabilities({ root, profile, nixStore, buck2Native })).toThrow()
         expect(JSON.parse(readFileSync(references, 'utf8'))).toEqual([tool])
         rmSync(marker, { recursive: true })
         if (boundary === 'migration-marker') writeFileSync(marker, 'symlink-to-directory\n')
@@ -269,6 +273,8 @@ describe('same-generation legacy symlink migration recovery', () => {
             nixStore,
             '--buck2',
             failStop,
+            '--buck2-native',
+            buck2Native,
           ],
           { encoding: 'utf8', env: { ...process.env, HOME: home } },
         )
@@ -277,14 +283,18 @@ describe('same-generation legacy symlink migration recovery', () => {
         expect(lstatSync(cell).isDirectory()).toBe(true)
         expect(existsSync(marker)).toBe(true)
       }
-      expect(publishCapabilities({ root, profile, nixStore }).generation).toBe(generation)
+      expect(publishCapabilities({ root, profile, nixStore, buck2Native }).generation).toBe(
+        generation,
+      )
       expect(lstatSync(cell).isDirectory()).toBe(true)
       expect(realpathSync(rooted)).toBe(profile)
       expect(readFileSync(join(cell, tool, 'manifest.json'))).toEqual(
         readFileSync(join(profile, tool, 'manifest.json')),
       )
       expect(existsSync(marker)).toBe(false)
-      expect(publishCapabilities({ root, profile, nixStore }).generation).toBe(generation)
+      expect(publishCapabilities({ root, profile, nixStore, buck2Native }).generation).toBe(
+        generation,
+      )
     },
   )
 })

@@ -108,8 +108,8 @@ Build/export the same pinned effect-utils `buck2-capabilities` profile used by t
 Linux client; the measured TS families are `buck2-action-env`, `buck2-rust-shell`,
 `buck2-bubblewrap` (Linux only), `bun`, `effect-tsgo`, `buck2-fingerprint`, and
 `buck2-coreutils` (the readlink wrapper). Publish that profile through
-`scripts/buck2-capability-publish.ts --root "$PWD" --profile "$PROFILE"` using the
-pinned runtime. Keep its store closure alive on the worker. Pool properties do not
+`scripts/buck2-capability-publish.ts --root "$PWD" --profile "$PROFILE" --buck2-native "$BUCK2_NATIVE_BIN"`
+using the pinned runtime and its declared native Buck. Keep its store closure alive on the worker. Pool properties do not
 realize store paths. Exact closure read-only binds, clean environment, input
 fingerprinting, private scratch and Bubblewrap guards are unchanged.
 
@@ -300,6 +300,13 @@ Cancellation wakes queued acquisition, but active subordinate work must join bef
 Selection helpers require that live owner for reserved isolation from literal argv, plain-text argfiles or the environment; ambiguous selection fails closed and default isolation remains disjoint. The Nix launcher declares the pure owner module in its compile context; owned execution is not activated by these helpers.
 Invocation-identity proofs preserve the admitted literal argfile snapshot after a rewrite and prevent trailing `run` executable payload from overriding native isolation selection.
 This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
+
+Capability migration independently acquires this owner before stopping the reserved
+isolation through the same-process launcher and its declared native Buck. Busy or
+unknown ownership and failed native stops leave migration pending and return nonzero
+after independent ordinary-isolation stops have been attempted. Original causes
+remain available; incomplete migration publishes no success receipt.
+
 `requireEditorPublicationInputs` validates mutable Buck inputs and their symlink carriers
 against the live owner and reserved publication isolation, preserving native filesystem errors.
 Ordinary source and immutable store inputs need no publication owner; terminal parent traversal

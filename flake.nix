@@ -58,6 +58,7 @@ rec {
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
         stylexNextFixture = import ./nix/stylex-next-fixture.nix { inherit pkgs pnpm; };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
+        publicationOwner = import ./nix/buck2-publication-owner.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
           netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
@@ -388,6 +389,9 @@ rec {
                 pkgs.watchman
               ];
               environment.BUCK2_BIN = "${buck2}/bin/buck2";
+              environment.BUCK2_NATIVE_BIN = "${buck2}/libexec/buck2";
+              environment.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY =
+                "${publicationOwner}/lib/${publicationOwner.libraryName}";
               prepare = ''
                 set -euo pipefail
                 root="$1"
@@ -396,7 +400,7 @@ rec {
                 ${pkgs.nix}/bin/nix-store --realise --add-root "$generation/profile" --indirect "$profile" >&2
                 ${capabilityPackages.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
                   --root "$root" --profile "$profile" --nix-store ${pkgs.nix}/bin/nix-store \
-                  --buck2 ${buck2}/bin/buck2 >&2
+                  --buck2 ${buck2}/bin/buck2 --buck2-native ${buck2}/libexec/buck2 >&2
                 if [ -x "$profile/quick-contracts/bin/quick-contracts-prepare" ]; then
                   (cd "$root" && WORKTREE_CAPABILITIES_PROFILE="$profile" \
                     "$profile/quick-contracts/bin/quick-contracts-prepare" "$root" "$generation")
