@@ -1736,6 +1736,7 @@ type CargoLock = {
     readonly name?: string
     readonly version?: string
     readonly source?: string
+    readonly dependencies?: readonly string[]
   }[]
 }
 
@@ -2113,12 +2114,40 @@ const resolveDependency = ({
       `Cargo resolution has no dependency ${dependencyName} at ${member.manifestPath} ${field}`,
     )
   }
-  // Requirements are not identities: e.g. "1" and "1.0" can select the same crate.
-  // Without resolution metadata only an unambiguous locked package is safe.
+  // Cargo's consuming-package edges merge normal/dev/build dependencies. Narrow
+  // their identities by this request's version/source, never by a raw requirement identity.
+  const dependencyEdges = context.lockPackages
+    .filter((entry) => entry.name === member.manifest.package?.name && entry.source === undefined)
+    .flatMap((entry) => entry.dependencies ?? [])
+    .flatMap((edge) => {
+      const match = /^([^ ]+)(?: ([^ ]+))?(?: \((.+)\))?$/.exec(edge)
+      return match !== null && match[1] === packageName ? [match] : []
+    })
+  const requirement = effectiveRequest.version
+    ?.split(',')
+    .map((part) => {
+      const comparator = part.trim()
+      // Cargo's bare versions are caret requirements, not npm-style partial ranges.
+      return /^\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(comparator) ===
+        true
+        ? `^${comparator}`
+        : comparator
+    })
+    .join(' ')
   const lockedPackages = context.lockPackages.filter(
     (entry) =>
       entry.name === (resolved?.package ?? packageName) &&
       (resolved === undefined || entry.version === resolved.version) &&
+      (resolved !== undefined ||
+        dependencyEdges.length === 0 ||
+        dependencyEdges.some(
+          (edge) =>
+            (edge[2] === undefined || edge[2] === entry.version) &&
+            (edge[3] === undefined || edge[3] === entry.source),
+        )) &&
+      (resolved !== undefined ||
+        requirement === undefined ||
+        (entry.version !== undefined && Bun.semver.satisfies(entry.version, requirement))) &&
       (effectiveRequest.source === undefined
         ? entry.source === undefined || entry.source.startsWith('registry+') === true
         : entry.source?.startsWith('git+') === true &&

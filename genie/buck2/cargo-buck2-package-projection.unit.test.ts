@@ -2036,6 +2036,60 @@ describe('Cargo test harness projection', () => {
     expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
   })
 
+  it.each(['version', 'source', 'missing', 'consumer-build'])(
+    'resolves equivalent requests amid multiple locked versions using %s edges',
+    (edgeKind) => {
+      const source = 'registry+https://github.com/rust-lang/crates.io-index'
+      const output = render({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "1.0"' +
+              (edgeKind === 'consumer-build' ? '\n[build-dependencies]\nserde = "0.9"' : ''),
+            files: edgeKind === 'consumer-build' ? [...files, 'build.rs'] : files,
+          },
+        },
+        prepareFixture: (root) => {
+          const edge = edgeKind === 'source' ? `serde 1.0.229 (${source})` : 'serde 1.0.229'
+          writeFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            `version = 4\n[[package]]\nname = "pkg"\nversion = "0.1.0"\n${
+              edgeKind === 'missing'
+                ? ''
+                : `dependencies = [${JSON.stringify(edge)}${edgeKind === 'consumer-build' ? ', "serde 0.9.15"' : ''}]\n`
+            }[[package]]\nname = "serde"\nversion = "1.0.229"\nsource = "${source}"\n[[package]]\nname = "serde"\nversion = "0.9.15"\nsource = "${source}"\n${
+              edgeKind === 'source'
+                ? '[[package]]\nname = "serde"\nversion = "1.0.229"\nsource = "registry+https://example.invalid/index"\n'
+                : ''
+            }`,
+          )
+        },
+      })
+      expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
+      if (edgeKind === 'consumer-build') expect(output).toContain('crate_root = "build.rs"')
+    },
+  )
+
+  it('fails closed when multiple matching locked identities really remain', () => {
+    expect(() =>
+      render({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "1.0"',
+            files,
+          },
+        },
+        prepareFixture: (root) => {
+          writeFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            'version = 4\n[[package]]\nname = "pkg"\nversion = "0.1.0"\ndependencies = ["serde 1.0.229", "serde 1.0.228"]\n[[package]]\nname = "serde"\nversion = "1.0.229"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n[[package]]\nname = "serde"\nversion = "1.0.228"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+          )
+        },
+      }),
+    ).toThrow('Cannot identify locked test dependency serde')
+  })
+
   it.each(['unit-lib', 'unit-bin-pkg', 'integration-one'])(
     'rejects reserved binary name %s',
     (name) => {
