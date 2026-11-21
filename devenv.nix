@@ -1398,6 +1398,7 @@ in
     '';
     execIfModified = [
       "nix/buck2.nix"
+      "nix/buck2-release.nix"
       "scripts/buck2-entrypoint.*"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
@@ -1572,12 +1573,18 @@ in
       export STAGE0_RUSTC="$inputs/rustc/bin/rustc" STAGE0_VENDOR="$inputs/vendor"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
+      # This drives the shared Buck daemon; run it sequentially after the source suites,
+      # not in the parallel-safe/temp-root-only devenv module shell-test workers.
+      exec ${pkgs.bash}/bin/bash ./genie/buck2/cargo-buck2-test-parity.integration.test.sh
     '';
     execIfModified = [
       "BUCK"
       "genie/buck2/**/*.ts"
+      "genie/buck2/cargo-buck2-test-parity.integration.test.sh"
       "genie/buck2/fixtures/**/*"
+      "buck2/rust/defs.bzl"
+      "nix/buck2.nix"
       "nix/stage0-cargo/*"
       "rust/**/Cargo.toml"
       "rust/Cargo.lock"

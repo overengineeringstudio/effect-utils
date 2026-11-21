@@ -140,6 +140,25 @@ export const annotateStoreEnumeration = (value: typeof StoreEnumerationAttribute
     OtelSpan.annotate({ attributes: storeEnumerationAttrs, value }),
   )
 
+const StoreLivenessReconcileAttributes = Schema.Struct({
+  'megarepo.store.liveness.reconcile.workspaces': Schema.Int,
+  'megarepo.store.liveness.reconcile.derived': Schema.Int,
+  'megarepo.store.liveness.reconcile.unchanged': Schema.Int,
+  'megarepo.store.liveness.reconcile.rewritten': Schema.Int,
+  'megarepo.store.liveness.reconcile.failed': Schema.Int,
+  'megarepo.store.liveness.reconcile.pruned': Schema.Int,
+  'megarepo.store.liveness.reconcile.duration_ms': Schema.Finite,
+})
+const storeLivenessReconcileAttrs = OtelAttrs.defineSync(StoreLivenessReconcileAttributes)
+
+/** Annotate one strict registry reconciliation with aggregate results (trace-only). */
+export const annotateStoreLivenessReconcile = (
+  value: typeof StoreLivenessReconcileAttributes.Type,
+) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({ attributes: storeLivenessReconcileAttrs, value }),
+  )
+
 // ---- DYNAMIC-NAME BRIDGES (megarepo.*): span name varies → stay inline, rebuilt from catalog ----
 
 const repoPathAttrs = OtelAttrs.defineSync(

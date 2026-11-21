@@ -1,0 +1,11 @@
+load("@prelude//:prelude.bzl", "native")
+native.alias(
+    name = "serde",
+    actual = "//rust/third-party:serde",
+    visibility = ["PUBLIC"],
+)
+native.alias(
+    name = "number",
+    actual = "//rust/third-party:serde_json",
+    visibility = ["PUBLIC"],
+)

@@ -117,6 +117,8 @@ export type DefineCargoBuck2PackageProjectionOptions = {
   readonly cargoLockPath?: string
   readonly reindeerConfigPath?: string
   readonly workspaceMemberManifestPaths: readonly string[]
+  /** Repository-relative workspace package directories opting into unit/integration tests. */
+  readonly testPackagePaths?: readonly string[]
   readonly thirdPartyBuckPath?: string
   readonly thirdPartyPackage?: string
   readonly buck2LoadLabelPrefix?: string
@@ -137,6 +139,7 @@ type ProjectionDefinition = {
   readonly reindeerConfigPath: string
   readonly repo: RepoContext
   readonly thirdPartyBuckPath: string
+  readonly testPackagePaths: ReadonlySet<string>
   readonly workspaceMembers: readonly WorkspaceMember[]
   readonly workspaceRoot: string
 }
@@ -154,6 +157,7 @@ export const defineCargoBuck2PackageProjection = ({
   cargoLockPath: configuredCargoLockPath,
   reindeerConfigPath: configuredReindeerConfigPath,
   workspaceMemberManifestPaths: configuredWorkspaceMemberManifestPaths,
+  testPackagePaths: configuredTestPackagePaths = [],
   thirdPartyBuckPath: configuredThirdPartyBuckPath,
   thirdPartyPackage = '//rust/third-party',
   buck2LoadLabelPrefix = '//buck2',
@@ -325,8 +329,12 @@ export const defineCargoBuck2PackageProjection = ({
     throw new Error(`${cargoResolutionPath} is missing; regenerate the consumer Reindeer supply`)
   }
   const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
-  if (workspace.resolver !== '2')
-    throw new Error('The Buck projection supports only Cargo resolver = "2"')
+  // Resolver 3 retains v2 feature unification; its MSRV policy affects lock generation,
+  // whereas this projection consumes the committed Cargo.lock.
+  if (workspace.resolver !== '2' && workspace.resolver !== '3')
+    throw new CargoResolverUnsupported(
+      `The Buck projection supports only Cargo resolver = "2" or "3"; received ${JSON.stringify(workspace.resolver)}`,
+    )
   const declaredMemberPaths = sorted([
     ...new Set([
       ...requireValue({ value: workspace.members, field: 'workspace.members' }).map((member) =>
@@ -349,6 +357,7 @@ export const defineCargoBuck2PackageProjection = ({
     }),
     cargoResolution,
     cargoResolutionPath: cargoResolution === undefined ? undefined : cargoResolutionPath,
+    lockPackages: lock.package ?? [],
     lockPackageNames: new Set(
       (lock.package ?? []).map((entry) =>
         requireValue({ value: entry.name, field: 'Cargo.lock package.name' }),
@@ -366,18 +375,34 @@ export const defineCargoBuck2PackageProjection = ({
     workspaceRoot,
   }
 
+  const testPackagePaths = new Set(
+    configuredTestPackagePaths.map((value, index) => {
+      const packagePath = validateRepoPath({
+        repo,
+        value,
+        field: `testPackagePaths[${index}]`,
+        allowRootDirectory: true,
+      })
+      if (context.memberByPath.has(packagePath) === false) {
+        throw new Error(`testPackagePaths must select a workspace package: ${packagePath}`)
+      }
+      return packagePath
+    }),
+  )
+
   const definition: ProjectionDefinition = {
     buck2LoadLabelPrefix,
     cargoLockPath,
     cargoManifestPath,
     context,
-    featureResolution: memoize(() => resolveWorkspaceFeatures({ context })),
+    featureResolution: memoize(() => resolveWorkspaceFeatures({ context, testPackagePaths })),
     foreignPackages,
     generatorSourcePaths: generatorSourcePathsWithForeign,
     regenerationCommand,
     reindeerConfigPath,
     repo,
     thirdPartyBuckPath,
+    testPackagePaths,
     workspaceMembers,
     workspaceRoot,
   }
@@ -690,6 +715,50 @@ const cargoBuck2PackageProjectionFor = ({
     manifestPath: member.manifestPath,
     packageName,
   })
+  const integrationTestRoots = sources.filter(
+    (source) =>
+      source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
+  )
+  const testsEnabled = foreignMember === undefined && definition.testPackagePaths.has(packagePath)
+  if (
+    testsEnabled === true &&
+    (member.manifest.lib?.harness === false ||
+      member.manifest.bin?.some((binary) => binary.harness === false) === true)
+  ) {
+    throw new CargoTestTargetUnsupported(
+      `Cargo harness = false is unsupported in ${member.manifestPath}`,
+    )
+  }
+  const testHarnesses =
+    testsEnabled === true
+      ? [
+          ...(library === undefined || library.test === false
+            ? []
+            : [
+                {
+                  name: 'unit-lib',
+                  crate: library.name,
+                  crateRoot: library.path,
+                  kind: 'lib' as const,
+                },
+              ]),
+          ...binaries
+            .filter((binary) => binary.test !== false)
+            .map((binary) => ({
+              name: `unit-bin-${binary.name}`,
+              crate: crateIdentifier(binary.name),
+              crateRoot: binary.crateRoot,
+              kind: 'bin' as const,
+              binName: binary.name,
+            })),
+          ...integrationTestRoots.map((root) => ({
+            name: `integration-${path.posix.basename(root, '.rs')}`,
+            crate: crateIdentifier(path.posix.basename(root, '.rs')),
+            crateRoot: root,
+            kind: 'integration' as const,
+          })),
+        ]
+      : []
   const reservedTargetNames = new Set([
     'static_sources',
     ...(library === undefined ? [] : ['lib']),
@@ -705,6 +774,14 @@ const cargoBuck2PackageProjectionFor = ({
           `${packageName}-build-script-run`,
         ]),
   ])
+  for (const harness of testHarnesses) {
+    if (reservedTargetNames.has(harness.name) === true) {
+      throw new Error(
+        `Cargo test names collide with generated Buck targets in ${member.manifestPath}: ${harness.name}`,
+      )
+    }
+    reservedTargetNames.add(harness.name)
+  }
   const collidingBinaries = binaries.filter((binary) => reservedTargetNames.has(binary.name))
   if (collidingBinaries.length > 0) {
     throw new Error(
@@ -717,10 +794,6 @@ const cargoBuck2PackageProjectionFor = ({
   // root), so every Rust target declares all of them; extra srcs only widen action inputs.
   const srcSources = sources.filter((source) => source.startsWith('src/'))
   const librarySources = srcSources
-  const integrationTestRoots = sources.filter(
-    (source) =>
-      source.startsWith('tests/') && source.slice('tests/'.length).includes('/') === false,
-  )
   const renamedConditional = [...conditionalNormalDependencies, ...conditionalDevDependencies]
     .filter((entry) => entry.dependency.package !== undefined)
     .map((entry) => entry.dependency.name)
@@ -737,6 +810,34 @@ const cargoBuck2PackageProjectionFor = ({
   const namedDependencies = activeNormalDependencies
     .filter((dependency) => dependency.package !== undefined)
     .map((dependency) => ({ label: dependency.label, name: crateIdentifier(dependency.name) }))
+  const testDependencies =
+    testsEnabled === true
+      ? mergeTestDependencies({
+          dependencies: [...activeNormalDependencies, ...devDependencies],
+          manifestPath: member.manifestPath,
+        })
+      : []
+  const testConditional =
+    testsEnabled === true
+      ? [...activeConditionalNormalDependencies, ...conditionalDevDependencies]
+      : []
+  if (testsEnabled === true) {
+    mergeTestDependencies({
+      dependencies: [...testDependencies, ...testConditional.map((entry) => entry.dependency)],
+      manifestPath: member.manifestPath,
+    })
+  }
+  const missingTestDependencies = [
+    ...testDependencies,
+    ...testConditional.map((entry) => entry.dependency),
+  ].filter((dependency) => dependency.targetAvailable === false)
+  if (testHarnesses.length > 0 && missingTestDependencies.length > 0) {
+    throw new CargoTestDependencyUnavailable(
+      `${member.manifestPath}: ${thirdPartyBuckPath} is missing test targets: ${sorted(
+        missingTestDependencies.map((dependency) => dependency.name),
+      ).join(', ')}`,
+    )
+  }
   const workspaceContractSources = sorted([
     'BUCK',
     'BUCK.genie.ts',
@@ -929,6 +1030,9 @@ const cargoBuck2PackageProjectionFor = ({
     edition,
     graphFingerprints,
     integrationTestRoots,
+    testHarnesses,
+    testProjection: testsEnabled === true ? 'unit-and-integration' : 'disabled',
+    doctests: 'unsupported',
     library,
     librarySources,
     normalDependencies,
@@ -961,17 +1065,27 @@ const cargoBuck2PackageProjectionFor = ({
     buildScriptOutputs,
     crateName,
     binName,
+    integration = false,
+    test = false,
   }: {
     readonly buildScriptOutputs: boolean
     readonly crateName: string
     readonly binName?: string
+    readonly integration?: boolean
+    readonly test?: boolean
   }): readonly string[] => [
     '    env = {',
     ...Object.entries(compileEnv).map(
       ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
     ),
     `        "CARGO_CRATE_NAME": ${starlarkString(crateName)},`,
-    `        "CARGO_MANIFEST_DIR": ${starlarkString(packagePath)},`,
+    `        "CARGO_MANIFEST_DIR": ${starlarkString(test === true ? '.' : packagePath)},`,
+    ...(integration === true
+      ? binaries.map(
+          (binary) =>
+            `        ${starlarkString(`CARGO_BIN_EXE_${binary.name}`)}: ${starlarkString(`$(location ${buckLabel({ packagePath, target: binary.name })})`)},`,
+        )
+      : []),
     ...(binName === undefined ? [] : [`        "CARGO_BIN_NAME": ${starlarkString(binName)},`]),
     ...(cliBuildStamp === true
       ? ['        "CLI_BUILD_STAMP": read_config("build_identity", "cli_build_stamp", ""),']
@@ -997,8 +1111,11 @@ const cargoBuck2PackageProjectionFor = ({
     conditionalDependencies,
     visibility,
     procMacro = false,
+    ruleNamedDependencies = namedDependencies,
+    integration = false,
+    binName,
   }: {
-    readonly rule: 'rust_binary' | 'rust_library'
+    readonly rule: 'rust_binary' | 'rust_library' | 'rust_test'
     readonly name: string
     readonly crate: string
     readonly crateRoot: string
@@ -1007,8 +1124,11 @@ const cargoBuck2PackageProjectionFor = ({
     readonly conditionalDependencies: readonly ConditionalDependency[]
     readonly visibility?: readonly string[]
     readonly procMacro?: boolean
+    readonly ruleNamedDependencies?: readonly { readonly name: string; readonly label: string }[]
+    readonly integration?: boolean
+    readonly binName?: string
   }): readonly string[] => [
-    `native.${rule}(`,
+    `${rule === 'rust_test' ? 'cargo_rust_test' : `native.${rule}`}(`,
     `    name = ${starlarkString(name)},`,
     `    crate = ${starlarkString(crate)},`,
     `    crate_root = ${starlarkString(crateRoot)},`,
@@ -1040,11 +1160,11 @@ const cargoBuck2PackageProjectionFor = ({
           '    },',
         ]),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
-    ...(namedDependencies.length === 0
+    ...(ruleNamedDependencies.length === 0
       ? []
       : [
           '    named_deps = {',
-          ...namedDependencies.map(
+          ...ruleNamedDependencies.map(
             (dependency) =>
               `        ${starlarkString(dependency.name)}: ${starlarkString(dependency.label)},`,
           ),
@@ -1054,7 +1174,9 @@ const cargoBuck2PackageProjectionFor = ({
     ...envLines({
       buildScriptOutputs: buildScript !== undefined,
       crateName: crate,
-      ...(rule === 'rust_binary' ? { binName: name } : {}),
+      ...(binName === undefined ? (rule === 'rust_binary' ? { binName: name } : {}) : { binName }),
+      integration,
+      test: rule === 'rust_test',
     }),
     ...renderRustcFlags([
       // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
@@ -1102,7 +1224,8 @@ const cargoBuck2PackageProjectionFor = ({
     }
     const manifestEntries: readonly (readonly [string, string])[] = [
       ...packageFiles.map(
-        (file) => [path.posix.join(packagePath, file), sourceLabel({ file, foreignMember })] as const,
+        (file) =>
+          [path.posix.join(packagePath, file), sourceLabel({ file, foreignMember })] as const,
       ),
       ...buildScript.inputs.map(
         (input) =>
@@ -1190,6 +1313,34 @@ const cargoBuck2PackageProjectionFor = ({
         dependencies: binaryDependencies,
         conditionalDependencies: normalConditional,
         visibility: ['PUBLIC'],
+      }),
+    )
+  }
+  for (const harness of testHarnesses) {
+    rules.push(
+      ...renderRule({
+        rule: 'rust_test',
+        name: harness.name,
+        crate: harness.crate,
+        crateRoot: harness.crateRoot,
+        ruleSources: sorted([...sources, 'Cargo.toml']),
+        dependencies: sorted([
+          ...testDependencies
+            .filter((dependency) => dependency.package === undefined)
+            .map((dependency) => dependency.label),
+          ...(harness.kind !== 'lib' && library !== undefined
+            ? [buckLabel({ packagePath, target: 'lib' })]
+            : []),
+        ]),
+        conditionalDependencies: testConditional,
+        ruleNamedDependencies: testDependencies
+          .filter((dependency) => dependency.package !== undefined)
+          .map((dependency) => ({
+            name: crateIdentifier(dependency.name),
+            label: dependency.label,
+          })),
+        integration: harness.kind === 'integration',
+        ...('binName' in harness ? { binName: harness.binName } : {}),
       }),
     )
   }
@@ -1306,10 +1457,17 @@ const cargoBuck2PackageProjectionFor = ({
     `# Projection generator: ${generator}`,
     `# Semantic fingerprint: ${fingerprint}`,
     `# Semantic inputs: ${semanticInputPaths.join(', ')}`,
+    testsEnabled === true
+      ? '# Test projection: unit and integration harnesses enabled.'
+      : '# Test projection: disabled (opt in with testPackagePaths).',
+    '# Doctests: unsupported (unit and integration harnesses only).',
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
     `load(${starlarkString(`${buck2LoadLabelPrefix}:static_checks.bzl`)}, "static_source_set")`,
+    ...(testHarnesses.length === 0
+      ? []
+      : [`load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "cargo_rust_test")`]),
     ...(wasmBindgen === undefined && napi === undefined && wasmGuest === undefined
       ? []
       : [
@@ -1543,12 +1701,16 @@ type CargoManifest = {
   readonly lib?: {
     readonly name?: string
     readonly path?: string
+    readonly test?: boolean
+    readonly harness?: boolean
     readonly 'crate-type'?: readonly string[]
     readonly 'proc-macro'?: boolean
   }
   readonly bin?: readonly {
     readonly name?: string
     readonly path?: string
+    readonly test?: boolean
+    readonly harness?: boolean
     readonly 'required-features'?: readonly string[]
   }[]
   readonly test?: readonly unknown[]
@@ -1578,6 +1740,7 @@ type CargoLock = {
     readonly name?: string
     readonly version?: string
     readonly source?: string
+    readonly dependencies?: readonly string[]
   }[]
 }
 
@@ -1593,6 +1756,7 @@ type ProjectionContext = {
   readonly foreignPackageByPath: ReadonlyMap<string, WorkspaceMember>
   readonly foreignTargetPackage: string
   readonly lockPackageNames: ReadonlySet<string>
+  readonly lockPackages: NonNullable<CargoLock['package']>
   readonly memberByPath: ReadonlyMap<string, WorkspaceMember>
   readonly cargoResolution?: CargoResolution
   readonly cargoResolutionPath?: string
@@ -1708,6 +1872,7 @@ const normalizeDependencyRequest = ({
   readonly package?: string
   readonly path?: string
   readonly version?: string
+  readonly source?: string
   readonly workspace: boolean
 } => {
   if (typeof request === 'string') {
@@ -1771,6 +1936,9 @@ const normalizeDependencyRequest = ({
     ...(request.package === undefined ? {} : { package: request.package }),
     ...(request.path === undefined ? {} : { path: request.path }),
     ...(request.version === undefined ? {} : { version: request.version }),
+    ...(request.git === undefined
+      ? {}
+      : { source: `${request.git}#${request.rev ?? request.tag ?? request.branch ?? ''}` }),
     workspace: request.workspace === true,
   }
 }
@@ -1786,7 +1954,64 @@ type ResolvedDependency = {
   readonly package?: string
   readonly requestSource: 'member' | 'workspace'
   readonly targetAvailable: boolean
+  readonly resolvedIdentity?: string
   readonly version?: string
+}
+
+class CargoTestDependencyConflict extends Error {
+  readonly _tag = 'CargoTestDependencyConflict'
+}
+
+class CargoTestDependencyUnavailable extends Error {
+  readonly _tag = 'CargoTestDependencyUnavailable'
+}
+
+class CargoTestTargetUnsupported extends Error {
+  readonly _tag = 'CargoTestTargetUnsupported'
+}
+
+class CargoResolverUnsupported extends Error {
+  readonly _tag = 'CargoResolverUnsupported'
+}
+
+/** Cargo unifies normal/dev requests; never silently replace an extern binding. */
+const mergeTestDependencies = ({
+  dependencies,
+  manifestPath,
+}: {
+  readonly dependencies: readonly ResolvedDependency[]
+  readonly manifestPath: string
+}): readonly ResolvedDependency[] => {
+  const merged = new Map<string, ResolvedDependency>()
+  for (const dependency of dependencies) {
+    if (dependency.resolvedIdentity === undefined) {
+      throw new CargoTestDependencyUnavailable(
+        `Cannot identify locked test dependency ${dependency.name} in ${manifestPath}; regenerate cargo-resolution.json`,
+      )
+    }
+    const previous = merged.get(dependency.name)
+    if (
+      previous !== undefined &&
+      (previous.label !== dependency.label ||
+        (previous.package ?? previous.name) !== (dependency.package ?? dependency.name) ||
+        previous.resolvedIdentity !== dependency.resolvedIdentity)
+    ) {
+      throw new CargoTestDependencyConflict(
+        `Conflicting normal/dev Cargo dependency ${dependency.name} in ${manifestPath}`,
+      )
+    }
+    merged.set(
+      dependency.name,
+      previous === undefined
+        ? dependency
+        : {
+            ...previous,
+            defaultFeatures: previous.defaultFeatures || dependency.defaultFeatures,
+            features: sorted([...previous.features, ...dependency.features]),
+          },
+    )
+  }
+  return [...merged.values()]
 }
 
 const resolveDependency = ({
@@ -1846,6 +2071,7 @@ const resolveDependency = ({
         ? {}
         : { version: normalizedInherited.version }),
       workspace: false,
+      ...(normalizedInherited.source === undefined ? {} : { source: normalizedInherited.source }),
     }
     if (normalizedInherited.path !== undefined) {
       // Cargo resolves `[workspace.dependencies]` paths against the workspace root.
@@ -1896,6 +2122,47 @@ const resolveDependency = ({
       `Cargo resolution has no dependency ${dependencyName} at ${member.manifestPath} ${field}`,
     )
   }
+  // Cargo's consuming-package edges merge normal/dev/build dependencies. Narrow
+  // their identities by this request's version/source, never by a raw requirement identity.
+  const dependencyEdges = context.lockPackages
+    .filter((entry) => entry.name === member.manifest.package?.name && entry.source === undefined)
+    .flatMap((entry) => entry.dependencies ?? [])
+    .flatMap((edge) => {
+      const match = /^([^ ]+)(?: ([^ ]+))?(?: \((.+)\))?$/.exec(edge)
+      return match !== null && match[1] === packageName ? [match] : []
+    })
+  const requirement = effectiveRequest.version
+    ?.split(',')
+    .map((part) => {
+      const comparator = part.trim()
+      // Cargo's bare versions are caret requirements, not npm-style partial ranges.
+      return /^\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(comparator) ===
+        true
+        ? `^${comparator}`
+        : comparator
+    })
+    .join(' ')
+  const lockedPackages = context.lockPackages.filter(
+    (entry) =>
+      entry.name === (resolved?.package ?? packageName) &&
+      (resolved === undefined || entry.version === resolved.version) &&
+      (resolved !== undefined ||
+        dependencyEdges.length === 0 ||
+        dependencyEdges.some(
+          (edge) =>
+            (edge[2] === undefined || edge[2] === entry.version) &&
+            (edge[3] === undefined || edge[3] === entry.source),
+        )) &&
+      (resolved !== undefined ||
+        requirement === undefined ||
+        (entry.version !== undefined && Bun.semver.satisfies(entry.version, requirement))) &&
+      (effectiveRequest.source === undefined
+        ? entry.source === undefined || entry.source.startsWith('registry+') === true
+        : entry.source?.startsWith('git+') === true &&
+          entry.source.slice('git+'.length).split(/[?#]/)[0] ===
+            effectiveRequest.source.split('#')[0]),
+  )
+  const locked = lockedPackages.length === 1 ? lockedPackages[0] : undefined
   const targetName =
     resolved?.alias ??
     (effectiveRequest.package === undefined ||
@@ -1912,6 +2179,9 @@ const resolveDependency = ({
     requestSource,
     targetAvailable: context.thirdPartyTargets.has(targetName),
     ...(effectiveRequest.version === undefined ? {} : { version: effectiveRequest.version }),
+    ...(locked === undefined
+      ? {}
+      : { resolvedIdentity: `${locked.name}@${locked.version}:${locked.source ?? 'registry'}` }),
   }
 }
 
@@ -2009,6 +2279,7 @@ const resolveMemberPathDependency = ({
     ...(request.optional === true ? { optional: true as const } : {}),
     requestSource,
     targetAvailable: true,
+    resolvedIdentity: `path:${dependencyPath}`,
     ...(request.version === undefined ? {} : { version: request.version }),
   }
 }
@@ -2039,12 +2310,14 @@ const resolveDependencyTable = ({
 type CargoLibraryTarget = {
   readonly name: string
   readonly path: string
+  readonly test?: boolean
   readonly crateTypes?: readonly string[]
   readonly procMacro?: boolean
 }
 type CargoBinaryTarget = {
   readonly crateRoot: string
   readonly name: string
+  readonly test?: boolean
   /** `required-features`: Cargo builds the binary only when all are enabled. */
   readonly requiredFeatures?: readonly string[]
 }
@@ -2100,6 +2373,7 @@ const discoverCargoTargets = ({
     library = {
       name: explicitLibrary.name ?? crateIdentifier(packageName),
       path: libraryPath,
+      test: explicitLibrary.test ?? true,
       ...(crateTypes === undefined ? {} : { crateTypes }),
       ...(procMacro === true ? { procMacro } : {}),
     }
@@ -2144,9 +2418,12 @@ const discoverCargoTargets = ({
     if (sourceSet.has(crateRoot) === false) {
       throw new Error(`Cargo binary path is not a discovered Rust source: ${crateRoot}`)
     }
-    return requiredFeatures.length === 0
-      ? { crateRoot, name }
-      : { crateRoot, name, requiredFeatures }
+    return {
+      crateRoot,
+      name,
+      test: binary.test ?? true,
+      ...(requiredFeatures.length === 0 ? {} : { requiredFeatures }),
+    }
   })
   const explicitNames = new Set(explicitBinaries.map((binary) => binary.name))
   const explicitRoots = new Set(explicitBinaries.map((binary) => binary.crateRoot))
@@ -2542,7 +2819,11 @@ const resolveBuildScript = ({
     }
     return undefined
   }
-  validateRepoPath({ repo, value: path.posix.join(packagePath, scriptPath), field: 'package.build' })
+  validateRepoPath({
+    repo,
+    value: path.posix.join(packagePath, scriptPath),
+    field: 'package.build',
+  })
   const inputs = (buildScriptInputs ?? []).map((input, index) => {
     const field = `buildScriptInputs[${index}]`
     validateRepoPath({ repo, value: input.path, field: `${field}.path` })
@@ -2823,16 +3104,16 @@ const validateFeatureItem = ({
 }
 
 /**
- * Cargo feature unification across the workspace, matching `cargo build --workspace`
- * under resolver 2: every member is a root with its default features, and each normal
- * dependency edge (activated optional ones included) adds the features it requests on a
- * member library. Every member has one `:lib`, so it compiles with the union. Features
- * requested of third-party crates are Reindeer's concern and are only validated here.
+ * Cargo feature unification across the workspace under resolver 2. Every member is a
+ * root with default features; opted-in tests also contribute dev requests to its
+ * single projected library. Third-party feature unions are owned by Reindeer.
  */
 const resolveWorkspaceFeatures = ({
   context,
+  testPackagePaths,
 }: {
   readonly context: ProjectionContext
+  readonly testPackagePaths: ReadonlySet<string>
 }): ReadonlyMap<string, MemberFeatureState> => {
   const members = [...context.memberByPath.values(), ...context.foreignPackageByPath.values()]
   const usesFeatures = members.some(
@@ -2866,12 +3147,19 @@ const resolveWorkspaceFeatures = ({
   const isMemberLabel = (label: string): boolean => memberPathsByLabel.has(label)
   const states = new Map<string, MemberFeatures>()
   for (const member of members) {
-    const conditionalDependencies = resolveConditionalDependencies({
-      context: contextForMember({ context, member }),
-      member,
-      target: member.manifest.target,
-      kind: 'dependencies',
-    }).map((entry) => entry.dependency)
+    const includesTests = testPackagePaths.has(member.packagePath)
+    const conditionalDependencies = (['dependencies', 'dev-dependencies'] as const).flatMap(
+      (kind) =>
+        resolveConditionalDependencies({
+          context: contextForMember({ context, member }),
+          member,
+          target:
+            kind === 'dev-dependencies' && includesTests === false
+              ? undefined
+              : member.manifest.target,
+          kind,
+        }).map((entry) => entry.dependency),
+    )
     // Each member has one `:lib` with one feature list, so a request that only holds on
     // some platforms (resolver 2) would leak onto every platform.
     const platformSpecificMemberRequests = conditionalDependencies.filter(
@@ -2890,6 +3178,12 @@ const resolveWorkspaceFeatures = ({
         member,
         dependencies: member.manifest.dependencies,
         field: 'dependencies',
+      }),
+      ...resolveDependencyTable({
+        context: contextForMember({ context, member }),
+        member,
+        dependencies: includesTests === true ? member.manifest['dev-dependencies'] : undefined,
+        field: 'dev-dependencies',
       }),
       ...conditionalDependencies,
     ]
