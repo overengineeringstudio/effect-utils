@@ -21,6 +21,10 @@ mod shmem;
 use scope_devices::{CandidateView, ScopeLedger};
 use shmem::ShmemWitness;
 
+#[cfg(test)]
+#[path = "worktree-holder-evidence-namespace-fixture.rs"]
+mod namespace_fixture;
+
 pub struct Candidate {
     pub path: PathBuf,
     pub root: File,
@@ -476,7 +480,7 @@ mod tests {
 
     // Native fixture boundary: the test runner must provide a native temporary
     // filesystem, not overlay/FUSE. No production enrollment/proc override.
-    fn fixture_set(paths: &[PathBuf]) -> CandidateSet {
+    pub(super) fn fixture_set(paths: &[PathBuf]) -> CandidateSet {
         let task = objects::pin_magic("/proc/self").unwrap();
         let mut roots = Vec::new();
         let mut scopes = Vec::new();
@@ -499,6 +503,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn common_hardlinks_match_only_actual_held_worktree_path() {
         let fixture = Fixture::new();
         let a = fixture.0.join("a");
@@ -523,6 +528,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn root_replacement_deadline_and_symlink_confinement_fail_closed() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
@@ -540,6 +546,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn store_positive_precedes_unlinked_native_mapping_failure() {
         let fixture = Fixture::new();
         let root = fixture.0.join("store");
@@ -599,6 +606,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn terminal_devices_do_not_pin_candidate_paths() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
@@ -623,6 +631,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn actual_internal_memfd_recloses_with_frozen_retained_views() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
@@ -653,6 +662,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn linked_candidate_and_unlinked_same_filesystem_never_use_shmem_exclusion() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
@@ -708,5 +718,10 @@ mod tests {
             let after = fixture_set(&[root]);
             assert!(after.matches(&file, &task, ReferenceKind::Fd, deadline()).is_err());
         }
+    }
+    #[test]
+    #[ignore = "requires controlled guest root, exact production-capability probe and static busybox"]
+    fn jailed_namespace_outside_candidate_bind_matches_oracle_without_admin() {
+        namespace_fixture::run();
     }
 }

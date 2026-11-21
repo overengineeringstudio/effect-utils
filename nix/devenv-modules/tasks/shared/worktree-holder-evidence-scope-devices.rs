@@ -15,6 +15,10 @@ pub(super) struct CandidateView {
 impl CandidateView {
     pub fn capture(task: &File, scopes: &[Scope], deadline: Instant) -> io::Result<Self> {
         let view = mounts::NativeView::capture(task, deadline)?;
+        Self::from_view(view, scopes, deadline)
+    }
+
+    pub fn from_view(view: mounts::NativeView, scopes: &[Scope], deadline: Instant) -> io::Result<Self> {
         let mut aliases = BTreeSet::<PathBuf>::new();
         for mount in view.mounts() {
             bound(deadline)?;

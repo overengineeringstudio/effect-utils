@@ -109,18 +109,33 @@ protocol and kernel libraries. It installs no server, client adapter or service.
 An empty enrollment has no eligible candidates; production callers must supply
 the same reviewed native enrollment as their server policy.
 
-`NativeView` pins the task root, complete bounded mount snapshot and actual
-mountpoint objects; changed view or physical mapping invalidates the observation.
+`NativeView` pins the task root, authenticated mount namespace FD, complete
+bounded kernel mount snapshot and actual mountpoint objects. Native absence
+never relies on `/proc/<tid>/mountinfo`, whose contents are filtered by chroot.
+The read-only `listmount`/`statmount` queries select the pinned namespace FD;
+`NS_GET_MNTNS_ID` must agree with every returned record. Independent
+`NS_MNT_GET_INFO` cardinality must agree with the complete list before and after
+the scan, so reachability-filtered partial lists cannot qualify. Final closure
+rechecks the namespace identity, whole mount set and all retained record fields,
+not merely IDs or a mount count. Unsupported APIs, denied access, a changed
+view or an unverifiable physical mapping invalidate the observation: no fallback,
+`setns`, namespace mutation or additional capability is permitted.
 `CandidateSet` matches component-scoped physical source membership, including
 mounted roots, not mere textual mount paths or common hardlinks. Store inode
 inventory is deferred until after the caller authenticates its original exclusive
 maintenance lease; worktrees are never recursively inventoried. Ordinary terminal
 devices have no candidate path and do not become protective unknowns.
 
-The builder runs the real Rust unit runner against the reused lower libraries.
-The isolated bind/detached-mount fixture additionally requires an isolated mount
-namespace with `CAP_SYS_ADMIN`; a skipped privileged fixture is not live census
-qualification. Library or codec success never authorizes deletion.
+The builder runs pure codec and path tests against the reused lower libraries.
+Real native filesystem fixtures run explicitly in the controlled NixOS VM,
+not a build-sandbox chroot that cannot prove the complete host mount set.
+The isolated bind/detached-mount controllers require `CAP_SYS_ADMIN`, but the
+jailed-task regression queries through the production privilege profile without
+that capability. Its outside-chroot candidate bind must appear in a complete
+kernel listing that matches a privileged test-only oracle and must veto.
+The exact child test must execute once; access refusal or an incomplete listing
+fails qualification rather than passing as the expected veto. A skipped
+privileged fixture, library success or codec success never authorizes deletion.
 
 ## Privileged holder server (inactive)
 
@@ -311,7 +326,7 @@ Each TaskScope therefore retains a separate same-TID `mapping_scope`, pinned
 inside the original generation/UID/namespace discovery bracket and compared
 with fresh exact top-level scope identity during reclosure/recapture. The
 original nested scope is separately rechecked and still supplies actual-task
-FDs, root/cwd/exe, namespaces and mountinfo. Every ordinary and management
+FDs, root/cwd/exe and the authenticated mount namespace FD. Every ordinary and management
 `map_files` enumeration, member pin and final recheck uses the mapping scope.
 Missing/replaced scopes retain departure-proof/retry/UNKNOWN behavior, never
 an empty-map fallback or a shared/leader-mm assumption. The real churn fixture

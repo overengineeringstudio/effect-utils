@@ -15,6 +15,8 @@ let
     "-candidates"
     "-scope-devices"
     "-shmem"
+    "-namespace"
+    "-namespace-fixture"
   ];
   roots = pkgs.writeText "holder-evidence-roots.rs" (
     "const ALLOWED_ROOTS: &[&str] = &["
