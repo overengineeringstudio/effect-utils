@@ -154,6 +154,14 @@ The exact child test must execute once; access refusal or an incomplete listing
 fails qualification rather than passing as the expected veto. A skipped
 privileged fixture, library success or codec success never authorizes deletion.
 
+An internal memfd cannot be bind-mounted into a candidate on Linux 6.18.62:
+`fs/namespace.c:2984-3018` rejects the internal, unattached source with EINVAL
+(`fs/mount.h:131-134`). The controlled VM asserts this exact syscall errno and
+preserved target/frozen scope. It does not pretend to cover a successful internal
+memfd bind. Real detached tmpfs file/directory and candidate-submounted tmpfs
+unlinked-file negatives remain distinct mandatory cases; no generic tmpfs
+exclusion follows from the memfd refusal.
+
 ## Privileged holder server (inactive)
 
 `shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,

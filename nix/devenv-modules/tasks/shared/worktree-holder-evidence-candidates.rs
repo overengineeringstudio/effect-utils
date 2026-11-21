@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires controlled guest root with CAP_SYS_ADMIN and native temp filesystem"]
-    fn internal_memfd_bind_inside_candidate_vetoes_and_invalidates_old_scope() {
+    fn internal_memfd_bind_is_einval_and_preserves_frozen_scope() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
         std::fs::create_dir(&root).unwrap();
@@ -699,25 +699,34 @@ mod tests {
         assert!(matches.is_empty());
         let retained = before.capture_mounts(&task, deadline()).unwrap();
         before.freeze_scope_devices(deadline()).unwrap();
-        let source = format!("/proc/{}/fd/{}", std::process::id(), file.as_raw_fd());
-        assert!(std::process::Command::new("mount").arg("--bind").arg(source).arg(&target)
-            .status().unwrap().success());
-        struct Unmount(PathBuf);
-        impl Drop for Unmount {
-            fn drop(&mut self) {
-                let _ = std::process::Command::new("umount").arg("-l").arg(&self.0).status();
-            }
+        // Linux 6.18.62 fs/namespace.c:2984-3018 rejects copying an internal
+        // shmem mount: may_copy_tree sees !is_mounted and __do_loopback returns
+        // EINVAL. fs/mount.h:131-134 excludes MNT_NS_INTERNAL from is_mounted.
+        // This is a real refusal proof, not coverage of an impossible bind.
+        // Keep the mutating syscall confined to this cfg(test) VM fixture.
+        unsafe extern "C" {
+            fn mount(source: *const std::ffi::c_char, target: *const std::ffi::c_char,
+                filesystem: *const std::ffi::c_char, flags: std::ffi::c_ulong,
+                data: *const std::ffi::c_void) -> std::ffi::c_int;
         }
-        let _unmount = Unmount(target);
-        assert!(before.recheck(deadline()).is_err());
-        assert!(retained.recheck(&before, deadline()).is_err());
-        // Unresolvable pseudo-dentry spelling is itself protective. If the
-        // mount can be proved, its actual internal device must enter coverage.
-        if let Ok(view) = CandidateView::capture(&task, &before.scopes, deadline()) {
-            assert!(view.devices.contains(&file.metadata().unwrap().dev()));
-            let after = fixture_set(&[root]);
-            assert!(after.matches(&file, &task, ReferenceKind::Fd, deadline()).is_err());
-        }
+        use std::os::unix::ffi::OsStrExt;
+        let source = std::ffi::CString::new(
+            format!("/proc/{}/fd/{}", std::process::id(), file.as_raw_fd())).unwrap();
+        let destination = std::ffi::CString::new(target.as_os_str().as_bytes()).unwrap();
+        // SAFETY: live NUL-terminated paths, MS_BIND=4096, no filesystem/data
+        // pointers. Only this isolated guest-root test can call this binding.
+        let result = unsafe { mount(source.as_ptr(), destination.as_ptr(),
+            std::ptr::null(), 4096, std::ptr::null()) };
+        let error = io::Error::last_os_error();
+        assert_eq!(result, -1, "internal shmem must not become namespace-mounted");
+        assert_eq!(error.raw_os_error(), Some(22), "exact bind syscall must return EINVAL");
+        assert_eq!(std::fs::read(&target).unwrap(), b"mount target");
+        before.recheck(deadline()).unwrap();
+        retained.recheck(&before, deadline()).unwrap();
+        assert_eq!(file.metadata().unwrap().nlink(), 0);
+        let MatchOutcome::Native(matches) = before.matches(&file, &task, ReferenceKind::Fd,
+            deadline()).unwrap() else { panic!("refused bind changed native classification") };
+        assert!(matches.is_empty());
     }
     #[test]
     #[ignore = "requires controlled guest root, exact production-capability probe and static busybox"]
