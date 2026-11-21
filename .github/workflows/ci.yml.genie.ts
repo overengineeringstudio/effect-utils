@@ -2534,19 +2534,17 @@ const {
   ...instrumentedProductCiJobs
 } = productCiJobs
 
-// Apply fleet admission after dispatch rewriting so the canonical guard remains
-// a top-level conjunct, including for the measurement-only tested-tree path.
+// Apply fleet admission after dispatch rewriting so pipeline close retains
+// the canonical same-repository guard as a top-level conjunct.
 const withGuardedMacosMeasurementDispatch = (
   args: Parameters<typeof withMacosMeasurementDispatch>[0],
 ): CiWorkflowArgs['jobs'] => {
   const jobs = withMacosMeasurementDispatch(args)
-  for (const id of ['tested-tree', 'pipeline-attempt-close']) {
-    const job = jobs[id]!
-    const condition = job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'
-    jobs[id] = {
-      ...job,
-      if: `\${{ (${sameRepoPullRequestGuard()}) && (${condition}) }}`,
-    }
+  const job = jobs['pipeline-attempt-close']!
+  const condition = job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'
+  jobs['pipeline-attempt-close'] = {
+    ...job,
+    if: `\${{ (${sameRepoPullRequestGuard()}) && (${condition}) }}`,
   }
   return jobs
 }
@@ -2599,7 +2597,7 @@ export default ciWorkflow({
         {
           // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
           'tested-tree': {
-            'runs-on': fleetRunnerLabels.linuxX64,
+            'runs-on': 'ubuntu-latest',
             'timeout-minutes': 3,
             permissions: { contents: 'read', actions: 'read' },
             outputs: { tested: '${{ steps.lookup.outputs.tested }}' },

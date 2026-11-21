@@ -956,6 +956,14 @@ describe('Linux Nix sandbox fallback', () => {
     )
   })
 
+  it('keeps the tested-tree pipeline prerequisite on hosted capacity', () => {
+    const job = ciWorkflow.data.jobs['tested-tree']!
+    expect(job['runs-on']).toBe('ubuntu-latest')
+    expect(job.if).toBe(
+      "${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (success()) }}",
+    )
+  })
+
   it('denies pipeline close local-flake execution on forks and failed source admission', () => {
     const job = ciWorkflow.data.jobs['pipeline-attempt-close']!
     expect(job['runs-on']).toBe(fleetRunnerLabels.linuxX64)

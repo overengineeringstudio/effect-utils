@@ -12,6 +12,22 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
+      "job": "tested-tree",
+      "rule": "hosted-runner",
+      "path": "jobs.tested-tree.runs-on",
+      "value": "ubuntu-latest"
+    },
+    {
+      "repository": "overengineeringstudio/effect-utils",
+      "workflow": "ci.yml",
+      "job": "tested-tree",
+      "rule": "runner-not-admitted",
+      "path": "jobs.tested-tree.runs-on",
+      "value": "ubuntu-latest"
+    },
+    {
+      "repository": "overengineeringstudio/effect-utils",
+      "workflow": "ci.yml",
       "job": "default-ref-policy",
       "rule": "runner-fallback",
       "path": "jobs.default-ref-policy.runs-on",
