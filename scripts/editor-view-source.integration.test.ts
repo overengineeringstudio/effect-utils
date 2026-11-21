@@ -687,39 +687,114 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
 })
 
 describe('publication notification through source reader exec', () => {
-  const run = (body: string) => {
-    const python = process.env.BUCK2_EDITOR_PUBLICATION_TEST_PYTHON
+  const run = async (body: string, script = '') => {
     const launcher = process.env.EDITOR_VIEW_SOURCE_LAUNCHER
-    if (python === undefined || launcher === undefined)
-      throw new Error('Declared publication-test Python and source launcher are required')
+    if (launcher === undefined) throw new Error('Declared source launcher is required')
     const directory = fixture()
-    return spawnSync(python, ['-c', body, launcher, process.execPath, directory], {
-      env: {
-        ...cleanEnvironment(),
-        EDITOR_VIEW_LEASE_WORKSPACE_ROOT: directory,
-        XDG_RUNTIME_DIR: directory,
-        TMPDIR: directory,
+    const child = spawn(
+      'bash',
+      ['-c', body, 'notification-fixture', launcher, process.execPath, directory, script],
+      {
+        detached: true,
+        env: {
+          ...cleanEnvironment(),
+          EDITOR_VIEW_LEASE_WORKSPACE_ROOT: directory,
+          XDG_RUNTIME_DIR: directory,
+          TMPDIR: directory,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
       },
-      encoding: 'utf8',
-      timeout: 10_000,
+    )
+    let stdout = ''
+    let stderr = ''
+    let childError: Error | undefined
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
     })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    child.once('error', (error) => {
+      childError = error
+    })
+    const closed = new Promise<{ status: number | null }>((resolve) => {
+      child.once('close', (status) => {
+        resolve({ status })
+      })
+    })
+    const terminate = () => {
+      if (child.pid === undefined) return
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+      }
+    }
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    let joinDeadline: ReturnType<typeof setTimeout> | undefined
+    let primary: unknown
+    try {
+      const result = await Promise.race([
+        closed,
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('Notification fixture exceeded 5s')), 5_000)
+        }),
+      ])
+      return { ...result, stdout, stderr, error: childError }
+    } catch (error) {
+      primary = error
+      throw error
+    } finally {
+      clearTimeout(deadline)
+      try {
+        terminate()
+        await Promise.race([
+          closed,
+          new Promise<never>((_, reject) => {
+            joinDeadline = setTimeout(
+              () => reject(new Error('Notification fixture did not join')),
+              3_000,
+            )
+          }),
+        ])
+      } catch (error) {
+        throw primary === undefined
+          ? error
+          : new AggregateError([primary, error], 'Notification fixture cleanup failed')
+      } finally {
+        clearTimeout(joinDeadline)
+        child.stdout.destroy()
+        child.stderr.destroy()
+      }
+    }
   }
 
-  it('retains only the explicit write pipe and consumes it before descendants', () => {
-    const result = run(String.raw`
-import os, subprocess, sys
-from pathlib import Path
-launcher, bun, root = sys.argv[1:]
-read_fd, write_fd = os.pipe()
-try:
-    with (Path(root) / "unrelated").open("w+b") as foreign:
-        identity = os.fstat(foreign.fileno())
-        script = r"""
+  it('retains only the explicit write pipe and consumes it before descendants', async () => {
+    const result = await run(
+      String.raw`
+set -euo pipefail
+launcher=$1 bun=$2 root=$3 script=$4
+: > "$root/unrelated"
+{
+  EDITOR_VIEW_ADMISSION_READY_FD=3 "$launcher" "$bun" -e "$script" "$root/unrelated" \
+    4<>"$root/unrelated" 3>&1 >"$root/stdout"
+} | {
+  IFS= read -r -n 1 notification
+  test "$notification" = 1
+  if IFS= read -r -n 1 extra; then
+    printf 'notification writer survived joined descendants\n' >&2
+    exit 1
+  fi
+}
+printf '%s\n' "$(<"$root/stdout")"
+`,
+      String.raw`
 const fs = require('node:fs'), assert = require('node:assert/strict');
+const identity = fs.statSync(process.argv.at(-1), { bigint: true });
 let foreign;
-try { foreign = fs.fstatSync(FOREIGN_FD, { bigint: true }); }
+try { foreign = fs.fstatSync(4, { bigint: true }); }
 catch (error) { assert.equal(error.code, 'EBADF'); }
-assert.ok(foreign === undefined || foreign.dev.toString() !== 'FOREIGN_DEV' || foreign.ino.toString() !== 'FOREIGN_INO');
+assert.ok(foreign === undefined || foreign.dev !== identity.dev || foreign.ino !== identity.ino);
 const fd = Number(process.env.EDITOR_VIEW_ADMISSION_READY_FD);
 delete process.env.EDITOR_VIEW_ADMISSION_READY_FD;
 assert.ok(fs.fstatSync(fd).isFIFO());
@@ -731,49 +806,34 @@ assert.equal(child.status, 0, child.stderr);
 assert.equal(fs.writeSync(fd, '1'), 1);
 fs.closeSync(fd);
 console.log('notification-only');
-"""
-        script = (script.replace("FOREIGN_FD", str(foreign.fileno()))
-                  .replace("FOREIGN_DEV", str(identity.st_dev)).replace("FOREIGN_INO", str(identity.st_ino)))
-        result = subprocess.run(
-            [launcher, bun, "-e", script],
-            env={**os.environ, "EDITOR_VIEW_ADMISSION_READY_FD": str(write_fd)},
-            pass_fds=(write_fd, foreign.fileno()), capture_output=True, text=True, timeout=5)
-        assert result.returncode == 0, result.stderr
-        assert result.stdout == "notification-only\n", result.stdout
-    os.close(write_fd)
-    write_fd = None
-    os.set_blocking(read_fd, False)
-    assert os.read(read_fd, 1) == b"1"
-    assert os.read(read_fd, 1) == b"", "notification writer survived joined descendants"
-finally:
-    os.close(read_fd)
-    if write_fd is not None:
-        os.close(write_fd)
-`)
+`,
+    )
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
+    expect(result.stdout).toBe('notification-only\n')
   }, 15_000)
 
-  it('rejects malformed, regular-file, read-end and closed descriptors before target execution', () => {
-    const result = run(String.raw`
-import os, subprocess, sys
-from pathlib import Path
-launcher, _bun, root = sys.argv[1:]
-read_fd, write_fd = os.pipe()
-marker = Path(root) / "must-not-execute"
-try:
-    with (Path(root) / "not-a-pipe").open("w+b") as regular:
-        for value in ("", "2", "0" + str(write_fd), str(regular.fileno()), str(read_fd), "2147483647"):
-            result = subprocess.run(
-                [launcher, sys.executable, "-c", "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()", str(marker)],
-                env={**os.environ, "EDITOR_VIEW_ADMISSION_READY_FD": value},
-                pass_fds=(read_fd, write_fd, regular.fileno()), capture_output=True, text=True, timeout=5)
-            assert result.returncode != 0, value
-            assert "invalid publication notification pipe" in result.stderr, result.stderr
-            assert not marker.exists(), "invalid notification took reader availability fallback"
-finally:
-    os.close(read_fd)
-    os.close(write_fd)
+  it('rejects malformed, regular-file, read-end and closed descriptors before target execution', async () => {
+    const result = await run(String.raw`
+set -euo pipefail
+launcher=$1 bun=$2 root=$3
+: > "$root/not-a-pipe"
+printf '' | {
+  exec 3<&0 4<>"$root/not-a-pipe"
+  for value in '' 2 03 4 3 2147483647; do
+    if EDITOR_VIEW_ADMISSION_READY_FD="$value" "$launcher" "$bun" -e \
+      'require("node:fs").writeFileSync(process.argv.at(-1), "")' "$root/must-not-execute" \
+      >"$root/stdout" 2>"$root/stderr"; then
+      printf 'invalid descriptor accepted: %s\n' "$value" >&2
+      exit 1
+    fi
+    case "$(<"$root/stderr")" in
+      *'invalid publication notification pipe'*) ;;
+      *) printf 'missing notification diagnostic: %s\n' "$value" >&2; exit 1 ;;
+    esac
+    test ! -e "$root/must-not-execute"
+  done
+}
 `)
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
