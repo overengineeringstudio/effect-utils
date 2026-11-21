@@ -6,6 +6,7 @@ ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
 BUN="${BUN_BIN:-$(command -v bun)}"
 NIX="${NIX_BIN:-$(command -v nix)}"
 NIX_STORE_COMMAND="${NIX_STORE_BIN:-$(command -v nix-store)}"
+BUCK2_NATIVE="${BUCK2_NATIVE_BIN:?required declared pinned native Buck binary}"
 TEMP_ROOT="$(mktemp -d)"
 TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 TEST_HOME="$TEMP_ROOT/home"
@@ -171,7 +172,7 @@ published_tool_directory() {
   printf '%s/.buck2/capabilities/tools/%s/%s/%s\n' "$1" "$PLATFORM" "$3" "${source##*/}"
 }
 publish() {
-  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$1" --profile "$(profile "$2")" --nix-store "${3:-$NIX_STORE_COMMAND}"
+  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$1" --profile "$(profile "$2")" --nix-store "${3:-$NIX_STORE_COMMAND}"
 }
 state_root() { printf '%s/.buck/buckd/%s\n' "$TEST_HOME" "${1#/}"; }
 assert_result() {
@@ -357,7 +358,7 @@ mkfifo "$ROOTING_READY" "$ROOTING_RELEASE"
 exec 8<>"$ROOTING_READY"
 concurrent="$TEMP_ROOT/concurrent"
 mkdir -p "$concurrent" "$(state_root "$concurrent")/uncertain-isolation"
-HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$concurrent" --profile "$(profile one)" --nix-store "$TEMP_ROOT/gated-nix-store" >"$TEMP_ROOT/concurrent-one.json" &
+HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$concurrent" --profile "$(profile one)" --nix-store "$TEMP_ROOT/gated-nix-store" >"$TEMP_ROOT/concurrent-one.json" &
 first_publisher=$!
 child_pids+=("$first_publisher")
 read -r -t 30 -u 8 rooting_pid || fail "production publisher did not reach real Nix rooting barrier"
@@ -365,7 +366,7 @@ child_pids+=("$rooting_pid")
 "$BUN" "$TEMP_ROOT/assert-flock-held.ts" "$concurrent/.buck2/capabilities.lock" || fail "production publisher did not hold native flock across rooting"
 declare -a competing_pids=()
 for version in two three four five; do
-  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$concurrent" --profile "$(profile "$version")" --nix-store "$NIX_STORE_COMMAND" >"$TEMP_ROOT/concurrent-$version.json" &
+  HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$concurrent" --profile "$(profile "$version")" --nix-store "$NIX_STORE_COMMAND" >"$TEMP_ROOT/concurrent-$version.json" &
   competing_pids+=("$!")
   child_pids+=("$!")
 done
@@ -393,7 +394,7 @@ assert_retained "$concurrent" 3
 # delegated rooting subprocess is also test-owned and explicitly reaped.
 crash="$TEMP_ROOT/crash"
 mkdir -p "$crash"
-HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$crash" --profile "$(profile one)" --nix-store "$TEMP_ROOT/gated-nix-store" >"$TEMP_ROOT/crashed.json" &
+HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$crash" --profile "$(profile one)" --nix-store "$TEMP_ROOT/gated-nix-store" >"$TEMP_ROOT/crashed.json" &
 crashed_publisher=$!
 child_pids+=("$crashed_publisher")
 read -r -t 30 -u 8 rooting_pid || fail "crash publisher did not reach rooting barrier"

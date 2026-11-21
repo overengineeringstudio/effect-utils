@@ -22,6 +22,14 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  releaseEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import { stopOwnedEditorPublicationDaemon } from './buck2-entrypoint.ts'
+
 const generationPattern = /^[0-9a-f]{64}$/u
 
 /** Read only the generator's literal identity; never evaluate Starlark. */
@@ -323,32 +331,111 @@ export const capabilityPruningDeferred = ({
 const stopMigrationDaemons = ({
   roots,
   buck2,
+  buck2Native,
 }: {
   readonly roots: readonly string[]
   readonly buck2: string
+  readonly buck2Native: string
 }): readonly string[] => {
   const stopped: string[] = []
+  const deferred: string[] = []
+  const failures: Error[] = []
   for (const root of new Set(roots)) {
     const state = join(homedir(), '.buck', 'buckd', root.replace(/^\//u, ''))
-    if (statIfPresent(state) === undefined) continue
-    if (lstatSync(state).isDirectory() === false)
-      throw new Error(`Cannot inspect capability migration daemon state: ${state}`)
-    for (const isolation of readdirSync(state)) {
-      if (lstatSync(join(state, isolation)).isDirectory() === false)
-        throw new Error(`Invalid capability migration isolation state: ${join(state, isolation)}`)
-      console.error(`Capability cell migration: stopping Buck daemon ${root} (${isolation})`)
-      const result = spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
-        cwd: root,
-        encoding: 'utf8',
-      })
-      if (result.error !== undefined) throw result.error
-      if (result.status !== 0)
-        throw new Error(
-          `Buck daemon stop failed during capability cell migration (${isolation}): ${result.stderr.trim()}`,
+    let isolations: string[]
+    try {
+      if (statIfPresent(state) === undefined) continue
+      if (lstatSync(state).isDirectory() === false)
+        throw new Error(`Cannot inspect capability migration daemon state: ${state}`)
+      isolations = readdirSync(state)
+    } catch (cause) {
+      failures.push(new Error(`Cannot enumerate capability migration daemons: ${root}`, { cause }))
+      continue
+    }
+    for (const isolation of isolations) {
+      try {
+        if (lstatSync(join(state, isolation)).isDirectory() === false)
+          throw new Error(`Invalid capability migration isolation state: ${join(state, isolation)}`)
+      } catch (cause) {
+        failures.push(
+          new Error(`Cannot inspect capability migration isolation: ${root} (${isolation})`, {
+            cause,
+          }),
         )
-      stopped.push(`${root}:${isolation}`)
+        continue
+      }
+      // Only the reserved isolation shares the editor publisher's physical-root
+      // owner. Keep the independent lease through the complete native stop.
+      let owner: EditorPublicationOwner | undefined
+      try {
+        owner =
+          isolation === editorPublicationIsolation
+            ? tryAcquireEditorPublicationOwner({ root })
+            : undefined
+      } catch (cause) {
+        failures.push(
+          new Error(`Cannot acquire capability migration editor-publication owner: ${root}`, {
+            cause,
+          }),
+        )
+        continue
+      }
+      if (isolation === editorPublicationIsolation && owner === undefined) {
+        deferred.push(root)
+        continue
+      }
+      try {
+        console.error(`Capability cell migration: stopping Buck daemon ${root} (${isolation})`)
+        const result =
+          owner === undefined
+            ? spawnSync(buck2, ['--isolation-dir', isolation, 'kill'], {
+                cwd: root,
+                encoding: 'utf8',
+                stdio: 'pipe',
+                timeout: 30_000,
+              })
+            : stopOwnedEditorPublicationDaemon({
+                native: buck2Native,
+                cwd: root,
+                env: process.env,
+                owner,
+              })
+        if (result.error !== undefined) throw result.error
+        if (result.status !== 0)
+          throw new Error(
+            `Buck daemon stop failed during capability cell migration (${isolation}, status=${result.status}, signal=${result.signal}): ${result.stderr.trim()}`,
+          )
+        stopped.push(`${root}:${isolation}`)
+      } catch (cause) {
+        failures.push(
+          new Error(`Cannot stop capability migration Buck daemon: ${root} (${isolation})`, {
+            cause,
+          }),
+        )
+      } finally {
+        if (owner !== undefined) {
+          try {
+            releaseEditorPublicationOwner(owner)
+          } catch (cause) {
+            failures.push(
+              new Error(`Cannot release capability migration owner: ${root}`, { cause }),
+            )
+          }
+        }
+      }
     }
   }
+  if (deferred.length !== 0)
+    failures.push(
+      new Error(
+        `Capability cell migration deferred: active editor-publication owner (${deferred.join(', ')}); migration marker remains pending`,
+      ),
+    )
+  if (failures.length !== 0)
+    throw new AggregateError(
+      failures,
+      'Capability cell migration incomplete; migration marker remains pending',
+    )
   return stopped
 }
 
@@ -389,11 +476,13 @@ export const publishCapabilities = ({
   profile,
   nixStore = 'nix-store',
   buck2 = process.env.BUCK2_BIN ?? 'buck2',
+  buck2Native,
 }: {
   readonly root: string
   readonly profile: string
   readonly nixStore?: string
   readonly buck2?: string
+  readonly buck2Native: string
 }): CapabilityPublicationResult => {
   const absoluteRoot = resolve(root)
   const projectRoot = realpathSync(absoluteRoot)
@@ -567,7 +656,7 @@ export const publishCapabilities = ({
     const migrationDaemonStops =
       statIfPresent(migrationMarker) === undefined
         ? []
-        : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2 })
+        : stopMigrationDaemons({ roots: [projectRoot, absoluteRoot], buck2, buck2Native })
     if (statIfPresent(migrationMarker) !== undefined) {
       rmSync(migrationMarker)
     }
@@ -634,13 +723,18 @@ const main = (): void => {
       profile: { type: 'string' },
       'nix-store': { type: 'string' },
       buck2: { type: 'string' },
+      'buck2-native': { type: 'string' },
     },
     strict: true,
     allowPositionals: false,
   })
-  if (values.root === undefined || values.profile === undefined)
+  if (
+    values.root === undefined ||
+    values.profile === undefined ||
+    values['buck2-native'] === undefined
+  )
     throw new Error(
-      'Usage: bun scripts/buck2-capability-publish.ts --root ROOT --profile REALIZED_NIX_OUTPUT [--nix-store PATH] [--buck2 PATH]',
+      'Usage: bun scripts/buck2-capability-publish.ts --root ROOT --profile REALIZED_NIX_OUTPUT --buck2-native PINNED_NATIVE_PATH [--nix-store PATH] [--buck2 PATH]',
     )
   console.log(
     JSON.stringify(
@@ -649,6 +743,7 @@ const main = (): void => {
         profile: values.profile,
         nixStore: values['nix-store'],
         buck2: values.buck2,
+        buck2Native: values['buck2-native'],
       }),
     ),
   )
