@@ -2,11 +2,13 @@ import { spawnSync } from 'node:child_process'
 import {
   closeSync,
   constants,
+  fstatSync,
   lstatSync,
   mkdtempSync,
   openSync,
   readlinkSync,
   rmSync,
+  statSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -14,8 +16,10 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Schema } from 'effect'
+import { Effect, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import {
@@ -24,6 +28,7 @@ import {
   PinnedDeletionError,
   readDirectoryEvidence,
   withPinnedDeletion,
+  type OwnedDeletionPins,
 } from './store-pinned-deletion.ts'
 
 const fixtureIn = (directory?: string) =>
@@ -69,6 +74,212 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
         expect(yield* fs.readFileString(`${outside}/nested/sentinel`)).toBe('outside survives')
         expect(yield* fs.readFileString(`${rootPath}/owner/sibling`)).toBe('keep sibling')
         expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['sibling'])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'admits only the engine-owned fd identities while the callback is live',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        let observed:
+          | { view: OwnedDeletionPins; reference: Parameters<OwnedDeletionPins['has']>[0] }
+          | undefined
+        yield* withPinnedDeletion({
+          rootPath,
+          path,
+          identity,
+          beforeRemove: (view) =>
+            Effect.sync(() => {
+              expect(Object.isFrozen(view)).toBe(true)
+              expect(Object.isFrozen(view.pins)).toBe(true)
+              const target = lstatSync(path, { bigint: true })
+              const pin = view.pins.find(
+                (entry) =>
+                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
+              )
+              expect(pin).toBeDefined()
+              if (pin === undefined) throw new Error('Engine did not hold its target fd')
+              const actual = fstatSync(pin.fd, { bigint: true })
+              const reference = {
+                kind: 'fd',
+                pid: process.pid,
+                fd: pin.fd,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+              }
+              expect(Object.isFrozen(pin)).toBe(true)
+              expect(view.has(reference)).toBe(true)
+              expect(view.has({ ...reference, fd: null })).toBe(false)
+              expect(view.has({ ...reference, dev: `${reference.dev}0` })).toBe(false)
+              expect(view.has({ ...reference, ino: `${reference.ino}0` })).toBe(false)
+              for (const kind of ['cwd', 'root', 'exe', 'map', 'mount'])
+                expect(view.has({ ...reference, kind })).toBe(false)
+              observed = { view, reference }
+            }),
+        })
+        expect(observed?.view.has(observed.reference)).toBe(false)
+        expect(yield* fs.exists(path)).toBe(false)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'vetoes a second real fd from the same process without quarantining the target',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        const extra = yield* Effect.acquireRelease(
+          Effect.sync(() => openSync(path, constants.O_RDONLY | constants.O_DIRECTORY)),
+          (fd) => Effect.sync(() => closeSync(fd)),
+        )
+        const result = yield* withPinnedDeletion({
+          rootPath,
+          path,
+          identity,
+          beforeRemove: (view) =>
+            Effect.gen(function* () {
+              const actual = fstatSync(extra, { bigint: true })
+              const reference = {
+                kind: 'fd',
+                pid: process.pid,
+                fd: extra,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+              }
+              expect(view.has(reference)).toBe(false)
+              if (view.has(reference) === false)
+                return yield* new PinnedDeletionError({ path, message: 'Live extra fd' })
+            }),
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure')
+          expect(result.failure).toMatchObject({
+            _tag: 'PinnedDeletionError',
+            message: 'Live extra fd',
+          })
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
+        expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'vetoes a foreign process holding the same fd number and target inode as an own pin',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        const spawner = yield* ChildProcessSpawner
+        const result = yield* withPinnedDeletion({
+          rootPath,
+          path,
+          identity,
+          beforeRemove: (view) =>
+            Effect.gen(function* () {
+              const target = lstatSync(path, { bigint: true })
+              const pin = view.pins.find(
+                (entry) =>
+                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
+              )
+              if (pin === undefined) return yield* Effect.die('Missing held target fd')
+              const child = yield* spawner.spawn(
+                ChildProcess.make(
+                  process.execPath,
+                  [
+                    '-e',
+                    `const fs = require('node:fs')
+const wanted = Number(process.argv[2])
+let fd = fs.openSync('/dev/null', fs.constants.O_RDONLY)
+while (fd < wanted) fd = fs.openSync('/dev/null', fs.constants.O_RDONLY)
+if (fd !== wanted) throw new Error('Cannot reproduce exact fd collision')
+fs.closeSync(fd)
+fd = fs.openSync(process.argv[1], fs.constants.O_RDONLY | fs.constants.O_DIRECTORY)
+if (fd !== wanted) throw new Error('Unexpected held fd')
+process.stdout.write(String(fd) + '\\n')
+process.stdin.resume()`,
+                    path,
+                    String(pin.fd),
+                  ],
+                  {
+                    cwd: rootPath,
+                    stdin: Stream.never,
+                    stdout: 'pipe',
+                    stderr: 'pipe',
+                  },
+                ),
+              )
+              // Await the real open's acknowledgement; no sleep or fake service/frame is involved.
+              const chunks = yield* child.stdout.pipe(
+                Stream.takeUntil((chunk) => chunk.includes(10)),
+                Stream.runCollect,
+                Effect.timeout('10 seconds'),
+              )
+              const ready = new TextDecoder().decode(Buffer.concat(chunks)).trim()
+              expect(ready).toBe(String(pin.fd))
+              const actual = statSync(`/proc/${child.pid}/fd/${ready}`, { bigint: true })
+              expect(actual.dev.toString()).toBe(pin.dev)
+              expect(actual.ino.toString()).toBe(pin.ino)
+              const reference = {
+                kind: 'fd',
+                pid: Number(child.pid),
+                fd: pin.fd,
+                dev: actual.dev.toString(),
+                ino: actual.ino.toString(),
+              }
+              expect(reference.pid).not.toBe(process.pid)
+              expect(view.has(reference)).toBe(false)
+              if (view.has(reference) === false)
+                return yield* new PinnedDeletionError({ path, message: 'Live foreign fd' })
+            }),
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        if (result._tag === 'Failure')
+          expect(result.failure).toMatchObject({
+            _tag: 'PinnedDeletionError',
+            message: 'Live foreign fd',
+          })
+        expect(yield* fs.readFileString(`${path}/nested/deeper/artifact`)).toBe('original artifact')
+        expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'revokes retained pin evidence even when a callback throws before returning an Effect',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, path } = yield* fixture
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        let observed:
+          | { view: OwnedDeletionPins; reference: Parameters<OwnedDeletionPins['has']>[0] }
+          | undefined
+        yield* withPinnedDeletion({
+          rootPath,
+          path,
+          identity,
+          beforeRemove: (view) => {
+            const pin = view.pins[0]
+            if (pin === undefined) throw new Error('Missing own pin')
+            observed = { view, reference: { ...pin, kind: 'fd' } }
+            expect(view.has(observed.reference)).toBe(true)
+            throw new Error('Real callback defect')
+          },
+        }).pipe(Effect.exit)
+        expect(observed?.view.has(observed.reference)).toBe(false)
+        expect(yield* fs.exists(path)).toBe(true)
+        expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual(['output'])
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
