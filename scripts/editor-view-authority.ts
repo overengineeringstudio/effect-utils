@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { closeSync, readFileSync, writeSync } from 'node:fs'
+import { constants } from 'node:os'
 import { join, posix } from 'node:path'
 import process from 'node:process'
 
@@ -95,6 +96,61 @@ export const ownedEditorViewAuthorityCommandRunner = ({
     native, owner, env,
   })
   return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+}
+
+/** Cancellation work is joined before the callback can release its publication owner. */
+export type PublicationCancellationOptions = {
+  readonly run: (signal: AbortSignal) => Promise<void>
+}
+
+/** Signals cancel and join work before the opaque publication owner can be released. */
+export const withPublicationCancellation = async ({
+  run,
+}: PublicationCancellationOptions): Promise<void> => {
+  const controller = new AbortController()
+  const signals = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
+  const handlers = signals.map((signal) => {
+    const handler = (): void => {
+      process.exitCode = 128 + constants.signals[signal]
+      controller.abort(new Error(`Editor publication interrupted by ${signal}`))
+    }
+    process.on(signal, handler)
+    return { signal, handler }
+  })
+  try {
+    await run(controller.signal)
+    controller.signal.throwIfAborted()
+  } finally {
+    for (const { signal, handler } of handlers) process.removeListener(signal, handler)
+  }
+}
+
+/** One terminal deadline notification, not a transferable publication authority. */
+export type PublicationAdmissionNotification = (
+  outcome: 'owner-acquired' | 'no-publication',
+) => void
+
+/** Take the terminal notifier before authority queries can spawn descendants. */
+export const takePublicationAdmissionNotification = (): PublicationAdmissionNotification => {
+  let ready = process.env.EDITOR_VIEW_ADMISSION_READY_FD
+  delete process.env.EDITOR_VIEW_ADMISSION_READY_FD
+  return (outcome) => {
+    const value = ready
+    ready = undefined
+    if (value === undefined) return
+    if (
+      /^[3-9][0-9]*$|^[1-9][0-9]+$/u.test(value) === false ||
+      Number.isSafeInteger(Number(value)) === false
+    )
+      throw new Error('Invalid editor publication deadline notification descriptor')
+    const fd = Number(value)
+    try {
+      if (writeSync(fd, outcome === 'owner-acquired' ? '1' : '0') !== 1)
+        throw new Error('Incomplete editor publication deadline notification')
+    } finally {
+      closeSync(fd)
+    }
+  }
 }
 
 /** Complete source-authoritative editor consumer registry, including the repository root. */
