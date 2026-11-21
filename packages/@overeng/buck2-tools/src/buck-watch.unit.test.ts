@@ -261,7 +261,15 @@ const makePublicationFixture = () => {
     run: async (invocation: Parameters<NonNullable<BuckReconcilerOptions['run']>>[0]) => {
       if (invocation.command === '/tools/buck2' && invocation.args[0] === 'build')
         return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-      return runCommand(invocation)
+      // Publisher exporters must not delay the parent exporter's lifecycle proofs.
+      return runCommand({
+        ...invocation,
+        command: requireTool('ENV_BIN'),
+        args: [
+          '-u', 'TRACEPARENT', '-u', 'OTEL_TASK_TRACEPARENT',
+          invocation.command, ...invocation.args,
+        ],
+      })
     },
   }
   const current = join(root, '.editor-view/app')

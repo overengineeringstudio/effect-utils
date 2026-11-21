@@ -1333,6 +1333,7 @@ in
     trace.exec "test:buck2-tools" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      export ENV_BIN=${pkgs.coreutils}/bin/env
       export CP_BIN=${pkgs.coreutils}/bin/cp
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
