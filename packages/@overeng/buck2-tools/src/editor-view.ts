@@ -188,6 +188,8 @@ export type EditorViewOptions = {
    * changed inside that window are caught by the publication stability check.
    */
   readonly beforeMaterialize?: () => void | Promise<void>
+  /** Real-process barrier before reading declared roots, used to prove producer isolation. */
+  readonly beforeVerify?: () => void | Promise<void>
   /** Fault barrier after a direct CAS link, before leaving its exclusion. */
   readonly afterDirectLink?: () => void
   /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
@@ -3521,6 +3523,7 @@ const publishEditorViewCoordinated = async ({
       }
     })()
     enterPhase('verify')
+    await options.beforeVerify?.()
     const declaredRoots =
       finite === true
         ? await fingerprintDeclaredRoots({
