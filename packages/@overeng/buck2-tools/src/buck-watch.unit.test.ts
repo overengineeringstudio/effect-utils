@@ -35,6 +35,10 @@ import {
   type WatchChangeSource,
   type WatchLoopStatus,
 } from './buck-watch.ts'
+import {
+  requireEditorPublicationOwner,
+  withEditorPublicationOwner,
+} from './editor-publication-owner.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
   scopeEditorViewTestProcesses,
@@ -46,7 +50,16 @@ import { FingerprintCommandFailure } from './typescript-runner.ts'
 const fixtureProcessIds = new Set([process.pid])
 const reconcileBuckViews = scopeEditorViewTestProcesses({
   processIds: fixtureProcessIds,
-  operation: reconcileBuckViewsUnscoped,
+  operation: (request: Parameters<typeof reconcileBuckViewsUnscoped>[0]) =>
+    withEditorPublicationOwner({
+      root: request.options.workspaceRoot,
+      ...(request.options.signal === undefined ? {} : { signal: request.options.signal }),
+      run: async (owner) => {
+        expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(owner)
+        await reconcileBuckViewsUnscoped(request)
+        expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(owner)
+      },
+    }),
 })
 
 // Stable forwarding exports observe the named imports used by Bun's native modules.
