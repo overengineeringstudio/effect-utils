@@ -633,7 +633,7 @@ const main = async (signal: AbortSignal): Promise<void> => {
 
 if (import.meta.main === true)
   try {
-    await withPublicationCancellation(main)
+    await withPublicationCancellation({ run: main })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
