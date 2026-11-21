@@ -267,6 +267,31 @@ held name is emitted as a bounded ASCII, prefix-free exact class (brackets and
 spaces preserved), or a fixed unprintable marker. No PID, FD, path or wire output
 is added, and rejection remains UNKNOWN; ordinary libraries compile the formatter out.
 
+Task departure is a separate, generation-pinned proof, not a missing-file waiver.
+A nonleader is departed only when the original retained leader scope's task
+relist no longer contains it, bracketed by same-generation checks and a live
+original leader pidfd. An unreadable list, changed/terminal leader, reused
+numeric task ID, or still-live task is not a successful departure proof.
+Discovery and reclosure allow only such departures; newly live unobserved tasks
+remain protective. Surviving tasks still require all UID/namespace/resource,
+mounted-root and alias checks. Resource `None` slots retain their original
+task index and must reprove departure at closure, never generic ENOENT.
+Already recorded positive references can conservatively remain after departure.
+
+Any remaining NotFound gets at most one **whole capture transaction** restart:
+the failed attempt's observation and candidate/store/peer-root/census/mount/alias
+pins are dropped, the original authenticated peer and server role revalidated,
+then all state recaptured under the original deadline/nonce/expiry. There is no
+partial rescan/publication, extended deadline, permission/Other/timeout retry,
+or second restart; persistent failures serialize protective UNKNOWN.
+The ignored real `actual_departed_thread_churn_preserves_survivor_fd` fixture
+keeps a candidate FD in a surviving worker's private descriptor table while
+listed siblings exit and further real threads churn between discovery and
+resource closure. It requires that survivor FD to remain observed, rejects
+uncaptured live newcomers and live-task FD disappearance, and rejects a failed
+leader-generation proof. It does not claim arbitrary continuous live births
+can always close within a finite observation deadline.
+
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
 to that same output's `bin/worktree-holder-evidence`. A later combined client

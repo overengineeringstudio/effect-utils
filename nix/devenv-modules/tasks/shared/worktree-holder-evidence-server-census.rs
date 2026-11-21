@@ -23,7 +23,7 @@ pub struct Census<'a> {
 }
 struct ObservedProcess {
     scope: ProcessScope,
-    references: Vec<References>,
+    references: Vec<Option<References>>,
 }
 // Only the source-authenticated bootstrap uses a local resource classification.
 // Its metadata FDs are created by this server; its real root/cwd/exe/stdio and
@@ -146,7 +146,7 @@ impl References {
     fn collect(process: &ProcessScope, index: usize, request: &protocol::Request,
         candidates: &CandidateSet, store_client: Option<&Client>, management: bool,
         runtime: &mut Option<Runtime>, observation: &mut protocol::Observation,
-        reference_count: &mut usize, deadline: Instant) -> io::Result<Self>
+        reference_count: &mut usize, deadline: Instant) -> io::Result<Option<Self>>
     {
         let task = &process.tasks[index];
         let pid = &process.identity;
@@ -172,7 +172,9 @@ impl References {
             }
             Pins::Management(ManagementReferences { root, cwd, exe, descriptors, mappings })
         } else {
-            Pins::Ordinary(super::collect_step("native-task-resources",process.collect_resources(index, deadline))?)
+            let Some(pins) = super::collect_step("native-task-resources",process.collect_resources(index, deadline))?
+                else { return Ok(None); };
+            Pins::Ordinary(pins)
         };
         let (root, cwd, exe, descriptors, mappings) =
             (pins.root(), pins.cwd(), pins.exe(), pins.descriptors(), pins.mappings());
@@ -236,13 +238,16 @@ impl References {
                 None, reference_count, None);
             Some(coverage)
         } else { None };
-        Ok(Self { pins, foreign, memberships, mounted, aliases, alias_fds })
+        Ok(Some(Self { pins, foreign, memberships, mounted, aliases, alias_fds }))
     }
 
     fn recheck(&self, process: &ProcessScope, index: usize, candidates: &CandidateSet,
         runtime: Option<&Runtime>, request: &protocol::Request,
         store_client: Option<&Client>, deadline: Instant) -> io::Result<()>
     {
+        if matches!(self.pins, Pins::Ordinary(_)) && process.task_departed(index, deadline)? {
+            return Ok(());
+        }
         let task = &process.tasks[index];
         let pid = process.identity.pid;
         let base = scope_path(&task.scope);
@@ -321,12 +326,22 @@ impl ObservedProcess {
             return Err(io::Error::other("unobserved task resources"));
         }
         for (index, task) in self.scope.tasks.iter().enumerate() {
-            task.recheck(deadline)?;
-            self.references[index].recheck(&self.scope, index, candidates, runtime, request, store_client, deadline)?;
-            if let Some(runtime) = runtime {
-                runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
+            if self.scope.task_departed(index, deadline)? { continue; }
+            let references = self.references[index].as_ref()
+                .ok_or_else(|| io::Error::other("departed task resource slot became live"))?;
+            let checked: io::Result<()> = (|| {
+                task.recheck(deadline)?;
+                references.recheck(&self.scope, index, candidates, runtime, request, store_client, deadline)?;
+                if let Some(runtime) = runtime {
+                    runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
+                }
+                task.recheck(deadline)
+            })();
+            match checked {
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && self.scope.task_departed(index, deadline)? => (),
+                result => result?,
             }
-            task.recheck(deadline)?;
         }
         self.scope.recheck(deadline)
     }
@@ -373,11 +388,18 @@ impl<'a> Census<'a> {
             let mut resources = Vec::with_capacity(process.tasks.len());
             for index in 0..process.tasks.len() {
                 // Still inspect any root/cwd held by a proven no-mm task.
-                let references = super::collect_step("task-reference-capture",References::collect(&process, index, request, candidates,
+                let captured = super::collect_step("task-reference-capture",References::collect(&process, index, request, candidates,
                     store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, deadline))?;
-                total_objects += 3 + references.pins.descriptors().len() + references.pins.mappings().len();
-                if total_objects > OBJECT_LIMIT { return Err(io::Error::other("object census capacity")); }
+                    &mut reference_count, deadline));
+                let references = match captured {
+                    Err(error) if !management && error.kind() == io::ErrorKind::NotFound
+                        && process.task_departed(index, deadline)? => None,
+                    result => result?,
+                };
+                if let Some(references) = &references {
+                    total_objects += 3 + references.pins.descriptors().len() + references.pins.mappings().len();
+                    if total_objects > OBJECT_LIMIT { return Err(io::Error::other("object census capacity")); }
+                }
                 resources.push(references);
             }
             census.processes.push(ObservedProcess { scope: process, references: resources });
@@ -411,7 +433,7 @@ impl<'a> Census<'a> {
         }
         for retained in &self.processes {
             let current = super::collect_step("process-scope-recapture",ProcessScope::discover(retained.scope.identity.pid, deadline))?;
-            if !retained.scope.same_selection(&current)? {
+            if !retained.scope.same_selection(&current, deadline)? {
                 return super::collect_step("process-selection-recheck",Err(io::Error::other("all-task identity credentials or membership changed")));
             }
         }
