@@ -150,7 +150,7 @@ const openFlock = (): PublicationFlock => {
   const time = Buffer.alloc(16)
   const timePointer = ptr(time)
   return {
-    open: (path: string): number => library.symbols.buck2_publication_owner_open(path),
+    open: (lockPath: string): number => library.symbols.buck2_publication_owner_open(lockPath),
     acquire: (fd: number): number => library.symbols.buck2_publication_owner_lock(fd, 2 | 4),
     monotonicSeconds: (): number => {
       // Python uses mach_absolute_time on Darwin (CLOCK_UPTIME_RAW = 8),
