@@ -762,11 +762,20 @@ process.stdout.write(JSON.stringify({ same: failure === original, reached, attac
     const request = command === 'publish' ? { args } : { args: [command], batchRequests: [args] }
     const child = Bun.spawn([requireTool('BUN_BIN'), '--eval', `
 import { dispatchEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
+import { requireEditorPublicationOwner, withEditorPublicationOwner } from ${JSON.stringify(new URL('./editor-publication-owner.ts', import.meta.url).href)};
 import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
 const output = [], errors = [];
-const result = await editorViewProcessTestScope.run(() => [process.pid], () => dispatchEditorView({
-  ...${JSON.stringify(request)}, onStdout: value => output.push(value), onStderr: value => errors.push(value),
-}));
+const result = await withEditorPublicationOwner({
+  root: ${JSON.stringify(fixture.root)},
+  run: async publicationOwner => {
+    const result = await editorViewProcessTestScope.run(() => [process.pid], () => dispatchEditorView({
+      ...${JSON.stringify(request)}, publicationOwner,
+      onStdout: value => output.push(value), onStderr: value => errors.push(value),
+    }));
+    requireEditorPublicationOwner({ root: ${JSON.stringify(fixture.root)}, owner: publicationOwner });
+    return result;
+  },
+});
 process.stdout.write(JSON.stringify({ result, output, errors }));
 `], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
     editorCliProcesses.add(child)
