@@ -50,6 +50,75 @@ if (publicationOwnerLibrary === undefined || publicationOwnerLibrary.length === 
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
+interface HostlessCaseEvidence {
+  readonly requested: readonly string[]
+  assertionsComplete: boolean
+  readonly stdout: { text: string; bytes: number; eof: boolean }
+  readonly stderr: { text: string; bytes: number; eof: boolean }
+}
+const hostlessCases = new Map<string, HostlessCaseEvidence>()
+const captureHostlessOutput = async (
+  stream: ReadableStream<Uint8Array>,
+  output: HostlessCaseEvidence['stdout'],
+) => {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done === true) break
+      const priorBytes = output.bytes
+      output.bytes += value.byteLength
+      if (priorBytes < 8192)
+        output.text += decoder.decode(value.subarray(0, 8192 - priorBytes), { stream: true })
+    }
+    output.text += decoder.decode()
+    output.eof = true
+  } finally {
+    reader.releaseLock()
+  }
+}
+const preserveHostlessEvidence = (
+  root: string,
+  evidence: HostlessCaseEvidence,
+  stage: 'before-cleanup' | 'after-cleanup',
+) => {
+  // Diagnostics must not replace the original timeout/assertion or cleanup failure.
+  try {
+    const redact = (text: string) => {
+      for (const value of Object.values(process.env))
+        if (value !== undefined && value.length >= 4) text = text.split(value).join('[redacted]')
+      return text
+        .replace(/(?:https?|grpc):\/\/[^\s"']+/gu, '[redacted-url]')
+        .replace(/(?:authorization|cookie|token|secret|password|header)[^\n]*/giu, '[redacted-line]')
+    }
+    const output = Object.fromEntries(
+      (['stdout', 'stderr'] as const).map((name) => {
+        const stream = evidence[name]
+        // Never publish a truncated fragment that could contain half a secret.
+        const completeText = stream.eof === true && stream.bytes <= 8192
+          ? stream.text
+          : stream.text.slice(0, stream.text.lastIndexOf('\n') + 1)
+        return [name, { bytes: stream.bytes, eof: stream.eof, truncated: stream.bytes > 8192, text: redact(completeText) }]
+      }),
+    )
+    const phasePath = join(root, 'child-phases.json')
+    const phases = existsSync(phasePath) ? readFileSync(phasePath, 'utf8').slice(0, 8192) : undefined
+    const census = [
+      'native-args.json',
+      'native-result.json',
+      'evidence.json.shards/00112233-4455-4677-8899-aabbccddeeff.json',
+    ].map((name) => {
+      const path = join(root, name)
+      return { name, exists: existsSync(path), bytes: existsSync(path) ? statSync(path).size : null }
+    })
+    const receipt = { event: 'hostless-case-incomplete', root, requested: evidence.requested, stage, phases, output, census }
+    writeFileSync(join(root, `${stage}-diagnostics.json`), JSON.stringify(receipt), { mode: 0o600 })
+    console.error(JSON.stringify(receipt))
+  } catch {
+    console.error(JSON.stringify({ event: 'hostless-case-diagnostics-unavailable', root, stage }))
+  }
+}
 const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/cas/'): string => {
   const root = mkdtempSync(join(tmpdir(), 'direct-buck-posture-'))
   roots.push(root)
@@ -537,6 +606,13 @@ const effective = (args: readonly string[]): Record<string, string> => {
   return values
 }
 afterEach(async () => {
+  const retained = new Set<string>()
+  for (const [root, evidence] of hostlessCases) {
+    if (evidence.assertionsComplete === false) {
+      retained.add(root)
+      preserveHostlessEvidence(root, evidence, 'before-cleanup')
+    }
+  }
   for (const child of launchProcesses) {
     try {
       process.kill(-child.pid, 'SIGKILL')
@@ -560,7 +636,11 @@ afterEach(async () => {
     }
   }
   launchProcesses.clear()
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const [root, evidence] of hostlessCases)
+    if (retained.has(root) === true) preserveHostlessEvidence(root, evidence, 'after-cleanup')
+  hostlessCases.clear()
+  for (const root of roots.splice(0))
+    if (retained.has(root) === false) rmSync(root, { recursive: true, force: true })
 })
 
 describe('native daemon admission diagnostics', () => {
@@ -761,14 +841,36 @@ describe('native build ID registry', () => {
         env,
       })
       const resultPath = join(root, 'native-result.json')
+      const diagnostics: HostlessCaseEvidence = {
+        requested,
+        assertionsComplete: false,
+        stdout: { text: '', bytes: 0, eof: false },
+        stderr: { text: '', bytes: 0, eof: false },
+      }
+      hostlessCases.set(root, diagnostics)
+      const phasePath = join(root, 'child-phases.json')
+      const preload = join(root, 'child-phase-preload.ts')
+      writeFileSync(
+        preload,
+        `await Bun.write(${JSON.stringify(phasePath)}, JSON.stringify([{phase:'vm-ready',wall:Date.now(),monotonicMs:performance.now()}]));`,
+        { mode: 0o600 },
+      )
       // Keep hostile PATH confined to a child tracked by the group-reaping afterEach hook.
       const child = Bun.spawn(
         [
           process.execPath,
+          '--preload',
+          preload,
           '-e',
           `import { runNativeWithEvidence } from ${JSON.stringify(new URL('./buck2-entrypoint.ts', import.meta.url).href)};
+const phases = JSON.parse(await Bun.file(${JSON.stringify(phasePath)}).text());
+const phase = async (name) => { phases.push({phase:name,wall:Date.now(),monotonicMs:performance.now()}); await Bun.write(${JSON.stringify(phasePath)}, JSON.stringify(phases)); };
+await phase('import-ready');
+await phase('production-before');
 const result = await runNativeWithEvidence(${JSON.stringify({ native, args, root })});
-await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));`,
+await phase('production-return');
+await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));
+await phase('result-written');`,
         ],
         {
           cwd: process.cwd(),
@@ -787,8 +889,8 @@ await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));`
       launchProcesses.add(child)
       const [exitCode] = await Promise.all([
         child.exited,
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
+        captureHostlessOutput(child.stdout, diagnostics.stdout),
+        captureHostlessOutput(child.stderr, diagnostics.stderr),
       ])
       expect(exitCode).toBe(0)
       const result = JSON.parse(readFileSync(resultPath, 'utf8'))
@@ -804,6 +906,7 @@ await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));`
       }
       if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
         expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
+      diagnostics.assertionsComplete = true
     },
   )
 
