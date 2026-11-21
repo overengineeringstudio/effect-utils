@@ -436,6 +436,7 @@ const cargoBuck2PackageProjectionFor = ({
   }
   if (foreignBuildScriptExportsOnly) {
     const resourcePackage = path.posix.dirname(projectionSource)
+    const resourceDirectory = buckPackagePath(resourcePackage)
     const exports = new Map<string, string>()
     for (const member of workspaceMembers) {
       const inputs = resolveBuildScript({
@@ -445,9 +446,9 @@ const cargoBuck2PackageProjectionFor = ({
         buildScriptInputs: undefined,
       })?.inputs
       for (const input of inputs ?? []) {
-        const prefix = `//${resourcePackage}:`
+        const prefix = buckLabel({ packagePath: resourcePackage, target: '' })
         if (input.label?.startsWith(prefix) !== true) continue
-        if (!input.path.startsWith(`${resourcePackage}/`)) {
+        if (resourceDirectory !== '' && !input.path.startsWith(`${resourceDirectory}/`)) {
           throw new Error(`Build-script export ${input.label} must be inside ${resourcePackage}`)
         }
         const name = input.label.slice(prefix.length)
@@ -1130,7 +1131,7 @@ const cargoBuck2PackageProjectionFor = ({
       'cargo_build_script(',
       `    name = ${starlarkString(buildScriptLauncher)},`,
       `    build_script = ${starlarkString(`:${buildScriptBuild}`)},`,
-      `    package_path = ${starlarkString(packagePath)},`,
+      `    package_path = ${starlarkString(buckPackagePath(packagePath))},`,
       '    srcs = {',
       ...manifestEntries.map(
         ([key, value]) => `        ${starlarkString(key)}: ${starlarkString(value)},`,
@@ -1346,7 +1347,7 @@ const cargoBuck2PackageProjectionFor = ({
         ]),
     'static_source_set(',
     '    name = "static_sources",',
-    `    prefix = ${starlarkString(packagePath)},`,
+    `    prefix = ${starlarkString(buckPackagePath(packagePath))},`,
     ...renderStringList({
       name: 'srcs',
       values: workspaceContractSources,
@@ -1378,6 +1379,18 @@ const compareStrings = ({
 const sorted = (values: readonly string[]): readonly string[] =>
   [...new Set(values)].toSorted((left, right) => compareStrings({ left, right }))
 const starlarkString = (value: string): string => JSON.stringify(value)
+
+/** Buck labels and artifact paths use the empty path for the root, unlike Cargo member identity. */
+const buckPackagePath = (packagePath: string): string => (packagePath === '.' ? '' : packagePath)
+
+const buckLabel = ({
+  packagePath,
+  target,
+}: {
+  readonly packagePath: string
+  readonly target: string
+}): string => `//${buckPackagePath(packagePath)}:${target}`
+
 const sha256 = (value: string): `sha256:${string}` =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`
 
@@ -1612,7 +1625,9 @@ const sourceLabel = ({
   readonly file: string
   readonly foreignMember?: WorkspaceMember
 }): string =>
-  foreignMember === undefined ? file : `//${foreignMember.packagePath}:cargo-source/${file}`
+  foreignMember === undefined
+    ? file
+    : buckLabel({ packagePath: foreignMember.packagePath, target: `cargo-source/${file}` })
 
 const renderSources = ({
   name,
@@ -1985,8 +2000,11 @@ const resolveMemberPathDependency = ({
     features: request.features,
     label:
       context.foreignPackageByPath.has(dependencyPath) === true
-        ? `//${context.foreignTargetPackage}:${foreignTargetName(dependencyMember)}`
-        : `//${dependencyPath === '.' ? '' : dependencyPath}:lib`,
+        ? buckLabel({
+            packagePath: context.foreignTargetPackage,
+            target: foreignTargetName(dependencyMember),
+          })
+        : buckLabel({ packagePath: dependencyPath, target: 'lib' }),
     name: dependencyName,
     ...(request.optional === true ? { optional: true as const } : {}),
     requestSource,
@@ -2837,8 +2855,11 @@ const resolveWorkspaceFeatures = ({
   const memberPathsByLabel = new Map(
     members.map((member) => [
       context.foreignPackageByPath.has(member.packagePath) === true
-        ? `//${context.foreignTargetPackage}:${foreignTargetName(member)}`
-        : `//${member.packagePath === '.' ? '' : member.packagePath}:lib`,
+        ? buckLabel({
+            packagePath: context.foreignTargetPackage,
+            target: foreignTargetName(member),
+          })
+        : buckLabel({ packagePath: member.packagePath, target: 'lib' }),
       member.packagePath,
     ]),
   )

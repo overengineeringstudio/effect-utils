@@ -253,7 +253,7 @@ const renderCargoFixture = ({
         path.posix.join(workspaceRoot, 'foreign-packages.json'),
         JSON.stringify({
           foreignPackageManifestPaths: Object.keys(foreignPackages).map(
-            (packagePath) => `${packagePath}/Cargo.toml`,
+            (packagePath) => path.posix.join(packagePath, 'Cargo.toml'),
           ),
         }),
       )
@@ -358,6 +358,8 @@ describe('repository-root Cargo workspaces', () => {
         expect(output).toContain('"shared"')
         expect(output).toContain('"schema.json": "schema.json"')
         expect(output).toContain('build-script')
+        expect(output).toContain('    prefix = "",')
+        expect(output).toContain('    package_path = "",')
       } else {
         expect(output).toContain('//:lib')
       }
@@ -365,6 +367,77 @@ describe('repository-root Cargo workspaces', () => {
       expect(output).not.toContain('./src/')
     },
   )
+
+  it.each([
+    '[dependencies]\nshared = { path = "external/shared", features = ["x"], default-features = false }',
+    '[dependencies]\nshared = { path = "external/shared", default-features = false }\n[features]\ndefault = ["shared/x"]',
+  ])('hosts foreign libraries at the root and resolves their features: %s', (dependency) => {
+    const output = renderCargoFixture({
+      ...rootWorkspace,
+      members: {
+        '.': {
+          manifest: `[package]\nname = "host"\n${dependency}`,
+          files: ['src/lib.rs'],
+        },
+      },
+      foreignPackages: {
+        'external/shared': {
+          manifest:
+            '[workspace]\n[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"\n[features]\ndefault = ["y"]\nx = []\ny = []',
+          files: ['src/lib.rs'],
+          projected: true,
+        },
+      },
+      render: '.',
+    })
+    expect(renderedRules(output).lib).toContain('"//:foreign-shared-lib"')
+    expect(renderedRules(output)['foreign-shared-lib']).toContain(
+      'features = [\n        "x",\n    ],',
+    )
+    expect(renderedRules(output)['foreign-shared-lib']).not.toContain('"y"')
+    expect(output).not.toMatch(/\/\/\.(?::|\/)/)
+  })
+
+  it('uses root labels for a foreign producer at the repository root', () => {
+    const output = renderCargoFixture({
+      members: {
+        pkg: {
+          manifest: '[package]\nname = "host"\n[dependencies]\nshared = { path = "../.." }',
+          files: ['src/lib.rs'],
+        },
+      },
+      foreignPackages: {
+        '.': {
+          manifest:
+            '[workspace]\n[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"',
+          files: ['src/lib.rs'],
+          projected: true,
+        },
+      },
+      render: 'pkg',
+    })
+    expect(output).toContain('"//:cargo-source/src/lib.rs": "src/lib.rs"')
+    expect(output).not.toMatch(/\/\/\.(?::|\/)/)
+  })
+
+  it('exports build-script resources from the root package boundary', () => {
+    const output = renderCargoFixture({
+      ...rootWorkspace,
+      members: {
+        'crates/pkg': {
+          manifest:
+            '[package]\nname = "pkg"\n[package.metadata.buck2]\nbuildScriptInputs = [{ path = "../../schema.json", label = "//:schema" }]',
+          files: ['src/lib.rs', 'build.rs'],
+        },
+      },
+      extraFiles: ['schema.json', 'BUCK.foreign.bzl.genie.ts'],
+      render: '.',
+      projectOptions: { foreignBuildScriptExportsOnly: true },
+    })
+    expect(output).toContain('name = "schema"')
+    expect(output).toContain('src = "schema.json"')
+    expect(output).not.toMatch(/\/\/\.(?::|\/)/)
+  })
 
   it.each(['.', ''])('keeps resource path %j invalid', (resourcePath) => {
     expect(() =>
