@@ -310,11 +310,15 @@ Native missing-file, non-directory and symlink-loop diagnostics remain visible.
 Record identity and package containment/symlink validation precede backing-input
 traversal, so invalid package paths cannot redirect admission outside the repository.
 
-Watch reconciliations retain the owner across the private Buck build, authority
-reads, budget reservation, copying and verification. Their `editor-publication`
-isolation has its own daemon and `buck-out`, so default-isolation rematerialization
-cannot invalidate publication inputs. Its additional cold materialization is part
-of the existing execution budget, not hidden in lock-admission time.
+Watch reconciliations acquire the owner before the authority census and retain it
+through the private Buck build, authority reads, budget reservation, copying and
+verification. Publication census queries use that same owner's reserved isolation;
+only authority-only commands remain owner-free. The execution clock starts after
+owner acquisition, before the census, so lock contention is admission time but the
+census is not an unbudgeted prelude. Empty publication selections do neither.
+The `editor-publication` isolation has its own daemon and `buck-out`, so
+default-isolation rematerialization cannot invalidate publication inputs. Its
+additional cold materialization is part of the existing execution budget.
 
 The real isolation regression uses `BUCK2_EDITOR_PUBLICATION_FIXTURE`, an immutable
 Starlark cell declared by the owning `test:buck2-tools` Nix closure. It performs no

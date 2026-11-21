@@ -678,8 +678,8 @@ export type BuckReconcilerOptions = {
   readonly signal?: AbortSignal
   readonly onTiming?: (timing: BuckReconcileTiming) => void
   readonly diagnosticTaskName?: string
-  /** Deadline notification only: this callback conveys no publication authority. */
-  readonly onOwnerAcquired?: () => void
+  /** Refresh the authority census under the same owner, before any input build. */
+  readonly prepareAuthority?: (owner: EditorPublicationOwner) => Promise<void>
   /** Prepare views within one exclusive-lock batch using the publisher's declared worker bound. */
   readonly batchPublication?: boolean
 }
@@ -695,8 +695,10 @@ export const reconcileBuckViews = (input: BuckReconciliation): Promise<void> =>
     root: input.options.repoRoot,
     signal: input.options.signal,
     run: (owner) => {
-      input.options.onOwnerAcquired?.()
-      return reconcileOwnedBuckViews(input, owner)
+      const prepared = input.options.prepareAuthority?.(owner)
+      return prepared === undefined
+        ? reconcileOwnedBuckViews(input, owner)
+        : prepared.then(() => reconcileOwnedBuckViews(input, owner))
     },
   })
 

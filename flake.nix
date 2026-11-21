@@ -430,7 +430,7 @@ rec {
                       "node_modules/dep/index.js": payload,
                   })
                   return [DefaultInfo(default_output = tree)]
-              inputs = rule(impl = _impl, attrs = {})
+              inputs = rule(impl = _impl, attrs = {"src": attrs.source(default = "package.json")})
               STARLARK
             '';
             stylex-next-fixture = stylexNextFixture;
