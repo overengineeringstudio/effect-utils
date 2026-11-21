@@ -166,6 +166,8 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
+    # Avoid Bun's runtime ancestor enumeration of the shared /nix/store directory.
+    compile = true;
     environment = megarepoProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
     };

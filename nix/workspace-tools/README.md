@@ -24,6 +24,11 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
     dispatches to `javascript-published-import.nix` (eval-time validation of
     the pinned descriptor) or `javascript-source-import.nix` (build-time
     validation for from-source products).
+    Both modes accept `compile = true` for self-contained Bun executables
+    (no runtime closure or external modules). Megarepo uses this mode so its
+    embedded entry starts without Bun enumerating `/nix/store` ancestors.
+    Compilation uses a local build input and disables ambient dotenv/bunfig
+    autoloading; environment and capability PATH wrappers remain unchanged.
   - `mk-cli-packages.nix` — the retained Buck-backed CLI package wrapper.
   - Buck capability, archive, source-identity, and release helpers and tests.
   - `cli-build-stamp.nix` — shared build stamp helper for CLIs.

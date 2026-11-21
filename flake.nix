@@ -311,6 +311,24 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+          worktree-teardown-runtime = pkgs.runCommand "worktree-teardown-runtime" { } ''
+            export HOME="$TMPDIR/home"
+            root="$TMPDIR/retired"
+            mkdir -p "$HOME" "$root"
+            ${pkgs.git}/bin/git -C "$root" init -q
+            touch "$root/.buckroot" "$root/.buckconfig"
+            # A root-owned lifecycle file forces the packaged entrypoint to
+            # resolve and run the real pinned Buck2 client, without a daemon.
+            state="$HOME/.buck/buckd/''${root#/}"
+            ${pkgs.lib.optionalString (builtins.hasAttr system (import ./nix/buck2-release.nix).platforms) ''
+              mkdir -p "$state/runtime-test"
+              touch "$state/runtime-test/buckd.lifecycle"
+            ''}
+            env -i HOME="$HOME" PATH=/nonexistent \
+              ${self.packages.${system}.worktree-teardown}/bin/worktree-teardown "$root"
+            test ! -e "$state"
+            touch "$out"
+          '';
           worktree-tools-identity =
             pkgs.runCommand "worktree-tools-identity"
               {
@@ -406,7 +424,7 @@ rec {
                 fi
               '';
             };
-            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs; };
+            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs buck2; };
             editor-view-budget = import ./nix/editor-view-budget.nix { inherit pkgs; };
             editor-view-lease = pkgs.callPackage ./nix/editor-view-lease { };
             buck2-rules = buck2Rules;

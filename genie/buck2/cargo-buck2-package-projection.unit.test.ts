@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -36,16 +36,18 @@ describe('Cargo Buck2 package projection', () => {
     },
   )
 
-  it.each(['cargoManifestPath', 'cargoLockPath', 'reindeerConfigPath', 'thirdPartyBuckPath'] as const)(
-    'keeps root and empty paths invalid for %s',
-    (field) => {
-      for (const value of ['.', '']) {
-        expect(() =>
-          defineCargoBuck2PackageProjection({ ...consumerProjectionOptions, [field]: value }),
-        ).toThrow(`${field} must be a normalized repository-relative path`)
-      }
-    },
-  )
+  it.each([
+    'cargoManifestPath',
+    'cargoLockPath',
+    'reindeerConfigPath',
+    'thirdPartyBuckPath',
+  ] as const)('keeps root and empty paths invalid for %s', (field) => {
+    for (const value of ['.', '']) {
+      expect(() =>
+        defineCargoBuck2PackageProjection({ ...consumerProjectionOptions, [field]: value }),
+      ).toThrow(`${field} must be a normalized repository-relative path`)
+    }
+  })
 
   it('keeps root and empty generator paths invalid', () => {
     for (const value of ['.', '']) {
@@ -151,6 +153,7 @@ type CargoFixtureMember = {
  */
 const renderCargoFixture = ({
   members,
+  testMembers = [],
   workspaceRoot = 'rust',
   thirdPartyDirectory = 'third-party',
   edition = '2024',
@@ -167,6 +170,7 @@ const renderCargoFixture = ({
   prepareFixture,
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
+  readonly testMembers?: readonly string[]
   readonly workspaceRoot?: string
   readonly thirdPartyDirectory?: string
   readonly edition?: string
@@ -252,8 +256,8 @@ const renderCargoFixture = ({
       write(
         path.posix.join(workspaceRoot, 'foreign-packages.json'),
         JSON.stringify({
-          foreignPackageManifestPaths: Object.keys(foreignPackages).map(
-            (packagePath) => path.posix.join(packagePath, 'Cargo.toml'),
+          foreignPackageManifestPaths: Object.keys(foreignPackages).map((packagePath) =>
+            path.posix.join(packagePath, 'Cargo.toml'),
           ),
         }),
       )
@@ -291,6 +295,7 @@ const renderCargoFixture = ({
       workspaceMemberManifestPaths: Object.keys(members).map((memberPath) =>
         path.posix.join(workspaceRoot, memberPath, 'Cargo.toml'),
       ),
+      testPackagePaths: testMembers.map((memberPath) => path.posix.join(workspaceRoot, memberPath)),
       thirdPartyBuckPath: path.posix.join(workspaceRoot, thirdPartyDirectory, 'BUCK'),
       thirdPartyPackage: `//${path.posix.join(workspaceRoot, thirdPartyDirectory)}`,
       generatorSourcePaths: [],
@@ -408,8 +413,7 @@ describe('repository-root Cargo workspaces', () => {
       },
       foreignPackages: {
         '.': {
-          manifest:
-            '[workspace]\n[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"',
+          manifest: '[workspace]\n[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2024"',
           files: ['src/lib.rs'],
           projected: true,
         },
@@ -1944,5 +1948,315 @@ describe('Cargo build scripts', () => {
     ).toThrow(
       'Optional and renamed Cargo build dependencies are unsupported in rust/axe/Cargo.toml: ser',
     )
+  })
+})
+
+describe('Cargo test harness projection', () => {
+  const manifest =
+    '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\njson = { package = "serde_json", version = "1" }'
+  const files = ['src/lib.rs', 'src/main.rs', 'tests/one.rs', 'tests/two.rs', 'tests/common/mod.rs']
+  const render = (overrides: Partial<Parameters<typeof renderCargoFixture>[0]> = {}) =>
+    renderCargoFixture({
+      members: { pkg: { manifest, files } },
+      registryPackages: ['serde', 'serde_json'],
+      thirdPartyTargets: ['serde', 'serde_json'],
+      render: 'pkg',
+      testMembers: Object.keys(overrides.members ?? { pkg: { manifest, files } }),
+      ...overrides,
+    })
+  const harnesses = (output: string) =>
+    [...output.matchAll(/cargo_rust_test\(\n([\s\S]*?)\n\)/g)].map((match) => match[1]!)
+
+  it('emits lib, bin, and direct integration harnesses with the full closure', () => {
+    const output = render()
+    const tests = harnesses(output)
+    expect(tests.map((test) => /name = "([^"]+)"/.exec(test)?.[1])).toEqual([
+      'unit-lib',
+      'unit-bin-pkg',
+      'integration-one',
+      'integration-two',
+    ])
+    for (const test of tests) {
+      for (const file of files) expect(test).toContain(`"${file}"`)
+      expect(test).toContain('"//rust/third-party:serde"')
+      expect(test).toContain('"json": "//rust/third-party:serde_json"')
+      expect(test).toContain('"CARGO_MANIFEST_DIR": "."')
+    }
+    expect(tests[0]).toContain('crate_root = "src/lib.rs"')
+    expect(tests[1]).toContain('crate_root = "src/main.rs"')
+    for (const test of tests.slice(0, 2)) expect(test).not.toContain('CARGO_BIN_EXE_')
+    for (const test of tests.slice(2)) {
+      expect(test).toContain('"CARGO_BIN_EXE_pkg": "$(location //rust/pkg:pkg)"')
+      expect(test).toContain('"//rust/pkg:lib"')
+    }
+    expect(output).toContain('# Doctests: unsupported')
+  })
+
+  it.each([
+    ['[lib]\ntest = false', 'unit-lib'],
+    ['[[bin]]\nname = "pkg"\ntest = false', 'unit-bin-pkg'],
+  ])('honors test = false in %s without removing production targets', (target, skipped) => {
+    const output = render({ members: { pkg: { manifest: `${manifest}\n${target}`, files } } })
+    expect(harnesses(output).some((test) => test.includes(`name = "${skipped}"`))).toBe(false)
+    expect(output).toContain('name = "lib"')
+    expect(output).toContain('name = "pkg"')
+    for (const test of harnesses(output).filter((test) => test.includes('name = "integration-'))) {
+      expect(test).toContain('"CARGO_BIN_EXE_pkg": "$(location //rust/pkg:pkg)"')
+      expect(test).toContain('"//rust/pkg:lib"')
+    }
+  })
+
+  it.each(['[lib]', '[[bin]]\nname = "pkg"'])(
+    'rejects harness = false in opted-in %s with a typed error',
+    (target) => {
+      const options = {
+        members: { pkg: { manifest: `${manifest}\n${target}\nharness = false`, files } },
+      }
+      expect(() => render(options)).toThrow('Cargo harness = false is unsupported')
+      try {
+        render(options)
+        throw new Error('Expected unsupported harness')
+      } catch (error) {
+        expect(error).toMatchObject({ _tag: 'CargoTestTargetUnsupported' })
+      }
+      expect(harnesses(render({ ...options, testMembers: [] }))).toEqual([])
+    },
+  )
+
+  it('unifies equivalent requirements selecting one locked version without resolution metadata', () => {
+    const output = render({
+      members: {
+        pkg: {
+          manifest:
+            '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "1.0"',
+          files,
+        },
+      },
+    })
+    expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
+  })
+
+  it.each(['version', 'source', 'missing', 'consumer-build'])(
+    'resolves equivalent requests amid multiple locked versions using %s edges',
+    (edgeKind) => {
+      const source = 'registry+https://github.com/rust-lang/crates.io-index'
+      const output = render({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "1.0"' +
+              (edgeKind === 'consumer-build' ? '\n[build-dependencies]\nserde = "0.9"' : ''),
+            files: edgeKind === 'consumer-build' ? [...files, 'build.rs'] : files,
+          },
+        },
+        prepareFixture: (root) => {
+          const edge = edgeKind === 'source' ? `serde 1.0.229 (${source})` : 'serde 1.0.229'
+          writeFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            `version = 4\n[[package]]\nname = "pkg"\nversion = "0.1.0"\n${
+              edgeKind === 'missing'
+                ? ''
+                : `dependencies = [${JSON.stringify(edge)}${edgeKind === 'consumer-build' ? ', "serde 0.9.15"' : ''}]\n`
+            }[[package]]\nname = "serde"\nversion = "1.0.229"\nsource = "${source}"\n[[package]]\nname = "serde"\nversion = "0.9.15"\nsource = "${source}"\n${
+              edgeKind === 'source'
+                ? '[[package]]\nname = "serde"\nversion = "1.0.229"\nsource = "registry+https://example.invalid/index"\n'
+                : ''
+            }`,
+          )
+        },
+      })
+      expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
+      if (edgeKind === 'consumer-build') expect(output).toContain('crate_root = "build.rs"')
+    },
+  )
+
+  it('fails closed when multiple matching locked identities really remain', () => {
+    expect(() =>
+      render({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "1.0"',
+            files,
+          },
+        },
+        prepareFixture: (root) => {
+          writeFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            'version = 4\n[[package]]\nname = "pkg"\nversion = "0.1.0"\ndependencies = ["serde 1.0.229", "serde 1.0.228"]\n[[package]]\nname = "serde"\nversion = "1.0.229"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n[[package]]\nname = "serde"\nversion = "1.0.228"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+          )
+        },
+      }),
+    ).toThrow('Cannot identify locked test dependency serde')
+  })
+
+  it.each(['unit-lib', 'unit-bin-pkg', 'integration-one'])(
+    'rejects reserved binary name %s',
+    (name) => {
+      expect(() =>
+        render({
+          members: { pkg: { manifest, files: [...files, `src/bin/${name}.rs`] } },
+        }),
+      ).toThrow('Cargo binary names collide with generated Buck targets')
+    },
+  )
+
+  it('uses root-safe labels for root package tests and binary artifacts', () => {
+    const output = render({
+      workspaceRoot: '.',
+      thirdPartyDirectory: 'vendor',
+      thirdPartyTargets: ['serde', 'json'],
+      members: { '.': { manifest, files } },
+      render: '.',
+    })
+    expect(output).not.toContain('//.')
+    expect(harnesses(output)[2]).toContain('"//:lib"')
+    expect(harnesses(output)[2]).toContain('$(location //:pkg)')
+  })
+
+  it('adds newly discovered test roots and changes the semantic fingerprint', () => {
+    const before = render()
+    const after = render({ members: { pkg: { manifest, files: [...files, 'tests/three.rs'] } } })
+    expect(after).toContain('name = "integration-three"')
+    expect(/# Semantic fingerprint: (.*)/.exec(before)?.[1]).not.toBe(
+      /# Semantic fingerprint: (.*)/.exec(after)?.[1],
+    )
+  })
+
+  it('leaves tests visibly disabled by default without requiring dev-only Buck targets', () => {
+    const output = render({ testMembers: [], thirdPartyTargets: ['serde'] })
+    expect(harnesses(output)).toEqual([])
+    expect(output).toContain('# Test projection: disabled (opt in with testPackagePaths).')
+    expect(output).toContain('name = "lib"')
+  })
+
+  it('rejects an opt-in outside the workspace package census', () => {
+    expect(() => render({ testMembers: ['third-party'] })).toThrow(
+      'testPackagePaths must select a workspace package: rust/third-party',
+    )
+  })
+
+  it('fails closed when a dev-only dependency has no Buck target', () => {
+    expect(() => render({ thirdPartyTargets: ['serde'] })).toThrow('missing test targets: json')
+    try {
+      render({ thirdPartyTargets: ['serde'] })
+      throw new Error('Expected unavailable test dependency')
+    } catch (error) {
+      expect(error).toMatchObject({ _tag: 'CargoTestDependencyUnavailable' })
+    }
+  })
+
+  it('unifies normal and dev requests instead of replacing extern bindings', () => {
+    const output = render({
+      members: {
+        pkg: {
+          manifest:
+            '[package]\nname = "pkg"\n[dependencies]\nserde = { version = "1", default-features = false }\n[dev-dependencies]\nserde = { version = "1", features = ["derive"] }',
+          files,
+        },
+      },
+    })
+    expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
+    expect(() =>
+      render({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = "2"',
+            files,
+          },
+        },
+        prepareFixture: (root) => {
+          appendFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            '\n[[package]]\nname = "serde"\nversion = "2.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+          )
+          writeFileSync(
+            path.join(root, 'rust/third-party/cargo-resolution.json'),
+            JSON.stringify({
+              dependencies: [
+                {
+                  manifestPath: 'rust/pkg/Cargo.toml',
+                  name: 'serde',
+                  package: 'serde',
+                  version: '1.0.0',
+                  alias: 'serde',
+                  kind: 'normal',
+                },
+                {
+                  manifestPath: 'rust/pkg/Cargo.toml',
+                  name: 'serde',
+                  package: 'serde',
+                  version: '2.0.0',
+                  alias: 'serde',
+                  kind: 'dev',
+                },
+              ],
+            }),
+          )
+        },
+      }),
+    ).toThrow('Conflicting normal/dev Cargo dependency serde')
+  })
+
+  it('preserves conditional dev dependencies and enabled features in every harness', () => {
+    const output = render({
+      members: {
+        pkg: {
+          manifest:
+            '[package]\nname = "pkg"\n[features]\ndefault = ["enabled"]\nenabled = []\n[target."cfg(unix)".dev-dependencies]\nserde = "1"',
+          files,
+        },
+      },
+    })
+    for (const test of harnesses(output)) {
+      expect(test).toContain('features = [')
+      expect(test).toContain('"enabled"')
+      expect(test).toContain('"//rust/third-party:serde"')
+      expect(test).toContain('select({')
+    }
+  })
+
+  it.each([false, true])('includes dev feature requests only when opted in (%s)', (enabled) => {
+    const output = render({
+      members: {
+        pkg: {
+          manifest:
+            '[package]\nname = "pkg"\n[dependencies]\ndep = { path = "../dep", default-features = false, features = ["normal"] }\n[dev-dependencies]\ndep = { path = "../dep", default-features = false, features = ["dev"] }',
+          files,
+        },
+        dep: {
+          manifest: '[package]\nname = "dep"\n[features]\nnormal = []\ndev = []',
+          files: ['src/lib.rs'],
+        },
+      },
+      render: 'dep',
+      testMembers: enabled === true ? ['pkg'] : [],
+    })
+    expect(output).toContain(
+      enabled === true
+        ? 'features = [\n        "dev",\n        "normal",\n    ]'
+        : 'features = [\n        "normal",\n    ]',
+    )
+  })
+
+  it('rejects differing sources for the same test extern binding', () => {
+    expect(() =>
+      render({
+        members: {
+          pkg: {
+            manifest:
+              '[package]\nname = "pkg"\n[dependencies]\nserde = "1"\n[dev-dependencies]\nserde = { git = "https://example.invalid/serde", rev = "123", version = "1" }',
+            files,
+          },
+        },
+        prepareFixture: (root) => {
+          appendFileSync(
+            path.join(root, 'rust/Cargo.lock'),
+            '\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "git+https://example.invalid/serde#123"\n',
+          )
+        },
+      }),
+    ).toThrow('Conflicting normal/dev Cargo dependency serde')
   })
 })
