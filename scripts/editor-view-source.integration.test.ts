@@ -732,7 +732,8 @@ describe('publication notification through source reader exec', () => {
     }
     let deadline: ReturnType<typeof setTimeout> | undefined
     let joinDeadline: ReturnType<typeof setTimeout> | undefined
-    let primary: unknown
+    let outcome: { result: { status: number | null } } | { error: unknown }
+    let cleanupFailure: { error: unknown } | undefined
     try {
       const result = await Promise.race([
         closed,
@@ -740,10 +741,9 @@ describe('publication notification through source reader exec', () => {
           deadline = setTimeout(() => reject(new Error('Notification fixture exceeded 5s')), 5_000)
         }),
       ])
-      return { ...result, stdout, stderr, error: childError }
+      outcome = { result }
     } catch (error) {
-      primary = error
-      throw error
+      outcome = { error }
     } finally {
       clearTimeout(deadline)
       try {
@@ -758,15 +758,23 @@ describe('publication notification through source reader exec', () => {
           }),
         ])
       } catch (error) {
-        throw primary === undefined
-          ? error
-          : new AggregateError([primary, error], 'Notification fixture cleanup failed')
+        cleanupFailure = { error }
       } finally {
         clearTimeout(joinDeadline)
         child.stdout.destroy()
         child.stderr.destroy()
       }
     }
+    if ('error' in outcome) {
+      if (cleanupFailure !== undefined)
+        throw new AggregateError(
+          [outcome.error, cleanupFailure.error],
+          'Notification fixture cleanup failed',
+        )
+      throw outcome.error
+    }
+    if (cleanupFailure !== undefined) throw cleanupFailure.error
+    return { ...outcome.result, stdout, stderr, error: childError }
   }
 
   it('retains only the explicit write pipe and consumes it before descendants', async () => {
