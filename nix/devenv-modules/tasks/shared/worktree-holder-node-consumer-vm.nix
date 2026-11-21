@@ -158,6 +158,9 @@ pkgs.testers.nixosTest {
     aliases = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact linux::alias_tests::actual_worker_shared_unshared_and_reopened_descriptions --ignored --nocapture")
     print(aliases)
     assert "1 passed; 0 failed" in aliases, "the real kernel alias fixture must execute"
+    memfd_bind = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::internal_memfd_bind_inside_candidate_vetoes_and_invalidates_old_scope --ignored --nocapture")
+    print(memfd_bind)
+    assert "1 passed; 0 failed" in memfd_bind, "actual internal-memfd file-bind and stale scope invalidation must execute"
     try:
         for mode in ["shared", "unshared", "different-fd", "detached-file", "detached-dir", "nested-unlinked"]:
             boundary = mode in ["detached-file", "detached-dir", "nested-unlinked"]
