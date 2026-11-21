@@ -115,9 +115,8 @@ const preserveHostlessEvidence = (
       }),
     )
     const phasePath = join(root, 'child-phases.json')
-    const phases = existsSync(phasePath) === true
-      ? readFileSync(phasePath, 'utf8').slice(0, 8192)
-      : undefined
+    const phases =
+      existsSync(phasePath) === true ? readFileSync(phasePath, 'utf8').slice(0, 8192) : undefined
     const census = [
       'native-args.json',
       'native-result.json',
