@@ -78,6 +78,9 @@ pkgs.testers.nixosTest {
     systemd.tmpfiles.rules = [ "d /var/lib/holder-fixture 0700 fixture users -" ];
     environment.systemPackages = [ pkgs.bun pkgs.util-linux evidence ];
     virtualisation.memorySize = 2048;
+    # Exercise native filesystem policy, not the test driver's overlay-backed store.
+    virtualisation.useNixStoreImage = true;
+    virtualisation.writableStore = false;
     boot.kernel.sysctl."kernel.io_uring_disabled" = 0;
     systemd.sockets.worktree-holder-evidence = {
       wantedBy = [ "sockets.target" ];
@@ -145,6 +148,8 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
     # Owned guest fixture paths only; never expose production census coordinates.
     print(machine.succeed("readlink -f ${pkgs.bun}/bin/bun; stat -f -c '%T' ${pkgs.bun}/bin/bun; findmnt -T ${pkgs.bun}/bin/bun -o FSTYPE,OPTIONS"))
+    bun_filesystem = machine.succeed("findmnt -n -T ${pkgs.bun}/bin/bun -o FSTYPE").strip()
+    assert bun_filesystem == "ext4", "the actual fixture Bun executable must use the native ext4 store image: " + bun_filesystem
     try:
         churn = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_departed_thread_churn_preserves_survivor_fd --ignored --nocapture")
         print(churn)
@@ -167,6 +172,7 @@ pkgs.testers.nixosTest {
             "store_positive_precedes_unlinked_native_mapping_failure",
             "terminal_devices_do_not_pin_candidate_paths",
             "actual_internal_memfd_recloses_with_frozen_retained_views",
+            "actual_overlay_held_file_requires_proxy_without_native_exemption",
             "linked_candidate_and_unlinked_same_filesystem_never_use_shmem_exclusion",
             "bind_alias_and_detached_mount_fixture",
         ]:
@@ -179,8 +185,8 @@ pkgs.testers.nixosTest {
         jailed_namespace = machine.succeed("HOLDER_NAMESPACE_BUSYBOX=${pkgs.pkgsStatic.busybox}/bin/busybox ${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::jailed_namespace_outside_candidate_bind_matches_oracle_without_admin --ignored --nocapture")
         print(jailed_namespace)
         assert "1 passed; 0 failed" in jailed_namespace, "actual jailed namespace outside-candidate bind must match the privileged reference oracle without SYS_ADMIN"
-        for mode in ["shared", "unshared", "different-fd", "detached-file", "detached-dir", "nested-unlinked"]:
-            boundary = mode in ["detached-file", "detached-dir", "nested-unlinked"]
+        for mode in ["shared", "unshared", "different-fd", "detached-file", "detached-dir", "nested-unlinked", "overlay-file"]:
+            boundary = mode in ["detached-file", "detached-dir", "nested-unlinked", "overlay-file"]
             root = "/var/lib/holder-fixture/" + mode
             machine.succeed("test ! -e " + shlex.quote(root))
             argv = [
@@ -200,7 +206,14 @@ pkgs.testers.nixosTest {
                 machine.wait_until_succeeds("test -f " + shlex.quote(root + "/setup-request"), timeout=30)
                 mount = root + "/submount" if mode == "nested-unlinked" else "/run/holder-negative-" + mode
                 machine.succeed("mkdir " + shlex.quote(mount))
-                machine.succeed("mount -t tmpfs -o size=1m,mode=0700,uid=1000,gid=100 tmpfs " + shlex.quote(mount))
+                if mode == "overlay-file":
+                    base = "/run/holder-overlay-backing"
+                    machine.succeed("mkdir -p " + base + "/lower " + base + "/upper " + base + "/work")
+                    machine.succeed("touch " + base + "/lower/held; chown fixture:users " + base + "/lower/held")
+                    machine.succeed("mount -t overlay overlay -o lowerdir=" + base + "/lower,upperdir=" + base + "/upper,workdir=" + base + "/work " + shlex.quote(mount))
+                    assert machine.succeed("findmnt -n -T " + shlex.quote(mount) + " -o FSTYPE").strip() == "overlay"
+                else:
+                    machine.succeed("mount -t tmpfs -o size=1m,mode=0700,uid=1000,gid=100 tmpfs " + shlex.quote(mount))
                 assert machine.succeed("stat -c %d " + shlex.quote(mount)).strip() != machine.succeed("stat -c %d " + shlex.quote(root)).strip()
                 if mode == "detached-dir":
                     machine.succeed("mkdir " + shlex.quote(mount + "/held") + "; chown fixture:users " + shlex.quote(mount + "/held"))
@@ -210,16 +223,16 @@ pkgs.testers.nixosTest {
                 machine.wait_until_succeeds("test -f " + shlex.quote(root + "/worker-ready"), timeout=30)
                 worker_state = json.loads(machine.succeed("cat " + shlex.quote(root + "/worker-ready")))
                 assert worker_state["dev"] == machine.succeed("stat -c %d " + shlex.quote(mount)).strip()
-                if mode != "detached-dir":
+                if mode in ["detached-file", "nested-unlinked"]:
                     assert worker_state["links"] == "0", worker_state
-                if mode != "nested-unlinked":
+                if mode in ["detached-file", "detached-dir"]:
                     machine.succeed("umount -l " + shlex.quote(mount))
                     machine.fail("mountpoint -q " + shlex.quote(mount))
                 machine.succeed("touch " + shlex.quote(root + "/capture-ready"))
                 machine.wait_until_succeeds("test -f " + shlex.quote(done), timeout=120)
                 output = machine.succeed("cat " + shlex.quote(fixture_log))
                 assert machine.succeed("cat " + shlex.quote(done)).strip() == "0", output
-                if mode == "nested-unlinked":
+                if mode in ["nested-unlinked", "overlay-file"]:
                     machine.succeed("umount " + shlex.quote(mount))
             else:
                 output = machine.succeed(run, timeout=120)

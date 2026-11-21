@@ -27,7 +27,7 @@ const WorkerReply = Schema.Struct({
     sharedMapping: Schema.Boolean,
   })),
 })
-const Mode = Schema.Literals(['shared', 'unshared', 'different-fd', 'detached-file', 'detached-dir', 'nested-unlinked'])
+const Mode = Schema.Literals(['shared', 'unshared', 'different-fd', 'detached-file', 'detached-dir', 'nested-unlinked', 'overlay-file'])
 const parent = '/var/lib/holder-fixture'
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message)
@@ -47,7 +47,7 @@ const main = Effect.gen(function* () {
     allowPositionals: false,
   })
   const mode = Schema.decodeUnknownSync(Mode)(values.mode)
-  const boundary = mode === 'detached-file' || mode === 'detached-dir' || mode === 'nested-unlinked'
+  const boundary = mode === 'detached-file' || mode === 'detached-dir' || mode === 'nested-unlinked' || mode === 'overlay-file'
   const client = Schema.decodeUnknownSync(WorktreeHolderEvidenceClientConfigSchema, {
     onExcessProperty: 'error',
   })({ path: values.client, producerId: values['producer-id'], policyId: values['policy-id'] })
@@ -148,7 +148,8 @@ const main = Effect.gen(function* () {
         'Actual worker memfd and shared-anonymous mapping must remain held')
       if (boundary) {
         assert(worker.fd !== null, 'Boundary fixture must retain its actual descriptor')
-        if (mode !== 'detached-dir') assert(worker.links === '0', 'Boundary file must be unlinked')
+        if (mode === 'detached-file' || mode === 'nested-unlinked')
+          assert(worker.links === '0', 'Boundary file must be unlinked')
         yield* fs.writeFileString(`${root}/worker-ready`, JSON.stringify(worker))
         yield* waitForGuest('capture-ready')
       }

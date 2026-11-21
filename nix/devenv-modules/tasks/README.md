@@ -117,6 +117,12 @@ inside the candidate. Two explicit setup/capture handshakes preserve exclusive
 creation of fresh candidate roots. These cases must return UNKNOWN through
 the strict source, veto deletion and preserve the original root and payload.
 An unlinked object or tmpfs type alone never establishes non-membership.
+The guest uses a read-only native store image and asserts the actual Bun
+executable is backed by ext4. This removes the test driver's overlay-backed
+store from native-policy positive cases without admitting overlay objects.
+A separate real overlay-file worker case retains an open descriptor across
+both authenticated captures and must remain UNKNOWN/veto with NULL managed
+policy, preserving the candidate root and payload.
 
 ## Native holder membership library (inactive)
 

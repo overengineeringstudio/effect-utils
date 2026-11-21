@@ -5,7 +5,7 @@ import { dlopen, FFIType, ptr } from 'bun:ffi'
 import { Schema } from 'effect'
 
 const Options = Schema.Struct({
-  mode: Schema.Literals(['shared', 'unshared', 'different-fd', 'detached-file', 'detached-dir', 'nested-unlinked']),
+  mode: Schema.Literals(['shared', 'unshared', 'different-fd', 'detached-file', 'detached-dir', 'nested-unlinked', 'overlay-file']),
   root: Schema.String,
   inheritedFd: Schema.NullOr(Schema.Int),
 })
@@ -59,7 +59,7 @@ try {
     const path = `${options.root}/submount/held`
     heldFd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL, 0o600)
     unlinkSync(path)
-  } else if (options.mode === 'detached-file' || options.mode === 'detached-dir') {
+  } else if (options.mode === 'detached-file' || options.mode === 'detached-dir' || options.mode === 'overlay-file') {
     const path = `/run/holder-negative-${options.mode}/held`
     heldFd = openSync(path, constants.O_RDONLY |
       (options.mode === 'detached-dir' ? constants.O_DIRECTORY : 0) | constants.O_NOFOLLOW)
