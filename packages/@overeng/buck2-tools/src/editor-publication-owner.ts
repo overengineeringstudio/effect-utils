@@ -36,7 +36,7 @@ export const requireEditorPublicationOwner = ({
   owner,
 }: {
   readonly root: string
-  readonly owner?: EditorPublicationOwner
+  readonly owner?: EditorPublicationOwner | undefined
 }): EditorPublicationOwner => {
   const state = owner === undefined ? undefined : owners.get(owner)
   if (state === undefined)

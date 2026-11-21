@@ -278,6 +278,10 @@ Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant no
 Cancellation wakes queued acquisition, but active subordinate work must join before release.
 `tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
 This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
+`requireEditorPublicationInputs` validates mutable Buck inputs and their symlink carriers
+against the live owner and reserved publication isolation, preserving native filesystem errors.
+Ordinary source and immutable store inputs need no publication owner; terminal parent traversal
+cannot select an unowned materializer or ancestor.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
