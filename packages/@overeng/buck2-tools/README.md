@@ -616,7 +616,7 @@ fail closed on unknown evidence and still requires a validated exclusive lease
 under the owning CAS fence.
 
 The existing reader launcher is available as flake package `editor-view-source`.
-Protocol tests can select it with declared Bun/Python closures without a full devenv shell.
+Protocol tests use declared Bash/Bun closures and a real anonymous pipe without a full devenv shell.
 Its optional `EDITOR_VIEW_ADMISSION_READY_FD` must name a canonical numeric FD for an open
 write-only FIFO; malformed values fail before target execution or availability fallback.
 This is notification transport only, never publication ownership.
