@@ -524,29 +524,12 @@ const cargoBuck2PackageProjectionFor = ({
     field: `${member.manifestPath} package`,
   })
   if (
-    path.posix.normalize(path.posix.join(packagePath, packageMetadata.workspace ?? '')) !==
-      context.workspaceRoot &&
-    foreignMember === undefined
+    foreignMember === undefined &&
+    findCargoWorkspaceRoot({ repo, packagePath, manifest }) !== context.workspaceRoot
   ) {
     throw new Error(
       `Cargo package ${packagePath} does not resolve workspace to ${cargoManifestPath}`,
     )
-  }
-  if (
-    foreignMember === undefined &&
-    (packageMetadata.version === undefined ||
-      typeof packageMetadata.version === 'string' ||
-      packageMetadata.version.workspace !== true)
-  ) {
-    throw new Error(`Cargo package ${packagePath} must inherit workspace.package.version`)
-  }
-  if (
-    foreignMember === undefined &&
-    (packageMetadata.edition === undefined ||
-      typeof packageMetadata.edition === 'string' ||
-      packageMetadata.edition.workspace !== true)
-  ) {
-    throw new Error(`Cargo package ${packagePath} must inherit workspace.package.edition`)
   }
   if (packageMetadata.autotests !== undefined) {
     throw new Error(`Cargo autotests overrides are unsupported in ${member.manifestPath}`)
@@ -575,15 +558,23 @@ const cargoBuck2PackageProjectionFor = ({
     value:
       typeof packageMetadata.version === 'string'
         ? packageMetadata.version
-        : context.workspace.package?.version,
-    field: 'workspace.package.version',
+        : packageMetadata.version?.workspace === true
+          ? context.workspace.package?.version
+          : packageMetadata.version === undefined
+            ? '0.0.0'
+            : undefined,
+    field: `${member.manifestPath} package.version`,
   })
   const edition = requireValue({
     value:
       typeof packageMetadata.edition === 'string'
         ? packageMetadata.edition
-        : context.workspace.package?.edition,
-    field: 'workspace.package.edition',
+        : packageMetadata.edition?.workspace === true
+          ? context.workspace.package?.edition
+          : packageMetadata.edition === undefined
+            ? '2015'
+            : undefined,
+    field: `${member.manifestPath} package.edition`,
   })
   if (edition === '2015') {
     // Edition 2015 changes Cargo's target inference (legacy paths, autobins off beside

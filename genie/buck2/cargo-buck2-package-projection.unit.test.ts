@@ -1,4 +1,12 @@
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -145,6 +153,8 @@ describe('Cargo Buck2 package projection', () => {
 type CargoFixtureMember = {
   readonly manifest: string
   readonly files: readonly string[]
+  /** Defaults to both fields; an empty list permits Cargo defaults or local strings. */
+  readonly inheritedPackageFields?: readonly ('version' | 'edition')[]
 }
 
 /**
@@ -202,8 +212,8 @@ const renderCargoFixture = ({
     mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true })
     writeFileSync(path.join(root, relativePath), content)
   }
-  const memberManifest = (memberPath: string, manifest: string) => {
-    const [header, ...rest] = manifest.split('\n[')
+  const memberManifest = (memberPath: string, member: CargoFixtureMember) => {
+    const [header, ...rest] = member.manifest.split('\n[')
     const workspaceKey =
       memberPath === '.'
         ? ''
@@ -212,7 +222,9 @@ const renderCargoFixture = ({
             .map(() => '..')
             .join('/')}"\n`
     return [
-      `${header}\nversion.workspace = true\nedition.workspace = true\n${workspaceKey}`,
+      `${header}\n${(member.inheritedPackageFields ?? ['version', 'edition'])
+        .map((field) => `${field}.workspace = true\n`)
+        .join('')}${workspaceKey}`,
       ...rest.map((section) => `[${section}`),
     ].join('\n')
   }
@@ -227,7 +239,7 @@ const renderCargoFixture = ({
         .join(
           ', ',
         )}]\n\n[workspace.package]\nversion = "${workspaceVersion}"\nedition = "${edition}"\n${workspacePackageFields}\n[workspace.dependencies]\nserde = "1"\n${workspaceDependencies}${
-        rootMember === undefined ? '' : `\n${memberManifest('.', rootMember.manifest)}`
+        rootMember === undefined ? '' : `\n${memberManifest('.', rootMember)}`
       }`,
     )
     write(
@@ -274,7 +286,7 @@ const renderCargoFixture = ({
       if (memberPath !== '.') {
         write(
           path.posix.join(workspaceRoot, memberPath, 'Cargo.toml'),
-          memberManifest(memberPath, member.manifest),
+          memberManifest(memberPath, member),
         )
       }
       for (const file of member.files)
@@ -310,6 +322,143 @@ const renderCargoFixture = ({
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('Cargo membership and package-local metadata', () => {
+  const fixture = {
+    members: {
+      'nested/pkg': {
+        manifest: '[package]\nname = "pkg"',
+        files: ['src/lib.rs', 'src/main.rs', 'tests/integration.rs'],
+      },
+    },
+    render: 'nested/pkg',
+    testMembers: ['nested/pkg'],
+  }
+  const manifestPath = (root: string) => path.join(root, 'rust/nested/pkg/Cargo.toml')
+
+  it('accepts implicit membership through the existing ancestor workspace lookup', () => {
+    const explicit = renderCargoFixture(fixture)
+    const implicit = renderCargoFixture({
+      ...fixture,
+      prepareFixture: (root) => {
+        const file = manifestPath(root)
+        writeFileSync(file, readFileSync(file, 'utf8').replace(/^workspace = .*\n/m, ''))
+      },
+    })
+    expect(implicit.replace(/^# Semantic fingerprint: .*$/m, '')).toBe(
+      explicit.replace(/^# Semantic fingerprint: .*$/m, ''),
+    )
+    expect(implicit).toContain('name = "integration-integration"')
+  })
+
+  it.each(['version', 'edition', 'both'])(
+    'accepts local %s instead of mandatory inheritance',
+    (local) => {
+      const output = renderCargoFixture({
+        ...fixture,
+        edition: '2021',
+        prepareFixture: (root) => {
+          const file = manifestPath(root)
+          let manifest = readFileSync(file, 'utf8')
+          if (local !== 'edition')
+            manifest = manifest.replace('version.workspace = true', 'version = "0.13.0"')
+          if (local !== 'version')
+            manifest = manifest.replace('edition.workspace = true', 'edition = "2024"')
+          writeFileSync(file, manifest)
+        },
+      })
+      const version = local === 'edition' ? '0.1.0' : '0.13.0'
+      const edition = local === 'version' ? '2021' : '2024'
+      expect(output).toContain(`edition = "${edition}"`)
+      expect(output).not.toContain(`edition = "${edition === '2024' ? '2021' : '2024'}"`)
+      expect(output).toContain(`"CARGO_PKG_VERSION": "${version}"`)
+      expect(output).toContain(`"CARGO_PKG_VERSION_MINOR": "${local === 'edition' ? '1' : '13'}"`)
+      expect(output).toContain('"CARGO_PKG_VERSION_MAJOR": "0"')
+      expect(output).toContain('"CARGO_PKG_VERSION_PATCH": "0"')
+    },
+  )
+
+  it('defaults an absent version to 0.0.0, not workspace.package.version', () => {
+    const output = renderCargoFixture({
+      ...fixture,
+      workspaceVersion: '1.2.3',
+      edition: '2024',
+      members: {
+        'nested/pkg': {
+          manifest: '[package]\nname = "pkg"\nedition = "2024"',
+          inheritedPackageFields: [],
+          files: fixture.members['nested/pkg'].files,
+        },
+      },
+    })
+    expect(output).toContain('"CARGO_PKG_VERSION": "0.0.0"')
+    expect(output).toContain('"CARGO_PKG_VERSION_MINOR": "0"')
+    expect(output).not.toContain('"CARGO_PKG_VERSION": "1.2.3"')
+  })
+
+  it('refuses the default edition 2015 when edition is absent, not inherited', () => {
+    expect(() =>
+      renderCargoFixture({
+        ...fixture,
+        workspaceVersion: '1.2.3',
+        edition: '2024',
+        members: {
+          'nested/pkg': {
+            manifest: '[package]\nname = "pkg"\nversion = "0.13.0"',
+            inheritedPackageFields: [],
+            files: fixture.members['nested/pkg'].files,
+          },
+        },
+      }),
+    ).toThrow('Cargo edition 2015 is unsupported')
+  })
+
+  it('preserves a local prerelease version and CARGO_PKG_VERSION_PRE', () => {
+    const output = renderCargoFixture({
+      ...fixture,
+      members: {
+        'nested/pkg': {
+          manifest: '[package]\nname = "pkg"\nversion = "0.13.0-rc.1+build.2"\nedition = "2024"',
+          inheritedPackageFields: [],
+          files: fixture.members['nested/pkg'].files,
+        },
+      },
+    })
+    expect(output).toContain('"CARGO_PKG_VERSION": "0.13.0-rc.1+build.2"')
+    expect(output).toContain('"CARGO_PKG_VERSION_PRE": "rc.1"')
+  })
+
+  it('rejects an explicit workspace pointing at a different root', () => {
+    expect(() =>
+      renderCargoFixture({
+        ...fixture,
+        prepareFixture: (root) => {
+          const file = manifestPath(root)
+          writeFileSync(
+            file,
+            readFileSync(file, 'utf8').replace('workspace = "../.."', 'workspace = "../../.."'),
+          )
+        },
+      }),
+    ).toThrow('does not resolve workspace to rust/Cargo.toml')
+  })
+
+  it('rejects implicit membership captured by a nearer workspace', () => {
+    expect(() =>
+      renderCargoFixture({
+        ...fixture,
+        prepareFixture: (root) => {
+          const file = manifestPath(root)
+          writeFileSync(file, readFileSync(file, 'utf8').replace(/^workspace = .*\n/m, ''))
+          writeFileSync(
+            path.join(root, 'rust/nested/Cargo.toml'),
+            '[workspace]\nmembers = ["pkg"]\n',
+          )
+        },
+      }),
+    ).toThrow('does not resolve workspace to rust/Cargo.toml')
+  })
+})
 
 describe('repository-root Cargo workspaces', () => {
   const rootWorkspace = {
