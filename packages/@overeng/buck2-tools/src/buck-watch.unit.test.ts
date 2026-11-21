@@ -667,7 +667,7 @@ describe('Buck watch reconciliation', () => {
   )
 
   it('emits command spans for the build and each publication without wrapping commands', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const fixture = makePublicationFixture()
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
     const otelSpan = join(otelDirectory, 'otel-span')
     const capture = join(otelDirectory, 'captured.txt')
@@ -682,16 +682,6 @@ describe('Buck watch reconciliation', () => {
     const savedEnvironment = hermeticOtelGate()
     const telemetry = observeExporters(otelSpan)
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: [],
-        })}\n`,
-      )
       const invocations: { command: string; args: readonly string[] }[] = []
       await reconcileBuckViews({
         request: {
@@ -700,28 +690,20 @@ describe('Buck watch reconciliation', () => {
           buildTargets: ['//packages/app:editor_view_inputs'],
         },
         options: {
-          plan,
-          mode: 'publish',
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          mv: '/tools/mv',
-          snapshotRetention: 3,
-          run: async ({ command, args }) => {
+          ...fixture.options,
+          run: async (invocation) => {
+            const { command, args } = invocation
             invocations.push({ command, args })
-            return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+            return fixture.options.run(invocation)
           },
         },
       })
       // The real commands run unwrapped; spans are emitted afterwards.
       expect(invocations[0]?.command).toBe('/tools/buck2')
       expect(invocations[0]?.args[0]).toBe('build')
-      expect(invocations[1]?.command).toBe('/tools/bun')
-      expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
+      expect(invocations[1]?.command).toBe(fixture.options.editorViewCommand[0])
+      expect(invocations[1]?.args[0]).toBe(fixture.options.editorViewCommand[1])
+      expect(fixture.record().package).toBe('packages/app')
       await telemetry.settle()
       expect(telemetry.children).toHaveLength(2)
       const captured = readFileSync(capture, 'utf8')
@@ -741,7 +723,7 @@ describe('Buck watch reconciliation', () => {
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
       restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
