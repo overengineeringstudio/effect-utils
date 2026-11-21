@@ -20,6 +20,15 @@ fn incomplete(reason: &'static str) -> io::Error {
     io::Error::other(reason)
 }
 
+fn resource_step<T>(_stage: &'static str, result: io::Result<T>) -> io::Result<T> {
+    #[cfg(holder_owned_vm_class_diagnostics)]
+    if let Err(error) = &result {
+        eprintln!("worktree-holder-proc-owned-vm-resource stage={_stage} kind={:?} errno={:?}",
+            error.kind(), error.raw_os_error());
+    }
+    result
+}
+
 /// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AnonymousKernelObject {
@@ -97,6 +106,18 @@ mod diagnostic_tests {
         assert_eq!(error.kind(), std::io::ErrorKind::Other);
         assert_eq!(error.raw_os_error(), None);
         assert_eq!(error.to_string(), "process reference changed");
+    }
+
+    #[test]
+    fn resource_stage_preserves_success_errno_and_original_error() {
+        assert_eq!(super::resource_step("test-success", Ok(37)).unwrap(), 37);
+        let error = super::resource_step::<()>("test-errno",
+            Err(std::io::Error::from_raw_os_error(2))).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(error.raw_os_error(), Some(2));
+        let error = super::resource_step::<()>("test-other",
+            Err(std::io::Error::other("original detail"))).unwrap_err();
+        assert_eq!(error.to_string(), "original detail");
     }
 
     #[test]
@@ -349,9 +370,9 @@ pub fn mapping_names(scope: &File, deadline: Instant) -> io::Result<Vec<String>>
 impl Held {
     pub fn pin(path: impl AsRef<Path>, deadline: Instant) -> io::Result<Self> {
         deadline_check(deadline)?;
-        let file = objects::pin_magic(path)?;
-        let metadata = file.metadata()?;
-        Ok(Self { identity: (metadata.dev(), metadata.ino()), mount: objects::mount_id(&file)?,
+        let file = resource_step("pin-open", objects::pin_magic(path))?;
+        let metadata = resource_step("pin-metadata", file.metadata())?;
+        Ok(Self { identity: (metadata.dev(), metadata.ino()), mount: resource_step("pin-mount", objects::mount_id(&file))?,
             directory: metadata.is_dir(), file })
     }
 
@@ -549,13 +570,13 @@ impl ProcessScope {
 
     /// None denotes a re-proven departed nonleader, never a generic read error.
     pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<Option<References>> {
-        if self.task_departed(index, deadline)? { return Ok(None); }
+        if resource_step("initial-departure-proof", self.task_departed(index, deadline))? { return Ok(None); }
         let captured: io::Result<References> = (|| {
-            let all_terminal = self.terminal_group(deadline)?;
+            let all_terminal = resource_step("capture-terminal-role", self.terminal_group(deadline))?;
             let task = self.tasks.get(index).ok_or_else(|| incomplete("unknown task index"))?;
-            let references = References::collect(task, all_terminal, deadline)?;
-            references.recheck_task(task, all_terminal, deadline)?;
-            self.recheck(deadline)?;
+            let references = resource_step("capture-resources", References::collect(task, all_terminal, deadline))?;
+            resource_step("capture-resource-recheck", references.recheck_task(task, all_terminal, deadline))?;
+            resource_step("capture-group-recheck", self.recheck(deadline))?;
             Ok(references)
         })();
         match captured {
@@ -570,10 +591,10 @@ impl ProcessScope {
         deadline: Instant) -> io::Result<()> {
         if self.task_departed(index, deadline)? { return Ok(()); }
         let checked: io::Result<()> = (|| {
-            let all_terminal = self.terminal_group(deadline)?;
+            let all_terminal = resource_step("recheck-terminal-role", self.terminal_group(deadline))?;
             let task = self.tasks.get(index).ok_or_else(|| incomplete("unknown task index"))?;
-            references.recheck_task(task, all_terminal, deadline)?;
-            self.recheck(deadline)
+            resource_step("resource-recheck", references.recheck_task(task, all_terminal, deadline))?;
+            resource_step("resource-group-recheck", self.recheck(deadline))
         })();
         match checked {
             Err(error) if error.kind() == io::ErrorKind::NotFound
@@ -596,23 +617,24 @@ impl TaskScope {
 impl References {
     fn collect(task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<Self> {
         let base = scope_path(&task.scope);
-        let no_mm = no_mm_role(task, all_terminal, deadline)?;
-        let root = pin_optional(format!("{base}/root"), no_mm, deadline)?;
-        let cwd = pin_optional(format!("{base}/cwd"), no_mm, deadline)?;
-        let exe = pin_optional(format!("{base}/exe"), no_mm, deadline)?;
+        let no_mm = resource_step("collect-mm-role", no_mm_role(task, all_terminal, deadline))?;
+        let root = resource_step("collect-root", pin_optional(format!("{base}/root"), no_mm, deadline))?;
+        let cwd = resource_step("collect-cwd", pin_optional(format!("{base}/cwd"), no_mm, deadline))?;
+        let exe = resource_step("collect-exe", pin_optional(format!("{base}/exe"), no_mm, deadline))?;
         if root.as_ref().is_some_and(|held| !held.directory)
             || cwd.as_ref().is_some_and(|held| !held.directory)
         { return Err(incomplete("invalid task directory capability")); }
         let mut descriptors = Vec::new();
-        for number in numbers(format!("{base}/fd"), deadline)? {
-            let held = Held::pin(format!("{base}/fd/{number}"), deadline)?;
-            qualify_object(&held)?;
+        for number in resource_step("collect-fd-list", numbers(format!("{base}/fd"), deadline))? {
+            let held = resource_step("collect-fd-pin", Held::pin(format!("{base}/fd/{number}"), deadline))?;
+            resource_step("collect-fd-qualify", qualify_object(&held))?;
             descriptors.push((number, held));
         }
         let mut mappings = Vec::new();
-        for name in mapping_names(&task.scope, deadline)? {
-            let held = Held::pin(format!("{base}/map_files/{name}"), deadline)?;
-            if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
+        for name in resource_step("collect-map-list", mapping_names(&task.scope, deadline))? {
+            let held = resource_step("collect-map-pin", Held::pin(format!("{base}/map_files/{name}"), deadline))?;
+            if !resource_step("collect-map-metadata", held.file.metadata())?.is_file()
+                || resource_step("collect-map-filesystem", linux::filesystem_type(&held.file))? == 0x09041934 {
                 return Err(incomplete("unqualified mapped kernel object"));
             }
             mappings.push((name, held));
@@ -625,37 +647,43 @@ impl References {
     }
 
     fn recheck_task(&self, task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<()> {
-        task.recheck(deadline)?;
+        resource_step("recheck-task-start", task.recheck(deadline))?;
         let base = scope_path(&task.scope);
-        if no_mm_role(task, all_terminal, deadline)? != self.no_mm {
+        if resource_step("recheck-mm-role", no_mm_role(task, all_terminal, deadline))? != self.no_mm {
             return Err(incomplete("task mm resource role changed"));
         }
         for (name, held) in [("root", &self.root), ("cwd", &self.cwd), ("exe", &self.exe)] {
             match held {
-                Some(held) => { held.recheck(format!("{base}/{name}"), deadline)?; qualify_object(held)?; }
-                None => if pin_optional(format!("{base}/{name}"), self.no_mm, deadline)?.is_some() {
+                Some(held) => {
+                    resource_step("recheck-root-cwd-exe-pin", held.recheck(format!("{base}/{name}"), deadline))?;
+                    resource_step("recheck-root-cwd-exe-qualify", qualify_object(held))?;
+                }
+                None => if resource_step("recheck-absent-root-cwd-exe",
+                    pin_optional(format!("{base}/{name}"), self.no_mm, deadline))?.is_some() {
                     return Err(incomplete("task gained root cwd or executable"));
                 },
             }
         }
         let expected: Vec<_> = self.descriptors.iter().map(|(number, _)| *number).collect();
-        if numbers(format!("{base}/fd"), deadline)? != expected {
+        if resource_step("recheck-fd-list", numbers(format!("{base}/fd"), deadline))? != expected {
             return Err(incomplete("task descriptor membership changed"));
         }
         for (number, held) in &self.descriptors {
-            held.recheck(format!("{base}/fd/{number}"), deadline)?;
-            qualify_object(held)?;
+            resource_step("recheck-fd-pin", held.recheck(format!("{base}/fd/{number}"), deadline))?;
+            resource_step("recheck-fd-qualify", qualify_object(held))?;
         }
-        let names = mapping_names(&task.scope, deadline)?;
+        let names = resource_step("recheck-map-list", mapping_names(&task.scope, deadline))?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
             return Err(incomplete("task mapping membership changed"));
         }
-        for (name, held) in &self.mappings { held.recheck(format!("{base}/map_files/{name}"), deadline)?; }
-        if numbers(format!("{base}/fd"), deadline)? != expected
-            || mapping_names(&task.scope, deadline)? != names
-            || no_mm_role(task, all_terminal, deadline)? != self.no_mm
+        for (name, held) in &self.mappings {
+            resource_step("recheck-map-pin", held.recheck(format!("{base}/map_files/{name}"), deadline))?;
+        }
+        if resource_step("recheck-fd-list-close", numbers(format!("{base}/fd"), deadline))? != expected
+            || resource_step("recheck-map-list-close", mapping_names(&task.scope, deadline))? != names
+            || resource_step("recheck-mm-role-close", no_mm_role(task, all_terminal, deadline))? != self.no_mm
         { return Err(incomplete("task resources changed during recheck")); }
-        task.recheck(deadline)
+        resource_step("recheck-task-close", task.recheck(deadline))
     }
 }
 
