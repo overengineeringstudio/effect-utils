@@ -109,7 +109,9 @@ export const editorViewProcessLease = {
   },
 }
 
-let darwinUnknownDescription: ((pid: number, fd: number, buffer: Uint8Array, capacity: number) => number) | undefined
+let darwinUnknownDescription:
+  | ((pid: number, fd: number, buffer: Uint8Array, capacity: number) => number)
+  | undefined
 
 /** Advisory observations only; reporting never supplies classification or retirement authority. */
 export const reportEditorViewReaderUnknown = (record: {
@@ -720,7 +722,9 @@ const collectEditorViewProcesses = ({
   recordUnknown,
 }: {
   readonly observer: ProcessObserver & { readonly processIds?: readonly number[] }
-  readonly recordUnknown: (record: Omit<Parameters<typeof reportEditorViewReaderUnknown>[0], 'failures'>) => void
+  readonly recordUnknown: (
+    record: Omit<Parameters<typeof reportEditorViewReaderUnknown>[0], 'failures'>,
+  ) => void
 }): readonly string[] => {
   const processIds = observer.processIds ?? editorViewProcessTestScope.getStore()?.()
   const reasons: string[] = []

@@ -597,8 +597,10 @@ describe('editor generation native leases (Linux and macOS)', () => {
     assert.equal(fs.readFileSync(marker, 'utf8'), 'ran');
   `))
 
-  it.skipIf(process.platform === 'darwin')('keeps Darwin diagnostic description a no-op on Linux', () =>
-    run(`
+  it.skipIf(process.platform === 'darwin')(
+    'keeps Darwin diagnostic description a no-op on Linux',
+    () =>
+      run(`
       // bun:ffi is available in this real Bun child, not the portable Vitest host.
       const { dlopen } = await import('bun:ffi');
       const native = dlopen(process.env.EDITOR_VIEW_LEASE_LIBRARY, {
@@ -609,7 +611,8 @@ describe('editor generation native leases (Linux and macOS)', () => {
         assert.equal(native.symbols.eu_darwin_describe_unknown(process.pid, 0, buffer, buffer.length), 0);
         assert.equal(buffer[0], 0);
       } finally { native.close(); }
-    `))
+    `),
+  )
 })
 
 describe.skipIf(process.platform !== 'darwin')('Darwin native dead-vnode proof', () => {
