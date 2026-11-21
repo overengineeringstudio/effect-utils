@@ -1,3 +1,4 @@
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   type BigIntStats,
@@ -1017,7 +1018,7 @@ const signal = ({
     emittedAtMs: accepted === true ? now : (previous?.emittedAtMs ?? 0),
     suppressed: nextSuppressed,
   })
-  process.stderr.write(
+  writeEditorViewDiagnostic(
     `${JSON.stringify({
       ...event,
       contentStore,
@@ -1696,7 +1697,7 @@ const censusStage = ({
 }: { readonly stage: string; readonly durationMs: number } & Readonly<
   Record<string, Json>
 >): void => {
-  process.stderr.write(
+  writeEditorViewDiagnostic(
     `[editor-view-budget] ${JSON.stringify({ event: 'completed', stage, durationMs, ...counts })}\n`,
   )
 }
@@ -1724,7 +1725,7 @@ const makePointerInventory = () => {
     },
     report: (phase: 'census' | 'plan'): void => {
       if (observations.length === 0) return
-      process.stderr.write(
+      writeEditorViewDiagnostic(
         `[editor-view-budget] ${JSON.stringify({
           event: 'completed',
           stage: 'pointer-inventory',
@@ -2648,7 +2649,7 @@ const retireOrphans = async ({
         state.lastUse.delete(candidate.key)
         state.epoch += 1
         writeState(state)
-        process.stderr.write(
+        writeEditorViewDiagnostic(
           `[editor-view-budget] ${JSON.stringify({
             event: 'editor-view.host-budget.retired',
             editorRoot,
@@ -2953,7 +2954,7 @@ const retireRoot = async ({
           state.lastUse.delete(generation.key)
           state.epoch += 1
           writeState(state)
-          process.stderr.write(
+          writeEditorViewDiagnostic(
             `[editor-view-budget] ${JSON.stringify({
               event: 'editor-view.host-budget.retired',
               editorRoot: root.key,
@@ -3141,7 +3142,7 @@ export const reserveEditorViewBudget = async ({
         } catch {
           // Pressure information is optional, never part of the admission proof.
         }
-    process.stderr.write(
+    writeEditorViewDiagnostic(
       `[editor-view-budget] ${JSON.stringify({ event: 'working', reason, elapsedMs: Date.now() - startedAtMs, pressure })}\n`,
     )
   }
@@ -3496,7 +3497,7 @@ export const reserveEditorViewBudget = async ({
               }
             } finally {
               if (batch.expired === true) invalidateCensus()
-              process.stderr.write(
+              writeEditorViewDiagnostic(
                 `[editor-view-budget] ${JSON.stringify({
                   event: 'editor-view.host-budget.retirement-batch',
                   evicted: evicted.slice(retiredBefore),

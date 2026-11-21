@@ -4,6 +4,7 @@ import process from 'node:process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as Leases from './editor-view-leases.ts'
+import { editorViewDiagnostics } from './editor-view-diagnostics.ts'
 import * as ReaderDirectory from './editor-view-reader-directory.ts'
 import {
   classifyEditorViewProcessCandidates,
@@ -392,10 +393,7 @@ describe('migration reader evidence', () => {
     'logs structured Linux unknowns at the %s failure site',
     (site) => {
       const logged: string[] = []
-      const output = vi
-        .spyOn(console, 'error')
-        .mockImplementation((line) => logged.push(String(line)))
-      try {
+      editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), () => {
         io.readFileSync.mockImplementation((path: string) =>
           path.endsWith('/stat') === true ? incarnation() : 'fixture-reader',
         )
@@ -443,18 +441,13 @@ describe('migration reader evidence', () => {
             failures: site === 'observation' || site === 'incarnation' ? 2 : 1,
           },
         ])
-      } finally {
-        output.mockRestore()
-      }
+      })
     },
   )
 
   it('logs one counted record per opaque Linux process per scan without dropping reasons', () => {
     const logged: string[] = []
-    const output = vi
-      .spyOn(console, 'error')
-      .mockImplementation((line) => logged.push(String(line)))
-    try {
+    editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), () => {
       const pids = ['123', '124']
       const entries = ['cwd', 'root', 'exe', 'fd/4', 'fd/5', 'fd/6']
       io.readdirSync.mockImplementation((path: string) =>
@@ -498,9 +491,7 @@ describe('migration reader evidence', () => {
         'editor-view-process-census: allowlisted=0 unknown=2',
         'editor-view-process-census: allowlisted=0 unknown=2',
       ])
-    } finally {
-      output.mockRestore()
-    }
+    })
   })
 
   it('does not skip nondumpable same-user processes whose proc ownership changed', () => {
@@ -604,10 +595,7 @@ describe('macOS lsof completeness', () => {
 
   it('logs one counted unknown per lsof process without dropping descriptor reasons', () => {
     const logged: string[] = []
-    const output = vi
-      .spyOn(console, 'error')
-      .mockImplementation((line) => logged.push(String(line)))
-    try {
+    editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), () => {
       io.spawnSync.mockReturnValue({
         stdout: `p123\0cfixture-reader\0u${uid}\0f15\0n/unknown-type\0\nf16\0tREG\0n/unknown-inode\0\n`,
         stderr: '',
@@ -644,9 +632,7 @@ describe('macOS lsof completeness', () => {
         ['-nP', '-FpcuftDin0', '-u', String(uid)],
         expect.anything(),
       )
-    } finally {
-      output.mockRestore()
-    }
+    })
   })
 
   it('retains positive references even when the remaining output failed', () => {

@@ -31,6 +31,8 @@ import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
+
 import {
   EditorViewCapacityError,
   editorViewHostBudgetBytes,
@@ -300,24 +302,24 @@ const runEditorViewMaintenance = async <T>({
   const reserveStartedAt = phase === 'reserve' ? performance.now() : undefined
   try {
     if (reserveStartedAt !== undefined)
-      process.stderr.write(
+      writeEditorViewDiagnostic(
         `[editor-view-budget] ${JSON.stringify({ event: 'editor-view.host-budget.reserve-start', editorRoot, atMs: Date.now() })}\n`,
       )
     const result = await run()
     if (reserveStartedAt !== undefined)
-      process.stderr.write(
+      writeEditorViewDiagnostic(
         `[editor-view-budget] ${JSON.stringify({ event: 'editor-view.host-budget.reserve-granted', editorRoot, atMs: Date.now(), durationMs: Math.round(performance.now() - reserveStartedAt) })}\n`,
       )
     return result
   } catch (error) {
     if (phase === 'reserve') throw error
-    console.error(
-      JSON.stringify({
+    writeEditorViewDiagnostic(
+      `${JSON.stringify({
         event: 'editor-view.host-budget.maintenance-error',
         editorRoot,
         phase,
         message: error instanceof Error ? error.message : String(error),
-      }),
+      })}\n`,
     )
     return undefined
   }
@@ -1870,7 +1872,7 @@ const restoreSnapshotModes = (modeDrift: readonly SnapshotModeDrift[]): void => 
       closeSync(descriptor)
     }
   }
-  process.stderr.write(
+  writeEditorViewDiagnostic(
     `[editor-view-mode-drift] ${JSON.stringify({ count: restored.size, samples: modeDrift.slice(0, 5).map(({ path }) => path) })}\n`,
   )
 }
@@ -2400,13 +2402,13 @@ const recoverAbandonedPublicationLock = async ({
     const reason = publicationLockRecoveryReason(current)
     if (reason === undefined) return false
     recoverPublicationLock({ editorRoot, token: current.token })
-    console.error(
-      JSON.stringify({
+    writeEditorViewDiagnostic(
+      `${JSON.stringify({
         event: 'editor-view.publication-lock.recovered',
         editorRoot,
         pid: current.pid,
         reason,
-      }),
+      })}\n`,
     )
     return true
   })
@@ -3111,13 +3113,13 @@ type PublicationCoordinator = {
 
 /** An uncertain sibling inventory disables this admission's eviction rather than guessing. */
 const unobservedBudgetDiscovery = ({ path, error }: { path: string; error: unknown }): never => {
-  console.error(
-    JSON.stringify({
+  writeEditorViewDiagnostic(
+    `${JSON.stringify({
       event: 'editor-view.host-budget.unobserved',
       path,
       code: error instanceof Error && 'code' in error ? error.code : 'unknown',
       message: error instanceof Error ? error.message : String(error),
-    }),
+    })}\n`,
   )
   throw error
 }
@@ -3211,7 +3213,7 @@ const publishEditorViewCoordinated = async ({
     const now = performance.now()
     const durationMs = now - phaseStartedAt
     phaseTimings.push([phaseName, durationMs])
-    process.stderr.write(
+    writeEditorViewDiagnostic(
       `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: phaseName, event: 'complete', durationMs: Math.round(durationMs), elapsedMs: Math.round(performance.timeOrigin + now - startedAtMs) })}\n`,
     )
   }
@@ -3220,7 +3222,7 @@ const publishEditorViewCoordinated = async ({
     completePhase()
     phaseName = name
     phaseStartedAt = performance.now()
-    process.stderr.write(
+    writeEditorViewDiagnostic(
       `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: name, event: 'enter', elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
     )
   }
@@ -3351,7 +3353,7 @@ const publishEditorViewCoordinated = async ({
         marker.reason !== 'host-budget'
       )
         fail(`invalid host-budget eviction marker: ${evictionMarker}`)
-      process.stderr.write(
+      writeEditorViewDiagnostic(
         `[editor-view] ${options.package}: evicted by host budget; republishing the immutable editor view\n`,
       )
     }
@@ -3692,7 +3694,7 @@ const publishEditorViewCoordinated = async ({
         }
       }
       if (sharing.copiedFiles > 0)
-        process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
+        writeEditorViewDiagnostic(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
       const durationMs = performance.now() - payloadStartedAt
       const otherMs = durationMs - payloadTimings.snapshotFingerprintMs - payloadTimings.shareMs
       const casClassifiedMs = [
@@ -3711,7 +3713,7 @@ const publishEditorViewCoordinated = async ({
         0,
         (payloadTimings.casHeldMs ?? 0) - casClassifiedMs,
       )
-      process.stderr.write(
+      writeEditorViewDiagnostic(
         `[editor-view-payload] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
       )
     }

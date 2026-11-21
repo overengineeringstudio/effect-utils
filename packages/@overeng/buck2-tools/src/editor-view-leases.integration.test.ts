@@ -720,6 +720,35 @@ describe.skipIf(process.platform !== 'darwin')('Darwin native dead-vnode proof',
       assert.equal(observed.stderr.split('editor-view-reader-kernel: ').length - 1, 10);
     `))
 
+  it('captures real native observations and preserves a selective kernel-sink failure', () =>
+    run(`
+      const program = [
+        "import assert from 'node:assert/strict';",
+        "import { openSync, closeSync, fstatSync } from 'node:fs';",
+        "import { reportEditorViewReaderUnknown } from " + ${JSON.stringify(JSON.stringify(readersModule))} + ";",
+        "import { editorViewDiagnostics } from " + ${JSON.stringify(JSON.stringify(fileURLToPath(new URL('./editor-view-diagnostics.ts', import.meta.url))))} + ";",
+        "const fd = openSync(" + JSON.stringify(payload) + ", 'r'); closeSync(fd);",
+        "let observation; try { fstatSync(fd) } catch (error) { assert.equal(error.code, 'EBADF'); observation = error.errno }",
+        "assert.equal(typeof observation, 'number');",
+        "const record = { pid: String(process.pid), comm: 'diagnostic-fixture', fd: String(fd), call: 'closed-fd-observation', errno: observation, failures: 1 };",
+        "let diagnostics = '';",
+        "editorViewDiagnostics.run(value => { diagnostics += value }, () => reportEditorViewReaderUnknown(record));",
+        "const original = new Error('kernel diagnostic sink failed'), writes = []; let caught;",
+        "try { editorViewDiagnostics.run(value => { writes.push(value); if (value.startsWith('editor-view-reader-kernel:')) throw original }, () => reportEditorViewReaderUnknown(record)) } catch (error) { caught = error }",
+        "assert.equal(caught, original); assert.equal(writes.length, 2);",
+        "assert.equal(writes.some(value => value.includes('native-diagnostics')), false);",
+        "process.stdout.write(JSON.stringify({ diagnostics }));",
+      ].join("\\n");
+      const observed = spawnSync(process.execPath, ['--eval', program], { encoding: 'utf8', env: process.env });
+      assert.equal(observed.status, 0, observed.stderr);
+      assert.equal(observed.stderr, '');
+      const report = JSON.parse(observed.stdout);
+      assert.match(report.diagnostics, /"call":"closed-fd-observation","errno":-?\\d+/);
+      for (const call of ['PROC_PIDTBSDINFO-before', 'PROC_PIDLISTFDS', 'PROC_PIDFDVNODEINFO', 'PROC_PIDFDVNODEPATHINFO', 'PROC_PIDTBSDINFO-after'])
+        assert.match(report.diagnostics, new RegExp('editor-view-reader-kernel: pid=\\\\d+ comm=\\\\S+ fd=\\\\d+ call=' + call + ' result=\\\\d+ errno=\\\\d+'));
+      assert.equal(report.diagnostics.split('editor-view-reader-kernel: ').length - 1, 5);
+    `))
+
   it('does not mistake an invalid or closed descriptor for a proven dead vnode', () =>
     runProbe(`
       assert.equal(deadVnode(-1), 0);

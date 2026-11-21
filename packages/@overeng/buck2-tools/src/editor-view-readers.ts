@@ -1,3 +1,4 @@
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import type { dlopen as openNativeLibrary } from 'bun:ffi'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawnSync } from 'node:child_process'
@@ -122,7 +123,7 @@ export const reportEditorViewReaderUnknown = (record: {
   readonly errno: string | number | null
   readonly failures: number
 }): void => {
-  console.error(`editor-view-reader-unknown: ${JSON.stringify(record)}`)
+  writeEditorViewDiagnostic(`editor-view-reader-unknown: ${JSON.stringify(record)}\n`)
   if (process.platform !== 'darwin') return
   if (record.pid === null || /^\d+$/.test(record.pid) === false || typeof Bun === 'undefined')
     return
@@ -150,17 +151,17 @@ export const reportEditorViewReaderUnknown = (record: {
       throw new Error('native diagnostic description exceeded its buffer')
     description = buffer.toString('utf8', 0, length)
   } catch (error) {
-    console.error(
+    writeEditorViewDiagnostic(
       `editor-view-reader-unknown: ${JSON.stringify({
         ...record,
         call: 'native-diagnostics',
         errno: failureErrno(error),
-      })}`,
+      })}\n`,
     )
     return
   }
   // Output failures are not native observation failures.
-  if (description.length > 0) process.stderr.write(description)
+  if (description.length > 0) writeEditorViewDiagnostic(description)
 }
 
 const vanished = (error: unknown): boolean =>
@@ -752,7 +753,7 @@ const collectEditorViewProcesses = ({
     try {
       pids = processIds?.map(String) ?? readdirSync('/proc')
     } catch (error) {
-      console.error('editor-view-process-census: allowlisted=0 unknown=1')
+      writeEditorViewDiagnostic('editor-view-process-census: allowlisted=0 unknown=1\n')
       recordUnknown({
         pid: null,
         comm: null,
@@ -994,7 +995,7 @@ const collectEditorViewProcesses = ({
       }
       if (reasons.length !== previousReasons) unknown++
     }
-    console.error(`editor-view-process-census: allowlisted=${allowlisted} unknown=${unknown}`)
+    writeEditorViewDiagnostic(`editor-view-process-census: allowlisted=${allowlisted} unknown=${unknown}\n`)
     return reasons
   }
   if (process.platform !== 'darwin') return [`unsupported-process-platform: ${process.platform}`]
@@ -1045,7 +1046,7 @@ const collectEditorViewProcesses = ({
     }
   })()
   if (result === undefined) {
-    console.error(`editor-view-process-census: deadVnode=0 unknown=${reasons.length}`)
+    writeEditorViewDiagnostic(`editor-view-process-census: deadVnode=0 unknown=${reasons.length}\n`)
     return reasons
   }
   const stdout = result.stdout ?? ''
@@ -1182,7 +1183,7 @@ const collectEditorViewProcesses = ({
       reason: 'lsof-incomplete: no process identity records',
       call: 'lsof.process-identity',
     })
-  console.error(`editor-view-process-census: deadVnode=${deadVnode} unknown=${reasons.length}`)
+  writeEditorViewDiagnostic(`editor-view-process-census: deadVnode=${deadVnode} unknown=${reasons.length}\n`)
   return reasons
 }
 

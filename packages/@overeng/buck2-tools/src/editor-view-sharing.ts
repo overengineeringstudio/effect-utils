@@ -1,3 +1,4 @@
+import { writeEditorViewDiagnostic } from './editor-view-diagnostics.ts'
 import { dlopen, read as ffiRead } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID, webcrypto } from 'node:crypto'
@@ -1876,7 +1877,7 @@ const recordContentStoreIncident = async (contentStore: string): Promise<void> =
       }
       await writeContentStoreIncident({ contentStore, receipt })
     }
-    process.stderr.write(
+    writeEditorViewDiagnostic(
       `${JSON.stringify({
         event: 'editor-view.content-store.integrity-incident',
         writableBlobCount: receipt.writableBlobCount,

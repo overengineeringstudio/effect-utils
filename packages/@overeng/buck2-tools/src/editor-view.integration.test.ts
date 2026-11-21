@@ -39,6 +39,7 @@ import {
   editorViewStagingCreatorIdentity,
   readEditorViewSourceManifest,
 } from './editor-view-sharing.ts'
+import { editorViewDiagnostics } from './editor-view-diagnostics.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
   scopeEditorViewTestProcesses,
@@ -543,6 +544,43 @@ const withPublisherTelemetry = async <TValue>(
 }
 
 describe('editor view publisher', () => {
+  it('captures real publication diagnostics without writing host stderr and restores the fallback', async () => {
+    const fixture = makeFixture()
+    const child = Bun.spawn([
+      requireTool('BUN_BIN'), '--eval', `
+import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
+import { editorViewDiagnostics, writeEditorViewDiagnostic } from ${JSON.stringify(new URL('./editor-view-diagnostics.ts', import.meta.url).href)};
+import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
+const diagnostics = [];
+const record = await editorViewProcessTestScope.run(() => [process.pid], () =>
+  editorViewDiagnostics.run(value => diagnostics.push(value), () => publishEditorView(${JSON.stringify(fixture.options)})));
+const original = new Error('diagnostic callback failure');
+let propagated = false;
+try { editorViewDiagnostics.run(() => { throw original }, () => writeEditorViewDiagnostic('callback probe\\n')) }
+catch (error) { propagated = error === original }
+writeEditorViewDiagnostic('fallback probe\\n');
+process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, propagated, restored: editorViewDiagnostics.getStore() === undefined }));
+`,
+    ], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+    editorCliProcesses.add(child)
+    try {
+      const [status, stdout, stderr] = await Promise.all([
+        child.exited, Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr),
+      ])
+      expect({ status, stderr }).toEqual({ status: 0, stderr: 'fallback probe\n' })
+      const report = JSON.parse(stdout)
+      expect(report.propagated).toBe(true)
+      expect(report.restored).toBe(true)
+      expect(typeof report.snapshot).toBe('string')
+      expect(report.diagnostics.join('')).toContain('[editor-view-phase] ')
+      expect(report.diagnostics.join('')).toContain('"event":"editor-view.host-budget.reserve-start"')
+      expect(report.diagnostics.join('')).toContain('"event":"editor-view.host-budget.reserve-granted"')
+    } finally {
+      editorCliProcesses.delete(child)
+      cleanup(fixture)
+    }
+  })
+
   it('fingerprints deterministically with byte ordering, path framing, and dereferencing', async () => {
     const fixture = makeFixture()
     try {
@@ -4670,29 +4708,28 @@ describe('budget failures reject admission and preserve uncertain readers', () =
     it('logs cleanup failure and still returns the committed generation', async () => {
       expect(revision).toBe(2)
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'third\n')
-      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const logged: string[] = []
       let cleanupEntered = false
       try {
-        publication = publishEditorView({
+        publication = editorViewDiagnostics.run((line) => logged.push(line), () => publishEditorView({
           ...fixture.options,
           beforeSnapshotCleanup: () => {
             cleanupEntered = true
             throw new Error('injected post-commit cleanup error')
           },
-        })
+        }))
         const record = await publication
         expect(cleanupEntered).toBe(true)
         expect(currentTarget(fixture)).toBe(record.snapshot)
         expect(
-          log.mock.calls.some(
-            ([line]) =>
+          logged.some(
+            (line) =>
               String(line).includes('"phase":"snapshot-cleanup"') &&
               String(line).includes('injected post-commit cleanup error'),
           ),
         ).toBe(true)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
-        log.mockRestore()
       }
     })
   })
@@ -4816,9 +4853,9 @@ describe('same-host abandoned publication lock recovery', () => {
       cleanup(fixture)
     })
     it('recovers the dead owner through exact-token recovery and publishes', async () => {
-      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const logged: string[] = []
       try {
-        publication = publishEditorView({
+        publication = editorViewDiagnostics.run((line) => logged.push(line), () => publishEditorView({
           ...fixture.options,
           beforeMaterialize: () => {
             expect(
@@ -4831,13 +4868,13 @@ describe('same-host abandoned publication lock recovery', () => {
               process: editorViewStagingCreatorIdentity({ pid: process.pid }),
             })
           },
-        })
+        }))
         const record = await publication
         expect(currentTarget(fixture)).toBe(record.snapshot)
         expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
         expect(
-          log.mock.calls.some(
-            ([line]) =>
+          logged.some(
+            (line) =>
               String(line).includes('"event":"editor-view.publication-lock.recovered"') &&
               String(line).includes('"reason":"dead-pid"') &&
               String(line).includes(`"pid":${deadPid}`),
@@ -4845,7 +4882,6 @@ describe('same-host abandoned publication lock recovery', () => {
         ).toBe(true)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
-        log.mockRestore()
       }
     })
   })
@@ -4856,18 +4892,17 @@ describe('same-host abandoned publication lock recovery', () => {
     expect(observed).not.toBe('unknown')
     expect(observed).not.toBe('dead')
     writeOwner({ fixture, pid: process.pid, processIdentity: `${observed}-previous-start` })
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const logged: string[] = []
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView(fixture.options)
+      publication = editorViewDiagnostics.run((line) => logged.push(line), () => publishEditorView(fixture.options))
       const record = await publication
       expect(currentTarget(fixture)).toBe(record.snapshot)
-      expect(log.mock.calls.some(([line]) => String(line).includes('"reason":"reused-pid"'))).toBe(
+      expect(logged.some((line) => String(line).includes('"reason":"reused-pid"'))).toBe(
         true,
       )
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
-      log.mockRestore()
       cleanup(fixture)
     }
   })

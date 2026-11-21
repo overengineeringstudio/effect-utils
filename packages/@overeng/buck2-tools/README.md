@@ -162,6 +162,13 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
+Publication, budget, reader, and content-store diagnostics share an invocation-local
+sink in `editor-view-diagnostics.ts`. Scoped callers receive the original stderr
+bytes without replacing process streams; outside a scope, diagnostics still go
+to stderr. The writer does not catch callback failures and the previous sink is
+restored on exit; producer-specific error precedence remains unchanged, including
+preserving an authoritative content-store trust rejection if incident logging fails.
+
 The reconciliation command runner waits for child close after a stdin write
 failure. A nonzero or signaled child exit takes precedence over a concurrent
 broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
