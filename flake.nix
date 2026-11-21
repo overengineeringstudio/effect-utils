@@ -396,6 +396,7 @@ rec {
                 set -euo pipefail
                 root="$1"
                 generation="$2"
+                export BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY="${publicationOwner}/lib/${publicationOwner.libraryName}"
                 profile="''${WORKTREE_CAPABILITIES_PROFILE:-${buck2Capabilities}}"
                 ${pkgs.nix}/bin/nix-store --realise --add-root "$generation/profile" --indirect "$profile" >&2
                 ${capabilityPackages.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \

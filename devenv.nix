@@ -508,8 +508,8 @@ let
   publishBuckCapabilities = ''
     ${sourceBun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
       --root "$root" --profile ${buck2Capabilities} \
-      --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" \
-      --buck2-native ${buck2Machine}/libexec/buck2 >&2
+      --nix-store ${pkgs.nix}/bin/nix-store --buck2-native ${buck2Machine}/libexec/buck2 \
+      --buck2 "$BUCK2_BIN" >&2
   '';
 
   buck2BuildExec =
