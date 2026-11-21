@@ -4,8 +4,10 @@
 # Projection source: rust/buck2-tools/archive-tool/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:0b6092e69ab0bfc6748fa507ede783f6913255dc3bd1e5e5a90dc9154e7a2410
+# Semantic fingerprint: sha256:9c27d1842ca6ed3e945327ffa67aa5a4b99ba979f781658e4cf417f47e778115
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/BUCK.genie.ts, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/archive-tool/src/**/*.rs, rust/buck2-tools/archive-tool/tests/**/*.rs, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/Cargo.toml
+# Test projection: disabled (opt in with testPackagePaths).
+# Doctests: unsupported (unit and integration harnesses only).
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")

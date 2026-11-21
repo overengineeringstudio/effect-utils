@@ -2,6 +2,7 @@
 
 load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("@prelude//rust:cargo_buildscript.bzl", _prelude_buildscript_run = "buildscript_run")
+load("@prelude//decls:rust_rules.bzl", _rust_test = "rust_test")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "product_platform_constraints")
 load("//buck2/provenance:defs.bzl", "product_artifact_info", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
@@ -172,4 +173,72 @@ rust_test_receipt = cache_guarded_rule(
     attrs = {
         "test": attrs.exec_dep(providers = [RunInfo, ExternalRunnerTestInfo]),
     },
+)
+
+def _cargo_rust_test_impl(ctx):
+    providers = _rust_test.impl(ctx)
+    defaults = [p for p in providers if isinstance(p, DefaultInfo)]
+    tests = [p for p in providers if isinstance(p, ExternalRunnerTestInfo)]
+    if len(defaults) != 1 or len(tests) != 1:
+        fail("Prelude rust_test must return one DefaultInfo and one ExternalRunnerTestInfo")
+    default = defaults[0]
+    test = tests[0]
+    for field in ["test_type", "command", "env", "run_from_project_root", "use_project_relative_paths"]:
+        if not hasattr(test, field):
+            fail("Prelude rust_test provider is missing required field: " + field)
+    if len(test.command) != 1 or not test.run_from_project_root or not test.use_project_relative_paths:
+        fail("Prelude rust_test command/path contract changed")
+    if "sources" not in default.sub_targets:
+        fail("Prelude rust_test must expose its declared sources tree")
+    source_outputs = default.sub_targets["sources"][DefaultInfo].default_outputs
+    if len(source_outputs) != 1:
+        fail("Prelude rust_test sources must have exactly one output")
+    sources = source_outputs[0]
+    shell = ctx.attrs._cargo_shell[BuckSupportToolInfo]
+    launcher = ctx.actions.write(
+        "cargo-test.sh",
+        [
+            "#!{}".format(shell.store_path),
+            "set -eu",
+            'root="$PWD"',
+            'manifest="$1"; shift',
+            'exe="$1"; shift',
+            'cd -P -- "$root/$manifest"',
+            'export CARGO_MANIFEST_DIR="$PWD"',
+            'exec "$root/$exe" "$@"',
+            "",
+        ],
+        is_executable = True,
+    )
+    command = cmd_args(launcher, sources, test.command, hidden = [
+        sources,
+        shell.executable,
+        shell.manifest,
+    ])
+    env_file = ctx.actions.write_json(
+        "cargo_test_env.json",
+        {k: cmd_args(v, delimiter = " ") for k, v in test.env.items()},
+        with_inputs = True,
+        absolute = True,
+    )
+    return [p for p in providers if not isinstance(p, ExternalRunnerTestInfo) and not isinstance(p, RunInfo)] + [
+        RunInfo(args = [ctx.attrs._inject_test_env[RunInfo], env_file, "--", command]),
+        ExternalRunnerTestInfo(**(
+            {field: getattr(test, field) for field in dir(test) if field != "test_type"} |
+            {"type": test.test_type, "command": [command]}
+        )),
+    ]
+
+# Prelude fixes rust_test's cwd to the project root. Cargo instead runs in the
+# manifest directory; use the *same declared tree* rustc uses for manifest paths.
+cargo_rust_test = cache_guarded_rule(
+    impl = _cargo_rust_test_impl,
+    attrs = _rust_test.attrs | {
+        "_cargo_shell": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:tool_rust_shell",
+            providers = [BuckSupportToolInfo],
+        )),
+    },
+    uses_plugins = _rust_test.uses_plugins,
+    supports_incoming_transition = _rust_test.supports_incoming_transition,
 )
