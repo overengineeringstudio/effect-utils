@@ -268,6 +268,24 @@ mkdir -p "$test_dir/bin"
 ln -s "$pnpm_bin" "$test_dir/bin/pnpm"
 export PATH="$test_dir/bin:$PATH"
 
+echo "Test: pnpm import umask is normalized only in the install subprocess"
+(
+  umask 077
+  inherited_umask="$(umask)"
+  (
+    pnpm_install_umask
+    assert_eq 0022 "$(umask)" "pnpm receives umask 022"
+  ) 2> "$test_dir/umask-warning"
+  assert_eq "$inherited_umask" "$(umask)" "parent retains umask 077"
+  assert_eq 1 "$(wc -l < "$test_dir/umask-warning" | tr -d ' ')" "one warning line"
+  grep -q 'inherited umask 0077; using 0022' "$test_dir/umask-warning"
+  touch "$test_dir/private-log"
+  assert_eq 600 "$(node -e 'process.stdout.write((require("node:fs").statSync(process.argv[1]).mode & 0o777).toString(8))' "$test_dir/private-log")" "caller files stay private"
+  umask 022
+  (pnpm_install_umask) 2> "$test_dir/umask-no-warning"
+  assert_eq "" "$(cat "$test_dir/umask-no-warning")" "umask 022 is silent"
+)
+
 echo "Test 5: ensure_local_pnpm_home_default sets a workspace-local default"
 (
   unset PNPM_HOME
