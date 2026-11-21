@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import { dispatchEditorView, EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
 
@@ -320,7 +321,8 @@ const errorMessage = (error: unknown): string =>
  * output cannot forge a status.
  */
 export const exitCodeOf = (error: unknown): number => {
-  if (error instanceof CommandFailure) return error.exitCode ?? 1
+  if (error instanceof CommandFailure || error instanceof EditorViewCommandFailure)
+    return error.exitCode ?? 1
   const firstLine = errorMessage(error).split('\n')[0] ?? ''
   const exited = /exited (\d+)$/.exec(firstLine)
   return exited === null ? 1 : Number(exited[1] ?? '1')
@@ -658,7 +660,6 @@ export type BuckReconcilerOptions = {
   readonly repoRoot: string
   readonly workspaceRoot: string
   readonly buck2: string
-  readonly editorViewCommand: readonly [executable: string, ...prefix: string[]]
   readonly workspaceAuthority: string
   readonly cp: string
   readonly mv: string
@@ -837,10 +838,20 @@ export const reconcileBuckViews = async ({
   type EditorEntry = BuckWatchPackage & {
     readonly editor: NonNullable<BuckWatchPackage['editor']>
   }
+  const publicationSignal = (error: unknown): NodeJS.Signals | undefined => {
+    if (error instanceof CommandFailure || error instanceof EditorViewCommandFailure)
+      return error.signal
+    if (error instanceof AggregateError)
+      for (const failure of error.errors) {
+        const signal = publicationSignal(failure)
+        if (signal !== undefined) return signal
+      }
+    return undefined
+  }
   const publicationFailure = (error: unknown): never => {
-    // A group signal can kill/reap the publisher before this process observes it.
-    if (error instanceof CommandFailure && error.signal !== undefined)
-      reportBuildFailure({ code: 0, interruptedAfterBuild: error.signal })
+    // Retain actual native signal identity through same-process copy/batch failures.
+    const signal = publicationSignal(error)
+    if (signal !== undefined) reportBuildFailure({ code: 0, interruptedAfterBuild: signal })
     throw error
   }
   const publicationArgs = async (entry: EditorEntry): Promise<readonly string[]> => {
@@ -898,12 +909,20 @@ export const reconcileBuckViews = async ({
       })
     }
     try {
-      await execute({
-        command: options.editorViewCommand[0],
-        args: [...options.editorViewCommand.slice(1), ...(await publicationArgs(entry))],
+      const result = await dispatchEditorView({
+        args: await publicationArgs(entry),
+        signal: options.signal,
+        onStdout: (value) => {
+          process.stdout.write(value)
+        },
         onStderr: forwardDiagnostics,
-        cwd: options.repoRoot,
       })
+      if (result.exitCode !== 0)
+        throw new CommandFailure({
+          message: `Editor publication failed with exit code ${result.exitCode}`,
+          exitCode: result.exitCode,
+          signal: undefined,
+        })
     } catch (error) {
       emitPublicationSpan(exitCodeOf(error))
       publicationFailure(error)
@@ -920,14 +939,29 @@ export const reconcileBuckViews = async ({
       selected.has(entry.packagePath) === true && entry.editor !== undefined,
   )
   if (options.batchPublication === true && options.mode === 'publish') {
-    const requests = await Promise.all(entries.map(publicationArgs))
-    const result = await execute({
-      command: options.editorViewCommand[0],
-      args: [...options.editorViewCommand.slice(1), 'publish-batch'],
-      input: JSON.stringify(requests),
+    // A malformed manifest must not release ownership while sibling reads still run.
+    const prepared = await Promise.allSettled(entries.map(publicationArgs))
+    const requests = prepared.map((result) => {
+      if (result.status === 'rejected') throw result.reason
+      return result.value
+    })
+    const result = await dispatchEditorView({
+      args: ['publish-batch'],
+      batchRequests: requests,
+      signal: options.signal,
+      onStdout: (value) => {
+        process.stdout.write(value)
+      },
       onStderr: forwardDiagnostics,
-      cwd: options.repoRoot,
     }).catch(publicationFailure)
+    if (result.exitCode !== 0)
+      publicationFailure(
+        new CommandFailure({
+          message: `Editor publication batch failed with exit code ${result.exitCode}`,
+          exitCode: result.exitCode,
+          signal: undefined,
+        }),
+      )
     // Preserve the existing per-view callback as well as successful-task stderr evidence.
     for (const line of result.stderr.split('\n')) {
       if (line === '') continue
