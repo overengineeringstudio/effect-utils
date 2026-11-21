@@ -826,6 +826,7 @@ let
         --workspace-root "$root" \
         --cell effect_utils \
         --buck2 "$BUCK2_BIN" \
+        --buck2-native ${buck2Machine}/libexec/buck2 \
         --git ${pkgs.git}/bin/git \
         --output "$root/.devenv/editor-workspace-authority.json" \
         --cp ${pkgs.coreutils}/bin/cp \

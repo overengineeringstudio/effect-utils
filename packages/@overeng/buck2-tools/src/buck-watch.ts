@@ -5,6 +5,11 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  withEditorPublicationOwner,
+} from './editor-publication-owner.ts'
 import { dispatchEditorView, EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
@@ -660,28 +665,46 @@ export type BuckReconcilerOptions = {
   readonly repoRoot: string
   readonly workspaceRoot: string
   readonly buck2: string
+  /** Same-process managed launcher; the opaque owner is never mapped into a child FD. */
+  readonly runOwned: (
+    command: Parameters<RunCommand>[0],
+    owner: EditorPublicationOwner,
+  ) => Promise<CommandResult>
   readonly workspaceAuthority: string
   readonly cp: string
   readonly mv: string
   readonly fingerprintTool: string
   readonly snapshotRetention: number
-  readonly run?: RunCommand
   readonly signal?: AbortSignal
   readonly onTiming?: (timing: BuckReconcileTiming) => void
   readonly diagnosticTaskName?: string
+  /** Deadline notification only: this callback conveys no publication authority. */
+  readonly onOwnerAcquired?: () => void
   /** Prepare views within one exclusive-lock batch using the publisher's declared worker bound. */
   readonly batchPublication?: boolean
 }
 
-/** Build the affected product set, then publish each affected editor view from provider roots. */
-export const reconcileBuckViews = async ({
-  request,
-  options,
-}: {
+type BuckReconciliation = {
   readonly request: ReconcileRequest
   readonly options: BuckReconcilerOptions
-}): Promise<void> => {
-  const execute = options.run ?? runCommand
+}
+
+/** Own the reserved materializer from before build until every publication operation joins. */
+export const reconcileBuckViews = (input: BuckReconciliation): Promise<void> =>
+  withEditorPublicationOwner({
+    root: input.options.repoRoot,
+    signal: input.options.signal,
+    run: (owner) => {
+      input.options.onOwnerAcquired?.()
+      return reconcileOwnedBuckViews(input, owner)
+    },
+  })
+
+const reconcileOwnedBuckViews = async (
+  { request, options }: BuckReconciliation,
+  owner: EditorPublicationOwner,
+): Promise<void> => {
+  const execute: RunCommand = (command) => options.runOwned(command, owner)
   let pendingDiagnostics = ''
   const forwardDiagnostics = (chunk: string): void => {
     pendingDiagnostics += chunk
@@ -808,7 +831,15 @@ export const reconcileBuckViews = async ({
   try {
     built = await execute({
       command: options.buck2,
-      args: ['build', ...request.buildTargets, '--show-full-output', '--event-log', eventLog],
+      args: [
+        '--isolation-dir',
+        editorPublicationIsolation,
+        'build',
+        ...request.buildTargets,
+        '--show-full-output',
+        '--event-log',
+        eventLog,
+      ],
       cwd: options.workspaceRoot,
       captureStderr: false,
       onStderr: captureBuildDiagnostic,
@@ -849,7 +880,7 @@ export const reconcileBuckViews = async ({
     return undefined
   }
   const publicationFailure = (error: unknown): never => {
-    // Retain actual native signal identity through same-process copy/batch failures.
+    // Preserve native failure identity (including aggregate causes) without wrapping it.
     const signal = publicationSignal(error)
     if (signal !== undefined) reportBuildFailure({ code: 0, interruptedAfterBuild: signal })
     throw error
@@ -911,6 +942,7 @@ export const reconcileBuckViews = async ({
     try {
       const result = await dispatchEditorView({
         args: await publicationArgs(entry),
+        publicationOwner: owner,
         signal: options.signal,
         onStdout: (value) => {
           process.stdout.write(value)
@@ -948,6 +980,7 @@ export const reconcileBuckViews = async ({
     const result = await dispatchEditorView({
       args: ['publish-batch'],
       batchRequests: requests,
+      publicationOwner: owner,
       signal: options.signal,
       onStdout: (value) => {
         process.stdout.write(value)

@@ -33,6 +33,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 
+import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import type { EditorPublicationOwner } from './editor-publication-owner.ts'
 import {
   EditorViewCapacityError,
@@ -3290,6 +3291,13 @@ const publishEditorViewCoordinated = async ({
   budgetCensusSession?: EditorViewBudgetCensusSession
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
+  requireRecordIdentity(options)
+  const paths = makePaths(options)
+  requireEditorPublicationInputs({
+    root: options.repoRoot,
+    paths: [options.editorInputs, options.nodeModules, ...(options.backingRoots ?? [])],
+    owner: options.publicationOwner,
+  })
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
@@ -3343,8 +3351,6 @@ const publishEditorViewCoordinated = async ({
     enterPhase('interrupted')
     emitPhaseSpan({ created: false, exitCode: 1 })
   }
-  requireRecordIdentity(options)
-  const paths = makePaths(options)
   const authority = validateWorkspaceDependencyAuthority({
     path: options.workspaceAuthority,
     repoRoot: paths.repoRoot,
@@ -4322,6 +4328,11 @@ export const verifyEditorViewSnapshot = async (
 export const checkEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
   requireRecordIdentity(options)
   const paths = makePaths(options)
+  requireEditorPublicationInputs({
+    root: options.repoRoot,
+    paths: [options.editorInputs, options.nodeModules, ...(options.backingRoots ?? [])],
+    owner: options.publicationOwner,
+  })
   validateWorkspaceDependencyAuthority({
     path: options.workspaceAuthority,
     repoRoot: paths.repoRoot,
@@ -4732,6 +4743,8 @@ const dispatchEditorViewRequest = async ({
 }
 
 const main = async (): Promise<void> => {
+  if (process.env.BUCK2_EDITOR_PUBLICATION_OWNER_FD !== undefined)
+    throw new Error('Editor publication owner authority cannot be inherited through descriptors')
   const controller = new AbortController()
   const terminate = (): void => {
     closeFingerprintAdmission()

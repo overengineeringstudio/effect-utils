@@ -31,6 +31,12 @@ import {
   type WatchChangeSource,
   type WatchLoopStatus,
 } from './buck-watch.ts'
+import {
+  requireEditorPublicationOwner,
+  tryAcquireEditorPublicationOwner,
+  releaseEditorPublicationOwner,
+  type EditorPublicationOwner,
+} from './editor-publication-owner.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
   scopeEditorViewTestProcesses,
@@ -281,7 +287,8 @@ const makePublicationFixture = () => {
     mv,
     fingerprintTool,
     snapshotRetention: 3,
-    run: async (_command: Parameters<typeof runCommand>[0]) => {
+    runOwned: async (_command: Parameters<typeof runCommand>[0], owner: EditorPublicationOwner) => {
+      requireEditorPublicationOwner({ root, owner })
       return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
     },
   }
@@ -470,12 +477,21 @@ describe('Buck watch reconciliation', () => {
             ...fixture.options,
             batchPublication,
             signal: shutdown.signal,
-            run: async (command) => {
+            runOwned: async (command, owner) => {
+              requireEditorPublicationOwner({ root: fixture.root, owner })
+              expect(JSON.stringify(owner)).toBe('{}')
+              expect(() =>
+                requireEditorPublicationOwner({
+                  root: fixture.root,
+                  owner: JSON.parse(JSON.stringify(owner)) as EditorPublicationOwner,
+                }),
+              ).toThrow()
               invocations.push(command)
+              expect(tryAcquireEditorPublicationOwner({ root: fixture.root })).toBeUndefined()
               // Authority is process-local, never a numeric FD or argv/environment payload.
               expect(command).not.toHaveProperty('editorPublicationOwnerFd')
               expect(command.args.some((arg) => arg.includes('owner-fd'))).toBe(false)
-              return fixture.options.run(command)
+              return fixture.options.runOwned(command, owner)
             },
           },
         })
@@ -484,6 +500,8 @@ describe('Buck watch reconciliation', () => {
         expect(invocations).toHaveLength(1)
         expect(invocations[0]?.command).toBe('/tools/buck2')
         expect(invocations[0]?.args).toEqual([
+          '--isolation-dir',
+          'editor-publication',
           'build',
           ...publicationRequest.buildTargets,
           '--show-full-output',
@@ -521,7 +539,8 @@ describe('Buck watch reconciliation', () => {
             options: {
               ...fixture.options,
               batchPublication,
-              run: async ({ command }) => {
+              runOwned: async ({ command }, owner) => {
+                requireEditorPublicationOwner({ root: fixture.root, owner })
                 failedInvocations.push(command)
                 throw new Error('stale build')
               },
@@ -530,6 +549,9 @@ describe('Buck watch reconciliation', () => {
         ).rejects.toThrow('stale build')
         expect(failedInvocations).toEqual(['/tools/buck2'])
         expect(fixture.record()).toEqual(second)
+        const released = tryAcquireEditorPublicationOwner({ root: fixture.root })
+        expect(released).toBeDefined()
+        if (released !== undefined) releaseEditorPublicationOwner(released)
       } finally {
         fixture.cleanup()
       }
@@ -551,6 +573,7 @@ describe('Buck watch reconciliation', () => {
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
         if (typeof line === 'string' && line.startsWith(`[editor-view-${diagnosticPrefix}] `)) {
           expect(completed).toBe(false)
+          expect(tryAcquireEditorPublicationOwner({ root: fixture.root })).toBeUndefined()
           observed.push(line)
         }
         return true
@@ -616,15 +639,19 @@ describe('Buck watch reconciliation', () => {
         options: {
           ...fixture.options,
           mode: 'check',
-          run: async (invocation) => {
+          runOwned: async (invocation, owner) => {
             invocations.push(invocation)
-            return fixture.options.run(invocation)
+            return fixture.options.runOwned(invocation, owner)
           },
         },
       })
       // Buck runs unwrapped; the dispatcher validates the real published snapshot.
       expect(invocations[0]?.command).toBe('/tools/buck2')
-      expect(invocations[0]?.args[0]).toBe('build')
+      expect(invocations[0]?.args.slice(0, 3)).toEqual([
+        '--isolation-dir',
+        'editor-publication',
+        'build',
+      ])
       expect(invocations).toHaveLength(1)
       expect(fixture.record().package).toBe('packages/app')
       await telemetry.settle()
@@ -687,9 +714,9 @@ describe('Buck watch reconciliation', () => {
             options: {
               ...fixture.options,
               mode: 'check',
-              run: async (invocation) => {
+              runOwned: async (invocation, owner) => {
                 commands.push(invocation.command)
-                return fixture.options.run(invocation)
+                return fixture.options.runOwned(invocation, owner)
               },
             },
           }),
