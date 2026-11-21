@@ -178,6 +178,10 @@ live eviction-lock waits and terminates native copies, joining their close befor
 returning. The CLI remains the process-I/O adapter and drains on SIGTERM.
 Native command failures preserve their signal or exit code, original cause, and
 captured streams as `EditorViewCommandFailure`; signaled messages omit path details.
+After joined dispatch cleanup, the CLI preserves a native failure's actual signal
+(including aggregate/cause wrappers) as its own process termination. Ordinary
+errors still fail normally; externally requested SIGTERM still drains through
+the CLI's cancellation handler.
 Publication worker context is advisory: extensible errors retain it without
 replacing the error, while ordinary opaque errors may reject extension and still
 keep their original identity. Batches retain multiple failures in an `AggregateError`.

@@ -4743,6 +4743,22 @@ const dispatchEditorViewRequest = async ({
   return { stdout, exitCode }
 }
 
+/** Preserve real native termination through aggregate/cause wrappers at the CLI boundary. */
+const nativeCommandSignal = (
+  error: unknown,
+  seen = new Set<unknown>(),
+): NodeJS.Signals | undefined => {
+  if (seen.has(error)) return undefined
+  seen.add(error)
+  if (error instanceof EditorViewCommandFailure && error.signal !== undefined) return error.signal
+  if (error instanceof AggregateError)
+    for (const failure of error.errors) {
+      const signal = nativeCommandSignal(failure, seen)
+      if (signal !== undefined) return signal
+    }
+  return error instanceof Error ? nativeCommandSignal(error.cause, seen) : undefined
+}
+
 const main = async (): Promise<void> => {
   const controller = new AbortController()
   const terminate = (): void => {
@@ -4752,6 +4768,7 @@ const main = async (): Promise<void> => {
     controller.abort()
   }
   process.once('SIGTERM', terminate)
+  let nativeSignal: NodeJS.Signals | undefined
   try {
     const args = process.argv.slice(2)
     const result = await dispatchEditorView({
@@ -4765,10 +4782,15 @@ const main = async (): Promise<void> => {
     })
     if (result.exitCode !== 0) process.exitCode = result.exitCode
   } catch (error) {
-    if (controller.signal.aborted === false) throw error
+    if (controller.signal.aborted === false) {
+      nativeSignal = nativeCommandSignal(error)
+      if (nativeSignal === undefined) throw error
+    }
   } finally {
     process.removeListener('SIGTERM', terminate)
   }
+  // Dispatch has joined native work; our TERM listener must not consume its outcome.
+  if (nativeSignal !== undefined) process.kill(process.pid, nativeSignal)
 }
 
 if (import.meta.main === true) await main()
