@@ -162,6 +162,12 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
+The publication task entrypoint owns the worktree before its authority census
+and native build, and holds that owner until the genuine publisher CLI closes.
+Native Buck uses the reserved `editor-publication` isolation. No owner descriptor
+is passed to the publisher child. The supervisor observes an admission notification
+only; time waiting for ownership does not consume the publication execution budget.
+
 Publication, budget, reader, and content-store diagnostics share an invocation-local
 sink in `editor-view-diagnostics.ts`. Scoped callers receive the original stderr
 bytes without replacing process streams; outside a scope, diagnostics still go

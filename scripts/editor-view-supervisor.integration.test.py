@@ -166,6 +166,18 @@ class NativePublicationCopyFixtureTest(unittest.TestCase):
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_missing_notification_fails_closed_without_acquiring_owner(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "owner.lock"
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                 "none", "0.01", "--lock", str(lock), sys.executable, "-c", "pass"],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("failed to notify owner admission", result.stderr)
+            self.assertFalse(lock.exists())
+
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
         supervisor = load_supervisor()
         script = str(Path(__file__).with_name("editor-view-supervisor.py"))
