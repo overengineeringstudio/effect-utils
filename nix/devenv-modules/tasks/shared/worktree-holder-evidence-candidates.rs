@@ -774,4 +774,55 @@ mod tests {
         // NeedsProxy is deliberately not native absence. The serving VM
         // separately proves that managedPolicy=null turns it into UNKNOWN.
     }
+
+    #[test]
+    #[ignore = "requires controlled guest root, mkfs.erofs and loop block devices"]
+    fn block_erofs_candidate_file_vetoes_and_outside_file_is_native() {
+        let fixture = Fixture::new();
+        let source = fixture.0.join("source");
+        for directory in ["candidate", "outside"] {
+            std::fs::create_dir_all(source.join(directory)).unwrap();
+            std::fs::write(source.join(directory).join("payload"), b"erofs payload").unwrap();
+        }
+        let image = fixture.0.join("image.erofs");
+        assert!(std::process::Command::new("mkfs.erofs").arg(&image).arg(&source)
+            .status().unwrap().success());
+        let target = fixture.0.join("mounted");
+        std::fs::create_dir(&target).unwrap();
+        assert!(std::process::Command::new("mount").args(["-t", "erofs", "-o", "loop,ro"])
+            .arg(&image).arg(&target).status().unwrap().success());
+        struct Unmount(PathBuf);
+        impl Drop for Unmount {
+            fn drop(&mut self) {
+                let _ = std::process::Command::new("umount").arg("-l").arg(&self.0).status();
+            }
+        }
+        let _unmount = Unmount(target.clone());
+        let inside = File::open(target.join("candidate/payload")).unwrap();
+        let outside = File::open(target.join("outside/payload")).unwrap();
+        assert_eq!(linux::filesystem_type(&inside).unwrap(), 0xe0f5e1e2);
+        assert_ne!(mounts::device_pair(inside.metadata().unwrap().dev()).0, 0);
+        assert_eq!(inside.metadata().unwrap().dev(), outside.metadata().unwrap().dev());
+        let candidates = fixture_set(&[target.join("candidate")]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        let MatchOutcome::Native(matches) = candidates.matches(&inside, &task,
+            ReferenceKind::Fd, deadline()).unwrap() else { panic!("block EROFS requested proxy") };
+        assert_eq!(matches.len(), 1, "held candidate file must veto");
+        assert_eq!(matches[0].relative_path, "payload");
+        let MatchOutcome::Native(matches) = candidates.matches(&outside, &task,
+            ReferenceKind::Fd, deadline()).unwrap() else { panic!("outside EROFS requested proxy") };
+        assert!(matches.is_empty());
+        let coverage = candidates.capture_mounts(&task, deadline()).unwrap();
+        candidates.freeze_scope_devices(deadline()).unwrap();
+        candidates.recheck(deadline()).unwrap();
+        coverage.recheck(&candidates, deadline()).unwrap();
+        for (file, expected) in [(&inside, 1), (&outside, 0)] {
+            let MatchOutcome::Native(matches) = candidates.recheck_matches(file, &task,
+                ReferenceKind::Fd, Some(&coverage), deadline()).unwrap()
+                else { panic!("EROFS reclosure requested proxy") };
+            assert_eq!(matches.len(), expected);
+        }
+        assert_eq!(std::fs::read(target.join("candidate/payload")).unwrap(), b"erofs payload");
+        assert_eq!(std::fs::read(target.join("outside/payload")).unwrap(), b"erofs payload");
+    }
 }
