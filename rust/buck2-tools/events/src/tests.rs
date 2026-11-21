@@ -1703,7 +1703,7 @@ fn occurrence_wire_bound_accounts_for_json_escaping_without_dropping_source() {
             .find(|span| span.action)
             .unwrap()
             .attrs
-            .push(attr("buck2.target", &"\\".repeat(length)));
+            .push(attr("buck2.target", "\\".repeat(length)));
         let records = dir.path().join("records");
         let spool = dir.path().join("pending");
         let result = retained::capture(&model, &records, &spool);
