@@ -174,6 +174,13 @@ They reuse existing metadata and filesystem results: no new observations or
 derived paths/identifiers, and no provider activation or qualification change.
 A disabled managed provider still returns protective Unsupported.
 
+The controlled guest's store must use a native filesystem image rather than a
+writable overlay, so real Bun executable/mapping checks exercise the supported
+layout. A separate real overlay mount/held-file regression must still require
+proxy evidence; the serving fixture with no managed provider must independently
+veto that file as UNKNOWN. Changing test layout never admits overlay/FUSE as
+native absence.
+
 ## Privileged holder server (inactive)
 
 `shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,

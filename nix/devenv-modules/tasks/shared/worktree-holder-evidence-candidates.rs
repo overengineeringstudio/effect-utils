@@ -741,4 +741,37 @@ mod tests {
     fn jailed_namespace_outside_candidate_bind_matches_oracle_without_admin() {
         namespace_fixture::run();
     }
+
+    #[test]
+    #[ignore = "requires controlled guest root with CAP_SYS_ADMIN and overlayfs"]
+    fn actual_overlay_held_file_requires_proxy_without_native_exemption() {
+        let fixture = Fixture::new();
+        for directory in ["candidate", "lower", "upper", "work", "overlay"] {
+            std::fs::create_dir(fixture.0.join(directory)).unwrap();
+        }
+        std::fs::write(fixture.0.join("lower/held"), b"overlay payload").unwrap();
+        let target = fixture.0.join("overlay");
+        let options = format!("lowerdir={},upperdir={},workdir={}",
+            fixture.0.join("lower").display(), fixture.0.join("upper").display(),
+            fixture.0.join("work").display());
+        assert!(std::process::Command::new("mount")
+            .args(["-t", "overlay", "overlay", "-o"]).arg(options).arg(&target)
+            .status().unwrap().success());
+        struct Unmount(PathBuf);
+        impl Drop for Unmount {
+            fn drop(&mut self) {
+                let _ = std::process::Command::new("umount").arg("-l").arg(&self.0).status();
+            }
+        }
+        let _unmount = Unmount(target.clone());
+        let file = File::open(target.join("held")).unwrap();
+        assert_eq!(linux::filesystem_type(&file).unwrap(), 0x794c7630);
+        let candidates = fixture_set(&[fixture.0.join("candidate")]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        assert!(matches!(candidates.matches(&file, &task, ReferenceKind::Fd,
+            deadline()).unwrap(), MatchOutcome::NeedsProxy));
+        assert_eq!(std::fs::read(target.join("held")).unwrap(), b"overlay payload");
+        // NeedsProxy is deliberately not native absence. The serving VM
+        // separately proves that managedPolicy=null turns it into UNKNOWN.
+    }
 }
