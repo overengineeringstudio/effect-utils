@@ -147,7 +147,7 @@ fn direct_decode_truncation_and_trace_views() {
 /// Repeated ends and oversized critical-path id lists must not amplify memory.
 #[test]
 fn repeated_ends_and_critical_ids_stay_bounded() {
-    let mut raw = synthetic_log(1, true); // command span 1, action span 2
+    let mut raw = synthetic_log(1, true, None); // command span 1, action span 2
     let end = || {
         event(
             2,
@@ -238,7 +238,7 @@ fn command_summary(spans: &[Value]) -> [String; 4] {
 #[test]
 fn cache_hit_summary_splits_remote_and_local_across_views() {
     let actions = 1_300u64;
-    let mut raw = synthetic_log(actions, true); // command span 1, actions 2..=1301
+    let mut raw = synthetic_log(actions, true, None); // command span 1, actions 2..=1301
     let end = |span_id: u64, execution_kind: i32| {
         let mut progress = event(
             span_id,
@@ -293,7 +293,7 @@ fn cache_hit_summary_splits_remote_and_local_across_views() {
 
 #[test]
 fn cache_hit_summary_reports_zero_hits() {
-    let mut raw = synthetic_log(1, true);
+    let mut raw = synthetic_log(1, true, None);
     append(
         &mut raw,
         &event(
@@ -342,7 +342,7 @@ fn event(span_id: u64, parent_id: u64, data: buck_event::Data) -> CommandProgres
 
 /// Header, one command span, then `actions` action spans. With `distinct`
 /// false every action record is byte-identical, which compresses extremely.
-fn synthetic_log(actions: u64, distinct: bool) -> Vec<u8> {
+fn synthetic_log(actions: u64, distinct: bool, host: Option<&str>) -> Vec<u8> {
     let mut raw = Vec::new();
     append(&mut raw, &data::Invocation::default());
     append(
@@ -351,9 +351,13 @@ fn synthetic_log(actions: u64, distinct: bool) -> Vec<u8> {
             1,
             0,
             buck_event::Data::SpanStart(data::SpanStartEvent {
-                data: Some(span_start_event::Data::Command(
-                    data::CommandStart::default(),
-                )),
+                data: Some(span_start_event::Data::Command(data::CommandStart {
+                    metadata: host
+                        .map(|host| ("hostname".into(), host.into()))
+                        .into_iter()
+                        .collect(),
+                    ..Default::default()
+                })),
             }),
         ),
     );
@@ -391,7 +395,7 @@ fn write_log(directory: &tempfile::TempDir, name: &str, compressed: &[u8]) -> Pa
 fn native_action_evidence_is_stable_across_views_and_replay() {
     use data::command_execution_kind::Command;
     let working_dir = "/synthetic/checkout/worktree";
-    let original = synthetic_log(2, true);
+    let original = synthetic_log(2, true, None);
     let mut remaining = original.as_slice();
     data::Invocation::decode_length_delimited(&mut remaining).unwrap();
     let mut raw = Vec::new();
@@ -583,7 +587,7 @@ fn action_outcomes_and_digest_sources_remain_native() {
 #[test]
 fn frame_cut_mid_block_keeps_prefix() {
     let actions = 20_000;
-    let raw = synthetic_log(actions, true);
+    let raw = synthetic_log(actions, true, None);
     assert!(raw.len() > 4 * ZSTD_MAX_BLOCK, "needs several zstd blocks");
     let compressed = compress_to_vec(raw.as_slice(), CompressionLevel::Fastest);
     let directory = tempfile::tempdir().unwrap();
@@ -601,7 +605,7 @@ fn frame_cut_mid_block_keeps_prefix() {
 
 #[test]
 fn zstd_bomb_stops_at_limits() {
-    let raw = synthetic_log(100_000, false);
+    let raw = synthetic_log(100_000, false, None);
     let compressed = compress_to_vec(raw.as_slice(), CompressionLevel::Fastest);
     assert!(
         compressed.len() * 100 < raw.len(),
@@ -662,7 +666,7 @@ fn damaged_framing_is_corrupt_not_truncated() {
         .starts_with("corrupt: invalid zstd block header"));
     assert_eq!(&sealed[sealed.len() - 3..], &[1, 0, 0]);
 
-    let raw = synthetic_log(20_000, true);
+    let raw = synthetic_log(20_000, true, None);
     let mut compressed = compress_to_vec(raw.as_slice(), CompressionLevel::Fastest);
     let middle = compressed.len() / 2;
     for byte in &mut compressed[middle..middle + 64] {
@@ -848,7 +852,10 @@ fn bounded_metrics_use_real_timing_and_closed_dimensions() {
     let log = write_log(
         &dir,
         "metrics_events.pb.zst",
-        &compress_to_vec(synthetic_log(2, true).as_slice(), CompressionLevel::Fastest),
+        &compress_to_vec(
+            synthetic_log(2, true, None).as_slice(),
+            CompressionLevel::Fastest,
+        ),
     );
     let mut model = decode(&log).unwrap();
     model.critical_ns = Some(2_500_000_000);
@@ -903,7 +910,7 @@ fn bounded_metrics_use_real_timing_and_closed_dimensions() {
 #[test]
 fn local_queue_stages_supply_missing_action_timing() {
     for explicit in [None, Some(0), Some(7)] {
-        let mut raw = synthetic_log(2, true);
+        let mut raw = synthetic_log(2, true, None);
         for (id, stage, closed) in [
             (
                 4,
@@ -1099,7 +1106,10 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     let log = write_log(
         &dir,
         "spooled_events.pb.zst",
-        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+        &compress_to_vec(
+            synthetic_log(1, true, Some("fixture-host")).as_slice(),
+            CompressionLevel::Fastest,
+        ),
     );
     let spool = dir.path().join("pending");
     let out = dir.path().join("dump");
@@ -1124,9 +1134,19 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     for path in &pending {
         let body = read_chunk(path).unwrap();
         let parsed: Value = serde_json::from_slice(&body).unwrap();
-        assert!(parsed["resourceSpans"].is_array() || parsed["resourceMetrics"].is_array());
+        assert!(
+            parsed["resourceSpans"].is_array()
+                || parsed["resourceMetrics"].is_array()
+                || parsed["resourceLogs"].is_array()
+        );
     }
-    assert_eq!(fs::read_dir(&out).unwrap().count(), pending.len());
+    assert_eq!(
+        fs::read_dir(&out).unwrap().count(),
+        pending
+            .iter()
+            .filter(|p| !p.to_string_lossy().ends_with(".logs.chunk"))
+            .count()
+    );
 }
 
 fn ingest_reports_spool_failure(signal: &str) {
@@ -1134,7 +1154,10 @@ fn ingest_reports_spool_failure(signal: &str) {
     let log = write_log(
         &dir,
         "failed_spool_events.pb.zst",
-        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+        &compress_to_vec(
+            synthetic_log(1, true, Some("fixture-host")).as_slice(),
+            CompressionLevel::Fastest,
+        ),
     );
     let spool = dir.path().join("pending");
     ingest(
@@ -1454,7 +1477,7 @@ fn command_success_uses_final_response_not_deprecated_span_flag() {
         (Some(Result::Error(error)), Some(false)),
     ];
     for (result, expected) in cases {
-        let mut raw = synthetic_log(0, true);
+        let mut raw = synthetic_log(0, true, None);
         append(
             &mut raw,
             &event(
@@ -1497,10 +1520,12 @@ fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
     let log = write_log(
         &dir,
         "compact.pb.zst",
-        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+        &compress_to_vec(
+            synthetic_log(1, true, Some("fixture-host")).as_slice(),
+            CompressionLevel::Fastest,
+        ),
     );
     let mut model = decode(&log).unwrap();
-    model.resource_attrs.push(attr("host.name", "fixture-host"));
     model
         .spans
         .iter_mut()
@@ -1509,8 +1534,9 @@ fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
         .attrs
         .push(attr("buck2.path", "/private/raw"));
     let records = dir.path().join("new-parent/nested/records");
-    retained::capture(&model, &records).unwrap();
-    retained::capture(&model, &records).unwrap();
+    let spool = dir.path().join("pending");
+    retained::capture(&model, &records, &spool).unwrap();
+    retained::capture(&model, &records, &spool).unwrap();
     assert_eq!(fs::read_dir(&records).unwrap().count(), 4);
     assert!(records.join(".directory-synced").is_file());
     let bodies: Vec<_> = fs::read_dir(&records)
@@ -1525,13 +1551,14 @@ fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
     assert!(body.contains("\"occurrence\""));
     assert!(body.contains("buck2.occurrence_id"));
     model.truncated = true;
-    retained::capture(&model, &records).unwrap();
+    retained::capture(&model, &records, &spool).unwrap();
     assert_eq!(fs::read_dir(&records).unwrap().count(), 5);
 }
 
 #[test]
 fn census_survives_without_native_log_or_otlp_export() {
     let dir = tempfile::tempdir().unwrap();
+    let spool = tempfile::tempdir().unwrap();
     for phase in ["open", "terminal"] {
         run(Cli::parse_from([
             "buck2-events",
@@ -1544,6 +1571,8 @@ fn census_survives_without_native_log_or_otlp_export() {
             "fixture-host",
             "--records-dir",
             dir.path().to_str().unwrap(),
+            "--spool-dir",
+            spool.path().to_str().unwrap(),
         ]))
         .unwrap();
     }
@@ -1583,7 +1612,129 @@ fn census_survives_without_native_log_or_otlp_export() {
         "fixture-host",
         "--records-dir",
         dir.path().to_str().unwrap(),
+        "--spool-dir",
+        spool.path().to_str().unwrap(),
     ]))
     .unwrap();
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
+}
+
+#[test]
+fn logs_partial_success_retries_exact_chunk_on_logs_route() {
+    let dir = tempfile::tempdir().unwrap();
+    let body = br#"{"resourceLogs":[{"scopeLogs":[]}]}"#;
+    let path = spool_chunk(dir.path(), "logs", body).unwrap();
+    assert!(spool_chunk(dir.path(), "invalid", body).is_err());
+    let (url, server) = serve_otlp_responses(
+        vec![
+            r#"{"partialSuccess":{"rejectedLogRecords":"1"}}"#,
+            r#"{"partial_success":{"rejected_log_records":2}}"#,
+            r#"{"partialSuccess":{"rejectedLogRecords":"0"}}"#,
+        ],
+        "/v1/logs",
+    );
+    drain_to_url(
+        dir.path(),
+        &url,
+        Duration::from_secs(2),
+        Duration::from_secs(5),
+    );
+    assert_eq!(read_chunk(&path).unwrap(), body);
+    drain_to_url(
+        dir.path(),
+        &url,
+        Duration::from_secs(2),
+        Duration::from_secs(5),
+    );
+    assert!(!path.exists());
+    assert_eq!(server.join().unwrap(), vec![body.to_vec(); 3]);
+}
+
+#[test]
+fn retained_transport_failure_preserves_independent_census() {
+    let dir = tempfile::tempdir().unwrap();
+    let records = dir.path().join("records");
+    let spool = dir.path().join("not-a-directory");
+    fs::write(&spool, b"occupied").unwrap();
+    let result = run(Cli::parse_from([
+        "buck2-events",
+        "census",
+        "--invocation-id",
+        "fixture-invocation",
+        "--phase",
+        "terminal",
+        "--host",
+        "fixture-host",
+        "--exit-code",
+        "7",
+        "--records-dir",
+        records.to_str().unwrap(),
+        "--spool-dir",
+        spool.to_str().unwrap(),
+    ]));
+    assert!(result.is_err());
+    let files: Vec<_> = fs::read_dir(&records)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
+        .collect();
+    assert_eq!(files.len(), 2);
+    assert!(files.iter().any(|path| fs::read_to_string(path)
+        .unwrap()
+        .contains("\"exit_code\":7")));
+}
+
+#[test]
+fn occurrence_wire_bound_accounts_for_json_escaping_without_dropping_source() {
+    for (length, accepted) in [(1000, true), (1600, false)] {
+        let dir = tempfile::tempdir().unwrap();
+        let log = write_log(
+            &dir,
+            "escaped.pb.zst",
+            &compress_to_vec(
+                synthetic_log(1, true, Some("fixture-host")).as_slice(),
+                CompressionLevel::Fastest,
+            ),
+        );
+        let mut model = decode(&log).unwrap();
+        model
+            .spans
+            .iter_mut()
+            .find(|span| span.action)
+            .unwrap()
+            .attrs
+            .push(attr("buck2.target", &"\\".repeat(length)));
+        let records = dir.path().join("records");
+        let spool = dir.path().join("pending");
+        let result = retained::capture(&model, &records, &spool);
+        if accepted {
+            result.unwrap();
+            for entry in fs::read_dir(&spool).unwrap() {
+                let bytes = read_chunk(&entry.unwrap().path()).unwrap();
+                assert!(bytes.len() <= MAX_OTLP_BODY);
+                let payload: Value = serde_json::from_slice(&bytes).unwrap();
+                let resource = &payload["resourceLogs"][0];
+                assert!(serde_json::to_vec(&resource["resource"]).unwrap().len() <= 4096);
+                for log in resource["scopeLogs"][0]["logRecords"].as_array().unwrap() {
+                    assert!(serde_json::to_vec(log).unwrap().len() <= 12 * 1024);
+                    assert!(log["body"]["stringValue"].as_str().unwrap().len() <= 8 * 1024);
+                }
+            }
+        } else {
+            assert!(result.unwrap_err().to_string().contains("12 KiB"));
+        }
+        assert_eq!(
+            fs::read_dir(&records)
+                .unwrap()
+                .filter(|entry| entry
+                    .as_ref()
+                    .unwrap()
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext == "jsonl"))
+                .count(),
+            2
+        );
+        assert!(log.is_file());
+    }
 }
