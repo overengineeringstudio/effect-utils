@@ -840,10 +840,10 @@ let
       traceScope,
       publicationBudget ? null,
       deadlineSeconds ? 300,
+      after ? [ "genie:check" ],
     }:
     {
-      inherit description;
-      after = [ "genie:check" ];
+      inherit description after;
       # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
       exec = editorViewExec {
         mode = "publish";
@@ -1192,6 +1192,25 @@ in
     # Measured cold preparation takes 203s before the staging payload starts.
     # Keep a separate 300s payload allowance, rounded to the next 300s boundary.
     deadlineSeconds = 600;
+  };
+
+  # devenv's after/before edges also select prerequisites. Keep this ordered
+  # path separate so standalone lint does not pull in the quick aggregate.
+  tasks."buck2:editor:publish:standalone-staging:quick" = scopedEditorViewPublisher {
+    description = "Publish standalone staging dependencies after the quick Buck writer";
+    packagePaths = [ "packages/@overeng/genie" ];
+    traceScope = "standalone-staging:quick";
+    deadlineSeconds = 600;
+    after = [
+      "genie:check"
+      "buck2:quick"
+    ];
+  };
+
+  tasks."check:quick:standalone-staging" = {
+    description = "Guard standalone staging after the quick Buck writer and publication";
+    after = [ "buck2:editor:publish:standalone-staging:quick" ];
+    exec = config.tasks."lint:check:standalone-staging".exec;
   };
 
   # PR lint CI checks every standalone-staged source and inventory completeness.
@@ -2229,7 +2248,7 @@ in
     "work-storage:resources:check"
     "buck2:quick"
     "lint:check:format:parity"
-    "lint:check:standalone-staging"
+    "check:quick:standalone-staging"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"
