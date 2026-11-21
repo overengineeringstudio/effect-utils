@@ -81,6 +81,7 @@ let
             policyId
             ownedVmClassDiagnostics
             ;
+          mountedEvidence = mounted;
         };
         meta = {
           description = "Inactive privileged fixed-policy holder evidence server";

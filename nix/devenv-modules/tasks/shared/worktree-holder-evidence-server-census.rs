@@ -247,6 +247,9 @@ impl References {
         store_client: Option<&Client>, deadline: Instant) -> io::Result<()>
     {
         if matches!(self.pins, Pins::Ordinary(_)) && process.task_departed(index, deadline)? {
+            // The departed task holds no FDs, but its contributing scope view
+            // still belongs to this transaction's frozen exclusion proof.
+            if let Some(mounted) = &self.mounted { mounted.recheck(candidates, deadline)?; }
             return Ok(());
         }
         let task = &process.tasks[index];
@@ -291,7 +294,7 @@ impl References {
         {
             qualify_object(held)?;
             // Repeat native namespace/backing proofs, not only inode equality.
-            let actual = candidates.matches(&held.file, &task.scope, kind, deadline)?;
+            let actual = candidates.recheck_matches(&held.file, &task.scope, kind, self.mounted.as_ref(), deadline)?;
             if !same_matches(&self.memberships[index], &actual) {
                 return Err(io::Error::other("task root-relative membership or provenance changed"));
             }
@@ -413,6 +416,8 @@ impl<'a> Census<'a> {
             .map_err(|_| io::Error::other("process count overflow"))?;
         census.observation.task_count = u32::try_from(total_tasks)
             .map_err(|_| io::Error::other("task count overflow"))?;
+        // No final object closure can grow this transaction's scope-device set.
+        candidates.freeze_scope_devices(deadline)?;
         super::collect_step("captured-census-recheck",census.recheck(candidates, store_client, deadline))?;
         for root in &mut census.observation.roots {
             if !root.complete || !root.references_complete { root.status = Status::Unknown; }
