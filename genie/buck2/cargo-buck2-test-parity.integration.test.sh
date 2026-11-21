@@ -76,6 +76,19 @@ def compare(entries):
     print(f'PARITY: {len(cargo)} tests, {len(entries)} harnesses; identical multisets (including ignored tests). Doctests: unsupported; disabled only in this fixture.')
 
 run(['bun', '--eval', generate])
+# Resolver 3 changes lock generation policy, not projection of a committed lock.
+# Compare only in the disposable fixture; keep the checked-in resolver/lock untouched.
+locked = (fixture / 'Cargo.lock').read_bytes()
+resolver_two = (fixture / 'BUCK').read_text()
+manifest = fixture / 'Cargo.toml'
+original_manifest = manifest.read_text()
+assert 'resolver = "2"' in original_manifest
+manifest.write_text(original_manifest.replace('resolver = "2"', 'resolver = "3"', 1))
+run(['bun', '--eval', generate])
+targets = lambda output: re.sub(r'^# Semantic fingerprint: .*\n', '', output, flags=re.MULTILINE)
+assert targets(resolver_two) == targets((fixture / 'BUCK').read_text()), 'resolver 2/3 target diff'
+assert (fixture / 'Cargo.lock').read_bytes() == locked
+print('RESOLVER_2_3_TARGETS_IDENTICAL=1; testing resolver 3 with unchanged Cargo.lock')
 compare(harnesses)
 # Execute assertions too: cwd/resources/dev deps/declared binary artifact.
 run([cargo_bin, 'test', '--offline', '--locked', '--manifest-path', str(fixture / 'Cargo.toml')])
@@ -84,4 +97,5 @@ run([buck, 'test', *['//' + package + ':' + name for name, _ in harnesses]])
 run(['bun', '--eval', generate])
 assert 'name = "integration-regenerated"' in (fixture / 'BUCK').read_text()
 compare([*harnesses, ('integration-regenerated', ['--test', 'regenerated'])])
+assert (fixture / 'Cargo.lock').read_bytes() == locked, 'Cargo.lock changed'
 PY
