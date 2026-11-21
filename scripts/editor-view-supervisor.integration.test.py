@@ -331,6 +331,31 @@ else:
                 root = Path(scratch)
                 ready = root / "ready"
                 os.mkfifo(root / "release")
+                os.mkfifo(root / "publication-release")
+                (root / "supervisor-termination").write_text(termination + "\n")
+                for name in ("CP_BIN", "MV_BIN", "FINGERPRINT_BIN", "EDITOR_VIEW_SUPERVISOR_CP_BIN"):
+                    self.assertTrue(os.environ.get(name), f"{name} is required for the real publication fixture")
+                package = root / "packages/app"
+                package.mkdir(parents=True)
+                (package / "package.json").write_text("{}\n")
+                node_modules = root / "inputs/app/node_modules"
+                package_tree = root / "inputs/app/package_tree"
+                dependency = root / "inputs/store/dep"
+                for directory in (node_modules, package_tree, dependency):
+                    directory.mkdir(parents=True)
+                (package_tree / "index.js").write_text('export const workspace = "λ"\n')
+                (dependency / "index.js").write_text('export const dependency = "雪"\n')
+                (node_modules / "workspace").symlink_to("../package_tree")
+                (node_modules / "dep").symlink_to("../../store/dep")
+                (root / "editor-inputs.json").write_text(json.dumps({
+                    "schema": "effect-utils/editor-view-inputs/v1",
+                    "editorInputs": str(node_modules), "packageTree": str(package_tree),
+                    "readRoots": [str(package_tree), str(dependency)],
+                }))
+                (root / "authority.json").write_text(json.dumps({
+                    "schema": "effect-utils/workspace-dependency-authority/v1",
+                    "requiredPackages": ["packages/app"], "ownedPackages": ["packages/app"],
+                }))
                 fake = root / "buck2"
                 fake.write_text(f"#!{sys.executable}\n" + r'''
 import os, pathlib, signal, sys, time
@@ -350,6 +375,7 @@ else:
 sys.stderr.write("\nBUCK-BLOCKED\n")
 sys.stderr.flush()
 if os.environ["TERMINATION"] in ("publication", "publication-child", "success"):
+    print("//packages/app:editor_view_inputs " + str(pathlib.Path("editor-inputs.json").resolve()))
     sys.exit(0)
 with open("release", "rb", buffering=0) as release:
     assert release.read(1) == b"1"
@@ -360,26 +386,55 @@ time.sleep(60)
                 fake.chmod(0o700)
                 runner = root / "runner.ts"
                 module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
+                publisher = repo / "packages/@overeng/buck2-tools/src/editor-view.ts"
+                # Preserve the native signal as a child transport outcome while
+                # exercising real dispatch, immutable copy and joined cleanup.
+                signal_publisher = root / "signal-publisher.ts"
+                signal_publisher.write_text(f'''
+import {{ readFileSync, writeFileSync }} from 'node:fs'
+import {{ dispatchEditorView }} from {json.dumps(str(publisher))}
+import {{ publicationSignal }} from {json.dumps(str(module))}
+try {{
+  const args = process.argv.slice(2)
+  const result = await dispatchEditorView({{
+    args, batchRequests: JSON.parse(readFileSync(0, 'utf8')),
+    onStdout: text => process.stdout.write(text),
+    onStderr: text => process.stderr.write(text),
+  }})
+  process.exitCode = result.exitCode
+}} catch (error) {{
+  const signal = publicationSignal(error)
+  if (signal === undefined) throw error
+  writeFileSync('publication-native-signal', signal)
+  process.kill(process.pid, signal)
+}}
+''')
                 runner.write_text(f'''
 import {{ existsSync, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
 let pending = ''
 let released = false
 await reconcileBuckViews({{
-  request: {{ packagePaths: [], changedPaths: [], buildTargets: ['//:fake'] }},
+  request: {{ packagePaths: ['packages/app'], changedPaths: [], buildTargets: ['//packages/app:editor_view_inputs'] }},
   options: {{
-    plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
+    plan: {{ globalPaths: [], packages: [{{
+      packagePath: 'packages/app', sourceRoots: [], workspaceDependencies: [],
+      targets: {{ packageTree: '//packages/app:package_tree' }},
+      editor: {{ cell: 'effect_utils', consumerCache: '.devenv/vite-cache/app',
+        inputsManifestTarget: '//packages/app:editor_view_inputs', target: '//packages/app:editor_inputs', viewName: 'app' }},
+    }}] }}, mode: 'publish',
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2', editorViewCommand: [process.execPath, '-e',
-      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' :
-        'require("node:fs").readFileSync(0); require("node:fs").writeFileSync("ready", ""); setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
-    cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
+    buck2: './buck2', editorViewCommand: [process.execPath,
+      process.env.TERMINATION === 'publication-child' ? {json.dumps(str(signal_publisher))} : {json.dumps(str(publisher))}],
+    workspaceAuthority: process.cwd() + '/authority.json',
+    cp: process.env.TERMINATION?.startsWith('publication') ? process.env.EDITOR_VIEW_SUPERVISOR_CP_BIN! : process.env.CP_BIN!,
+    mv: process.env.MV_BIN!, fingerprintTool: process.env.FINGERPRINT_BIN!, snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     diagnosticTaskName: 'buck2:editor:bootstrap',
     run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
       pending += chunk
-      if (!released && pending.includes('BUCK-BLOCKED') && process.env.TERMINATION !== 'publication') {{
+      if (!released && pending.includes('BUCK-BLOCKED') && !process.env.TERMINATION?.startsWith('publication')) {{
         released = true
         if (['deadline', 'SIGTERM', 'SIGKILL'].includes(process.env.TERMINATION ?? '')) writeFileSync('release', '1')
         writeFileSync('ready', '')
@@ -418,10 +473,26 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                 output = result.stderr
                 if termination == "success":
                     self.assertEqual(result.returncode, 0, output)
-                    self.assertEqual(output, "")
+                    self.assertNotIn("BUCK-BLOCKED", output)
+                    self.assertEqual([
+                        line for line in output.splitlines()
+                        if not line.startswith((
+                            "[editor-view-phase] ", "[editor-view-payload] ",
+                            "[editor-view-budget] ", "[editor-view-timing] ",
+                        ))
+                    ], [])
                     self.assertTrue((root / "command-completed-with-event-log").exists())
+                    self.assertEqual((root / ".editor-view/app/node_modules/workspace/index.js").read_text(),
+                                     'export const workspace = "λ"\n')
+                    self.assertEqual((root / ".editor-view/app/node_modules/dep/index.js").read_text(),
+                                     'export const dependency = "雪"\n')
+                    record = json.loads((root / ".editor-view/app/editor-view.json").read_text())
+                    self.assertEqual(record["package"], "packages/app")
                     self.assertEqual(list(root.glob(".devenv/otel/buck2-events/*.pb.zst")), [])
                     continue
+                self.assertFalse((root / ".editor-view/app/editor-view.json").exists())
+                if termination == "publication-child":
+                    self.assertEqual((root / "publication-native-signal").read_text(), "SIGTERM")
                 self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication") else 1, output)
                 self.assertTrue(ready.exists(), output)
                 self.assertIn("BUCK-BLOCKED\n", output)
