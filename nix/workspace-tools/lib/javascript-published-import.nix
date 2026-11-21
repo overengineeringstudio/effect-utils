@@ -223,7 +223,14 @@ pkgs.runCommand "${expectedProductName}-buck2-candidate"
         ''
           # Resolve the build input outside /nix/store: Bun enumerates entry ancestors.
           cp ${lib.escapeShellArg "${artifact}"} entry.js
-          ${runtime}/bin/bun build --compile --no-compile-autoload-dotenv \
+          compiler=${runtime}/bin/bun
+          ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+            # Bun's clonefile copy retains store permissions on macOS.
+            cp "$compiler" bun-compiler
+            chmod u+w bun-compiler
+            compiler="$PWD/bun-compiler"
+          ''}
+          "$compiler" build --compile --no-compile-autoload-dotenv \
             --no-compile-autoload-bunfig --outfile "$out/libexec/${binaryName}" ./entry.js
         ''
       else

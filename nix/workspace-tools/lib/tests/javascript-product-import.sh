@@ -48,6 +48,7 @@ cat >"$tmp/stub.nix" <<'NIX'
     last = list: builtins.elemAt list (builtins.length list - 1);
   };
   bun = "/stub/bun";
+  stdenv.hostPlatform.isDarwin = builtins.getEnv "JAVASCRIPT_IMPORT_TEST_DARWIN" == "1";
   coreutils = "/stub/coreutils";
   makeWrapper = "/stub/make-wrapper";
   nodejs = "/stub/nodejs";
@@ -204,12 +205,16 @@ echo "javascript-product-import-test: GREEN Bun wrapper disables runtime auto-in
 # Compiled Bun CLIs execute their embedded entry without resolving store ancestors.
 write_case "$tmp/bun-compiled.nix" "$tmp/bun-runtime.json" 'compile = true;'
 jq -e '
-  (.script | contains("bun build --compile")) and
+  (.script | contains("\"$compiler\" build --compile")) and
   (.script | contains("--no-compile-autoload-dotenv")) and
   (.script | contains("--no-compile-autoload-bunfig")) and
   (.script | contains("makeWrapper \"$out/libexec/fixture\"")) and
   (.script | contains("--add-flags") | not)
 ' <<<"$(eval_case "$tmp/bun-compiled.nix")" >/dev/null
+JAVASCRIPT_IMPORT_TEST_DARWIN=1 eval_case "$tmp/bun-compiled.nix" | jq -e '
+  (.script | contains("cp \"$compiler\" bun-compiler")) and
+  (.script | contains("chmod u+w bun-compiler"))
+' >/dev/null
 write_case "$tmp/node-compiled.nix" "$tmp/product.json" 'compile = true;'
 expect_failure "compiled Node product" "compilation requires a self-contained Bun executable" \
   "$tmp/node-compiled.nix"
@@ -364,11 +369,18 @@ echo "javascript-product-import-test: GREEN source evaluation never reads output
 nix eval --impure --json --option allow-import-from-derivation false \
   --file "$tmp/source.nix" --apply 'f: { inherit (f { compile = true; runtimeKind = "bun"; }) script; }' \
   | jq -e '
-    (.script | contains("bun build --compile")) and
+    (.script | contains("\"$compiler\" build --compile")) and
     (.script | contains("makeWrapper \"$out/libexec/fixture\"")) and
     (.script | contains("--add-flags") | not)
   ' >/dev/null
 echo "javascript-product-import-test: GREEN source compilation keeps output-independent evaluation"
+JAVASCRIPT_IMPORT_TEST_DARWIN=1 nix eval --impure --json \
+  --option allow-import-from-derivation false --file "$tmp/source.nix" \
+  --apply 'f: { inherit (f { compile = true; runtimeKind = "bun"; }) script; }' \
+  | jq -e '
+    (.script | contains("cp \"$compiler\" bun-compiler")) and
+    (.script | contains("chmod u+w bun-compiler"))
+  ' >/dev/null
 source_product="$tmp"
 artifact="$module"
 facts="$tmp/facts.json"
