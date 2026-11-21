@@ -863,6 +863,23 @@ for (const name of editorPublishers) {
       condition: Number(actualDeadline) === expectedDeadline,
       name: `${name} reserves 300s startup plus 300s per bootstrap package (${expectedDeadline}s)`,
     })
+  } else if (name === 'buck2:editor:publish:standalone-staging') {
+    ok({
+      condition:
+        actualDeadline === '600' &&
+        packages.length === 1 &&
+        packages[0] === 'packages/@overeng/genie' &&
+        /editor-view-authority\.ts"\s+publish\s/u.test(body) === true,
+      name: `${name} reserves 300s preparation plus 300s payload for its single Genie view`,
+    })
+  } else if (name === 'buck2:editor:publish:test:megarepo:unbounded') {
+    ok({
+      condition:
+        actualDeadline === '600' &&
+        packages.includes('packages/@overeng/megarepo') &&
+        /editor-view-authority\.ts"\s+publish\s/u.test(body) === true,
+      name: `${name} reserves 300s preparation plus 300s payload for the cold megarepo view`,
+    })
   } else {
     ok({
       condition: actualDeadline === '300',

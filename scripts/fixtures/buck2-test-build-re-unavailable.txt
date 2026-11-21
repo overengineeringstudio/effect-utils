@@ -1,0 +1,46 @@
+[2026-11-19T04:25:58.101+00:00] Build ID: 4b9da42c-1395-4ac2-8195-911ac52080f4
+[2026-11-19T04:25:58.295+00:00] [2m2026-11-19T04:25:58.132417Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 1 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:25:58.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:25:59.295+00:00] [2m2026-11-19T04:25:59.134682Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 2 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:25:59.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:01.296+00:00] [2m2026-11-19T04:26:01.136538Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 3 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:01.296+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:04.295+00:00] [2m2026-11-19T04:26:04.138205Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 4 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:04.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:08.295+00:00] [2m2026-11-19T04:26:08.181547Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 5 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:08.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:13.295+00:00] [2m2026-11-19T04:26:13.183667Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 6 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:13.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:19.295+00:00] [2m2026-11-19T04:26:19.186416Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 7 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:19.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:26.295+00:00] [2m2026-11-19T04:26:26.188628Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 8 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:26.295+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:33.395+00:00] Waiting on fixture//:probe (fixture//:target-platform#80c8f40843f6fe27) -- unit_test_verdict r04-real-native
+[2026-11-19T04:26:34.305+00:00] [2m2026-11-19T04:26:34.191177Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 9 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:34.305+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:41.395+00:00] Waiting on fixture//:probe (fixture//:target-platform#80c8f40843f6fe27) -- unit_test_verdict r04-real-native
+[2026-11-19T04:26:43.193+00:00] Action failed: fixture//:probe (fixture//:target-platform#80c8f40843f6fe27) (unit_test_verdict r04-real-native)
+[2026-11-19T04:26:43.193+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:43.193+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:43.193+00:00] Remote action digest: '3de71173b93edfe813cdbc8ef7041558381fee20c1069b974cc1899492624750:141'
+[2026-11-19T04:26:43.193+00:00] Stdout: <empty>
+[2026-11-19T04:26:43.193+00:00] Stderr: <empty>
+
+[2026-11-19T04:26:43.206+00:00] Cache hits: 100%
+[2026-11-19T04:26:43.206+00:00] Commands: 1 (cached: 1, remote: 0, local: 0)
+[2026-11-19T04:26:43.206+00:00] Network: up 2.4KiB  down 1.1KiB
+[2026-11-19T04:26:43.207+00:00]
+[2026-11-19T04:26:43.207+00:00] BUILD ERRORS (1)
+[2026-11-19T04:26:43.207+00:00] The following actions failed during the execution of this command:
+[2026-11-19T04:26:43.207+00:00] Action failed: fixture//:probe (fixture//:target-platform#80c8f40843f6fe27) (unit_test_verdict r04-real-native)
+[2026-11-19T04:26:43.207+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-19T04:26:43.207+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "fixture transient unavailable")
+[2026-11-19T04:26:43.207+00:00] Remote action digest: '3de71173b93edfe813cdbc8ef7041558381fee20c1069b974cc1899492624750:141'
+[2026-11-19T04:26:43.207+00:00] Stdout: <empty>
+[2026-11-19T04:26:43.207+00:00] Stderr: <empty>
+
+[2026-11-19T04:26:43.207+00:00]
+Failed to build 'fixture//:probe (fixture//:target-platform#80c8f40843f6fe27)'
+1 BUILDS FAILED
+Tests finished: Pass 0. Fail 0. Timeout 0. Fatal 0. Skip 0. Omit 0. Infra Failure 0. [38;5;9mBuild failure 1[39m
+NO TESTS RAN
