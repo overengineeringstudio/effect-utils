@@ -90,29 +90,55 @@ const preserveHostlessEvidence = (
         if (value !== undefined && value.length >= 4) text = text.split(value).join('[redacted]')
       return text
         .replace(/(?:https?|grpc):\/\/[^\s"']+/gu, '[redacted-url]')
-        .replace(/(?:authorization|cookie|token|secret|password|header)[^\n]*/giu, '[redacted-line]')
+        .replace(
+          /(?:authorization|cookie|token|secret|password|header)[^\n]*/giu,
+          '[redacted-line]',
+        )
     }
     const output = Object.fromEntries(
       (['stdout', 'stderr'] as const).map((name) => {
         const stream = evidence[name]
         // Never publish a truncated fragment that could contain half a secret.
-        const completeText = stream.eof === true && stream.bytes <= 8192
-          ? stream.text
-          : stream.text.slice(0, stream.text.lastIndexOf('\n') + 1)
-        return [name, { bytes: stream.bytes, eof: stream.eof, truncated: stream.bytes > 8192, text: redact(completeText) }]
+        const completeText =
+          stream.eof === true && stream.bytes <= 8192
+            ? stream.text
+            : stream.text.slice(0, stream.text.lastIndexOf('\n') + 1)
+        return [
+          name,
+          {
+            bytes: stream.bytes,
+            eof: stream.eof,
+            truncated: stream.bytes > 8192,
+            text: redact(completeText),
+          },
+        ]
       }),
     )
     const phasePath = join(root, 'child-phases.json')
-    const phases = existsSync(phasePath) ? readFileSync(phasePath, 'utf8').slice(0, 8192) : undefined
+    const phases = existsSync(phasePath)
+      ? readFileSync(phasePath, 'utf8').slice(0, 8192)
+      : undefined
     const census = [
       'native-args.json',
       'native-result.json',
       'evidence.json.shards/00112233-4455-4677-8899-aabbccddeeff.json',
     ].map((name) => {
       const path = join(root, name)
-      return { name, exists: existsSync(path), bytes: existsSync(path) ? statSync(path).size : null }
+      return {
+        name,
+        exists: existsSync(path),
+        bytes: existsSync(path) ? statSync(path).size : null,
+      }
     })
-    const receipt = { event: 'hostless-case-incomplete', root, requested: evidence.requested, stage, phases, output, census }
+    const receipt = {
+      event: 'hostless-case-incomplete',
+      root,
+      requested: evidence.requested,
+      stage,
+      phases,
+      output,
+      census,
+    }
     writeFileSync(join(root, `${stage}-diagnostics.json`), JSON.stringify(receipt), { mode: 0o600 })
     console.error(JSON.stringify(receipt))
   } catch {
