@@ -20,6 +20,7 @@ case "$PUBLISHER" in production|legacy) ;; *) echo "invalid publisher: $PUBLISHE
 case "$WATCHER" in notify|watchman|both) ;; *) echo "invalid watcher: $WATCHER" >&2; exit 2 ;; esac
 BUN="${BUN_BIN:-$(command -v bun)}"
 BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
+BUCK2_NATIVE="${BUCK2_NATIVE_BIN:?required declared pinned native Buck binary}"
 NIX="${NIX_BIN:-$(command -v nix)}"
 NIX_STORE_COMMAND="${NIX_STORE_BIN:-$(command -v nix-store)}"
 for tool in jq tar env; do command -v "$tool" >/dev/null; done
@@ -284,11 +285,11 @@ CONFIG
     # A failed native lifecycle command must leave a retryable obligation,
     # even though the fully populated real root is already visible.
     migration_failure=0
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$fixture/missing-buck2" \
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$fixture/missing-buck2" \
       >"$fixture/failed-publication.json" 2>"$fixture/failed-publication.stderr" || migration_failure=$?
     [ "$migration_failure" -ne 0 ] && [ -f "$fixture/.buck2/capabilities.migration" ] || fail "failed migration did not preserve its lifecycle obligation"
     [ ! -L "$fixture/.buck2/capabilities" ] || fail "native stop failure occurred before the complete real root was installed"
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/publication.json"
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$fixture" --profile "$PROFILE_TWO" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/publication.json"
     jq -e --arg gen "$GEN_TWO" --arg primary "$fixture:$isolation" --arg alternate "$fixture:$alternate_isolation" '
       .generation == $gen and .retainedCount == 2 and
       (.migrationDaemonStops | sort) == ([$primary, $alternate] | sort)
@@ -332,7 +333,7 @@ CONFIG
     assert_materialized_input after "$GEN_TWO"
     # Subsequent real-root publications must invalidate definitions while
     # preserving this daemon; the structural lifecycle boundary is one-time.
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$PROFILE_ONE" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/steady-publication.json"
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$fixture" --profile "$PROFILE_ONE" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/steady-publication.json"
     jq -e --arg gen "$GEN_ONE" '.generation == $gen and .retainedCount == 2 and .pruningDeferred == true and .migrationDaemonStops == []' "$fixture/steady-publication.json" >/dev/null
     write_archive steady
     build_extract steady || { cat "$fixture/steady.stderr" >&2; fail "$watcher steady real-cell rotation failed"; }
@@ -351,7 +352,7 @@ CONFIG
     shared_inode="$(stat -c %i "$shared_tool/manifest.json" 2>/dev/null || stat -f %i "$shared_tool/manifest.json")"
     for version in two three four five; do
       next_profile="$(jq -er --arg version "$version" '.profiles[$version]' "$profiles_file")"
-      HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$next_profile" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/retention-$version.json"
+      HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$fixture" --profile "$next_profile" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/retention-$version.json"
       jq -e '.pruningDeferred == true and .migrationDaemonStops == []' "$fixture/retention-$version.json" >/dev/null || fail "live native daemon did not defer pruning"
     done
     [ -f "$old_tool/manifest.json" ] || fail "publication pruned a daemon-leased tool beyond retention"
@@ -360,7 +361,7 @@ CONFIG
     [ "$(jq -er '.daemon_constraints.daemon_id' "$fixture/retention.status")" = "$daemon_uuid" ] || fail "retention publication replaced the live daemon"
     buck kill
     # The alternate migration daemon was stopped through the native API above.
-    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$next_profile" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/collected.json"
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --buck2-native "$BUCK2_NATIVE" --root "$fixture" --profile "$next_profile" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/collected.json"
     jq -e '.pruningDeferred == false and .retainedCount == 3' "$fixture/collected.json" >/dev/null || fail "stopped native daemon did not release pruning"
     [ ! -e "$old_tool" ] || fail "unreferenced old tool was not collected after daemon shutdown"
     [ ! -L "$fixture/.buck2/capability-roots/$GEN_ONE" ] || fail "collected generation kept its GC root"

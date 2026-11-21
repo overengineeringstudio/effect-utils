@@ -396,7 +396,7 @@ rec {
                 ${pkgs.nix}/bin/nix-store --realise --add-root "$generation/profile" --indirect "$profile" >&2
                 ${capabilityPackages.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
                   --root "$root" --profile "$profile" --nix-store ${pkgs.nix}/bin/nix-store \
-                  --buck2 ${buck2}/bin/buck2 >&2
+                  --buck2 ${buck2}/bin/buck2 --buck2-native ${buck2}/libexec/buck2 >&2
                 if [ -x "$profile/quick-contracts/bin/quick-contracts-prepare" ]; then
                   (cd "$root" && WORKTREE_CAPABILITIES_PROFILE="$profile" \
                     "$profile/quick-contracts/bin/quick-contracts-prepare" "$root" "$generation")
