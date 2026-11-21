@@ -1372,6 +1372,12 @@ in
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
       export BUN_BIN=${pkgs.bun}/bin/bun
+      export GIT_BIN=${pkgs.git}/bin/git
+      export BUCK2_BIN=${buck2Machine}/bin/buck2
+      export BUCK2_EDITOR_PUBLICATION_FIXTURE=${
+        repoFlake.packages.${currentSystem}.buck2-editor-publication-fixture
+      }
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export PS_BIN=${if pkgs.stdenv.isDarwin then "/bin/ps" else "${pkgs.procps}/bin/ps"}
       export FINGERPRINT_BIN=${
         repoFlake.packages.${currentSystem}.buck2-fingerprint
@@ -1382,11 +1388,16 @@ in
       export BASH_BIN=${pkgs.bash}/bin/bash
       ${tsSandboxTestEnvironment}
       cd "$root"
-      ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts
+      ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts ./scripts/editor-publication-inputs-admission.integration.test.ts
       cd "$root/packages/@overeng/buck2-tools"
       exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
   );
+  tasks."test:buck2-tools".execIfModified = lib.mkAfter [
+    "scripts/editor-publication-inputs-admission.integration.test.ts"
+    "scripts/editor-publication-inputs.test-support.ts"
+    "scripts/buck2-entrypoint.ts"
+  ];
 
   tasks."genie:ci-workflow:test" = {
     description = "Run bootstrap-safe CI workflow helpers and strict Buck cache evidence joins";

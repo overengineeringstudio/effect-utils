@@ -421,6 +421,23 @@ rec {
             editor-view-source = import ./nix/editor-view-lease/consumer.nix { inherit pkgs; };
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
+            # Immutable Starlark input only: the integration test still builds and
+            # rematerializes its publication outputs with the real pinned Buck.
+            buck2-editor-publication-fixture = pkgs.runCommand "buck2-editor-publication-fixture" { } ''
+              mkdir -p "$out"
+              touch "$out/.buckroot" "$out/BUCK"
+              cat > "$out/inputs.bzl" <<'STARLARK'
+              def _impl(ctx):
+                  descriptor = ctx.actions.write("descriptor.json", '{"revision":1}\n')
+                  payload = ctx.actions.write("index.js", 'export default 1\n')
+                  tree = ctx.actions.copied_dir("publication", {
+                      "editor_inputs/install-descriptor.json": descriptor,
+                      "node_modules/dep/index.js": payload,
+                  })
+                  return [DefaultInfo(default_output = tree)]
+              inputs = rule(impl = _impl, attrs = {"src": attrs.source()})
+              STARLARK
+            '';
             stylex-next-fixture = stylexNextFixture;
             ci-test-shell-products = pkgs.linkFarm "ci-test-shell-products" (
               pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) ciTestShellProducts
