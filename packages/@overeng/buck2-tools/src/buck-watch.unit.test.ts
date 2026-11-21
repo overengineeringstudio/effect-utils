@@ -549,27 +549,16 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
-  it.each([
-    [false, 'budget'],
-    [true, 'budget'],
-    [false, 'payload'],
-    [true, 'payload'],
-  ] as const)(
-    'forwards publisher diagnostics before exit (batch=%s, prefix=%s)',
-    async (batchPublication, diagnosticPrefix) => {
-      const root = await mkdtemp(join(tmpdir(), 'buck-watch-budget-'))
+  it.each(['budget', 'payload'] as const)(
+    'streams FIFO-gated process diagnostics at split-character boundaries (%s)',
+    async (diagnosticPrefix) => {
+      const root = await mkdtemp(join(tmpdir(), 'buck-watch-stream-'))
       const release = join(root, 'release')
-      const publisher = join(root, 'publisher.mjs')
-      const manifest = join(root, 'editor-inputs.json')
+      const publisher = join(root, 'stream-probe.mjs')
       const diagnostic = `[editor-view-${diagnosticPrefix}] {"event":"working","reason":"census"}\n`
       const observed = Promise.withResolvers<void>()
       const shutdown = new AbortController()
-      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
-        // Wait for the assertion's exact condition, not an unrelated raw stderr newline.
-        if (line === diagnostic) observed.resolve()
-        return true
-      })
-      const onTiming = vi.fn()
+      const characters: string[] = []
       let publisherCompleted = false
       let running: Promise<void> | undefined
       try {
@@ -589,72 +578,90 @@ describe('Buck watch reconciliation', () => {
             `process.stderr.write('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\\n')`,
           ].join('\n'),
         )
-        await writeFile(
-          manifest,
-          JSON.stringify({
-            schema: 'effect-utils/editor-view-inputs/v1',
-            editorInputs: 'buck-out/app/node_modules',
-            packageTree: 'buck-out/app/package_tree',
-            readRoots: ['buck-out/app/package_tree'],
-          }),
-        )
-        running = reconcileBuckViews({
-          request: {
-            packagePaths: ['packages/app'],
-            changedPaths: [],
-            buildTargets: ['//packages/app:editor_view_inputs'],
+        running = runCommand({
+          command: process.execPath,
+          args: [publisher],
+          cwd: root,
+          signal: shutdown.signal,
+          onStderr: (chunk) => {
+            // Exercise every character boundary even when the OS coalesces writes.
+            for (const character of chunk) characters.push(character)
+            if (characters.join('').includes(diagnostic) === true) observed.resolve()
           },
-          options: {
-            plan,
-            mode: 'publish',
-            batchPublication,
-            repoRoot: root,
-            workspaceRoot: root,
-            buck2: '/tools/buck2',
-            editorViewCommand: [process.execPath, publisher],
-            workspaceAuthority: '/repo/authority.json',
-            cp: '/tools/cp',
-            mv: '/tools/mv',
-            fingerprintTool: '/tools/buck2-fingerprint',
-            snapshotRetention: 3,
-            onTiming,
-            run: async (invocation) => {
-              if (invocation.command === '/tools/buck2')
-                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-              try {
-                return await runCommand({
-                  ...invocation,
-                  signal: shutdown.signal,
-                  onStderr: (chunk) => {
-                    // Force every possible character boundary, even if the OS coalesces writes.
-                    for (const character of chunk) invocation.onStderr?.(character)
-                  },
-                })
-              } finally {
-                publisherCompleted = true
-              }
-            },
-          },
+        }).then((result) => {
+          expect(result.stderr).toBe(characters.join(''))
+          publisherCompleted = true
         })
         await observed.promise
         expect(publisherCompleted).toBe(false)
-        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(1)
+        expect(characters.join('').split(diagnostic)).toHaveLength(2)
         writeFileSync(release, 'x')
         await running
         expect(publisherCompleted).toBe(true)
-        expect(onTiming).toHaveBeenCalledWith({
-          phase: 'editor-view',
-          packagePath: 'packages/app',
-          durationMs: batchPublication === true ? 12 : expect.any(Number),
-        })
-        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(
-          batchPublication === true ? 2 : 1,
-        )
+        const captured = characters.join('')
+        expect(captured.split(diagnostic)).toHaveLength(2)
+        expect(captured).toContain('publisher startup\n')
+        expect(captured).toContain('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\n')
       } finally {
         shutdown.abort()
         await running?.catch(() => undefined)
-        stderr.mockRestore()
         await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
+  it.each([
+    [false, 'budget'],
+    [true, 'budget'],
+    [false, 'payload'],
+    [true, 'payload'],
+  ] as const)(
+    'forwards real publisher diagnostics before exit (batch=%s, prefix=%s)',
+    async (batchPublication, diagnosticPrefix) => {
+      const fixture = makePublicationFixture()
+      const observed: string[] = []
+      const onTiming = vi.fn()
+      let completed = false
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
+        if (typeof line === 'string' && line.startsWith(`[editor-view-${diagnosticPrefix}] `) === true) {
+          expect(completed).toBe(false)
+          observed.push(line)
+        }
+        return true
+      })
+      try {
+        await reconcileBuckViews({
+          request: publicationRequest,
+          options: {
+            ...fixture.options,
+            batchPublication,
+            onTiming,
+            run: async (invocation) => {
+              if (invocation.command === fixture.options.buck2) return fixture.options.run(invocation)
+              return runCommand({
+                ...invocation,
+                onStderr: (chunk) => {
+                  for (const character of chunk) invocation.onStderr?.(character)
+                },
+              })
+            },
+          },
+        })
+        completed = true
+        expect(observed.length).toBeGreaterThan(0)
+        for (const line of observed) {
+          expect(line.endsWith('\n')).toBe(true)
+          expect(() => JSON.parse(line.slice(line.indexOf(' ') + 1))).not.toThrow()
+        }
+        expect(onTiming).toHaveBeenCalledWith({
+          phase: 'editor-view',
+          packagePath: 'packages/app',
+          durationMs: expect.any(Number),
+        })
+        expect(fixture.record().package).toBe('packages/app')
+      } finally {
+        stderr.mockRestore()
+        fixture.cleanup()
       }
     },
   )
