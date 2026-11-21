@@ -2,6 +2,8 @@
 //! Instability errors include changed-field names and full before/after metadata;
 //! Read-only shared files tolerate link-count ctime churn, but still prove bytes,
 //! inode identity, modification time, size, and unchanged permissions.
+//! Writable-file ctime/link churn requires one identical-byte reread with stable
+//! metadata; other identity changes still fail closed.
 //! This implementation is isolated from the shared archive/product packaging helpers.
 //! Npm emission/typecheck consumers still use this crate for source-mutation proofs.
 mod fingerprint_admission;
@@ -10,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs::{self, File, FileType, Metadata};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::{Path, PathBuf};
@@ -120,6 +122,50 @@ impl StabilityMetadata {
 
 fn same(before: &Metadata, after: &Metadata, file: bool) -> bool {
     StabilityMetadata::from(before).same(&StabilityMetadata::from(after), file)
+}
+
+fn same_file_identity(before: &Metadata, after: &Metadata) -> bool {
+    before.is_file()
+        && after.is_file()
+        && before.dev() == after.dev()
+        && before.ino() == after.ino()
+        && before.mtime() == after.mtime()
+        && before.mtime_nsec() == after.mtime_nsec()
+        && before.size() == after.size()
+        && before.mode() == after.mode()
+        && before.uid() == after.uid()
+        && before.gid() == after.gid()
+}
+
+fn verify_file_reread(
+    path: &Path,
+    before: &Metadata,
+    after: &Metadata,
+    mut file: File,
+    mut prefix: Sha256,
+    first: &Sha256,
+    buffer: &mut [u8],
+) -> io::Result<bool> {
+    if !same_file_identity(before, after) || !same_file_identity(after, &file.metadata()?) {
+        return Ok(false);
+    }
+    // A sibling hardlink can disappear while an assembled Buck input is read.
+    // Reuse the original descriptor and tree-hash prefix to prove identical
+    // bytes once, without another digest computation on the ordinary path.
+    file.rewind()?;
+    loop {
+        let size = file.read(buffer)?;
+        if size == 0 {
+            break;
+        }
+        prefix.update(&buffer[..size]);
+    }
+    let verified = fs::symlink_metadata(path)?;
+    Ok(same_file_identity(after, &verified)
+        && after.ctime() == verified.ctime()
+        && after.ctime_nsec() == verified.ctime_nsec()
+        && after.nlink() == verified.nlink()
+        && prefix.finalize() == first.clone().finalize())
 }
 
 fn entry_type(metadata: &Metadata) -> &'static str {
@@ -235,6 +281,7 @@ struct Walker {
 impl Walker {
     fn visit(&mut self, path: &Path, name: &[u8]) -> io::Result<()> {
         let before = fs::symlink_metadata(path)?;
+        let mut file_read = None;
         if before.file_type().is_symlink() && self.dereference {
             let target = fs::read_link(path)?;
             let resolved = fs::canonicalize(path).map_err(|error| {
@@ -348,6 +395,7 @@ impl Walker {
                 hash.update(before.size().to_be_bytes());
             }
             let mut file = File::open(path)?;
+            let prefix = self.hash.clone();
             loop {
                 let size = file.read(&mut *self.buffer)?;
                 if size == 0 {
@@ -358,6 +406,7 @@ impl Walker {
                     hash.update(&self.buffer[..size]);
                 }
             }
+            file_read = Some((file, prefix));
         } else {
             return Err(fail(format!(
                 "tree contains unsupported special file: {}",
@@ -366,6 +415,19 @@ impl Walker {
         }
         let after = fs::symlink_metadata(path)?;
         if !same(&before, &after, before.is_file()) {
+            if let Some((file, prefix)) = file_read {
+                if verify_file_reread(
+                    path,
+                    &before,
+                    &after,
+                    file,
+                    prefix,
+                    &self.hash,
+                    &mut *self.buffer,
+                )? {
+                    return Ok(());
+                }
+            }
             return Err(tree_changed(path, &before, Ok(&after), None));
         }
         Ok(())
@@ -529,8 +591,10 @@ pub fn fingerprint_input_root(root: &Path) -> io::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{same, tree_changed, StabilityMetadata};
+    use super::{same, tree_changed, verify_file_reread, StabilityMetadata};
+    use sha2::{Digest, Sha256};
     use std::fs::{self, File, FileTimes, Metadata, Permissions};
+    use std::io::Read;
     use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
     use std::path::Path;
     use std::time::{Duration, SystemTime};
@@ -583,6 +647,177 @@ mod tests {
             .unwrap()
             .split(", ")
             .collect()
+    }
+
+    struct InterruptedRead {
+        file: File,
+        before: Metadata,
+        after: Metadata,
+        prefix: Sha256,
+        hash: Sha256,
+    }
+
+    impl InterruptedRead {
+        fn verify(self, path: &Path) -> bool {
+            verify_file_reread(
+                path,
+                &self.before,
+                &self.after,
+                self.file,
+                self.prefix,
+                &self.hash,
+                &mut [0; 32],
+            )
+            .unwrap()
+        }
+    }
+
+    fn interrupted_read(path: &Path, midpoint: impl FnOnce()) -> InterruptedRead {
+        let before = fs::symlink_metadata(path).unwrap();
+        let mut file = File::open(path).unwrap();
+        let mut prefix = Sha256::new();
+        prefix.update(b"tree prefix");
+        let mut hash = prefix.clone();
+        let mut first = [0; 1];
+        file.read_exact(&mut first).unwrap();
+        hash.update(first);
+        midpoint();
+        let mut remaining = Vec::new();
+        file.read_to_end(&mut remaining).unwrap();
+        hash.update(remaining);
+        InterruptedRead {
+            file,
+            before,
+            after: fs::symlink_metadata(path).unwrap(),
+            prefix,
+            hash,
+        }
+    }
+
+    #[test]
+    fn writable_file_allows_removed_peer_link_after_byte_proof() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("file");
+        let alias = scratch.path().join("peer");
+        fs::write(&path, b"original bytes").unwrap();
+        fs::hard_link(&path, &alias).unwrap();
+        let read = interrupted_read(&path, || fs::remove_file(&alias).unwrap());
+        assert_ne!(read.before.mode() & 0o222, 0);
+        assert_eq!(read.before.nlink(), 2);
+        assert_eq!(read.after.nlink(), 1);
+        assert!(read.verify(&path));
+    }
+
+    #[test]
+    fn writable_file_allows_peer_created_and_removed_mid_hash() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("file");
+        let alias = scratch.path().join("peer");
+        fs::write(&path, b"original bytes").unwrap();
+        let read = interrupted_read(&path, || {
+            fs::hard_link(&path, &alias).unwrap();
+            fs::remove_file(&alias).unwrap();
+        });
+        assert_eq!(read.before.nlink(), 1);
+        assert_eq!(read.after.nlink(), 1);
+        assert!(read.verify(&path));
+    }
+
+    #[test]
+    fn writable_file_rejects_changed_bytes_with_restored_mtime() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("file");
+        let alias = scratch.path().join("peer");
+        fs::write(&path, b"original bytes").unwrap();
+        fs::hard_link(&path, &alias).unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let read = interrupted_read(&path, || {
+            fs::write(&path, b"modified bytes").unwrap();
+            File::open(&path)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(modified))
+                .unwrap();
+            fs::remove_file(&alias).unwrap();
+        });
+        assert_eq!(read.before.ino(), read.after.ino());
+        assert_eq!(read.before.size(), read.after.size());
+        assert_eq!(
+            read.before.modified().unwrap(),
+            read.after.modified().unwrap()
+        );
+        assert!(!read.verify(&path));
+    }
+
+    #[test]
+    fn writable_file_rejects_identity_drift_even_after_link_churn() {
+        for mutation in ["inode", "size", "mtime", "mode"] {
+            let scratch = tempfile::tempdir().unwrap();
+            let path = scratch.path().join("file");
+            let alias = scratch.path().join("peer");
+            fs::write(&path, b"original bytes").unwrap();
+            fs::set_permissions(&path, Permissions::from_mode(0o644)).unwrap();
+            fs::hard_link(&path, &alias).unwrap();
+            let read = interrupted_read(&path, || {
+                fs::remove_file(&alias).unwrap();
+                match mutation {
+                    "inode" => {
+                        let replacement = scratch.path().join("replacement");
+                        fs::write(&replacement, b"original bytes").unwrap();
+                        fs::rename(replacement, &path).unwrap();
+                    }
+                    "size" => fs::write(&path, b"longer replacement bytes").unwrap(),
+                    "mtime" => File::open(&path)
+                        .unwrap()
+                        .set_times(FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+                        .unwrap(),
+                    "mode" => fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap(),
+                    _ => unreachable!(),
+                }
+            });
+            assert!(!read.verify(&path), "{mutation}");
+        }
+    }
+
+    #[test]
+    fn writable_file_rejects_further_link_churn_before_verification() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("file");
+        let alias = scratch.path().join("peer");
+        fs::write(&path, b"original bytes").unwrap();
+        fs::hard_link(&path, &alias).unwrap();
+        let read = interrupted_read(&path, || fs::remove_file(&alias).unwrap());
+        fs::hard_link(&path, scratch.path().join("later-peer")).unwrap();
+        assert!(!read.verify(&path));
+    }
+
+    #[test]
+    fn writable_file_rejects_descriptor_from_temporarily_replaced_path() {
+        let scratch = tempfile::tempdir().unwrap();
+        let path = scratch.path().join("file");
+        let original = scratch.path().join("original");
+        fs::write(&path, b"original bytes").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::rename(&path, &original).unwrap();
+        fs::write(&path, b"modified bytes").unwrap();
+        let mut file = File::open(&path).unwrap();
+        fs::rename(&original, &path).unwrap();
+        let after = fs::symlink_metadata(&path).unwrap();
+        assert_eq!(before.ino(), after.ino());
+        assert_ne!(file.metadata().unwrap().ino(), after.ino());
+        let mut prefix = Sha256::new();
+        prefix.update(b"tree prefix");
+        let mut hash = prefix.clone();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        hash.update(bytes);
+        assert!(!InterruptedRead {
+            file,
+            before,
+            after,
+            prefix,
+            hash,
+        }
+        .verify(&path));
     }
 
     #[test]

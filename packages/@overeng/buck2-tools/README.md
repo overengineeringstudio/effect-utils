@@ -374,6 +374,16 @@ stability signal. In particular, overlayfs without persistent inode mapping can
 reassign a directory inode on cache eviction without changing its contents or
 other metadata. Byte digests, link-target checks, and byte-ownership proofs are
 unchanged.
+
+A writable regular file whose only metadata changes are ctime/link count gets
+one additional byte proof: bind its original descriptor to the checked pathname's
+inode, rewind, re-hash from the same tree prefix, and require the identical digest.
+Device, inode, type, mtime, size, mode, and owner must stay unchanged; metadata
+including ctime/link count must then stay stable across that second read. This
+handles a sibling assembled/extract hardlink
+being removed without ignoring ctime or accepting changed bytes. There is no
+retry loop, and ordinary files incur no additional reads or digest computations.
+
 Normal per-view retention selects the current generation plus the configured
 number of previous generations and a **five-minute grace period from supersession**.
 Repository tasks configure two snapshots per view; `--snapshot-retention` accepts
