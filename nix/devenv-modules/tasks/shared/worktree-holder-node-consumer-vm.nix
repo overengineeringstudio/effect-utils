@@ -143,6 +143,8 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%g:%a' /run/worktree-holder-evidence) = 0:0:755")
     machine.succeed("test $(stat -c '%U:%G:%a' /run/worktree-holder-evidence/evidence.sock) = root:users:660")
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
+    # Owned guest fixture paths only; never expose production census coordinates.
+    print(machine.succeed("readlink -f ${pkgs.bun}/bin/bun; stat -f -c '%T' ${pkgs.bun}/bin/bun; findmnt -T ${pkgs.bun}/bin/bun -o FSTYPE,OPTIONS"))
     try:
         churn = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_departed_thread_churn_preserves_survivor_fd --ignored --nocapture")
         print(churn)
