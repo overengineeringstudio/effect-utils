@@ -59,19 +59,19 @@ it('holds the persistent inode through callback failure and releases maintenance
         },
       }),
     ).rejects.toThrow('publication failed')
-    expect(() => requireEditorPublicationOwner({ root, owner: expired })).toThrow('released')
+    expect(() => requireEditorPublicationOwner({ root, owner: expired! })).toThrow('released')
     expect(canAcquire(root)).toBe(true)
     await withEditorPublicationOwner({
       root,
       run: async (owner) => {
-        expect(statSync(editorPublicationLockPath(root)).ino).toBe(inode)
+        expect(statSync(editorPublicationLockPath(root)).ino).toBe(inode!)
         expect(requireEditorPublicationOwner({ root, owner })).toBe(owner)
         expect(canAcquire(root)).toBe(false)
       },
     })
     const owner = tryAcquireEditorPublicationOwner({ root })
     expect(owner).toBeDefined()
-    expect(requireEditorPublicationOwner({ root, owner })).toBe(owner!)
+    expect(requireEditorPublicationOwner({ root, owner: owner! })).toBe(owner!)
     expect(canAcquire(root)).toBe(false)
     releaseEditorPublicationOwner(owner!)
     const next = tryAcquireEditorPublicationOwner({ root })
@@ -79,7 +79,7 @@ it('holds the persistent inode through callback failure and releases maintenance
     // A second release must not close a descriptor reused by the next owner.
     releaseEditorPublicationOwner(owner!)
     expect(canAcquire(root)).toBe(false)
-    expect(() => requireEditorPublicationOwner({ root, owner })).toThrow('released')
+    expect(() => requireEditorPublicationOwner({ root, owner: owner! })).toThrow('released')
     releaseEditorPublicationOwner(next!)
     expect(canAcquire(root)).toBe(true)
   }))
