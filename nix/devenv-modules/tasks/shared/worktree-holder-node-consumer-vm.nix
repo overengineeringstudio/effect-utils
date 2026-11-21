@@ -16,7 +16,10 @@ let
     ownedVmClassDiagnostics = true;
   };
   client = evidence.holderEvidenceClient;
-  proc = import ./worktree-holder-proc.nix { inherit pkgs; };
+  proc = import ./worktree-holder-proc.nix {
+    inherit pkgs;
+    ownedVmClassDiagnostics = true;
+  };
   # Reuse the canonical immutable source projection and pinned dependency view.
   # These test-only Buck rules exist solely in the derivation, not the product
   # registry or generated checkout BUCK. Both bundles use the real local source.
@@ -63,6 +66,7 @@ let
   worker = bundle "worker";
 in
 assert evidence.ownedVmClassDiagnostics;
+assert proc.ownedVmClassDiagnostics;
 pkgs.testers.nixosTest {
   name = "worktree-holder-node-consumer";
   nodes.machine = {
