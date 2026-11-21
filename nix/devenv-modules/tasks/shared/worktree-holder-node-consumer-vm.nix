@@ -148,8 +148,15 @@ pkgs.testers.nixosTest {
     machine.succeed("test $(stat -c '%u:%a' /var/lib/holder-fixture) = 1000:700")
     # Owned guest fixture paths only; never expose production census coordinates.
     print(machine.succeed("readlink -f ${pkgs.bun}/bin/bun; stat -f -c '%T' ${pkgs.bun}/bin/bun; findmnt -T ${pkgs.bun}/bin/bun -o FSTYPE,OPTIONS"))
-    bun_filesystem = machine.succeed("findmnt -n -T ${pkgs.bun}/bin/bun -o FSTYPE").strip()
-    assert bun_filesystem == "ext4", "the actual fixture Bun executable must use the native ext4 store image: " + bun_filesystem
+    bun_mounts = json.loads(machine.succeed("findmnt --json -T ${pkgs.bun}/bin/bun -o FSTYPE,SOURCE,OPTIONS"))["filesystems"]
+    assert bun_mounts, "the actual Bun executable must have a store-image mount"
+    image_device = machine.succeed("readlink -f /dev/disk/by-label/nix-store").strip()
+    machine.succeed("test -b " + shlex.quote(image_device))
+    for bun_mount in bun_mounts:
+        assert bun_mount["fstype"] in ["erofs", "ext4"], bun_mount
+        assert "ro" in bun_mount["options"].split(","), bun_mount
+        source = bun_mount["source"].split("[", 1)[0]
+        assert machine.succeed("readlink -f " + shlex.quote(source)).strip() == image_device, bun_mount
     try:
         churn = machine.succeed("${proc}/libexec/worktree-holder-proc-tests --exact tests::actual_departed_thread_churn_preserves_survivor_fd --ignored --nocapture")
         print(churn)
