@@ -149,7 +149,7 @@ class AdmissionDiagnostic:
             os.close(self.parent_fd)
             self.child = None
 
-def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
+def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admission_write_fd=None):
     # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
     if sys.platform == "linux":
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
@@ -160,46 +160,61 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     child_env = os.environ.copy()
     child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
     child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
-    child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
+    child_env.pop("EDITOR_VIEW_ADMISSION_READY_FD", None)
+    if admission_write_fd is not None:
+        child_env["EDITOR_VIEW_ADMISSION_READY_FD"] = str(admission_write_fd)
+    try:
+        child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
+    finally:
+        if admission_write_fd is not None:
+            os.close(admission_write_fd)
     interrupted = []
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda number, _frame: interrupted.append(number))
     started = time.monotonic()
     admitted = waiting_lock is None
+    no_publication = False
+    admission_failed = False
     expires = started + deadline if admitted and deadline is not None else float("inf")
     diagnostic = AdmissionDiagnostic()
     def observe_admission():
-        nonlocal admitted, expires
-        if not admitted:
+        nonlocal admitted, no_publication, admission_failed, expires
+        if not admitted and not no_publication:
             lock_path, ready_fd = waiting_lock
             try:
-                admitted = os.read(ready_fd, 1) == b"1"
+                notification = os.read(ready_fd, 1)
+                admitted = notification == b"1"
+                # 0 finishes without publication: it claims no owner or execution deadline.
+                # EOF and every other byte remain fail-closed.
+                no_publication = notification == b"0"
+                admission_failed = not (admitted or no_publication)
             except BlockingIOError:
                 pass
             if admitted:
                 now = time.monotonic()
                 expires = now + deadline if deadline is not None else float("inf")
                 print(f"Editor-view publication admitted on lock {lock_path} after waiting {now - started:.3f}s.", file=sys.stderr, flush=True)
-    while not interrupted and time.monotonic() < expires:
+    while not interrupted and not admission_failed and time.monotonic() < expires:
         observe_admission()
-        if waiting_lock is not None and not admitted:
+        if waiting_lock is not None and not admitted and not no_publication:
             diagnostic.observe(waiting_lock[0], started)
         elif diagnostic.child is not None:
             diagnostic.close()
         try:
             result = child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
             observe_admission()  # Also report admission for a child that exits immediately.
-            if not interrupted:
+            if not interrupted and not admission_failed:
                 diagnostic.close()
                 return result
             break
         except subprocess.TimeoutExpired:
             pass
     diagnostic.close()
-    status = 128 + interrupted[0] if interrupted else 124
-    if waiting_lock is not None and not admitted:
+    status = 1 if admission_failed else 128 + interrupted[0] if interrupted else 124
+    if waiting_lock is not None and not admitted and not no_publication:
         print(f"Editor-view publication was waiting for another publication on lock {waiting_lock[0]}.", file=sys.stderr, flush=True)
-    reason = "was interrupted" if interrupted else f"exceeded its {deadline:g}s execution deadline"
+    reason = ("failed to notify owner admission" if admission_failed else
+              "was interrupted" if interrupted else f"exceeded its {deadline:g}s execution deadline")
     print(f"Editor-view publication {reason}; terminating process group (grace {grace:g}s), publication failed.", file=sys.stderr, flush=True)
     signal_group(child.pid, signal.SIGTERM)
     # Do not reap the leader yet: retain its PID/group identity through escalation.

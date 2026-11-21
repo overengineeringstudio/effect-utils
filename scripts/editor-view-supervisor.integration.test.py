@@ -23,6 +23,129 @@ def load_supervisor():
 
 
 
+def owned_authority(lock, body):
+    # Execute in the authority itself: no wrapper or child receives this flock.
+    # Keep the CLOEXEC descriptor alive until the authority's work has finished.
+    return f'''
+import fcntl, json, os, sys, time
+owner_fd = os.open({str(lock)!r}, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+fcntl.flock(owner_fd, fcntl.LOCK_EX)
+metadata = json.dumps({{"pid": os.getpid(), "command": sys.executable,
+                       "started": time.monotonic()}}).encode()
+os.ftruncate(owner_fd, 0)
+os.write(owner_fd, metadata)
+ready_fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
+os.write(ready_fd, b"1")
+os.close(ready_fd)
+''' + body
+
+
+
+def notification_command(lock, deadline, fixture):
+    # Exercise the consumer before (and independently of) the CLI producer handoff.
+    supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+    driver = f'''
+import os, runpy, sys
+supervisor = runpy.run_path({supervisor!r})
+read_fd, write_fd = os.pipe()
+os.set_blocking(read_fd, False)
+try:
+    result = supervisor["supervise"](
+        sys.argv[1:], {deadline!r}, 0.1, pass_fds=(write_fd,),
+        waiting_lock=({str(lock)!r}, read_fd), admission_write_fd=write_fd)
+finally:
+    os.close(read_fd)
+sys.exit(result)
+'''
+    return [sys.executable, "-c", driver, sys.executable, "-c", fixture]
+
+
+class AdmissionNotificationTest(unittest.TestCase):
+    def test_missing_or_malformed_admission_fails_closed_even_without_deadline(self):
+        for notification, exits_cleanly in (
+            (b"", False), (b"2", False), (b"\xff", False),
+            (b"", True), (b"2", True), (b"\xff", True),
+        ):
+            with self.subTest(notification=notification, exits_cleanly=exits_cleanly), tempfile.TemporaryDirectory() as scratch:
+                fixture = f'''
+import os, time
+fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
+os.write(fd, {notification!r})
+os.close(fd)
+{"pass" if exits_cleanly else "time.sleep(60)"}
+'''
+                result = subprocess.run(
+                    notification_command(Path(scratch) / "publication.lock", None, fixture),
+                    capture_output=True, text=True, timeout=5,
+                )
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("failed to notify owner admission", result.stderr)
+                self.assertNotIn("publication admitted on lock", result.stderr)
+                self.assertFalse((Path(scratch) / "publication.lock").exists())
+
+    def test_explicit_no_publication_does_not_start_execution_deadline(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            fixture = '''
+import os, time
+fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
+os.write(fd, b"0")
+os.close(fd)
+time.sleep(0.1)
+'''
+            result = subprocess.run(
+                notification_command(lock, 0.001, fixture),
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("publication admitted on lock", result.stderr)
+            self.assertNotIn("execution deadline", result.stderr)
+            self.assertFalse(lock.exists())
+
+    def test_authority_keeps_owner_private_across_exec_and_child_join(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            child = r'''
+import errno, fcntl, os, sys
+assert "EDITOR_VIEW_ADMISSION_READY_FD" not in os.environ
+try:
+    os.fstat(int(sys.argv[2]))
+except OSError as error:
+    assert error.errno == errno.EBADF
+else:
+    raise AssertionError("owner descriptor crossed exec")
+with open(sys.argv[1], "r+b") as probe:
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise AssertionError("authority owner was released before child joined")
+'''
+            fixture = owned_authority(lock, f'''
+import subprocess
+subprocess.run([sys.executable, "-c", {child!r}, {str(lock)!r}, str(owner_fd)],
+               check=True, close_fds=False)
+probe = os.open({str(lock)!r}, os.O_RDWR | os.O_CLOEXEC)
+try:
+    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    pass
+else:
+    raise AssertionError("owner was released before child cleanup")
+finally:
+    os.close(probe)
+''')
+            result = subprocess.run(
+                notification_command(lock, None, fixture),
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("admitted on lock", result.stderr)
+            with lock.open("r+b") as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 class PublicationSupervisorTest(unittest.TestCase):
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
         supervisor = load_supervisor()
