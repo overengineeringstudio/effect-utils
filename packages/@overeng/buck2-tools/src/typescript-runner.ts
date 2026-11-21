@@ -256,8 +256,52 @@ const immutableFingerprints = new Map<
 export type FingerprintChild = {
   readonly stdout: Readable
   readonly stderr: Readable
+  kill?(signal: NodeJS.Signals): boolean
   on(event: 'error', listener: (error: Error) => void): void
   on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
+}
+
+type FingerprintScope = {
+  readonly controller: AbortController
+  readonly pending: Set<Promise<string>>
+  readonly queues: Promise<void>[]
+  readonly immutable: typeof immutableFingerprints
+  nextQueue: number
+}
+const fingerprintScope = new AsyncLocalStorage<FingerprintScope>()
+
+/** A publication never releases its owner while scoped native fingerprints are still alive. */
+export const withFingerprintScope = async <T>({
+  signal,
+  run,
+}: {
+  readonly signal?: AbortSignal
+  readonly run: () => Promise<T>
+}): Promise<T> => {
+  const scope: FingerprintScope = {
+    controller: new AbortController(),
+    pending: new Set(),
+    queues: Array.from({ length: fingerprintWorkers }, () => Promise.resolve()),
+    immutable: new Map(),
+    nextQueue: 0,
+  }
+  const cancel = (): void => scope.controller.abort(signal?.reason)
+  signal?.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted === true) cancel()
+  try {
+    return await fingerprintScope.run(scope, async () => {
+      scope.controller.signal.throwIfAborted()
+      return run()
+    })
+  } finally {
+    scope.controller.abort()
+    // All requests are registered synchronously before their first queued admission.
+    // Drain after failures as well: Promise.all upstream can reject before sibling roots.
+    while (scope.pending.size > 0)
+      // eslint-disable-next-line no-await-in-loop -- Join the scoped children before releasing ownership.
+      await Promise.allSettled([...scope.pending])
+    signal?.removeEventListener('abort', cancel)
+  }
 }
 
 const spawnFingerprintChild = ({
@@ -296,20 +340,25 @@ export const runFingerprintTool = ({
     readonly args: readonly string[]
   }) => FingerprintChild
 }): Promise<string> => {
-  if (admissionSignal.aborted === true)
-    return Promise.reject(new Error('fingerprint admission closed by termination'))
+  const scope = fingerprintScope.getStore()
+  const signals = [admissionSignal, ...(scope === undefined ? [] : [scope.controller.signal])]
+  const cancelled = (): boolean => signals.some((signal) => signal.aborted)
+  if (cancelled()) return Promise.reject(new Error('fingerprint admission closed by termination'))
   const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
+  const cache = scope?.immutable ?? immutableFingerprints
+  const queues = scope?.queues ?? fingerprintQueues
   const cacheKey = JSON.stringify([tool, args])
   if (immutable === true) {
-    const cached = immutableFingerprints.get(cacheKey)
+    const cached = cache.get(cacheKey)
     if (cached?.spawnChild === spawnChild) return cached.result
   }
   const queuedAt = performance.now()
-  const lane = nextFingerprintQueue++ % fingerprintWorkers
-  const result = (fingerprintQueues[lane] ?? Promise.resolve()).then(
+  const lane =
+    (scope === undefined ? nextFingerprintQueue++ : scope.nextQueue++) % fingerprintWorkers
+  const result = (queues[lane] ?? Promise.resolve()).then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
-        if (admissionSignal.aborted === true) {
+        if (cancelled()) {
           reject(new Error('fingerprint admission closed by termination'))
           return
         }
@@ -320,9 +369,30 @@ export const runFingerprintTool = ({
         const stderr: Buffer[] = []
         child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
         child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-        child.on('error', reject)
+        let childError: Error | undefined
+        let killTimer: ReturnType<typeof setTimeout> | undefined
+        const cancelChild = (): void => {
+          child.kill?.('SIGTERM')
+          killTimer ??= setTimeout(() => child.kill?.('SIGKILL'), 5000)
+          killTimer.unref()
+        }
+        for (const signal of signals) signal.addEventListener('abort', cancelChild, { once: true })
+        if (cancelled()) cancelChild()
+        child.on('error', (error) => {
+          childError = error
+        })
         child.on('close', (code, signal) => {
+          for (const admission of signals) admission.removeEventListener('abort', cancelChild)
+          clearTimeout(killTimer)
           recordViewTiming({ phase: 'fingerprintChildWorkMs', started: spawnedAt })
+          if (childError !== undefined) {
+            reject(childError)
+            return
+          }
+          if (cancelled()) {
+            reject(new Error('fingerprint admission closed by termination'))
+            return
+          }
           if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
           else
             reject(
@@ -335,16 +405,26 @@ export const runFingerprintTool = ({
   )
   // A failed root must not poison later requests, and callers still receive
   // the original rejection through result.
-  fingerprintQueues[lane] = result.then(
+  queues[lane] = result.then(
     () => {},
     () => {},
   )
   if (immutable === true) {
-    immutableFingerprints.set(cacheKey, { spawnChild, result })
+    cache.set(cacheKey, { spawnChild, result })
     void result.catch(() => {
-      if (immutableFingerprints.get(cacheKey)?.result === result)
-        immutableFingerprints.delete(cacheKey)
+      if (cache.get(cacheKey)?.result === result) cache.delete(cacheKey)
     })
+  }
+  if (scope !== undefined) {
+    scope.pending.add(result)
+    void result.then(
+      () => {
+        scope.pending.delete(result)
+      },
+      () => {
+        scope.pending.delete(result)
+      },
+    )
   }
   return result
 }

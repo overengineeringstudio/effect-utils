@@ -1,9 +1,12 @@
+import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  closeSync,
   existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -11,6 +14,7 @@ import {
   statSync,
   symlinkSync,
   writeFileSync,
+  watch,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,7 +26,118 @@ import {
   copyWritableTree,
   darwinEmitCommand,
   runEmit,
+  runFingerprintTool,
+  withFingerprintScope,
 } from './typescript-runner.ts'
+
+const waitForFingerprintFile = (path: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    // A real subprocess readiness deadline, not a sleep: success resolves from the file event.
+    const timer = setTimeout(
+      () => finish(new Error(`Fingerprint child did not create ${path}`)),
+      10_000,
+    )
+    const watcher = watch(dirname(path), () => {
+      if (existsSync(path)) finish()
+    })
+    const finish = (error?: Error): void => {
+      clearTimeout(timer)
+      watcher.close()
+      if (error === undefined) resolve()
+      else reject(error)
+    }
+    if (existsSync(path)) finish()
+  })
+
+const lifetimeTool = (name: string): string => {
+  const path = process.env[name]
+  if (path === undefined || path.startsWith('/nix/store/') === false)
+    throw new Error(`Required declared native-process lifetime test tool: ${name}`)
+  return path
+}
+
+it.each(['abort', 'parent-failure'] as const)(
+  'joins a real admitted native-process child before publication scope exits after %s',
+  async (failure) => {
+    const root = mkdtempSync(join(tmpdir(), 'fingerprint-scope-'))
+    const ready = join(root, 'ready')
+    const terminated = join(root, 'terminated')
+    const release = join(root, 'release')
+    const controller = new AbortController()
+    let handshake: number | undefined
+    let child: Promise<string> | undefined
+    let sibling: Promise<string> | undefined
+    try {
+      const created = spawnSync(lifetimeTool('MKFIFO_BIN'), [release], { encoding: 'utf8' })
+      if (created.status !== 0)
+        throw new Error(`Could not create native-process lifetime FIFO: ${created.stderr}`, {
+          cause: created.error,
+        })
+      handshake = openSync(release, 'r+')
+      const scoped = withFingerprintScope({
+        signal: controller.signal,
+        run: async () => {
+          child = runFingerprintTool({
+            // This declared shell-only child tests kernel lifetime, not the Rust hash algorithm.
+            tool: lifetimeTool('FINGERPRINT_LIFETIME_TEST_BIN'),
+            args: [ready, terminated, release],
+          })
+          sibling = runFingerprintTool({
+            tool: lifetimeTool('FINGERPRINT_LIFETIME_TEST_BIN'),
+            args: [join(root, 'sibling-ready'), join(root, 'sibling-terminated'), release],
+          })
+          void sibling.catch(() => {})
+          // Observe this intentionally outstanding request without replacing its result.
+          void child.catch(() => {})
+          await Promise.all([
+            waitForFingerprintFile(ready),
+            waitForFingerprintFile(join(root, 'sibling-ready')),
+          ])
+          if (failure === 'abort') {
+            controller.abort()
+            await Promise.all([child, sibling])
+          } else {
+            await Promise.all([
+              Promise.reject(new Error('parent publication failed')),
+              child,
+              sibling,
+            ])
+          }
+        },
+      })
+      await expect(scoped).rejects.toThrow(
+        failure === 'abort' ? 'fingerprint admission closed' : 'parent publication failed',
+      )
+      expect(readFileSync(terminated, 'utf8')).toBe('joined')
+      expect(readFileSync(join(root, 'sibling-terminated'), 'utf8')).toBe('joined')
+      expect(() =>
+        process.kill(Number(readFileSync(join(root, 'sibling-ready'), 'utf8')), 0),
+      ).toThrow()
+      await expect(sibling).rejects.toThrow('fingerprint admission closed')
+      const pid = Number(readFileSync(ready, 'utf8'))
+      expect(() => process.kill(pid, 0)).toThrow()
+      await expect(child).rejects.toThrow('fingerprint admission closed')
+      // A finished/cancelled scope cannot poison the next invocation's admission or cache.
+      const freshInput = join(root, 'fresh-input')
+      mkdirSync(freshInput)
+      writeFileSync(join(freshInput, 'entry'), 'actual native fingerprint input\n')
+      await expect(
+        withFingerprintScope({
+          run: () =>
+            runFingerprintTool({
+              tool: lifetimeTool('FINGERPRINT_BIN'),
+              args: [freshInput, '--input-roots'],
+            }),
+        }),
+      ).resolves.toMatch(/^digest [a-f0-9]{64}\n$/u)
+    } finally {
+      controller.abort()
+      if (handshake !== undefined) closeSync(handshake)
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+  20_000,
+)
 
 it('creates removable scratch copies of immutable inputs without following symlinks', async () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-scratch-copy-'))
