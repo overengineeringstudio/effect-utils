@@ -304,7 +304,7 @@ else:
         for termination, payload in (
             ("deadline", "lines"), ("SIGTERM", "lines"),
             ("SIGKILL", "bytes"), ("deadline", "bytes"), ("publication", "lines"),
-            ("success", "lines"), ("publication-child", "lines"),
+            ("success", "lines"), ("publication-child", "lines"), ("publication-kill", "lines"),
             ("deadline", "utf8"), ("deadline", "paths"),
         ):
             with self.subTest(termination=termination, payload=payload), \
@@ -312,6 +312,67 @@ else:
                 root = Path(scratch)
                 ready = root / "ready"
                 os.mkfifo(root / "release")
+                publication = termination in ("publication", "publication-child", "publication-kill")
+                if publication:
+                    for tool in ("CP_BIN", "MV_BIN", "FINGERPRINT_BIN", "NIX_STORE_BIN"):
+                        self.assertTrue(os.environ.get(tool), f"{tool} is required for real publication")
+                        self.assertTrue(os.environ[tool].startswith("/nix/store/"), tool)
+
+                    def add_to_store(path):
+                        # Same real immutable-fixture boundary as capability publisher tests.
+                        result = subprocess.run(
+                            [os.environ["NIX_STORE_BIN"], "--add", str(path)],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        store_path = result.stdout.strip()
+                        self.assertTrue(store_path.startswith("/nix/store/"), result.stdout)
+                        gcroot = root / "gcroots" / path.name
+                        gcroot.parent.mkdir(exist_ok=True)
+                        rooted = subprocess.run(
+                            [os.environ["NIX_STORE_BIN"], "--add-root", str(gcroot),
+                             "--indirect", "--realise", store_path],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                        self.assertEqual(rooted.returncode, 0, rooted.stderr)
+                        self.assertEqual(rooted.stdout.strip(), store_path)
+                        self.assertEqual(gcroot.resolve(strict=True), Path(store_path))
+                        return store_path
+                    package = root / "packages" / "app"
+                    package.mkdir(parents=True)
+                    (package / "package.json").write_text("{}\n")
+                    inputs = root / "inputs"
+                    inputs.mkdir()
+                    (inputs / "install-descriptor.json").write_text('{"revision":1}\n')
+                    immutable_inputs = add_to_store(inputs)
+                    (root / "editor-inputs.json").write_text(json.dumps({
+                        "schema": "effect-utils/editor-view-inputs/v1",
+                        "editorInputs": immutable_inputs,
+                        "packageTree": str(package),
+                        "readRoots": [],
+                    }))
+                    (root / "workspace-authority.json").write_text(json.dumps({
+                        "schema": "effect-utils/workspace-dependency-authority/v1",
+                        "requiredPackages": ["packages/app"],
+                        "ownedPackages": ["packages/app"],
+                    }))
+                    copy = root / "cp"
+                    # Native tool launchers intentionally have cwd=/ and env={PATH:""}.
+                    # Bake fixture controls into the actual immutable executable.
+                    copy.write_text(f'''#!{sys.executable}
+import os, pathlib, signal, subprocess, sys
+subprocess.run([{os.environ["CP_BIN"]!r}, *sys.argv[1:]], check=True)
+if {termination!r} == "publication-kill":
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pathlib.Path({str(root / 'copy-pid')!r}).write_text(str(os.getpid()))
+pathlib.Path({str(ready)!r}).touch()
+if {termination!r} == "publication-child":
+    os.kill(os.getpid(), signal.SIGTERM)
+with open({str(root / "release")!r}, "rb", buffering=0) as release:
+    assert release.read(1) == b"1"
+''')
+                    copy.chmod(0o700)
+                    immutable_copy = add_to_store(copy)
                 fake = root / "buck2"
                 fake.write_text(f"#!{sys.executable}\n" + r'''
 import os, pathlib, signal, sys, time
@@ -330,7 +391,8 @@ else:
     sys.stderr.write("x" * 32768)
 sys.stderr.write("\nBUCK-BLOCKED\n")
 sys.stderr.flush()
-if os.environ["TERMINATION"] in ("publication", "publication-child", "success"):
+if os.environ["TERMINATION"] in ("publication", "publication-child", "publication-kill", "success"):
+    print("//packages/app:editor_view_inputs editor-inputs.json", flush=True)
     sys.exit(0)
 with open("release", "rb", buffering=0) as release:
     assert release.read(1) == b"1"
@@ -346,21 +408,34 @@ import {{ existsSync, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
 let pending = ''
 let released = false
+const shutdown = new AbortController()
+process.on('SIGTERM', () => shutdown.abort(new Error('SIGTERM')))
+const publication = ['publication', 'publication-child', 'publication-kill'].includes(process.env.TERMINATION ?? '')
+const packages = publication ? [{{
+  packagePath: 'packages/app', sourceFiles: [], sourceRoots: [], workspaceDependencies: [],
+  targets: {{ packageTree: '//packages/app:package_tree', typecheck: '//packages/app:typecheck' }},
+  editor: {{ cell: 'fixture', viewName: 'app', target: '//packages/app:editor_inputs',
+    inputsManifestTarget: '//packages/app:editor_view_inputs', consumerCache: '.devenv/vite-cache/app' }},
+}}] : []
 await reconcileBuckViews({{
-  request: {{ packagePaths: [], changedPaths: [], buildTargets: ['//:fake'] }},
+  request: {{ packagePaths: publication ? ['packages/app'] : [], changedPaths: [], buildTargets: ['//:fake'] }},
   options: {{
-    plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
+    plan: {{ packages, globalPaths: [] }}, mode: 'publish', signal: shutdown.signal,
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2', editorViewCommand: [process.execPath, '-e',
-      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' :
-        'require("node:fs").readFileSync(0); require("node:fs").writeFileSync("ready", ""); setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
-    cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
+    buck2: './buck2',
+    editorViewCommand: [process.execPath, {json.dumps(str(module.with_name('editor-view.ts')))}],
+    workspaceAuthority: './workspace-authority.json',
+    cp: {json.dumps(immutable_copy if publication else '')},
+    mv: process.env.MV_BIN ?? '', fingerprintTool: process.env.FINGERPRINT_BIN ?? '',
+    snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     diagnosticTaskName: 'buck2:editor:bootstrap',
-    run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
+    // Existing fake-Buck subprocess protocol fixture; not a native ABI proof.
+    run: async (options) => {{
+      return await runCommand({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
       pending += chunk
-      if (!released && pending.includes('BUCK-BLOCKED') && process.env.TERMINATION !== 'publication') {{
+      if (!released && pending.includes('BUCK-BLOCKED') && !publication) {{
         released = true
         if (['deadline', 'SIGTERM', 'SIGKILL'].includes(process.env.TERMINATION ?? '')) writeFileSync('release', '1')
         writeFileSync('ready', '')
@@ -373,7 +448,8 @@ await reconcileBuckViews({{
         writeFileSync('command-completed-with-event-log', '')
       }}
       return result
-    }}),
+    }})
+    }},
   }},
 }}).catch((error) => {{ console.error(error.message); process.exitCode = 1 }})
 ''')
@@ -385,17 +461,25 @@ spec = importlib.util.spec_from_file_location("supervisor", {str(repo / "scripts
 supervisor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(supervisor)
 supervisor.time.monotonic = lambda: 2 if pathlib.Path("ready").exists() else 0
-sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication") else None, 0.2))
+sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication", "publication-kill") else None, 0.2))
 '''
-                result = subprocess.run(
+                with subprocess.Popen(
                     [sys.executable, "-c", driver, bun, str(runner)],
-                    cwd=root, capture_output=True, text=True, timeout=10,
+                    cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                     env={**os.environ, "CI": "1", "PAYLOAD": payload,
                          "HOME": str(Path.home()) + "/private-" + "a" * 180,
                          "TMPDIR": str(Path.home()) + "/private-" + "a" * 180 + "/temp-zone",
                          "TERMINATION": termination, "TRACEPARENT": "",
                          "OTEL_TASK_TRACEPARENT": ""},
-                )
+                ) as process:
+                    try:
+                        stdout, stderr = process.communicate(timeout=10)
+                    finally:
+                        if process.poll() is None:
+                            # Keep GC roots until the supervisor joins its real group.
+                            process.terminate()
+                            process.communicate()
+                    result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
                 output = result.stderr
                 if termination == "success":
                     self.assertEqual(result.returncode, 0, output)
@@ -403,8 +487,14 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                     self.assertTrue((root / "command-completed-with-event-log").exists())
                     self.assertEqual(list(root.glob(".devenv/otel/buck2-events/*.pb.zst")), [])
                     continue
-                self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication") else 1, output)
+                self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication", "publication-kill") else 1, output)
                 self.assertTrue(ready.exists(), output)
+                if termination == "publication-kill":
+                    # Forced group KILL cannot flush Bun's in-process diagnostic ring.
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(int((root / "copy-pid").read_text()), 0)
+                    self.assertEqual(len(list(root.glob(".devenv/otel/buck2-events/*.pb.zst"))), 1)
+                    continue
                 self.assertIn("BUCK-BLOCKED\n", output)
                 code = 0 if termination.startswith("publication") else 137 if termination == "SIGKILL" else 143
                 outcome = (r"interrupted by SIGTERM after Buck completed \(code 0\)"
