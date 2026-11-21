@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
+# Fragment extraction below omits the generated task's helper-loading prologue.
+# Load the same shared implementation rather than stubbing its install policy.
+source "$ROOT/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh"
 NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
 fixture="$(mktemp -d)"
 trap 'find "$fixture" -depth -delete' EXIT
