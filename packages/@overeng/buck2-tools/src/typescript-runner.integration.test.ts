@@ -38,7 +38,7 @@ const waitForFingerprintFile = (path: string): Promise<void> =>
       10_000,
     )
     const watcher = watch(dirname(path), () => {
-      if (existsSync(path)) finish()
+      if (existsSync(path) === true) finish()
     })
     const finish = (error?: Error): void => {
       clearTimeout(timer)
@@ -46,7 +46,7 @@ const waitForFingerprintFile = (path: string): Promise<void> =>
       if (error === undefined) resolve()
       else reject(error)
     }
-    if (existsSync(path)) finish()
+    if (existsSync(path) === true) finish()
   })
 
 const lifetimeTool = (name: string): string => {

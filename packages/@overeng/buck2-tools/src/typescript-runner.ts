@@ -299,7 +299,7 @@ export const withFingerprintScope = async <T>({
     // Drain after failures as well: Promise.all upstream can reject before sibling roots.
     while (scope.pending.size > 0)
       // eslint-disable-next-line no-await-in-loop -- Join the scoped children before releasing ownership.
-      await Promise.allSettled([...scope.pending])
+      await Promise.allSettled(scope.pending)
     signal?.removeEventListener('abort', cancel)
   }
 }
@@ -343,7 +343,7 @@ export const runFingerprintTool = ({
   const scope = fingerprintScope.getStore()
   const signals = [admissionSignal, ...(scope === undefined ? [] : [scope.controller.signal])]
   const cancelled = (): boolean => signals.some((signal) => signal.aborted)
-  if (cancelled()) return Promise.reject(new Error('fingerprint admission closed by termination'))
+  if (cancelled() === true) return Promise.reject(new Error('fingerprint admission closed by termination'))
   const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
   const cache = scope?.immutable ?? immutableFingerprints
   const queues = scope?.queues ?? fingerprintQueues
@@ -358,7 +358,7 @@ export const runFingerprintTool = ({
   const result = (queues[lane] ?? Promise.resolve()).then(
     () =>
       new Promise<string>((resolveOutput, reject) => {
-        if (cancelled()) {
+        if (cancelled() === true) {
           reject(new Error('fingerprint admission closed by termination'))
           return
         }
@@ -377,7 +377,7 @@ export const runFingerprintTool = ({
           killTimer.unref()
         }
         for (const signal of signals) signal.addEventListener('abort', cancelChild, { once: true })
-        if (cancelled()) cancelChild()
+        if (cancelled() === true) cancelChild()
         child.on('error', (error) => {
           childError = error
         })
@@ -389,7 +389,7 @@ export const runFingerprintTool = ({
             reject(childError)
             return
           }
-          if (cancelled()) {
+          if (cancelled() === true) {
             reject(new Error('fingerprint admission closed by termination'))
             return
           }
