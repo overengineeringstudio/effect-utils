@@ -229,6 +229,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
   check, clean, and worktree-guard imports. For removal, use the installed
   `worktree-teardown <worktree-path>` command from the effect-utils flake's
   `worktree-teardown` package, not the retiring checkout's devenv shell.
+  Its runtime includes the repo-pinned Buck2 client (the same package used for
+  `BUCK2_BIN`), Git, coreutils, findutils, awk and jq. The flake's
+  `worktree-teardown-runtime` check exercises native offline daemon cleanup with
+  an otherwise empty PATH. Watchman remains optional; `devenv` is supplied by
+  the caller only for explicit editor-release opt-in, and Bun appears only in
+  the repair diagnostic, not in teardown execution.
   It accepts one absolute/relative path from any cwd, executes no checkout code
   by default. Exit 0 means completed; 2 is invalid usage; 3 means an owned
   `.editor-view` or lease-only root is present without release opt-in: rerun with
