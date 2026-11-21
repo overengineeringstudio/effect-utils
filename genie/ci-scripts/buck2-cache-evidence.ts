@@ -679,10 +679,10 @@ export const createCacheEvidenceProjector = ({
         if (owner !== undefined && starts.has(owner) === true) {
           const errors = uploadErrorsByAction.get(owner) ?? []
           errors.push(
-            classifyCacheUploadError(
-              field({ value: uploadEnd, key: 'error' }),
-              field({ value: uploadEnd, key: 're_error_code' }),
-            ),
+            classifyCacheUploadError({
+              error: field({ value: uploadEnd, key: 'error' }),
+              code: field({ value: uploadEnd, key: 're_error_code' }),
+            }),
           )
           uploadErrorsByAction.set(owner, errors)
         } else invalidActionCount++
