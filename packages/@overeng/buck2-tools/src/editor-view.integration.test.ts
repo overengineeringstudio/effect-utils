@@ -49,6 +49,7 @@ import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
+  dispatchEditorView,
   editorViewPublicationWorkers,
   pinEditorView,
   publishEditorView as publishEditorViewUnscoped,
@@ -586,6 +587,97 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
       expect(report.diagnostics.join('')).toContain(
         '"event":"editor-view.host-budget.reserve-granted"',
       )
+    } finally {
+      editorCliProcesses.delete(child)
+      cleanup(fixture)
+    }
+  })
+
+  it('dispatches a real snapshot verification without changing process globals or listeners', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const argv = [...process.argv]
+      const cwd = process.cwd()
+      const environment = { ...process.env }
+      const listeners = process
+        .eventNames()
+        .map((event) => [event, process.listeners(event)] as const)
+      const output: string[] = []
+      const errors: string[] = []
+      const result = await dispatchEditorView({
+        args: [
+          'verify',
+          '--repo-root',
+          fixture.root,
+          '--package',
+          fixture.options.package,
+          '--cell',
+          fixture.options.cell,
+          '--target',
+          fixture.options.target,
+          '--fingerprint-tool',
+          fingerprintTool,
+          '--consumer-cache',
+          fixture.consumerCache,
+          '--content-store',
+          fixture.options.contentStore!,
+        ],
+        onStdout: (value) => output.push(value),
+        onStderr: (value) => errors.push(value),
+      })
+      expect(result).toEqual({
+        stdout: `verified ${record.package} editor snapshot ${record.byteSnapshotDigest}\n`,
+        stderr: '',
+        exitCode: 0,
+      })
+      expect(output.join('')).toBe(result.stdout)
+      expect(errors.join('')).toBe(result.stderr)
+      expect(process.argv).toEqual(argv)
+      expect(process.cwd()).toBe(cwd)
+      expect(process.env).toEqual(environment)
+      expect(process.eventNames().map((event) => [event, process.listeners(event)])).toEqual(
+        listeners,
+      )
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it.each(['publish', 'publish-batch'])('captures real %s diagnostics without host stderr writes', async (command) => {
+    const fixture = makeFixture()
+    const args = ['publish', ...Object.entries({
+      '--repo-root': fixture.root, '--package': fixture.options.package,
+      '--cell': fixture.options.cell, '--target': fixture.options.target,
+      '--editor-inputs': fixture.editorInputs, '--node-modules': fixture.nodeModules,
+      '--cp': cp, '--mv': mv, '--fingerprint-tool': fingerprintTool,
+      '--workspace-authority': fixture.workspaceAuthority,
+      '--consumer-cache': fixture.consumerCache, '--content-store': fixture.options.contentStore!,
+    }).flat()]
+    const request = command === 'publish' ? { args } : { args: [command], batchRequests: [args] }
+    const child = Bun.spawn([requireTool('BUN_BIN'), '--eval', `
+import { dispatchEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
+import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
+const output = [], errors = [];
+const result = await editorViewProcessTestScope.run(() => [process.pid], () => dispatchEditorView({
+  ...${JSON.stringify(request)}, onStdout: value => output.push(value), onStderr: value => errors.push(value),
+}));
+process.stdout.write(JSON.stringify({ result, output, errors }));
+`], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+    editorCliProcesses.add(child)
+    try {
+      const [status, stdout, stderr] = await Promise.all([
+        child.exited, Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr),
+      ])
+      expect({ status, stderr }).toEqual({ status: 0, stderr: '' })
+      const report = JSON.parse(stdout)
+      expect(report.result.exitCode).toBe(0)
+      expect(report.output.join('')).toBe(report.result.stdout)
+      expect(report.errors.join('')).toBe(report.result.stderr)
+      expect(report.result.stdout).toContain(`published ${fixture.options.package} editor view `)
+      expect(report.result.stderr).toContain('[editor-view-phase] ')
+      expect(report.result.stderr).toContain('"event":"editor-view.host-budget.reserve-start"')
+      expect(report.result.stderr.split('[editor-view-timing] ').length - 1).toBe(command === 'publish-batch' ? 1 : 0)
     } finally {
       editorCliProcesses.delete(child)
       cleanup(fixture)

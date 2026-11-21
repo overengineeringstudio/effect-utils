@@ -169,6 +169,12 @@ to stderr. The writer does not catch callback failures and the previous sink is
 restored on exit; producer-specific error precedence remains unchanged, including
 preserving an authoritative content-store trust rejection if incident logging fails.
 
+`dispatchEditorView` runs the complete CLI command flow in-process with explicit
+arguments, batch requests, and output callbacks, returning stdout, stderr, and
+the exit code without changing process globals or installing signal handlers.
+Every dispatch has its own native fingerprint scope; it joins subordinate
+fingerprints before returning. The CLI remains the process-I/O adapter.
+
 The reconciliation command runner waits for child close after a stdin write
 failure. A nonzero or signaled child exit takes precedence over a concurrent
 broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
