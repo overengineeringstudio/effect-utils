@@ -343,7 +343,8 @@ export const runFingerprintTool = ({
   const scope = fingerprintScope.getStore()
   const signals = [admissionSignal, ...(scope === undefined ? [] : [scope.controller.signal])]
   const cancelled = (): boolean => signals.some((signal) => signal.aborted)
-  if (cancelled() === true) return Promise.reject(new Error('fingerprint admission closed by termination'))
+  if (cancelled() === true)
+    return Promise.reject(new Error('fingerprint admission closed by termination'))
   const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
   const cache = scope?.immutable ?? immutableFingerprints
   const queues = scope?.queues ?? fingerprintQueues
