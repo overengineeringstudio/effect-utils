@@ -15,6 +15,9 @@ import {
   observeEditorViewProcessCandidates,
 } from './editor-view-readers.ts'
 
+const captureDiagnostics = (logged: string[], observe: () => void): void =>
+  editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), observe)
+
 // Permission errors, PID reuse and truncated native-tool output cannot be
 // generated deterministically with real host processes in a unit test.
 const nativeFs = { ...process.getBuiltinModule('fs') }
@@ -393,7 +396,7 @@ describe('migration reader evidence', () => {
     'logs structured Linux unknowns at the %s failure site',
     (site) => {
       const logged: string[] = []
-      editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), () => {
+      captureDiagnostics(logged, () => {
         io.readFileSync.mockImplementation((path: string) =>
           path.endsWith('/stat') === true ? incarnation() : 'fixture-reader',
         )
@@ -447,7 +450,7 @@ describe('migration reader evidence', () => {
 
   it('logs one counted record per opaque Linux process per scan without dropping reasons', () => {
     const logged: string[] = []
-    editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), () => {
+    captureDiagnostics(logged, () => {
       const pids = ['123', '124']
       const entries = ['cwd', 'root', 'exe', 'fd/4', 'fd/5', 'fd/6']
       io.readdirSync.mockImplementation((path: string) =>
@@ -595,7 +598,7 @@ describe('macOS lsof completeness', () => {
 
   it('logs one counted unknown per lsof process without dropping descriptor reasons', () => {
     const logged: string[] = []
-    editorViewDiagnostics.run((line) => logged.push(line.slice(0, -1)), () => {
+    captureDiagnostics(logged, () => {
       io.spawnSync.mockReturnValue({
         stdout: `p123\0cfixture-reader\0u${uid}\0f15\0n/unknown-type\0\nf16\0tREG\0n/unknown-inode\0\n`,
         stderr: '',
