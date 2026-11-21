@@ -122,6 +122,15 @@ fn relative_text(path: &Path) -> io::Result<String> {
     Ok(value.to_owned())
 }
 
+fn membership_step<T>(_stage: &'static str, result: io::Result<T>) -> io::Result<T> {
+    #[cfg(holder_owned_vm_class_diagnostics)]
+    if let Err(error) = &result {
+        eprintln!("worktree-holder-membership-owned-vm stage={_stage} kind={:?} errno={:?}",
+            error.kind(), error.raw_os_error());
+    }
+    result
+}
+
 impl CandidateSet {
     pub fn pin(request: &protocol::Request, uid: u32, deadline: Instant) -> io::Result<Self> {
         Self::pin_enrolled(request, uid, ALLOWED_ROOTS, deadline)
@@ -264,15 +273,15 @@ impl CandidateSet {
         deadline: Instant) -> io::Result<MatchOutcome>
     {
         bound(deadline)?;
-        let metadata = file.metadata()?;
+        let metadata = membership_step("held-metadata", file.metadata())?;
         if metadata.file_type().is_char_device() {
             return Ok(MatchOutcome::Native(Vec::new()));
         }
-        let identity = object_identity(file)?;
+        let identity = membership_step("held-identity", object_identity(file))?;
         let effect = if metadata.is_file() && matches!(kind, ReferenceKind::Fd | ReferenceKind::Map | ReferenceKind::Exe) {
             ReferenceEffect::RetainedBytes
         } else { ReferenceEffect::InUse };
-        self.ensure_store_inventory(deadline)?;
+        membership_step("store-inventory", self.ensure_store_inventory(deadline))?;
         // Exact store inode identity still accounts for retained regular-file
         // bytes even when no native pathname remains. Existing native GC
         // positive vetoes remain independent; this reader adds no map-only veto.
@@ -282,17 +291,22 @@ impl CandidateSet {
             return Ok(MatchOutcome::Native(vec![MatchedReference { root_index: 0,
                 relative_path: relative_text(path)?, identity, effect }]));
         }
-        let filesystem = linux::filesystem_type(file)?;
+        let filesystem = membership_step("held-filesystem", linux::filesystem_type(file))?;
         if matches!(filesystem, 0x794c7630 | 0x65735546) {
             return Ok(MatchOutcome::NeedsProxy);
         }
-        if !objects::native_filesystem(file)? {
+        if !membership_step("native-filesystem-class", objects::native_filesystem(file))? {
             // These objects have no native payload pathname. This classification
             // never waives the census's separate dircap/kernel/IPC qualification.
             if matches!(filesystem, 0x9fa0 | 0x62656572 | 0x63677270 | 0x27e0eb
                 | 0x6e736673 | 0x1cd1 | 0x19800202 | 0x50495045 | 0x534f434b
                 | 0x09041934 | 0x50494446 | 0x74726163 | 0xcafe4a11 | 0x64626720 | 0x73636673)
             { return Ok(MatchOutcome::Native(Vec::new())); }
+            #[cfg(holder_owned_vm_class_diagnostics)]
+            {
+                let class = if filesystem == 0x01021997 { "9p" } else { "other" };
+                eprintln!("worktree-holder-membership-owned-vm unsupported-filesystem={class}");
+            }
             return Err(io::Error::other("unsupported held filesystem"));
         }
         // Missing native proof is UNKNOWN, including mounts detached from the
@@ -300,17 +314,20 @@ impl CandidateSet {
         let location = {
             let mut cached = self.native_view.borrow_mut();
             let same_task = match cached.as_ref() {
-                Some(view) => view.is_task(task_scope)?,
+                Some(view) => membership_step("cached-task-identity", view.is_task(task_scope))?,
                 None => false,
             };
             if !same_task {
-                if let Some(view) = cached.as_ref() { view.recheck(deadline)?; }
-                *cached = Some(mounts::NativeView::capture(task_scope, deadline)?);
+                if let Some(view) = cached.as_ref() {
+                    membership_step("previous-native-view-recheck", view.recheck(deadline))?;
+                }
+                *cached = Some(membership_step("native-view-capture", mounts::NativeView::capture(task_scope, deadline))?);
             }
-            cached.as_ref().ok_or_else(|| io::Error::other("missing native view"))?
-                .location(file, deadline)?
+            let view = cached.as_ref().ok_or_else(|| io::Error::other("missing native view"))?;
+            membership_step("native-location", view.location(file, deadline))?
         };
-        self.matches_native(&location, &identity, effect, deadline).map(MatchOutcome::Native)
+        membership_step("native-candidate-match", self.matches_native(&location, &identity, effect, deadline))
+            .map(MatchOutcome::Native)
     }
 
     fn matches_native(&self, location: &mounts::NativeLocation, identity: &ObjectIdentity,
