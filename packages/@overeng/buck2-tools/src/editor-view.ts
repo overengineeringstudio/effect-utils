@@ -4553,6 +4553,7 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   }
 }
 
+/** Captured output and terminal exit status of the literal publisher command flow. */
 export type EditorViewDispatchResult = {
   readonly stdout: string
   readonly stderr: string
@@ -4610,7 +4611,7 @@ export const dispatchEditorView = async ({
                 controller.abort()
                 while (scope.copies.size > 0)
                   // eslint-disable-next-line no-await-in-loop -- Late siblings must close before ownership returns.
-                  await Promise.allSettled([...scope.copies])
+                  await Promise.allSettled(scope.copies)
               }
             }),
         })
