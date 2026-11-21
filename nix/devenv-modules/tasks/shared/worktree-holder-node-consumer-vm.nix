@@ -76,12 +76,13 @@ pkgs.testers.nixosTest {
       group = "users";
     };
     systemd.tmpfiles.rules = [ "d /var/lib/holder-fixture 0700 fixture users -" ];
-    environment.systemPackages = [ pkgs.bun pkgs.util-linux evidence ];
+    environment.systemPackages = [ pkgs.bun pkgs.util-linux pkgs.erofs-utils evidence ];
     virtualisation.memorySize = 2048;
     # Exercise native filesystem policy, not the test driver's overlay-backed store.
     virtualisation.useNixStoreImage = true;
     virtualisation.writableStore = false;
     boot.kernel.sysctl."kernel.io_uring_disabled" = 0;
+    boot.kernelModules = [ "loop" ];
     systemd.sockets.worktree-holder-evidence = {
       wantedBy = [ "sockets.target" ];
       socketConfig = {
@@ -153,7 +154,7 @@ pkgs.testers.nixosTest {
     image_device = machine.succeed("readlink -f /dev/disk/by-label/nix-store").strip()
     machine.succeed("test -b " + shlex.quote(image_device))
     for bun_mount in bun_mounts:
-        assert bun_mount["fstype"] in ["erofs", "ext4"], bun_mount
+        assert bun_mount["fstype"] == "erofs", bun_mount
         assert "ro" in bun_mount["options"].split(","), bun_mount
         source = bun_mount["source"].split("[", 1)[0]
         assert machine.succeed("readlink -f " + shlex.quote(source)).strip() == image_device, bun_mount
@@ -180,6 +181,7 @@ pkgs.testers.nixosTest {
             "terminal_devices_do_not_pin_candidate_paths",
             "actual_internal_memfd_recloses_with_frozen_retained_views",
             "actual_overlay_held_file_requires_proxy_without_native_exemption",
+            "block_erofs_candidate_file_vetoes_and_outside_file_is_native",
             "linked_candidate_and_unlinked_same_filesystem_never_use_shmem_exclusion",
             "bind_alias_and_detached_mount_fixture",
         ]:
