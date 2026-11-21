@@ -171,9 +171,9 @@ pkgs.testers.nixosTest {
             native = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::" + native_case + " --ignored --nocapture")
             print(native)
             assert "1 passed; 0 failed" in native, "the actual full-root native fixture must execute: " + native_case
-        memfd_bind = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::internal_memfd_bind_inside_candidate_vetoes_and_invalidates_old_scope --ignored --nocapture")
+        memfd_bind = machine.succeed("${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::internal_memfd_bind_is_einval_and_preserves_frozen_scope --ignored --nocapture")
         print(memfd_bind)
-        assert "1 passed; 0 failed" in memfd_bind, "actual internal-memfd file-bind and stale scope invalidation must execute"
+        assert "1 passed; 0 failed" in memfd_bind, "actual internal-memfd bind must return exact EINVAL and preserve frozen scope"
         jailed_namespace = machine.succeed("HOLDER_NAMESPACE_BUSYBOX=${pkgs.pkgsStatic.busybox}/bin/busybox ${evidence.mountedEvidence}/libexec/worktree-holder-mounted-tests --exact candidates::tests::jailed_namespace_outside_candidate_bind_matches_oracle_without_admin --ignored --nocapture")
         print(jailed_namespace)
         assert "1 passed; 0 failed" in jailed_namespace, "actual jailed namespace outside-candidate bind must match the privileged reference oracle without SYS_ADMIN"
