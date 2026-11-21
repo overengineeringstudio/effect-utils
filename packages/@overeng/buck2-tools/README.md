@@ -108,8 +108,8 @@ Build/export the same pinned effect-utils `buck2-capabilities` profile used by t
 Linux client; the measured TS families are `buck2-action-env`, `buck2-rust-shell`,
 `buck2-bubblewrap` (Linux only), `bun`, `effect-tsgo`, `buck2-fingerprint`, and
 `buck2-coreutils` (the readlink wrapper). Publish that profile through
-`scripts/buck2-capability-publish.ts --root "$PWD" --profile "$PROFILE"` using the
-pinned runtime. Keep its store closure alive on the worker. Pool properties do not
+`scripts/buck2-capability-publish.ts --root "$PWD" --profile "$PROFILE" --buck2-native "$BUCK2_NATIVE_BIN"`
+using the pinned runtime and its declared native Buck. Keep its store closure alive on the worker. Pool properties do not
 realize store paths. Exact closure read-only binds, clean environment, input
 fingerprinting, private scratch and Bubblewrap guards are unchanged.
 
@@ -189,7 +189,10 @@ Standalone package tasks keep their single-consumer publisher and never acquire
 the aggregate's wider package set. Existing batch publication acquires each
 state-root lock once and prepares up to four consumer views concurrently.
 
-Bootstrap and ordinary scoped publication keep their **300 s execution deadline**.
+Ordinary scoped publication defaults to **300 s**. Cold bootstrap uses
+**300 s × (1 + selected consumer count)**: **900 s** for root source generators
+and **600 s** for the content-address contract. The standalone-staging publisher
+has an explicit **600 s** budget.
 The non-required `storybook:build`, `netlify:stage`, `netlify:deploy`, and
 `test:notion-integration` batch publications have **no total deadline**.
 On dev5, cold publication of 13 consumers takes about 25–30 minutes and a single
@@ -225,18 +228,25 @@ TERM/KILL cleanup on expiry, with separate handling for queued lock admission.
 Scoped devenv publishers retain their explicit consumer sets; Storybook builds do
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
-per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
-The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-with a **5 s kill grace** on interruption or deadline expiry. The execution clock
-starts only after admission: scoped/bootstrap work keeps its 300 s cap and
-Storybook play tests keep their derived 380 s cap, excluding queue time.
+per-worktree `.devenv/editor-view-publication.lock` before build/publish.
+The authority process owns the kernel `flock` across its complete in-process
+build/publication flow; the supervisor receives only a one-byte admission notification.
+The source-reader exec boundary preserves only the explicitly named write-only FIFO
+for this notification, never an ownership descriptor. The authority consumes its
+environment variable before spawning Buck or any descendant; unrelated FDs remain protected.
+Its execution clock starts after acquisition, excluding queue time. Explicit cold
+bootstrap and standalone budgets and derived scoped budgets remain unchanged;
+the supervisor retains its **5 s kill grace** on interruption or deadline expiry.
+Byte `1` means the real owner was acquired; byte `0` explicitly finishes an authority-only
+or empty-selection path without claiming ownership or starting an execution deadline.
+Unexpected EOF and malformed notifications fail closed, even when the child exits zero.
 Each admitted invocation logs the lock path and admission wait in seconds.
 Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
 treated as termination only after a process census proves no live members remain;
-live-member permission failures still fail closed. The supervisor retains ownership through
-process-group cleanup; process exit releases it automatically. The persistent
-flock file must not be unlinked while publishers are active.
+live-member permission failures still fail closed. Cancellation joins native Buck,
+fingerprint workers and asynchronous copies before the owning callback releases its lock.
+The persistent flock file must not be unlinked while publishers are active.
 
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
@@ -257,18 +267,61 @@ Portable compiled payloads remain unchanged; native wrappers own this dependency
 The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
 
+Import ownership APIs through `@overeng/buck2-tools/editor-publication-owner` when bundling
+consumers. The package-root barrel also exports executable runners; it is not this pure API boundary.
+
 `withEditorPublicationOwner` holds the root's persistent flock through its callback.
 Its opaque live object validates root and inode without acquiring or upgrading.
 Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant nothing.
 Cancellation wakes queued acquisition, but active subordinate work must join before release.
 `tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
+Owner unit tests use a one-second per-test deadline. Cancellation is triggered before
+calling Bun's rejection matcher, which waits immediately for its promise to settle.
+Qualification also bounds the test process: a native syscall cannot be interrupted by a JS timer.
 This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
 Successful acquisition records bounded advisory PID, command and system-monotonic start
 metadata for diagnostics. Contents never grant authority; validation does not rewrite them.
 
+The managed argument boundary accepts literal argv and plain-text `@argfiles` only.
+Python, stdin and config-cell argfiles fail closed. Use the explicitly declared
+`BUCK2_NATIVE_BIN` for unmanaged native argument semantics; that does not grant
+permission to bypass the caller's admission or ownership obligations.
+
+The public managed CLI rejects the reserved `editor-publication` namespace.
+Only its same-process launcher accepts the real opaque owner, retaining normal
+admission, cache posture, tracing and native lifecycle policy. Publication dispatch
+also runs in process rather than lending a descriptor. Fingerprint cancellation
+fixtures use a declared shell-only kernel child for FIFO readiness, TERM and close
+joins; they do not simulate the Rust hashing algorithm. A subsequent independent
+scope uses the actual declared fingerprint executable and verifies its digest.
+
+Megarepo maintenance independently acquires the owner around reserved-isolation
+clean and final daemon checks/stop. Live publishers defer maintenance; unknown
+ownership is a protective refusal, not a successful native operation. Default
+isolation maintenance does not acquire the publication owner. Capability migration
+also acquires this owner before stopping the reserved isolation. Busy ownership,
+unknown ownership or a failed native stop leaves migration pending and returns
+nonzero after independent ordinary-isolation stops have been attempted. Original
+causes remain available; incomplete migration publishes no success receipt.
+
 `requireEditorPublicationInputs` traverses every path component and symlink carrier.
 Mutable inputs require that live owner and its reserved isolation, even when a carrier reaches Nix.
 Native missing-file, non-directory and symlink-loop diagnostics remain visible.
+Record identity and package containment/symlink validation precede backing-input
+traversal, so invalid package paths cannot redirect admission outside the repository.
+
+Watch reconciliations retain the owner across the private Buck build, authority
+reads, budget reservation, copying and verification. Their `editor-publication`
+isolation has its own daemon and `buck-out`, so default-isolation rematerialization
+cannot invalidate publication inputs. Its additional cold materialization is part
+of the existing execution budget, not hidden in lock-admission time.
+
+The real isolation regression uses `BUCK2_EDITOR_PUBLICATION_FIXTURE`, an immutable
+Starlark cell declared by the owning `test:buck2-tools` Nix closure. It performs no
+runtime Nix-store additions or GC-root management. Real Buck still builds both
+isolations and rematerializes default outputs during publication verification.
+Only attempted daemons are retired; cleanup failures retain the original setup or
+publication cause, and failed mandatory retirement preserves the owned fixture.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
@@ -948,6 +1001,13 @@ checkout root, removes only its isolation state, deletes its Watchman watch when
 the service is reachable, and removes only its root-keyed admission cache entries.
 Without `WORKTREE_TEARDOWN_EDITOR_RELEASE=1`, any owned `.editor-view`, including
 lease-only state, refuses with exit 3 before mutation and reports the opt-in retry.
+After that refusal check, teardown's Bash process holds the persistent root publication
+flock across every destructive step. Offline shutdown uses its explicitly declared
+`BUCK2_NATIVE_BIN`, never the managed reserved-namespace CLI or inherited-owner environment.
+The shell closes its lock descriptor in native Buck, Watchman and devenv invocations
+that could create long-lived descendants; short-lived synchronous children may inherit it.
+A busy or invalid owner refuses without mutation; the control inode remains persistent,
+so a live publisher cannot lose its fence.
 Only editor-free checkouts skip release successfully. Opt-in permits the checkout's
 `buck2:editor:release` task with final retirement enabled; Nix builds/substitutions
 remain disabled. The command makes
@@ -1061,6 +1121,10 @@ The JavaScript runner loads test modules when collecting their inventory without
 executing assertions. Static parsing is opt-in: the runner passes an explicit
 negative flag otherwise, rather than relying on the pinned Vitest CLI's default.
 This includes cases registered by imported helpers such as rule-test generators.
+
+The owning test task declares `FINGERPRINT_LIFETIME_TEST_BIN` and `MKFIFO_BIN`.
+The shell-only fixture performs real FIFO readiness and TERM/exit for kernel lifetime
+testing, not Rust digest-algorithm simulation. `FINGERPRINT_BIN` remains the real native tool.
 
 ## Bun wall deadlines and failure classification
 
