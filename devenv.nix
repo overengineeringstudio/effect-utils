@@ -1388,7 +1388,7 @@ in
       export BASH_BIN=${pkgs.bash}/bin/bash
       ${tsSandboxTestEnvironment}
       cd "$root"
-      ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts ./scripts/editor-publication-inputs-admission.integration.test.ts ./scripts/editor-publication-inputs.integration.test.ts
+      ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts ./buck2/dependencies/declared-inputs-freshness.unit.test.ts ./scripts/editor-publication-inputs-admission.integration.test.ts ./scripts/editor-publication-inputs.integration.test.ts ./scripts/editor-publication-inputs-authority.integration.test.ts
       cd "$root/packages/@overeng/buck2-tools"
       exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
@@ -1396,6 +1396,7 @@ in
   tasks."test:buck2-tools".execIfModified = lib.mkAfter [
     "scripts/editor-publication-inputs-admission.integration.test.ts"
     "scripts/editor-publication-inputs.integration.test.ts"
+    "scripts/editor-publication-inputs-authority.integration.test.ts"
     "scripts/editor-publication-inputs.test-support.ts"
     "scripts/buck2-entrypoint.ts"
   ];
