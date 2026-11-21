@@ -36,6 +36,7 @@ import {
   scopeEditorViewTestProcesses,
   trackEditorViewTestSpawn,
 } from './editor-view-test-processes.ts'
+import { EditorViewCommandFailure } from './editor-view.ts'
 
 const fixtureProcessIds = new Set([process.pid])
 const reconcileBuckViews = scopeEditorViewTestProcesses({
@@ -797,6 +798,24 @@ describe('Buck watch reconciliation', () => {
       spawned.mockReset().mockImplementation(nativeChildProcess.spawn)
     }
   })
+
+  it.each([undefined, 'SIGTERM'] as const)(
+    'preserves native publication failure status and cause (signal=%s)',
+    (signal) => {
+      const cause = new Error('native failure')
+      const error = new EditorViewCommandFailure({
+        label: 'copy',
+        detail: 'nested tool exited 0',
+        ...(signal === undefined ? { exitCode: 7 } : { signal }),
+        cause,
+        stdout: '',
+        stderr: 'nested tool exited 0',
+      })
+      expect(exitCodeOf(error)).toBe(signal === undefined ? 7 : 1)
+      expect(error.signal).toBe(signal)
+      expect(error.cause).toBe(cause)
+    },
+  )
 
   it('keeps embedded command output from forging an exit status', async () => {
     const error = await runCommand({
