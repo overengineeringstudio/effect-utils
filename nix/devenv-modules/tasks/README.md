@@ -291,6 +291,10 @@ resource closure. It requires that survivor FD to remain observed, rejects
 uncaptured live newcomers and live-task FD disappearance, and rejects a failed
 leader-generation proof. It does not claim arbitrary continuous live births
 can always close within a finite observation deadline.
+The fixture records each real TID and waits for actual task-list disappearance
+under that same deadline before closure: pthread join's clear-child-TID wake
+precedes kernel task removal and is not itself a departure proof. Listed IDs
+are never discarded on timeout, and unrelated live newcomers remain vetoed.
 
 `HOLDER_EVIDENCE_PRODUCER_ID` is the final executable package's output placeholder,
 not any linked library's identity. Peer executable authentication remains bound
