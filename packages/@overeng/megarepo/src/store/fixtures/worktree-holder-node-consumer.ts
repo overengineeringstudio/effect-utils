@@ -19,8 +19,15 @@ const WorkerReply = Schema.Struct({
   unshared: Schema.Boolean,
   dev: Schema.NullOr(Schema.String),
   ino: Schema.NullOr(Schema.String),
+  links: Schema.NullOr(Schema.String),
+  internal: Schema.NullOr(Schema.Struct({
+    fd: Schema.Int,
+    dev: Schema.String,
+    links: Schema.String,
+    sharedMapping: Schema.Boolean,
+  })),
 })
-const Mode = Schema.Literals(['shared', 'unshared', 'different-fd'])
+const Mode = Schema.Literals(['shared', 'unshared', 'different-fd', 'detached-file', 'detached-dir', 'nested-unlinked'])
 const parent = '/var/lib/holder-fixture'
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(message)
@@ -40,6 +47,7 @@ const main = Effect.gen(function* () {
     allowPositionals: false,
   })
   const mode = Schema.decodeUnknownSync(Mode)(values.mode)
+  const boundary = mode === 'detached-file' || mode === 'detached-dir' || mode === 'nested-unlinked'
   const client = Schema.decodeUnknownSync(WorktreeHolderEvidenceClientConfigSchema, {
     onExcessProperty: 'error',
   })({ path: values.client, producerId: values['producer-id'], policyId: values['policy-id'] })
@@ -60,6 +68,14 @@ const main = Effect.gen(function* () {
   // Exclusive mkdir: never adopt or remove a pre-existing directory supplied by a caller.
   yield* fs.makeDirectory(root)
   yield* fs.writeFileString(`${root}/payload`, 'disposable holder integration payload\n')
+  // Only the disposable guest root controller can prepare/detach the mount fixtures.
+  const waitForGuest = (name: string) => Effect.gen(function* () {
+    while (!(yield* fs.exists(`${root}/${name}`))) yield* Effect.sleep('10 millis')
+  }).pipe(Effect.timeout('30 seconds'))
+  if (boundary) {
+    yield* fs.writeFileString(`${root}/setup-request`, mode)
+    yield* waitForGuest('setup-ready')
+  }
   const identity = yield* captureDeletionIdentity({ rootPath: parent, path: root })
   const veto = new Error('Actual holder source vetoed physical removal')
   let vetoed = false
@@ -128,12 +144,35 @@ const main = Effect.gen(function* () {
         }),
       )
       const worker = session.ready
+      assert(worker.internal !== null && worker.internal.links === '0' && worker.internal.sharedMapping,
+        'Actual worker memfd and shared-anonymous mapping must remain held')
+      if (boundary) {
+        assert(worker.fd !== null, 'Boundary fixture must retain its actual descriptor')
+        if (mode !== 'detached-dir') assert(worker.links === '0', 'Boundary file must be unlinked')
+        yield* fs.writeFileString(`${root}/worker-ready`, JSON.stringify(worker))
+        yield* waitForGuest('capture-ready')
+      }
       assert(yield* fs.exists(`/proc/${process.pid}/task/${worker.tid}`), 'Worker task vanished')
       const before = yield* Effect.tryPromise(() => session.ask('inspect'))
       assert(before.tid === worker.tid, 'Worker identity changed before capture')
       const evidence = yield* captureWorktreeHolderEvidence({ client, paths: [root] })
       assert(evidence !== undefined, 'Authenticated strict capture failed or expired (UNKNOWN)')
       const captured = evidence.roots[0]
+      if (boundary) {
+        assert(captured !== undefined && captured.status === 'unknown',
+          'Unresolvable or candidate-mounted object must retain strict UNKNOWN')
+        const source = yield* makeWorktreeHolderSource({ client, paths: [root] })
+        const observation = yield* source.read({ worktreePath: root, ownedPins })
+        const after = yield* Effect.tryPromise(() => session.ask('inspect'))
+        assert(after.tid === worker.tid && after.fd === worker.fd &&
+          after.dev === worker.dev && after.ino === worker.ino && after.links === worker.links,
+          'Boundary object must stay held through fresh capture')
+        assert(observation.inUse._tag === 'unknown', 'Boundary object lost fail-closed veto')
+        report = { mode, root, worker, pins: ownedPins.pins, observation,
+          evidence: { producerId: evidence.producerId, policyId: evidence.policyId,
+            capture: evidence.capture, scope: evidence.scope, root: captured } }
+        return yield* Effect.fail(veto)
+      }
       assert(captured !== undefined && evidence.scope.complete && captured.complete &&
         captured.referencesComplete && captured.status !== 'unknown' && captured.unknownReasons.length === 0,
         `Actual producer coverage is UNKNOWN: ${JSON.stringify({

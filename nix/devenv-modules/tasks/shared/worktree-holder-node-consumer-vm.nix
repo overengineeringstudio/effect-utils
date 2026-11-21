@@ -159,7 +159,8 @@ pkgs.testers.nixosTest {
     print(aliases)
     assert "1 passed; 0 failed" in aliases, "the real kernel alias fixture must execute"
     try:
-        for mode in ["shared", "unshared", "different-fd"]:
+        for mode in ["shared", "unshared", "different-fd", "detached-file", "detached-dir", "nested-unlinked"]:
+            boundary = mode in ["detached-file", "detached-dir", "nested-unlinked"]
             root = "/var/lib/holder-fixture/" + mode
             machine.succeed("test ! -e " + shlex.quote(root))
             argv = [
@@ -171,16 +172,49 @@ pkgs.testers.nixosTest {
                 "--worker", "${worker}/worker.js",
             ]
             command = "cd /home/fixture && exec " + shlex.join(argv)
-            output = machine.succeed("runuser -u fixture -- sh -c " + shlex.quote(command), timeout=120)
+            run = "runuser -u fixture -- sh -c " + shlex.quote(command)
+            if boundary:
+                log = "/tmp/holder-" + mode + ".log"
+                done = "/tmp/holder-" + mode + ".exit"
+                machine.succeed("(" + run + "; echo $? > " + shlex.quote(done) + ") > " + shlex.quote(log) + " 2>&1 &")
+                machine.wait_until_succeeds("test -f " + shlex.quote(root + "/setup-request"), timeout=30)
+                mount = root + "/submount" if mode == "nested-unlinked" else "/run/holder-negative-" + mode
+                machine.succeed("mkdir " + shlex.quote(mount))
+                machine.succeed("mount -t tmpfs -o size=1m,mode=0700,uid=1000,gid=100 tmpfs " + shlex.quote(mount))
+                assert machine.succeed("stat -c %d " + shlex.quote(mount)).strip() != machine.succeed("stat -c %d " + shlex.quote(root)).strip()
+                if mode == "detached-dir":
+                    machine.succeed("mkdir " + shlex.quote(mount + "/held") + "; chown fixture:users " + shlex.quote(mount + "/held"))
+                elif mode == "detached-file":
+                    machine.succeed("touch " + shlex.quote(mount + "/held") + "; chown fixture:users " + shlex.quote(mount + "/held"))
+                machine.succeed("touch " + shlex.quote(root + "/setup-ready"))
+                machine.wait_until_succeeds("test -f " + shlex.quote(root + "/worker-ready"), timeout=30)
+                worker_state = json.loads(machine.succeed("cat " + shlex.quote(root + "/worker-ready")))
+                assert worker_state["dev"] == machine.succeed("stat -c %d " + shlex.quote(mount)).strip()
+                if mode != "detached-dir":
+                    assert worker_state["links"] == "0", worker_state
+                if mode != "nested-unlinked":
+                    machine.succeed("umount -l " + shlex.quote(mount))
+                    machine.fail("mountpoint -q " + shlex.quote(mount))
+                machine.succeed("touch " + shlex.quote(root + "/capture-ready"))
+                machine.wait_until_succeeds("test -f " + shlex.quote(done), timeout=120)
+                output = machine.succeed("cat " + shlex.quote(log))
+                assert machine.succeed("cat " + shlex.quote(done)).strip() == "0", output
+                if mode == "nested-unlinked":
+                    machine.succeed("umount " + shlex.quote(mount))
+            else:
+                output = machine.succeed(run, timeout=120)
             print(output)
             receipt = json.loads(output)
             assert receipt["mode"] == mode and receipt["root"] == root, receipt
-            assert receipt["observation"]["complete"] is True, receipt
-            assert receipt["observation"]["inUse"]["_tag"] == ("free" if mode == "shared" else "in-use"), receipt
+            assert receipt["worker"]["internal"]["links"] == "0", receipt
+            assert receipt["worker"]["internal"]["sharedMapping"] is True, receipt
+            assert receipt["observation"]["complete"] is (not boundary), receipt
+            assert receipt["observation"]["inUse"]["_tag"] == ("unknown" if boundary else ("free" if mode == "shared" else "in-use")), receipt
             assert receipt["removed"] is (mode == "shared"), receipt
             refs = [ref for ref in receipt["evidence"]["root"]["references"]
                     if ref["tid"] == receipt["worker"]["tid"] and ref["tgid"] != ref["tid"] and ref["reference"] == "fd"]
-            assert refs, receipt
+            if not boundary:
+                assert refs, receipt
             assert receipt["evidence"]["producerId"] == "${client.producerId}", receipt
             assert receipt["evidence"]["policyId"] == "${client.policyId}", receipt
             assert receipt["worker"]["unshared"] is (mode == "unshared"), receipt

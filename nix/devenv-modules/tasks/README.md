@@ -108,6 +108,16 @@ Its guest explicitly enables io_uring; missing kernel support or any ignored
 fixture not executing fails the check rather than skipping it. This recipe
 does not itself assert that qualification has passed.
 
+Every real worker also retains an actual unlinked internal memfd and a
+`MAP_SHARED | MAP_ANONYMOUS` mapping throughout both authenticated captures.
+The disposable guest root controller additionally prepares three fail-closed
+boundary cases: an external tmpfs file and directory lazily detached only after
+the worker holds their descriptors, and an unlinked file on a tmpfs submount
+inside the candidate. Two explicit setup/capture handshakes preserve exclusive
+creation of fresh candidate roots. These cases must return UNKNOWN through
+the strict source, veto deletion and preserve the original root and payload.
+An unlinked object or tmpfs type alone never establishes non-membership.
+
 ## Native holder membership library (inactive)
 
 `shared/worktree-holder-evidence-mounted.nix { inherit pkgs; allowedRoots = [ ]; }`

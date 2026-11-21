@@ -1,11 +1,11 @@
-import { closeSync, constants, fstatSync, openSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, unlinkSync } from 'node:fs'
 import { parentPort, workerData } from 'node:worker_threads'
 
-import { dlopen, FFIType } from 'bun:ffi'
+import { dlopen, FFIType, ptr } from 'bun:ffi'
 import { Schema } from 'effect'
 
 const Options = Schema.Struct({
-  mode: Schema.Literals(['shared', 'unshared', 'different-fd']),
+  mode: Schema.Literals(['shared', 'unshared', 'different-fd', 'detached-file', 'detached-dir', 'nested-unlinked']),
   root: Schema.String,
   inheritedFd: Schema.NullOr(Schema.Int),
 })
@@ -16,12 +16,37 @@ if (port === null) throw new Error('Fixture must run as a real worker')
 const libc = dlopen('libc.so.6', {
   gettid: { args: [], returns: FFIType.i32 },
   unshare: { args: [FFIType.i32], returns: FFIType.i32 },
+  memfd_create: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+  mmap: {
+    args: [FFIType.ptr, FFIType.u64, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i64],
+    returns: FFIType.i64,
+  },
+  munmap: { args: [FFIType.i64, FFIType.u64], returns: FFIType.i32 },
 })
 const CLONE_FILES = 0x00000400
 let heldFd: number | null = null
+let internalFd: number | undefined
+let sharedMapping: bigint | undefined
+const closeResources = () => {
+  if (heldFd !== null) { closeSync(heldFd); heldFd = null }
+  if (internalFd !== undefined) { closeSync(internalFd); internalFd = undefined }
+  if (sharedMapping !== undefined) {
+    if (libc.symbols.munmap(sharedMapping, 4096) !== 0) throw new Error('munmap failed')
+    sharedMapping = undefined
+  }
+}
 try {
   const tid = libc.symbols.gettid()
   if (tid <= 0 || tid === process.pid) throw new Error('Worker is not a nonleader Linux task')
+  // Real kernel internal shmem objects, retained throughout both captures.
+  const name = new TextEncoder().encode('holder-vm-worker\0')
+  const internal = libc.symbols.memfd_create(ptr(name), 1)
+  if (internal < 0) throw new Error('memfd_create failed')
+  internalFd = internal
+  // MAP_SHARED | MAP_ANONYMOUS; i64 preserves the exact pointer bits at this ABI boundary.
+  const mapping = libc.symbols.mmap(null, 4096, 3, 0x21, -1, 0n)
+  if (mapping === -1n) throw new Error('shared anonymous mmap failed')
+  sharedMapping = mapping
   const unshared = options.mode === 'unshared'
   if (unshared) {
     // Copy the real shared table, retaining the same OFDs but not KCMP_FILES identity.
@@ -30,6 +55,15 @@ try {
     heldFd = options.inheritedFd
   } else if (options.mode === 'different-fd') {
     heldFd = openSync(options.root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW)
+  } else if (options.mode === 'nested-unlinked') {
+    const path = `${options.root}/submount/held`
+    heldFd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL, 0o600)
+    unlinkSync(path)
+  } else if (options.mode === 'detached-file' || options.mode === 'detached-dir') {
+    const path = `/run/holder-negative-${options.mode}/held`
+    heldFd = openSync(path, constants.O_RDONLY |
+      (options.mode === 'detached-dir' ? constants.O_DIRECTORY : 0) | constants.O_NOFOLLOW)
+    if (options.mode === 'detached-file') unlinkSync(path)
   }
   let stopped = false
   const inspect = () => {
@@ -40,6 +74,13 @@ try {
       unshared,
       dev: stat?.dev.toString() ?? null,
       ino: stat?.ino.toString() ?? null,
+      links: stat?.nlink.toString() ?? null,
+      internal: internalFd === undefined ? null : {
+        fd: internalFd,
+        dev: fstatSync(internalFd, { bigint: true }).dev.toString(),
+        links: fstatSync(internalFd, { bigint: true }).nlink.toString(),
+        sharedMapping: sharedMapping !== undefined,
+      },
     }
   }
   // Keep an actual pending command loop throughout both authenticated captures.
@@ -50,8 +91,7 @@ try {
     if (state.tid !== tid) throw new Error('Worker task identity changed')
     if (request.command === 'stop') {
       stopped = true
-      if (heldFd !== null) closeSync(heldFd)
-      heldFd = null
+      closeResources()
       libc.close()
       port.postMessage({ sequence: request.sequence, ...state })
       port.close()
@@ -60,7 +100,7 @@ try {
     }
   })
 } catch (error) {
-  if (heldFd !== null) closeSync(heldFd)
+  closeResources()
   libc.close()
   throw error
 }
