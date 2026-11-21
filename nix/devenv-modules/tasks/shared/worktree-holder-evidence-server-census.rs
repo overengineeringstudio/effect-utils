@@ -247,9 +247,6 @@ impl References {
         store_client: Option<&Client>, deadline: Instant) -> io::Result<()>
     {
         if matches!(self.pins, Pins::Ordinary(_)) && process.task_departed(index, deadline)? {
-            // The departed task holds no FDs, but its contributing scope view
-            // still belongs to this transaction's frozen exclusion proof.
-            if let Some(mounted) = &self.mounted { mounted.recheck(candidates, deadline)?; }
             return Ok(());
         }
         let task = &process.tasks[index];
@@ -285,7 +282,6 @@ impl References {
                 }
             }
         }
-        if let Some(mounted) = &self.mounted { mounted.recheck(candidates, deadline)?; }
         for (index, (kind, held)) in self.pins.root().iter().map(|held| (ReferenceKind::Root, held))
             .chain(self.pins.cwd().iter().map(|held| (ReferenceKind::Cwd, held)))
             .chain(self.pins.exe().iter().map(|held| (ReferenceKind::Exe, held)))
@@ -462,6 +458,15 @@ impl<'a> Census<'a> {
         super::collect_step("selection-before-reference-recheck",self.recheck_selection(deadline))?;
         for process in &self.processes {
             super::collect_step("process-reference-recheck",process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline))?;
+        }
+        // Reclose EVERY retained contribution independently of all task-exit
+        // shortcuts above, including a NotFound subsequently proved departed.
+        for process in &self.processes {
+            for references in process.references.iter().flatten() {
+                if let Some(mounted) = &references.mounted {
+                    super::collect_step("retained-scope-mount-recheck", mounted.recheck(candidates, deadline))?;
+                }
+            }
         }
         if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
         super::collect_step("selection-after-reference-recheck",self.recheck_selection(deadline))?;
