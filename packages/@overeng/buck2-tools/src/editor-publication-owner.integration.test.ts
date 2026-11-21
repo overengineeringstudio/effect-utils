@@ -4,6 +4,7 @@ import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
 import {
   closeSync,
+  existsSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -14,6 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
+import { runCommand } from './buck-watch.ts'
 import {
   editorPublicationLockPath,
   releaseEditorPublicationOwner,
@@ -337,3 +339,80 @@ it('closes and unlocks both acquisition paths when real metadata writes fail', (
     }).toEqual({ status: 0, signal: null, error: undefined, stderr: '' })
     expect(canAcquire(root)).toBe(true)
   }))
+
+it('retains ownership until an aborted ordinary publisher child finishes cleanup and closes', () =>
+  withRoot(async (root) => {
+    const release = join(root, 'release-cleanup')
+    const closed = join(root, 'cleanup-joined')
+    const ready = Promise.withResolvers<void>()
+    const cleaning = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const reason = new Error('cancel real ordinary child')
+    let diagnostics = ''
+    let finished = false
+    const outcome = withEditorPublicationOwner({
+      root,
+      run: (owner) => {
+        expect(requireEditorPublicationOwner({ root, owner })).toBe(owner)
+        return runCommand({
+          command: process.execPath,
+          args: [
+            '--eval',
+            `${childAssertions(root)}
+              import { existsSync, writeFileSync } from 'node:fs';
+              const timer = setTimeout(() => process.exit(97), 5000);
+              const live = setInterval(() => {}, 1000);
+              process.once('SIGTERM', async () => {
+                process.stderr.write('cleanup-start\\n');
+                while (!existsSync(${JSON.stringify(release)})) await Bun.sleep(5);
+                writeFileSync(${JSON.stringify(closed)}, 'joined');
+                clearInterval(live);
+                clearTimeout(timer);
+                process.exit(0);
+              });
+              process.stderr.write('ordinary-child-ready\\n');
+            `,
+          ],
+          cwd: root,
+          signal: controller.signal,
+          onStderr: (chunk) => {
+            diagnostics += chunk
+            if (diagnostics.includes('ordinary-child-ready\n') === true) ready.resolve()
+            if (diagnostics.includes('cleanup-start\n') === true) cleaning.resolve()
+          },
+        })
+      },
+    }).then(
+      () => {
+        finished = true
+        return undefined
+      },
+      (error: unknown) => {
+        finished = true
+        return error
+      },
+    )
+    const prematureClose = outcome.then((error) => {
+      throw new Error(`ordinary child closed before cleanup acknowledgement: ${diagnostics}`, {
+        cause: error,
+      })
+    })
+    try {
+      await Promise.race([ready.promise, prematureClose])
+      controller.abort(reason)
+      await Promise.race([cleaning.promise, prematureClose])
+      expect(finished).toBe(false)
+      expect(canAcquire(root)).toBe(false)
+      writeFileSync(release, 'release')
+      expect(await outcome).toMatchObject({ name: 'AbortError', cause: reason })
+      expect(readFileSync(closed, 'utf8')).toBe('joined')
+      expect(canAcquire(root)).toBe(true)
+    } finally {
+      writeFileSync(release, 'release')
+      controller.abort(reason)
+      await outcome
+      // A regressed early rejection must not strand its real child during test cleanup.
+      const expires = performance.now() + 5_500
+      while (existsSync(closed) === false && performance.now() < expires) await Bun.sleep(5)
+    }
+  }), 10000)

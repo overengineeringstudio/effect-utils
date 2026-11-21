@@ -548,7 +548,7 @@ export class CommandFailure extends Error {
   }
 }
 
-/** Default {@link RunCommand}: buffers output and fails closed on a non-zero exit. */
+/** Default {@link RunCommand}: joins child close before settling output, abort, or failure. */
 export const runCommand: RunCommand = ({
   command,
   args,
@@ -579,7 +579,10 @@ export const runCommand: RunCommand = ({
     capture(decoder.decode(chunk, { stream: true }))
   })
   child.stderr.once('end', () => capture(decoder.decode()))
-  child.once('error', settled.reject)
+  let commandError: Error | undefined
+  child.once('error', (error: Error) => {
+    commandError = error
+  })
   let inputError: Error | undefined
   // A dead reader can report EPIPE before close supplies its actual exit status.
   child.stdin?.on('error', (error: Error) => {
@@ -587,7 +590,8 @@ export const runCommand: RunCommand = ({
   })
   child.stdin?.end(input)
   child.once('close', (code, childSignal) => {
-    if (code === 0) {
+    if (commandError !== undefined) settled.reject(commandError)
+    else if (code === 0) {
       if (inputError !== undefined) settled.reject(inputError)
       else settled.resolve({ stdout, stderr })
     } else
