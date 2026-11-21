@@ -256,6 +256,8 @@ independent-descriptor lock contention against the produced shared library.
 Portable compiled payloads remain unchanged; native wrappers own this dependency.
 The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
+Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked child
+process groups; timeout cleanup joins the group before removing its inputs.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
