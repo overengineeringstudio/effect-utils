@@ -140,6 +140,35 @@ let
     IFS= read -r _ <&3
     exit 1
   '';
+  # A real immutable copy child for publication cancellation and native-signal fixtures.
+  supervisorCopyTestChild = pkgs.writeShellApplication {
+    name = "cp";
+    text = ''
+      for argument in "$@"; do
+        case "$argument" in /*) directory="$argument" ;; *) continue ;; esac
+        while [ -n "$directory" ] && [ "$directory" != / ]; do
+          if [ -f "$directory/supervisor-termination" ]; then
+            termination="$(<"$directory/supervisor-termination")"
+            case "$termination" in
+              publication)
+                printf 'ready\n' >"$directory/ready"
+                IFS= read -r _ <"$directory/publication-release"
+                ;;
+              publication-child)
+                printf 'ready\n' >"$directory/ready"
+                kill -TERM "$$"
+                exit 1
+                ;;
+              *) printf 'Invalid supervisor copy fixture mode: %s\n' "$termination" >&2; exit 2 ;;
+            esac
+            exec ${pkgs.coreutils}/bin/cp "$@"
+          fi
+          directory="''${directory%/*}"
+        done
+      done
+      exec ${pkgs.coreutils}/bin/cp "$@"
+    '';
+  };
   sourceLease = import ./nix/editor-view-lease/consumer.nix {
     inherit pkgs;
     native = editorViewLease;
@@ -1182,6 +1211,7 @@ in
     MV_BIN = "${pkgs.coreutils}/bin/mv";
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+    EDITOR_VIEW_SUPERVISOR_CP_BIN = "${supervisorCopyTestChild}/bin/cp";
   };
   # The source deploy complement evaluates real Nix task launchers against fake
   # providers; pin its evaluator and jq instead of relying on host PATH tools.

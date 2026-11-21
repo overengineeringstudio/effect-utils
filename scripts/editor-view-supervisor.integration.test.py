@@ -117,6 +117,54 @@ finally:
                     os.close(write_fd)
 
 
+class NativePublicationCopyFixtureTest(unittest.TestCase):
+    def test_real_copy_fifo_release_and_native_signal(self):
+        tool = os.environ.get("EDITOR_VIEW_SUPERVISOR_CP_BIN")
+        self.assertIsNotNone(tool, "requires the declared immutable publication copy fixture")
+        self.assertTrue(str(Path(tool).resolve()).startswith("/nix/store/"))
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / "inputs" / "payload"
+            source.parent.mkdir()
+            source.write_text("actual workspace λ and dependency 雪\n")
+            copied = root / "copied"
+            result = subprocess.run([tool, source, copied], env={"PATH": ""}, timeout=5)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(copied.read_bytes(), source.read_bytes())
+
+            (root / "supervisor-termination").write_text("publication\n")
+            release = root / "publication-release"
+            os.mkfifo(release)
+            release_fd = os.open(release, os.O_RDWR | os.O_NONBLOCK)
+            released = root / "released"
+            child = None
+            try:
+                child = subprocess.Popen([tool, source, released], env={"PATH": ""})
+                limit = time.monotonic() + 5
+                while not (root / "ready").exists() and time.monotonic() < limit:
+                    time.sleep(0.01)
+                self.assertTrue((root / "ready").exists())
+                self.assertIsNone(child.poll())
+                self.assertFalse(released.exists())
+                os.write(release_fd, b"release\n")
+                self.assertEqual(child.wait(timeout=5), 0)
+                self.assertEqual(released.read_bytes(), source.read_bytes())
+            finally:
+                os.close(release_fd)
+                if child is not None:
+                    if child.poll() is None:
+                        child.kill()
+                    child.wait(timeout=5)
+
+            (root / "ready").unlink()
+            (root / "supervisor-termination").write_text("publication-child\n")
+            interrupted = root / "interrupted"
+            result = subprocess.run([tool, source, interrupted], env={"PATH": ""}, timeout=5)
+            self.assertEqual(result.returncode, -signal.SIGTERM)
+            self.assertTrue((root / "ready").exists())
+            self.assertFalse(interrupted.exists())
+
+
 class PublicationSupervisorTest(unittest.TestCase):
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
         supervisor = load_supervisor()
