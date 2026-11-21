@@ -719,9 +719,12 @@ describe('Buck watch reconciliation', () => {
       const observed: string[] = []
       const onTiming = vi.fn()
       let completed = false
+      let publisherCompleted = false
+      let publisherStderr = ''
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
         if (typeof line === 'string' && line.startsWith(`[editor-view-${diagnosticPrefix}] `) === true) {
           expect(completed).toBe(false)
+          if (observed.length === 0) expect(publisherCompleted).toBe(false)
           observed.push(line)
         }
         return true
@@ -735,17 +738,25 @@ describe('Buck watch reconciliation', () => {
             onTiming,
             run: async (invocation) => {
               if (invocation.command === fixture.options.buck2) return fixture.options.run(invocation)
-              return runCommand({
+              const result = await runCommand({
                 ...invocation,
                 onStderr: (chunk) => {
                   for (const character of chunk) invocation.onStderr?.(character)
                 },
               })
+              publisherStderr = result.stderr
+              publisherCompleted = true
+              return result
             },
           },
         })
         completed = true
         expect(observed.length).toBeGreaterThan(0)
+        expect(publisherCompleted).toBe(true)
+        const streamed = publisherStderr.split('\n')
+          .filter((line) => line.startsWith(`[editor-view-${diagnosticPrefix}] `))
+          .map((line) => `${line}\n`)
+        expect(observed).toEqual(batchPublication === true ? [...streamed, ...streamed] : streamed)
         for (const line of observed) {
           expect(line.endsWith('\n')).toBe(true)
           expect(() => JSON.parse(line.slice(line.indexOf(' ') + 1))).not.toThrow()
