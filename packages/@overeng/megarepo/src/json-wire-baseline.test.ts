@@ -116,6 +116,8 @@ describe('megarepo wire baselines (cross-major invariant)', () => {
     expect(
       roundTrip(StoreState, {
         _tag: 'Gc',
+        complete: true,
+        unaccounted: [],
         basePath: '/store/root',
         dryRun: true,
         showForceHint: false,

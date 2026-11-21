@@ -575,8 +575,27 @@ const readProcessEntry = ({
     const before = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
     if (before._tag === 'gone') return { _tag: 'gone' } as const
     const parsed = before._tag === 'value' ? parseProcStat(before.value) : undefined
+    // A zombie leader may still have live threads holding files. Only an
+    // authenticated single-threaded zombie lifetime has released every holder.
+    const zombieLeader =
+      parsed !== undefined &&
+      before._tag === 'value' &&
+      before.value[before.value.lastIndexOf(')') + 2] === 'Z'
+    const zombieStatus =
+      zombieLeader === true ? yield* procRead(fs.readFileString(`/proc/${pid}/status`)) : undefined
+    if (zombieStatus?._tag === 'gone') return { _tag: 'gone' } as const
+    if (zombieStatus?._tag === 'value' && /^Threads:\s+1\s*$/m.test(zombieStatus.value) === true) {
+      const after = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
+      if (after._tag === 'gone') return { _tag: 'gone' } as const
+      if (
+        after._tag === 'value' &&
+        parseProcStat(after.value)?.startTime === parsed?.startTime &&
+        after.value[after.value.lastIndexOf(')') + 2] === 'Z'
+      )
+        return { _tag: 'gone' } as const
+    }
     if (gcOwner === true) {
-      const status = yield* procRead(fs.readFileString(`/proc/${pid}/status`))
+      const status = zombieStatus ?? (yield* procRead(fs.readFileString(`/proc/${pid}/status`)))
       if (status._tag === 'gone') return { _tag: 'gone' } as const
       const uids = status._tag === 'value' ? parseProcUids(status.value) : undefined
       // Mixed/setuid identities are ours if any credential matches our UID.
@@ -655,7 +674,7 @@ const readProcessEntry = ({
     let references: ReadonlyArray<ProcessReference> | undefined = []
     let readReferences = parsed.kernelThread === false
     if (readReferences === true && ownUid !== undefined) {
-      const status = yield* procRead(fs.readFileString(`/proc/${pid}/status`))
+      const status = zombieStatus ?? (yield* procRead(fs.readFileString(`/proc/${pid}/status`)))
       const uids = status._tag === 'value' ? parseProcUids(status.value) : undefined
       if (uids === undefined) {
         references = undefined

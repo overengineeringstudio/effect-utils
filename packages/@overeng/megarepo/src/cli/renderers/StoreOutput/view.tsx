@@ -45,6 +45,8 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
   const state = useTuiAtomValue(stateAtom)
 
   switch (state._tag) {
+    case 'Initial':
+      return null
     case 'Ls':
       return <StoreLsView basePath={state.basePath} repos={state.repos} />
     case 'Status':

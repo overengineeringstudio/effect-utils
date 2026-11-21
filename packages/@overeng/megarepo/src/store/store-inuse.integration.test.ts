@@ -356,6 +356,77 @@ describe.skipIf(supportsProcessCwdProbe === false)('store-inuse native process p
 })
 
 describe.skipIf(process.platform !== 'linux')('store-inuse strict reference probe', () => {
+  it.effect(
+    'does not mistake a zombie with absent cwd and root for an unreadable holder',
+    Effect.fnUntraced(function* () {
+      const base = yield* FileSystem.FileSystem
+      const fs: FileSystem.FileSystem = {
+        ...base,
+        realPath: (path) => Effect.succeed(path),
+        readDirectory: (path) =>
+          path === '/proc' ? Effect.succeed(['42']) : Effect.die('zombie file table read'),
+        readFileString: (path) =>
+          path === '/proc/42/stat'
+            ? Effect.succeed(`42 (git-upload-pack) Z 1 42 42 0 -1 0 ${'0 '.repeat(12)}1234`)
+            : path === '/proc/42/status'
+              ? Effect.succeed('Threads:\t1\n')
+              : Effect.die('zombie metadata read'),
+        readLink: () => Effect.die('zombie reference read'),
+      }
+      for (const scope of ['gc-owner', 'own-uid', 'all-uids'] as const) {
+        const result = yield* readWorktreeReferencesInUse({
+          worktreePath: '/worktree',
+          selfPid: 99,
+          scope,
+        }).pipe(Effect.provideService(FileSystem.FileSystem, fs))
+        expect(result._tag).toBe('free')
+      }
+    }, Effect.provide(NodeServices.layer)),
+  )
+
+  for (const status of ['live-threads', 'malformed', 'unreadable'] as const) {
+    it.effect(
+      `keeps a zombie leader with ${status} thread evidence`,
+      Effect.fnUntraced(function* () {
+        const base = yield* FileSystem.FileSystem
+        const spawner = yield* ChildProcessSpawner
+        const denied = (path: string) =>
+          Effect.fail(
+            systemError({
+              _tag: 'PermissionDenied',
+              module: 'FileSystem',
+              method: 'zombie-leader-fixture',
+              pathOrDescriptor: path,
+            }),
+          )
+        const uid = process.getuid!()
+        const fs: FileSystem.FileSystem = {
+          ...base,
+          realPath: (path) => Effect.succeed(path),
+          readDirectory: (path) => (path === '/proc' ? Effect.succeed(['42']) : denied(path)),
+          readFileString: (path) =>
+            path === '/proc/42/stat'
+              ? Effect.succeed(`42 (leader) Z 1 42 42 0 -1 0 ${'0 '.repeat(12)}1234`)
+              : path === '/proc/42/status' && status !== 'unreadable'
+                ? Effect.succeed(
+                    `Uid:\t${uid}\t${uid}\t${uid}\t${uid}\nThreads:\t${status === 'live-threads' ? '2' : 'unknown'}\n`,
+                  )
+                : denied(path),
+          readLink: denied,
+        }
+        for (const scope of ['gc-owner', 'own-uid', 'all-uids'] as const) {
+          const scan = yield* readProcessReferences({ fs, selfPid: 99, scope }).pipe(
+            Effect.provideService(ChildProcessSpawner, {
+              ...spawner,
+              spawn: () => denied('lsof'),
+            }),
+          )
+          expect(scan._tag).toBe('unknown')
+        }
+      }, Effect.provide(NodeServices.layer)),
+    )
+  }
+
   for (const scenario of [
     {
       name: 'ignores and counts an unreadable foreign process',
