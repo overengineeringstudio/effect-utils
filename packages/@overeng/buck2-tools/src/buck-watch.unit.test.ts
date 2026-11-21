@@ -728,7 +728,7 @@ describe('Buck watch reconciliation', () => {
   })
 
   it.each(['fails', 'hangs'])('keeps watch cycles green when telemetry %s', async (delivery) => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const fixture = makePublicationFixture()
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
     const otelSpan = join(otelDirectory, 'otel-span')
     writeFileSync(
@@ -747,16 +747,6 @@ describe('Buck watch reconciliation', () => {
     const savedEnvironment = hermeticOtelGate()
     const telemetry = observeExporters(otelSpan)
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: [],
-        })}\n`,
-      )
       const commands: string[] = []
       const source = new ControlledChanges()
       const abort = new AbortController()
@@ -769,20 +759,10 @@ describe('Buck watch reconciliation', () => {
           reconcileBuckViews({
             request,
             options: {
-              plan,
-              mode: 'publish',
-              repoRoot: root,
-              workspaceRoot: root,
-              buck2: '/tools/buck2',
-              editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-              workspaceAuthority: '/repo/authority.json',
-              cp: '/tools/cp',
-              fingerprintTool: '/tools/buck2-fingerprint',
-              mv: '/tools/mv',
-              snapshotRetention: 3,
-              run: async ({ command }) => {
-                commands.push(command)
-                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              ...fixture.options,
+              run: async (invocation) => {
+                commands.push(invocation.command)
+                return fixture.options.run(invocation)
               },
             },
           }),
@@ -793,7 +773,11 @@ describe('Buck watch reconciliation', () => {
           else abort.abort()
         },
       })
-      expect(commands).toEqual(['/tools/buck2', '/tools/bun', '/tools/buck2', '/tools/bun'])
+      expect(commands).toEqual([
+        '/tools/buck2', fixture.options.editorViewCommand[0],
+        '/tools/buck2', fixture.options.editorViewCommand[0],
+      ])
+      expect(fixture.record().package).toBe('packages/app')
       expect(
         statuses.filter((status) => status.phase === 'idle').map(({ generation }) => generation),
       ).toEqual([1, 2])
@@ -829,7 +813,7 @@ describe('Buck watch reconciliation', () => {
       else process.env.OTEL_SPAN_SPOOL_DIR = savedSpool
       restoreOtelGate(savedEnvironment)
       rmSync(otelDirectory, { recursive: true, force: true })
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
