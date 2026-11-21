@@ -17,13 +17,15 @@ import {
 import { workspaceEditorDependencies } from './editor-view-authority.ts'
 
 const authorityModule = fileURLToPath(new URL('./editor-view-authority.ts', import.meta.url))
-const ownerModule = fileURLToPath(new URL(
-  '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts', import.meta.url))
+const ownerModule = fileURLToPath(
+  new URL('../packages/@overeng/buck2-tools/src/editor-publication-owner.ts', import.meta.url),
+)
 
 describe('prepared native admission protocol', () => {
   it('writes exactly one terminal byte, removes descendant environment and closes the real pipe', () => {
     for (const [outcome, byte] of [
-      ['owner-acquired', '1'], ['no-publication', '0'],
+      ['owner-acquired', '1'],
+      ['no-publication', '0'],
     ]) {
       const driver = `
 import { fstatSync } from 'node:fs'
@@ -38,7 +40,8 @@ process.stdout.write('closed')
 `
       const result = spawnSync(process.execPath, ['-e', driver], {
         env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: '3' },
-        stdio: ['ignore', 'pipe', 'pipe', 'pipe'], encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+        encoding: 'utf8',
       })
       expect(result.status).toBe(0)
       expect(result.stderr).toBe('')
@@ -49,21 +52,35 @@ process.stdout.write('closed')
 
   it('rejects invalid or closed notification descriptors without treating them as ownership', () => {
     for (const descriptor of ['0', '1', '2', '-1', 'NaN', '3.5', '9007199254740992', '999999']) {
-      const result = spawnSync(process.execPath, ['-e', `
+      const result = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          `
 import { takePublicationAdmissionNotification } from ${JSON.stringify(authorityModule)}
 takePublicationAdmissionNotification()('owner-acquired')
-`], { env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: descriptor }, encoding: 'utf8' })
+`,
+        ],
+        { env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: descriptor }, encoding: 'utf8' },
+      )
       expect(result.status).toBe(1)
       expect(result.stderr).toMatch(descriptor === '999999' ? /EBADF/ : /Invalid.*descriptor/)
     }
     const env = { ...process.env }
     delete env.EDITOR_VIEW_ADMISSION_READY_FD
-    const absent = spawnSync(process.execPath, ['-e', `
+    const absent = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `
 import { takePublicationAdmissionNotification } from ${JSON.stringify(authorityModule)}
 const notify = takePublicationAdmissionNotification()
 notify('no-publication')
 notify('owner-acquired')
-`], { env, encoding: 'utf8' })
+`,
+      ],
+      { env, encoding: 'utf8' },
+    )
     expect(absent.status).toBe(0)
   })
 
@@ -74,13 +91,17 @@ notify('owner-acquired')
     const childPid = join(root, 'child-pid')
     writeFileSync(join(root, '.buckroot'), '')
     writeFileSync(join(root, '.buckconfig'), '')
-    writeFileSync(native, `#!/bin/sh
+    writeFileSync(
+      native,
+      `#!/bin/sh
 trap 'kill -TERM "$kid"; wait "$kid"; printf joined > "$JOINED"; exit 0' TERM
 /bin/sh -c 'printf ready >&2; while :; do :; done' &
 kid=$!
 printf '%s' "$kid" > "$CHILD_PID"
 wait "$kid"
-`, { mode: 0o755 })
+`,
+      { mode: 0o755 },
+    )
     const driver = `
 import { existsSync } from 'node:fs'
 import { runManagedEditorPublicationCommand, withPublicationCancellation } from ${JSON.stringify(authorityModule)}
@@ -113,7 +134,9 @@ try {
     const child = spawn(process.execPath, ['-e', driver], { stdio: ['ignore', 'pipe', 'pipe'] })
     const closed = once(child, 'close')
     let stderr = ''
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
     try {
       const [ready] = await once(child.stdout, 'data')
       expect(ready.toString()).toBe('ready')

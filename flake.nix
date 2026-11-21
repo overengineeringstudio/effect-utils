@@ -390,8 +390,7 @@ rec {
               ];
               environment.BUCK2_BIN = "${buck2}/bin/buck2";
               environment.BUCK2_NATIVE_BIN = "${buck2}/libexec/buck2";
-              environment.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY =
-                "${publicationOwner}/lib/${publicationOwner.libraryName}";
+              environment.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = "${publicationOwner}/lib/${publicationOwner.libraryName}";
               prepare = ''
                 set -euo pipefail
                 root="$1"

@@ -700,10 +700,15 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
     const fixture = makeFixture()
     const original = Object.freeze(new Error('frozen preparation failure'))
     try {
-      await expect(publishEditorView({
-        ...fixture.options, backingRoots: [fixture.nodeModules],
-        beforeMaterialize: () => { throw original },
-      })).rejects.toBe(original)
+      await expect(
+        publishEditorView({
+          ...fixture.options,
+          backingRoots: [fixture.nodeModules],
+          beforeMaterialize: () => {
+            throw original
+          },
+        }),
+      ).rejects.toBe(original)
       expect(Object.hasOwn(original, 'publicationWorkers')).toBe(false)
       expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
       expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
@@ -714,15 +719,29 @@ process.stdout.write(JSON.stringify({ diagnostics, snapshot: record.snapshot, pr
 
   it('preserves a frozen dispatch abort reason at the real native-copy checkpoint', async () => {
     const fixture = makeFixture()
-    const args = ['publish', ...Object.entries({
-      '--repo-root': fixture.root, '--package': fixture.options.package,
-      '--cell': fixture.options.cell, '--target': fixture.options.target,
-      '--editor-inputs': fixture.editorInputs, '--node-modules': fixture.nodeModules,
-      '--cp': cp, '--mv': mv, '--fingerprint-tool': fingerprintTool,
-      '--workspace-authority': fixture.workspaceAuthority, '--snapshot-retention': '2',
-      '--consumer-cache': fixture.consumerCache, '--content-store': fixture.options.contentStore!,
-    }).flat()]
-    const child = Bun.spawn([requireTool('BUN_BIN'), '--eval', `
+    const args = [
+      'publish',
+      ...Object.entries({
+        '--repo-root': fixture.root,
+        '--package': fixture.options.package,
+        '--cell': fixture.options.cell,
+        '--target': fixture.options.target,
+        '--editor-inputs': fixture.editorInputs,
+        '--node-modules': fixture.nodeModules,
+        '--cp': cp,
+        '--mv': mv,
+        '--fingerprint-tool': fingerprintTool,
+        '--workspace-authority': fixture.workspaceAuthority,
+        '--snapshot-retention': '2',
+        '--consumer-cache': fixture.consumerCache,
+        '--content-store': fixture.options.contentStore!,
+      }).flat(),
+    ]
+    const child = Bun.spawn(
+      [
+        requireTool('BUN_BIN'),
+        '--eval',
+        `
 import { dispatchEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
 import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
 const controller = new AbortController(), original = Object.freeze(new Error('frozen abort reason'));
@@ -732,11 +751,16 @@ try { await editorViewProcessTestScope.run(() => [process.pid], () => dispatchEd
   onStderr: value => { if (value.includes('"phase":"materialize","event":"enter"')) { reached = true; controller.abort(original) } },
 })) } catch (error) { failure = error }
 process.stdout.write(JSON.stringify({ same: failure === original, reached, attached: Object.hasOwn(original, 'publicationWorkers') }));
-`], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+`,
+      ],
+      { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+    )
     editorCliProcesses.add(child)
     try {
       const [status, stdout, stderr] = await Promise.all([
-        child.exited, Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr),
+        child.exited,
+        Bun.readableStreamToText(child.stdout),
+        Bun.readableStreamToText(child.stderr),
       ])
       expect({ status, stderr }).toEqual({ status: 0, stderr: '' })
       expect(JSON.parse(stdout)).toEqual({ same: true, reached: true, attached: false })
@@ -748,19 +772,34 @@ process.stdout.write(JSON.stringify({ same: failure === original, reached, attac
     }
   })
 
-  it.each(['publish', 'publish-batch'])('captures real %s diagnostics without host stderr writes', async (command) => {
-    const fixture = makeFixture()
-    const args = ['publish', ...Object.entries({
-      '--repo-root': fixture.root, '--package': fixture.options.package,
-      '--cell': fixture.options.cell, '--target': fixture.options.target,
-      '--editor-inputs': fixture.editorInputs, '--node-modules': fixture.nodeModules,
-      '--cp': cp, '--mv': mv, '--fingerprint-tool': fingerprintTool,
-      '--workspace-authority': fixture.workspaceAuthority,
-      '--snapshot-retention': '2',
-      '--consumer-cache': fixture.consumerCache, '--content-store': fixture.options.contentStore!,
-    }).flat()]
-    const request = command === 'publish' ? { args } : { args: [command], batchRequests: [args] }
-    const child = Bun.spawn([requireTool('BUN_BIN'), '--eval', `
+  it.each(['publish', 'publish-batch'])(
+    'captures real %s diagnostics without host stderr writes',
+    async (command) => {
+      const fixture = makeFixture()
+      const args = [
+        'publish',
+        ...Object.entries({
+          '--repo-root': fixture.root,
+          '--package': fixture.options.package,
+          '--cell': fixture.options.cell,
+          '--target': fixture.options.target,
+          '--editor-inputs': fixture.editorInputs,
+          '--node-modules': fixture.nodeModules,
+          '--cp': cp,
+          '--mv': mv,
+          '--fingerprint-tool': fingerprintTool,
+          '--workspace-authority': fixture.workspaceAuthority,
+          '--snapshot-retention': '2',
+          '--consumer-cache': fixture.consumerCache,
+          '--content-store': fixture.options.contentStore!,
+        }).flat(),
+      ]
+      const request = command === 'publish' ? { args } : { args: [command], batchRequests: [args] }
+      const child = Bun.spawn(
+        [
+          requireTool('BUN_BIN'),
+          '--eval',
+          `
 import { dispatchEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
 import { requireEditorPublicationOwner, withEditorPublicationOwner } from ${JSON.stringify(new URL('./editor-publication-owner.ts', import.meta.url).href)};
 import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
@@ -777,26 +816,34 @@ const result = await withEditorPublicationOwner({
   },
 });
 process.stdout.write(JSON.stringify({ result, output, errors }));
-`], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
-    editorCliProcesses.add(child)
-    try {
-      const [status, stdout, stderr] = await Promise.all([
-        child.exited, Bun.readableStreamToText(child.stdout), Bun.readableStreamToText(child.stderr),
-      ])
-      expect({ status, stderr }).toEqual({ status: 0, stderr: '' })
-      const report = JSON.parse(stdout)
-      expect(report.result.exitCode).toBe(0)
-      expect(report.output.join('')).toBe(report.result.stdout)
-      expect(report.errors.join('')).toBe(report.result.stderr)
-      expect(report.result.stdout).toContain(`published ${fixture.options.package} editor view `)
-      expect(report.result.stderr).toContain('[editor-view-phase] ')
-      expect(report.result.stderr).toContain('"event":"editor-view.host-budget.reserve-start"')
-      expect(report.result.stderr.split('[editor-view-timing] ').length - 1).toBe(command === 'publish-batch' ? 1 : 0)
-    } finally {
-      editorCliProcesses.delete(child)
-      cleanup(fixture)
-    }
-  })
+`,
+        ],
+        { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+      )
+      editorCliProcesses.add(child)
+      try {
+        const [status, stdout, stderr] = await Promise.all([
+          child.exited,
+          Bun.readableStreamToText(child.stdout),
+          Bun.readableStreamToText(child.stderr),
+        ])
+        expect({ status, stderr }).toEqual({ status: 0, stderr: '' })
+        const report = JSON.parse(stdout)
+        expect(report.result.exitCode).toBe(0)
+        expect(report.output.join('')).toBe(report.result.stdout)
+        expect(report.errors.join('')).toBe(report.result.stderr)
+        expect(report.result.stdout).toContain(`published ${fixture.options.package} editor view `)
+        expect(report.result.stderr).toContain('[editor-view-phase] ')
+        expect(report.result.stderr).toContain('"event":"editor-view.host-budget.reserve-start"')
+        expect(report.result.stderr.split('[editor-view-timing] ').length - 1).toBe(
+          command === 'publish-batch' ? 1 : 0,
+        )
+      } finally {
+        editorCliProcesses.delete(child)
+        cleanup(fixture)
+      }
+    },
+  )
 
   it('fingerprints deterministically with byte ordering, path framing, and dereferencing', async () => {
     const fixture = makeFixture()
