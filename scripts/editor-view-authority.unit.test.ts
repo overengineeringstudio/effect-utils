@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import { spawn, spawnSync } from 'node:child_process'
+import { once } from 'node:events'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,6 +15,121 @@ import {
   resolveEditorViewPackageScope,
 } from './editor-view-authority.ts'
 import { workspaceEditorDependencies } from './editor-view-authority.ts'
+
+const authorityModule = fileURLToPath(new URL('./editor-view-authority.ts', import.meta.url))
+const ownerModule = fileURLToPath(new URL(
+  '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts', import.meta.url))
+
+describe('prepared native admission protocol', () => {
+  it('writes exactly one terminal byte, removes descendant environment and closes the real pipe', () => {
+    for (const [outcome, byte] of [
+      ['owner-acquired', '1'], ['no-publication', '0'],
+    ]) {
+      const driver = `
+import { fstatSync } from 'node:fs'
+import { takePublicationAdmissionNotification } from ${JSON.stringify(authorityModule)}
+const notify = takePublicationAdmissionNotification()
+if ('EDITOR_VIEW_ADMISSION_READY_FD' in process.env) throw new Error('descriptor environment leaked')
+notify(${JSON.stringify(outcome)})
+notify('owner-acquired')
+try { fstatSync(3); throw new Error('notification descriptor leaked') }
+catch (error) { if (error.code !== 'EBADF') throw error }
+process.stdout.write('closed')
+`
+      const result = spawnSync(process.execPath, ['-e', driver], {
+        env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: '3' },
+        stdio: ['ignore', 'pipe', 'pipe', 'pipe'], encoding: 'utf8',
+      })
+      expect(result.status).toBe(0)
+      expect(result.stderr).toBe('')
+      expect(result.stdout).toBe('closed')
+      expect(result.output[3]).toBe(byte)
+    }
+  })
+
+  it('rejects invalid or closed notification descriptors without treating them as ownership', () => {
+    for (const descriptor of ['0', '1', '2', '-1', 'NaN', '3.5', '9007199254740992', '999999']) {
+      const result = spawnSync(process.execPath, ['-e', `
+import { takePublicationAdmissionNotification } from ${JSON.stringify(authorityModule)}
+takePublicationAdmissionNotification()('owner-acquired')
+`], { env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: descriptor }, encoding: 'utf8' })
+      expect(result.status).toBe(1)
+      expect(result.stderr).toMatch(descriptor === '999999' ? /EBADF/ : /Invalid.*descriptor/)
+    }
+    const env = { ...process.env }
+    delete env.EDITOR_VIEW_ADMISSION_READY_FD
+    const absent = spawnSync(process.execPath, ['-e', `
+import { takePublicationAdmissionNotification } from ${JSON.stringify(authorityModule)}
+const notify = takePublicationAdmissionNotification()
+notify('no-publication')
+notify('owner-acquired')
+`], { env, encoding: 'utf8' })
+    expect(absent.status).toBe(0)
+  })
+
+  it('cancels and joins native descendants before releasing the real owner and restores listeners', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'authority-cancellation-')))
+    const native = join(root, 'native')
+    const joined = join(root, 'joined')
+    const childPid = join(root, 'child-pid')
+    writeFileSync(join(root, '.buckroot'), '')
+    writeFileSync(join(root, '.buckconfig'), '')
+    writeFileSync(native, `#!/bin/sh
+trap 'kill -TERM "$kid"; wait "$kid"; printf joined > "$JOINED"; exit 0' TERM
+/bin/sh -c 'printf ready >&2; while :; do :; done' &
+kid=$!
+printf '%s' "$kid" > "$CHILD_PID"
+wait "$kid"
+`, { mode: 0o755 })
+    const driver = `
+import { existsSync } from 'node:fs'
+import { runManagedEditorPublicationCommand, withPublicationCancellation } from ${JSON.stringify(authorityModule)}
+import { editorPublicationIsolation, withEditorPublicationOwner } from ${JSON.stringify(ownerModule)}
+const signals = ['SIGHUP', 'SIGINT', 'SIGTERM']
+const before = signals.map(signal => process.listenerCount(signal))
+try {
+  await withEditorPublicationOwner({ root: ${JSON.stringify(root)}, run: async owner => {
+    try {
+      await withPublicationCancellation({ run: signal => runManagedEditorPublicationCommand({
+        native: ${JSON.stringify(native)}, owner,
+        env: { JOINED: ${JSON.stringify(joined)}, CHILD_PID: ${JSON.stringify(childPid)} },
+        command: { command: 'buck', cwd: ${JSON.stringify(root)},
+          args: ['--isolation-dir', editorPublicationIsolation, 'kill'], signal,
+          onStderr: text => { if (text.includes('ready')) process.stdout.write('ready') },
+        },
+      }).then(() => {}) })
+      throw new Error('cancellation was lost')
+    } catch (error) {
+      if (!existsSync(${JSON.stringify(joined)})) throw new Error('owner returned before descendant joined')
+      if (error.message !== 'Editor publication interrupted by SIGTERM' && error.signal !== 'SIGTERM')
+        throw error
+    }
+  } })
+  if (signals.some((signal, index) => process.listenerCount(signal) !== before[index]))
+    throw new Error('cancellation handlers leaked')
+  process.stdout.write('joined')
+} catch (error) { console.error(error); process.exitCode = 1 }
+`
+    const child = spawn(process.execPath, ['-e', driver], { stdio: ['ignore', 'pipe', 'pipe'] })
+    const closed = once(child, 'close')
+    let stderr = ''
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+    try {
+      const [ready] = await once(child.stdout, 'data')
+      expect(ready.toString()).toBe('ready')
+      child.kill('SIGTERM')
+      const [code, signal] = await closed
+      expect({ code, signal, stderr }).toEqual({ code: 143, signal: null, stderr: '' })
+      expect(readFileSync(joined, 'utf8')).toBe('joined')
+      const pid = Number(readFileSync(childPid, 'utf8'))
+      expect(() => process.kill(pid, 0)).toThrow()
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+      await closed
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('editor view authority orchestration', () => {
   it('fails closed to all consumers for changes, including reverse dependencies and global inputs', () => {

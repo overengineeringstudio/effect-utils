@@ -104,6 +104,15 @@ it('preserves managed native status, signal and pre-aborted command causes', () 
           command: { ...command, signal: controller.signal }, native, owner, env: {},
         })).rejects.toBe(cause)
         expect(requireEditorPublicationInvocationOwner({ ...command, env: {}, owner })).toBe(owner)
+        writeFileSync(native, '#!/bin/sh\nprintf diagnostic >&2\n', { mode: 0o755 })
+        const diagnosticCause = new Error('diagnostic sink failed')
+        await expect(runManagedEditorPublicationCommand({
+          command: { ...command, onStderr: (): never => { throw diagnosticCause } },
+          native, owner, env: {},
+        })).rejects.toBe(diagnosticCause)
+        expect(() => requireEditorPublicationInvocationOwner({
+          args: command.args, cwd, env: { EDITOR_VIEW_ADMISSION_READY_FD: '3' },
+        })).toThrow(/publication|owner/i)
       },
     })
   }))
