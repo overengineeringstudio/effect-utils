@@ -63,7 +63,7 @@ import {
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import readerComposition from '../../genie/ci-workflow/reader-composition.json'
-import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
+import { fleetRunnerLabels, linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
@@ -1928,12 +1928,14 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 90,
   },
   /**
-   * Review-thread resolution gate. Checkout-free: only calls `gh api`, so it runs on
-   * GitHub-hosted capacity instead of scarce Nix runners. The native ruleset flag is
-   * the live merge gate; this job is the early visible PR signal (thread resolution
+   * Review-thread resolution gate. Checkout-free: only calls `gh api` on fleet
+   * capacity. The native ruleset flag is the live merge gate;
+   * this job is the early visible PR signal (thread resolution
    * does not retrigger workflows, so re-run after resolving threads to refresh).
    */
-  [prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' }),
+  [prReviewsResolvedJobId]: prReviewsResolvedJob({
+    runsOn: fleetRunnerLabels.linuxX64,
+  }),
   'nix-closure-sizes': {
     if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
@@ -2534,6 +2536,23 @@ const {
   ...instrumentedProductCiJobs
 } = productCiJobs
 
+// Apply fleet admission after dispatch rewriting so the canonical guard remains
+// a top-level conjunct, including for the measurement-only tested-tree path.
+const withGuardedMacosMeasurementDispatch = (
+  args: Parameters<typeof withMacosMeasurementDispatch>[0],
+): CiWorkflowArgs['jobs'] => {
+  const jobs = withMacosMeasurementDispatch(args)
+  for (const id of ['tested-tree', prReviewsResolvedJobId, 'pipeline-attempt-close']) {
+    const job = jobs[id]!
+    const condition = job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'
+    jobs[id] = {
+      ...job,
+      if: `\${{ (${sameRepoPullRequestGuard()}) && (${condition}) }}`,
+    }
+  }
+  return jobs
+}
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   policy: effectUtilsWorkflowPolicy('ci.yml'),
@@ -2576,13 +2595,13 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read', 'id-token': 'write' },
-  jobs: withMacosMeasurementDispatch({
+  jobs: withGuardedMacosMeasurementDispatch({
     jobs: {
       ...withNixRealisationTimeouts(
         {
           // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
           'tested-tree': {
-            'runs-on': 'ubuntu-latest',
+            'runs-on': fleetRunnerLabels.linuxX64,
             'timeout-minutes': 3,
             permissions: { contents: 'read', actions: 'read' },
             outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
@@ -2617,7 +2636,7 @@ export default ciWorkflow({
           // Shared proof policy declares their `none` postures and disabled membership.
           'pipeline-attempt-close': pipelineCloseJob({
             jobs: productCiJobs,
-            runsOn: 'ubuntu-latest',
+            runsOn: fleetRunnerLabels.linuxX64,
           }),
           'pipeline-traces': pipelineTracesJob,
         },
