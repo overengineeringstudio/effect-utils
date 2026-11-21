@@ -569,13 +569,15 @@ describe('native daemon admission diagnostics', () => {
   const secret = 'authorization: Basic fixture-secret-must-not-escape'
   for (const subcommand of ['status', 'kill', 'audit'] as const) {
     for (const failure of ['exit', 'signal', 'timeout'] as const) {
+      // A kill/audit failure may follow two successful status probes. The test
+      // watchdog must cover all three command deadlines and bounded cleanup.
+      const deadlineMs = failure === 'timeout' ? 1000 : 30000
+      const testTimeoutMs = Math.max(5000, 3 * deadlineMs + 2000)
       it(`reports ${subcommand} ${failure} without native output`, async () => {
         const root = fixture()
         const native = join(root, 'native-buck')
         const calls = join(root, 'native-calls')
-        // The deadline must reach the intended sleeping command, not expire
-        // during shell startup on a loaded macOS runner.
-        const deadlineMs = failure === 'timeout' ? 1000 : 30000
+        // Keep the native command deadline large enough for loaded shell startup.
         const daemon = JSON.stringify({
           project_root: realpathSync(root),
           isolation_dir: 'owned',
@@ -622,7 +624,7 @@ fi
         expect(caught.message).not.toContain('native-stdout-must-not-escape')
         expect(caught.cause).toBeUndefined()
         expect(readFileSync(calls, 'utf8')).toContain(`--isolation-dir owned ${subcommand}`)
-      })
+      }, testTimeoutMs)
     }
   }
 

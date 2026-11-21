@@ -1075,6 +1075,11 @@ deadlines and record each case's base. Expanded case titles and nested parameter
 suites retain their own deadlines in JUnit classification. Hooks, assertions,
 callbacks and exit statuses remain native; no tests are retried.
 
+Native admission diagnostic cases allow up to three command deadlines (two status
+probes before kill/audit), plus two seconds for fixture cleanup, never less than
+the original five-second watchdog. This outer test budget does not extend native
+command deadlines or relax diagnostic, secret-redaction, or real-gate assertions.
+
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown
 awaits the complete in-flight phase (including assertions) before deleting the fixture
