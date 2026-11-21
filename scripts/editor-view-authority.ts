@@ -7,11 +7,21 @@ import process from 'node:process'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
 import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
-import { CommandFailure, reconcileBuckViews } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
+import {
+  CommandFailure,
+  reconcileBuckViews,
+  runCommand,
+} from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
   BuckWatchPlan,
+  RunCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  withEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
   runEditorViewAuthorityCommand,
   writeEditorViewAuthority,
@@ -412,6 +422,7 @@ const parseCli = (args: readonly string[]) => {
     '--workspace-root',
     '--cell',
     '--buck2',
+    '--buck2-native',
     '--git',
     '--output',
     '--publisher',
@@ -432,6 +443,7 @@ const parseCli = (args: readonly string[]) => {
     workspaceRoot: get('--workspace-root'),
     cell: get('--cell'),
     buck2: get('--buck2'),
+    buck2Native: admitting === true ? get('--buck2-native') : '',
     git: get('--git'),
     output: get('--output'),
     publisher: admitting === true ? get('--publisher') : '',
@@ -448,9 +460,15 @@ const parseCli = (args: readonly string[]) => {
 const executeSelectedEditorViewOperation = async ({
   options,
   packageScope,
+  run,
+  authorityCommandRunner,
+  signal,
 }: {
   readonly options: ReturnType<typeof parseCli>
   readonly packageScope: ReturnType<typeof resolveEditorViewPackageScope>
+  readonly run: RunCommand
+  readonly authorityCommandRunner: EditorViewAuthorityCommandRunner
+  readonly signal: AbortSignal
 }): Promise<void> => {
   // Scope only target construction and publication. Every publisher still refreshes and passes
   // freshly proven whole-workspace authority to each selected package view.
@@ -458,6 +476,7 @@ const executeSelectedEditorViewOperation = async ({
   const authority = await writeEditorViewAuthority({
     ...options,
     requiredPackages: packageScope.authorityPackagePaths,
+    runCommand: authorityCommandRunner,
   })
   reportTiming({
     phase: 'authority',
@@ -484,6 +503,8 @@ const executeSelectedEditorViewOperation = async ({
     },
     options: {
       plan,
+      run,
+      signal,
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,
@@ -508,7 +529,8 @@ const executeSelectedEditorViewOperation = async ({
   process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
 }
 
-const main = async (): Promise<void> => {
+const main = async (signal: AbortSignal): Promise<void> => {
+  const notifyPublicationAdmission = takePublicationAdmissionNotification()
   const options = parseCli(process.argv.slice(2))
   if (
     Number.isInteger(options.snapshotRetention) === false ||
@@ -539,6 +561,7 @@ const main = async (): Promise<void> => {
           }),
       })
       if (selected.length === 0) {
+        notifyPublicationAdmission('no-publication')
         process.stdout.write(
           'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
         )
@@ -552,12 +575,53 @@ const main = async (): Promise<void> => {
     authorityPackagePaths,
     serializedPublicationPackages,
   })
-  await executeSelectedEditorViewOperation({ options, packageScope })
+  if (options.command === 'authority') {
+    await executeSelectedEditorViewOperation({
+      options,
+      packageScope,
+      signal,
+      run: runCommand,
+      authorityCommandRunner: runEditorViewAuthorityCommand,
+    })
+    notifyPublicationAdmission('no-publication')
+    return
+  }
+  await withEditorPublicationOwner({
+    root: options.workspaceRoot,
+    signal,
+    run: (owner) => {
+      notifyPublicationAdmission('owner-acquired')
+      return executeSelectedEditorViewOperation({
+        options,
+        packageScope,
+        signal,
+        authorityCommandRunner: ownedEditorViewAuthorityCommandRunner({
+          buck2: options.buck2,
+          native: options.buck2Native,
+          owner,
+          env: process.env,
+          signal,
+        }),
+        run: (command) => {
+          if (command.command !== options.buck2) return runCommand(command)
+          return runManagedEditorPublicationCommand({
+            command: {
+              ...command,
+              args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+            },
+            owner,
+            native: options.buck2Native,
+            env: process.env,
+          })
+        },
+      })
+    },
+  })
 }
 
 if (import.meta.main === true)
   try {
-    await main()
+    await withPublicationCancellation(main)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

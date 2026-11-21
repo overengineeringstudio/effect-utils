@@ -24,7 +24,7 @@ import {
   runManagedEditorPublicationCommand,
 } from './editor-view-authority.ts'
 
-it('adapts real owned native streams and census without changing the legacy CLI', () =>
+it('adapts real owned native streams and census with native failure identity', () =>
   withPublicationRoot(async (cwd) => {
     const native = join(cwd, 'native')
     writeFileSync(native,

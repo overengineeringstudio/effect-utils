@@ -903,6 +903,7 @@ export const reconcileBuckViews = async ({
         args: [...options.editorViewCommand.slice(1), ...(await publicationArgs(entry))],
         onStderr: forwardDiagnostics,
         cwd: options.repoRoot,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       })
     } catch (error) {
       emitPublicationSpan(exitCodeOf(error))
@@ -927,6 +928,7 @@ export const reconcileBuckViews = async ({
       input: JSON.stringify(requests),
       onStderr: forwardDiagnostics,
       cwd: options.repoRoot,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     }).catch(publicationFailure)
     // Preserve the existing per-view callback as well as successful-task stderr evidence.
     for (const line of result.stderr.split('\n')) {

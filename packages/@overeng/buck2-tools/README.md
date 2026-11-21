@@ -162,6 +162,12 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
+The publication task entrypoint owns the worktree before its authority census
+and native build, and holds that owner until the genuine publisher CLI closes.
+Native Buck uses the reserved `editor-publication` isolation. No owner descriptor
+is passed to the publisher child. The supervisor observes an admission notification
+only; time waiting for ownership does not consume the publication execution budget.
+
 The reconciliation command runner waits for child close after a stdin write
 failure. A nonzero or signaled child exit takes precedence over a concurrent
 broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
