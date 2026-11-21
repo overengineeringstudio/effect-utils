@@ -1,5 +1,17 @@
 import * as ChildProcess from 'node:child_process'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,10 +27,12 @@ import {
   reconcileBuckViews,
   runCommand,
   runBuckWatchLoop,
+  type BuckReconcileTiming,
   type BuckWatchPlan,
   type WatchChangeSource,
   type WatchLoopStatus,
 } from './buck-watch.ts'
+import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 
 // Stable forwarding exports observe the named imports used by Bun's native modules.
 const nativeChildProcess = { ...ChildProcess }
@@ -29,15 +43,35 @@ const savedWatchTraceContext = {
   TRACEPARENT: process.env.TRACEPARENT,
   OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
 }
+const savedHostBudgetState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+const savedContentStore = process.env.EDITOR_VIEW_CONTENT_STORE
+let hostBudgetState: string
+
+/** Unlock directories only: immutable snapshot files may share CAS inodes. */
+const unlockFixtureDirectories = (path: string): void => {
+  const status = lstatSync(path)
+  if (status.isDirectory() === false || status.isSymbolicLink() === true) return
+  chmodSync(path, (status.mode & 0o777) | 0o700)
+  for (const name of readdirSync(path)) unlockFixtureDirectories(join(path, name))
+}
 beforeAll(() => {
   // Only explicit telemetry fixtures may consume the process-wide exporter slots.
   delete process.env.TRACEPARENT
   delete process.env.OTEL_TASK_TRACEPARENT
+  hostBudgetState = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'buck-watch-budget-')))
+  process.env.EDITOR_VIEW_HOST_BUDGET_STATE = hostBudgetState
+  process.env.EDITOR_VIEW_CONTENT_STORE = join(hostBudgetState, 'content')
 })
 afterAll(() => {
   for (const [key, value] of Object.entries(savedWatchTraceContext))
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
+  if (savedHostBudgetState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+  else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedHostBudgetState
+  if (savedContentStore === undefined) delete process.env.EDITOR_VIEW_CONTENT_STORE
+  else process.env.EDITOR_VIEW_CONTENT_STORE = savedContentStore
+  unlockFixtureDirectories(hostBudgetState)
+  rmSync(hostBudgetState, { recursive: true, force: true })
 })
 
 /** Every gate input the OTEL helpers read; tests pin each one explicitly. */
@@ -176,6 +210,80 @@ const until = async (predicate: () => boolean): Promise<void> => {
     await Promise.resolve()
   }
   throw new Error('condition was not reached')
+}
+
+/** Real finite immutable inputs: both external roots must survive snapshot relocation. */
+const makePublicationFixture = () => {
+  const requireTool = (name: string): string => {
+    const value = process.env[name]
+    if (value === undefined || value === '')
+      throw new Error(`declared test tool is unavailable: ${name}`)
+    return value
+  }
+  const cp = requireTool('CP_BIN')
+  const mv = requireTool('MV_BIN')
+  const fingerprintTool = requireTool('FINGERPRINT_BIN')
+  const root = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'buck-watch-')))
+  const manifest = join(root, 'editor-inputs.json')
+  const nodeModules = join(root, 'inputs/app/node_modules')
+  const packageTree = join(root, 'inputs/app/package_tree')
+  const dependency = join(root, 'inputs/store/dep')
+  const workspaceAuthority = join(root, 'authority.json')
+  mkdirSync(join(root, 'packages/app'), { recursive: true })
+  writeFileSync(join(root, 'packages/app/package.json'), '{}\n')
+  for (const path of [nodeModules, packageTree, dependency]) mkdirSync(path, { recursive: true })
+  writeFileSync(join(packageTree, 'index.js'), 'export const workspace = "λ"\n')
+  writeFileSync(join(dependency, 'index.js'), 'export const dependency = "雪"\n')
+  symlinkSync('../package_tree', join(nodeModules, 'workspace'))
+  symlinkSync('../../store/dep', join(nodeModules, 'dep'))
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      schema: 'effect-utils/editor-view-inputs/v1',
+      editorInputs: nodeModules,
+      packageTree,
+      readRoots: [packageTree, dependency],
+    }),
+  )
+  writeFileSync(
+    workspaceAuthority,
+    JSON.stringify({
+      schema: 'effect-utils/workspace-dependency-authority/v1',
+      requiredPackages: ['packages/app'],
+      ownedPackages: ['packages/app'],
+    }),
+  )
+  const current = join(root, '.editor-view/app')
+  const options = {
+    plan,
+    mode: 'publish' as const,
+    repoRoot: root,
+    workspaceRoot: root,
+    buck2: '/tools/buck2',
+    editorViewCommand: [process.execPath, join(import.meta.dir, 'editor-view.ts')] as const,
+    workspaceAuthority,
+    cp,
+    mv,
+    fingerprintTool,
+    snapshotRetention: 3,
+    run: async (command: Parameters<typeof runCommand>[0]) =>
+      command.command === '/tools/buck2'
+        ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+        : runCommand(command),
+  }
+  const record = () =>
+    JSON.parse(readFileSync(join(current, 'editor-view.json'), 'utf8')) as {
+      package: string
+      cell: string
+      target: string
+      snapshot: string
+      normalizedStoreDigest: string
+    }
+  const cleanup = () => {
+    unlockFixtureDirectories(root)
+    rmSync(root, { recursive: true, force: true })
+  }
+  return { root, manifest, nodeModules, packageTree, dependency, current, options, record, cleanup }
 }
 
 describe('Buck watch reconciliation', () => {
@@ -330,18 +438,8 @@ describe('Buck watch reconciliation', () => {
   })
 
   it('passes every provider read root to publication and never publishes after a failed build', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
+    const fixture = makePublicationFixture()
     try {
-      const manifest = join(root, 'editor-inputs.json')
-      await writeFile(
-        manifest,
-        `${JSON.stringify({
-          schema: 'effect-utils/editor-view-inputs/v1',
-          editorInputs: 'buck-out/app/node_modules',
-          packageTree: 'buck-out/app/package_tree',
-          readRoots: ['buck-out/app/package_tree', 'buck-out/store/dep'],
-        })}\n`,
-      )
       const shutdown = new AbortController()
       const invocations: {
         command: string
@@ -356,43 +454,33 @@ describe('Buck watch reconciliation', () => {
           buildTargets: ['//packages/app:editor_view_inputs', '//packages/app:typecheck'],
         },
         options: {
-          plan,
-          mode: 'publish',
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          mv: '/tools/mv',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          snapshotRetention: 3,
+          ...fixture.options,
           signal: shutdown.signal,
-          run: async ({ command, args, detached, signal }) => {
+          run: async (invocation) => {
+            const { command, args, detached, signal } = invocation
             invocations.push({ command, args, detached, signal })
-            return command === '/tools/buck2'
-              ? {
-                  stdout: `//packages/app:editor_view_inputs ${manifest}\n`,
-                  stderr: '',
-                }
-              : { stdout: '', stderr: '' }
+            return fixture.options.run(invocation)
           },
         },
       })
+      const firstRecord = fixture.record()
+      expect(firstRecord.package).toBe('packages/app')
+      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toBe(
+        'export const workspace = "λ"\n',
+      )
+      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toBe(
+        'export const dependency = "雪"\n',
+      )
       expect(invocations).toHaveLength(2)
       expect(invocations[0]?.signal).toBe(shutdown.signal)
       expect(invocations[0]?.detached).toBeUndefined()
       expect(invocations[1]?.detached).toBeUndefined()
       expect(invocations[1]?.signal).toBeUndefined()
-      expect(invocations[1]?.command).toBe('/tools/bun')
-      expect(invocations[1]?.args[0]).toBe('/tools/editor-view')
+      expect(invocations[1]?.command).toBe(process.execPath)
+      expect(invocations[1]?.args[0]).toBe(join(import.meta.dir, 'editor-view.ts'))
       expect(invocations[1]?.args).toContain('--backing-root')
       expect(invocations[1]?.args).toEqual(
-        expect.arrayContaining([
-          join(root, 'buck-out/app/node_modules'),
-          join(root, 'buck-out/app/package_tree'),
-          join(root, 'buck-out/store/dep'),
-        ]),
+        expect.arrayContaining([fixture.nodeModules, fixture.packageTree, fixture.dependency]),
       )
 
       const batchInvocations: {
@@ -408,28 +496,20 @@ describe('Buck watch reconciliation', () => {
           buildTargets: ['//packages/app:editor_view_inputs'],
         },
         options: {
-          plan,
-          mode: 'publish',
+          ...fixture.options,
           batchPublication: true,
-          repoRoot: root,
-          workspaceRoot: root,
-          buck2: '/tools/buck2',
-          editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-          workspaceAuthority: '/repo/authority.json',
-          cp: '/tools/cp',
-          mv: '/tools/mv',
-          fingerprintTool: '/tools/buck2-fingerprint',
-          snapshotRetention: 3,
-          run: async ({ command, args, input, detached }) => {
+          run: async (invocation) => {
+            const { command, args, input, detached } = invocation
             batchInvocations.push({ command, args, input, detached })
-            return command === '/tools/buck2'
-              ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-              : { stdout: '', stderr: '' }
+            return fixture.options.run(invocation)
           },
         },
       })
       expect(batchInvocations).toHaveLength(2)
-      expect(batchInvocations[1]?.args).toEqual(['/tools/editor-view', 'publish-batch'])
+      expect(batchInvocations[1]?.args).toEqual([
+        join(import.meta.dir, 'editor-view.ts'),
+        'publish-batch',
+      ])
       expect(batchInvocations[1]?.detached).toBeUndefined()
       expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
 
@@ -442,17 +522,7 @@ describe('Buck watch reconciliation', () => {
             buildTargets: ['//packages/app:editor_view_inputs'],
           },
           options: {
-            plan,
-            mode: 'publish',
-            repoRoot: root,
-            workspaceRoot: root,
-            buck2: '/tools/buck2',
-            editorViewCommand: ['/tools/bun', '/tools/editor-view'],
-            workspaceAuthority: '/repo/authority.json',
-            cp: '/tools/cp',
-            fingerprintTool: '/tools/buck2-fingerprint',
-            mv: '/tools/mv',
-            snapshotRetention: 3,
+            ...fixture.options,
             run: async ({ command }) => {
               failedInvocations.push(command)
               throw new Error('stale build')
@@ -461,8 +531,9 @@ describe('Buck watch reconciliation', () => {
         }),
       ).rejects.toThrow('stale build')
       expect(failedInvocations).toEqual(['/tools/buck2'])
+      expect(fixture.record()).toEqual(firstRecord)
     } finally {
-      await rm(root, { recursive: true })
+      fixture.cleanup()
     }
   })
 
