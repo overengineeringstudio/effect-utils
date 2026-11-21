@@ -26,6 +26,7 @@ import {
   gateScopeIdentity,
   isOnlyReapiUnavailable,
   requireEditorPublicationInvocationOwner,
+  resolveManagedInvocation,
   runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
@@ -749,4 +750,54 @@ it('fails closed for opaque isolation selection even when a real owner is availa
         }
       },
     })
+  }))
+
+it('keeps the executed literal snapshot when a supported argfile is rewritten after admission', () =>
+  withPublicationRoot(async (cwd) => {
+    const path = join(cwd, 'mutable.args')
+    writeFileSync(path, '--isolation-dir\nv2\nbuild\n//:quick\n')
+    const admitted = resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} })
+    writeFileSync(path, '--isolation-dir\neditor-publication\nclean\n')
+    expect(admitted).toEqual({
+      isolation: 'v2',
+      args: ['--isolation-dir', 'v2', 'build', '//:quick'],
+      nativeArgumentCount: 4,
+    })
+    expect(
+      requireEditorPublicationInvocationOwner({ args: admitted.args, cwd, env: {} }),
+    ).toBeUndefined()
+    expect(() =>
+      requireEditorPublicationInvocationOwner({ args: ['@mutable.args'], cwd, env: {} }),
+    ).toThrow()
+  }))
+
+it('never lets a trailing run payload override the native isolation owner selection', () =>
+  withPublicationRoot(async (cwd) => {
+    const args = ['run', '//:tool', 'payload', '--isolation-dir', 'v2']
+    const env = { BUCK_ISOLATION_DIR: editorPublicationIsolation }
+    expect(resolveManagedInvocation({ args, cwd, env })).toEqual({
+      isolation: editorPublicationIsolation,
+      args,
+      nativeArgumentCount: 2,
+    })
+    expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env })).toThrow(/owner/i)
+    const ordinary = ['run', '//:tool', 'payload', '--isolation-dir', editorPublicationIsolation]
+    expect(resolveManagedInvocation({ args: ordinary, cwd, env: {} }).isolation).toBe('v2')
+    expect(
+      requireEditorPublicationInvocationOwner({ args: ordinary, cwd, env: {} }),
+    ).toBeUndefined()
+    expect(
+      resolveManagedInvocation({
+        args: ['run', '--unfamiliar-option', '//:tool', 'payload'],
+        cwd,
+        env,
+      }).isolation,
+    ).toBe(editorPublicationIsolation)
+    expect(() =>
+      resolveManagedInvocation({
+        args: ['run', '--unfamiliar-option', '//:tool', '--isolation-dir', 'v2'],
+        cwd,
+        env,
+      }),
+    ).toThrow('ambiguous run option')
   }))

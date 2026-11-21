@@ -278,6 +278,7 @@ Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant no
 Cancellation wakes queued acquisition, but active subordinate work must join before release.
 `tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
 Selection helpers require that live owner for reserved isolation from literal argv, plain-text argfiles or the environment; ambiguous selection fails closed and default isolation remains disjoint. The Nix launcher declares the pure owner module in its compile context; owned execution is not activated by these helpers.
+Invocation-identity proofs preserve the admitted literal argfile snapshot after a rewrite and prevent trailing `run` executable payload from overriding native isolation selection.
 This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
 `requireEditorPublicationInputs` validates mutable Buck inputs and their symlink carriers
 against the live owner and reserved publication isolation, preserving native filesystem errors.
