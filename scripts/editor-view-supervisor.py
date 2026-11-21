@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Own publication admission and process-group cleanup, with optional deadlines."""
+"""Supervise the publication owner's process group, with admission-aware deadlines."""
 import ctypes
 import fcntl
 import json
@@ -35,14 +35,6 @@ def signal_group(pgid, sig):
 def safe_name(value):
     return re.sub(r"[^A-Za-z0-9_.-]", "_", os.path.basename(str(value)))[:80]
 
-def record_holder(fd, command, pid):
-    # Only the admitted owner writes this inode; torn metadata never gates admission.
-    payload = json.dumps({"pid": pid, "command": safe_name(command), "started": time.monotonic()}).encode()
-    try:
-        os.pwrite(fd, payload, 0)
-        os.ftruncate(fd, len(payload))
-    except OSError:
-        pass  # Diagnostics must not turn successful admission into failure.
 
 def guard_collector(parent_fd):
     # A private lifetime pipe works on Darwin too; EOF cancels even after the
@@ -154,9 +146,8 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admissio
     if sys.platform == "linux":
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
             raise OSError(ctypes.get_errno(), "cannot become publication subreaper")
-    # Popen deliberately closes every descriptor outside this supervisor's
-    # lock/admission protocol. Lease mappings belong to the launching process,
-    # not this new child: its native source launcher must discover fresh leases.
+    # Only a deadline notification pipe crosses this boundary, never ownership.
+    # The authority acquires its own process-local publication owner.
     child_env = os.environ.copy()
     child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
     child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
@@ -233,22 +224,19 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, admissio
 
 
 def supervise_locked(command, deadline, grace, lock_path):
-    os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
-    # Keep the shared open-file description alive in the supervisor until all
-    # descendants have been killed/reaped, not merely until the authority exits.
-    with os.fdopen(os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600), "r+") as lock:
-        ready_read, ready_write = os.pipe()
-        os.set_blocking(ready_read, False)
-        try:
-            return supervise(
-                [sys.executable, __file__, "--acquire", str(lock.fileno()), str(ready_write), *command],
-                deadline, grace,
-                pass_fds=(lock.fileno(), ready_write),
-                waiting_lock=(lock_path, ready_read),
-            )
-        finally:
-            os.close(ready_read)
-            os.close(ready_write)
+    # Read-only diagnostic context: only the authority opens and locks its owner inode.
+    # The supervisor never holds a description that could be lent to descendants.
+    ready_read, ready_write = os.pipe()
+    os.set_blocking(ready_read, False)
+    try:
+        return supervise(
+            command, deadline, grace,
+            pass_fds=(ready_write,),
+            waiting_lock=(lock_path, ready_read),
+            admission_write_fd=ready_write,
+        )
+    finally:
+        os.close(ready_read)
 
 
 if __name__ == "__main__":
@@ -257,14 +245,6 @@ if __name__ == "__main__":
             guard_collector(int(sys.argv[3]))
         admission_dump(sys.argv[2])
         sys.exit(0)
-    elif sys.argv[1] == "--acquire":
-        lock_fd, ready_fd = int(sys.argv[2]), int(sys.argv[3])
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        record_holder(lock_fd, sys.argv[4], os.getppid())
-        os.write(ready_fd, b"1")
-        os.close(ready_fd)
-        os.set_inheritable(lock_fd, True)
-        os.execvp(sys.argv[4], sys.argv[4:])
     else:
         deadline = None if sys.argv[1] == "none" else float(sys.argv[1])
         if sys.argv[3] == "--lock":

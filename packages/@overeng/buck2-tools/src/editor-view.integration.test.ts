@@ -4549,6 +4549,11 @@ process.stderr.write = (...args) => {
       await expect(publishEditorView(options)).rejects.toThrow(
         'package path must not contain symbolic links',
       )
+      await expect(checkEditorView(options)).rejects.toThrow(
+        'package path must not contain symbolic links',
+      )
+      expect(readdirSync(root)).toEqual(['packages'])
+      expect(readdirSync(outside)).toEqual(['packages'])
     } finally {
       rmSync(root, { recursive: true, force: true })
       rmSync(outside, { recursive: true, force: true })

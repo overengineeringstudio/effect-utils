@@ -247,6 +247,24 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
       ).toThrow('--packages is only valid with publish or bootstrap')
   })
 
+  it('library imports leave CLI notification state unchanged', () => {
+    const marker = 'not-owned-by-this-library-import'
+    const module = new URL('./editor-view-authority.ts', import.meta.url).href
+    const result = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        '-e',
+        `import ${JSON.stringify(module)}; process.stdout.write(process.env.EDITOR_VIEW_ADMISSION_READY_FD ?? '')`,
+      ],
+      env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: marker },
+      stderr: 'pipe',
+      stdout: 'pipe',
+      timeout: 5_000,
+    })
+    expect(result.exitCode, result.stderr.toString()).toBe(0)
+    expect(result.stdout.toString()).toBe(marker)
+  }, 10_000)
+
   it('rejects an invalid explicit scope before attempting authority or Buck work', () => {
     const script = join(dirname(fileURLToPath(import.meta.url)), 'editor-view-authority.ts')
     const result = Bun.spawnSync({

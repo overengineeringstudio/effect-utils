@@ -22,7 +22,6 @@ def load_supervisor():
     return supervisor
 
 
-
 def owned_authority(lock, body):
     # Execute in the authority itself: no wrapper or child receives this flock.
     # Keep the CLOEXEC descriptor alive until the authority's work has finished.
@@ -174,12 +173,12 @@ class PublicationSupervisorTest(unittest.TestCase):
                 leases = root / ".editor-view" / ".leases"
                 leases.mkdir(parents=True)
                 (leases / "generation.lock").touch()
-                fixture = r'''
+                fixture = owned_authority(lock, r'''
 import sys
 print("admitted", flush=True)
 if sys.argv[1] == "holder":
     with open(sys.argv[2], "rb", buffering=0) as release: assert release.read(1) == b"1"
-'''
+''')
                 env = {**os.environ, "DEVENV_ROOT": scratch,
                        "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
                        "BUCK_ISOLATION_DIR": str(root / "private-isolation")}
@@ -211,7 +210,10 @@ if sys.argv[1] == "holder":
                     captured = until(waiter.stderr, b"[editor-view-admission-wait] end\n")
                     begin = captured.index(b"[editor-view-admission-wait] begin\n")
                     dump = captured[begin:]
-                    self.assertIn(f"recorded-pid={holder.pid}".encode(), dump)
+                    authority_pid = json.loads(lock.read_text())["pid"]
+                    self.assertNotEqual(authority_pid, holder.pid)
+                    os.kill(authority_pid, 0)
+                    self.assertIn(f"recorded-pid={authority_pid}".encode(), dump)
                     self.assertIn(f"command={Path(sys.executable).name}".encode(), dump)
                     self.assertIn(b"held-seconds=", dump)
                     self.assertIn(b"buck isolation=private-isolation status=unavailable", dump)
@@ -406,6 +408,7 @@ time.sleep(60)
                 runner.write_text(f'''
 import {{ existsSync, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
+import {{ requireEditorPublicationOwner }} from {json.dumps(str(module.with_name('editor-publication-owner.ts')))}
 let pending = ''
 let released = false
 const shutdown = new AbortController()
@@ -422,15 +425,16 @@ await reconcileBuckViews({{
   options: {{
     plan: {{ packages, globalPaths: [] }}, mode: 'publish', signal: shutdown.signal,
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2',
-    workspaceAuthority: './workspace-authority.json',
+    buck2: './buck2', workspaceAuthority: './workspace-authority.json',
     cp: {json.dumps(immutable_copy if publication else '')},
     mv: process.env.MV_BIN ?? '', fingerprintTool: process.env.FINGERPRINT_BIN ?? '',
     snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     diagnosticTaskName: 'buck2:editor:bootstrap',
-    // Existing fake-Buck subprocess protocol fixture; not a native ABI proof.
-    run: async (options) => {{
+    // This existing fake-Buck subprocess protocol fixture tests supervisor control flow,
+    // not the native ABI. Validate the real owner and await the actual child.
+    runOwned: async (options, owner) => {{
+      requireEditorPublicationOwner({{ root: process.cwd(), owner }})
       return await runCommand({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
       pending += chunk
@@ -492,6 +496,8 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                     # Forced group KILL cannot flush Bun's in-process diagnostic ring.
                     with self.assertRaises(ProcessLookupError):
                         os.kill(int((root / "copy-pid").read_text()), 0)
+                    with (root / ".devenv/editor-view-publication.lock").open("r+b") as probe:
+                        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     self.assertEqual(len(list(root.glob(".devenv/otel/buck2-events/*.pb.zst"))), 1)
                     continue
                 self.assertIn("BUCK-BLOCKED\n", output)
@@ -546,7 +552,9 @@ print("fresh-discovery-required")
                 for admission in ([], ["--lock", str(Path(scratch) / "publication.lock")]):
                     result = subprocess.run(
                         [sys.executable, supervisor, "5", "0.1", *admission,
-                         sys.executable, "-c", fixture, str(control),
+                         sys.executable, "-c",
+                         owned_authority(Path(scratch) / "publication.lock", fixture) if admission else fixture,
+                         str(control),
                          str(holder.fileno()), str(os.fstat(holder.fileno()).st_ino)],
                         env=env, pass_fds=(holder.fileno(),),
                         capture_output=True, text=True, timeout=10,
@@ -561,10 +569,10 @@ print("fresh-discovery-required")
             lock = Path(scratch) / "publication.lock"
             state = Path(scratch) / ".publish.lock"
             supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
-            fixture = (
+            fixture = owned_authority(lock, (
                 "import os,pathlib,sys; p=pathlib.Path(sys.argv[1]); p.mkdir(); "
                 "print('publishing',flush=True); sys.stdin.buffer.read(1); p.rmdir()"
-            )
+            ))
             command = [sys.executable, supervisor, "none", "0.1", "--lock", str(lock),
                        sys.executable, "-c", fixture, str(state)]
             first = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -599,7 +607,8 @@ print("fresh-discovery-required")
             entered = Path(scratch) / "entered"
             command = [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
                        "0.3", "0.1", "--lock", str(lock_path), sys.executable, "-c",
-                       "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()", str(entered)]
+                       owned_authority(lock_path, "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()"),
+                       str(entered)]
             with lock_path.open("a") as holder:
                 fcntl.flock(holder, fcntl.LOCK_EX)
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -628,7 +637,8 @@ print("fresh-discovery-required")
                 process = subprocess.Popen(
                     [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
                      "1", "0.1", "--lock", str(lock_path), sys.executable, "-c",
-                     "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(60)",
+                     owned_authority(lock_path,
+                         "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(60)"),
                      str(entered)],
                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 )
@@ -665,7 +675,8 @@ print("fresh-discovery-required")
                 fcntl.flock(holder, fcntl.LOCK_EX)
                 process = subprocess.Popen(
                     [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
-                     "0.1", "0.1", "--lock", str(lock_path), sys.executable, "-c", "raise SystemExit(0)"],
+                     "0.1", "0.1", "--lock", str(lock_path), sys.executable, "-c",
+                     owned_authority(lock_path, "raise SystemExit(0)")],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 )
                 try:
@@ -686,7 +697,8 @@ print("fresh-discovery-required")
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
                  "0.2", "0.1", "--lock", str(Path(scratch) / "publication.lock"),
-                 sys.executable, "-c", "import time; time.sleep(60)"],
+                 sys.executable, "-c",
+                 owned_authority(Path(scratch) / "publication.lock", "import time; time.sleep(60)")],
                 capture_output=True, text=True, timeout=5,
             )
             self.assertEqual(result.returncode, 124, result.stderr)
@@ -700,7 +712,7 @@ print("fresh-discovery-required")
             for code in (7, 0):
                 result = subprocess.run(
                     [sys.executable, supervisor, "2", "0.1", "--lock", str(lock_path),
-                     sys.executable, "-c", f"import os; os._exit({code})"],
+                     sys.executable, "-c", owned_authority(lock_path, f"import os; os._exit({code})")],
                     capture_output=True, text=True, timeout=5,
                 )
                 self.assertEqual(result.returncode, code, result.stderr)
