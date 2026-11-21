@@ -154,6 +154,7 @@ type CargoFixtureMember = {
 const renderCargoFixture = ({
   members,
   testMembers = [],
+  workspaceResolver = '2',
   workspaceRoot = 'rust',
   thirdPartyDirectory = 'third-party',
   edition = '2024',
@@ -171,6 +172,7 @@ const renderCargoFixture = ({
 }: {
   readonly members: Readonly<Record<string, CargoFixtureMember>>
   readonly testMembers?: readonly string[]
+  readonly workspaceResolver?: string
   readonly workspaceRoot?: string
   readonly thirdPartyDirectory?: string
   readonly edition?: string
@@ -219,7 +221,7 @@ const renderCargoFixture = ({
     write('megarepo.kdl', '')
     write(
       path.posix.join(workspaceRoot, 'Cargo.toml'),
-      `[workspace]\nresolver = "2"\nmembers = [${Object.keys(members)
+      `[workspace]\nresolver = "${workspaceResolver}"\nmembers = [${Object.keys(members)
         .filter((member) => member !== '.')
         .map((member) => JSON.stringify(member))
         .join(
@@ -2035,6 +2037,27 @@ describe('Cargo test harness projection', () => {
     })
     expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
   })
+
+  it('projects identical targets with Cargo resolver 2 and 3 and an unchanged lockfile', () => {
+    const targets = (resolver: string) =>
+      render({ workspaceResolver: resolver }).replace(/^# Semantic fingerprint: .*$/m, '')
+    expect(targets('3')).toBe(targets('2'))
+  })
+
+  it.each(['1', '4', 'unknown'])(
+    'rejects unsupported Cargo resolver %s with a typed error',
+    (resolver) => {
+      expect(() => render({ workspaceResolver: resolver })).toThrow(
+        'The Buck projection supports only Cargo resolver = "2" or "3"',
+      )
+      try {
+        render({ workspaceResolver: resolver })
+        throw new Error('Expected unsupported Cargo resolver')
+      } catch (error) {
+        expect(error).toMatchObject({ _tag: 'CargoResolverUnsupported' })
+      }
+    },
+  )
 
   it.each(['version', 'source', 'missing', 'consumer-build'])(
     'resolves equivalent requests amid multiple locked versions using %s edges',

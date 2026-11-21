@@ -329,8 +329,12 @@ export const defineCargoBuck2PackageProjection = ({
     throw new Error(`${cargoResolutionPath} is missing; regenerate the consumer Reindeer supply`)
   }
   const workspace = requireValue({ value: workspaceManifest.workspace, field: 'workspace' })
-  if (workspace.resolver !== '2')
-    throw new Error('The Buck projection supports only Cargo resolver = "2"')
+  // Resolver 3 retains v2 feature unification; its MSRV policy affects lock generation,
+  // whereas this projection consumes the committed Cargo.lock.
+  if (workspace.resolver !== '2' && workspace.resolver !== '3')
+    throw new CargoResolverUnsupported(
+      `The Buck projection supports only Cargo resolver = "2" or "3"; received ${JSON.stringify(workspace.resolver)}`,
+    )
   const declaredMemberPaths = sorted([
     ...new Set([
       ...requireValue({ value: workspace.members, field: 'workspace.members' }).map((member) =>
@@ -1964,6 +1968,10 @@ class CargoTestDependencyUnavailable extends Error {
 
 class CargoTestTargetUnsupported extends Error {
   readonly _tag = 'CargoTestTargetUnsupported'
+}
+
+class CargoResolverUnsupported extends Error {
+  readonly _tag = 'CargoResolverUnsupported'
 }
 
 /** Cargo unifies normal/dev requests; never silently replace an extern binding. */
