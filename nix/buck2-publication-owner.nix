@@ -1,7 +1,7 @@
 { pkgs }:
 let
   libraryName = "libbuck2-publication-owner${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
-  # This enters every Bun action's tool closure, so discard unrelated flake source identity.
+  # Scoped publication runtimes capture this closure; discard unrelated flake source identity.
   source = builtins.path {
     path = ../scripts/buck2-publication-owner.c;
     name = "buck2-publication-owner.c";
