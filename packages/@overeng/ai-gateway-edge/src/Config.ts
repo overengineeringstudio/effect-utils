@@ -1,3 +1,5 @@
+import { isAbsolute } from 'node:path'
+
 import { Effect, FileSystem, Schema } from 'effect'
 
 const Consumer = Schema.Struct({
@@ -8,6 +10,7 @@ const Consumer = Schema.Struct({
 /** Runtime-only upstream, consumer verifiers and request/metric bounds. */
 export const GatewayConfig = Schema.Struct({
   upstream: Schema.URLFromString,
+  upstreamSocket: Schema.optionalKey(Schema.String),
   consumers: Schema.Array(Consumer),
   maxModelLabels: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   maxRequestBodyBytes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
@@ -27,6 +30,12 @@ export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()('Conf
   cause: Schema.Defect(),
 }) {}
 
+/** Relative socket paths are rejected before listeners start. */
+export class UpstreamSocketError extends Schema.TaggedError<UpstreamSocketError>()(
+  'UpstreamSocketError',
+  { message: Schema.String },
+) {}
+
 /** Read and decode runtime JSON configuration through Effect FileSystem. */
 export const loadConfig = Effect.fn('ai-gateway-edge.loadConfig')(function* (path: string) {
   const fs = yield* FileSystem.FileSystem
@@ -37,7 +46,14 @@ export const loadConfig = Effect.fn('ai-gateway-edge.loadConfig')(function* (pat
         (cause) => new ConfigLoadError({ message: `Cannot read config ${path}`, cause }),
       ),
     )
-  return yield* Schema.decodeEffect(Schema.fromJsonString(GatewayConfig))(text).pipe(
+  const config: GatewayConfig = yield* Schema.decodeEffect(Schema.fromJsonString(GatewayConfig))(
+    text,
+  ).pipe(
     Effect.mapError((cause) => new ConfigLoadError({ message: `Invalid config ${path}`, cause })),
   )
+  if (config.upstreamSocket !== undefined) {
+    if (isAbsolute(config.upstreamSocket) === false)
+      return yield* new UpstreamSocketError({ message: 'Upstream socket path must be absolute' })
+  }
+  return config
 })

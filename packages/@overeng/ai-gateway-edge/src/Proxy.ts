@@ -1,6 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { IncomingMessage } from 'node:http'
+import { IncomingMessage, request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import type { Socket } from 'node:net'
+import { pipeline } from 'node:stream'
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
 
 import { NodeStream } from '@effect/platform-node'
 import { Data, Effect, Schema, Stream } from 'effect'
@@ -93,12 +96,20 @@ const abortOnSocketClose = (socket: Socket) => {
   socket.once('close', abort)
   return { signal: controller.signal, dispose: () => socket.removeListener('close', abort), abort }
 }
-const error = ({ status, message }: { status: number; message: string }) =>
+const error = ({
+  status,
+  message,
+  type,
+}: {
+  status: number
+  message: string
+  type?: 'upstream_unavailable'
+}) =>
   HttpServerResponse.jsonUnsafe(
     {
       error: {
         message,
-        type: status === 401 ? 'authentication_error' : 'gateway_error',
+        type: type ?? (status === 401 ? 'authentication_error' : 'gateway_error'),
         code: null,
       },
     },
@@ -173,6 +184,86 @@ export const makeRoutes = ({
     throw new Error('Consumer names and token digests must be unique')
 
   const upstream = new URL(config.upstream)
+  const upstreamUrl = (path: string) =>
+    new URL(
+      config.upstreamSocket === undefined ? path : `${upstream.pathname.replace(/\/$/, '')}${path}`,
+      upstream,
+    )
+  const fetchUpstream = ({
+    url,
+    options,
+  }: {
+    url: URL
+    options: { method?: string; headers?: Headers; body?: string; signal: AbortSignal }
+  }): Promise<Response> => {
+    if (config.upstreamSocket === undefined) return fetch(url, options)
+    const { promise, resolve, reject } = Promise.withResolvers<Response>()
+    const send = url.protocol === 'https:' ? httpsRequest : httpRequest
+    const outgoing = send(
+      url,
+      {
+        socketPath: config.upstreamSocket,
+        // Do not turn URL userinfo into an upstream Authorization header.
+        auth: '',
+        method: options.method ?? 'GET',
+        headers: options.headers === undefined ? {} : Object.fromEntries(options.headers),
+        signal: options.signal,
+        agent: false,
+      },
+      (incoming) => {
+        try {
+          const headers = new Headers()
+          for (const [name, value] of Object.entries(incoming.headers)) {
+            if (Array.isArray(value) === true) for (const part of value) headers.append(name, part)
+            else if (value !== undefined) headers.set(name, value)
+          }
+          const status = incoming.statusCode ?? 502
+          const bodyless = status === 204 || status === 205 || status === 304
+          const encoding = headers.get('content-encoding')?.trim().toLowerCase()
+          if (
+            encoding !== undefined &&
+            encoding !== '' &&
+            encoding !== 'identity' &&
+            encoding !== 'gzip' &&
+            encoding !== 'deflate' &&
+            encoding !== 'br'
+          )
+            throw new Error('Unsupported upstream content encoding')
+          const decoder =
+            bodyless === true
+              ? undefined
+              : encoding === 'gzip'
+                ? createGunzip()
+                : encoding === 'deflate'
+                  ? createInflate()
+                  : encoding === 'br'
+                    ? createBrotliDecompress()
+                    : undefined
+          if (bodyless === true) incoming.resume()
+          else if (decoder !== undefined)
+            pipeline(incoming, decoder, (cause) => {
+              if (cause !== null && cause !== undefined) reject(cause)
+            })
+          resolve(
+            new Response(
+              bodyless === true
+                ? null
+                : Stream.toReadableStream(
+                    NodeStream.fromReadable({ evaluate: () => decoder ?? incoming }),
+                  ),
+              { status, headers },
+            ),
+          )
+        } catch (cause) {
+          incoming.destroy()
+          reject(cause)
+        }
+      },
+    )
+    outgoing.on('error', reject)
+    outgoing.end(options.body)
+    return promise
+  }
   const maxRequestBodyBytes = config.maxRequestBodyBytes ?? 1048576
   const authenticate = (header: string | undefined) => {
     const match = /^Bearer ([^\s]+)$/.exec(header ?? '')
@@ -354,14 +445,17 @@ export const makeRoutes = ({
       requestHeaders.set('accept-encoding', 'identity')
       const effectSignal = yield* Effect.abortSignal
       const socketAbort = abortOnSocketClose(request.source.socket)
-      const url = new URL(path, upstream)
+      const url = upstreamUrl(path)
       const result = yield* Effect.tryPromise({
         try: (signal) =>
-          fetch(url, {
-            method: request.method,
-            headers: requestHeaders,
-            ...(body === undefined ? {} : { body }),
-            signal: AbortSignal.any([signal, effectSignal, socketAbort.signal]),
+          fetchUpstream({
+            url,
+            options: {
+              method: request.method,
+              headers: requestHeaders,
+              ...(body === undefined ? {} : { body }),
+              signal: AbortSignal.any([signal, effectSignal, socketAbort.signal]),
+            },
           }),
         catch: () => 'upstream unavailable' as const,
       }).pipe(Effect.orElseSucceed(() => undefined))
@@ -372,7 +466,13 @@ export const makeRoutes = ({
           status: 502,
           seconds: (performance.now() - started) / 1000,
         })
-        return error({ status: 502, message: 'Upstream unavailable' })
+        return config.upstreamSocket === undefined
+          ? error({ status: 502, message: 'Upstream unavailable' })
+          : error({
+              status: 502,
+              type: 'upstream_unavailable',
+              message: 'upstream socket unavailable',
+            })
       }
       const response = result
       const responseHeaders: Record<string, string> = {}
@@ -482,9 +582,12 @@ export const makeRoutes = ({
 
   const health = Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
-      try: (signal) => fetch(new URL('/healthz', upstream), { signal }),
+      try: (signal) => fetchUpstream({ url: upstreamUrl('/healthz'), options: { signal } }),
       catch: () => 'upstream unavailable' as const,
     }).pipe(Effect.orElseSucceed(() => undefined))
+    const body = result?.body
+    if (config.upstreamSocket !== undefined && body !== null && body !== undefined)
+      yield* Effect.promise(() => body.cancel())
     return result?.ok === true
       ? HttpServerResponse.jsonUnsafe({ status: 'ok' })
       : HttpServerResponse.jsonUnsafe({ status: 'unavailable' }, { status: 503 })
