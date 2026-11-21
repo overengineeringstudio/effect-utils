@@ -13,9 +13,14 @@ import {
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
+  BuckReconcilerOptions,
   BuckWatchPlan,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
-import { writeEditorViewAuthority } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
+import {
+  runEditorViewAuthorityCommand,
+  writeEditorViewAuthority,
+} from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
+import { editorPublicationIsolation } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import { defaultEditorViewName } from '../packages/@overeng/buck2-tools/src/editor-view.ts'
 import { runOwnedEditorPublicationCommand } from './buck2-entrypoint.ts'
 /** Complete source-authoritative editor consumer registry, including the repository root. */
@@ -400,18 +405,40 @@ const main = async (signal: AbortSignal): Promise<void> => {
     authorityPackagePaths,
     serializedPublicationPackages,
   })
-  // Scope only target construction and publication. Every publisher still refreshes and passes
-  // freshly proven whole-workspace authority to each selected package view.
-  const authorityStartedAt = performance.now()
-  const authority = await writeEditorViewAuthority({
-    ...options,
-    requiredPackages: packageScope.authorityPackagePaths,
-  })
-  reportTiming({
-    phase: 'authority',
-    durationMs: performance.now() - authorityStartedAt,
-  })
+  const runOwned: BuckReconcilerOptions['runOwned'] = async (command, owner) => {
+    const stderr = new TextDecoder('utf-8', { ignoreBOM: true })
+    const result = await runOwnedEditorPublicationCommand({
+      native: options.buck2Native,
+      args: command.args,
+      cwd: command.cwd,
+      env: process.env,
+      owner,
+      signal: command.signal,
+      captureStderr: command.captureStderr,
+      onStderr:
+        command.onStderr === undefined
+          ? undefined
+          : (bytes) => command.onStderr?.(stderr.decode(bytes, { stream: true })),
+    })
+    command.onStderr?.(stderr.decode())
+    if (result.exitCode !== 0 || result.signalCode !== null)
+      throw new CommandFailure({
+        message: `Buck editor publication command failed: ${result.signalCode ?? result.exitCode}`,
+        exitCode: result.signalCode === null ? result.exitCode : undefined,
+        signal: result.signalCode ?? undefined,
+      })
+    return result
+  }
   if (options.command === 'authority') {
+    const authorityStartedAt = performance.now()
+    const authority = await writeEditorViewAuthority({
+      ...options,
+      requiredPackages: packageScope.authorityPackagePaths,
+    })
+    reportTiming({
+      phase: 'authority',
+      durationMs: performance.now() - authorityStartedAt,
+    })
     process.stdout.write(
       `wrote editor dependency authority for ${authority.ownedPackages.length} workspace consumers\n`,
     )
@@ -434,35 +461,39 @@ const main = async (signal: AbortSignal): Promise<void> => {
     options: {
       plan,
       signal,
-      onOwnerAcquired: () => notifyPublicationAdmission('owner-acquired'),
+      prepareAuthority: async (owner) => {
+        notifyPublicationAdmission('owner-acquired')
+        const authorityStartedAt = performance.now()
+        await writeEditorViewAuthority({
+          ...options,
+          requiredPackages: packageScope.authorityPackagePaths,
+          runCommand: async (command) => {
+            if (command.command !== options.buck2) return runEditorViewAuthorityCommand(command)
+            const result = await runOwned(
+              {
+                ...command,
+                args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+                signal,
+              },
+              owner,
+            )
+            return {
+              status: 0,
+              stdout: Buffer.from(result.stdout),
+              stderr: Buffer.from(result.stderr),
+            }
+          },
+        })
+        reportTiming({
+          phase: 'authority',
+          durationMs: performance.now() - authorityStartedAt,
+        })
+      },
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,
       buck2: options.buck2,
-      runOwned: async (command, owner) => {
-        const stderr = new TextDecoder('utf-8', { ignoreBOM: true })
-        const result = await runOwnedEditorPublicationCommand({
-          native: options.buck2Native,
-          args: command.args,
-          cwd: command.cwd,
-          env: process.env,
-          owner,
-          signal: command.signal,
-          captureStderr: command.captureStderr,
-          onStderr:
-            command.onStderr === undefined
-              ? undefined
-              : (bytes) => command.onStderr?.(stderr.decode(bytes, { stream: true })),
-        })
-        command.onStderr?.(stderr.decode())
-        if (result.exitCode !== 0 || result.signalCode !== null)
-          throw new CommandFailure({
-            message: `Buck editor publication command failed: ${result.signalCode ?? result.exitCode}`,
-            exitCode: result.signalCode === null ? result.exitCode : undefined,
-            signal: result.signalCode ?? undefined,
-          })
-        return result
-      },
+      runOwned,
       workspaceAuthority: options.output,
       cp: options.cp,
       mv: options.mv,

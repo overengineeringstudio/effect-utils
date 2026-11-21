@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import {
   chmodSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +22,7 @@ import {
   runOwnedEditorPublicationCommand,
   stopOwnedEditorPublicationDaemon,
 } from '../../../../scripts/buck2-entrypoint.ts'
+import { reconcileBuckViews } from './buck-watch.ts'
 import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import {
   editorPublicationIsolation,
@@ -28,6 +30,10 @@ import {
   requireEditorPublicationOwner,
   withEditorPublicationOwner,
 } from './editor-publication-owner.ts'
+import {
+  runEditorViewAuthorityCommand,
+  writeEditorViewAuthority,
+} from './editor-view-authority.ts'
 import { publishEditorView, verifyEditorViewSnapshot } from './editor-view.ts'
 
 // Required pinned tools and owner DSO are declared by the integration target.
@@ -62,6 +68,7 @@ it('keeps private publication inputs intact while default Buck restarts and rema
   const root = realpathSync(mkdtempSync(join(scratch, 'run-')))
   const buck = tool('BUCK2_BIN')
   const native = tool('BUCK2_NATIVE_BIN')
+  const git = tool('GIT_BIN')
   tool('BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
   const home = realpathSync(mkdtempSync(join(scratch, 'home-')))
   let privateRetired = true
@@ -82,7 +89,7 @@ it('keeps private publication inputs intact while default Buck restarts and rema
   const started = performance.now()
   const savedBudget = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
   process.env.EDITOR_VIEW_HOST_BUDGET_STATE = join(root, 'host-budget.json')
-  const run = async (args: string[], owner?: EditorPublicationOwner): Promise<string> => {
+  const run = async (args: readonly string[], owner?: EditorPublicationOwner): Promise<string> => {
     const env = { ...process.env, HOME: home }
     if (owner !== undefined) {
       privateRetired = false
@@ -159,7 +166,7 @@ it('keeps private publication inputs intact while default Buck restarts and rema
     )
     writeFileSync(
       join(root, 'BUCK'),
-      'load("rules//:inputs.bzl", "inputs")\ninputs(name = "inputs")\n',
+      'load("rules//:inputs.bzl", "inputs")\ninputs(name = "inputs")\ninputs(name = "package.json")\n',
     )
     writeFileSync(join(root, 'package.json'), '{}\n')
     const immutableInput = realpathSync(tool('BUN_BIN'))
@@ -177,6 +184,108 @@ it('keeps private publication inputs intact while default Buck restarts and rema
         ownedPackages: ['.'],
       }),
     )
+    execFileSync(git, ['init', '--quiet', root])
+    execFileSync(git, ['-C', root, 'add', 'package.json'])
+    const previousAuthority = readFileSync(authority, 'utf8')
+    const censusComplete = new Error('Authority census completed before the build phase')
+    let preparingAuthority = false
+    let census: Promise<unknown> | undefined
+    await withEditorPublicationOwner({
+      root,
+      run: async () => {
+        census = reconcileBuckViews({
+          request: { packagePaths: ['.'], changedPaths: [], buildTargets: ['//:inputs'] },
+          options: {
+            plan: {
+              globalPaths: [],
+              packages: [
+                {
+                  packagePath: '.',
+                  sourceRoots: [],
+                  workspaceDependencies: [],
+                  targets: { packageTree: 'fixture//:inputs' },
+                  editor: {
+                    cell: 'fixture',
+                    consumerCache: '.devenv/vite-cache/root',
+                    inputsManifestTarget: 'fixture//:inputs',
+                    target: '//:inputs',
+                    viewName: 'root',
+                  },
+                },
+              ],
+            },
+            mode: 'publish',
+            repoRoot: root,
+            workspaceRoot: root,
+            buck2: buck,
+            workspaceAuthority: authority,
+            cp: tool('CP_BIN'),
+            mv: tool('MV_BIN'),
+            fingerprintTool: tool('FINGERPRINT_BIN'),
+            snapshotRetention: 2,
+            runOwned: async (command, owner) => ({
+              stdout: await run(command.args, owner),
+              stderr: '',
+            }),
+            prepareAuthority: async (owner) => {
+              preparingAuthority = true
+              let censusFailure: { cause: unknown } | undefined
+              try {
+                await measured('authorityCensusMs', () =>
+                  writeEditorViewAuthority({
+                    repoRoot: root,
+                    workspaceRoot: root,
+                    requiredPackages: ['.'],
+                    cell: 'fixture',
+                    buck2: buck,
+                    git,
+                    output: authority,
+                    runCommand: async (command) =>
+                      command.command !== buck
+                        ? runEditorViewAuthorityCommand(command)
+                        : {
+                            status: 0,
+                            stdout: Buffer.from(
+                              await run(
+                                ['--isolation-dir', editorPublicationIsolation, ...command.args],
+                                owner,
+                              ),
+                            ),
+                            stderr: Buffer.alloc(0),
+                          },
+                  }),
+                )
+              } catch (cause) {
+                censusFailure = { cause }
+                throw cause
+              } finally {
+                try {
+                  if (!privateRetired) stopPrivate(owner)
+                } catch (cause) {
+                  if (censusFailure === undefined) throw cause
+                  throw new AggregateError(
+                    [censusFailure.cause, cause],
+                    'Authority census and daemon retirement failed',
+                    { cause: censusFailure.cause },
+                  )
+                }
+              }
+              throw censusComplete
+            },
+          },
+        }).then(
+          () => undefined,
+          (cause: unknown) => cause,
+        )
+        expect(preparingAuthority).toBe(false)
+        expect(readFileSync(authority, 'utf8')).toBe(previousAuthority)
+      },
+    })
+    assert(census, 'contended census was started')
+    expect(await census).toBe(censusComplete)
+    expect(preparingAuthority).toBe(true)
+    expect(JSON.parse(readFileSync(authority, 'utf8')).ownedPackages).toEqual(['.'])
+    expect(existsSync(join(root, 'buck-out', 'v2'))).toBe(false)
     const defaultOutput = await measured('coldDefaultBuildMs', () => build())
     await withEditorPublicationOwner({
       root,

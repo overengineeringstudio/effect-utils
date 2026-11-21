@@ -1338,6 +1338,7 @@ in
       export MV_BIN=${pkgs.coreutils}/bin/mv
       export FALSE_BIN=${pkgs.coreutils}/bin/false
       export BUN_BIN=${pkgs.bun}/bin/bun
+      export GIT_BIN=${pkgs.git}/bin/git
       export BUCK2_BIN=${buck2Machine}/bin/buck2
       export BUCK2_EDITOR_PUBLICATION_FIXTURE=${
         repoFlake.packages.${currentSystem}.buck2-editor-publication-fixture
