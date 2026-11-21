@@ -573,7 +573,7 @@ describe('native daemon admission diagnostics', () => {
       // watchdog must cover all three command deadlines and bounded cleanup.
       const deadlineMs = failure === 'timeout' ? 1000 : 30000
       const testTimeoutMs = Math.max(5000, 3 * deadlineMs + 2000)
-      it(`reports ${subcommand} ${failure} without native output`, async () => {
+      const reportFailure = async () => {
         const root = fixture()
         const native = join(root, 'native-buck')
         const calls = join(root, 'native-calls')
@@ -624,7 +624,8 @@ fi
         expect(caught.message).not.toContain('native-stdout-must-not-escape')
         expect(caught.cause).toBeUndefined()
         expect(readFileSync(calls, 'utf8')).toContain(`--isolation-dir owned ${subcommand}`)
-      }, testTimeoutMs)
+      }
+      it(`reports ${subcommand} ${failure} without native output`, reportFailure, testTimeoutMs)
     }
   }
 
