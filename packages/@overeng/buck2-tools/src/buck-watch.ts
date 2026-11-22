@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { rmSync, writeSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, resolve } from 'node:path'
 
 import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import {
