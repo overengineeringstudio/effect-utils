@@ -42,6 +42,7 @@ let
       cwd = deployment.cwd or ".";
       artifactDir = if isStatic then deployment.staticDir else ".vercel/output";
       artifactKind = if isStatic then "static" else "prebuilt-output";
+      assetManifest = deployment.assetManifest or null;
       afterTask = deployment.afterTask or null;
       buildDeps =
         if isStatic then
@@ -108,6 +109,9 @@ let
           ''}
           ${lib.optionalString (aliasPrefix != null) ''
             args+=(--alias-prefix ${lib.escapeShellArg aliasPrefix})
+          ''}
+          ${lib.optionalString (assetManifest != null) ''
+            args+=(--asset-manifest ${lib.escapeShellArg assetManifest})
           ''}
           ${lib.concatStringsSep "\n          " (
             map (domain: "args+=(--production-domain ${lib.escapeShellArg domain})") productionDomains

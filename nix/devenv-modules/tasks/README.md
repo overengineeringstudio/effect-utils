@@ -579,6 +579,20 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - Build-mode tasks pass root-directory/build-env config to `ci-tools`; `ci-tools`
     owns `vercel pull`, `vercel build`, prebuilt output validation, deploy,
     aliasing, workflow-report records, and GitHub outputs.
+  - Optional deployment `assetManifest` (CLI `--asset-manifest PATH`) is a local
+    JSON array of root-relative URL paths, for example
+    `["/index.html", "/assets/main-abc.js", "/assets/lazy-def.js"]`.
+    Generate it in `afterTask`, outside `staticDir`; it is not copied to public
+    output. Include HTML and all required bootstrap/lazy assets.
+  - The pinned Vercel CLI 60.1.3 supports `--prod --skip-domain`: production
+    deployments do not auto-promote. Overrides must support this flag.
+    CLI READY proves build completion; before assigning any aliases, ci-tools
+    additionally requires HTTP 200 from the immutable deployment root and every
+    manifest path, rejecting HTML fallbacks for asset paths. Probes run six at a
+    time within the existing ten rounds, two seconds apart; readiness failure
+    leaves aliases unchanged. Each production hostname is assigned once.
+    This cannot guarantee simultaneous alias propagation across edge locations;
+    consumers remain responsible for compatibility with previously served HTML.
 - `cloudflare-workers.nix` - Consumer-built Cloudflare Workers deployments
   - Provides `cloudflare-workers:deploy` and
     `cloudflare-workers:deploy:<target>`. Deployment configuration declares
