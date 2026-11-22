@@ -19,12 +19,12 @@ let
   membershipSpecification = pkgs.writeText "quick-contracts-membership-inputs.json" (
     builtins.toJSON {
       schemaVersion = 1;
-      contracts = lib.genAttrs (
-        builtins.filter (name: (targets.${name}.membership or [ ]) != [ ]) sequence
-      ) (name: {
-        inherit (targets.${name}) membership;
-        membership_mode = targets.${name}.membership_mode or "tracked";
-      });
+      contracts =
+        lib.genAttrs (builtins.filter (name: (targets.${name}.membership or [ ]) != [ ]) sequence)
+          (name: {
+            inherit (targets.${name}) membership;
+            membership_mode = targets.${name}.membership_mode or "tracked";
+          });
     }
   );
   selectedAfter =
