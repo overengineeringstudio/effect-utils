@@ -56,6 +56,23 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 - **Cache-hit classification:** each action's first end sets `buck2.execution_kind`
   and `buck2.cache_hit`; the same classification produces the command summary
   hit counts ([04](../04-trace-views/spec.md#command-summary-attributes)).
+  `buck2.execution_outcome` separately describes native execution evidence:
+  local/local-worker → `local-exec`, remote/remote-worker → `remote-exec`,
+  action-cache/local-action-cache/remote-dep-file-cache/local-dep-file →
+  `cache-hit`; all other kinds and any failed action → `unknown`. Local
+  dep-file reuse does not change the existing action-cache summary counters.
+  Neither cache reuse nor
+  deferred execution proves coalescing, so this writer emits no `coalesced`
+  outcome.
+- **Occurrence evidence:** `buck2.occurrence_id` is `occurrence-sha256-v1:<lowercase SHA-256 hex of "<log-uuid>:<native-span-id>">`, independent of view/context.
+  `buck2.action_digest` is the last nonempty native command-attempt digest (local, omitted-local, worker or remote), never derived from a label/action key.
+  Native end evidence supplies writer `buck2.action_host`, wall `buck2.duration_ns`, execution/queue timings and logical output `buck2.total_bytes`.
+  Execution prefers native execution time, then action wall time; bytes mirror `output_size`, never network traffic or input-plus-output size.
+  Missing optional evidence stays absent (explicit zero survives); unfinished actions get identity, not invented end evidence.
+- **Opaque checkout identity:** nonempty native `working_dir` supplies resource `buck2.root_id = lowercase-hex(SHA-256(UTF-8(working_dir)))`.
+  Paths/argv are not exported; missing directory means missing identity. This is the native invocation directory, not an independently discovered repository root.
+- **View evidence boundary:** summaries/producer metrics precede critical pruning; retained actions have identical evidence across views, and full retains every decoded span.
+  Critical pruning, truncation, decoder limits and mandatory overflow remain explicit gaps; none certify gap-free cross-invocation history.
 - **Command outcome:** `buck2.is_success` comes from the final `CommandResult`,
   not the deprecated `CommandEnd.is_success` (unset by current writers).
   Top-level errors fail; build/BXL responses succeed only with no errors;
@@ -69,6 +86,70 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
   using the pinned 2026-09-01 writer. Headers, argv, metadata, target lists,
   response paths and error text are stripped or sanitized; outcome fields
   retain their native wire presence.
+
+## Compact local occurrence evidence
+
+```text
+wrapper open -> native Buck -> wrapper terminal
+native log -> compact durable projection -> existing OTLP spool -> export
+```
+
+`buck2-events` owns `${XDG_STATE_HOME:-$HOME/.local/state}/buck2-events/occurrence-records/v1`,
+outside disposable worktrees. Supported Buck task wrappers persist
+`census --invocation-id ID --phase open --host HOST` before execution and
+`--phase terminal --build-id NATIVE_UUID --exit-code CODE` afterward; a missing
+native build ID is omitted, never synthesized. `--capture-error` on the terminal
+records a failed open write. The census does not require a native log or OTLP.
+`ingest --records-dir DIR` and `census --records-dir DIR` override the state root
+for isolated tests/operator capture; normal callers share the default.
+
+Every immutable JSONL file is atomically published and synced before ingest
+acknowledges conversion. Conversion filenames include native-build and content
+hashes, so replay is idempotent while partial and later complete snapshots coexist.
+First use syncs the entire newly established directory ancestry before creating
+an owned `.directory-synced` marker. Later publications sync their file and leaf
+directory; concurrent creation or a lost marker cannot skip the ancestry barrier.
+The conversion header carries `build_id`, `root_id`, typed `resource_attributes`,
+`truncated`, `stop_reason`, `unknown_fields`, and `action_count`. Each following
+`occurrence` carries `build_id`, `span_id`, decimal-string `start_ns`/`end_ns`,
+`ended`, and allowlisted typed OTLP `attributes`. Only native action spans enter
+this projection, not command roots, raw argv, environment, paths, or full traces.
+`retained.rs` is the format/allowlist authority; absent attributes stay unknown.
+
+Census records carry `invocation_id`, `phase`, observed `host`, decimal-string
+`timestamp_ns`, nullable `build_id`/`exit_code`, `capture_error`, `run_id`, and
+`lane`. Local lane is `supported-entrypoint/local`; CI without a supplied native
+lane stays null. Host manifests carry `enrolled_at_ns`, `retention_seconds`,
+`scope: supported-entrypoints`, and `coverage: unknown-until-reconciled`.
+They establish enrollment, not continuous fleet coverage.
+
+Records remain at least 30 days from first durable capture; replay does not
+refresh that clock. A host-wide scan is claimed at most once per UTC day and
+prunes only expired records, never manifests or younger records.
+A conversion is capped at 64 MiB; overflow/I/O errors fail ingest
+so native input remains available. There is no silent size eviction or claim of
+unlimited disk capacity. Existing OTLP delivery remains diagnostic until the
+reader reconciles census opens, terminals, and converted native build IDs.
+Unmatched opens, missing mappings/conversions, capture errors, truncated/conflicting
+snapshots, unknown native fields, unsupported entrypoints and unenrolled hosts
+must remain unknown, not zero. Operator 24-hour per-host counts consume these
+retained files through the existing join reader/read authority, not Tempo counts
+or CI's public artifact credentials. No new daemon, remote store, or exporter is
+introduced; worktree teardown must not remove this host-owned evidence.
+
+Backfill retained native logs without fabricating historical census:
+
+```sh
+buck2-events ingest /preserved/run_events.pb.zst --spool-dir /existing/otel/pending
+```
+
+Inputs are zstd-compressed, varint-length-delimited protobuf: first
+`buck.data.Invocation`, then `buck.daemon.CommandProgress` records. JSON from
+`buck2 log show` is not accepted by this command. Select every preserved input in
+the requested window without sampling; native timestamps govern reader windows,
+not capture time. Backfilled occurrences remain observed-only under unknown
+coverage when independent wrapper census is absent. Ingest queues existing OTLP
+chunks but does not require or invoke export.
 
 ## Producer Metrics
 

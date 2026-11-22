@@ -129,6 +129,18 @@ fn direct_decode_truncation_and_trace_views() {
         "1"
     );
     assert!(model.spans[1].critical);
+    assert!(model.resource_attrs.is_empty());
+    for key in [
+        "buck2.action_digest",
+        "buck2.execution_outcome",
+        "buck2.duration_ns",
+        "buck2.execution_ns",
+        "buck2.queue_ns",
+        "buck2.total_bytes",
+        "buck2.action_host",
+    ] {
+        assert!(!model.spans[1].attrs.iter().any(|a| a["key"] == key));
+    }
     assert_eq!(truncated_at + 3, raw.len());
 }
 
@@ -373,6 +385,197 @@ fn write_log(directory: &tempfile::TempDir, name: &str, compressed: &[u8]) -> Pa
     let path = directory.path().join(name);
     fs::write(&path, compressed).unwrap();
     path
+}
+
+#[test]
+fn native_action_evidence_is_stable_across_views_and_replay() {
+    use data::command_execution_kind::Command;
+    let working_dir = "/synthetic/checkout/worktree";
+    let original = synthetic_log(2, true);
+    let mut remaining = original.as_slice();
+    data::Invocation::decode_length_delimited(&mut remaining).unwrap();
+    let mut raw = Vec::new();
+    append(
+        &mut raw,
+        &data::Invocation {
+            working_dir: working_dir.into(),
+            ..Default::default()
+        },
+    );
+    raw.extend_from_slice(remaining);
+    for id in 2..=3 {
+        append(
+            &mut raw,
+            &event(
+                id,
+                1,
+                buck_event::Data::SpanEnd(data::SpanEndEvent {
+                    data: Some(span_end_event::Data::ActionExecution(
+                        data::ActionExecutionEnd {
+                            execution_kind: 1,
+                            hostname: Some("synthetic-worker".into()),
+                            wall_time: Some(prost_types::Duration {
+                                seconds: 2,
+                                nanos: 3,
+                            }),
+                            output_size: 123,
+                            input_files_bytes: Some(456),
+                            commands: vec![data::CommandExecution {
+                                details: Some(data::CommandExecutionDetails {
+                                    command_kind: Some(data::CommandExecutionKind {
+                                        command: Some(Command::LocalCommand(data::LocalCommand {
+                                            action_digest: "native-digest:123".into(),
+                                            argv: vec!["/synthetic/private/tool".into()],
+                                            ..Default::default()
+                                        })),
+                                    }),
+                                    metadata: Some(data::CommandExecutionMetadata {
+                                        execution_time: Some(prost_types::Duration {
+                                            seconds: 1,
+                                            nanos: 4,
+                                        }),
+                                        queue_duration: Some(prost_types::Duration::default()),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        },
+                    )),
+                    ..Default::default()
+                }),
+            ),
+        );
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = write_log(
+        &directory,
+        "native_evidence.pb.zst",
+        &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
+    );
+    let mut model = decode(&path).unwrap();
+    let replay = decode(&path).unwrap();
+    assert_eq!(model.spans[1].attrs, replay.spans[1].attrs);
+    assert_eq!(
+        model.resource_attrs,
+        vec![attr("buck2.root_id", sha256_hex(working_dir.as_bytes()))]
+    );
+    let value = |index: usize, key: &str| {
+        model.spans[index]
+            .attrs
+            .iter()
+            .find(|a| a["key"] == key)
+            .unwrap()["value"]
+            .clone()
+    };
+    assert_ne!(
+        value(1, "buck2.occurrence_id"),
+        value(2, "buck2.occurrence_id")
+    );
+    assert_eq!(
+        value(1, "buck2.occurrence_id")["stringValue"],
+        format!(
+            "occurrence-sha256-v1:{}",
+            sha256_hex(format!("{}:2", model.uuid).as_bytes())
+        )
+    );
+    for index in 1..=2 {
+        assert_eq!(
+            value(index, "buck2.action_digest")["stringValue"],
+            "native-digest:123"
+        );
+        assert_eq!(
+            value(index, "buck2.execution_outcome")["stringValue"],
+            "local-exec"
+        );
+        assert_eq!(
+            value(index, "buck2.action_host")["stringValue"],
+            "synthetic-worker"
+        );
+        assert_eq!(value(index, "buck2.duration_ns")["intValue"], "2000000003");
+        assert_eq!(value(index, "buck2.execution_ns")["intValue"], "1000000004");
+        assert_eq!(value(index, "buck2.queue_ns")["intValue"], "0");
+        assert_eq!(value(index, "buck2.total_bytes")["intValue"], "123");
+        assert_eq!(value(index, "buck2.input_files_bytes")["intValue"], "456");
+    }
+    model.spans[1].critical = true;
+    let views = make_views(&model, None);
+    let action = |view: usize| {
+        views[view]
+            .2
+            .iter()
+            .find(|span| {
+                span["attributes"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&int_attr("buck2.span_id", 2))
+            })
+            .unwrap()
+    };
+    assert_eq!(action(0)["attributes"], action(1)["attributes"]);
+    let exported = serde_json::to_string(&model.resource_attrs).unwrap()
+        + &serde_json::to_string(&views.iter().map(|v| &v.2).collect::<Vec<_>>()).unwrap();
+    assert!(!exported.contains(working_dir));
+    assert!(!exported.contains("/synthetic/private/tool"));
+}
+
+#[test]
+fn action_outcomes_and_digest_sources_remain_native() {
+    use data::command_execution_kind::Command;
+    for (kind, expected) in [
+        (1, "local-exec"),
+        (8, "local-exec"),
+        (2, "remote-exec"),
+        (11, "remote-exec"),
+        (3, "cache-hit"),
+        (7, "cache-hit"),
+        (9, "cache-hit"),
+        (10, "cache-hit"),
+        (0, "unknown"),
+        (4, "unknown"),
+        (6, "unknown"),
+        (999, "unknown"),
+    ] {
+        assert_eq!(action_outcome(kind, false), expected);
+        assert_eq!(action_outcome(kind, true), "unknown");
+    }
+    for command in [
+        Command::RemoteCommand(data::RemoteCommand {
+            action_digest: "remote-digest".into(),
+            ..Default::default()
+        }),
+        Command::OmittedLocalCommand(data::OmittedLocalCommand {
+            action_digest: "omitted-digest".into(),
+        }),
+        Command::WorkerCommand(data::WorkerCommand {
+            action_digest: "worker-digest".into(),
+            ..Default::default()
+        }),
+        Command::WorkerInitCommand(data::WorkerInitCommand::default()),
+        Command::LocalCommand(data::LocalCommand::default()),
+    ] {
+        let expected = match &command {
+            Command::RemoteCommand(_) => Some("remote-digest"),
+            Command::OmittedLocalCommand(_) => Some("omitted-digest"),
+            Command::WorkerCommand(_) => Some("worker-digest"),
+            _ => None,
+        };
+        assert_eq!(
+            command_digest(&data::CommandExecution {
+                details: Some(data::CommandExecutionDetails {
+                    command_kind: Some(data::CommandExecutionKind {
+                        command: Some(command)
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            expected
+        );
+    }
+    assert_eq!(command_digest(&data::CommandExecution::default()), None);
 }
 
 /// A log cut mid-block (crashed or still-running Buck) keeps its decoded
@@ -834,7 +1037,14 @@ fn metric_resource_reuses_writer_host_without_build_identity() {
         &compress_to_vec(raw.as_slice(), CompressionLevel::Fastest),
     );
     let out = dir.path().join("out");
-    ingest(&[log], None, Some(&out), &dir.path().join("pending")).unwrap();
+    ingest(
+        &[log],
+        None,
+        Some(&out),
+        &dir.path().join("pending"),
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let metrics: Value =
         serde_json::from_slice(&fs::read(out.join("0-metrics.json")).unwrap()).unwrap();
     let traces: Value =
@@ -893,7 +1103,14 @@ fn ingest_spools_even_without_endpoint_and_preserves_out_dump() {
     );
     let spool = dir.path().join("pending");
     let out = dir.path().join("dump");
-    ingest(&[log], None, Some(&out), &spool).unwrap();
+    ingest(
+        &[log],
+        None,
+        Some(&out),
+        &spool,
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let pending: Vec<_> = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -920,7 +1137,14 @@ fn ingest_reports_spool_failure(signal: &str) {
         &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
     );
     let spool = dir.path().join("pending");
-    ingest(std::slice::from_ref(&log), None, None, &spool).unwrap();
+    ingest(
+        std::slice::from_ref(&log),
+        None,
+        None,
+        &spool,
+        &dir.path().join("records"),
+    )
+    .unwrap();
     let target = fs::read_dir(&spool)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -938,6 +1162,7 @@ fn ingest_reports_spool_failure(signal: &str) {
             sidecar: None,
             out: None,
             spool_dir: Some(spool),
+            records_dir: Some(dir.path().join("records")),
         },
     });
     let error = result.expect_err("an unspooled chunk must fail ingest");
@@ -1264,4 +1489,101 @@ fn command_success_uses_final_response_not_deprecated_span_flag() {
         );
         assert_command_success(&decode(&path).unwrap(), expected);
     }
+}
+
+#[test]
+fn compact_capture_is_replay_stable_and_excludes_raw_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = write_log(
+        &dir,
+        "compact.pb.zst",
+        &compress_to_vec(synthetic_log(1, true).as_slice(), CompressionLevel::Fastest),
+    );
+    let mut model = decode(&log).unwrap();
+    model.resource_attrs.push(attr("host.name", "fixture-host"));
+    model
+        .spans
+        .iter_mut()
+        .find(|span| span.action)
+        .unwrap()
+        .attrs
+        .push(attr("buck2.path", "/private/raw"));
+    let records = dir.path().join("new-parent/nested/records");
+    retained::capture(&model, &records).unwrap();
+    retained::capture(&model, &records).unwrap();
+    assert_eq!(fs::read_dir(&records).unwrap().count(), 4);
+    assert!(records.join(".directory-synced").is_file());
+    let bodies: Vec<_> = fs::read_dir(&records)
+        .unwrap()
+        .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    let body = bodies
+        .iter()
+        .find(|body| body.contains("\"conversion\""))
+        .unwrap();
+    assert!(!body.contains("/private/raw"));
+    assert!(body.contains("\"occurrence\""));
+    assert!(body.contains("buck2.occurrence_id"));
+    model.truncated = true;
+    retained::capture(&model, &records).unwrap();
+    assert_eq!(fs::read_dir(&records).unwrap().count(), 5);
+}
+
+#[test]
+fn census_survives_without_native_log_or_otlp_export() {
+    let dir = tempfile::tempdir().unwrap();
+    for phase in ["open", "terminal"] {
+        run(Cli::parse_from([
+            "buck2-events",
+            "census",
+            "--invocation-id",
+            "fixture-invocation",
+            "--phase",
+            phase,
+            "--host",
+            "fixture-host",
+            "--records-dir",
+            dir.path().to_str().unwrap(),
+        ]))
+        .unwrap();
+    }
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
+    let path = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            fs::read_to_string(path)
+                .unwrap()
+                .contains("\"phase\":\"open\"")
+        })
+        .unwrap();
+    let old = UNIX_EPOCH + Duration::from_secs(1);
+    File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    // A daily scan, not every census, expires only records older than 30 days.
+    // Clear this test-owned claim to exercise the next scan without sleeping.
+    for entry in fs::read_dir(dir.path()).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name().to_string_lossy().starts_with(".prune-") {
+            fs::remove_file(entry.path()).unwrap();
+        }
+    }
+    run(Cli::parse_from([
+        "buck2-events",
+        "census",
+        "--invocation-id",
+        "next",
+        "--phase",
+        "open",
+        "--host",
+        "fixture-host",
+        "--records-dir",
+        dir.path().to_str().unwrap(),
+    ]))
+    .unwrap();
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 5);
 }

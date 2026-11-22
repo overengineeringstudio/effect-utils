@@ -149,9 +149,33 @@ emitted into YAML. The generic validator is in
 `genie/ci-workflow/runners.ts`. `ciWorkflow`, `autoReviewWorkflow`, and
 `releaseWorkflow` enforce the fleet policy by default.
 
+Shared CI job concurrency separates automatic code heads from explicit reruns.
+Only first attempts may cancel superseded validation for the same event, ref,
+and job; reruns are isolated by run ID and never cancel in-progress work. The
+`code-head` scope also isolates current jobs from historical workflows using the
+retired `code` group. Before requesting a PR rerun, compare its recorded head SHA
+with the PR's current head; rerunning a superseded SHA does not validate the PR.
+Manual dispatch and measurement-baseline scopes retain their existing isolation.
+
 Policy rejects hosted, Namespace, unknown, unresolved dynamic, fallback, and
 mixed-heavy runner selections; forbidden events; Actions artifact/cache
 actions and known wrappers; setup-action caching; and Docker `type=gha`.
+
+The effect-utils repository additionally admits `publicNamespaceKvmRunner`, its
+Linux amd64 8-vCPU/16-GiB Namespace profile with nested KVM. Use the exact static
+selector, `if: publicNamespaceKvmIf`, `permissions: { contents: 'read' }`, and
+`publicNamespaceKvmConcurrency`. The condition admits only public repositories
+on push/merge-group events or pull requests whose head belongs to the same
+repository; fork PRs cannot consume this privileged sponsored runner.
+The shared job-level concurrency group serializes these heavy jobs across all
+workflows in the repository; matrices, alternate groups and cancellation are
+not admitted. No secret references, cache-write credentials, OIDC permissions,
+additional runner labels or paid add-on configuration belong in these jobs.
+The public boundary is a hard error even in report mode. Other repositories
+retain fleet-only policy; legacy Namespace profiles remain migration debt.
+Admission is not proof of sponsorship: maintainers must confirm workspace OSS
+coverage for compute and any existing profile storage before enabling jobs.
+
 Finite runner matrices are resolved before admission. Dynamic runner outputs
 require an exact typed admission declaration with admitted possible labels.
 `linuxX64Runner` selects light work; `linuxX64HeavyRunner` is the dedicated

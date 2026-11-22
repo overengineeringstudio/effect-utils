@@ -12,6 +12,9 @@ mounted `noexec`. Shell teardown fixtures call the same TypeScript data-root
 selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run in
 the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
 the merge-group test lane.
+The directory-restoration fault fixture runs with both `0077` and `0022` umasks.
+It faults a writable-to-readonly transition, not initial normalization of a
+new readonly directory, so restrictive creation modes do not change its intent.
 
 Source consumers install the bootstrap lease preload as
 `preload-<sha256>.cjs` in a private `editor-view-lease` runtime directory:
@@ -28,6 +31,126 @@ path characters too. Concurrent first launches publish atomically;
 an existing mismatched file fails closed rather
 than being silently repaired. Remove only the reported invalid preload after
 investigating its provenance, then launch again.
+
+## Configured affected-check selection
+
+`selectConfiguredChecks` consumes complete configured snapshots from two pinned
+revisions and a complete, rename-blind changed-path list. Each snapshot records
+its execution-configuration identity, required configured check IDs, transitive
+dependency-graph digests, file/package reverse closure, and ownership coverage.
+The selector unions old and new ownership (including deleted inputs), selects
+changed configured graphs, and returns candidate configured targets with explicit
+full-set fallback reasons. Empty selection requires complete equal graphs and no
+affected owner. Unknown ownership, failed queries, required-inventory changes,
+lockfiles, toolchains, BUCK/macros, or changed configuration select the full set.
+
+This is a selection, **not passing evidence**. The caller verifies the evidence
+base, required inventory/policy and complete delta before using it; non-Buck
+checks remain explicit obligations. Removed required targets are reported, not
+silently considered passed. Package ownership/reverse closure continues to use
+`affectedPackagePaths` and `buildTargetsFor`; file-query decoding continues to
+use `parseBuckOwnershipQuery`, rather than a second package convention.
+
+`bun packages/@overeng/buck2-tools/src/configured-check-selection.mjs manifest.json`
+collects both snapshots and emits a selection plus graph/query provenance. Run
+inside an admitted slot on the query host. The manifest has this shape:
+
+```json
+{
+  "scratch": "/owned/scratch/selection",
+  "base": {
+    "revision": "<full verified evidence-base SHA>",
+    "root": "/owned/worktree/base",
+    "buck2": "/immutable/toolchain/bin/buck2",
+    "buckArgs": [],
+    "queryArgs": ["--target-platforms", "//platforms:linux"],
+    "requiredQuery": "set(//checks:canonical-check)",
+    "universeQuery": "//...",
+    "watchPlan": { "globalPaths": [], "packages": [] }
+  },
+  "candidate": {
+    "revision": "<full candidate merge SHA>",
+    "root": "/owned/worktree/candidate",
+    "buck2": "/immutable/toolchain/bin/buck2",
+    "buckArgs": [],
+    "queryArgs": ["--target-platforms", "//platforms:linux"],
+    "requiredQuery": "set(//checks:canonical-check)",
+    "universeQuery": "//...",
+    "watchPlan": { "globalPaths": [], "packages": [] }
+  }
+}
+```
+
+Queries/inventory are caller policy, not defaults: enumerate every required Buck
+check and supply the existing watch plan for package products. `queryArgs` are
+configured-query options; `buckArgs` apply to all queries and config audit.
+The adapter derives the complete Git delta itself, rejects dirty pinned roots,
+and binds snapshots to the effective all-cell Buck configuration (including
+ignored local overrides), tool version, query arguments and policy. Owners are
+queried for files **and ancestor directories** on both sides; reverse configured
+dependencies and graph changes are unioned. A failed base/graph/owner query
+selects the full candidate inventory; failure to discover that inventory or
+verify the pinned source/configuration exits nonzero instead of emitting an empty
+success. Retain the JSON beside the caller's evidence receipt. No Buck inventory,
+however complete, replaces an unmodeled Nix or other residual check lane.
+
+## Opt-in NativeLink TypeScript pilot
+
+The default remains local execution with the existing cache policy. On Linux,
+only `//packages/@overeng/kdl:typecheck`, `//packages/@overeng/kdl:dist`, and the
+dependency `//packages/@overeng/utils-dev:dist` request the pilot executor when
+`nativelink_pilot.enabled=true`. Other TypeScript, tests, tiny actions and dependency
+materialization stay local. macOS does not enter the pilot. The pilot executor is
+remote-only: no local fallback or hybrid racing conceals a missing worker.
+
+Provision the worker's exact Nix closure **before** starting either daemon.
+Build/export the same pinned effect-utils `buck2-capabilities` profile used by the
+Linux client; the measured TS families are `buck2-action-env`, `buck2-rust-shell`,
+`buck2-bubblewrap` (Linux only), `bun`, `effect-tsgo`, `buck2-fingerprint`, and
+`buck2-coreutils` (the readlink wrapper). Publish that profile through
+`scripts/buck2-capability-publish.ts --root "$PWD" --profile "$PROFILE"` using the
+pinned runtime. Keep its store closure alive on the worker. Pool properties do not
+realize store paths. Exact closure read-only binds, clean environment, input
+fingerprinting, private scratch and Bubblewrap guards are unchanged.
+
+Before a new client daemon starts, configure all three REAPI endpoints, instance,
+TLS policy and the worker's exact pool properties in untracked `.buckconfig.local`.
+For a protected, operator-owned loopback endpoint, an example is:
+
+```ini
+[buck2_re_client]
+  engine_address = grpc://127.0.0.1:50051
+  cas_address = grpc://127.0.0.1:50051
+  action_cache_address = grpc://127.0.0.1:50051
+  instance_name = main
+  tls = false
+[nativelink_pilot]
+  enabled = true
+  cpu_arch = x86_64
+  nix_store = /nix/store/REPLACE_WITH_EXACT_PROFILE-buck2-capabilities
+```
+
+Use the actual endpoint/instance and `aarch64` for an aarch64 Linux client.
+`nix_store` must equal the immutable profile store path published by the client
+and provisioned by the worker, **not** a hostname or arbitrary pool tag. Configure
+NativeLink Exact matching for `OSFamily=linux`, `cpu_arch`, and `nix_store`;
+Command.platform carries these properties at the pinned Buck revision.
+Missing endpoint/property settings or a mismatched client architecture fail
+analysis; an unavailable/mismatched worker cannot fall back to local execution.
+For non-loopback deployments, configure transport/auth at the deployment boundary;
+the example is not authorization to expose an unauthenticated listener.
+
+Replace the old daemon after changing endpoints, TLS, instance, capability profile
+or the flag: stop this worktree's selected isolation with
+`buck2 --isolation-dir <isolation> kill`, then start the next invocation with that
+same isolation and the new configuration already installed. Do not kill unrelated
+worktrees' daemons. Keep a bounded worker and independent pilot cache endpoint;
+do not redirect ordinary clients or change host admission.
+
+Rollback: set `nativelink_pilot.enabled=false` (or remove the section), restore
+the previous cache endpoints/TLS/instance, then replace the selected daemon again.
+This unregisters the pilot platform and restores the original local TS action path.
+No source-rule edits, materialization changes or cache deletion are needed.
 
 ## Editor publisher
 
@@ -640,6 +763,11 @@ per-file digests; its private materializer database is not an admission contract
 
 Each finite generation keeps a private, read-only `editor-view-sources-v1.json`
 manifest mapping payload paths to source stat keys and SHA-256-plus-mode addresses.
+Its exact mode is `0444`, independent of the publisher's umask: creation seals the
+private file through its descriptor, and candidate hardening normalizes private
+manifests without changing shared payload modes. Older wrong-mode manifests require
+the supported editor-root release and republish route after readers exit; shared
+CAS collection does not rewrite private generation metadata.
 Incremental materialization links unchanged content directly from the CAS after
 rechecking its recorded inode identity under the store lock. Only source-stat
 misses are copied and hashed; source Buck inodes are never linked. Stat keys

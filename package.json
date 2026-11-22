@@ -6,6 +6,9 @@
   "name": "effect-utils-workspace",
   "private": true,
   "license": "Apache-2.0",
+  "devDependencies": {
+    "oxc-parser": "0.127.0"
+  },
   "workspaces": [
     "context/effect/socket",
     "context/opentui",
@@ -58,6 +61,9 @@
     "packages/@overeng/react-inspector",
     "packages/@overeng/restate-effect",
     "packages/@overeng/rpc-devtools",
+    "packages/@overeng/scg-authority",
+    "packages/@overeng/scg-discord",
+    "packages/@overeng/scg-protocol",
     "packages/@overeng/stylex-tokens",
     "packages/@overeng/tui-core",
     "packages/@overeng/tui-react",

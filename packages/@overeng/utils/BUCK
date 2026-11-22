@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d9ddb940761049e3ad2f87d755845b1586e910f4546fabe18563914044c522e6
+# Semantic fingerprint: sha256:52cbae3fd94da4598f1956fa1a7e0af563ae6ea4d433e7f639e1c86fa1a5abed
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -99,6 +99,7 @@ export_materialization_inputs([
     "src/node/cmd.unit.test.ts",
     "src/node/file-system-backing.ts",
     "src/node/file-system-backing.unit.test.ts",
+    "src/node/fixtures/otel-delivery.ts",
     "src/node/github-app.contract.ts",
     "src/node/github-app.integration.test.ts",
     "src/node/github-app.ts",
@@ -107,6 +108,7 @@ export_materialization_inputs([
     "src/node/net.unit.test.ts",
     "src/node/otel-attrs.ts",
     "src/node/otel-attrs.unit.test.ts",
+    "src/node/otel-delivery.integration.test.ts",
     "src/node/otel-identity.test.ts",
     "src/node/otel-telemetry.test.ts",
     "src/node/otel.ts",
@@ -252,6 +254,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/fixtures/otel-delivery.ts": "src/node/fixtures/otel-delivery.ts",
         "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
@@ -260,6 +263,7 @@ package_view(
         "src/node/net.unit.test.ts": "src/node/net.unit.test.ts",
         "src/node/otel-attrs.ts": "src/node/otel-attrs.ts",
         "src/node/otel-attrs.unit.test.ts": "src/node/otel-attrs.unit.test.ts",
+        "src/node/otel-delivery.integration.test.ts": "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts": "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts": "src/node/otel-telemetry.test.ts",
         "src/node/otel.ts": "src/node/otel.ts",
@@ -392,6 +396,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/fixtures/otel-delivery.ts": "src/node/fixtures/otel-delivery.ts",
         "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
@@ -400,6 +405,7 @@ package_view(
         "src/node/net.unit.test.ts": "src/node/net.unit.test.ts",
         "src/node/otel-attrs.ts": "src/node/otel-attrs.ts",
         "src/node/otel-attrs.unit.test.ts": "src/node/otel-attrs.unit.test.ts",
+        "src/node/otel-delivery.integration.test.ts": "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts": "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts": "src/node/otel-telemetry.test.ts",
         "src/node/otel.ts": "src/node/otel.ts",
@@ -531,6 +537,7 @@ package_view(
         "src/node/cmd.unit.test.ts": "src/node/cmd.unit.test.ts",
         "src/node/file-system-backing.ts": "src/node/file-system-backing.ts",
         "src/node/file-system-backing.unit.test.ts": "src/node/file-system-backing.unit.test.ts",
+        "src/node/fixtures/otel-delivery.ts": "src/node/fixtures/otel-delivery.ts",
         "src/node/github-app.contract.ts": "src/node/github-app.contract.ts",
         "src/node/github-app.integration.test.ts": "src/node/github-app.integration.test.ts",
         "src/node/github-app.ts": "src/node/github-app.ts",
@@ -539,6 +546,7 @@ package_view(
         "src/node/net.unit.test.ts": "src/node/net.unit.test.ts",
         "src/node/otel-attrs.ts": "src/node/otel-attrs.ts",
         "src/node/otel-attrs.unit.test.ts": "src/node/otel-attrs.unit.test.ts",
+        "src/node/otel-delivery.integration.test.ts": "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts": "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts": "src/node/otel-telemetry.test.ts",
         "src/node/otel.ts": "src/node/otel.ts",
@@ -653,6 +661,7 @@ vitest_test(
         "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
+        "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
@@ -677,6 +686,7 @@ vitest_collect(
         "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
+        "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",

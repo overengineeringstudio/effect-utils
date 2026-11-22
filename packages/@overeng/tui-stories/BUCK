@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c1c7a50fbc5e451cc32cf31d781a76a5e3fac03a69dfa5151fb3f8d4682457a4
+# Semantic fingerprint: sha256:5f57cf0397ad6661d600a4afa2cf9e3a4465500503f961a0300a2ae536476a48
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -401,6 +401,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-path.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-path.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.basic.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.basic.integration.test.ts",
@@ -805,6 +806,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-path.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-path.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.basic.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.basic.integration.test.ts",
@@ -1209,6 +1211,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-path.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-path.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pinned-deletion.ts": "//packages/@overeng/megarepo:src/store/store-pinned-deletion.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-state.ts": "//packages/@overeng/megarepo:src/store/store-pool-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.ts",
         "node_modules/@overeng/megarepo/src/store/store-pr-state.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pr-state.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.basic.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.basic.integration.test.ts",

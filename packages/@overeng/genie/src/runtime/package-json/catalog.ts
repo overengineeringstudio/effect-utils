@@ -196,6 +196,8 @@ type ExtendedCatalogInput<TBase extends CatalogInput = CatalogInput> = {
   extends: Catalog<TBase> | readonly Catalog[]
   /** New packages to add (will be checked for duplicates/conflicts) */
   packages: CatalogInput
+  /** Explicit consumer-only versions for inherited keys; never npm dependency overrides. */
+  overrides?: CatalogInput
 }
 
 /** Error thrown when a catalog has conflicting version definitions */
@@ -556,6 +558,8 @@ const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
  * When extending:
  * - Duplicate (same pkg + same version): Console warning, proceeds
  * - Conflict (same pkg + different version): Throws {@link CatalogConflictError}
+ * - Explicit `overrides`: Replaces inherited versions only in the new catalog.
+ *   Base catalogs, base-base conflict checks and other package conflicts are unchanged.
  *
  * @example
  * ```ts
@@ -575,6 +579,13 @@ const finalizeCatalog = <T extends CatalogInput>(catalog: T): Catalog<T> => {
  *   },
  * })
  *
+ * // A consumer version does not rewrite an upstream package's locked dependencies.
+ * const consumer = defineCatalog({
+ *   extends: baseCatalog,
+ *   overrides: { effect: '3.20.0' },
+ *   packages: { 'consumer-only': '1.0.0' },
+ * })
+ *
  * // Multiple bases
  * const merged = defineCatalog({
  *   extends: [baseCatalog, otherCatalog],
@@ -586,11 +597,20 @@ export function defineCatalog<const T extends CatalogInput>(input: T): Catalog<T
 export function defineCatalog<
   const TBase extends CatalogInput,
   const TNew extends CatalogInput,
->(input: { extends: Catalog<TBase>; packages: TNew }): Catalog<TBase & TNew>
-export function defineCatalog<const TNew extends CatalogInput>(input: {
+  const TOverrides extends CatalogInput = {},
+>(input: {
+  extends: Catalog<TBase>
+  packages: TNew
+  overrides?: TOverrides & Record<Exclude<keyof TOverrides, keyof TBase>, never>
+}): Catalog<Omit<TBase, keyof TOverrides> & TOverrides & TNew>
+export function defineCatalog<
+  const TNew extends CatalogInput,
+  const TOverrides extends CatalogInput = {},
+>(input: {
   extends: readonly Catalog<any>[]
   packages: TNew
-}): Catalog<CatalogInput & TNew>
+  overrides?: TOverrides
+}): Catalog<CatalogInput & TOverrides & TNew>
 export function defineCatalog<const T extends CatalogInput>(
   input: T | ExtendedCatalogInput,
 ): Catalog<T> {
@@ -618,6 +638,13 @@ export function defineCatalog<const T extends CatalogInput>(
       }
       merged[pkg] = version
     }
+  }
+
+  // Overrides are explicit and scoped to this copy, after bases agree.
+  for (const [pkg, version] of Object.entries(input.overrides ?? {})) {
+    if (Object.hasOwn(merged, pkg) === false)
+      throw new TypeError(`Cannot override unknown catalog package "${pkg}"; add it to packages`)
+    merged[pkg] = version
   }
 
   // Check and merge new packages
