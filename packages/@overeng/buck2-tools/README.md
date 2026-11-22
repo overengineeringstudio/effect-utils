@@ -238,6 +238,25 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
+owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
+The generic Bun capability stays unwrapped so hermetic actions do not acquire
+publication-specific environment or a shell wrapper's `SHLVL`.
+The library has no runtime compiler, profile lookup, or variadic JavaScript FFI.
+Its fixed-arity `buck2_publication_owner_open(path)` opens with
+`O_RDWR | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC`, mode `0600`, returning
+the descriptor or negative errno. `buck2_publication_owner_lock(fd, mode)` uses
+the supplied mode (including `LOCK_NB`) and returns zero or positive errno.
+`buck2_publication_owner_fd_flags(fd)` returns raw `F_GETFD` flags or `-1` for
+the real descriptor-inheritance regression tests. Variadic `open` and `fcntl`
+stay inside C because
+Darwin arm64 passes variadic arguments differently from fixed-arity FFI arguments.
+The Nix build checks atomic CLOEXEC, genuine flag clearing/restoration, and
+independent-descriptor lock contention against the produced shared library.
+Portable compiled payloads remain unchanged; native wrappers own this dependency.
+The C source is projected independently of the repository snapshot. An evaluated
+identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
+
 In `check:quick`, its dedicated standalone-staging publication waits for
 `buck2:quick` to finish: Buck output directories are mutable even after the
 publisher's build returns. The evaluated task-graph guard proves ordering over

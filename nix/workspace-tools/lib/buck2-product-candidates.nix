@@ -18,6 +18,8 @@
 
 let
   importProduct = import ./javascript-product-import.nix { inherit pkgs; };
+  publicationOwner = import ../../buck2-publication-owner.nix { inherit pkgs; };
+  publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
   opentuiCoreNative = import ../../opentui-core-native.nix { inherit pkgs; };
   opentuiCoreExternalModules = [
     "@opentui/core-darwin-arm64"
@@ -100,6 +102,7 @@ let
     binaryName = "genie";
     environment = genieProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
+      BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
       # Bun caches plugin-linked imports without the invoking workspace's lock.
       BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
     };
@@ -170,6 +173,7 @@ let
     compile = true;
     environment = megarepoProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
+      BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
     };
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";

@@ -127,11 +127,14 @@ let
   # the evictable dependency graph. Conservatively retain every published
   # workspace generation before source/bootstrap reads and in spawned children.
   editorViewLease = pkgs.callPackage ./nix/editor-view-lease/default.nix { };
+  publicationOwner = import ./nix/buck2-publication-owner.nix { inherit pkgs; };
+  publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
   sourceLease = import ./nix/editor-view-lease/consumer.nix {
     inherit pkgs;
     native = editorViewLease;
   };
   sourceBun = pkgs.writeShellScriptBin "bun" ''
+    export BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY=${publicationOwnerLibrary}
     exec ${sourceLease}/bin/editor-view-source ${pkgs.bun}/bin/bun "$@"
   '';
 
@@ -1316,6 +1319,7 @@ in
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+  env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
   # Explicit digest-tool input for the JavaScript product contract test, including
   # its direct `devenv shell -- bash ...` CI invocation.
