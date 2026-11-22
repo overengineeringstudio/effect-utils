@@ -312,9 +312,7 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
-          publication-owner-identity =
-            assert import ./nix/buck2-publication-owner.test.nix { inherit pkgs; };
-            pkgs.runCommand "publication-owner-identity" { } ''touch "$out"'';
+          publication-owner-identity = import ./nix/buck2-publication-owner.test.nix { inherit pkgs; };
           worktree-tools-identity =
             pkgs.runCommand "worktree-tools-identity"
               {
