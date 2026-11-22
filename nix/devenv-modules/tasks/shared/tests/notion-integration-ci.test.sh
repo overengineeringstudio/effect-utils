@@ -13,14 +13,26 @@ tasks=(
   test:notion-integration:notion-react
 )
 
+run_tasks() {
+  if [ -n "${NOTION_INTEGRATION_TASK_COMMANDS_FILE:-}" ]; then
+    local task command
+    for task in "${tasks[@]}"; do
+      command="$(jq -er --arg task "$task" '.[$task]' "$NOTION_INTEGRATION_TASK_COMMANDS_FILE")" || return
+      env "${args[@]}" "$marker" SECRETSPEC_PROVIDER=invalid-ci-test-provider "$command" || return
+    done
+  else
+    env "${args[@]}" "$marker" SECRETSPEC_PROVIDER=invalid-ci-test-provider \
+      devenv tasks run --mode single --show-output "${tasks[@]}"
+  fi
+}
+
 for marker in CI=true GITHUB_ACTIONS=true; do
   for token_state in unset empty; do
     args=(-u CI -u GITHUB_ACTIONS -u NOTION_API_TOKEN -u NOTION_TOKEN)
     if [ "$token_state" = empty ]; then
       args+=(NOTION_API_TOKEN=)
     fi
-    output="$(env "${args[@]}" "$marker" SECRETSPEC_PROVIDER=invalid-ci-test-provider \
-      devenv tasks run --mode single --show-output "${tasks[@]}" 2>&1)" || {
+    output="$(run_tasks 2>&1)" || {
       printf '%s\n' "$output" >&2
       exit 1
     }

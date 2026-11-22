@@ -567,7 +567,7 @@ let
   '';
   publishBuckCapabilities = ''
     ${sourceBun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
-      --root "$root" --profile ${buck2Capabilities} \
+      --root "$root" --profile "''${WORKTREE_CAPABILITIES_PROFILE:-${buck2Capabilities}}" \
       --nix-store ${pkgs.nix}/bin/nix-store --buck2-native ${buck2Machine}/libexec/buck2 \
       --buck2 "$BUCK2_BIN" >&2
   '';
@@ -952,6 +952,7 @@ in
   };
 
   imports = [
+    (import ./nix/quick-contracts.nix { baseCapabilities = buck2Capabilities; })
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
     (repoFlake.devenvModules.tasks.github-ruleset {
@@ -1614,6 +1615,7 @@ in
     exec = trace.exec "worktree:teardown:test" ''
       set -euo pipefail
       export BUN_BIN=${pkgs.bun}/bin/bun
+      export DEVENV_BIN=${inputs.devenv.packages.${currentSystem}.devenv}/bin/devenv
       export CP_BIN=${pkgs.coreutils}/bin/cp MV_BIN=${pkgs.coreutils}/bin/mv
       export JQ_BIN=${pkgs.jq}/bin/jq
       export FINGERPRINT_BIN=${
@@ -2205,7 +2207,11 @@ in
     exec = trace.exec "buck2:task-guards:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      DEVENV_TASKS_JSON="$root/.devenv/gc/task-config-devenv-config-task-config" \
+      for ci in 0 1; do
+        EFFECT_UTILS_CI_TEST="$ci" ${pkgs.nix}/bin/nix-instantiate --eval --strict \
+          "$root/nix/quick-contracts-sequence.test.nix"
+      done
+      DEVENV_TASKS_JSON="''${DEVENV_TASKS_JSON:-$root/.devenv/gc/task-config-devenv-config-task-config}" \
         NODE_BIN=${pkgs.nodejs}/bin/node exec ${pkgs.bash}/bin/bash \
         "$root/nix/devenv-modules/tasks/shared/tests/devenv-task-graph.test.sh"
     '';
@@ -2218,7 +2224,7 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       exec ${sourceBun}/bin/bun "$root/genie/buck2/producer-overlap.ts" check \
-        "$root/.devenv/gc/task-config-devenv-config-task-config"
+        "''${DEVENV_TASKS_JSON:-$root/.devenv/gc/task-config-devenv-config-task-config}"
     '';
   };
 
