@@ -143,31 +143,13 @@ let
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
   '';
   # Buck's scratch TMPDIR is inside buck-out and can exceed AF_UNIX limits.
-  # Own a short external directory only for the task, not preparation/reporting.
+  # Preserve fixture-owned private dirs and process lifetimes; do not supervise them.
   taskRuntime = pkgs.writeShellScript "quick-contract-task-runtime" ''
     set -euo pipefail
-    task_tmp="$(${pkgs.coreutils}/bin/mktemp -d /tmp/qc.XXXXXXXX)"
-    task_pid=""
-    cleanup() {
-      if [ -n "$task_pid" ]; then
-        kill -TERM "$task_pid" 2>/dev/null || true
-        wait "$task_pid" 2>/dev/null || true
-      fi
-      ${pkgs.coreutils}/bin/rm -rf -- "$task_tmp"
-    }
-    trap cleanup EXIT
-    trap 'exit 129' HUP
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
     # Canonicalize /tmp on Darwin before guards compare physical repo paths.
-    export TMPDIR="$(${pkgs.coreutils}/bin/realpath -e -- "$task_tmp")"
+    export TMPDIR="$(${pkgs.coreutils}/bin/realpath -e -- /tmp)"
     export TMP="$TMPDIR" TEMP="$TMPDIR" RUNNER_TEMP="$TMPDIR"
-    "$@" <&0 &
-    task_pid=$!
-    task_status=0
-    wait "$task_pid" || task_status=$?
-    task_pid=""
-    exit "$task_status"
+    exec "$@"
   '';
   taskCapabilities = builtins.listToAttrs (
     map (

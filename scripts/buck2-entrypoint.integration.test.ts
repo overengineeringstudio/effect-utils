@@ -182,7 +182,7 @@ describe('quick contract task runtime', () => {
     return { cp, bash, coreutils }
   }
 
-  it('scopes external temporary storage to each task, not prepare/report', () => {
+  it('scopes the short base to tasks without taking fixture ownership', () => {
     expect(runtime).toBeDefined()
     expect(source).toContain('${taskRuntime} ${taskScripts.${name}}')
     const shared = source.slice(
@@ -191,10 +191,14 @@ describe('quick contract task runtime', () => {
     )
     expect(shared).not.toContain('taskRuntime')
     expect(shared).not.toContain('TMPDIR')
+    expect(runtime).toContain('exec "$@"')
+    expect(runtime).not.toContain('mktemp')
+    expect(runtime).not.toContain('trap')
+    expect(runtime).not.toContain('wait')
   })
 
   for (const status of [0, 23]) {
-    it(`uses private short external temps and cleans up after task exit ${status}`, () => {
+    it(`preserves fixture temps and exec identity on exit ${status}`, () => {
       const { bash, coreutils } = declaredTools()
       expect(runtime).toBeDefined()
       const root = fixture()
@@ -210,23 +214,36 @@ describe('quick contract task runtime', () => {
             '--',
             bash,
             '-c',
-            'printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP"; test -d "$TMPDIR"; exit "$1"',
+            `task_tmp="$(mktemp -d "$TMPDIR/qc.XXXXXXXX")"
+trap 'rmdir -- "$task_tmp"' EXIT
+printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP" "$task_tmp" "$$"
+stat -c '%a' "$task_tmp"
+exit "$1"`,
             '--',
             String(status),
           ],
           {
             cwd: root,
-            env: { TMPDIR: deep, TMP: deep, TEMP: deep, RUNNER_TEMP: deep },
+            env: {
+              PATH: `${coreutils}/bin:${dirname(bash)}`,
+              TMPDIR: deep,
+              TMP: deep,
+              TEMP: deep,
+              RUNNER_TEMP: deep,
+            },
             encoding: 'utf8',
           },
         )
         expect(result.stderr).toBe('')
         expect(result.status).toBe(status)
         const paths = result.stdout.trim().split('\n')
-        expect(paths).toHaveLength(4)
-        const temporary = paths[0]!
-        expect(paths.every((path) => path === temporary)).toBe(true)
-        expect(temporary.startsWith(`${realpathSync('/tmp')}/qc.`)).toBe(true)
+        expect(paths).toHaveLength(7)
+        const base = realpathSync('/tmp')
+        expect(paths.slice(0, 4).every((path) => path === base)).toBe(true)
+        const temporary = paths[4]!
+        expect(temporary.startsWith(`${base}/qc.`)).toBe(true)
+        expect(Number(paths[5])).toBe(result.pid)
+        expect(paths[6]).toBe('700')
         expect(temporary.startsWith(realpathSync(root))).toBe(false)
         expect(
           Buffer.byteLength(`${temporary}/direct-buck-posture-XXXXXX/watchman.sock`),

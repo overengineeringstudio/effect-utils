@@ -94,12 +94,13 @@ anchors, not source-file lists. Regenerate for a new package or deeper hidden
 directory chain. Each package shares one compact exclusion expression across
 its contracts instead of emitting the expanded pattern product per contract.
 
-Each Buck contract task gets its own private, short directory under `/tmp`
-(physically resolved on Darwin) for `TMPDIR`, `TMP`, `TEMP`, and `RUNNER_TEMP`.
-The task wrapper owns cleanup on success, failure, and handled termination;
-preparation and aggregate reporting retain their existing environments. This
-keeps fixture repositories outside `buck-out` and leaves Unix-socket path room
-without weakening repository-discovery or input-ownership guards. The cache
+Each Buck contract task uses canonical `/tmp` as the short external base for
+`TMPDIR`, `TMP`, `TEMP`, and `RUNNER_TEMP`. Fixtures create their own private
+`mktemp`/`mkdtemp` directories and retain their existing lifetime and cleanup;
+the task adapter uses `exec`, not another supervisor or cleanup owner.
+Preparation and reporting keep their environments. This keeps fixtures outside
+`buck-out` and leaves Unix-socket path room without weakening repository-discovery
+or input-ownership guards. The cache
 admission fixture copies read-only inputs into a writable owned tree and replaces
 only its fixture `BUCK` entry; source modes and dependency symlinks stay intact.
 
