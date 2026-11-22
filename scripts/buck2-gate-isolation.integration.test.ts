@@ -84,7 +84,7 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
               ['--isolation-dir', 'owned', 'status'],
               ['--isolation-dir', 'owned', 'kill'],
             ]
-          : [],
+          : [['--isolation-dir', 'owned', 'status']],
       )
       expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({
         owned: process.platform === 'linux' ? 'stopped' : 'running',
@@ -107,7 +107,7 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
           expect(readFileSync(calls, 'utf8')).toBe(
             process.platform === 'linux'
               ? `${JSON.stringify(['--isolation-dir', 'owned', 'status'])}\n${JSON.stringify(['--isolation-dir', 'owned', 'kill'])}\n`
-              : '',
+              : `${JSON.stringify(['--isolation-dir', 'owned', 'status'])}\n`,
           )
           expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({
             owned: process.platform === 'linux' ? 'stopped' : 'running',

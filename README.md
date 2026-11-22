@@ -972,8 +972,8 @@ after a wrapper INT/TERM/HUP it restores the default disposition and re-raises
 the signal, so parents observe signal termination rather than an explicit
 128+N exit. `kill`, `status`, and `log` remain diagnostic/lifecycle commands and
 bypass both gated admission and teardown.
-Non-Linux gate exit does not query or stop the daemon: there is no Linux cgroup
-ownership to release, so same-worktree commands retain their in-memory DICE state.
+Non-Linux gate exit observes native status but never stops the daemon: there is
+no Linux cgroup ownership to release, so same-worktree commands retain their in-memory DICE state.
 The wrapper still preserves exits and forwards signals on these hosts.
 Signals already ignored on entry to Bash remain ignored as POSIX requires;
 the wrapper does not override that inherited caller policy.
