@@ -5,7 +5,7 @@ native.alias(
     visibility = ["PUBLIC"],
 )
 native.alias(
-    name = "number",
+    name = "serde_json",
     actual = "//rust/third-party:serde_json",
     visibility = ["PUBLIC"],
 )

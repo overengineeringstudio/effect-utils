@@ -4,10 +4,11 @@
 # Projection source: scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:3b7360f48c078eeca49fcfe5735b90a934c5aa3a74b02e19b0993346fb313d32
+# Semantic fingerprint: sha256:05c7de9f750152225e2d385b79eff3d828906a7ee5f0adf222495b26f679fc1f
 # Semantic inputs: genie/buck2/mod.ts, rust/buck2-tools/core/cargo-buck2-package-projection.ts, scripts/fixtures/rust-foreign/a/Cargo.lock, scripts/fixtures/rust-foreign/a/Cargo.toml, scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts, scripts/fixtures/rust-foreign/a/app/Cargo.toml, scripts/fixtures/rust-foreign/a/app/src/**/*.rs, scripts/fixtures/rust-foreign/a/app/tests/**/*.rs, scripts/fixtures/rust-foreign/a/foreign-packages.json, scripts/fixtures/rust-foreign/a/reindeer.toml, scripts/fixtures/rust-foreign/a/third-party/BUCK, scripts/fixtures/rust-foreign/a/third-party/cargo-resolution.json, scripts/fixtures/rust-foreign/b/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml, scripts/fixtures/rust-foreign/b/crates/shared/src/**/*.rs, scripts/fixtures/rust-foreign/projection.ts
 # Test projection: disabled (opt in with testPackagePaths).
 # Doctests: unsupported (unit and integration harnesses only).
+# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -27,10 +28,11 @@ static_source_set(
 native.rust_binary(
     name = "foreign-consumer",
     crate = "foreign_consumer",
-    crate_root = "src/main.rs",
-    srcs = [
-        "src/main.rs",
-    ],
+    crate_root = "scripts/fixtures/rust-foreign/a/app/src/main.rs",
+    mapped_srcs = {
+        "Cargo.toml": "scripts/fixtures/rust-foreign/a/app/Cargo.toml",
+        "src/main.rs": "scripts/fixtures/rust-foreign/a/app/src/main.rs",
+    },
     deps = [
         "//scripts/fixtures/rust-foreign/a/third-party:memchr",
         "//scripts/fixtures/rust-foreign/a:foreign-foreign-shared-lib",

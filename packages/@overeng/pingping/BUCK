@@ -4,10 +4,11 @@
 # Projection source: packages/@overeng/pingping/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:9cd23d45ffbb2571af6b4107caf1b759892648fc4da1353b13723df3fb6a6032
+# Semantic fingerprint: sha256:5c99b4f22869c80d00aab137c98d571783a7eb1fefcc5cc10e1c273eb18d5e2e
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/BUCK.genie.ts, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, packages/@overeng/pingping/src/**/*.rs, packages/@overeng/pingping/tests/**/*.rs, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/Cargo.toml
 # Test projection: disabled (opt in with testPackagePaths).
 # Doctests: unsupported (unit and integration harnesses only).
+# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -62,41 +63,42 @@ static_source_set(
 native.rust_binary(
     name = "pingping",
     crate = "pingping",
-    crate_root = "src/main.rs",
-    srcs = [
-        "src/completion.rs",
-        "src/egress.rs",
-        "src/history.rs",
-        "src/icmp.rs",
-        "src/live.rs",
-        "src/live/resize.rs",
-        "src/live/resolve.rs",
-        "src/live/targets.rs",
-        "src/main.rs",
-        "src/netinfo.rs",
-        "src/netinfo/linux.rs",
-        "src/path.rs",
-        "src/path/route.rs",
-        "src/probe.rs",
-        "src/prompt.rs",
-        "src/render.rs",
-        "src/render/bench.rs",
-        "src/render/drop.rs",
-        "src/render/hover.rs",
-        "src/render/keys.rs",
-        "src/render/past.rs",
-        "src/render/raster.rs",
-        "src/render/sidecar.rs",
-        "src/render/summary_tests.rs",
-        "src/runtime.rs",
-        "src/stats.rs",
-        "src/tailnet.rs",
-        "src/target.rs",
-        "src/theme.rs",
-        "src/timeline.rs",
-        "src/uptime.rs",
-        "src/version.rs",
-    ],
+    crate_root = "packages/@overeng/pingping/src/main.rs",
+    mapped_srcs = {
+        "Cargo.toml": "packages/@overeng/pingping/Cargo.toml",
+        "src/completion.rs": "packages/@overeng/pingping/src/completion.rs",
+        "src/egress.rs": "packages/@overeng/pingping/src/egress.rs",
+        "src/history.rs": "packages/@overeng/pingping/src/history.rs",
+        "src/icmp.rs": "packages/@overeng/pingping/src/icmp.rs",
+        "src/live.rs": "packages/@overeng/pingping/src/live.rs",
+        "src/live/resize.rs": "packages/@overeng/pingping/src/live/resize.rs",
+        "src/live/resolve.rs": "packages/@overeng/pingping/src/live/resolve.rs",
+        "src/live/targets.rs": "packages/@overeng/pingping/src/live/targets.rs",
+        "src/main.rs": "packages/@overeng/pingping/src/main.rs",
+        "src/netinfo.rs": "packages/@overeng/pingping/src/netinfo.rs",
+        "src/netinfo/linux.rs": "packages/@overeng/pingping/src/netinfo/linux.rs",
+        "src/path.rs": "packages/@overeng/pingping/src/path.rs",
+        "src/path/route.rs": "packages/@overeng/pingping/src/path/route.rs",
+        "src/probe.rs": "packages/@overeng/pingping/src/probe.rs",
+        "src/prompt.rs": "packages/@overeng/pingping/src/prompt.rs",
+        "src/render.rs": "packages/@overeng/pingping/src/render.rs",
+        "src/render/bench.rs": "packages/@overeng/pingping/src/render/bench.rs",
+        "src/render/drop.rs": "packages/@overeng/pingping/src/render/drop.rs",
+        "src/render/hover.rs": "packages/@overeng/pingping/src/render/hover.rs",
+        "src/render/keys.rs": "packages/@overeng/pingping/src/render/keys.rs",
+        "src/render/past.rs": "packages/@overeng/pingping/src/render/past.rs",
+        "src/render/raster.rs": "packages/@overeng/pingping/src/render/raster.rs",
+        "src/render/sidecar.rs": "packages/@overeng/pingping/src/render/sidecar.rs",
+        "src/render/summary_tests.rs": "packages/@overeng/pingping/src/render/summary_tests.rs",
+        "src/runtime.rs": "packages/@overeng/pingping/src/runtime.rs",
+        "src/stats.rs": "packages/@overeng/pingping/src/stats.rs",
+        "src/tailnet.rs": "packages/@overeng/pingping/src/tailnet.rs",
+        "src/target.rs": "packages/@overeng/pingping/src/target.rs",
+        "src/theme.rs": "packages/@overeng/pingping/src/theme.rs",
+        "src/timeline.rs": "packages/@overeng/pingping/src/timeline.rs",
+        "src/uptime.rs": "packages/@overeng/pingping/src/uptime.rs",
+        "src/version.rs": "packages/@overeng/pingping/src/version.rs",
+    },
     deps = [
         "//rust/third-party:chrono",
         "//rust/third-party:clap",
