@@ -15,7 +15,7 @@ import {
 import type {
   BuckReconcileTiming,
   BuckWatchPlan,
-  RunCommand,
+  OwnedRunCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import {
   editorPublicationIsolation,
@@ -472,13 +472,18 @@ const parseCli = (args: readonly string[]) => {
 const executeSelectedEditorViewOperation = async ({
   options,
   packageScope,
-  run,
+  publication,
   authorityCommandRunner,
   signal,
 }: {
   readonly options: ReturnType<typeof parseCli>
   readonly packageScope: ReturnType<typeof resolveEditorViewPackageScope>
-  readonly run: RunCommand
+  readonly publication:
+    | {
+        readonly publicationOwner: EditorPublicationOwner
+        readonly runOwned: OwnedRunCommand
+      }
+    | undefined
   readonly authorityCommandRunner: EditorViewAuthorityCommandRunner
   readonly signal: AbortSignal
 }): Promise<void> => {
@@ -500,6 +505,7 @@ const executeSelectedEditorViewOperation = async ({
     )
     return
   }
+  if (publication === undefined) fail('publication requires owning admission')
   const plan = editorViewPlan({
     cell: options.cell,
     packagePaths: packageScope.publicationPackagePaths,
@@ -515,7 +521,10 @@ const executeSelectedEditorViewOperation = async ({
     },
     options: {
       plan,
-      run,
+      run: (command) =>
+        command.command === options.buck2
+          ? publication.runOwned({ command, owner: publication.publicationOwner })
+          : runCommand(command),
       signal,
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
@@ -592,7 +601,7 @@ const main = async (signal: AbortSignal): Promise<void> => {
       options,
       packageScope,
       signal,
-      run: runCommand,
+      publication: undefined,
       authorityCommandRunner: runEditorViewAuthorityCommand,
     })
     notifyPublicationAdmission('no-publication')
@@ -614,17 +623,18 @@ const main = async (signal: AbortSignal): Promise<void> => {
           env: process.env,
           signal,
         }),
-        run: (command) => {
-          if (command.command !== options.buck2) return runCommand(command)
-          return runManagedEditorPublicationCommand({
-            command: {
-              ...command,
-              args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
-            },
-            owner,
-            native: options.buck2Native,
-            env: process.env,
-          })
+        publication: {
+          publicationOwner: owner,
+          runOwned: ({ command, owner: commandOwner }) =>
+            runManagedEditorPublicationCommand({
+              command: {
+                ...command,
+                args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+              },
+              owner: commandOwner,
+              native: options.buck2Native,
+              env: process.env,
+            }),
         },
       })
     },

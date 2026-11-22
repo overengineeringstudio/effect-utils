@@ -288,17 +288,31 @@ const makePublicationFixture = () => {
       ownedPackages: ['packages/app'],
     }),
   )
-  const editorViewCommand = [
+  const publisherCommand = [
     requireTool('BUN_BIN'),
     new URL('./editor-view.ts', import.meta.url).pathname,
   ] as const
+  // Publisher exporters must not delay the parent exporter's lifecycle proofs.
+  const runPublisher = (invocation: Parameters<typeof runCommand>[0]) =>
+    runCommand({
+      ...invocation,
+      command: requireTool('ENV_BIN'),
+      args: [
+        '-u',
+        'TRACEPARENT',
+        '-u',
+        'OTEL_TASK_TRACEPARENT',
+        invocation.command,
+        ...invocation.args,
+      ],
+    })
   const options = {
     plan,
     mode: 'publish' as const,
     repoRoot: root,
     workspaceRoot: root,
     buck2: '/tools/buck2',
-    editorViewCommand,
+    editorViewCommand: publisherCommand,
     workspaceAuthority,
     cp: requireTool('CP_BIN'),
     mv: requireTool('MV_BIN'),
@@ -307,19 +321,7 @@ const makePublicationFixture = () => {
     run: async (invocation: Parameters<NonNullable<BuckReconcilerOptions['run']>>[0]) => {
       if (invocation.command === '/tools/buck2' && invocation.args[0] === 'build')
         return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-      // Publisher exporters must not delay the parent exporter's lifecycle proofs.
-      return runCommand({
-        ...invocation,
-        command: requireTool('ENV_BIN'),
-        args: [
-          '-u',
-          'TRACEPARENT',
-          '-u',
-          'OTEL_TASK_TRACEPARENT',
-          invocation.command,
-          ...invocation.args,
-        ],
-      })
+      return runPublisher(invocation)
     },
   }
   const current = join(root, '.editor-view/app')
@@ -335,7 +337,19 @@ const makePublicationFixture = () => {
     unlockFixtureDirectories(root)
     rmSync(root, { recursive: true, force: true })
   }
-  return { root, manifest, nodeModules, packageTree, dependency, current, options, record, cleanup }
+  return {
+    root,
+    manifest,
+    nodeModules,
+    packageTree,
+    dependency,
+    current,
+    options,
+    publisherCommand,
+    runPublisher,
+    record,
+    cleanup,
+  }
 }
 
 const publicationRequest = {
@@ -418,9 +432,28 @@ describe('Buck watch reconciliation', () => {
     expect(publicationSignal(new AggregateError([cycle, failure]))).toBe('SIGTERM')
   })
 
-  it('publishes real finite fixture bytes through the existing publisher CLI', async () => {
+  it('publishes real finite fixture bytes through the public CLI and reconciler', async () => {
     const fixture = makePublicationFixture()
     try {
+      const candidate = plan.packages.find((entry) => entry.packagePath === 'packages/app')
+      if (candidate?.editor === undefined) throw new Error('missing fixture editor entry')
+      const args = await prepareEditorPublicationRequest({
+        entry: { ...candidate, editor: candidate.editor },
+        outputs: new Map([[candidate.editor.inputsManifestTarget, fixture.manifest]]),
+        options: fixture.options,
+      })
+      expect(args).toContain('--backing-root')
+      expect(args).toEqual(
+        expect.arrayContaining([fixture.nodeModules, fixture.packageTree, fixture.dependency]),
+      )
+      const result = await fixture.runPublisher({
+        command: fixture.publisherCommand[0],
+        args: [...fixture.publisherCommand.slice(1), ...args],
+        cwd: fixture.root,
+      })
+      expect(result.stdout).toContain('published packages/app editor view ')
+      expect(result.stderr).toContain('[editor-view-budget] ')
+      expect(fixture.record().package).toBe('packages/app')
       await reconcileBuckViews({ request: publicationRequest, options: fixture.options })
       expect(
         readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8'),
@@ -437,6 +470,40 @@ describe('Buck watch reconciliation', () => {
       fixture.cleanup()
     }
   })
+
+  it('preserves actual CLI termination from a signaled native copy child after cleanup', async () => {
+    const fixture = makePublicationFixture()
+    try {
+      const candidate = plan.packages.find((entry) => entry.packagePath === 'packages/app')
+      if (candidate?.editor === undefined) throw new Error('missing fixture editor entry')
+      const copy = join(fixture.root, 'signaled-copy')
+      const marker = join(fixture.root, 'native-copy-entered')
+      writeFileSync(
+        copy,
+        `#!${fixture.publisherCommand[0]}\nimport { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, 'native-child-signal\\n')\nprocess.kill(process.pid, 'SIGTERM')\n`,
+      )
+      chmodSync(copy, 0o700)
+      const args = await prepareEditorPublicationRequest({
+        entry: { ...candidate, editor: candidate.editor },
+        outputs: new Map([[candidate.editor.inputsManifestTarget, fixture.manifest]]),
+        options: { ...fixture.options, cp: copy },
+      })
+      const failure = await fixture.runPublisher({
+        command: fixture.publisherCommand[0],
+        args: [...fixture.publisherCommand.slice(1), ...args],
+        cwd: fixture.root,
+      }).then(
+        () => { throw new Error('publisher did not retain its native child signal') },
+        (error: unknown) => error,
+      )
+      expect(failure).toBeInstanceOf(CommandFailure)
+      expect(failure).toMatchObject({ signal: 'SIGTERM', exitCode: undefined })
+      expect(readFileSync(marker, 'utf8')).toBe('native-child-signal\n')
+      expect(existsSync(join(fixture.current, 'editor-view.json'))).toBe(false)
+    } finally {
+      fixture.cleanup()
+    }
+  }, 20_000)
 
   it('settles real sibling manifest reads before returning a malformed manifest failure', async () => {
     const fixture = makePublicationFixture()

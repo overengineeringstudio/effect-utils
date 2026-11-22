@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import type { EditorPublicationOwner } from './editor-publication-owner.ts'
 import { EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
@@ -541,6 +542,12 @@ export type RunCommand = (options: {
   readonly captureStderr?: boolean
 }) => Promise<CommandResult>
 
+/** Executes a native command while the caller retains its opaque publication owner. */
+export type OwnedRunCommand = (options: {
+  readonly command: Parameters<RunCommand>[0]
+  readonly owner: EditorPublicationOwner
+}) => Promise<CommandResult>
+
 /**
  * Rejection of the default {@link RunCommand}: carries the command's numeric
  * exit status, or `undefined` when the process died from a signal.
@@ -952,6 +959,21 @@ export const reconcileBuckViews = async ({
   }
   const publicationArgs = (entry: EditorPublicationEntry): Promise<readonly string[]> =>
     prepareEditorPublicationRequest({ entry, outputs, options })
+  const dispatchPublication = ({
+    args,
+    batchRequests,
+  }: {
+    readonly args: readonly string[]
+    readonly batchRequests?: readonly (readonly string[])[]
+  }): Promise<CommandResult> =>
+    execute({
+      command: options.editorViewCommand[0],
+      args: [...options.editorViewCommand.slice(1), ...args],
+      ...(batchRequests === undefined ? {} : { input: JSON.stringify(batchRequests) }),
+      onStderr: forwardDiagnostics,
+      cwd: options.repoRoot,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    })
   const publish = async (entry: EditorPublicationEntry): Promise<void> => {
     const publicationStartedAt = performance.now()
     // Telemetry is best effort here too: a publication span that cannot be
@@ -967,13 +989,7 @@ export const reconcileBuckViews = async ({
       })
     }
     try {
-      await execute({
-        command: options.editorViewCommand[0],
-        args: [...options.editorViewCommand.slice(1), ...(await publicationArgs(entry))],
-        onStderr: forwardDiagnostics,
-        cwd: options.repoRoot,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      })
+      await dispatchPublication({ args: await publicationArgs(entry) })
     } catch (error) {
       emitPublicationSpan(exitCodeOf(error))
       publicationFailure(error)
@@ -993,13 +1009,9 @@ export const reconcileBuckViews = async ({
     const requests = await settleEditorPublicationRequests({
       requests: entries.map(publicationArgs),
     })
-    const result = await execute({
-      command: options.editorViewCommand[0],
-      args: [...options.editorViewCommand.slice(1), 'publish-batch'],
-      input: JSON.stringify(requests),
-      onStderr: forwardDiagnostics,
-      cwd: options.repoRoot,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    const result = await dispatchPublication({
+      args: ['publish-batch'],
+      batchRequests: requests,
     }).catch(publicationFailure)
     // Preserve the existing per-view callback as well as successful-task stderr evidence.
     for (const line of result.stderr.split('\n')) {
