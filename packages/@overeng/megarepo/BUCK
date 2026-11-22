@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:0ace82714e34d16deeb9d9d8457625d350add20b7392843112f6af11bd29288b
+# Semantic fingerprint: sha256:b4e73b44ba1b5e6f4cc816bc60df2035c297ec1254aea342347df1f547c8d45f
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -250,6 +250,7 @@ export_materialization_inputs([
     "src/store/store-buck-maintain-safety.integration.test.ts",
     "src/store/store-buck-maintain.integration.test.ts",
     "src/store/store-buck-maintain.ts",
+    "src/store/store-buck-publication-owner.unit.test.ts",
     "src/store/store-build-budgets.ts",
     "src/store/store-census.integration.test.ts",
     "src/store/store-deletion-lease.integration.test.ts",
@@ -580,6 +581,7 @@ package_view(
         "src/store/store-buck-maintain-safety.integration.test.ts": "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts": "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-buck-maintain.ts": "src/store/store-buck-maintain.ts",
+        "src/store/store-buck-publication-owner.unit.test.ts": "src/store/store-buck-publication-owner.unit.test.ts",
         "src/store/store-build-budgets.ts": "src/store/store-build-budgets.ts",
         "src/store/store-census.integration.test.ts": "src/store/store-census.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts": "src/store/store-deletion-lease.integration.test.ts",
@@ -646,6 +648,8 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/buck2-tools/dist": "//packages/@overeng/buck2-tools:dist",
+        "node_modules/@overeng/buck2-tools/package.json": "//packages/@overeng/buck2-tools:package.json",
         "node_modules/@overeng/effect-path/dist": "//packages/@overeng/effect-path:dist",
         "node_modules/@overeng/effect-path/package.json": "//packages/@overeng/effect-path:package.json",
         "node_modules/@overeng/kdl-effect/dist": "//packages/@overeng/kdl-effect:dist",
@@ -666,6 +670,7 @@ package_view(
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/buck2-tools/node_modules": "//packages/@overeng/buck2-tools:package_tree",
         "node_modules/@overeng/effect-path/node_modules": "//packages/@overeng/effect-path:package_tree",
         "node_modules/@overeng/kdl-effect/node_modules": "//packages/@overeng/kdl-effect:package_tree",
         "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:package_tree",
@@ -912,6 +917,7 @@ package_view(
         "src/store/store-buck-maintain-safety.integration.test.ts": "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts": "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-buck-maintain.ts": "src/store/store-buck-maintain.ts",
+        "src/store/store-buck-publication-owner.unit.test.ts": "src/store/store-buck-publication-owner.unit.test.ts",
         "src/store/store-build-budgets.ts": "src/store/store-build-budgets.ts",
         "src/store/store-census.integration.test.ts": "src/store/store-census.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts": "src/store/store-deletion-lease.integration.test.ts",
@@ -978,6 +984,7 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/buck2-tools/package.json": "//packages/@overeng/buck2-tools:package.json",
         "node_modules/@overeng/effect-path/package.json": "//packages/@overeng/effect-path:package.json",
         "node_modules/@overeng/kdl-effect/package.json": "//packages/@overeng/kdl-effect:package.json",
         "node_modules/@overeng/kdl/package.json": "//packages/@overeng/kdl:package.json",
@@ -990,6 +997,7 @@ package_view(
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/buck2-tools/node_modules": "//packages/@overeng/buck2-tools:product_package_tree",
         "node_modules/@overeng/effect-path/node_modules": "//packages/@overeng/effect-path:product_package_tree",
         "node_modules/@overeng/kdl-effect/node_modules": "//packages/@overeng/kdl-effect:product_package_tree",
         "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:product_package_tree",
@@ -1239,6 +1247,7 @@ package_view(
         "src/store/store-buck-maintain-safety.integration.test.ts": "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts": "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-buck-maintain.ts": "src/store/store-buck-maintain.ts",
+        "src/store/store-buck-publication-owner.unit.test.ts": "src/store/store-buck-publication-owner.unit.test.ts",
         "src/store/store-build-budgets.ts": "src/store/store-build-budgets.ts",
         "src/store/store-census.integration.test.ts": "src/store/store-census.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts": "src/store/store-deletion-lease.integration.test.ts",
@@ -1306,6 +1315,8 @@ package_view(
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+        "node_modules/@overeng/buck2-tools/dist": "//packages/@overeng/buck2-tools:dist",
+        "node_modules/@overeng/buck2-tools/package.json": "//packages/@overeng/buck2-tools:package.json",
         "node_modules/@overeng/effect-path/dist": "//packages/@overeng/effect-path:dist",
         "node_modules/@overeng/effect-path/package.json": "//packages/@overeng/effect-path:package.json",
         "node_modules/@overeng/kdl-effect/dist": "//packages/@overeng/kdl-effect:dist",
@@ -1326,6 +1337,7 @@ package_view(
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/buck2-tools/node_modules": "//packages/@overeng/buck2-tools:package_tree",
         "node_modules/@overeng/effect-path/node_modules": "//packages/@overeng/effect-path:package_tree",
         "node_modules/@overeng/kdl-effect/node_modules": "//packages/@overeng/kdl-effect:package_tree",
         "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:package_tree",
@@ -1413,6 +1425,7 @@ vitest_test(
         "src/store/store-buck-maintain-evidence.integration.test.ts",
         "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts",
+        "src/store/store-buck-publication-owner.unit.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-fetch-refspec.integration.test.ts",
         "src/store/store-fetch.integration.test.ts",
@@ -1464,6 +1477,7 @@ vitest_collect(
         "src/store/store-buck-maintain-evidence.integration.test.ts",
         "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts",
+        "src/store/store-buck-publication-owner.unit.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-fetch-refspec.integration.test.ts",
         "src/store/store-fetch.integration.test.ts",

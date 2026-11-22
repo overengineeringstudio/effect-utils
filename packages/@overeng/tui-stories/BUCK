@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:cabd0b0b5624bd145eb4c5681cdd6df2ba38aaf0d6ac8d931a33e481a31fd5ae
+# Semantic fingerprint: sha256:d7d6ee5d463f9cf3f00196856a8db95cbe461f62f1e870d7c55778b1354a2dc5
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -372,6 +372,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain-safety.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-safety.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-publication-owner.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-publication-owner.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-build-budgets.ts": "//packages/@overeng/megarepo:src/store/store-build-budgets.ts",
         "node_modules/@overeng/megarepo/src/store/store-census.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-census.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
@@ -777,6 +778,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain-safety.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-safety.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-publication-owner.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-publication-owner.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-build-budgets.ts": "//packages/@overeng/megarepo:src/store/store-build-budgets.ts",
         "node_modules/@overeng/megarepo/src/store/store-census.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-census.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
@@ -1182,6 +1184,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain-safety.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain-safety.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-buck-maintain.ts": "//packages/@overeng/megarepo:src/store/store-buck-maintain.ts",
+        "node_modules/@overeng/megarepo/src/store/store-buck-publication-owner.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-buck-publication-owner.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-build-budgets.ts": "//packages/@overeng/megarepo:src/store/store-build-budgets.ts",
         "node_modules/@overeng/megarepo/src/store/store-census.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-census.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
