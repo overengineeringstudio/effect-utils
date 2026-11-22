@@ -333,7 +333,7 @@ export type AdmissionProbeEndpoint = 'watchman' | 'reapi'
 
 type CachePostureCheck = (values: Readonly<Record<string, string>>) => void
 
-/** Admit the initial file watcher and cache posture before pinned native startup. */
+/** Stable local-check context is independent of remote cache posture. */
 const contractContextOverrides = ({
   root,
   env,
@@ -341,12 +341,12 @@ const contractContextOverrides = ({
   readonly root: string
   readonly env: Readonly<Record<string, string | undefined>>
 }): Record<string, string> => {
-  const overrides: Record<string, string> = {}
+  const overrides = profileContractMembershipDigests({ root, env })
   const actor = env['FRACTAL_AGENT'] || env['ST_AGENT']
   if (actor !== undefined) overrides['quick_contracts.agent_actor'] = actor
   const policyPath = env['WORKTREE_POLICY_PATH']
   if (policyPath !== undefined) overrides['quick_contracts.policy_path'] = policyPath
-  return { ...overrides, ...profileContractMembershipDigests({ root, env }) }
+  return overrides
 }
 const withContractContext = ({
   args,
@@ -367,6 +367,8 @@ const withContractContext = ({
     ? [...args, ...extra]
     : [...args.slice(0, sentinel), ...extra, ...args.slice(sentinel)]
 }
+
+/** Admit the initial file watcher and cache posture before pinned native startup. */
 export const directBuckArguments = async ({
   args,
   cwd,
