@@ -56,6 +56,9 @@ package and agent-policy guard directories are retained, never ambient compiler 
 Build/test/run retain the existing Buck identity/converter/export boundary and
 emit a real environment entry span when OTLP delivery is configured. Pipeline
 spools remain pipeline-owned; standalone evidence is retained under `.worktree-tools/otel`.
+Command spans retain the actual worktree as resource `devenv.root`, the caller's
+`FRACTAL_AGENT`/`ST_AGENT` as trace-only `agent.actor.id` when present, and
+`vcs.ref.head.revision` from CI or the starting checkout HEAD; unknown values are omitted.
 Immutable tool generations are rooted until normal safe worktree teardown.
 
 # Worktree removal

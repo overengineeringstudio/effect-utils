@@ -23,6 +23,13 @@ pkgs.writeShellScript "worktree-buck-trace" ''
     build|test|run) ;;
     *) exec ${buck2}/bin/buck2 "$@" ;;
   esac
+  # Reuse registered trace-only identity; never infer an internal person principal.
+  span_identity_args=()
+  actor="''${FRACTAL_AGENT:-''${ST_AGENT:-}}"
+  if [ -n "$actor" ]; then span_identity_args+=(--attr-string "agent.actor.id=$actor"); fi
+  revision="''${VCS_REF_HEAD_REVISION:-}"
+  if [ -z "$revision" ]; then revision="$(${pkgs.git}/bin/git -C "$WORKSPACE_ROOT" rev-parse HEAD 2>/dev/null)" || revision=""; fi
+  if [ -n "$revision" ]; then span_identity_args+=(--attr-string "vcs.ref.head.revision=$revision"); fi
   spool="''${PIPELINE_SPOOL_DIR:-$WORKSPACE_ROOT/.worktree-tools/otel}/buck2"
   event_log=""
   sidecar=""
@@ -49,12 +56,12 @@ pkgs.writeShellScript "worktree-buck-trace" ''
   if [ -n "''${BUCK_COMMAND_TRACE_ID:-}" ] && [ -n "$command_end_ns" ]; then
     command_status=ok
     if [ "$buck_exit" -ne 0 ]; then command_status=error; fi
-    OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
+    DEVENV_ROOT="$WORKSPACE_ROOT" OTEL_EXPORTER_OTLP_ENDPOINT="''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" \
       ${otelSpan}/bin/otel-span emit-span effect-utils-buck2-client "buck2.command $command" \
       --trace-id "$BUCK_COMMAND_TRACE_ID" --parent-span-id "$BUCK_COMMAND_PARENT_SPAN_ID" \
       --span-id "$BUCK_COMMAND_SPAN_ID" --start-time-ns "$BUCK_COMMAND_START_NS" \
       --end-time-ns "$command_end_ns" --status-code "$command_status" \
-      --attr-string "span.label=$command" --attr-int "exit.code=$buck_exit" || true
+      --attr-string "span.label=$command" --attr-int "exit.code=$buck_exit" "''${span_identity_args[@]}" || true
   fi
   # Pipeline closure owns later ingest/export and retention of its own logs.
   if [ -z "''${PIPELINE_SPOOL_DIR:-}" ] && [ -n "$event_log" ] && [ -s "$event_log" ]; then
