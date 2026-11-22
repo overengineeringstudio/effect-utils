@@ -133,6 +133,7 @@ to that same output's `bin/worktree-holder-evidence`. A later combined client
 package must compile both roles in that final package environment; this
 server-only artifact does not authenticate an independently packaged client.
 The package exports neither `holderEvidenceClient` nor `processEvidenceCommand`.
+
 ## Observability
 
 Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
@@ -583,7 +584,7 @@ for outer tasks that must complete before the nested devenv process can evaluate
     The invoking process environment is inherited by build hooks; deployment
     `env` overrides apply only to deploy, not to the preceding build.
   - Uses `ci-tools deploy cloudflare-workers --target NAME --worker-name WORKER
---config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
+    --config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
     `--pr N`.
     Repeat `--production-domain HOST` for expected production hostnames.
     Custom-domain desired state belongs in Wrangler configuration, not in an
