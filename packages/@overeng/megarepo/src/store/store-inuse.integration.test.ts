@@ -15,6 +15,7 @@
  * than an ancestor of the live session.
  */
 
+import { Buffer } from 'node:buffer'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { unlinkSync, writeFileSync } from 'node:fs'
@@ -22,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema, Tracer } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { systemError } from 'effect/PlatformError'
 import * as ChildProcessCommand from 'effect/process/ChildProcess'
@@ -356,6 +357,161 @@ describe.skipIf(supportsProcessCwdProbe === false)('store-inuse native process p
 })
 
 describe.skipIf(process.platform !== 'linux')('store-inuse strict reference probe', () => {
+  for (const processCount of [1, 32]) {
+    for (const incomplete of [false, true]) {
+      it.effect(
+        `aggregates ${processCount} process references without per-process spans (${incomplete === true ? 'fail-closed' : 'SSH parent verification'})`,
+        Effect.fnUntraced(function* () {
+          const base = yield* FileSystem.FileSystem
+          const uid = process.getuid!()
+          const pids = Array.from({ length: processCount }, (_, index) => String(42 + index))
+          const stat = `42 (sshd-session) S 200 42 42 0 -1 0 ${'0 '.repeat(12)}1234`
+          const maps = '00400000-00401000 r--p 00000000 00:00 1 /outside/mappéd\n'
+          const ownStatus = `Uid:\t${uid}\t${uid}\t${uid}\t${uid}\n`
+          const rootStatus = 'Uid:\t0\t0\t0\t0\n'
+          let firstFailure: string | undefined
+          const failed = (path: string, reason: 'NotFound' | 'PermissionDenied') => {
+            const error = systemError({
+              _tag: reason,
+              module: 'FileSystem',
+              method: 'process-census-fixture',
+              pathOrDescriptor: path,
+            })
+            return Effect.sync(() => {
+              firstFailure ??= `${error._tag}: ${error.message}`
+            }).pipe(Effect.andThen(Effect.fail(error)))
+          }
+          const fs: FileSystem.FileSystem = {
+            ...base,
+            realPath: (path) => Effect.succeed(path),
+            readDirectory: (path) =>
+              Effect.succeed(
+                path === '/proc'
+                  ? [...pids, ...(incomplete === true ? ['700', '701'] : [])]
+                  : ['7'],
+              ),
+            readFileString: (path) => {
+              if (path === '/proc/700/stat') return failed(path, 'NotFound')
+              if (path === '/proc/701/stat') return failed(path, 'PermissionDenied')
+              if (path.endsWith('/stat') === true) {
+                return Effect.succeed(stat)
+              }
+              if (path.endsWith('/status') === true) {
+                return Effect.succeed(
+                  path.startsWith('/proc/200/') === true ? rootStatus : ownStatus,
+                )
+              }
+              return Effect.succeed(maps)
+            },
+            readLink: (path) =>
+              incomplete === true && path === '/proc/42/root'
+                ? failed(path, 'NotFound')
+                : Effect.succeed(path.endsWith('/root') === true ? '/' : '/outside'),
+          }
+          const spans: Array<Tracer.NativeSpan> = []
+          const tracer = Tracer.make({
+            span: (options) => {
+              const span = new Tracer.NativeSpan(options)
+              spans.push(span)
+              return span
+            },
+          })
+          const result = yield* readWorktreeReferencesInUse({
+            worktreePath: '/worktree',
+            selfPid: 999,
+            scope: incomplete === true ? 'all-uids' : 'gc-owner',
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, fs),
+            Effect.withSpan('process-census-capture'),
+            Effect.withTracer(tracer),
+          )
+          expect(result).toEqual(
+            incomplete === true
+              ? { _tag: 'unknown', reason: 'inaccessible-process' }
+              : { _tag: 'free', ignoredForeignProcesses: 0, exemptProcesses: [] },
+          )
+          expect(spans.map((span) => span.name)).toEqual([
+            'process-census-capture',
+            'store.readProcessReferences',
+          ])
+          const attributes = spans[1]!.attributes
+          expect(attributes.get('megarepo.store.process_census.processes_read')).toBe(
+            processCount + (incomplete === true ? 2 : 0),
+          )
+          expect(attributes.get('megarepo.store.process_census.failures')).toBe(
+            incomplete === true ? 3 : 0,
+          )
+          expect(attributes.get('megarepo.store.process_census.paths_found')).toBe(
+            processCount * 4 - (incomplete === true ? 1 : 0),
+          )
+          const bytesPerProcess = Buffer.byteLength(
+            incomplete === true
+              ? stat.repeat(2) + maps + '/outside//outside'
+              : stat.repeat(4) + ownStatus + rootStatus + maps + '/outside//outside',
+            'utf8',
+          )
+          expect(attributes.get('megarepo.store.process_census.bytes_read')).toBe(
+            processCount * bytesPerProcess - (incomplete === true ? 1 : 0),
+          )
+          expect(attributes.get('megarepo.store.process_census.first_failure')).toBe(firstFailure)
+        }, Effect.provide(NodeServices.layer)),
+      )
+    }
+  }
+
+  for (const failureFirst of [true, false]) {
+    it.effect(
+      `keeps successive census attributes isolated (${failureFirst === true ? 'failure then success' : 'success then failure'})`,
+      Effect.fnUntraced(function* () {
+        const base = yield* FileSystem.FileSystem
+        const error = systemError({
+          _tag: 'PermissionDenied',
+          module: 'FileSystem',
+          method: 'readDirectory',
+          pathOrDescriptor: '/proc',
+        })
+        const spans: Array<Tracer.NativeSpan> = []
+        const tracer = Tracer.make({
+          span: (options) => {
+            const span = new Tracer.NativeSpan(options)
+            spans.push(span)
+            return span
+          },
+        })
+        const failures = [failureFirst, !failureFirst]
+        const results = yield* Effect.forEach(failures, (fails) =>
+          readProcessReferences({
+            fs: {
+              ...base,
+              readDirectory: () => (fails === true ? Effect.fail(error) : Effect.succeed([])),
+            },
+            selfPid: 999,
+          }),
+        ).pipe(Effect.withSpan('shared-capture'), Effect.withTracer(tracer))
+        expect(results.map((result) => result._tag)).toEqual(
+          failures.map((fails) => (fails === true ? 'unknown' : 'complete')),
+        )
+        const capture = spans.find((span) => span.name === 'shared-capture')!
+        const censuses = spans.filter((span) => span.name === 'store.readProcessReferences')
+        expect(censuses).toHaveLength(2)
+        expect(capture.attributes.has('megarepo.store.process_census.failures')).toBe(false)
+        expect(capture.attributes.has('megarepo.store.process_census.first_failure')).toBe(false)
+        for (const [index, span] of censuses.entries()) {
+          expect(Option.getOrUndefined(span.parent)).toBe(capture)
+          expect(span.attributes.get('megarepo.store.process_census.processes_read')).toBe(0)
+          expect(span.attributes.get('megarepo.store.process_census.paths_found')).toBe(0)
+          expect(span.attributes.get('megarepo.store.process_census.bytes_read')).toBe(0)
+          expect(span.attributes.get('megarepo.store.process_census.failures')).toBe(
+            failures[index] === true ? 1 : 0,
+          )
+          expect(span.attributes.get('megarepo.store.process_census.first_failure')).toBe(
+            failures[index] === true ? `${error._tag}: ${error.message}` : undefined,
+          )
+        }
+      }, Effect.provide(NodeServices.layer)),
+    )
+  }
+
   it.effect(
     'does not mistake a zombie with absent cwd and root for an unreadable holder',
     Effect.fnUntraced(function* () {
