@@ -255,7 +255,8 @@ afterEach(async () => {
 describe('publisher interrupted atomic-write recovery', () => {
   realNixCases({
     cases: ['capability-references', 'capability-publications', 'capabilities', '.'],
-    name: (directory) => `recovers an abandoned candidate in ${directory} before the next publication`,
+    name: (directory) =>
+      `recovers an abandoned candidate in ${directory} before the next publication`,
     additionalNixOperations: () => 1,
     run: ({ root, profile, references, nixStore, value: directory }) => {
       const committed = readFileSync(references)
