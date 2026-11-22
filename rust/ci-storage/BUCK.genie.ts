@@ -5,9 +5,10 @@ import { cargoBuck2PackageProjection } from '../buck2-tools/core/cargo-buck2-pac
 const projection = cargoBuck2PackageProjection({ buildProduct: true, sourceUrl: import.meta.url })
 
 // Execute library contract tests through Buck's full repository authority.
-export default withQuickContractSources(createGenieOutput({
-  ...projection,
-  stringify: (context) => `load("//buck2/rust:defs.bzl", "rust_test_receipt")
+export default withQuickContractSources(
+  createGenieOutput({
+    ...projection,
+    stringify: (context) => `load("//buck2/rust:defs.bzl", "rust_test_receipt")
 ${projection.stringify(context)}
 native.rust_test(
     name = "tests",
@@ -36,4 +37,6 @@ rust_test_receipt(
     visibility = ["PUBLIC"],
 )
 `,
-}), import.meta.url)
+  }),
+  import.meta.url,
+)

@@ -6,9 +6,10 @@ const projection = cargoBuck2PackageProjection({ sourceUrl: import.meta.url })
 
 // The workspace projector publishes Rust libraries; this crate also admits its
 // shared wire conformance suite to the repository's full CI authority.
-export default withQuickContractSources(createGenieOutput({
-  ...projection,
-  stringify: (context) => `load("//buck2/rust:defs.bzl", "rust_test_receipt")
+export default withQuickContractSources(
+  createGenieOutput({
+    ...projection,
+    stringify: (context) => `load("//buck2/rust:defs.bzl", "rust_test_receipt")
 ${projection.stringify(context)}
 native.rust_test(
     name = "conformance",
@@ -33,4 +34,6 @@ rust_test_receipt(
     visibility = ["PUBLIC"],
 )
 `,
-}), import.meta.url)
+  }),
+  import.meta.url,
+)

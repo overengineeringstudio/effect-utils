@@ -14,4 +14,7 @@ export const buck2TypeScriptAdmission = {
   tests: [{ name: 'test', runner: 'vitest', staticCollection: true }],
 } as const satisfies Buck2TypeScriptAdmission
 
-export default withQuickContractSources(buck2TypeScriptPackageProjection(buck2TypeScriptAdmission), import.meta.url)
+export default withQuickContractSources(
+  buck2TypeScriptPackageProjection(buck2TypeScriptAdmission),
+  import.meta.url,
+)

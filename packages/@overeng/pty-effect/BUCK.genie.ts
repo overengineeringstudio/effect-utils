@@ -44,4 +44,7 @@ export const buck2TypeScriptAdmission = {
   ],
 } as const satisfies Buck2TypeScriptAdmission
 
-export default withQuickContractSources(buck2TypeScriptPackageProjection(buck2TypeScriptAdmission), import.meta.url)
+export default withQuickContractSources(
+  buck2TypeScriptPackageProjection(buck2TypeScriptAdmission),
+  import.meta.url,
+)

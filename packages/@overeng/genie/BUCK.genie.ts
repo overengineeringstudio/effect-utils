@@ -1,6 +1,6 @@
-import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { withJavaScriptCandidates } from '../../../genie/buck2/javascript-candidates.ts'
 import { javaScriptProductsFor } from '../../../genie/buck2/javascript-product-registry.ts'
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
 import {
@@ -111,9 +111,12 @@ build_product(
 `,
   })
 
-export default withQuickContractSources(withTypeScriptApiServerProduct(
-  withJavaScriptCandidates({
-    projection: buck2TypeScriptPackageProjection(buck2TypeScriptAdmission),
-    products: javaScriptProductsFor(buck2TypeScriptAdmission.packagePath),
-  }),
-), import.meta.url)
+export default withQuickContractSources(
+  withTypeScriptApiServerProduct(
+    withJavaScriptCandidates({
+      projection: buck2TypeScriptPackageProjection(buck2TypeScriptAdmission),
+      products: javaScriptProductsFor(buck2TypeScriptAdmission.packagePath),
+    }),
+  ),
+  import.meta.url,
+)

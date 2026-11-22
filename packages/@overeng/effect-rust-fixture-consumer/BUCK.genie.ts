@@ -23,22 +23,25 @@ export const buck2TypeScriptAdmission = {
 } as const satisfies Buck2TypeScriptAdmission
 
 const projection = buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
-export default withQuickContractSources(createGenieOutput({
-  data: projection.data,
-  stringify: (ctx) =>
-    [
-      'load("//buck2/rust:interop.bzl", "rust_interop_consumer_smoke")',
-      '',
-      projection.stringify(ctx),
-      ...['node', 'bun'].flatMap((runtime) => [
-        'rust_interop_consumer_smoke(',
-        `    name = "consumer-smoke-${runtime}",`,
-        '    package_tree = ":package_tree",',
-        '    dist = ":dist",',
-        `    runtime = "${runtime}",`,
-        '    visibility = ["PUBLIC"],',
-        ')',
+export default withQuickContractSources(
+  createGenieOutput({
+    data: projection.data,
+    stringify: (ctx) =>
+      [
+        'load("//buck2/rust:interop.bzl", "rust_interop_consumer_smoke")',
         '',
-      ]),
-    ].join('\n'),
-}), import.meta.url)
+        projection.stringify(ctx),
+        ...['node', 'bun'].flatMap((runtime) => [
+          'rust_interop_consumer_smoke(',
+          `    name = "consumer-smoke-${runtime}",`,
+          '    package_tree = ":package_tree",',
+          '    dist = ":dist",',
+          `    runtime = "${runtime}",`,
+          '    visibility = ["PUBLIC"],',
+          ')',
+          '',
+        ]),
+      ].join('\n'),
+  }),
+  import.meta.url,
+)

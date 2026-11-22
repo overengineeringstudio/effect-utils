@@ -43,9 +43,17 @@ if (new Set(sourceSets).size !== sourceSets.length) {
   throw new Error('Static source-set census contains duplicate Buck labels')
 }
 
-export default withQuickContractSources(createGenieOutput({
-  data: { contracts, contractSourceExports, declaredPackages, nixSourceSets, repositorySourceSets, sourceSets },
-  stringify: () => `# Generated file - DO NOT EDIT
+export default withQuickContractSources(
+  createGenieOutput({
+    data: {
+      contracts,
+      contractSourceExports,
+      declaredPackages,
+      nixSourceSets,
+      repositorySourceSets,
+      sourceSets,
+    },
+    stringify: () => `# Generated file - DO NOT EDIT
 # Source: TypeScript admission package boundaries and root static source ownership
 
 load("//buck2:static_checks.bzl", "repository_static_checks", "static_source_set")
@@ -90,4 +98,6 @@ quick_contracts(
     visibility = ["PUBLIC"],
 )
 `,
-}), import.meta.url)
+  }),
+  import.meta.url,
+)

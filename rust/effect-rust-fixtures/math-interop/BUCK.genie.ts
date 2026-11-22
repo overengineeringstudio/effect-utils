@@ -6,8 +6,11 @@ const projection = cargoBuck2PackageProjection({
   compileTimeResources: [{ path: 'rust/effect-rust-fixtures/math-interop/vectors.json' }],
 })
 
-export default withQuickContractSources({
-  ...projection,
-  stringify: (args: Parameters<typeof projection.stringify>[0]) =>
-    `${projection.stringify(args)}\nexport_file(name = "vectors", src = "vectors.json", visibility = ["PUBLIC"])\n`,
-}, import.meta.url)
+export default withQuickContractSources(
+  {
+    ...projection,
+    stringify: (args: Parameters<typeof projection.stringify>[0]) =>
+      `${projection.stringify(args)}\nexport_file(name = "vectors", src = "vectors.json", visibility = ["PUBLIC"])\n`,
+  },
+  import.meta.url,
+)

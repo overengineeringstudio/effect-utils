@@ -12,4 +12,7 @@ export const buck2TypeScriptAdmission = {
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
 } as const satisfies Buck2TypeScriptAdmission
 
-export default withQuickContractSources(withBuck2ToolsRuntimes(buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)), import.meta.url)
+export default withQuickContractSources(
+  withBuck2ToolsRuntimes(buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)),
+  import.meta.url,
+)

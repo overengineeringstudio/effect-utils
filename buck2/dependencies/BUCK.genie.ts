@@ -27,10 +27,11 @@ alias(
 )
 `
 
-const output = withQuickContractSources(createGenieOutput({
-  data: { store },
-  stringify: () =>
-    `# Generated file - DO NOT EDIT
+const output = withQuickContractSources(
+  createGenieOutput({
+    data: { store },
+    stringify: () =>
+      `# Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
 # Store fingerprint: ${store.fingerprint}
 
@@ -58,7 +59,9 @@ ${renderPnpmPlatformGatedPackages({ metadata })}
 ${renderPnpmPackageTargets({ metadata, sidecar })}
 ${renderPnpmStoreBuck(store)}
 ${freshnessRuntime}`,
-}), import.meta.url)
+  }),
+  import.meta.url,
+)
 
 export default output
 

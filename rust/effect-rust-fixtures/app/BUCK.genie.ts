@@ -1,5 +1,5 @@
-import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { createGenieOutput } from '../../../packages/@overeng/genie/src/runtime/core.ts'
 import { inputReadFileSync as readFileSync } from '../../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
@@ -19,33 +19,36 @@ const fingerprint = buck2SemanticFingerprint({
 })
 const dict = (value: unknown): string => JSON.stringify(value, undefined, 4)
 
-export default withQuickContractSources(createGenieOutput({
-  data: { manifest, crates },
-  stringify: () =>
-    [
-      '# Projection source: rust/effect-rust-fixtures/app/BUCK.genie.ts',
-      `# Projection generator: ${generator}`,
-      '# Projection schema version: 1',
-      `# Semantic fingerprint: ${fingerprint}`,
-      '# Semantic inputs: rust/effect-rust-fixtures/app/BUCK.genie.ts',
-      '# Regenerate: devenv tasks run genie:run',
-      '',
-      'load("//buck2/rust:interop.bzl", "rust_interop_smoke", "rust_wasm_aggregator")',
-      '',
-      'rust_wasm_aggregator(',
-      '    name = "app",',
-      `    manifest = ${dict(manifest)},`,
-      `    crates = ${dict(crates)},`,
-      ')',
-      '',
-      ...runtimes.flatMap((runtime) => [
-        'rust_interop_smoke(',
-        `    name = "app-smoke-${runtime}",`,
-        '    product = ":app",',
-        `    runtime = "${runtime}",`,
-        '    script = "//rust/effect-rust-fixtures:smoke",',
+export default withQuickContractSources(
+  createGenieOutput({
+    data: { manifest, crates },
+    stringify: () =>
+      [
+        '# Projection source: rust/effect-rust-fixtures/app/BUCK.genie.ts',
+        `# Projection generator: ${generator}`,
+        '# Projection schema version: 1',
+        `# Semantic fingerprint: ${fingerprint}`,
+        '# Semantic inputs: rust/effect-rust-fixtures/app/BUCK.genie.ts',
+        '# Regenerate: devenv tasks run genie:run',
+        '',
+        'load("//buck2/rust:interop.bzl", "rust_interop_smoke", "rust_wasm_aggregator")',
+        '',
+        'rust_wasm_aggregator(',
+        '    name = "app",',
+        `    manifest = ${dict(manifest)},`,
+        `    crates = ${dict(crates)},`,
         ')',
         '',
-      ]),
-    ].join('\n'),
-}), import.meta.url)
+        ...runtimes.flatMap((runtime) => [
+          'rust_interop_smoke(',
+          `    name = "app-smoke-${runtime}",`,
+          '    product = ":app",',
+          `    runtime = "${runtime}",`,
+          '    script = "//rust/effect-rust-fixtures:smoke",',
+          ')',
+          '',
+        ]),
+      ].join('\n'),
+  }),
+  import.meta.url,
+)

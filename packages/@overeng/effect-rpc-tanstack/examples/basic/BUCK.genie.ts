@@ -24,4 +24,7 @@ export const buck2TypeScriptAdmission = {
   authorities: [{ projectFile: 'tsconfig.json', projectInputs: ['vite.config.ts'] }],
 } as const satisfies Buck2TypeScriptAdmission
 
-export default withQuickContractSources(buck2TypeScriptPackageProjection(buck2TypeScriptAdmission), import.meta.url)
+export default withQuickContractSources(
+  buck2TypeScriptPackageProjection(buck2TypeScriptAdmission),
+  import.meta.url,
+)

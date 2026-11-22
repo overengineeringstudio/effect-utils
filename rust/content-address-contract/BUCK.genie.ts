@@ -6,10 +6,13 @@ import { assertContractGenerationFreshness } from './generation-freshness.ts'
 const projection = cargoBuck2PackageProjection({ sourceUrl: import.meta.url })
 
 /** Projects the compiler-emitted crate and exports its authoritative transport schema. */
-export default withQuickContractSources(createGenieOutput({
-  ...projection,
-  stringify: (context) => {
-    assertContractGenerationFreshness({ sourceUrl: import.meta.url })
-    return `${projection.stringify(context)}\nnative.export_file(\n    name = "contract-schema",\n    src = "schema/ContentDescriptor.json",\n    visibility = ["PUBLIC"],\n)\nnative.export_file(\n    name = "generation-manifest",\n    src = "generation.json",\n    visibility = ["PUBLIC"],\n)\n`
-  },
-}), import.meta.url)
+export default withQuickContractSources(
+  createGenieOutput({
+    ...projection,
+    stringify: (context) => {
+      assertContractGenerationFreshness({ sourceUrl: import.meta.url })
+      return `${projection.stringify(context)}\nnative.export_file(\n    name = "contract-schema",\n    src = "schema/ContentDescriptor.json",\n    visibility = ["PUBLIC"],\n)\nnative.export_file(\n    name = "generation-manifest",\n    src = "generation.json",\n    visibility = ["PUBLIC"],\n)\n`
+    },
+  }),
+  import.meta.url,
+)
