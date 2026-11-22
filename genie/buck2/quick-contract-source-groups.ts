@@ -11,7 +11,7 @@ export type SourceSelection = {
 }
 export type ContractSourceGroup = {
   readonly include: readonly string[]
-  readonly exclude: readonly string[]
+  readonly exclusionAnchors: readonly string[]
 }
 
 export const excludedContractDirectories = [
@@ -92,16 +92,21 @@ export const contractSourceGroup = ({
   readonly directories: readonly string[]
 }): ContractSourceGroup => {
   const base = owner === '.' ? '' : `${owner}/`
-  const anchors = unique([
-    '',
-    ...directories
-      .filter(
-        (directory) =>
-          directory.startsWith(base) &&
-          directory.split('/').some((segment) => segment.startsWith('.')),
-      )
-      .map((directory) => `${directory.slice(base.length)}/`),
-  ])
+  // Buck globs never cross a child package. Only a hidden directory's own name
+  // needs an anchor; its ordinary descendants retain recursive live patterns.
+  const hiddenDirectories = directories.filter(
+    (directory) =>
+      directory.startsWith(base) &&
+      path.posix.basename(directory).startsWith('.') &&
+      !owners.some(
+        (nested) =>
+          nested !== owner &&
+          nested !== '.' &&
+          nested.startsWith(base) &&
+          (directory === nested || directory.startsWith(`${nested}/`)),
+      ),
+  )
+  const anchors = unique(['', ...hiddenDirectories.map((directory) => `${directory.slice(base.length)}/`)])
   const tails = unique(anchors.flatMap((anchor) => descendants.map((tail) => anchor + tail)))
   const include: string[] = []
   const suffixes = selection.extensions ?? ['']
@@ -111,7 +116,7 @@ export const contractSourceGroup = ({
     } else if (prefix.startsWith(base)) {
       const relative = prefix.slice(base.length)
       if (relative.endsWith('/')) {
-        include.push(...tails.flatMap((tail) => suffixes.map((suffix) => relative + tail + suffix)))
+        include.push(...descendants.flatMap((tail) => suffixes.map((suffix) => relative + tail + suffix)))
       } else {
         // startsWith is a string prefix, not a directory selector: retain both
         // matching filenames and descendants of matching directory names.
@@ -123,17 +128,13 @@ export const contractSourceGroup = ({
           }
         }
         include.push(
-          ...tails.flatMap((tail) => suffixes.map((suffix) => `${relative}*/${tail}${suffix}`)),
+          ...descendants.flatMap((tail) => suffixes.map((suffix) => `${relative}*/${tail}${suffix}`)),
         )
       }
     }
   }
-  for (const directory of directories) {
-    if (
-      directory.startsWith(base) &&
-      directory.split('/').some((segment) => segment.startsWith('.')) &&
-      selection.prefixes.some((prefix) => `${directory}/`.startsWith(prefix))
-    ) {
+  for (const directory of hiddenDirectories) {
+    if (selection.prefixes.some((prefix) => `${directory}/`.startsWith(prefix))) {
       include.push(
         ...descendants.flatMap((tail) =>
           suffixes.map((suffix) => `${directory.slice(base.length)}/${tail}${suffix}`),
@@ -169,21 +170,22 @@ export const contractSourceGroup = ({
     )
       include.push(file.slice(base.length))
   }
-  const exclude = unique([
-    ...anchors.flatMap((anchor) =>
-      ['', '**/', '**/.*/**/', '**/.*/**/.*/**/'].flatMap((ancestor) =>
-        excludedContractDirectories.flatMap((directory) =>
-          descendants.map((tail) => `${anchor}${ancestor}${directory}/${tail}`),
-        ),
-      ),
-    ),
-    ...tails.flatMap((tail) => [
-      tail.slice(0, -1) + '.BUCK.next.*',
-      tail.slice(0, -1) + '.git-archives.json.next.*',
-    ]),
-  ])
-  return { include: unique(include), exclude }
+  return { include: unique(include), exclusionAnchors: anchors }
 }
+
+/** Keep the exclusion product compact, evaluated once per owning BUCK file. */
+export const renderContractSourceExclusions = (anchors: readonly string[]): string => `[
+    anchor + ancestor + directory + "/" + tail
+    for anchor in ${JSON.stringify(anchors)}
+    for ancestor in ["", "**/", "**/.*/**/", "**/.*/**/.*/**/"]
+    for directory in ${JSON.stringify(excludedContractDirectories)}
+    for tail in ${JSON.stringify(descendants)}
+] + [
+    anchor + tail[:-1] + temporary
+    for anchor in ${JSON.stringify(anchors)}
+    for tail in ${JSON.stringify(descendants)}
+    for temporary in [".BUCK.next.*", ".git-archives.json.next.*"]
+]`
 
 export const contractSourceOwners = (
   selection: SourceSelection,

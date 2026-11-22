@@ -4,6 +4,7 @@ import {
   contractSourceGroup,
   contractSourceName,
   contractSourceOwners,
+  renderContractSourceExclusions,
   type SourceSelection,
 } from './quick-contract-source-groups.ts'
 
@@ -59,9 +60,24 @@ describe('per-contract Buck source selectors', () => {
     ])
     expect(selected.include).toContain('src/**/.*.ts')
     expect(selected.include).toContain('src/.one/.two/.three/**/*.ts')
-    expect(selected.exclude).toContain('src/.one/.two/.three/**/node_modules/**/*')
-    expect(selected.exclude).toContain('**/target/**/*')
-    expect(selected.exclude).toContain('**/.devenv/**/*')
+    expect(selected.exclusionAnchors).toContain('src/.one/.two/.three/')
+    const exclusions = renderContractSourceExclusions(selected.exclusionAnchors)
+    expect(exclusions).toContain('"node_modules"')
+    expect(exclusions).toContain('"target"')
+    expect(exclusions).toContain('".devenv"')
+  })
+
+  it('keeps unrelated child packages and ordinary hidden descendants out of the pattern product', () => {
+    const selection = { paths: [], prefixes: ['src/'] }
+    const directories = ['.github', 'src/.owned', 'src/.owned/ordinary']
+    const selected = group(selection, '.', directories)
+    const childDirectories = Array.from({ length: 2_000 }, (_, index) => `buck2/.hidden-${index}`)
+    expect(group(selection, '.', [...directories, ...childDirectories])).toEqual(selected)
+    expect(selected.exclusionAnchors).toEqual(['', '.github/', 'src/.owned/'])
+    expect(selected.include).toContain('src/.owned/**/*')
+    expect(selected.include.some((pattern) => pattern.startsWith('src/.github/'))).toBe(false)
+    // Render the product, not its millions of entries once per contract.
+    expect(renderContractSourceExclusions(selected.exclusionAnchors).length).toBeLessThan(2_000)
   })
 
   it('preserves authored membership byte-input pathspec semantics without frozen filenames', () => {

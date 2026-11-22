@@ -15,6 +15,7 @@ import {
   contractSourceName,
   contractSourceOwners,
   discoverContractPackages,
+  renderContractSourceExclusions,
   type ContractSourceGroup,
   type SourceSelection,
 } from './quick-contract-source-groups.ts'
@@ -100,21 +101,26 @@ export const quickContractInputs = { contracts, owners: contractSourceExports }
 export const appendQuickContractSources = (rendered: string, owner: string): string => {
   const groups = contractSourceExports[owner]
   if (groups === undefined) return rendered
+  const exclusions = renderContractSourceExclusions(Object.values(groups)[0]!.exclusionAnchors)
   const loadOffset = Math.max(0, rendered.search(/^load\(/m))
   return (
     rendered.slice(0, loadOffset) +
     'load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")\n' +
     rendered.slice(loadOffset) +
-    Object.entries(groups)
-      .map(
-        ([task, group]) => `
+    `
 # Package boundaries and hidden-directory anchors are owned by Genie. Regenerate
 # owning BUCK files for new packages or deeper hidden-directory chains; Buck has
 # no include_dotfiles switch. Existing anchored directories retain live globs.
+_quick_contract_source_excludes = ${exclusions}
+` +
+    Object.entries(groups)
+      .map(
+        ([task, group]) => `
+# Buck hashes these package-local check inputs, independently of product inputs.
 _quick_contract_source_set(
     name = ${JSON.stringify(contractSourceName(task))},
     prefix = ${JSON.stringify(owner === '.' ? '' : owner)},
-    srcs = glob(${JSON.stringify(group.include, null, 4)}, exclude = ${JSON.stringify(group.exclude, null, 4)}),
+    srcs = glob(${JSON.stringify(group.include, null, 4)}, exclude = _quick_contract_source_excludes),
     visibility = ["PUBLIC"],
 )
 `,

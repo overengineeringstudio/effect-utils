@@ -88,6 +88,12 @@ Preparation still refuses an untracked source or a source tree that changes
 during realization. Publications use the rebuildable `.worktree-tools/v2`
 namespace; older generations remain untouched but are not selected.
 
+Per-contract check filegroups use live package-local globs; child Buck packages
+own their files. Genie records package boundaries and existing hidden-directory
+anchors, not source-file lists. Regenerate for a new package or deeper hidden
+directory chain. Each package shares one compact exclusion expression across
+its contracts instead of emitting the expanded pattern product per contract.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
