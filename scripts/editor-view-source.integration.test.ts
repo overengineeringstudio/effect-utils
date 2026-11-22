@@ -691,9 +691,12 @@ describe('publication notification through source reader exec', () => {
     const launcher = process.env.EDITOR_VIEW_SOURCE_LAUNCHER
     if (launcher === undefined) throw new Error('Declared source launcher is required')
     const directory = fixture()
+    // The parent's preload restores lease mappings after cleanEnvironment().
+    // Clear them in the child before these fixtures reuse descriptors 3 and 4.
+    const fixtureBody = `unset EDITOR_VIEW_LEASE_FDS EDITOR_VIEW_LEASE_ACTIVE\n${body}`
     const child = spawn(
       'bash',
-      ['-c', body, 'notification-fixture', launcher, process.execPath, directory, script],
+      ['-c', fixtureBody, 'notification-fixture', launcher, process.execPath, directory, script],
       {
         detached: true,
         env: {
