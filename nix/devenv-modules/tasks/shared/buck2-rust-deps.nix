@@ -61,10 +61,13 @@ let
   gitSourcesFile = pkgs.writeText "buck2-rust-git-sources.json" (builtins.toJSON gitSourceConfigs);
   workspaceSegments = lib.splitString "/" workspaceRoot;
   validRelativePath =
-    workspaceRoot != ""
-    && !(lib.hasPrefix "/" workspaceRoot)
-    && !(lib.hasInfix "\\" workspaceRoot)
-    && builtins.all (segment: segment != "" && segment != "..") workspaceSegments;
+    workspaceRoot == "."
+    || (
+      workspaceRoot != ""
+      && !(lib.hasPrefix "/" workspaceRoot)
+      && !(lib.hasInfix "\\" workspaceRoot)
+      && builtins.all (segment: segment != "" && segment != "." && segment != "..") workspaceSegments
+    );
   validTaskPrefix =
     builtins.isString taskPrefix && builtins.match "^[a-z0-9][a-z0-9:-]*$" taskPrefix != null;
   script = mode: ''

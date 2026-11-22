@@ -13,6 +13,7 @@
   expectedProductKind,
   expectedProductName,
   binaryName ? null,
+  compile ? false,
   environment ? { },
   generateCompletions ? binaryName != null,
   nativeNodePackages ? [ ],
@@ -42,6 +43,16 @@ let
     )
   );
 in
+assert lib.assertMsg (
+  !compile
+  || (
+    facts.expectedRuntimeKind == "bun"
+    && binaryName != null
+    && !sourceImport.hasRuntimeClosure
+    && expectedExternalModules == [ ]
+    && nativeNodePackages == [ ]
+  )
+) "javascript-product-import: compilation requires a self-contained Bun executable";
 pkgs.runCommand "${expectedProductName}-buck2-candidate"
   {
     nativeBuildInputs = [
@@ -62,8 +73,27 @@ pkgs.runCommand "${expectedProductName}-buck2-candidate"
     ${builtins.readFile ./javascript-source-import-validate.sh}
     module_path=${lib.escapeShellArg facts.expectedModulePath}
     mkdir -p "$out/libexec/$(dirname "$module_path")"
-    cp "$artifact" "$out/libexec/$module_path"
-    chmod 0444 "$out/libexec/$module_path"
+    ${
+      if compile then
+        ''
+          # Resolve the build input outside /nix/store: Bun enumerates entry ancestors.
+          cp "$artifact" entry.js
+          compiler=${runtime}/bin/bun
+          ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+            # Bun's clonefile copy retains store permissions on macOS.
+            cp "$compiler" bun-compiler
+            chmod u+w bun-compiler
+            compiler="$PWD/bun-compiler"
+          ''}
+          "$compiler" build --compile --no-compile-autoload-dotenv \
+            --no-compile-autoload-bunfig --outfile "$out/libexec/${binaryName}" ./entry.js
+        ''
+      else
+        ''
+          cp "$artifact" "$out/libexec/$module_path"
+          chmod 0444 "$out/libexec/$module_path"
+        ''
+    }
     ${lib.optionalString sourceImport.hasRuntimeClosure ''
       closure="$source_product/runtime-closure"
       digest="$(jq -er '.digest | select(test("^[0-9a-f]{64}$"))' "$closure/descriptor.json")" || fail runtime-closure-digest
@@ -78,10 +108,15 @@ pkgs.runCommand "${expectedProductName}-buck2-candidate"
     '') nativeNodePackages}
     ${lib.optionalString (binaryName != null) ''
       mkdir -p "$out/bin"
-      makeWrapper ${runtime}/bin/${facts.expectedRuntimeKind} "$out/bin/${binaryName}" \
-        --add-flags "${
-          lib.optionalString (facts.expectedRuntimeKind == "bun") "--no-install "
-        }$out/libexec/$module_path" \
+      makeWrapper ${
+        if compile then ''"$out/libexec/${binaryName}"'' else "${runtime}/bin/${facts.expectedRuntimeKind}"
+      } "$out/bin/${binaryName}" \
+        ${
+          lib.optionalString (!compile)
+            ''--add-flags "${
+              lib.optionalString (facts.expectedRuntimeKind == "bun") "--no-install "
+            }$out/libexec/$module_path"''
+        } \
         ${
           lib.concatStringsSep " " (
             lib.mapAttrsToList (

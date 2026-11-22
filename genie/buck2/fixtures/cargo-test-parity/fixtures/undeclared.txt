@@ -1,0 +1,1 @@
+This undeclared neighbor must never enter Buck's staged repository tree.

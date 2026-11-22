@@ -2,6 +2,7 @@
 
 load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("@prelude//rust:cargo_buildscript.bzl", _prelude_buildscript_run = "buildscript_run")
+load("@prelude//decls:rust_rules.bzl", _rust_test = "rust_test")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "product_platform_constraints")
 load("//buck2/provenance:defs.bzl", "product_artifact_info", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
@@ -172,4 +173,173 @@ rust_test_receipt = cache_guarded_rule(
     attrs = {
         "test": attrs.exec_dep(providers = [RunInfo, ExternalRunnerTestInfo]),
     },
+)
+
+def _repository_path(path, label, allow_root = False):
+    if allow_root and path == ".":
+        return
+    if not path or path.startswith("/") or "\\" in path or ":" in path:
+        fail("{}: expected normalized repository-relative path, got {}".format(label, repr(path)))
+    if any([part in ["", ".", ".."] for part in path.split("/")]):
+        fail("{}: expected normalized repository-relative path, got {}".format(label, repr(path)))
+
+def _cargo_resource_inventory_impl(ctx):
+    label = str(ctx.label)
+    keys = sorted(ctx.attrs.resources.keys())
+    if sorted(ctx.attrs.destinations.keys()) != keys:
+        fail("{}: resources and destinations must have identical keys".format(label))
+    for key in ctx.attrs.expected_digests:
+        if key not in ctx.attrs.resources:
+            fail("{}: expected_digests contains unknown key {}".format(label, key))
+    destinations = {}
+    entries = []
+    outputs = {}
+    for key in keys:
+        suffix = key[5:]
+        if not key.startswith("file-") or not suffix or any([c not in "0123456789" for c in suffix.elems()]) or (len(suffix) > 1 and suffix.startswith("0")):
+            fail("{}: malformed resource key {}".format(label, key))
+        destination = ctx.attrs.destinations[key]
+        _repository_path(destination, label)
+        if destination in destinations:
+            fail("{}: duplicate resource destination {}".format(label, destination))
+        destinations[destination] = True
+        digest = ctx.attrs.expected_digests.get(key)
+        if digest != None and (len(digest) != 64 or any([c not in "0123456789abcdef" for c in digest.elems()])):
+            fail("{}: invalid SHA256 for {}".format(label, key))
+        entries.append({
+            "key": key,
+            "source": ctx.attrs.resources[key],
+            "destination": destination,
+            "expectedDigest": digest,
+        })
+        outputs[key] = ctx.actions.declare_output(key)
+    for destination in destinations:
+        parts = destination.split("/")
+        for length in range(1, len(parts)):
+            prefix = "/".join(parts[:length])
+            if prefix in destinations:
+                fail("{}: resource destination prefix collision: {} and {}".format(label, prefix, destination))
+    manifest = ctx.actions.write_json("resources.json", entries, with_inputs = True)
+    inventory = ctx.actions.declare_output("inventory.json")
+    bun = ctx.attrs._bun[BuckSupportToolInfo]
+    command = cmd_args(bun.executable, ctx.attrs._inventory_tool, manifest, inventory.as_output())
+    for key in keys:
+        command.add(key, outputs[key].as_output())
+    command.add(cmd_args(hidden = [bun.manifest]))
+    ctx.actions.run(command, category = "cargo_resource_inventory")
+    return [DefaultInfo(
+        default_output = inventory,
+        sub_targets = {key: [DefaultInfo(default_output = output)] for key, output in outputs.items()},
+    )]
+
+cargo_resource_inventory = cache_guarded_rule(
+    impl = _cargo_resource_inventory_impl,
+    attrs = {
+        "resources": attrs.dict(key = attrs.string(), value = attrs.source()),
+        "destinations": attrs.dict(key = attrs.string(), value = attrs.string()),
+        "expected_digests": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:tool_bun",
+            providers = [BuckSupportToolInfo],
+        )),
+        "_inventory_tool": attrs.default_only(attrs.source(default = "//buck2/rust:cargo-resource-inventory.ts")),
+    },
+    doc = "Validates declared Cargo resource bytes and publishes verified files and their SHA256 inventory.",
+)
+
+def _cargo_rust_test_impl(ctx):
+    _repository_path(ctx.attrs.cargo_package_path, str(ctx.label), allow_root = True)
+    providers = _rust_test.impl(ctx)
+    defaults = [p for p in providers if isinstance(p, DefaultInfo)]
+    tests = [p for p in providers if isinstance(p, ExternalRunnerTestInfo)]
+    if len(defaults) != 1 or len(tests) != 1:
+        fail("Prelude rust_test must return one DefaultInfo and one ExternalRunnerTestInfo")
+    default = defaults[0]
+    test = tests[0]
+    for field in ["test_type", "command", "env", "run_from_project_root", "use_project_relative_paths"]:
+        if not hasattr(test, field):
+            fail("Prelude rust_test provider is missing required field: " + field)
+    if len(test.command) != 1 or not test.run_from_project_root or not test.use_project_relative_paths:
+        fail("Prelude rust_test command/path contract changed")
+    if "sources" not in default.sub_targets:
+        fail("Prelude rust_test must expose its declared sources tree")
+    source_outputs = default.sub_targets["sources"][DefaultInfo].default_outputs
+    if len(source_outputs) != 1:
+        fail("Prelude rust_test sources must have exactly one output")
+    sources = source_outputs[0]
+    shell = ctx.attrs._cargo_shell[BuckSupportToolInfo]
+    manifest_dir = sources if ctx.attrs.cargo_package_path == "." else sources.project(ctx.attrs.cargo_package_path)
+    env_file = ctx.actions.write_json(
+        "cargo_test_env.json",
+        {k: cmd_args(v, delimiter = " ") for k, v in test.env.items() if k != "CARGO_MANIFEST_DIR"},
+        with_inputs = True,
+        absolute = True,
+    )
+    runtime_command = cmd_args(
+        ctx.attrs._inject_test_env[RunInfo],
+        env_file,
+        "--",
+        test.command,
+        absolute_prefix = "__CARGO_PROJECT_ROOT__",
+        quote = "shell",
+    )
+    # allow_args returns the written artifact and macro files, not its runtime inputs.
+    # ".." from the symlinked sources tree follows physical parents, not its lexical
+    # Buck path. Anchor marked artifact arguments on the runtime project root before cd;
+    # marking only artifacts preserves literal RunInfo arguments such as the injector's interpreter and flags.
+    launcher, launcher_macros = ctx.actions.write(
+        "cargo-test.sh",
+        [
+            "#!{}".format(shell.store_path),
+            "set -eu",
+            'root="$PWD"',
+            'manifest="$1"; shift',
+            cmd_args(
+                "cargo_command=(",
+                runtime_command,
+                ")",
+                delimiter = " ",
+            ),
+            'for index in "${!cargo_command[@]}"; do',
+            '  cargo_command[index]="${cargo_command[index]//__CARGO_PROJECT_ROOT__/"$root"/}"',
+            'done',
+            # Inject after the shell: shells may discard env names containing '-'.
+            'cd -P -- "$root/$manifest"',
+            'export CARGO_MANIFEST_DIR="$PWD"',
+            'exec "${cargo_command[@]}" "$@"',
+            "",
+        ],
+        is_executable = True,
+        allow_args = True,
+    )
+    command = cmd_args(launcher, manifest_dir, hidden = [
+        sources,
+        launcher_macros,
+        runtime_command,
+        shell.executable,
+        shell.manifest,
+    ])
+    return [p for p in providers if not isinstance(p, ExternalRunnerTestInfo) and not isinstance(p, RunInfo)] + [
+        RunInfo(args = command),
+        ExternalRunnerTestInfo(**(
+            {field: getattr(test, field) for field in dir(test) if field != "test_type"} |
+            {"type": test.test_type, "command": [command]}
+        )),
+    ]
+
+# Prelude fixes rust_test's cwd to the project root. Cargo instead runs in the
+# manifest directory; use the *same declared tree* rustc uses for manifest paths.
+# Runtime std::env::var("CARGO_MANIFEST_DIR") is supported; compile-time env! used
+# for runtime paths is unsupported and must remain gated.
+cargo_rust_test = cache_guarded_rule(
+    impl = _cargo_rust_test_impl,
+    attrs = _rust_test.attrs | {
+        "cargo_package_path": attrs.string(default = "."),
+        "_cargo_shell": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:tool_rust_shell",
+            providers = [BuckSupportToolInfo],
+        )),
+    },
+    uses_plugins = _rust_test.uses_plugins,
+    supports_incoming_transition = _rust_test.supports_incoming_transition,
 )

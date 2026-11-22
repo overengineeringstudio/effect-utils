@@ -257,6 +257,19 @@ Portable compiled payloads remain unchanged; native wrappers own this dependency
 The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
 
+In `check:quick`, its dedicated standalone-staging publication waits for
+`buck2:quick` to finish: Buck output directories are mutable even after the
+publisher's build returns. The evaluated task-graph guard proves ordering over
+the whole build → fingerprint → copy interval and that standalone lint does
+not select `buck2:quick`. Devenv 2.4's `before`/`after` edges select upstream
+prerequisites, so a separate quick-only publication path reuses the same guard
+payload without adding quick to standalone lint. This avoids retries or a new
+immutable Buck snapshot action. Estimated extra `check:quick` critical-path
+cost is at most `min(quick duration, publication duration)` versus perfect
+overlap (other checks can hide that cost); standalone lint has no added work.
+Arbitrary concurrent Buck commands outside this graph still require caller
+coordination.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
@@ -288,6 +301,15 @@ link spelling. Equivalent path relocations therefore reuse one generation;
 changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
+The copy records its symlink inventory in the first traversal and rewrites only
+those copied links, never discovers links through a second live-source walk.
+Recorded directory metadata detects late entries as `EditorViewInputChangedError`;
+hashing and copying share the same stability predicate, which tolerates inode-only
+directory reassignment on overlayfs while checking type, device, mtime, and ctime.
+The admitted-versus-candidate digest and literal-link comparison remain intact.
+Native filesystem failures report the operation and actual operand, including
+descendant links and declared owners, rather than attributing every failure to
+the command's first root argument.
 
 Root publication also converges the authority manifest's package-local dependency
 topology: real `node_modules` directories identified by a regular `.modules.yaml`
