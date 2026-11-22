@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import {
   chmodSync,
@@ -23,7 +22,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   copyDeclarationSources,
   formatError,
-  FingerprintCommandFailure,
   type FingerprintChild,
   hashDeclaredInputRoots,
   linkStagedWorkspaceProjects,
@@ -92,59 +90,6 @@ it('requires an explicit declared argument to select Nix Darwin isolation', () =
     ]),
   ).toThrow('unexpected typecheck argument')
 })
-
-it.each([
-  {
-    label: 'native signal',
-    mode: '--native-signal',
-    signal: 'SIGTERM',
-    exitCode: undefined,
-    stderr: '',
-    cancelAfterReady: false,
-  },
-  {
-    label: 'native exit',
-    mode: '--native-exit',
-    signal: undefined,
-    exitCode: 19,
-    stderr: 'native fingerprint fixture exit\n',
-    cancelAfterReady: false,
-  },
-  {
-    label: 'cancelled native signal',
-    mode: '--native-signal',
-    signal: 'SIGTERM',
-    exitCode: undefined,
-    stderr: '',
-    cancelAfterReady: true,
-  },
-])(
-  'preserves a real fingerprint child outcome ($label)',
-  async ({ mode, signal, exitCode, stderr, cancelAfterReady }) => {
-    const tool = process.env.FINGERPRINT_LIFETIME_TEST_BIN
-    if (tool === undefined)
-      throw new Error('requires the declared real fingerprint lifetime fixture')
-    const cancellation = new AbortController()
-    const failure = await runFingerprintTool({
-      tool,
-      args: [mode],
-      signal: cancellation.signal,
-      spawnChild: ({ tool, args }) => {
-        // Observe readiness from the real declared child; do not simulate its lifecycle.
-        const child = spawn(tool, args, {
-          cwd: '/',
-          env: { PATH: '' },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-        if (cancelAfterReady === true) child.stdout.once('data', () => cancellation.abort())
-        return child
-      },
-    }).catch((error: unknown) => error)
-    expect(failure).toBeInstanceOf(FingerprintCommandFailure)
-    expect(failure).toMatchObject({ signal, exitCode, stderr })
-    expect(cancellation.signal.aborted).toBe(cancelAfterReady)
-  },
-)
 
 type FingerprintTestChild = EventEmitter & FingerprintChild
 

@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   chmodSync,
   closeSync,
@@ -25,6 +25,7 @@ import {
   assertNixEmitInputBoundary,
   copyWritableTree,
   darwinEmitCommand,
+  FingerprintCommandFailure,
   runEmit,
   runFingerprintTool,
   withFingerprintScope,
@@ -55,6 +56,57 @@ const lifetimeTool = (name: string): string => {
     throw new Error(`Required declared native-process lifetime test tool: ${name}`)
   return path
 }
+
+it.each([
+  {
+    label: 'native signal',
+    mode: '--native-signal',
+    signal: 'SIGTERM',
+    exitCode: undefined,
+    stderr: '',
+    cancelAfterReady: false,
+  },
+  {
+    label: 'native exit',
+    mode: '--native-exit',
+    signal: undefined,
+    exitCode: 19,
+    stderr: 'native fingerprint fixture exit\n',
+    cancelAfterReady: false,
+  },
+  {
+    label: 'cancelled native signal',
+    mode: '--native-signal',
+    signal: 'SIGTERM',
+    exitCode: undefined,
+    stderr: '',
+    cancelAfterReady: true,
+  },
+])(
+  'preserves a real fingerprint child outcome ($label)',
+  async ({ mode, signal, exitCode, stderr, cancelAfterReady }) => {
+    const tool = lifetimeTool('FINGERPRINT_LIFETIME_TEST_BIN')
+    const cancellation = new AbortController()
+    const failure = await runFingerprintTool({
+      tool,
+      args: [mode],
+      signal: cancellation.signal,
+      spawnChild: ({ tool: childTool, args: childArgs }) => {
+        // Observe readiness from the real declared child; do not simulate its lifecycle.
+        const child = spawn(childTool, childArgs, {
+          cwd: '/',
+          env: { PATH: '' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+        if (cancelAfterReady === true) child.stdout.once('data', () => cancellation.abort())
+        return child
+      },
+    }).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(FingerprintCommandFailure)
+    expect(failure).toMatchObject({ signal, exitCode, stderr })
+    expect(cancellation.signal.aborted).toBe(cancelAfterReady)
+  },
+)
 
 it.each(['abort', 'parent-failure'] as const)(
   'joins a real admitted native-process child before publication scope exits after %s',
