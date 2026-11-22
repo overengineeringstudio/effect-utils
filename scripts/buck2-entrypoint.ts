@@ -334,6 +334,39 @@ export type AdmissionProbeEndpoint = 'watchman' | 'reapi'
 type CachePostureCheck = (values: Readonly<Record<string, string>>) => void
 
 /** Admit the initial file watcher and cache posture before pinned native startup. */
+const contractContextOverrides = ({
+  root,
+  env,
+}: {
+  readonly root: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): Record<string, string> => {
+  const overrides: Record<string, string> = {}
+  const actor = env['FRACTAL_AGENT'] || env['ST_AGENT']
+  if (actor !== undefined) overrides['quick_contracts.agent_actor'] = actor
+  const policyPath = env['WORKTREE_POLICY_PATH']
+  if (policyPath !== undefined) overrides['quick_contracts.policy_path'] = policyPath
+  return { ...overrides, ...profileContractMembershipDigests({ root, env }) }
+}
+const withContractContext = ({
+  args,
+  root,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly root: string | undefined
+  readonly env: Readonly<Record<string, string | undefined>>
+}): string[] => {
+  if (root === undefined) return [...args]
+  const extra = Object.entries(contractContextOverrides({ root, env })).flatMap(([key, value]) => [
+    '--config',
+    `${key}=${value}`,
+  ])
+  const sentinel = args.indexOf('--')
+  return sentinel === -1
+    ? [...args, ...extra]
+    : [...args.slice(0, sentinel), ...extra, ...args.slice(sentinel)]
+}
 export const directBuckArguments = async ({
   args,
   cwd,
@@ -446,7 +479,7 @@ export const directBuckArguments = async ({
     reconcileFileWatcher({ repoRoot: root })
   }
   // Watcher startup is independent of the narrower cache-command allowlist.
-  if (command === undefined) return [...args]
+  if (command === undefined) return withContractContext({ args, root, env })
   const unmanaged = withoutManagedBlock(localWithoutWatcher)
   const local = unmanaged.content
   const base = buckConfigValues(`${tracked}\n${local}`)
@@ -455,7 +488,7 @@ export const directBuckArguments = async ({
     base['buck2_re_client.action_cache_address'] === undefined &&
     base['buck2.remote_cache_enabled'] !== 'true'
   )
-    return [...args]
+    return withContractContext({ args, root, env })
   const cliValues: Record<string, string> = {}
   for (let index = 0; index < configArgs.length; index++) {
     const arg = configArgs[index] ?? ''
@@ -711,11 +744,7 @@ export const directBuckArguments = async ({
     reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv, base: effectiveBase })
   // Stable, nonsecret caller context is a declared input of local check actions.
   // Per-run trace IDs and credentials deliberately never enter their cache keys.
-  const agentActor = env['FRACTAL_AGENT'] || env['ST_AGENT']
-  if (agentActor !== undefined) overrides['quick_contracts.agent_actor'] = agentActor
-  const policyPath = env['WORKTREE_POLICY_PATH']
-  if (policyPath !== undefined) overrides['quick_contracts.policy_path'] = policyPath
-  Object.assign(overrides, profileContractMembershipDigests({ root, env }))
+  Object.assign(overrides, contractContextOverrides({ root, env }))
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
