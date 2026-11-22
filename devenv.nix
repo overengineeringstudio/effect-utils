@@ -149,34 +149,36 @@ let
     exit 1
   '';
   # Immutable real-child barriers for publication cancellation and native signals.
-  supervisorPublicationTestChild = { name, native }: pkgs.writeShellApplication {
-    inherit name;
-    text = ''
-      for argument in "$@"; do
-        case "$argument" in /*) directory="$argument" ;; *) continue ;; esac
-        while [ -n "$directory" ] && [ "$directory" != / ]; do
-          if [ -f "$directory/supervisor-termination" ]; then
-            termination="$(<"$directory/supervisor-termination")"
-            case "$termination" in
-              publication)
-                printf 'ready\n' >"$directory/ready"
-                IFS= read -r _ <"$directory/publication-release"
-                ;;
-              publication-child)
-                printf 'ready\n' >"$directory/ready"
-                kill -TERM "$$"
-                exit 1
-                ;;
-              *) printf 'Invalid supervisor publication fixture mode: %s\n' "$termination" >&2; exit 2 ;;
-            esac
-            exec ${native} "$@"
-          fi
-          directory="''${directory%/*}"
+  supervisorPublicationTestChild =
+    { name, native }:
+    pkgs.writeShellApplication {
+      inherit name;
+      text = ''
+        for argument in "$@"; do
+          case "$argument" in /*) directory="$argument" ;; *) continue ;; esac
+          while [ -n "$directory" ] && [ "$directory" != / ]; do
+            if [ -f "$directory/supervisor-termination" ]; then
+              termination="$(<"$directory/supervisor-termination")"
+              case "$termination" in
+                publication)
+                  printf 'ready\n' >"$directory/ready"
+                  IFS= read -r _ <"$directory/publication-release"
+                  ;;
+                publication-child)
+                  printf 'ready\n' >"$directory/ready"
+                  kill -TERM "$$"
+                  exit 1
+                  ;;
+                *) printf 'Invalid supervisor publication fixture mode: %s\n' "$termination" >&2; exit 2 ;;
+              esac
+              exec ${native} "$@"
+            fi
+            directory="''${directory%/*}"
+          done
         done
-      done
-      exec ${native} "$@"
-    '';
-  };
+        exec ${native} "$@"
+      '';
+    };
   supervisorCopyTestChild = supervisorPublicationTestChild {
     name = "cp";
     native = "${pkgs.coreutils}/bin/cp";
