@@ -2335,6 +2335,7 @@
       "collectionTarget": "effect_utils//packages/@overeng/utils:test_collect",
       "excludes": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
         "src/node/otel-delivery.integration.test.ts",
@@ -2355,6 +2356,8 @@
         "src/isomorphic/hash.unit.test.ts",
         "src/isomorphic/lineage/mod.unit.test.ts",
         "src/isomorphic/misc.unit.test.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts",
+        "src/isomorphic/otlp-producer.unit.test.ts",
         "src/isomorphic/string.unit.test.ts",
         "src/node/ActiveHandlesDebugger.unit.test.ts",
         "src/node/FileLogger.unit.test.ts",
@@ -2396,6 +2399,8 @@
         "src/isomorphic/hash.unit.test.ts",
         "src/isomorphic/lineage/mod.unit.test.ts",
         "src/isomorphic/misc.unit.test.ts",
+        "src/isomorphic/otlp-producer.integration.test.ts",
+        "src/isomorphic/otlp-producer.unit.test.ts",
         "src/isomorphic/string.unit.test.ts",
         "src/node/ActiveHandlesDebugger.unit.test.ts",
         "src/node/FileLogger.unit.test.ts",
@@ -2425,6 +2430,7 @@
       ],
       "unboundedAfter": [],
       "unboundedFiles": [
+        "src/isomorphic/otlp-producer.integration.test.ts",
         "src/node/cmd.unit.test.ts",
         "src/node/github-app.integration.test.ts",
         "src/node/otel-delivery.integration.test.ts",
