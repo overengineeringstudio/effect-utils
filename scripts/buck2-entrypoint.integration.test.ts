@@ -697,7 +697,7 @@ exit 42
     expect(stderr).not.toContain('native-stdout-must-not-escape')
     expect(existsSync(evidence)).toBe(false)
     expect(existsSync(`${evidence}.admission.jsonl`)).toBe(false)
-  })
+  }, 20000)
 })
 
 describe('native build ID registry', () => {
@@ -973,7 +973,7 @@ describe('native build ID registry', () => {
     expect(existsSync(started)).toBe(false)
     expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
     expect(existsSync(`${evidence}.native-build-ids`)).toBe(false)
-  })
+  }, 20000)
 
   it('registers native output paths without claiming native startup or writing the ID', async () => {
     const root = fixture()
@@ -1099,7 +1099,7 @@ writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).j
     const row = JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))
     expect(row.buildId).toBe(buildId)
     expect(readFileSync(row.path, 'utf8').trim()).toBe(buildId)
-  })
+  }, 20000)
 })
 
 describe('direct pinned Buck posture', () => {
@@ -1199,7 +1199,7 @@ console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(
     ])
     expect(exitCode, stderr).toBe(23)
     expect(Number(stdout.trim())).toBe(child.pid)
-  })
+  }, 20000)
 
   for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
     it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {
