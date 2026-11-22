@@ -356,6 +356,14 @@ remain available; incomplete migration publishes no success receipt.
 against the live owner and reserved publication isolation, preserving native filesystem errors.
 Ordinary source and immutable store inputs need no publication owner; terminal parent traversal
 cannot select an unowned materializer or ancestor.
+Preparation validates the provider manifest before reading it, then validates its declared
+artifact roots without collapsing filesystem-order dot segments. Publication, batch publication,
+and live-input checking enforce the same guard before any census or fingerprint read.
+Mutable callers must pass the existing same-process owner; neither the CLI nor preparation
+acquires a nested owner or accepts an anonymous mutable-input fallback. Snapshot-only verification
+still needs no Buck input or owner.
+Admitted artifact roots are passed to every reader by their reached pathname, never a later
+lexical normalization. Workspace authority is repository-relative, independent of cwd/workspace root.
 Real-owner input tests cover intermediate leaf and directory carriers to ordinary/Nix inputs,
 filesystem-order dot segments, native ENOENT/ENOTDIR/ELOOP errors, and terminal-parent escapes.
 

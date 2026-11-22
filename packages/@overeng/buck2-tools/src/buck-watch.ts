@@ -5,6 +5,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import {
   editorPublicationIsolation,
   type EditorPublicationOwner,
@@ -12,6 +13,7 @@ import {
 } from './editor-publication-owner.ts'
 import { dispatchEditorView, EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
+import { realpathThroughName } from './real-path.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
 import { FingerprintCommandFailure } from './typescript-runner.ts'
 
@@ -660,12 +662,15 @@ const outputForTarget = ({
 
 const readEditorInputs = async ({
   path,
+  publicationOwner,
   workspaceRoot,
 }: {
   path: string
+  publicationOwner: EditorPublicationOwner | undefined
   workspaceRoot: string
 }): Promise<EditorViewInputs> => {
-  const manifestPath = isAbsolute(path) === true ? path : join(workspaceRoot, path)
+  const manifestPath = isAbsolute(path) === true ? path : `${workspaceRoot}/${path}`
+  requireEditorPublicationInputs({ root: workspaceRoot, paths: [manifestPath], owner: publicationOwner })
   const raw: unknown = JSON.parse(await readFile(manifestPath, 'utf8'))
   if (
     typeof raw !== 'object' ||
@@ -699,6 +704,7 @@ export type EditorPublicationPreparation = {
   readonly mode: 'publish' | 'check'
   readonly repoRoot: string
   readonly workspaceRoot: string
+  readonly publicationOwner?: EditorPublicationOwner
   readonly cp: string
   readonly mv: string
   readonly fingerprintTool: string
@@ -719,9 +725,21 @@ export const prepareEditorPublicationRequest = async ({
   const manifest = await readEditorInputs({
     path: outputForTarget({ outputs, target: entry.editor.inputsManifestTarget }),
     workspaceRoot: options.workspaceRoot,
+    publicationOwner: options.publicationOwner,
   })
   const absoluteArtifact = (path: string): string =>
-    isAbsolute(path) === true ? path : resolve(options.workspaceRoot, path)
+    isAbsolute(path) === true ? path : `${options.workspaceRoot}/${path}`
+  const authority = isAbsolute(options.workspaceAuthority) === true
+    ? options.workspaceAuthority
+    : `${realpathThroughName(options.repoRoot)}/${options.workspaceAuthority}`
+  requireEditorPublicationInputs({
+    root: options.workspaceRoot,
+    paths: [
+      ...[manifest.editorInputs, manifest.packageTree, ...manifest.readRoots].map(absoluteArtifact),
+      authority,
+    ],
+    owner: options.publicationOwner,
+  })
   return [
     options.mode,
     '--repo-root',
@@ -735,10 +753,10 @@ export const prepareEditorPublicationRequest = async ({
     '--target',
     entry.editor.target,
     '--editor-inputs',
-    absoluteArtifact(manifest.editorInputs),
+    realpathThroughName(absoluteArtifact(manifest.editorInputs)),
     '--node-modules',
-    absoluteArtifact(manifest.editorInputs),
-    ...manifest.readRoots.flatMap((root) => ['--backing-root', absoluteArtifact(root)]),
+    realpathThroughName(absoluteArtifact(manifest.editorInputs)),
+    ...manifest.readRoots.flatMap((root) => ['--backing-root', realpathThroughName(absoluteArtifact(root))]),
     '--cp',
     options.cp,
     '--mv',
@@ -746,7 +764,7 @@ export const prepareEditorPublicationRequest = async ({
     '--fingerprint-tool',
     options.fingerprintTool,
     '--workspace-authority',
-    options.workspaceAuthority,
+    authority,
     '--consumer-cache',
     resolve(options.repoRoot, entry.editor.consumerCache),
     '--snapshot-retention',

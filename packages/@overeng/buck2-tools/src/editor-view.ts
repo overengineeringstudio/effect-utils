@@ -33,6 +33,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 
+import { requireEditorPublicationInputs } from './editor-publication-inputs.ts'
 import type { EditorPublicationOwner } from './editor-publication-owner.ts'
 import {
   EditorViewCapacityError,
@@ -909,11 +910,10 @@ export const validateWorkspaceDependencyAuthority = ({
   repoRoot: string
   packageName: string
 }): WorkspaceDependencyAuthority => {
-  // `path` is caller-supplied and may arrive absolute in a different namespace
-  // than the canonical repository root, in which case `resolve` returns it
-  // unchanged and the containment check compares two namespaces. The final
-  // component stays verbatim so the symlink guard below still sees a symlink.
-  const authorityPath = canonicalizeParent(resolve(repoRoot, path))
+  // Resolve directories in filesystem order; retain the leaf for the symlink guard.
+  const absoluteAuthority = isAbsolute(path) === true ? path : `${repoRoot}/${path}`
+  const separator = absoluteAuthority.lastIndexOf('/')
+  const authorityPath = `${realpathThroughName(absoluteAuthority.slice(0, separator + 1))}/${absoluteAuthority.slice(separator + 1)}`
   if (isWithin({ root: repoRoot, candidate: authorityPath }) === false)
     fail(`workspace authority manifest escapes repository: ${authorityPath}`)
   const status = lstatSync(authorityPath)
@@ -3278,9 +3278,34 @@ const budgetReservationBytes = ({
 
 const interruptedPublicationPhases = new Set<() => void>()
 
+const admitPublicationInputs = (options: EditorViewOptions): EditorViewOptions => {
+  const workspaceAuthority = isAbsolute(options.workspaceAuthority) === true
+    ? options.workspaceAuthority
+    : `${realpathThroughName(options.repoRoot)}/${options.workspaceAuthority}`
+  requireEditorPublicationInputs({
+    root: options.repoRoot,
+    paths: [
+      options.editorInputs,
+      options.nodeModules,
+      ...(options.backingRoots ?? []),
+      workspaceAuthority,
+    ],
+    owner: options.publicationOwner,
+  })
+  return {
+    ...options,
+    editorInputs: realpathThroughName(options.editorInputs),
+    nodeModules: realpathThroughName(options.nodeModules),
+    ...(options.backingRoots === undefined
+      ? {}
+      : { backingRoots: options.backingRoots.map(realpathThroughName) }),
+    workspaceAuthority,
+  }
+}
+
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
 const publishEditorViewCoordinated = async ({
-  options,
+  options: requestedOptions,
   coordinator,
   heldStateRoots,
   onContentChanged,
@@ -3292,6 +3317,7 @@ const publishEditorViewCoordinated = async ({
   budgetCensusSession?: EditorViewBudgetCensusSession
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
+  const options = admitPublicationInputs(requestedOptions)
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
@@ -3996,12 +4022,13 @@ export const editorViewPublicationWorkers = 4
  * Every byte/link/ownership proof remains intact; shared inventory and pointer commits are ordered.
  */
 export const publishEditorViews = async ({
-  options,
+  options: requestedOptions,
   onPublished,
 }: {
   options: readonly EditorViewOptions[]
   onPublished?: (record: EditorViewRecord, durationMs: number) => void
 }): Promise<readonly EditorViewRecord[]> => {
+  const options = requestedOptions.map(admitPublicationInputs)
   const coordinators = new Map<string, PublicationCoordinator>()
   const budgetCensusSession = makeEditorViewBudgetCensusSession()
   const workers = new Map<string, PublicationWorkerState>()
@@ -4326,7 +4353,8 @@ export const verifyEditorViewSnapshot = async (
 }
 
 /** Validate the live two-hop view against freshly admitted Buck artifacts. */
-export const checkEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
+export const checkEditorView = async (requestedOptions: EditorViewOptions): Promise<EditorViewRecord> => {
+  const options = admitPublicationInputs(requestedOptions)
   requireRecordIdentity(options)
   const paths = makePaths(options)
   validateWorkspaceDependencyAuthority({

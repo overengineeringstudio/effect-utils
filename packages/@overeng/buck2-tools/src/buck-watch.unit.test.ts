@@ -14,7 +14,7 @@ import {
 } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import process from 'node:process'
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -37,6 +37,7 @@ import {
 } from './buck-watch.ts'
 import {
   editorPublicationIsolation,
+  type EditorPublicationOwner,
   requireEditorPublicationOwner,
   withEditorPublicationOwner,
 } from './editor-publication-owner.ts'
@@ -444,6 +445,101 @@ describe('Buck watch reconciliation', () => {
     })
     expect(publicationSignal(cycle)).toBeUndefined()
     expect(publicationSignal(new AggregateError([cycle, failure]))).toBe('SIGTERM')
+  })
+
+  it('guards real mutable manifests and declared roots with the existing live owner', async () => {
+    const fixture = makePublicationFixture()
+    try {
+      const candidate = plan.packages.find((entry) => entry.packagePath === 'packages/app')
+      if (candidate?.editor === undefined) throw new Error('missing fixture editor entry')
+      const entry = { ...candidate, editor: candidate.editor }
+      const privateRoot = join(fixture.root, 'buck-out', editorPublicationIsolation)
+      const defaultRoot = join(fixture.root, 'buck-out', 'v2')
+      for (const directory of [privateRoot, defaultRoot]) {
+        mkdirSync(directory, { recursive: true })
+        symlinkSync(fixture.manifest, join(directory, 'manifest.json'))
+        symlinkSync(fixture.nodeModules, join(directory, 'modules'))
+      }
+      const prepare = (manifest: string, publicationOwner?: EditorPublicationOwner) =>
+        prepareEditorPublicationRequest({
+          entry,
+          outputs: new Map([[entry.editor.inputsManifestTarget, manifest]]),
+          options: publicationOwner === undefined
+            ? fixture.options
+            : { ...fixture.options, publicationOwner },
+        })
+      const privateManifest = join(privateRoot, 'manifest.json')
+      await expect(prepare(privateManifest)).rejects.toThrow()
+      await withEditorPublicationOwner({
+        root: fixture.root,
+        run: async (owner) => {
+          expect(await prepare(privateManifest, owner)).toContain(fixture.nodeModules)
+          await expect(prepare(join(defaultRoot, 'manifest.json'), owner)).rejects.toThrow(
+            'outside its reserved Buck isolation',
+          )
+          const declared = join(fixture.root, 'declared.json')
+          for (const directory of [privateRoot, defaultRoot]) {
+            writeFileSync(declared, JSON.stringify({
+              schema: 'effect-utils/editor-view-inputs/v1',
+              editorInputs: join(directory, 'modules'),
+              packageTree: fixture.packageTree,
+              readRoots: [fixture.dependency],
+            }))
+            await expect(prepare(declared)).rejects.toThrow()
+            if (directory === privateRoot)
+              expect(await prepare(declared, owner)).toContain(fixture.nodeModules)
+            else
+              await expect(prepare(declared, owner)).rejects.toThrow(
+                'outside its reserved Buck isolation',
+              )
+          }
+          mkdirSync(join(privateRoot, 'sub'), { recursive: true })
+          mkdirSync(join(privateRoot, 'buck-out/v2'), { recursive: true })
+          symlinkSync(join(privateRoot, 'sub'), join(fixture.root, 'alias'))
+          symlinkSync(fixture.nodeModules, join(privateRoot, 'buck-out/v2/inputs'))
+          mkdirSync(join(defaultRoot, 'inputs'))
+          const spelling = `${fixture.root}/alias/../buck-out/v2/inputs`
+          writeFileSync(declared, JSON.stringify({
+            schema: 'effect-utils/editor-view-inputs/v1',
+            editorInputs: spelling,
+            packageTree: fixture.packageTree,
+            readRoots: [spelling],
+          }))
+          expect(await prepare(declared, owner)).toEqual(expect.arrayContaining([fixture.nodeModules]))
+          await expect(prepare(`${privateManifest}/../manifest.json`, owner)).rejects.toMatchObject({
+            code: 'ENOTDIR',
+          })
+          expect(requireEditorPublicationOwner({ root: fixture.root, owner })).toBe(owner)
+        },
+      })
+      expect(await prepareEditorPublicationRequest({
+        entry,
+        outputs: new Map([[entry.editor.inputsManifestTarget, fixture.manifest]]),
+        options: {
+          ...fixture.options,
+          repoRoot: relative(process.cwd(), fixture.root),
+          workspaceRoot: fixture.packageTree,
+          workspaceAuthority: 'authority.json',
+        },
+      })).toContain(fixture.options.workspaceAuthority)
+      await reconcileBuckViews({
+        request: publicationRequest,
+        options: {
+          ...fixture.options,
+          runOwned: async (invocation) => {
+            await fixture.options.runOwned(invocation)
+            return {
+              stdout: `//packages/app:editor_view_inputs ${privateManifest}\n`,
+              stderr: '',
+            }
+          },
+        },
+      })
+      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toContain('λ')
+      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toContain('雪')
+    } finally {
+      fixture.cleanup()
+    }
   })
 
   it('publishes real finite fixture bytes through the public CLI and reconciler', async () => {
