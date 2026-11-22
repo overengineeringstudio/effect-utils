@@ -204,7 +204,11 @@ describe('live quick-contract Git membership', () => {
     expect(admitted.slice(admitted.indexOf('--'))).toEqual(['--', '--literal-tool-argument'])
     expect(admitted.some((arg) => arg.includes('one.ts'))).toBe(false)
     writeFileSync(join(root, 'two.ts'), 'new tracked contract member\n')
-    run('add', '--', 'two.ts')
+    execFileSync(git, ['-C', root, 'add', '--', 'two.ts'], {
+      env: managedEnv,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
     const refreshed = await directBuckArguments({
       args: canonical.args,
       cwd: root,
