@@ -14,6 +14,7 @@ import {
   readBuckProjectRoot,
   runBuck2,
   stopWorktreeBuckDaemons,
+  withBuckIsolationMaintenance,
   type WorktreeBuckDaemon,
 } from './store-buck-daemons.ts'
 import { buckDurationMs, loadStoreBuckMaintainConfig } from './store-buck-maintain-config.ts'
@@ -480,20 +481,44 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
         if (isolations.size === 0) isolations.add('v2')
         let cleaned = false
         for (const isolation of isolations) {
-          const reason = yield* recheck()
-          if (reason !== undefined)
-            return { ...base, action: cleaned === true ? action : ('none' as const), reason }
-          if (reportOnly === true) continue
-          const result = yield* command(
-            binary.value,
-            [
-              '--isolation-dir',
-              isolation,
-              'clean',
-              ...(action === 'clean-stale' ? [`--stale=${config.buckOut.keepSince}`] : []),
-            ],
-            worktree,
-          )
+          if (reportOnly === true) {
+            const reason = yield* recheck()
+            if (reason !== undefined)
+              return { ...base, action: cleaned === true ? action : ('none' as const), reason }
+            continue
+          }
+          const maintenance = yield* withBuckIsolationMaintenance({
+            root: worktree,
+            isolation,
+            run: Effect.gen(function* () {
+              const reason = yield* recheck()
+              if (reason !== undefined) return { _tag: 'veto' as const, reason }
+              const result = yield* command(
+                binary.value,
+                [
+                  '--isolation-dir',
+                  isolation,
+                  'clean',
+                  ...(action === 'clean-stale' ? [`--stale=${config.buckOut.keepSince}`] : []),
+                ],
+                worktree,
+              )
+              return { _tag: 'native' as const, result }
+            }),
+          })
+          if (maintenance._tag === 'blocked')
+            return {
+              ...base,
+              action: cleaned === true ? action : ('none' as const),
+              reason: maintenance.reason,
+            }
+          if (maintenance.value._tag === 'veto')
+            return {
+              ...base,
+              action: cleaned === true ? action : ('none' as const),
+              reason: maintenance.value.reason,
+            }
+          const result = maintenance.value.result
           if (Option.isNone(result) === true || result.value.exitCode !== 0)
             return {
               ...base,

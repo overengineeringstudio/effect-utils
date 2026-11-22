@@ -566,8 +566,11 @@ output measurement still vetoes maintenance.
 `editor-publication` isolation: it defers on a busy or uninspectable opaque publication
 owner and releases ownership after success, failure, or interruption. Other isolations
 run unchanged. Its real-filesystem owner proofs run in the native source test complement.
-This prerequisite does not yet change maintenance commands or the daemon shutdown path;
-those callers must adopt the bracket in a separate coherent layer.
+Daemon shutdown acquires the bracket before native status and holds it through the
+kill protocol's completion. A busy or unknown owner therefore retains the daemon
+and vetoes removal. Cleaning uses the same bracket and recaptures activity and
+holder vetoes inside the deletion lease before each native clean. Report-only
+inspection stays read-only; busy or unknown publication ownership defers mutation.
 
 ## Testing
 

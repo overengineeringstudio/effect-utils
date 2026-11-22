@@ -557,77 +557,80 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
         continue
       }
     }
-    const statusRun = yield* runBuck2({ binary, daemon, subcommand: 'status' })
-    const status =
-      Option.isSome(statusRun) === true && statusRun.value.exitCode === 0
-        ? yield* Schema.decodeEffect(Schema.fromJsonString(BuckDaemonStatus))(
-            statusRun.value.stdout,
-          ).pipe(Effect.option)
-        : Option.none()
-    if (Option.isNone(status) === true) {
-      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'status-unreadable' })
-      continue
-    }
-    if (idleSinceMs !== undefined) {
-      const started = yield* Schema.decodeEffect(
-        Schema.fromJsonString(Schema.Struct({ start_time: Schema.String })),
-      )(Option.isSome(statusRun) === true ? statusRun.value.stdout : '').pipe(Effect.option)
-      const startedMs = Option.isSome(started) === true ? Date.parse(started.value.start_time) : NaN
-      if (Number.isFinite(startedMs) === false || startedMs > idleSinceMs) {
-        results.push({ _tag: 'kept-active', ...identity })
-        continue
-      }
-    }
-    const decision = decideBuckDaemon({ daemon, status: status.value })
-    if (decision === 'kept-active') {
-      results.push({ _tag: 'kept-active', ...identity })
-      continue
-    }
-    if (decision === 'identity-mismatch') {
-      results.push({
-        _tag: 'unreachable',
-        ...identity,
-        memoryKiB,
-        reason: 'status-identity-mismatch',
-      })
-      continue
-    }
-    if (beforeKill !== undefined && (yield* beforeKill()) === false) {
-      results.push({ _tag: 'kept-active', ...identity })
-      continue
-    }
-    const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
-    if (observedLogWriteMs !== decidedLogWriteMs) {
-      results.push({ _tag: 'kept-active', ...identity })
-      continue
-    }
-    const killRun = yield* runBuck2({ binary, daemon, subcommand: 'kill' })
-    if (Option.isNone(killRun) === true || killRun.value.exitCode !== 0) {
-      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-failed' })
-      continue
-    }
-    const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(killRun.value.stderr)?.[1]
-    if (exitedPid === undefined) {
-      results.push({ _tag: 'unreachable', ...identity, memoryKiB, reason: 'kill-found-no-daemon' })
-      continue
-    }
-    const logWriteAfterKillMs = yield* newestBuckLogWriteMs(daemon)
-    let raced: string | undefined
-    if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
-    else if (logWriteAfterKillMs !== observedLogWriteMs) raced = 'command-log-written-during-kill'
-    if (raced !== undefined && reportRaces === true) {
-      yield* Effect.logWarning(
-        `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
+    const maintenance = yield* withBuckIsolationMaintenance({
+      root: daemon.root,
+      isolation: daemon.isolation,
+      run: Effect.gen(function* () {
+        const statusRun = yield* runBuck2({ binary, daemon, subcommand: 'status' })
+        const status =
+          Option.isSome(statusRun) === true && statusRun.value.exitCode === 0
+            ? yield* Schema.decodeEffect(Schema.fromJsonString(BuckDaemonStatus))(
+                statusRun.value.stdout,
+              ).pipe(Effect.option)
+            : Option.none()
+        if (Option.isNone(status) === true)
+          return { _tag: 'unreachable' as const, ...identity, memoryKiB, reason: 'status-unreadable' }
+        if (idleSinceMs !== undefined) {
+          const started = yield* Schema.decodeEffect(
+            Schema.fromJsonString(Schema.Struct({ start_time: Schema.String })),
+          )(Option.isSome(statusRun) === true ? statusRun.value.stdout : '').pipe(Effect.option)
+          const startedMs = Option.isSome(started) === true ? Date.parse(started.value.start_time) : NaN
+          if (Number.isFinite(startedMs) === false || startedMs > idleSinceMs)
+            return { _tag: 'kept-active' as const, ...identity }
+        }
+        const decision = decideBuckDaemon({ daemon, status: status.value })
+        if (decision === 'kept-active') return { _tag: 'kept-active' as const, ...identity }
+        if (decision === 'identity-mismatch')
+          return {
+            _tag: 'unreachable' as const,
+            ...identity,
+            memoryKiB,
+            reason: 'status-identity-mismatch',
+          }
+        if (beforeKill !== undefined && (yield* beforeKill()) === false)
+          return { _tag: 'kept-active' as const, ...identity }
+        const observedLogWriteMs = yield* newestBuckLogWriteMs(daemon)
+        if (observedLogWriteMs !== decidedLogWriteMs)
+          return { _tag: 'kept-active' as const, ...identity }
+        const killRun = yield* runBuck2({ binary, daemon, subcommand: 'kill' })
+        if (Option.isNone(killRun) === true || killRun.value.exitCode !== 0)
+          return { _tag: 'unreachable' as const, ...identity, memoryKiB, reason: 'kill-failed' }
+        const exitedPid = /Buck2 daemon pid (\d+) has exited/u.exec(killRun.value.stderr)?.[1]
+        if (exitedPid === undefined)
+          return {
+            _tag: 'unreachable' as const,
+            ...identity,
+            memoryKiB,
+            reason: 'kill-found-no-daemon',
+          }
+        const logWriteAfterKillMs = yield* newestBuckLogWriteMs(daemon)
+        let raced: string | undefined
+        if (Number(exitedPid) !== daemon.pid) raced = `kill-stopped-other-pid-${exitedPid}`
+        else if (logWriteAfterKillMs !== observedLogWriteMs)
+          raced = 'command-log-written-during-kill'
+        if (raced !== undefined && reportRaces === true)
+          yield* Effect.logWarning(
+            `RACED stopping Buck2 daemon pid ${daemon.pid} (${daemon.daemonId}) at ${daemon.root}: ${raced}`,
+          )
+        return {
+          _tag: 'stopped' as const,
+          ...identity,
+          freedKiB: memoryKiB,
+          ...(raced === undefined ? {} : { raced }),
+        }
+      }),
+    })
+    if (maintenance._tag === 'blocked') {
+      results.push(
+        maintenance.reason === 'editor-publication-busy'
+          ? { _tag: 'kept-active', ...identity }
+          : { _tag: 'unreachable', ...identity, memoryKiB, reason: maintenance.reason },
       )
+      continue
     }
-    const stopped = {
-      _tag: 'stopped' as const,
-      ...identity,
-      freedKiB: memoryKiB,
-      ...(raced === undefined ? {} : { raced }),
-    }
-    results.push(stopped)
-    if (afterStop !== undefined) yield* afterStop(stopped)
+    results.push(maintenance.value)
+    if (maintenance.value._tag === 'stopped' && afterStop !== undefined)
+      yield* afterStop(maintenance.value)
   }
   return results
 })
