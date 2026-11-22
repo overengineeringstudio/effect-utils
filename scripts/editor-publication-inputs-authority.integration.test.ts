@@ -27,26 +27,36 @@ it('defers real native authority census until exclusive publication admission', 
               preparingAuthority = true
               let censusFailure: { cause: unknown } | undefined
               try {
-                await measured({ name: 'authorityCensusMs', action: () =>
-                  writeEditorViewAuthority({
-                    repoRoot: root,
-                    workspaceRoot: root,
-                    requiredPackages: ['.'],
-                    cell: 'fixture',
-                    buck2: buck,
-                    git,
-                    output: authority,
-                    runCommand: async (command) =>
-                      command.command !== buck
-                        ? runEditorViewAuthorityCommand(command)
-                        : {
-                            status: 0,
-                            stdout: Buffer.from(
-                              await run({ args: ['--isolation-dir', editorPublicationIsolation, ...command.args], owner }),
-                            ),
-                            stderr: Buffer.alloc(0),
-                          },
-                  }) })
+                await measured({
+                  name: 'authorityCensusMs',
+                  action: () =>
+                    writeEditorViewAuthority({
+                      repoRoot: root,
+                      workspaceRoot: root,
+                      requiredPackages: ['.'],
+                      cell: 'fixture',
+                      buck2: buck,
+                      git,
+                      output: authority,
+                      runCommand: async (command) =>
+                        command.command !== buck
+                          ? runEditorViewAuthorityCommand(command)
+                          : {
+                              status: 0,
+                              stdout: Buffer.from(
+                                await run({
+                                  args: [
+                                    '--isolation-dir',
+                                    editorPublicationIsolation,
+                                    ...command.args,
+                                  ],
+                                  owner,
+                                }),
+                              ),
+                              stderr: Buffer.alloc(0),
+                            },
+                    }),
+                })
               } catch (cause) {
                 censusFailure = { cause }
               }
