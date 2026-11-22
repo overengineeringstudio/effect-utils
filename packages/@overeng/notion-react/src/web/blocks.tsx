@@ -224,14 +224,16 @@ const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): R
     out.push(
       <Tag key={`group-${out.length}`} className={run.className}>
         {run.items.map((el, idx) => {
-          const { children, color } = el.props as BulletedListItemProps | NumberedListItemProps
+          const { children: itemChildren, color } = el.props as
+            | BulletedListItemProps
+            | NumberedListItemProps
           return (
             <li
               // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
               key={el.key ?? `li-${idx}`}
               className={color === undefined ? undefined : `notion-${color}`}
             >
-              {children}
+              {itemChildren}
             </li>
           )
         })}
@@ -310,7 +312,10 @@ export const ToDo = ({ children, checked, color }: ToDoProps) => {
 }
 
 export const Toggle = ({ children, title, defaultOpen, color }: ToggleProps) => (
-  <details className={`notion-toggle${color === undefined ? '' : ` notion-${color}`}`} open={defaultOpen ?? false}>
+  <details
+    className={`notion-toggle${color === undefined ? '' : ` notion-${color}`}`}
+    open={defaultOpen ?? false}
+  >
     <summary>{title ?? ''}</summary>
     <div>{children}</div>
   </details>
@@ -321,7 +326,9 @@ export const Code = ({ children, language }: CodeProps) => (
 )
 
 export const Quote = ({ children, color }: QuoteProps) => (
-  <blockquote className={`notion-quote${color === undefined ? '' : ` notion-${color}`}`}>{children}</blockquote>
+  <blockquote className={`notion-quote${color === undefined ? '' : ` notion-${color}`}`}>
+    {children}
+  </blockquote>
 )
 
 /**
@@ -331,7 +338,11 @@ export const Quote = ({ children, color }: QuoteProps) => (
  */
 const renderCalloutIcon = (icon: NonNullable<CalloutProps['icon']>): ReactNode => {
   if (typeof icon === 'string') return icon
-  if ('customEmojiId' in icon) return renderPageIcon({ type: 'custom_emoji', custom_emoji: { id: icon.customEmojiId } }, 'inline')
+  if ('customEmojiId' in icon)
+    return renderPageIcon(
+      { type: 'custom_emoji', custom_emoji: { id: icon.customEmojiId } },
+      'inline',
+    )
   return <img src={icon.external} alt="" className="notion-page-icon-image" />
 }
 

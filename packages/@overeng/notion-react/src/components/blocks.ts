@@ -69,7 +69,9 @@ export const Page = (props: PageProps) => {
  * `blockKey` is a renderer identity hint, never projected to Notion.
  */
 const keyedProps = (blockKey: string | undefined, color?: string): Record<string, unknown> | null =>
-  blockKey === undefined && color === undefined ? null : { ...(blockKey === undefined ? {} : { blockKey }), ...(color === undefined ? {} : { color }) }
+  blockKey === undefined && color === undefined
+    ? null
+    : { ...(blockKey === undefined ? {} : { blockKey }), ...(color === undefined ? {} : { color }) }
 
 export const Paragraph = ({ children, blockKey, color }: ParagraphProps) =>
   h('paragraph', keyedProps(blockKey, color), children)

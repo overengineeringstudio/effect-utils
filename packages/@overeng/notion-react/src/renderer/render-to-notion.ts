@@ -1,11 +1,15 @@
 import { Effect } from 'effect'
-
 import type { ReactNode } from 'react'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'
-import { NotionBlocks, NotionPages, NotionRendererClientLive, type NotionRendererClient } from './client.ts'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
+import {
+  NotionBlocks,
+  NotionPages,
+  NotionRendererClientLive,
+  type NotionRendererClient,
+} from './client.ts'
 import { NotionSyncError } from './errors.ts'
 import { createNotionRoot } from './host-config.ts'
 import type { Op } from './op-buffer.ts'
@@ -417,5 +421,7 @@ export const renderToNotionWithClient = (
   })
 
 /** Default token route. Inject NotionRendererClient with renderToNotionWithClient instead. */
-export const renderToNotion = (element: ReactNode, opts: Parameters<typeof renderToNotionWithClient>[1]) =>
-  renderToNotionWithClient(element, opts).pipe(Effect.provide(NotionRendererClientLive))
+export const renderToNotion = (
+  element: ReactNode,
+  opts: Parameters<typeof renderToNotionWithClient>[1],
+) => renderToNotionWithClient(element, opts).pipe(Effect.provide(NotionRendererClientLive))

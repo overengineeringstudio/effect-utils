@@ -146,7 +146,8 @@ const blockProps = (type: HostType, props: Record<string, unknown>): Record<stri
     // Titles use the same inline rich-text projection as text-bearing blocks.
     p.rich_text = flattenRichText(props.title as ReactNode)
   }
-  if ((TEXT_LEAF.has(type) || type === 'toggle') && typeof props.color === 'string') p.color = props.color
+  if ((TEXT_LEAF.has(type) || type === 'toggle') && typeof props.color === 'string')
+    p.color = props.color
   if (type === 'code' && typeof props.language === 'string') p.language = props.language
   if (type === 'callout' && props.icon !== undefined) {
     // Project ergonomic Unicode, external-image, and custom-emoji icon props.
@@ -159,7 +160,12 @@ const blockProps = (type: HostType, props: Record<string, unknown>): Record<stri
       typeof (icon as { external?: unknown }).external === 'string'
     ) {
       p.icon = { type: 'external', external: { url: (icon as { external: string }).external } }
-    } else if (typeof icon === 'object' && icon !== null && 'customEmojiId' in icon && typeof icon.customEmojiId === 'string') {
+    } else if (
+      typeof icon === 'object' &&
+      icon !== null &&
+      'customEmojiId' in icon &&
+      typeof icon.customEmojiId === 'string'
+    ) {
       p.icon = { type: 'custom_emoji', custom_emoji: { id: icon.customEmojiId } }
     }
   }

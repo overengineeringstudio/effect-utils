@@ -133,7 +133,8 @@ export type HeadingProps = Children &
 export type BulletedListItemProps = Children & BlockKey & { readonly color?: NotionColor }
 export type NumberedListItemProps = Children & BlockKey & { readonly color?: NotionColor }
 
-export type ToDoProps = Children & BlockKey & { readonly checked?: boolean; readonly color?: NotionColor }
+export type ToDoProps = Children &
+  BlockKey & { readonly checked?: boolean; readonly color?: NotionColor }
 
 export type ToggleProps = Children &
   BlockKey & {
@@ -152,7 +153,10 @@ export type CodeProps = Children & BlockKey & { readonly language?: string }
 export type QuoteProps = Children & BlockKey & { readonly color?: NotionColor }
 
 /** Unicode, external image, or workspace-scoped custom emoji resolved by the host. */
-export type CalloutIcon = string | { readonly external: string } | { readonly customEmojiId: string }
+export type CalloutIcon =
+  | string
+  | { readonly external: string }
+  | { readonly customEmojiId: string }
 
 export type CalloutProps = Children &
   BlockKey & {

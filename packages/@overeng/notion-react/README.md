@@ -36,7 +36,6 @@ path through `NotionRendererClientLive`. The injected client owns any retry
 policy. In particular, an ambiguous journaled write must fail closed rather than
 be automatically retried. Cache checkpoints still run after each successful batch.
 
-
 ### Root page metadata
 
 The root `<Page>` accepts `title`, `icon`, and `cover`. When any of

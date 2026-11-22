@@ -1,12 +1,16 @@
 import { Duration, Effect, Option, Schedule, Stream } from 'effect'
-
 import type { ReactNode } from 'react'
 
 import { NotionApiError } from '@overeng/notion-effect-client'
-import { NotionBlocks, NotionPages, NotionRendererClientLive, type NotionRendererClient } from './client.ts'
 
 import type { CacheNode, CacheTree, NotionCache, PendingInlineNode } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
+import {
+  NotionBlocks,
+  NotionPages,
+  NotionRendererClientLive,
+  type NotionRendererClient,
+} from './client.ts'
 import { NotionSyncError } from './errors.ts'
 import type { PageOp } from './op-buffer.ts'
 import { pageLifecycleViolations, type PageLifecycle } from './page-lifecycle.ts'
@@ -1124,34 +1128,35 @@ const retrieveLiveIdentities: (
   o11y: RetrieveO11yCtx,
   expectChildren?: boolean,
   excludedChildId?: string,
-) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionRendererClient> =
-  Effect.fn('notion-react.retrieve-live-identities')(function* (
-    parentId: string,
-    recursive: boolean,
-    o11y: RetrieveO11yCtx,
-    expectChildren = false,
-    excludedChildId?: string,
-  ) {
-    const live = yield* retrieveLiveIdentityChildren(parentId, expectChildren, o11y)
-    const identities: LiveIdentityNode[] = []
-    for (const block of live) {
-      if (block.in_trash === true || block.id === excludedChildId) continue
-      const ownsChildScope =
-        block.type === 'child_page' || RENDERER_OWNED_CHILD_SCOPES[block.type] === true
-      const children =
-        recursive && ownsChildScope && (block.has_children === true || block.type === 'child_page')
-          ? yield* retrieveLiveIdentities(
-              block.id,
-              true,
-              o11y,
-              block.has_children === true,
-              excludedChildId,
-            )
-          : []
-      identities.push({ blockId: block.id, type: block.type, children })
-    }
-    return identities
-  })
+) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionRendererClient> = Effect.fn(
+  'notion-react.retrieve-live-identities',
+)(function* (
+  parentId: string,
+  recursive: boolean,
+  o11y: RetrieveO11yCtx,
+  expectChildren = false,
+  excludedChildId?: string,
+) {
+  const live = yield* retrieveLiveIdentityChildren(parentId, expectChildren, o11y)
+  const identities: LiveIdentityNode[] = []
+  for (const block of live) {
+    if (block.in_trash === true || block.id === excludedChildId) continue
+    const ownsChildScope =
+      block.type === 'child_page' || RENDERER_OWNED_CHILD_SCOPES[block.type] === true
+    const children =
+      recursive && ownsChildScope && (block.has_children === true || block.type === 'child_page')
+        ? yield* retrieveLiveIdentities(
+            block.id,
+            true,
+            o11y,
+            block.has_children === true,
+            excludedChildId,
+          )
+        : []
+    identities.push({ blockId: block.id, type: block.type, children })
+  }
+  return identities
+})
 
 /** Index page nodes globally by durable ID; ordinary blocks remain scope-local. */
 const indexCachedPagesByBlockId = (nodes: readonly CacheNode[]): Map<string, CacheNode> => {

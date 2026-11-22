@@ -36,18 +36,37 @@ const makeRoot = () => {
 describe('host-config', () => {
   it('projects rich toggle titles, block colors, and custom callout emoji', () => {
     const { buffer, root } = makeRoot()
-    root.render(<>
-      <Toggle title={<Bold>Evidence</Bold>} color="gray"><Paragraph color="gray">Source</Paragraph></Toggle>
-      <Quote color="blue_background">Draft</Quote>
-      <ToDo color="green">Choose</ToDo>
-      <BulletedListItem color="gray">Detail</BulletedListItem>
-      <NumberedListItem color="gray">Step</NumberedListItem>
-      <Callout color="gray_background" icon={{ customEmojiId: 'workspace-channel' }}>Channel</Callout>
-    </>)
-    const appends = buffer.ops.filter(op => op.kind === 'append')
-    expect(appends.map(op => op.props.color)).toEqual(['gray', 'gray', 'blue_background', 'green', 'gray', 'gray', 'gray_background'])
-    expect(appends[0]!.props.rich_text).toMatchObject([{ text: { content: 'Evidence' }, annotations: { bold: true } }])
-    expect(appends.at(-1)!.props.icon).toEqual({ type: 'custom_emoji', custom_emoji: { id: 'workspace-channel' } })
+    root.render(
+      <>
+        <Toggle title={<Bold>Evidence</Bold>} color="gray">
+          <Paragraph color="gray">Source</Paragraph>
+        </Toggle>
+        <Quote color="blue_background">Draft</Quote>
+        <ToDo color="green">Choose</ToDo>
+        <BulletedListItem color="gray">Detail</BulletedListItem>
+        <NumberedListItem color="gray">Step</NumberedListItem>
+        <Callout color="gray_background" icon={{ customEmojiId: 'workspace-channel' }}>
+          Channel
+        </Callout>
+      </>,
+    )
+    const appends = buffer.ops.filter((op) => op.kind === 'append')
+    expect(appends.map((op) => op.props.color)).toEqual([
+      'gray',
+      'gray',
+      'blue_background',
+      'green',
+      'gray',
+      'gray',
+      'gray_background',
+    ])
+    expect(appends[0]!.props.rich_text).toMatchObject([
+      { text: { content: 'Evidence' }, annotations: { bold: true } },
+    ])
+    expect(appends.at(-1)!.props.icon).toEqual({
+      type: 'custom_emoji',
+      custom_emoji: { id: 'workspace-channel' },
+    })
   })
 
   it('emits append ops for an initial tree', () => {
