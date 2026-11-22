@@ -12,7 +12,7 @@ const createTestTempDirectory = createTestTempDirectoryFactory()
 
 const entrypoint = new URL('./buck2-entrypoint.ts', import.meta.url).href
 
-it('targets only the selected isolation through native status and kill, retaining unrelated v2', () => {
+it('stops only the selected Linux isolation and retains non-Linux daemons', () => {
   const root = realpathSync(createTestTempDirectory('buck-gate-isolation-'))
   const cwd = join(root, 'subdir')
   const native = join(root, 'native')
@@ -76,12 +76,20 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
         readFileSync(calls, 'utf8')
           .trim()
           .split('\n')
+          .filter((line) => line !== '')
           .map((line) => JSON.parse(line)),
-      ).toEqual([
-        ['--isolation-dir', 'owned', 'status'],
-        ['--isolation-dir', 'owned', 'kill'],
-      ])
-      expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({ owned: 'stopped', v2: 'running' })
+      ).toEqual(
+        process.platform === 'linux'
+          ? [
+              ['--isolation-dir', 'owned', 'status'],
+              ['--isolation-dir', 'owned', 'kill'],
+            ]
+          : [],
+      )
+      expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({
+        owned: process.platform === 'linux' ? 'stopped' : 'running',
+        v2: 'running',
+      })
     }
     for (const command of ['run', 'test', 'install', 'bxl']) {
       for (const payload of ['--help', '-h', '--version', '--isolation-dir=other']) {
@@ -97,10 +105,12 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
           expect(result.status).toBe(0)
           expect(result.stderr).toBe('')
           expect(readFileSync(calls, 'utf8')).toBe(
-            `${JSON.stringify(['--isolation-dir', 'owned', 'status'])}\n${JSON.stringify(['--isolation-dir', 'owned', 'kill'])}\n`,
+            process.platform === 'linux'
+              ? `${JSON.stringify(['--isolation-dir', 'owned', 'status'])}\n${JSON.stringify(['--isolation-dir', 'owned', 'kill'])}\n`
+              : '',
           )
           expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({
-            owned: 'stopped',
+            owned: process.platform === 'linux' ? 'stopped' : 'running',
             other: 'running',
             v2: 'running',
           })

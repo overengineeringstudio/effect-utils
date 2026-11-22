@@ -129,6 +129,7 @@ const cachedProbe = async ({
   root,
   diagnostics,
   reuse = true,
+  negativeTtlMs = 5000,
 }: {
   readonly key: string
   readonly cacheDirectory: string
@@ -137,6 +138,7 @@ const cachedProbe = async ({
   readonly root?: string
   readonly diagnostics?: { failure?: string }
   readonly reuse?: boolean
+  readonly negativeTtlMs?: number
 }): Promise<boolean> => {
   // Root-keyed watcher admission can be reclaimed without knowing the original
   // environment/config variants. Endpoint admission remains shared across roots.
@@ -156,9 +158,12 @@ const cachedProbe = async ({
         typeof value.at === 'number' &&
         typeof value.available === 'boolean' &&
         now >= value.at &&
-        now - value.at < 5000
+        now - value.at < (value.available === true ? 5000 : negativeTtlMs)
       ) {
-        admissionExpires = Math.min(admissionExpires, value.at + 5000)
+        admissionExpires = Math.min(
+          admissionExpires,
+          value.at + (value.available === true ? 5000 : negativeTtlMs),
+        )
         if (
           diagnostics !== undefined &&
           'failure' in value &&
@@ -174,12 +179,13 @@ const cachedProbe = async ({
     }
   }
   const available = await probe()
+  const completedAt = Date.now()
   const candidate = `${path}.${randomUUID()}`
   try {
     mkdirSync(cacheDirectory, { recursive: true, mode: 0o700 })
     writeFileSync(
       candidate,
-      JSON.stringify({ at: now, available, failure: diagnostics?.failure }),
+      JSON.stringify({ at: completedAt, available, failure: diagnostics?.failure }),
       { flag: 'wx', mode: 0o600 },
     )
     renameSync(candidate, path)
@@ -593,6 +599,7 @@ export const directBuckArguments = async ({
               cacheDirectory,
               diagnostics: reapiDiagnostics,
               key: reapiKey,
+              negativeTtlMs: values['buck2.allow_cache_uploads'] === 'false' ? 60_000 : 5000,
               probe: () =>
                 retryProbe({
                   endpoint: 'reapi',
@@ -1080,6 +1087,8 @@ export const reconcileGateDaemon = ({
   readonly phase: 'start' | 'exit'
   readonly cwd?: string
 }): void => {
+  // Non-Linux daemons own no gate cgroup; retain their DICE state between jobs.
+  if (phase === 'exit' && process.platform !== 'linux') return
   const invocation = resolveGateInvocation({ args, env, cwd })
   if (invocation === undefined) {
     if (phase === 'start')

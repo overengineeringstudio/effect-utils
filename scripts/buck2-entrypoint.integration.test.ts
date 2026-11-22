@@ -1929,6 +1929,57 @@ console.log(JSON.stringify({admitted, attempt}));`,
     }
   })
 
+  for (const initialAvailable of [true, false]) {
+    it(`ages ${String(initialAvailable)} REAPI admission from probe completion`, async () => {
+      let available = initialAvailable
+      let requests = 0
+      const grpc = createServer()
+      grpc.on('stream', (stream: ServerHttp2Stream) => {
+        requests++
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          // Advance wall time past the old lifetime without delaying the real response.
+          setSystemTime(new Date(Date.now() + 8000))
+          stream.respond({
+            ':status': 200,
+            'content-type': 'application/grpc',
+            'grpc-status': available === true ? '0' : '14',
+          })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      const listening = Promise.withResolvers<void>()
+      grpc.once('listening', listening.resolve)
+      grpc.listen(0, '127.0.0.1')
+      await listening.promise
+      const address = grpc.address()
+      if (address === null || typeof address === 'string') throw new Error('expected TCP listener')
+      try {
+        const root = fixture(`grpc://127.0.0.1:${address.port}`)
+        const invocation = { ...options(root), args: ['build', '//:app'] }
+        const first = await directBuckArguments(invocation)
+        expect(effective(first)['buck2.remote_cache_enabled'] === 'false').toBe(!initialAvailable)
+        const completedAt = Date.now()
+        const ttl = initialAvailable === true ? 5000 : 60_000
+        available = !initialAvailable
+        setSystemTime(new Date(completedAt + ttl - 1))
+        const cached = await directBuckArguments(invocation)
+        expect(requests).toBe(1)
+        expect(effective(cached)['buck2.remote_cache_enabled'] === 'false').toBe(!initialAvailable)
+        setSystemTime(new Date(completedAt + ttl))
+        const refreshed = await directBuckArguments(invocation)
+        expect(requests).toBe(2)
+        const refreshedUnavailable = effective(refreshed)['buck2.remote_cache_enabled'] === 'false'
+        expect(refreshedUnavailable).toBe(initialAvailable)
+      } finally {
+        setSystemTime()
+        const closed = Promise.withResolvers<void>()
+        grpc.close(() => closed.resolve())
+        await closed.promise
+      }
+    })
+  }
+
   it('falls back an unavailable REAPI endpoint without overwriting concurrent checkout configuration or run arguments', async () => {
     const root = fixture()
     const local = '[ui]\ncolor = false\n'
@@ -3236,7 +3287,7 @@ const waitForGateCondition = async (description: string, condition: () => boolea
 
 describe('gate wrapper EXIT and signal traps', () => {
   for (const signal of ['EXIT', 'EXIT130', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-    it(`preserves ${signal} status and cleans only the selected isolation`, async () => {
+    it(`preserves ${signal} status and limits selected-isolation cleanup to Linux`, async () => {
       const root = fixture()
       const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
       if (packaged === null || packaged === undefined)
@@ -3355,7 +3406,11 @@ if (args.at(-1) === 'status') {
         signal: signaled === true ? signal : null,
       })
       expect(child.signalCode).toBe(signaled === true ? signal : null)
-      expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill\n')
+      if (process.platform === 'linux') {
+        expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill\n')
+      } else {
+        expect(existsSync(killed)).toBe(false)
+      }
       if (signaled === true) {
         expect(readFileSync(received, 'utf8')).toBe(`${signal}\n`)
         expect(readFileSync(stopped, 'utf8')).toBe('stopped')

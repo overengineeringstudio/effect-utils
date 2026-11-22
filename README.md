@@ -628,7 +628,8 @@ for test/validation edits and sensitivity to real runtime and configuration edit
 
 The evaluated quick-contract PATH declares its process tools and C compiler.
 Retained Cargo protocol-bindings checks use the Nix Apple SDK and iconv on Darwin,
-not an ambient `cc` or Xcode installation.
+not an ambient `cc` or Xcode installation. The teardown regression declares its
+pinned `DEVENV_BIN`; the Buck runtime never depends on ambient devenv discovery.
 CI enters that prepared PATH before its declared `otel-span pipeline-run` prefix;
 native Buck checks never re-enter `devenv shell` just to start tracing.
 Mixed steps keep the separate declared devenv-task prefix in their parent shell;
@@ -678,6 +679,9 @@ Preparation uses the pinned retained task graph to publish the
 source-generator and standalone-staging views; the Buck run never calls devenv
 or performs that setup itself.
 
+Daemon lifecycle guards use platform Nix `unixtools.ps` on Darwin and Linux,
+not a host `ps` or an ambient system executable directory.
+
 Preparation and execution preserve `WORKTREE_POLICY_PATH` guard directories and
 the canonical immutable operator admission package ahead of the declared Nix runtime
 closure; no ambient executable directory is forwarded. The real gate-slot lifecycle
@@ -688,6 +692,10 @@ source files, rebuild the profile, republish it, and prepare again. All existing
 devenv tasks remain available; removing their evaluated authority requires a
 separate contract replacement, not deleting these guards.
 
+When extending retained guards, update their evaluated tool closure rather than
+adding an ambient PATH or skipping a check. CI and fresh-worktree runs must use
+the same prepared task authority.
+
 The transitional runtime deliberately retains `config.packages` in addition to
 its explicit process/compiler tools; it is not the thin `worktree-tools` closure.
 Consequently constructing this profile can realize unrelated shell CLI products.
@@ -696,6 +704,11 @@ The separate standalone-staging preparation can also realize the retained shell;
 measure setup separately from the 23 host / 22 CI runtime command verdicts.
 Generic task PATH Bun remains raw; publication-aware task commands retain their
 own scoped launcher, and native Buck/publication-owner bindings are declared.
+
+Preparation reports up to ten untracked paths, JSON-escaped, and still refuses
+to publish them. The editor publisher's default content-addressed store is
+`.editor-view-content/v1` beside the common Git directory; in ordinary clones
+this is root-local runtime state, explicitly ignored alongside editor snapshots.
 
 Audit cross-cell Buck provider identity separately:
 
@@ -951,7 +964,7 @@ The ordinary-clone runtime CAS is ignored state, not source; other untracked
 sources refuse with at most ten JSON-escaped paths.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
-At exit it invokes native `buck2 kill` only when a fresh status identifies the
+On Linux, at exit it invokes native `buck2 kill` only when a fresh status identifies the
 selected daemon and reports zero active commands, even if this invocation
 started it. Busy status quietly retains the daemon; unavailable/malformed status
 warns and never authorizes a kill. Cleanup preserves ordinary numeric exits;
@@ -959,6 +972,9 @@ after a wrapper INT/TERM/HUP it restores the default disposition and re-raises
 the signal, so parents observe signal termination rather than an explicit
 128+N exit. `kill`, `status`, and `log` remain diagnostic/lifecycle commands and
 bypass both gated admission and teardown.
+Non-Linux gate exit does not query or stop the daemon: there is no Linux cgroup
+ownership to release, so same-worktree commands retain their in-memory DICE state.
+The wrapper still preserves exits and forwards signals on these hosts.
 Signals already ignored on entry to Bash remain ignored as POSIX requires;
 the wrapper does not override that inherited caller policy.
 An injected `BASH_ENV` that replaces Bash's `kill` builtin with an external
@@ -1038,11 +1054,14 @@ Configured REAPI roots use endpoint admission; an omitted
 
 `BUCK2_NO_REMOTE_CACHE=1` disables reads and uploads, and public read-only posture
 wins over either writer credential. The entrypoint probes REAPI capabilities
-with a 900 ms deadline, caches endpoint outcomes for five seconds in the user's
-cache directory, and emits a warning on every fail-open invocation. An
-unavailable read-only REAPI endpoint selects local execution. Writers still
-fail closed on REAPI outages. Outage overrides are invocation-local and do not
-change tracked configuration. Archive availability does not participate in
+under split connect/TLS and response budgets with an eight-second total ceiling.
+Endpoint cache lifetimes begin when the probe completes: healthy outcomes and
+writer failures last five seconds; unavailable read-only outcomes last sixty
+seconds to avoid repeating a slow connection timeout on every warm invocation.
+CI's first job admission still probes freshly. Every fail-open invocation warns;
+unavailable read-only REAPI selects local execution, while writers fail closed.
+Outage overrides are invocation-local and do not change tracked configuration.
+Archive availability does not participate in
 REAPI admission.
 
 Identical healthy read-only invocations reuse a shell fast path within the
