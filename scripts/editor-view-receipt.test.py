@@ -23,9 +23,12 @@ class ReceiptTest(unittest.TestCase):
         # Isolate only synthetic fixture Git; real repository hooks/config stay unchanged.
         git_config = Path(self.temporary.name) / "gitconfig"
         git_config.write_text("")
+        # Direct receipt calls share this fixture process; unittest restores its environment.
+        self.enterContext(patch.dict(os.environ, {
+            "GIT_CONFIG_GLOBAL": str(git_config), "GIT_CONFIG_NOSYSTEM": "1",
+        }))
         self.env = {**os.environ, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
-                    "GITHUB_JOB": "unit", "RUNNER_TEMP": self.temporary.name,
-                    "GIT_CONFIG_GLOBAL": str(git_config), "GIT_CONFIG_NOSYSTEM": "1"}
+                    "GITHUB_JOB": "unit", "RUNNER_TEMP": self.temporary.name}
         for name in ("devenv.nix", "nix/devenv-modules/tasks/shared/test.nix",
                      "scripts/editor-view-authority.ts", "scripts/editor-view-receipt.py",
                      "pnpm-lock.yaml", "outside-receipt-scope.txt",
