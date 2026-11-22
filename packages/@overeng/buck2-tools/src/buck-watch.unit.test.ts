@@ -36,6 +36,7 @@ import {
   type WatchLoopStatus,
 } from './buck-watch.ts'
 import {
+  editorPublicationIsolation,
   requireEditorPublicationOwner,
   withEditorPublicationOwner,
 } from './editor-publication-owner.ts'
@@ -61,7 +62,10 @@ const reconcileBuckViews = scopeEditorViewTestProcesses({
         expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(
           owner,
         )
-        await reconcileBuckViewsUnscoped(request)
+        await reconcileBuckViewsUnscoped({
+          ...request,
+          options: { ...request.options, publicationOwner: owner },
+        })
         expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(
           owner,
         )
@@ -258,7 +262,7 @@ const publicationTimingObserver = (onPublished: () => void) =>
     if (timing.phase === 'editor-view') onPublished()
   })
 
-/** Real immutable inputs and the legacy command boundary, with no fake publisher. */
+/** Real immutable inputs, owned native builds and independent public CLI proofs. */
 const makePublicationFixture = () => {
   const requireTool = (name: string): string => {
     const value = process.env[name]
@@ -320,16 +324,17 @@ const makePublicationFixture = () => {
     repoRoot: root,
     workspaceRoot: root,
     buck2: '/tools/buck2',
-    editorViewCommand: publisherCommand,
     workspaceAuthority,
     cp: requireTool('CP_BIN'),
     mv: requireTool('MV_BIN'),
     fingerprintTool: requireTool('FINGERPRINT_BIN'),
     snapshotRetention: 3,
-    run: async (invocation: Parameters<NonNullable<BuckReconcilerOptions['run']>>[0]) => {
-      if (invocation.command === '/tools/buck2' && invocation.args[0] === 'build')
-        return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
-      return runPublisher(invocation)
+    runOwned: async ({ command, owner }: Parameters<BuckReconcilerOptions['runOwned']>[0]) => {
+      expect(requireEditorPublicationOwner({ root, owner })).toBe(owner)
+      expect(command.args.slice(0, 2)).toEqual(['--isolation-dir', editorPublicationIsolation])
+      if (command.command !== '/tools/buck2' || command.args[2] !== 'build')
+        throw new Error(`unexpected native fixture command: ${command.command}`)
+      return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
     },
   }
   const current = join(root, '.editor-view/app')
@@ -749,24 +754,21 @@ describe('Buck watch reconciliation', () => {
         options: {
           ...fixture.options,
           signal: shutdown.signal,
-          run: async (invocation) => {
+          runOwned: async ({ command: invocation, owner }) => {
             const { command, args, detached, signal } = invocation
             invocations.push({ command, args, detached, signal })
-            return fixture.options.run(invocation)
+            return fixture.options.runOwned({ command: invocation, owner })
           },
         },
       })
-      expect(invocations).toHaveLength(2)
+      expect(invocations).toHaveLength(1)
       expect(invocations[0]?.signal).toBe(shutdown.signal)
       expect(invocations[0]?.detached).toBeUndefined()
-      expect(invocations[1]?.detached).toBeUndefined()
-      expect(invocations[1]?.signal).toBe(shutdown.signal)
-      expect(invocations[1]?.command).toBe(fixture.options.editorViewCommand[0])
-      expect(invocations[1]?.args[0]).toBe(fixture.options.editorViewCommand[1])
-      expect(invocations[1]?.args).toContain('--backing-root')
-      expect(invocations[1]?.args).toEqual(
-        expect.arrayContaining([fixture.nodeModules, fixture.packageTree, fixture.dependency]),
-      )
+      expect(invocations[0]?.args.slice(0, 3)).toEqual([
+        '--isolation-dir',
+        editorPublicationIsolation,
+        'build',
+      ])
       const first = fixture.record()
       expect(first).toMatchObject({
         package: 'packages/app',
@@ -796,20 +798,17 @@ describe('Buck watch reconciliation', () => {
         options: {
           ...fixture.options,
           batchPublication: true,
-          run: async (invocation) => {
+          runOwned: async ({ command: invocation, owner }) => {
             const { command, args, input, detached } = invocation
             batchInvocations.push({ command, args, input, detached })
-            return fixture.options.run(invocation)
+            return fixture.options.runOwned({ command: invocation, owner })
           },
         },
       })
-      expect(batchInvocations).toHaveLength(2)
-      expect(batchInvocations[1]?.args).toEqual([
-        fixture.options.editorViewCommand[1],
-        'publish-batch',
-      ])
-      expect(batchInvocations[1]?.detached).toBeUndefined()
-      expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
+      expect(batchInvocations).toHaveLength(1)
+      expect(batchInvocations[0]?.args).toEqual(invocations[0]?.args)
+      expect(batchInvocations[0]?.detached).toBeUndefined()
+      expect(batchInvocations[0]?.input).toBeUndefined()
       const second = fixture.record()
       expect(second.normalizedStoreDigest).not.toBe(first.normalizedStoreDigest)
       expect(second.snapshot).not.toBe(first.snapshot)
@@ -824,8 +823,10 @@ describe('Buck watch reconciliation', () => {
           },
           options: {
             ...fixture.options,
-            run: async ({ command }) => {
-              failedInvocations.push(command)
+            runOwned: async ({ command, owner }) => {
+              expect(requireEditorPublicationOwner({ root: fixture.root, owner })).toBe(owner)
+              expect(command.args.slice(0, 2)).toEqual(['--isolation-dir', editorPublicationIsolation])
+              failedInvocations.push(command.command)
               throw new Error('stale build')
             },
           },
@@ -907,7 +908,7 @@ describe('Buck watch reconciliation', () => {
     [false, 'payload'],
     [true, 'payload'],
   ] as const)(
-    'forwards real publisher diagnostics before exit (batch=%s, prefix=%s)',
+    'forwards real same-process publisher diagnostics before completion (batch=%s, prefix=%s)',
     async (batchPublication, diagnosticPrefix) => {
       const fixture = makePublicationFixture()
       const observed: string[] = []
@@ -916,7 +917,6 @@ describe('Buck watch reconciliation', () => {
       const onTiming = publicationTimingObserver(() => {
         publisherCompleted = true
       })
-      let publisherStderr = ''
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
         if (
           typeof line === 'string' &&
@@ -935,29 +935,26 @@ describe('Buck watch reconciliation', () => {
             ...fixture.options,
             batchPublication,
             onTiming,
-            run: async (invocation) => {
-              if (invocation.command === fixture.options.buck2)
-                return fixture.options.run(invocation)
-              const result = await runCommand({
-                ...invocation,
-                onStderr: (chunk) => {
-                  for (const character of chunk) invocation.onStderr?.(character)
-                },
-              })
-              publisherStderr = result.stderr
-              publisherCompleted = true
-              return result
-            },
+
           },
         })
         completed = true
         expect(observed.length).toBeGreaterThan(0)
         expect(publisherCompleted).toBe(true)
-        const streamed = publisherStderr
-          .split('\n')
-          .filter((line) => line.startsWith(`[editor-view-${diagnosticPrefix}] `))
-          .map((line) => `${line}\n`)
+        const streamedCount = diagnosticPrefix === 'budget' ? 2 : 1
+        expect(observed).toHaveLength(streamedCount * (batchPublication === true ? 2 : 1))
+        const streamed = observed.slice(0, streamedCount)
         expect(observed).toEqual(batchPublication === true ? [...streamed, ...streamed] : streamed)
+        const diagnostics = streamed.map((line) => JSON.parse(line.slice(line.indexOf(' ') + 1)))
+        if (diagnosticPrefix === 'budget')
+          expect(diagnostics.map(({ event }) => event)).toEqual([
+            'editor-view.host-budget.reserve-start',
+            'editor-view.host-budget.reserve-granted',
+          ])
+        else
+          expect(diagnostics).toEqual([
+            expect.objectContaining({ phase: 'payload-detail', packagePath: 'packages/app' }),
+          ])
         for (const line of observed) {
           expect(line.endsWith('\n')).toBe(true)
           expect(() => JSON.parse(line.slice(line.indexOf(' ') + 1))).not.toThrow()
@@ -1000,25 +997,35 @@ describe('Buck watch reconciliation', () => {
         },
         options: {
           ...fixture.options,
-          run: async (invocation) => {
-            const { command, args } = invocation
+          runOwned: async (invocation) => {
+            const { command, args } = invocation.command
             invocations.push({ command, args })
-            return fixture.options.run(invocation)
+            return fixture.options.runOwned(invocation)
           },
         },
       })
-      // The real commands run unwrapped; spans are emitted afterwards.
+      // Only Buck crosses the command boundary; publication remains in process.
+      expect(invocations).toHaveLength(1)
       expect(invocations[0]?.command).toBe('/tools/buck2')
-      expect(invocations[0]?.args[0]).toBe('build')
-      expect(invocations[1]?.command).toBe(fixture.options.editorViewCommand[0])
-      expect(invocations[1]?.args[0]).toBe(fixture.options.editorViewCommand[1])
+      expect(invocations[0]?.args.slice(0, 3)).toEqual([
+        '--isolation-dir',
+        editorPublicationIsolation,
+        'build',
+      ])
       expect(fixture.record().package).toBe('packages/app')
       await telemetry.settle()
-      expect(telemetry.children).toHaveLength(2)
+      expect(telemetry.children).toHaveLength(3)
+      expect(telemetry.children.map((child) => child.spawnargs[3])).toEqual([
+        'buck2.build',
+        'editor-view.phases',
+        'editor-view.publish',
+      ])
       const captured = readFileSync(capture, 'utf8')
       expect(captured).toContain('emit-span effect-utils-devenv buck2.build')
       expect(captured).toContain('--attr-int buck2.targets=1')
       expect(captured).toContain('emit-span effect-utils-devenv editor-view.publish')
+      expect(captured).toContain('emit-span effect-utils-devenv editor-view.phases')
+      expect(captured).toContain('--attr-bool snapshot.created=true')
       expect(captured).toContain('--attr-string package.path=packages/app')
       expect(captured).toContain('--attr-int exit.code=0')
       expect(captured).toContain('--status-code ok')
@@ -1069,25 +1076,22 @@ describe('Buck watch reconciliation', () => {
             request,
             options: {
               ...fixture.options,
-              run: async (invocation) => {
-                commands.push(invocation.command)
-                return fixture.options.run(invocation)
+              runOwned: async (invocation) => {
+                commands.push(invocation.command.command)
+                return fixture.options.runOwned(invocation)
               },
             },
           }),
         writeStatus: async (status) => {
           statuses.push(status)
           if (status.phase !== 'idle') return
-          if (status.generation === 1) source.emit(['packages/app/src/main.ts'])
-          else abort.abort()
+          if (status.generation === 1) {
+            if (delivery === 'fails') await telemetry.settle()
+            source.emit(['packages/app/src/main.ts'])
+          } else abort.abort()
         },
       })
-      expect(commands).toEqual([
-        '/tools/buck2',
-        fixture.options.editorViewCommand[0],
-        '/tools/buck2',
-        fixture.options.editorViewCommand[0],
-      ])
+      expect(commands).toEqual(['/tools/buck2', '/tools/buck2'])
       expect(fixture.record().package).toBe('packages/app')
       expect(
         statuses.filter((status) => status.phase === 'idle').map(({ generation }) => generation),
@@ -1095,13 +1099,19 @@ describe('Buck watch reconciliation', () => {
       const turn = Promise.withResolvers<void>()
       setImmediate(turn.resolve)
       await turn.promise
-      expect(telemetry.children).toHaveLength(4)
-      expect(telemetry.children.map((child) => child.spawnargs[3])).toEqual([
-        'buck2.build',
-        'editor-view.publish',
-        'buck2.build',
-        'editor-view.publish',
-      ])
+      const expectedSpans =
+        delivery === 'hangs'
+          ? ['buck2.build', 'editor-view.phases', 'editor-view.publish', 'buck2.build']
+          : [
+              'buck2.build',
+              'editor-view.phases',
+              'editor-view.publish',
+              'buck2.build',
+              'editor-view.phases',
+              'editor-view.publish',
+            ]
+      expect(telemetry.children).toHaveLength(delivery === 'hangs' ? 4 : 6)
+      expect(telemetry.children.map((child) => child.spawnargs[3])).toEqual(expectedSpans)
       for (const child of telemetry.children) {
         expect(child.spawnargs).toEqual(expect.arrayContaining(['exit.code=0', 'ok']))
         if (delivery === 'hangs') {
@@ -1110,7 +1120,7 @@ describe('Buck watch reconciliation', () => {
         }
       }
       expect(await telemetry.settle()).toEqual(
-        Array.from({ length: 4 }, () =>
+        Array.from({ length: delivery === 'hangs' ? 4 : 6 }, () =>
           delivery === 'hangs' ? { code: null, signal: 'SIGKILL' } : { code: 3, signal: null },
         ),
       )

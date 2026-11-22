@@ -10,7 +10,6 @@ import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
 import {
   CommandFailure,
   reconcileBuckViews,
-  runCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
@@ -437,7 +436,6 @@ const parseCli = (args: readonly string[]) => {
     '--buck2-native',
     '--git',
     '--output',
-    '--publisher',
     '--cp',
     '--mv',
     '--fingerprint-tool',
@@ -458,7 +456,6 @@ const parseCli = (args: readonly string[]) => {
     buck2Native: admitting === true ? get('--buck2-native') : '',
     git: get('--git'),
     output: get('--output'),
-    publisher: admitting === true ? get('--publisher') : '',
     cp: admitting === true ? get('--cp') : '',
     mv: admitting === true ? get('--mv') : '',
     fingerprintTool: admitting === true ? get('--fingerprint-tool') : '',
@@ -521,16 +518,13 @@ const executeSelectedEditorViewOperation = async ({
     },
     options: {
       plan,
-      run: (command) =>
-        command.command === options.buck2
-          ? publication.runOwned({ command, owner: publication.publicationOwner })
-          : runCommand(command),
+      publicationOwner: publication.publicationOwner,
+      runOwned: publication.runOwned,
       signal,
       mode: options.command === 'check' ? 'check' : 'publish',
       repoRoot: options.repoRoot,
       workspaceRoot: options.workspaceRoot,
       buck2: options.buck2,
-      editorViewCommand: [process.execPath, options.publisher],
       workspaceAuthority: options.output,
       cp: options.cp,
       mv: options.mv,
@@ -627,10 +621,7 @@ const main = async (signal: AbortSignal): Promise<void> => {
           publicationOwner: owner,
           runOwned: ({ command, owner: commandOwner }) =>
             runManagedEditorPublicationCommand({
-              command: {
-                ...command,
-                args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
-              },
+              command,
               owner: commandOwner,
               native: options.buck2Native,
               env: process.env,

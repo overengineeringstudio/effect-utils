@@ -162,9 +162,13 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
-The task entrypoint holds ownership from authority census through publisher CLI close.
-Native Buck uses reserved `editor-publication` isolation; no owner descriptor is lent.
-The supervisor observes admission notification only; queue time is outside execution budgets.
+The publication task entrypoint owns the worktree before its authority census
+and native build, and holds that owner until same-process publication completes.
+`reconcileBuckViews` requires the opaque `publicationOwner` and its `runOwned`
+native-command runner; it validates ownership and selects the reserved
+`editor-publication` isolation. No owner descriptor crosses a child boundary.
+The supervisor observes an admission notification only; time waiting for ownership
+does not consume the publication execution budget.
 
 Publication, budget, reader, and content-store diagnostics share an invocation-local
 sink in `editor-view-diagnostics.ts`. Scoped callers receive the original stderr

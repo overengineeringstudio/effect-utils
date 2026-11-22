@@ -889,7 +889,6 @@ let
         --buck2 "$BUCK2_BIN" \
         --git ${pkgs.git}/bin/git \
         --output "$root/.devenv/editor-workspace-authority.json" \
-        --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
         --buck2-native ${buck2Machine}/libexec/buck2 \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \

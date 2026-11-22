@@ -5,8 +5,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import type { EditorPublicationOwner } from './editor-publication-owner.ts'
-import { EditorViewCommandFailure } from './editor-view.ts'
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  requireEditorPublicationOwner,
+} from './editor-publication-owner.ts'
+import { dispatchEditorView, EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
 import { FingerprintCommandFailure } from './typescript-runner.ts'
@@ -777,13 +781,13 @@ export type BuckReconcilerOptions = {
   readonly repoRoot: string
   readonly workspaceRoot: string
   readonly buck2: string
-  readonly editorViewCommand: readonly [executable: string, ...prefix: string[]]
+  readonly publicationOwner: EditorPublicationOwner
   readonly workspaceAuthority: string
   readonly cp: string
   readonly mv: string
   readonly fingerprintTool: string
   readonly snapshotRetention: number
-  readonly run?: RunCommand
+  readonly runOwned: OwnedRunCommand
   readonly signal?: AbortSignal
   readonly onTiming?: (timing: BuckReconcileTiming) => void
   readonly diagnosticTaskName?: string
@@ -799,7 +803,11 @@ export const reconcileBuckViews = async ({
   readonly request: ReconcileRequest
   readonly options: BuckReconcilerOptions
 }): Promise<void> => {
-  const execute = options.run ?? runCommand
+  const owner = requireEditorPublicationOwner({
+    root: options.workspaceRoot,
+    owner: options.publicationOwner,
+  })
+  const execute: RunCommand = (command) => options.runOwned({ command, owner })
   let pendingDiagnostics = ''
   const forwardDiagnostics = (chunk: string): void => {
     pendingDiagnostics += chunk
@@ -926,7 +934,15 @@ export const reconcileBuckViews = async ({
   try {
     built = await execute({
       command: options.buck2,
-      args: ['build', ...request.buildTargets, '--show-full-output', '--event-log', eventLog],
+      args: [
+        '--isolation-dir',
+        editorPublicationIsolation,
+        'build',
+        ...request.buildTargets,
+        '--show-full-output',
+        '--event-log',
+        eventLog,
+      ],
       cwd: options.workspaceRoot,
       captureStderr: false,
       onStderr: captureBuildDiagnostic,
@@ -966,13 +982,20 @@ export const reconcileBuckViews = async ({
     readonly args: readonly string[]
     readonly batchRequests?: readonly (readonly string[])[]
   }): Promise<CommandResult> =>
-    execute({
-      command: options.editorViewCommand[0],
-      args: [...options.editorViewCommand.slice(1), ...args],
-      ...(batchRequests === undefined ? {} : { input: JSON.stringify(batchRequests) }),
+    dispatchEditorView({
+      args,
+      batchRequests,
+      publicationOwner: owner,
+      signal: options.signal,
       onStderr: forwardDiagnostics,
-      cwd: options.repoRoot,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    }).then((result) => {
+      if (result.exitCode !== 0)
+        throw new CommandFailure({
+          message: `editor publication exited with code ${result.exitCode}`,
+          exitCode: result.exitCode,
+          signal: undefined,
+        })
+      return result
     })
   const publish = async (entry: EditorPublicationEntry): Promise<void> => {
     const publicationStartedAt = performance.now()

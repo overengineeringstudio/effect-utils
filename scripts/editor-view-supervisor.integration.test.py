@@ -411,12 +411,11 @@ time.sleep(60)
                 fake.chmod(0o700)
                 runner = root / "runner.ts"
                 module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
-                publisher = repo / "packages/@overeng/buck2-tools/src/editor-view.ts"
                 runner.write_text(f'''
 import {{ existsSync, writeFileSync }} from 'node:fs'
-import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
+import {{ publicationSignal, reconcileBuckViews }} from {json.dumps(str(module))}
 import {{ runManagedEditorPublicationCommand, takePublicationAdmissionNotification, withPublicationCancellation }} from {json.dumps(str(repo / "scripts/editor-view-authority.ts"))}
-import {{ editorPublicationIsolation, withEditorPublicationOwner }} from {json.dumps(str(repo / "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"))}
+import {{ withEditorPublicationOwner }} from {json.dumps(str(repo / "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"))}
 const notify = takePublicationAdmissionNotification()
 let pending = ''
 let released = false
@@ -434,7 +433,8 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     }}] }}, mode: 'publish',
     signal,
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2', editorViewCommand: [process.execPath, {json.dumps(str(publisher))}],
+    buck2: './buck2',
+    publicationOwner: owner,
     workspaceAuthority: process.cwd() + '/authority.json',
     cp: process.env.CP_BIN!, mv: process.env.MV_BIN!,
     fingerprintTool: process.env.TERMINATION?.startsWith('publication')
@@ -442,36 +442,31 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     diagnosticTaskName: 'buck2:editor:bootstrap',
-    run: (options) => {{
-      const execute = (command: Parameters<typeof runCommand>[0]) => command.command === './buck2'
-        ? runManagedEditorPublicationCommand({{
-            command: {{ ...command, args: ['--isolation-dir', editorPublicationIsolation, ...command.args] }},
-            owner, native: process.cwd() + '/buck2', env: process.env,
-          }})
-        : runCommand(command)
-      return execute({{ ...options, onStderr: (chunk) => {{
-      options.onStderr?.(chunk)
-      pending += chunk
-      if (!released && pending.includes('BUCK-BLOCKED') && !process.env.TERMINATION?.startsWith('publication')) {{
-        released = true
-        if (['deadline', 'SIGTERM', 'SIGKILL'].includes(process.env.TERMINATION ?? '')) writeFileSync('release', '1')
-        writeFileSync('ready', '')
-      }}
-    }} }}).then((result) => {{
-      if (options.command === './buck2' && process.env.TERMINATION === 'success') {{
+    runOwned: ({{ command, owner: commandOwner }}) => runManagedEditorPublicationCommand({{
+      command: {{ ...command, onStderr: (chunk) => {{
+        command.onStderr?.(chunk)
+        pending += chunk
+        if (!released && pending.includes('BUCK-BLOCKED') && !process.env.TERMINATION?.startsWith('publication')) {{
+          released = true
+          if (['deadline', 'SIGTERM', 'SIGKILL'].includes(process.env.TERMINATION ?? '')) writeFileSync('release', '1')
+          writeFileSync('ready', '')
+        }}
+      }} }},
+      owner: commandOwner, native: process.cwd() + '/buck2', env: process.env,
+    }}).then((result) => {{
+      if (process.env.TERMINATION === 'success') {{
         if (result.stderr !== '') throw new Error('build stderr was captured twice')
-        const event = options.args[options.args.indexOf('--event-log') + 1]
+        const event = command.args[command.args.indexOf('--event-log') + 1]
         if (!existsSync(event)) throw new Error('event log deleted before command resolved')
         writeFileSync('command-completed-with-event-log', '')
       }}
       return result
-    }})
-    }},
+    }}),
   }},
     }})
   }}
 }}) }}).catch((error) => {{
-  if (process.env.TERMINATION === 'publication-child') writeFileSync('publication-native-signal', String(error.signal))
+  if (process.env.TERMINATION === 'publication-child') writeFileSync('publication-native-signal', String(publicationSignal(error)))
   console.error(error.message); process.exitCode = 1
 }})
 ''')
