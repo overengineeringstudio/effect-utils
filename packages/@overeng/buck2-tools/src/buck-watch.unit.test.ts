@@ -346,6 +346,7 @@ const makePublicationFixture = () => {
     current,
     options,
     publisherCommand,
+    nativeSignalFingerprint: requireTool('FINGERPRINT_LIFETIME_TEST_BIN'),
     runPublisher,
     record,
     cleanup,
@@ -471,22 +472,17 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
-  it('preserves actual CLI termination from a signaled native copy child after cleanup', async () => {
+  it('preserves actual CLI termination from a signaled native fingerprint child after cleanup', async () => {
     const fixture = makePublicationFixture()
     try {
       const candidate = plan.packages.find((entry) => entry.packagePath === 'packages/app')
       if (candidate?.editor === undefined) throw new Error('missing fixture editor entry')
-      const copy = join(fixture.root, 'signaled-copy')
-      const marker = join(fixture.root, 'native-copy-entered')
-      writeFileSync(
-        copy,
-        `#!${fixture.publisherCommand[0]}\nimport { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, 'native-child-signal\\n')\nprocess.kill(process.pid, 'SIGTERM')\n`,
-      )
-      chmodSync(copy, 0o700)
+      const marker = join(fixture.root, 'native-fingerprint-entered')
+      writeFileSync(marker, 'waiting\n')
       const args = await prepareEditorPublicationRequest({
         entry: { ...candidate, editor: candidate.editor },
         outputs: new Map([[candidate.editor.inputsManifestTarget, fixture.manifest]]),
-        options: { ...fixture.options, cp: copy },
+        options: { ...fixture.options, fingerprintTool: fixture.nativeSignalFingerprint },
       })
       const failure = await fixture.runPublisher({
         command: fixture.publisherCommand[0],

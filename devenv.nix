@@ -133,12 +133,25 @@ let
   editorViewSupervisor = pkgs.writeShellScript "editor-view-supervisor" ''
     exec ${pkgs.python3}/bin/python ${./scripts/editor-view-supervisor.py} "$@"
   '';
-  # Real kernel child for lifetime tests, not an implementation of the Rust digest algorithm.
+  # Real kernel lifetime and CLI-signal children, never an implementation of the digest algorithm.
   fingerprintLifetimeTestChild = pkgs.writeShellScriptBin "buck2-fingerprint" ''
     set -euo pipefail
     case "''${1-}" in
       --native-signal) printf 'ready\n'; kill -TERM "$$"; exit 1 ;;
       --native-exit) printf 'native fingerprint fixture exit\n' >&2; exit 19 ;;
+      /*)
+        if [ -d "$1" ]; then
+          directory="$1"
+          while [ -n "$directory" ] && [ "$directory" != / ]; do
+            if [ -f "$directory/native-fingerprint-entered" ]; then
+              printf 'native-child-signal\n' >"$directory/native-fingerprint-entered"
+              kill -TERM "$$"; exit 1
+            fi
+            directory="''${directory%/*}"
+          done
+          exit 1
+        fi
+        ;;
     esac
     ready="$1"
     terminated="$2"
