@@ -19,9 +19,22 @@ import {
 } from 'typescript/unstable/ast'
 import { describe, expect, it } from 'vitest'
 
-import { runTsFileAnalysis } from '../../runtime/node/ts-api.ts'
+import {
+  apiRequestTimeoutMs,
+  runTsFileAnalysis,
+  terminationGraceMs,
+  terminationJoinMs,
+} from '../../runtime/node/ts-api.ts'
 
 const root = fileURLToPath(new URL('../../../../../../', import.meta.url))
+
+// One already-open file makes three RPCs (snapshot, project, source) and closes the
+// session. Cover both possible termination paths, stream-close joins and bounded
+// fixture startup. The shared Bun preload applies load scaling once, at registration.
+const singleFileAnalysisTimeoutMs =
+  4 * apiRequestTimeoutMs + 2 * terminationGraceMs + 4 * terminationJoinMs + 2_000
+const itWithTsApiBudget = (name: string, run: () => Promise<void>) =>
+  it(name, run, singleFileAnalysisTimeoutMs)
 
 // This repository-wide fixture is read at runtime, not included in Genie's package closure.
 const inventory = JSON.parse(
@@ -349,7 +362,7 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
   })
 
   for (const entry of inventory.sources) {
-    it(`${entry.source} imports only runtime builtins or explicitly staged edges`, async () => {
+    itWithTsApiBudget(`${entry.source} imports only runtime builtins or explicitly staged edges`, async () => {
       assertIsolatableExtension(entry.source)
       const source = path.join(root, entry.source)
       await runTsFileAnalysis({

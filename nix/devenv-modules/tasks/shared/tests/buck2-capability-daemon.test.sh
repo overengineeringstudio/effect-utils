@@ -34,18 +34,40 @@ declare -a daemon_roots=() daemon_isolations=()
 private_watchman_started=false
 private_watchman_socket_dir=""
 retain_failure_evidence() {
-  local evidence_base evidence fixture phase
+  local evidence_base evidence fixture phase artifact
   evidence_base="${CAPABILITY_TEST_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/capability-daemon}"
   umask 077
   mkdir -p "$evidence_base" || return 1
   evidence="$(mktemp -d "$evidence_base/capability-daemon.XXXXXX")" || return 1
   if [ -f "$TEMP_ROOT/w.log" ]; then cp "$TEMP_ROOT/w.log" "$evidence/watchman.log" || return 1; fi
   for fixture in "${daemon_roots[@]}"; do
+    cp "$fixture/.buckconfig" "$evidence/${fixture##*/}.buckconfig" || return 1
     for phase in before after steady; do
-      if [ -f "$fixture/$phase.events" ]; then
-        cp "$fixture/$phase.events" "$evidence/${fixture##*/}-$phase.events" || return 1
-      fi
+      for artifact in events output status stderr trace; do
+        if [ -f "$fixture/$phase.$artifact" ]; then
+          cp "$fixture/$phase.$artifact" "$evidence/${fixture##*/}-$phase.$artifact" || return 1
+        fi
+      done
     done
+    # Capture actual resolved inputs after failure, not an added pre-build settle.
+    CAPABILITY_TEST_FIXTURE_ROOT="$fixture" "$BUN" --eval '
+      import { createHash } from "node:crypto";
+      import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+      import { join, sep } from "node:path";
+      const root = realpathSync(process.env.CAPABILITY_TEST_FIXTURE_ROOT);
+      const paths = [".", "package.tar", ".buck2/capabilities", ".buck2/capabilities/defs.bzl"];
+      console.log(JSON.stringify({root, paths: paths.map(relative => {
+        const path = join(root, relative);
+        try {
+          const physical = realpathSync(path);
+          const stat = statSync(path, {bigint: true});
+          return {relative, physical, insideRoot: physical === root || physical.startsWith(root + sep),
+            device: String(stat.dev), inode: String(stat.ino), links: String(stat.nlink),
+            symbolicLink: lstatSync(path).isSymbolicLink(),
+            sha256: stat.isFile() ? createHash("sha256").update(readFileSync(path)).digest("hex") : undefined};
+        } catch (error) { return {relative, error: String(error)}; }
+      })}, null, 2));
+    ' >"$evidence/${fixture##*/}-paths.json" || return 1
   done
   printf 'Private capability failure evidence retained at %s (not public output)\n' "$evidence" >&2
 }

@@ -164,10 +164,12 @@ export type JoinableChildProcess = NodeJS.EventEmitter & {
   readonly kill: (signal: NodeJS.Signals) => boolean
 }
 
-// Repo cold p-max 649/673 ms, all-call max 4.73 s (sync-proof blocking): 20 s gives >4x headroom below Vitest's 30 s.
-const apiRequestTimeoutMs = 20_000
-const terminationGraceMs = 250
-const terminationJoinMs = 1_000
+/** Per-request compiler deadline; fixture watchdogs must also cover the session lifecycle. */
+export const apiRequestTimeoutMs = 20_000
+/** Grace period before escalating a stalled compiler shutdown from TERM to KILL. */
+export const terminationGraceMs = 250
+/** Deadline for joining a terminated compiler or closing each of its streams. */
+export const terminationJoinMs = 1_000
 
 /** A bounded compiler operation that did not respond before its deadline. */
 export class TsApiTimeoutError extends Error {
