@@ -1,4 +1,5 @@
 import path from 'node:path'
+
 import { inputReaddirSync as readdirSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 export type SourceSelection = {
@@ -14,21 +15,55 @@ export type ContractSourceGroup = {
 }
 
 export const excludedContractDirectories = [
-  '.buck2', '.cache', '.codex', '.context', '.devenv', '.direnv', '.editor-view',
-  '.evergreen', '.git', '.playwright-cli', '.playwright-mcp', '.pnpm', '.pnpm-home',
-  '.pnpm-store', '.vercel', '.vitest-attachments', '.worktree-tools', 'buck-out',
-  'dist', 'genie-locks', 'node_modules', 'repos', 'result', 'storybook-static', 'target', 'tmp',
+  '.buck2',
+  '.cache',
+  '.codex',
+  '.context',
+  '.devenv',
+  '.direnv',
+  '.editor-view',
+  '.evergreen',
+  '.git',
+  '.playwright-cli',
+  '.playwright-mcp',
+  '.pnpm',
+  '.pnpm-home',
+  '.pnpm-store',
+  '.vercel',
+  '.vitest-attachments',
+  '.worktree-tools',
+  'buck-out',
+  'dist',
+  'genie-locks',
+  'node_modules',
+  'repos',
+  'result',
+  'storybook-static',
+  'target',
+  'tmp',
 ] as const
 
 /** Discover package boundaries, not source filenames; new boundaries need Genie. */
-export const discoverContractPackages = (root: string): { owners: string[]; directories: string[] } => {
+export const discoverContractPackages = (
+  root: string,
+): { owners: string[]; directories: string[] } => {
   const owners = ['.']
   const directories: string[] = []
   const visit = (directory: string): void => {
     const entries = readdirSync(path.join(root, directory), { withFileTypes: true })
-    if (directory !== '.' && entries.some((entry) => entry.isFile() && (entry.name === 'BUCK' || entry.name === 'BUCK.genie.ts'))) owners.push(directory)
+    if (
+      directory !== '.' &&
+      entries.some(
+        (entry) => entry.isFile() && (entry.name === 'BUCK' || entry.name === 'BUCK.genie.ts'),
+      )
+    )
+      owners.push(directory)
     for (const entry of entries) {
-      if (!entry.isDirectory() || excludedContractDirectories.some((excluded) => excluded === entry.name)) continue
+      if (
+        !entry.isDirectory() ||
+        excludedContractDirectories.some((excluded) => excluded === entry.name)
+      )
+        continue
       const relative = path.posix.join(directory, entry.name)
       directories.push(relative)
       visit(relative)
@@ -46,7 +81,10 @@ export const contractSourceName = (task: string): string =>
   `quick_contract_sources__${task.replaceAll(':', '-')}`
 
 export const contractSourceGroup = ({
-  selection, owner, owners, directories,
+  selection,
+  owner,
+  owners,
+  directories,
 }: {
   readonly selection: SourceSelection
   readonly owner: string
@@ -54,9 +92,16 @@ export const contractSourceGroup = ({
   readonly directories: readonly string[]
 }): ContractSourceGroup => {
   const base = owner === '.' ? '' : `${owner}/`
-  const anchors = unique(['', ...directories.filter((directory) =>
-    directory.startsWith(base) && directory.split('/').some((segment) => segment.startsWith('.')),
-  ).map((directory) => `${directory.slice(base.length)}/`)])
+  const anchors = unique([
+    '',
+    ...directories
+      .filter(
+        (directory) =>
+          directory.startsWith(base) &&
+          directory.split('/').some((segment) => segment.startsWith('.')),
+      )
+      .map((directory) => `${directory.slice(base.length)}/`),
+  ])
   const tails = unique(anchors.flatMap((anchor) => descendants.map((tail) => anchor + tail)))
   const include: string[] = []
   const suffixes = selection.extensions ?? ['']
@@ -73,17 +118,27 @@ export const contractSourceGroup = ({
         include.push(...suffixes.map((suffix) => `${relative}*${suffix}`))
         for (const suffix of suffixes) {
           for (let overlap = 1; overlap <= suffix.length; overlap++) {
-            if (relative.endsWith(suffix.slice(0, overlap))) include.push(relative + suffix.slice(overlap))
+            if (relative.endsWith(suffix.slice(0, overlap)))
+              include.push(relative + suffix.slice(overlap))
           }
         }
-        include.push(...tails.flatMap((tail) => suffixes.map((suffix) => `${relative}*/${tail}${suffix}`)))
+        include.push(
+          ...tails.flatMap((tail) => suffixes.map((suffix) => `${relative}*/${tail}${suffix}`)),
+        )
       }
     }
   }
   for (const directory of directories) {
-    if (directory.startsWith(base) && directory.split('/').some((segment) => segment.startsWith('.')) &&
-      selection.prefixes.some((prefix) => `${directory}/`.startsWith(prefix))) {
-      include.push(...descendants.flatMap((tail) => suffixes.map((suffix) => `${directory.slice(base.length)}/${tail}${suffix}`)))
+    if (
+      directory.startsWith(base) &&
+      directory.split('/').some((segment) => segment.startsWith('.')) &&
+      selection.prefixes.some((prefix) => `${directory}/`.startsWith(prefix))
+    ) {
+      include.push(
+        ...descendants.flatMap((tail) =>
+          suffixes.map((suffix) => `${directory.slice(base.length)}/${tail}${suffix}`),
+        ),
+      )
     }
   }
   if (selection.membership_inputs === true) {
@@ -97,16 +152,31 @@ export const contractSourceGroup = ({
     }
   }
   for (const file of selection.paths) {
-    const covered = selection.prefixes.some((prefix) => file.startsWith(prefix)) &&
-      (selection.extensions === undefined || selection.extensions.some((suffix) => file.endsWith(suffix)))
-    if (!covered && file.startsWith(base) && !owners.some((nested) =>
-      nested !== owner && nested !== '.' && nested.startsWith(base) && file.startsWith(`${nested}/`),
-    )) include.push(file.slice(base.length))
+    const covered =
+      selection.prefixes.some((prefix) => file.startsWith(prefix)) &&
+      (selection.extensions === undefined ||
+        selection.extensions.some((suffix) => file.endsWith(suffix)))
+    if (
+      !covered &&
+      file.startsWith(base) &&
+      !owners.some(
+        (nested) =>
+          nested !== owner &&
+          nested !== '.' &&
+          nested.startsWith(base) &&
+          file.startsWith(`${nested}/`),
+      )
+    )
+      include.push(file.slice(base.length))
   }
   const exclude = unique([
-    ...anchors.flatMap((anchor) => ['', '**/', '**/.*/**/', '**/.*/**/.*/**/'].flatMap((ancestor) =>
-      excludedContractDirectories.flatMap((directory) => descendants.map((tail) => `${anchor}${ancestor}${directory}/${tail}`)),
-    )),
+    ...anchors.flatMap((anchor) =>
+      ['', '**/', '**/.*/**/', '**/.*/**/.*/**/'].flatMap((ancestor) =>
+        excludedContractDirectories.flatMap((directory) =>
+          descendants.map((tail) => `${anchor}${ancestor}${directory}/${tail}`),
+        ),
+      ),
+    ),
     ...tails.flatMap((tail) => [
       tail.slice(0, -1) + '.BUCK.next.*',
       tail.slice(0, -1) + '.git-archives.json.next.*',
@@ -119,4 +189,7 @@ export const contractSourceOwners = (
   selection: SourceSelection,
   owners: readonly string[],
   directories: readonly string[],
-): readonly string[] => owners.filter((owner) => contractSourceGroup({ selection, owner, owners, directories }).include.length > 0)
+): readonly string[] =>
+  owners.filter(
+    (owner) => contractSourceGroup({ selection, owner, owners, directories }).include.length > 0,
+  )

@@ -21,7 +21,10 @@ const fixture = () => {
   const root = join(directory, 'repo')
   mkdirSync(root)
   const config = join(directory, 'gitconfig')
-  writeFileSync(config, '[user]\nname = Fixture\nemail = fixture@example.invalid\n[commit]\ngpgsign = false\n[core]\nhooksPath = /dev/null\n')
+  writeFileSync(
+    config,
+    '[user]\nname = Fixture\nemail = fixture@example.invalid\n[commit]\ngpgsign = false\n[core]\nhooksPath = /dev/null\n',
+  )
   const env = membershipGitEnvironment({ git, root, env: process.env })
   Object.assign(env, {
     GIT_CONFIG_GLOBAL: config,
@@ -29,15 +32,23 @@ const fixture = () => {
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_TERMINAL_PROMPT: '0',
   })
-  const run = (...args: string[]) => execFileSync(git, ['-C', root, ...args], {
-    env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  const run = (...args: string[]) =>
+    execFileSync(git, ['-C', root, ...args], {
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
   run('init', '--quiet')
   writeFileSync(join(root, 'one.ts'), 'export const one = 1\n')
   run('add', '--', 'one.ts')
   run('commit', '--quiet', '-m', 'fixture')
   const digest = (contracts: Readonly<Record<string, ContractMembership>>, overrides = env) =>
-    contractMembershipDigests({ specification: { schemaVersion: 1, contracts }, root, git, env: overrides })
+    contractMembershipDigests({
+      specification: { schemaVersion: 1, contracts },
+      root,
+      git,
+      env: overrides,
+    })
   return { directory, root, env, run, digest }
 }
 const tracked: ContractMembership = { membership: ['*.ts'], membership_mode: 'tracked' }
@@ -79,17 +90,27 @@ describe('live quick-contract Git membership', () => {
     const { root, run, digest } = fixture()
     writeFileSync(join(root, '.gitignore'), 'ignored.ts\n')
     const before = digest({ tracked, all })
-    expect(before['quick_contracts.membership_tracked']).not.toEqual(before['quick_contracts.membership_all'])
+    expect(before['quick_contracts.membership_tracked']).not.toEqual(
+      before['quick_contracts.membership_all'],
+    )
     writeFileSync(join(root, 'ignored.ts'), 'ignored\n')
     expect(digest({ tracked, all })).toEqual(before)
     writeFileSync(join(root, 'two.ts'), 'new\n')
     const untracked = digest({ tracked, all })
-    expect(untracked['quick_contracts.membership_tracked']).toEqual(before['quick_contracts.membership_tracked'])
-    expect(untracked['quick_contracts.membership_all']).not.toEqual(before['quick_contracts.membership_all'])
+    expect(untracked['quick_contracts.membership_tracked']).toEqual(
+      before['quick_contracts.membership_tracked'],
+    )
+    expect(untracked['quick_contracts.membership_all']).not.toEqual(
+      before['quick_contracts.membership_all'],
+    )
     run('add', '--', 'two.ts')
     const staged = digest({ tracked, all })
-    expect(staged['quick_contracts.membership_all']).toEqual(untracked['quick_contracts.membership_all'])
-    expect(staged['quick_contracts.membership_tracked']).not.toEqual(before['quick_contracts.membership_tracked'])
+    expect(staged['quick_contracts.membership_all']).toEqual(
+      untracked['quick_contracts.membership_all'],
+    )
+    expect(staged['quick_contracts.membership_tracked']).not.toEqual(
+      before['quick_contracts.membership_tracked'],
+    )
     const literal = { membership: [':(literal)one.ts'], membership_mode: 'tracked' } as const
     expect(digest({ check: literal })).not.toEqual(digest({ check: tracked }))
   })
@@ -103,8 +124,13 @@ describe('live quick-contract Git membership', () => {
       'check:all': all,
     }
     const first = digest(contracts, { ...env, GIT_TRACE: trace })
-    expect(first['quick_contracts.membership_check-first']).toEqual(first['quick_contracts.membership_check-second'])
-    const queries = () => readFileSync(trace, 'utf8').split('\n').filter((line) => line.includes('built-in: git ls-files')).length
+    expect(first['quick_contracts.membership_check-first']).toEqual(
+      first['quick_contracts.membership_check-second'],
+    )
+    const queries = () =>
+      readFileSync(trace, 'utf8')
+        .split('\n')
+        .filter((line) => line.includes('built-in: git ls-files')).length
     expect(queries()).toBe(2)
     expect(digest(contracts, { ...env, GIT_TRACE: trace })).toEqual(first)
     expect(queries()).toBe(4)
@@ -127,7 +153,9 @@ describe('live quick-contract Git membership', () => {
       GIT_CONFIG_VALUE_0: 'true',
     }
     expect(digest({ check: tracked }, stale)).toEqual(baseline)
-    expect(membershipGitEnvironment({ git, root, env: stale })['GIT_CONFIG_GLOBAL']).toBe(env['GIT_CONFIG_GLOBAL'])
+    expect(membershipGitEnvironment({ git, root, env: stale })['GIT_CONFIG_GLOBAL']).toBe(
+      env['GIT_CONFIG_GLOBAL'],
+    )
   })
 
   it('loads optional immutable profile data and refuses missing/malformed declared specifications', async () => {
@@ -139,22 +167,37 @@ describe('live quick-contract Git membership', () => {
     const packageRoot = join(directory, 'package')
     mkdirSync(join(packageRoot, 'share'), { recursive: true })
     symlinkSync(packageRoot, join(profile, 'quick-contracts'))
-    expect(() => profileContractMembershipDigests({ root, env: selected })).toThrow('required membership specification')
+    expect(() => profileContractMembershipDigests({ root, env: selected })).toThrow(
+      'required membership specification',
+    )
     const path = join(packageRoot, 'share', 'membership-inputs.json')
     writeFileSync(path, '{"schemaVersion":2,"contracts":{}}')
-    expect(() => profileContractMembershipDigests({ root, env: selected })).toThrow('required membership specification')
+    expect(() => profileContractMembershipDigests({ root, env: selected })).toThrow(
+      'required membership specification',
+    )
     writeFileSync(path, JSON.stringify({ schemaVersion: 1, contracts: { 'test:types': tracked } }))
-    expect(() => profileContractMembershipDigests({ root, env: { ...selected, WORKTREE_GIT: undefined } })).toThrow('WORKTREE_GIT')
+    expect(() =>
+      profileContractMembershipDigests({ root, env: { ...selected, WORKTREE_GIT: undefined } }),
+    ).toThrow('WORKTREE_GIT')
     const absoluteGit = execFileSync(git, ['--exec-path'], { env, encoding: 'utf8' }).trim()
     // Git's own exec-path contains git, avoiding a shell/PATH-resolution helper.
     const gitBinary = realpathSync(join(absoluteGit, 'git'))
-    expect(profileContractMembershipDigests({ root, env: { ...selected, WORKTREE_GIT: gitBinary } })).toEqual(digest({ 'test:types': tracked }))
+    expect(
+      profileContractMembershipDigests({ root, env: { ...selected, WORKTREE_GIT: gitBinary } }),
+    ).toEqual(digest({ 'test:types': tracked }))
     writeFileSync(join(root, '.buckroot'), '')
-    writeFileSync(join(root, '.buckconfig'), '[buck2]\nremote_cache_enabled = false\nallow_cache_uploads = false\n')
+    writeFileSync(
+      join(root, '.buckconfig'),
+      '[buck2]\nremote_cache_enabled = false\nallow_cache_uploads = false\n',
+    )
     const argfile = join(directory, 'arguments')
     writeFileSync(argfile, 'run\n//:check-quick\n--\n--literal-tool-argument\n')
     const managedEnv = { ...selected, WORKTREE_GIT: gitBinary }
-    const canonical = resolveManagedInvocation({ args: [`@${argfile}`], cwd: root, env: managedEnv })
+    const canonical = resolveManagedInvocation({
+      args: [`@${argfile}`],
+      cwd: root,
+      env: managedEnv,
+    })
     const admitted = await directBuckArguments({ args: canonical.args, cwd: root, env: managedEnv })
     const key = 'quick_contracts.membership_test-types'
     expect(admitted).toContain(`${key}=${digest({ 'test:types': tracked })[key]}`)
@@ -167,6 +210,9 @@ describe('live quick-contract Git membership', () => {
       { check: { membership: ['*.ts'], membership_mode: 'unknown' } },
       { check: { membership: [], membership_mode: 'tracked' } },
       { 'test:types': tracked, 'test-types': tracked },
-    ]) expect(() => decodeMembershipSpecification({ schemaVersion: 1, contracts })).toThrow('invalid membership specification')
+    ])
+      expect(() => decodeMembershipSpecification({ schemaVersion: 1, contracts })).toThrow(
+        'invalid membership specification',
+      )
   })
 })

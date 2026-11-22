@@ -18,8 +18,14 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 /** Decode the immutable selected-task catalog projection, never live source bytes. */
 export const decodeMembershipSpecification = (value: unknown): MembershipSpecification => {
-  if (record(value) === false || value['schemaVersion'] !== 1 || record(value['contracts']) === false)
-    throw new Error('quick-contracts: invalid membership-inputs.json schema (expected schemaVersion 1)')
+  if (
+    record(value) === false ||
+    value['schemaVersion'] !== 1 ||
+    record(value['contracts']) === false
+  )
+    throw new Error(
+      'quick-contracts: invalid membership-inputs.json schema (expected schemaVersion 1)',
+    )
   const contracts: Record<string, ContractMembership> = Object.create(null)
   const keys = new Set<string>()
   for (const [task, spec] of Object.entries(value['contracts'])) {
@@ -30,7 +36,9 @@ export const decodeMembershipSpecification = (value: unknown): MembershipSpecifi
       record(spec) === false ||
       Array.isArray(spec['membership']) === false ||
       spec['membership'].length === 0 ||
-      spec['membership'].every((path: unknown) => typeof path === 'string' && path !== '' && path.includes('\0') === false) === false ||
+      spec['membership'].every(
+        (path: unknown) => typeof path === 'string' && path !== '' && path.includes('\0') === false,
+      ) === false ||
       (spec['membership_mode'] !== 'tracked' && spec['membership_mode'] !== 'tracked-and-untracked')
     )
       throw new Error(`quick-contracts: invalid membership specification for ${task}`)
@@ -84,18 +92,38 @@ export const contractMembershipDigests = ({
     const group = JSON.stringify([spec.membership_mode, membership])
     let digest = censuses.get(group)
     if (digest === undefined) {
-      const names = execFileSync(git, [
-        '-C', root, 'ls-files', '-z', '--cached',
-        ...(spec.membership_mode === 'tracked-and-untracked' ? ['--others', '--exclude-standard'] : []),
-        '--', ...membership,
-      ], { env: clean, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
+      const names = execFileSync(
+        git,
+        [
+          '-C',
+          root,
+          'ls-files',
+          '-z',
+          '--cached',
+          ...(spec.membership_mode === 'tracked-and-untracked'
+            ? ['--others', '--exclude-standard']
+            : []),
+          '--',
+          ...membership,
+        ],
+        {
+          env: clean,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      )
       const members = [...new Set(names.split('\0').filter((name) => name !== ''))].sort()
-      digest = createHash('sha256').update(JSON.stringify({
-        schemaVersion: 1,
-        membership_mode: spec.membership_mode,
-        membership,
-        members,
-      })).digest('hex')
+      digest = createHash('sha256')
+        .update(
+          JSON.stringify({
+            schemaVersion: 1,
+            membership_mode: spec.membership_mode,
+            membership,
+            members,
+          }),
+        )
+        .digest('hex')
       censuses.set(group, digest)
     }
     digests[`quick_contracts.membership_${task.replaceAll(':', '-')}`] = digest
@@ -125,7 +153,10 @@ export const profileContractMembershipDigests = ({
   try {
     specification = decodeMembershipSpecification(JSON.parse(readFileSync(path, 'utf8')))
   } catch (cause) {
-    throw new Error(`quick-contracts: required membership specification is missing or malformed: ${path}`, { cause })
+    throw new Error(
+      `quick-contracts: required membership specification is missing or malformed: ${path}`,
+      { cause },
+    )
   }
   if (Object.keys(specification.contracts).length === 0) return {}
   const git = env['WORKTREE_GIT']

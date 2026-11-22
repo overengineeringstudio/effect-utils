@@ -19,6 +19,7 @@ import { join } from 'node:path'
 import { setTimeout as waitForConsumer } from 'node:timers/promises'
 
 import { buckConfigValues, standaloneCachePostureConfig } from './buck2-cache-posture.ts'
+import * as contractMembershipTests from './buck2-contract-membership.integration.test.ts'
 import {
   cacheDaemonPostureFingerprint,
   cacheLauncherBirth,
@@ -28,7 +29,6 @@ import {
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
 import * as readerShadowUnitTests from './buck2-entrypoint.unit.test.ts'
-import * as contractMembershipTests from './buck2-contract-membership.integration.test.ts'
 import { createTestTempDirectoryFactory } from './test-tmp.ts'
 void readerShadowUnitTests
 void contractMembershipTests

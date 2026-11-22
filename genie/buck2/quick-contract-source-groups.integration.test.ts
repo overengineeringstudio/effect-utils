@@ -3,7 +3,11 @@ import path from 'node:path'
 
 import { expect, it } from 'vitest'
 
-import { contractSourceGroup, contractSourceOwners, discoverContractPackages } from './quick-contract-source-groups.ts'
+import {
+  contractSourceGroup,
+  contractSourceOwners,
+  discoverContractPackages,
+} from './quick-contract-source-groups.ts'
 
 it('keeps live selectors stable across new files while discovering nested, hidden, and empty owners', () => {
   const temporary = path.resolve('tmp/quick-contract-source-groups')
@@ -14,14 +18,28 @@ it('keeps live selectors stable across new files while discovering nested, hidde
     writeFileSync(path.join(root, file), '')
   }
   try {
-    for (const file of ['BUCK', 'src/BUCK.genie.ts', 'src/nested/BUCK', 'src/empty/BUCK', 'src/.config/.nested/old.nix', 'src/node_modules/ignored/BUCK', 'src/target/ignored/BUCK', 'src/.devenv/ignored/BUCK']) put(file)
+    for (const file of [
+      'BUCK',
+      'src/BUCK.genie.ts',
+      'src/nested/BUCK',
+      'src/empty/BUCK',
+      'src/.config/.nested/old.nix',
+      'src/node_modules/ignored/BUCK',
+      'src/target/ignored/BUCK',
+      'src/.devenv/ignored/BUCK',
+    ])
+      put(file)
     const before = discoverContractPackages(root)
     expect(before.owners).toEqual(['.', 'src', 'src/empty', 'src/nested'])
     expect(before.directories).toContain('src/.config/.nested')
     expect(before.directories).not.toContain('src/node_modules')
     expect(before.directories).not.toContain('src/target')
     expect(before.directories).not.toContain('src/.devenv')
-    const selection = { paths: ['src/missing.unit.test.ts'], prefixes: ['src/'], extensions: ['.ts', '.nix'] }
+    const selection = {
+      paths: ['src/missing.unit.test.ts'],
+      prefixes: ['src/'],
+      extensions: ['.ts', '.nix'],
+    }
     const selected = contractSourceOwners(selection, before.owners, before.directories)
     expect(selected).toContain('src/empty')
     const source = contractSourceGroup({ selection, owner: 'src', ...before })
@@ -36,7 +54,9 @@ it('keeps live selectors stable across new files while discovering nested, hidde
     expect(contractSourceGroup({ selection, owner: 'src', ...after })).toEqual(source)
     expect(source.include).toContain('**/*.nix')
     expect(source.include).not.toContain('missing.unit.test.ts')
-    expect(contractSourceGroup({ selection: otherSelection, owner: '.', ...after })).toEqual(unaffected)
+    expect(contractSourceGroup({ selection: otherSelection, owner: '.', ...after })).toEqual(
+      unaffected,
+    )
     put('src/new-package/BUCK.genie.ts')
     expect(discoverContractPackages(root).owners).toContain('src/new-package')
   } finally {
