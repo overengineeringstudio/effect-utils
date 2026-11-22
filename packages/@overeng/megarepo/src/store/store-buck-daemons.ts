@@ -569,12 +569,18 @@ export const stopWorktreeBuckDaemons = Effect.fn('store.stopWorktreeBuckDaemons'
               ).pipe(Effect.option)
             : Option.none()
         if (Option.isNone(status) === true)
-          return { _tag: 'unreachable' as const, ...identity, memoryKiB, reason: 'status-unreadable' }
+          return {
+            _tag: 'unreachable' as const,
+            ...identity,
+            memoryKiB,
+            reason: 'status-unreadable',
+          }
         if (idleSinceMs !== undefined) {
           const started = yield* Schema.decodeEffect(
             Schema.fromJsonString(Schema.Struct({ start_time: Schema.String })),
           )(Option.isSome(statusRun) === true ? statusRun.value.stdout : '').pipe(Effect.option)
-          const startedMs = Option.isSome(started) === true ? Date.parse(started.value.start_time) : NaN
+          const startedMs =
+            Option.isSome(started) === true ? Date.parse(started.value.start_time) : NaN
           if (Number.isFinite(startedMs) === false || startedMs > idleSinceMs)
             return { _tag: 'kept-active' as const, ...identity }
         }
