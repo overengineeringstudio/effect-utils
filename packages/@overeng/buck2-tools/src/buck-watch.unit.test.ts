@@ -253,6 +253,11 @@ const until = async (predicate: () => boolean): Promise<void> => {
   throw new Error('condition was not reached')
 }
 
+const publicationTimingObserver = (onPublished: () => void) =>
+  vi.fn((timing: Parameters<NonNullable<BuckReconcilerOptions['onTiming']>>[0]) => {
+    if (timing.phase === 'editor-view') onPublished()
+  })
+
 /** Real immutable inputs and the legacy command boundary, with no fake publisher. */
 const makePublicationFixture = () => {
   const requireTool = (name: string): string => {
@@ -906,9 +911,11 @@ describe('Buck watch reconciliation', () => {
     async (batchPublication, diagnosticPrefix) => {
       const fixture = makePublicationFixture()
       const observed: string[] = []
-      const onTiming = vi.fn()
       let completed = false
       let publisherCompleted = false
+      const onTiming = publicationTimingObserver(() => {
+        publisherCompleted = true
+      })
       let publisherStderr = ''
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
         if (
