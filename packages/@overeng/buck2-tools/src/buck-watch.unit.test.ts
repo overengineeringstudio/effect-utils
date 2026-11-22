@@ -1,5 +1,17 @@
 import * as ChildProcess from 'node:child_process'
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,7 +36,10 @@ import {
   type WatchLoopStatus,
 } from './buck-watch.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
-import { scopeEditorViewTestProcesses, trackEditorViewTestSpawn } from './editor-view-test-processes.ts'
+import {
+  scopeEditorViewTestProcesses,
+  trackEditorViewTestSpawn,
+} from './editor-view-test-processes.ts'
 import { EditorViewCommandFailure } from './editor-view.ts'
 
 const fixtureProcessIds = new Set([process.pid])
@@ -36,7 +51,10 @@ const reconcileBuckViews = scopeEditorViewTestProcesses({
 // Stable forwarding exports observe the named imports used by Bun's native modules.
 const nativeChildProcess = {
   ...ChildProcess,
-  spawn: trackEditorViewTestSpawn({ processIds: fixtureProcessIds, spawnProcess: ChildProcess.spawn }),
+  spawn: trackEditorViewTestSpawn({
+    processIds: fixtureProcessIds,
+    spawnProcess: ChildProcess.spawn,
+  }),
 }
 const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
@@ -218,7 +236,8 @@ const until = async (predicate: () => boolean): Promise<void> => {
 const makePublicationFixture = () => {
   const requireTool = (name: string): string => {
     const value = process.env[name]
-    if (value === undefined || value === '') throw new Error(`declared test tool is unavailable: ${name}`)
+    if (value === undefined || value === '')
+      throw new Error(`declared test tool is unavailable: ${name}`)
     return value
   }
   const root = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'buck-watch-')))
@@ -234,18 +253,27 @@ const makePublicationFixture = () => {
   writeFileSync(join(dependency, 'index.js'), 'export const dependency = "雪"\n')
   symlinkSync('../package_tree', join(nodeModules, 'workspace'))
   symlinkSync('../../store/dep', join(nodeModules, 'dep'))
-  writeFileSync(manifest, JSON.stringify({
-    schema: 'effect-utils/editor-view-inputs/v1',
-    editorInputs: nodeModules,
-    packageTree,
-    readRoots: [packageTree, dependency],
-  }))
-  writeFileSync(workspaceAuthority, JSON.stringify({
-    schema: 'effect-utils/workspace-dependency-authority/v1',
-    requiredPackages: ['packages/app'],
-    ownedPackages: ['packages/app'],
-  }))
-  const editorViewCommand = [requireTool('BUN_BIN'), new URL('./editor-view.ts', import.meta.url).pathname] as const
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      schema: 'effect-utils/editor-view-inputs/v1',
+      editorInputs: nodeModules,
+      packageTree,
+      readRoots: [packageTree, dependency],
+    }),
+  )
+  writeFileSync(
+    workspaceAuthority,
+    JSON.stringify({
+      schema: 'effect-utils/workspace-dependency-authority/v1',
+      requiredPackages: ['packages/app'],
+      ownedPackages: ['packages/app'],
+    }),
+  )
+  const editorViewCommand = [
+    requireTool('BUN_BIN'),
+    new URL('./editor-view.ts', import.meta.url).pathname,
+  ] as const
   const options = {
     plan,
     mode: 'publish' as const,
@@ -266,20 +294,25 @@ const makePublicationFixture = () => {
         ...invocation,
         command: requireTool('ENV_BIN'),
         args: [
-          '-u', 'TRACEPARENT', '-u', 'OTEL_TASK_TRACEPARENT',
-          invocation.command, ...invocation.args,
+          '-u',
+          'TRACEPARENT',
+          '-u',
+          'OTEL_TASK_TRACEPARENT',
+          invocation.command,
+          ...invocation.args,
         ],
       })
     },
   }
   const current = join(root, '.editor-view/app')
-  const record = () => JSON.parse(readFileSync(join(current, 'editor-view.json'), 'utf8')) as {
-    package: string
-    cell: string
-    target: string
-    snapshot: string
-    normalizedStoreDigest: string
-  }
+  const record = () =>
+    JSON.parse(readFileSync(join(current, 'editor-view.json'), 'utf8')) as {
+      package: string
+      cell: string
+      target: string
+      snapshot: string
+      normalizedStoreDigest: string
+    }
   const cleanup = (): void => {
     unlockFixtureDirectories(root)
     rmSync(root, { recursive: true, force: true })
@@ -321,7 +354,11 @@ describe('Buck watch reconciliation', () => {
   )
 
   it('classifies subprocess signals without treating ordinary errors as native failures', () => {
-    const failure = new CommandFailure({ message: 'terminated', exitCode: undefined, signal: 'SIGINT' })
+    const failure = new CommandFailure({
+      message: 'terminated',
+      exitCode: undefined,
+      signal: 'SIGINT',
+    })
     expect(publicationSignal(new AggregateError([failure]))).toBe('SIGINT')
     expect(publicationSignal(new Error('interrupted by SIGTERM'))).toBeUndefined()
     expect(publicationSignal(new AggregateError([new Error('ordinary')]))).toBeUndefined()
@@ -331,9 +368,17 @@ describe('Buck watch reconciliation', () => {
     const fixture = makePublicationFixture()
     try {
       await reconcileBuckViews({ request: publicationRequest, options: fixture.options })
-      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toContain('λ')
-      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toContain('雪')
-      expect(fixture.record()).toMatchObject({ package: 'packages/app', cell: 'effect_utils', target: '//packages/app:editor_inputs' })
+      expect(
+        readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8'),
+      ).toContain('λ')
+      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toContain(
+        '雪',
+      )
+      expect(fixture.record()).toMatchObject({
+        package: 'packages/app',
+        cell: 'effect_utils',
+        target: '//packages/app:editor_inputs',
+      })
     } finally {
       fixture.cleanup()
     }
@@ -355,7 +400,9 @@ describe('Buck watch reconciliation', () => {
         options: fixture.options,
       })
       const failure = await failed.then(
-        () => { throw new Error('malformed manifest was accepted') },
+        () => {
+          throw new Error('malformed manifest was accepted')
+        },
         (error: unknown) => error,
       )
       let siblingRead = false
@@ -366,16 +413,25 @@ describe('Buck watch reconciliation', () => {
           outputs: new Map([[entry.editor.inputsManifestTarget, fixture.manifest]]),
           options: fixture.options,
         })
-        expect(request).toEqual(expect.arrayContaining([
-          fixture.nodeModules, fixture.packageTree, fixture.dependency,
-          fixture.options.workspaceAuthority, fixture.options.cp, fixture.options.mv,
-          fixture.options.fingerprintTool, join(fixture.root, '.devenv/vite-cache/app'),
-        ]))
+        expect(request).toEqual(
+          expect.arrayContaining([
+            fixture.nodeModules,
+            fixture.packageTree,
+            fixture.dependency,
+            fixture.options.workspaceAuthority,
+            fixture.options.cp,
+            fixture.options.mv,
+            fixture.options.fingerprintTool,
+            join(fixture.root, '.devenv/vite-cache/app'),
+          ]),
+        )
         siblingRead = true
         return request
       })
       const preparing = settleEditorPublicationRequests({ requests: [failed, sibling] }).then(
-        () => { throw new Error('malformed manifest batch was accepted') },
+        () => {
+          throw new Error('malformed manifest batch was accepted')
+        },
         (error: unknown) => {
           expect(siblingRead).toBe(true)
           returned = true
@@ -580,11 +636,7 @@ describe('Buck watch reconciliation', () => {
       expect(invocations[1]?.args[0]).toBe(fixture.options.editorViewCommand[1])
       expect(invocations[1]?.args).toContain('--backing-root')
       expect(invocations[1]?.args).toEqual(
-        expect.arrayContaining([
-          fixture.nodeModules,
-          fixture.packageTree,
-          fixture.dependency,
-        ]),
+        expect.arrayContaining([fixture.nodeModules, fixture.packageTree, fixture.dependency]),
       )
       const first = fixture.record()
       expect(first).toMatchObject({
@@ -623,7 +675,10 @@ describe('Buck watch reconciliation', () => {
         },
       })
       expect(batchInvocations).toHaveLength(2)
-      expect(batchInvocations[1]?.args).toEqual([fixture.options.editorViewCommand[1], 'publish-batch'])
+      expect(batchInvocations[1]?.args).toEqual([
+        fixture.options.editorViewCommand[1],
+        'publish-batch',
+      ])
       expect(batchInvocations[1]?.detached).toBeUndefined()
       expect(JSON.parse(batchInvocations[1]?.input ?? '')).toEqual([invocations[1]?.args.slice(1)])
       const second = fixture.record()
@@ -706,7 +761,9 @@ describe('Buck watch reconciliation', () => {
         const captured = characters.join('')
         expect(captured.split(diagnostic)).toHaveLength(2)
         expect(captured).toContain('publisher startup\n')
-        expect(captured).toContain('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\n')
+        expect(captured).toContain(
+          '[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\n',
+        )
       } finally {
         shutdown.abort()
         await running?.catch(() => undefined)
@@ -730,7 +787,10 @@ describe('Buck watch reconciliation', () => {
       let publisherCompleted = false
       let publisherStderr = ''
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
-        if (typeof line === 'string' && line.startsWith(`[editor-view-${diagnosticPrefix}] `) === true) {
+        if (
+          typeof line === 'string' &&
+          line.startsWith(`[editor-view-${diagnosticPrefix}] `) === true
+        ) {
           expect(completed).toBe(false)
           if (observed.length === 0) expect(publisherCompleted).toBe(false)
           observed.push(line)
@@ -745,7 +805,8 @@ describe('Buck watch reconciliation', () => {
             batchPublication,
             onTiming,
             run: async (invocation) => {
-              if (invocation.command === fixture.options.buck2) return fixture.options.run(invocation)
+              if (invocation.command === fixture.options.buck2)
+                return fixture.options.run(invocation)
               const result = await runCommand({
                 ...invocation,
                 onStderr: (chunk) => {
@@ -761,7 +822,8 @@ describe('Buck watch reconciliation', () => {
         completed = true
         expect(observed.length).toBeGreaterThan(0)
         expect(publisherCompleted).toBe(true)
-        const streamed = publisherStderr.split('\n')
+        const streamed = publisherStderr
+          .split('\n')
           .filter((line) => line.startsWith(`[editor-view-${diagnosticPrefix}] `))
           .map((line) => `${line}\n`)
         expect(observed).toEqual(batchPublication === true ? [...streamed, ...streamed] : streamed)
@@ -890,8 +952,10 @@ describe('Buck watch reconciliation', () => {
         },
       })
       expect(commands).toEqual([
-        '/tools/buck2', fixture.options.editorViewCommand[0],
-        '/tools/buck2', fixture.options.editorViewCommand[0],
+        '/tools/buck2',
+        fixture.options.editorViewCommand[0],
+        '/tools/buck2',
+        fixture.options.editorViewCommand[0],
       ])
       expect(fixture.record().package).toBe('packages/app')
       expect(

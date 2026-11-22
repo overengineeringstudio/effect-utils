@@ -5,9 +5,9 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
+import { EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
-import { EditorViewCommandFailure } from './editor-view.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -973,7 +973,9 @@ export const reconcileBuckViews = async ({
       selected.has(entry.packagePath) === true && entry.editor !== undefined,
   )
   if (options.batchPublication === true && options.mode === 'publish') {
-    const requests = await settleEditorPublicationRequests({ requests: entries.map(publicationArgs) })
+    const requests = await settleEditorPublicationRequests({
+      requests: entries.map(publicationArgs),
+    })
     const result = await execute({
       command: options.editorViewCommand[0],
       args: [...options.editorViewCommand.slice(1), 'publish-batch'],
