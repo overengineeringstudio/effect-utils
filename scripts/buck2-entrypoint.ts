@@ -342,6 +342,7 @@ const contractContextOverrides = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): Record<string, string> => {
   const overrides = profileContractMembershipDigests({ root, env })
+  if (Object.keys(overrides).length === 0) return overrides
   const actor = env['FRACTAL_AGENT'] || env['ST_AGENT']
   if (actor !== undefined) overrides['quick_contracts.agent_actor'] = actor
   const policyPath = env['WORKTREE_POLICY_PATH']

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { lstatSync, readFileSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 export type ContractMembership = {
@@ -131,7 +131,7 @@ export const contractMembershipDigests = ({
   return digests
 }
 
-/** Profiles without this optional package do not acquire a Git discovery dependency. */
+/** Only the prepared owning root acquires Git discovery; foreign cells may inherit its profile. */
 export const profileContractMembershipDigests = ({
   root,
   env,
@@ -148,6 +148,24 @@ export const profileContractMembershipDigests = ({
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return {}
     throw error
   }
+  const receipt = join(root, '.devenv', 'quick-contracts-prepared')
+  let prepared: readonly string[]
+  try {
+    prepared = readFileSync(receipt, 'utf8').split('\n')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return {}
+    throw error
+  }
+  const [authority, preparedProfile] = prepared
+  if (
+    authority === undefined ||
+    isAbsolute(authority) === false ||
+    preparedProfile === undefined ||
+    isAbsolute(preparedProfile) === false
+  )
+    throw new Error(`quick-contracts: malformed prepared receipt: ${receipt}`)
+  if (realpathSync(preparedProfile) !== realpathSync(profile))
+    throw new Error(`quick-contracts: selected profile does not match prepared root: ${receipt}`)
   const path = join(directory, 'share', 'membership-inputs.json')
   let specification: MembershipSpecification
   try {

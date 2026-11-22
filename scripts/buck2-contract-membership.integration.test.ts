@@ -158,6 +158,31 @@ describe('live quick-contract Git membership', () => {
     )
   })
 
+  it('preserves foreign non-Git Buck dispatch with an inherited full membership profile', async () => {
+    const { directory, env } = fixture()
+    const profile = join(directory, 'foreign-inherited-profile')
+    const share = join(profile, 'quick-contracts', 'share')
+    mkdirSync(share, { recursive: true })
+    writeFileSync(
+      join(share, 'membership-inputs.json'),
+      JSON.stringify({ schemaVersion: 1, contracts: { 'test:types': tracked } }),
+    )
+    const root = join(directory, 'foreign-non-git')
+    mkdirSync(root)
+    writeFileSync(join(root, '.buckroot'), '')
+    writeFileSync(join(root, '.buckconfig'), '[buck2]\nremote_cache_enabled = false\n')
+    const inherited = {
+      ...env,
+      WORKTREE_CAPABILITIES_PROFILE: profile,
+      WORKTREE_GIT: undefined,
+      FRACTAL_AGENT: 'fixture-actor',
+      WORKTREE_POLICY_PATH: '/fixture-policy',
+    }
+    expect(profileContractMembershipDigests({ root, env: inherited })).toEqual({})
+    const args = ['build', '//:fixture']
+    expect(await directBuckArguments({ args, cwd: root, env: inherited })).toEqual(args)
+  })
+
   it('loads optional immutable profile data and refuses missing/malformed declared specifications', async () => {
     const { root, directory, env, digest } = fixture()
     const profile = join(directory, 'profile')
@@ -167,6 +192,12 @@ describe('live quick-contract Git membership', () => {
     const packageRoot = join(directory, 'package')
     mkdirSync(join(packageRoot, 'share'), { recursive: true })
     symlinkSync(packageRoot, join(profile, 'quick-contracts'))
+    // This protocol receipt belongs only to the synthetic fixture, never a real checkout.
+    mkdirSync(join(root, '.devenv'))
+    writeFileSync(
+      join(root, '.devenv', 'quick-contracts-prepared'),
+      `${join(directory, 'task-authority.json')}\n${profile}\n`,
+    )
     expect(() => profileContractMembershipDigests({ root, env: selected })).toThrow(
       'required membership specification',
     )
