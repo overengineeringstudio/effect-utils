@@ -55,9 +55,13 @@ const reconcileBuckViews = scopeEditorViewTestProcesses({
       root: request.options.workspaceRoot,
       ...(request.options.signal === undefined ? {} : { signal: request.options.signal }),
       run: async (owner) => {
-        expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(owner)
+        expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(
+          owner,
+        )
         await reconcileBuckViewsUnscoped(request)
-        expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(owner)
+        expect(requireEditorPublicationOwner({ root: request.options.workspaceRoot, owner })).toBe(
+          owner,
+        )
       },
     }),
 })
