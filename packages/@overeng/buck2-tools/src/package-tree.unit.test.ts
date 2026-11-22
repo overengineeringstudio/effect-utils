@@ -70,10 +70,12 @@ describe('Buck package-tree dependency boundaries', () => {
       '--workspace-source', '@workspace/two', 'flakes/two',
     ])
     for (const boundary of ['node_modules', 'apps/one/node_modules', 'flakes/two/node_modules']) {
-      expect(readFileSync(join(fixture.output, boundary, 'safe/package.json'), 'utf8'))
-        .toBe('{"name":"safe"}\n')
-      expect(readFileSync(join(fixture.output, boundary, '@workspace/two/package.json'), 'utf8'))
-        .toBe('{"name":"safe"}\n')
+      expect(readFileSync(join(fixture.output, boundary, 'safe/package.json'), 'utf8')).toBe(
+        '{"name":"safe"}\n',
+      )
+      expect(
+        readFileSync(join(fixture.output, boundary, '@workspace/two/package.json'), 'utf8'),
+      ).toBe('{"name":"safe"}\n')
     }
     expect(readFileSync(source, 'utf8')).toBe('{"name":"safe"}\n')
   })

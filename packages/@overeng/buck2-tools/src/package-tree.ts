@@ -139,13 +139,13 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
           ? files
           : flag === '--workspace-file'
             ? workspaceFiles
-          : flag === '--dependency-root'
-            ? dependencyRoots
-            : flag === '--workspace-source'
-              ? workspaceSources
-              : flag === '--workspace-dependency-view'
-                ? workspaceDependencyViews
-                : workspaceLinks
+            : flag === '--dependency-root'
+              ? dependencyRoots
+              : flag === '--workspace-source'
+                ? workspaceSources
+                : flag === '--workspace-dependency-view'
+                  ? workspaceDependencyViews
+                  : workspaceLinks
       setUnique({ values, key: destination, value, field: flag })
       index += 3
       continue
