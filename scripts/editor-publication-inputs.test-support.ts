@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import {
-  chmodSync, cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync,
-  realpathSync, rmSync, writeFileSync,
+  chmodSync,
+  cpSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -168,7 +175,15 @@ export const withNativePublicationFixture = async (
     execFileSync(git, ['init', '--quiet', root])
     execFileSync(git, ['-C', root, 'add', 'package.json'])
     await action({
-      root, buck, native, git, authority, run, build, measured, stopPrivate,
+      root,
+      buck,
+      native,
+      git,
+      authority,
+      run,
+      build,
+      measured,
+      stopPrivate,
       privateIsRetired: () => privateRetired,
     })
     timings.totalMs = performance.now() - started
