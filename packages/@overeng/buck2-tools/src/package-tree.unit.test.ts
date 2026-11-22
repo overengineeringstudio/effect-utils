@@ -20,6 +20,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { runPackageTreeCli } from './package-tree.ts'
 
 const scratchDirectories: string[] = []
+const assembleFromArguments = (args: readonly string[]): void => {
+  const manifest = `${args[1]!}.arguments.json`
+  writeFileSync(manifest, JSON.stringify(args))
+  runPackageTreeCli(manifest)
+}
 type AssemblyFixture = {
   readonly root: string
   readonly nodeModules: string
@@ -39,17 +44,45 @@ const createAssemblyFixture = (): AssemblyFixture => {
 }
 
 const assemble = ({ nodeModules, output }: AssemblyFixture): void =>
-  runPackageTreeCli(['--output', output, '--node-modules', nodeModules])
+  assembleFromArguments(['--output', output, '--node-modules', nodeModules])
 
 afterEach(() => {
   for (const directory of scratchDirectories.splice(0)) rmSync(directory, { recursive: true })
 })
 
 describe('Buck package-tree dependency boundaries', () => {
+  it('rejects malformed argument manifests before assembling a package', () => {
+    const fixture = createAssemblyFixture()
+    const manifest = join(fixture.root, 'arguments.json')
+    for (const value of [{}, ['--output', 1]]) {
+      writeFileSync(manifest, JSON.stringify(value))
+      expect(() => runPackageTreeCli(manifest)).toThrow(
+        'argument manifest must be an array of strings',
+      )
+    }
+    expect(existsSync(fixture.output)).toBe(false)
+  })
+
+  it('assembles a manifest larger than host command-line limits without expanding argv', () => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.root, 'source.ts')
+    writeFileSync(source, 'export const value = 1\n')
+    const prefix = 'workspace-source-'.repeat(10)
+    const args = ['--output', fixture.output, '--empty-node-modules', 'true']
+    for (let index = 0; index < 8000; index++) {
+      args.push('--file', `${prefix}/${index}.ts`, source)
+    }
+    expect(JSON.stringify(args).length).toBeGreaterThan(1_000_000)
+    assembleFromArguments(args)
+    expect(readFileSync(join(fixture.output, prefix, '7999.ts'), 'utf8')).toBe(
+      'export const value = 1\n',
+    )
+  })
+
   it('materializes an explicit empty node_modules boundary', () => {
     const fixture = createAssemblyFixture()
 
-    runPackageTreeCli(['--output', fixture.output, '--empty-node-modules', 'true'])
+    assembleFromArguments(['--output', fixture.output, '--empty-node-modules', 'true'])
 
     expect(statSync(join(fixture.output, 'node_modules')).isDirectory()).toBe(true)
   })
@@ -58,16 +91,32 @@ describe('Buck package-tree dependency boundaries', () => {
     const fixture = createAssemblyFixture()
     symlinkSync('.pnpm/safe/node_modules/safe', join(fixture.nodeModules, 'safe'))
     const source = join(fixture.packageDirectory, 'package.json')
-    runPackageTreeCli([
-      '--output', fixture.output,
-      '--empty-node-modules', 'true',
-      '--file', 'apps/one/package.json', source,
-      '--file', 'flakes/two/package.json', source,
-      '--dependency-root', 'node_modules', fixture.nodeModules,
-      '--dependency-root', 'apps/one/node_modules', fixture.nodeModules,
-      '--dependency-root', 'flakes/two/node_modules', fixture.nodeModules,
-      '--workspace-source', '@workspace/one', 'apps/one',
-      '--workspace-source', '@workspace/two', 'flakes/two',
+    assembleFromArguments([
+      '--output',
+      fixture.output,
+      '--empty-node-modules',
+      'true',
+      '--file',
+      'apps/one/package.json',
+      source,
+      '--file',
+      'flakes/two/package.json',
+      source,
+      '--dependency-root',
+      'node_modules',
+      fixture.nodeModules,
+      '--dependency-root',
+      'apps/one/node_modules',
+      fixture.nodeModules,
+      '--dependency-root',
+      'flakes/two/node_modules',
+      fixture.nodeModules,
+      '--workspace-source',
+      '@workspace/one',
+      'apps/one',
+      '--workspace-source',
+      '@workspace/two',
+      'flakes/two',
     ])
     for (const boundary of ['node_modules', 'apps/one/node_modules', 'flakes/two/node_modules']) {
       expect(readFileSync(join(fixture.output, boundary, 'safe/package.json'), 'utf8')).toBe(
@@ -90,7 +139,7 @@ describe('Buck package-tree dependency boundaries', () => {
     symlinkSync('missing', join(fixture.output, 'dangling'))
     const outputInode = statSync(fixture.output).ino
 
-    runPackageTreeCli(['--output', fixture.output, '--empty-node-modules', 'true'])
+    assembleFromArguments(['--output', fixture.output, '--empty-node-modules', 'true'])
 
     expect(statSync(fixture.output).ino).toBe(outputInode)
     expect(readdirSync(fixture.output)).toEqual(['node_modules'])
@@ -193,7 +242,7 @@ describe('Buck package view over a normalized dependency view', () => {
     mkdirSync(join(fixture.root, 'src'), { recursive: true })
     writeFileSync(source, 'export const value = 1\n')
 
-    runPackageTreeCli([
+    assembleFromArguments([
       '--output',
       fixture.output,
       '--dependency-view',
@@ -222,7 +271,7 @@ describe('Buck package view over a normalized dependency view', () => {
         '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"},"references":[{"path":"../sibling"}]}\n',
       )
 
-      runPackageTreeCli([
+      assembleFromArguments([
         '--output',
         fixture.output,
         '--dependency-view',
@@ -252,7 +301,7 @@ describe('Buck package view over a normalized dependency view', () => {
     const source = join(fixture.root, 'tsconfig.json')
     writeFileSync(source, contents)
 
-    runPackageTreeCli([
+    assembleFromArguments([
       '--output',
       fixture.output,
       '--dependency-view',
@@ -274,7 +323,7 @@ describe('Buck package view over a normalized dependency view', () => {
     writeFileSync(source, 'export const value = 1\n')
 
     expect(() =>
-      runPackageTreeCli([
+      assembleFromArguments([
         '--output',
         fixture.output,
         '--dependency-view',
@@ -296,7 +345,7 @@ describe('Buck package view over a normalized dependency view', () => {
     writeFileSync(source, '{"references":[{"path":"../sibling"}]}\n')
 
     expect(() =>
-      runPackageTreeCli([
+      assembleFromArguments([
         '--output',
         fixture.output,
         '--dependency-view',
@@ -320,7 +369,7 @@ describe('Buck package view over a normalized dependency view', () => {
     writeFileSync(base, contents)
     const project = join(fixture.root, 'tsconfig.typecheck.json')
     writeFileSync(project, '{"extends":"./tsconfig.json","references":[{"path":"../sibling"}]}\n')
-    runPackageTreeCli([
+    assembleFromArguments([
       '--output',
       fixture.output,
       '--dependency-view',
@@ -370,7 +419,7 @@ describe('Buck package view over a normalized dependency view', () => {
       transitiveLink,
     )
 
-    runPackageTreeCli([
+    assembleFromArguments([
       '--output',
       fixture.output,
       '--dependency-view',
@@ -412,7 +461,7 @@ describe('Buck package view over a normalized dependency view', () => {
     mkdirSync(declarations)
 
     expect(() =>
-      runPackageTreeCli([
+      assembleFromArguments([
         '--output',
         fixture.output,
         '--dependency-view',
@@ -440,7 +489,7 @@ describe('Buck package view over a normalized dependency view', () => {
           : [flag, 'node_modules/poison', source]
 
       expect(() =>
-        runPackageTreeCli([
+        assembleFromArguments([
           '--output',
           fixture.output,
           '--dependency-view',
@@ -457,7 +506,7 @@ describe('Buck package view over a normalized dependency view', () => {
     const fixture = createAssemblyFixture()
 
     expect(() =>
-      runPackageTreeCli([
+      assembleFromArguments([
         '--output',
         fixture.output,
         '--node-modules',
@@ -476,7 +525,7 @@ describe('Buck package view over a normalized dependency view', () => {
     symlinkSync('../../outside.txt', join(owned, 'escape'))
 
     expect(() =>
-      runPackageTreeCli([
+      assembleFromArguments([
         '--output',
         fixture.output,
         '--dependency-view',
