@@ -8,6 +8,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
+import { FingerprintCommandFailure } from './typescript-runner.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -321,7 +322,11 @@ const errorMessage = (error: unknown): string =>
  * output cannot forge a status.
  */
 export const exitCodeOf = (error: unknown): number => {
-  if (error instanceof CommandFailure || error instanceof EditorViewCommandFailure)
+  if (
+    error instanceof CommandFailure ||
+    error instanceof EditorViewCommandFailure ||
+    error instanceof FingerprintCommandFailure
+  )
     return error.exitCode ?? 1
   const firstLine = errorMessage(error).split('\n')[0] ?? ''
   const exited = /exited (\d+)$/.exec(firstLine)
@@ -330,14 +335,25 @@ export const exitCodeOf = (error: unknown): number => {
 
 /** Find native or subprocess termination in a settled publication failure tree. */
 export const publicationSignal = (error: unknown): NodeJS.Signals | undefined => {
-  if (error instanceof CommandFailure || error instanceof EditorViewCommandFailure)
-    return error.signal
-  if (error instanceof AggregateError)
-    for (const failure of error.errors) {
-      const signal = publicationSignal(failure)
-      if (signal !== undefined) return signal
-    }
-  return undefined
+  const seen = new Set<unknown>()
+  const visit = (failure: unknown): NodeJS.Signals | undefined => {
+    if (seen.has(failure) === true) return undefined
+    seen.add(failure)
+    if (
+      (failure instanceof CommandFailure ||
+        failure instanceof EditorViewCommandFailure ||
+        failure instanceof FingerprintCommandFailure) &&
+      failure.signal !== undefined
+    )
+      return failure.signal
+    if (failure instanceof AggregateError)
+      for (const child of failure.errors) {
+        const signal = visit(child)
+        if (signal !== undefined) return signal
+      }
+    return failure instanceof Error ? visit(failure.cause) : undefined
+  }
+  return visit(error)
 }
 
 /** Persistent, coalescing reconciliation state machine. */

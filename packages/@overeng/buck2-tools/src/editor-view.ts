@@ -92,6 +92,7 @@ import { canonicalizeParent, canonicalizePath, realpathThroughName } from './rea
 import {
   closeFingerprintAdmission,
   editorViewTimingContext,
+  FingerprintCommandFailure,
   runFingerprintTool,
   withFingerprintScope,
 } from './typescript-runner.ts'
@@ -4754,7 +4755,11 @@ const nativeCommandSignal = ({
 }): NodeJS.Signals | undefined => {
   if (seen.has(error) === true) return undefined
   seen.add(error)
-  if (error instanceof EditorViewCommandFailure && error.signal !== undefined) return error.signal
+  if (
+    (error instanceof EditorViewCommandFailure || error instanceof FingerprintCommandFailure) &&
+    error.signal !== undefined
+  )
+    return error.signal
   if (error instanceof AggregateError)
     for (const failure of error.errors) {
       const signal = nativeCommandSignal({ error: failure, seen })

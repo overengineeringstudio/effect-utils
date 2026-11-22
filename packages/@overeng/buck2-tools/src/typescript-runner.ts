@@ -304,6 +304,35 @@ export const withFingerprintScope = async <T>({
   }
 }
 
+/** Preserve a fingerprint child's actual native outcome and captured diagnostics. */
+export class FingerprintCommandFailure extends Error {
+  readonly exitCode: number | undefined
+  readonly signal: NodeJS.Signals | undefined
+  readonly stderr: string
+
+  constructor({
+    root,
+    exitCode,
+    signal,
+    stderr,
+  }: {
+    readonly root: string
+    readonly exitCode: number | undefined
+    readonly signal: NodeJS.Signals | undefined
+    readonly stderr: string
+  }) {
+    super(
+      signal === undefined
+        ? `fingerprint tool failed for ${root} (exit ${exitCode}): ${stderr}`
+        : `fingerprint tool failed with signal ${signal}`,
+    )
+    this.name = 'FingerprintCommandFailure'
+    this.exitCode = exitCode
+    this.signal = signal
+    this.stderr = stderr
+  }
+}
+
 const spawnFingerprintChild = ({
   tool,
   args,
@@ -390,17 +419,18 @@ export const runFingerprintTool = ({
             reject(childError)
             return
           }
-          if (cancelled() === true) {
-            reject(new Error('fingerprint admission closed by termination'))
-            return
-          }
-          if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
-          else
+          if (code !== 0)
             reject(
-              new Error(
-                `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
-              ),
+              new FingerprintCommandFailure({
+                root: args[0] ?? '',
+                exitCode: code ?? undefined,
+                signal: signal ?? undefined,
+                stderr: Buffer.concat(stderr).toString('utf8'),
+              }),
             )
+          else if (cancelled() === true)
+            reject(new Error('fingerprint admission closed by termination'))
+          else resolveOutput(Buffer.concat(stdout).toString('utf8'))
         })
       }),
   )

@@ -136,6 +136,10 @@ let
   # Real kernel child for lifetime tests, not an implementation of the Rust digest algorithm.
   fingerprintLifetimeTestChild = pkgs.writeShellScriptBin "buck2-fingerprint" ''
     set -euo pipefail
+    case "''${1-}" in
+      --native-signal) printf 'ready\n'; kill -TERM "$$"; exit 1 ;;
+      --native-exit) printf 'native fingerprint fixture exit\n' >&2; exit 19 ;;
+    esac
     ready="$1"
     terminated="$2"
     exec 3<"$3"

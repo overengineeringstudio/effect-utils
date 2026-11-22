@@ -176,8 +176,10 @@ Every dispatch has its own native fingerprint scope; it joins subordinate
 fingerprints before returning. Optional dispatch cancellation also interrupts
 live eviction-lock waits and terminates native copies, joining their close before
 returning. The CLI remains the process-I/O adapter and drains on SIGTERM.
-Native command failures preserve their signal or exit code, original cause, and
+Copy/rename command failures preserve their signal or exit code, original cause, and
 captured streams as `EditorViewCommandFailure`; signaled messages omit path details.
+Fingerprint failures retain their native outcome and stderr as `FingerprintCommandFailure`,
+including during cancellation and through publication's aggregate/cause wrappers.
 After joined dispatch cleanup, the CLI preserves a native failure's actual signal
 (including aggregate/cause wrappers) as its own process termination. Ordinary
 errors still fail normally; externally requested SIGTERM still drains through

@@ -41,6 +41,7 @@ import {
   trackEditorViewTestSpawn,
 } from './editor-view-test-processes.ts'
 import { EditorViewCommandFailure } from './editor-view.ts'
+import { FingerprintCommandFailure } from './typescript-runner.ts'
 
 const fixtureProcessIds = new Set([process.pid])
 const reconcileBuckViews = scopeEditorViewTestProcesses({
@@ -362,6 +363,42 @@ describe('Buck watch reconciliation', () => {
     expect(publicationSignal(new AggregateError([failure]))).toBe('SIGINT')
     expect(publicationSignal(new Error('interrupted by SIGTERM'))).toBeUndefined()
     expect(publicationSignal(new AggregateError([new Error('ordinary')]))).toBeUndefined()
+  })
+
+  it('retains fingerprint native outcomes through cause and aggregate wrappers', () => {
+    const failure = new FingerprintCommandFailure({
+      root: '/private/fingerprint-fixture',
+      exitCode: undefined,
+      signal: 'SIGTERM',
+      stderr: 'native diagnostic',
+    })
+    const phase = new Error('publication phase failed', { cause: new AggregateError([failure]) })
+    expect(publicationSignal(phase)).toBe('SIGTERM')
+    expect(failure.message).not.toContain('/private/fingerprint-fixture')
+    expect(failure.stderr).toBe('native diagnostic')
+    expect(
+      exitCodeOf(
+        new FingerprintCommandFailure({
+          root: '/fixture',
+          exitCode: 19,
+          signal: undefined,
+          stderr: '',
+        }),
+      ),
+    ).toBe(19)
+  })
+
+  it('continues past cyclic causes to a real native outcome', () => {
+    const cycle = new Error('ordinary failure')
+    cycle.cause = cycle
+    const failure = new FingerprintCommandFailure({
+      root: '/fixture',
+      exitCode: undefined,
+      signal: 'SIGTERM',
+      stderr: '',
+    })
+    expect(publicationSignal(cycle)).toBeUndefined()
+    expect(publicationSignal(new AggregateError([cycle, failure]))).toBe('SIGTERM')
   })
 
   it('publishes real finite fixture bytes through the existing publisher CLI', async () => {
