@@ -252,8 +252,6 @@ let
     exec ${pkgs.coreutils}/bin/timeout --kill-after=5 3600 ${transaction}
   '';
 in
-assert lib.assertMsg validRequires
-  "quick-contracts: catalog requires must match the selected evaluated task.after dependencies";
 {
   options.effectUtils.quickContracts = {
     package = lib.mkOption {
@@ -266,7 +264,12 @@ assert lib.assertMsg validRequires
     };
   };
   config.effectUtils.quickContracts = {
-    package = pkgs.runCommand "quick-contracts" { } ''
+    # Option discovery must not force the config fixed point. Check the real
+    # evaluated task DAG only when its execution package is requested.
+    package =
+      assert lib.assertMsg validRequires
+        "quick-contracts: catalog requires must match the selected evaluated task.after dependencies";
+      pkgs.runCommand "quick-contracts" { } ''
       mkdir -p "$out/bin"
       ln -s ${runner} "$out/bin/quick-contracts"
       ln -s ${prepare} "$out/bin/quick-contracts-prepare"

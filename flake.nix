@@ -316,6 +316,14 @@ rec {
           publication-owner-identity =
             assert import ./nix/buck2-publication-owner.test.nix { inherit pkgs; };
             pkgs.runCommand "publication-owner-identity" { } ''touch "$out"'';
+          quick-contracts-module-shape =
+            assert import ./nix/quick-contracts.test.nix {
+              inherit pkgs;
+              inputs = self.inputs;
+              baseCapabilities = buck2Capabilities;
+              preparedTools = self.packages.${system}.worktree-tools;
+            };
+            pkgs.runCommand "quick-contracts-module-shape" { } ''touch "$out"'';
           worktree-tools-identity =
             pkgs.runCommand "worktree-tools-identity"
               {
