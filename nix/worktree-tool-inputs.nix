@@ -10,14 +10,24 @@
 let
   lib = pkgs.lib;
   relative = file: lib.removePrefix "${toString repositoryRoot}/" (toString file);
-  inventory = lib.concatMap (name:
-    (builtins.fromJSON (builtins.readFile (./buck2-products + "/${name}-targets.json"))).products
-  ) [ "cache" "native" "compiled" ];
+  inventory =
+    lib.concatMap
+      (
+        name: (builtins.fromJSON (builtins.readFile (./buck2-products + "/${name}-targets.json"))).products
+      )
+      [
+        "cache"
+        "native"
+        "compiled"
+      ];
   # The caller reuses its admitted shell/task product inventory. Extra names
   # here are runtime products pulled in by those wrappers and task launchers.
   productNames = retainedToolNames ++ [
-    "oxc-config" "oxc-config-stylex-upstream-plugin"
-    "notion-md" "notion-db-runtime" "genie-bootstrap-closure-check"
+    "oxc-config"
+    "oxc-config-stylex-upstream-plugin"
+    "notion-md"
+    "notion-db-runtime"
+    "genie-bootstrap-closure-check"
     "worktree-lease"
   ];
   products = builtins.filter (product: builtins.elem product.name productNames) inventory;
@@ -26,8 +36,18 @@ let
   rootInputs = import ./buck2-products/root-projection-inputs.nix {
     inherit pkgs repositoryRoot;
   };
-  stage0Names = [ "events" "archive-tool" "product" "fingerprint" ];
-  manifestNames = [ "package.json" "pnpm-lock.yaml" "Cargo.toml" "Cargo.lock" ];
+  stage0Names = [
+    "events"
+    "archive-tool"
+    "product"
+    "fingerprint"
+  ];
+  manifestNames = [
+    "package.json"
+    "pnpm-lock.yaml"
+    "Cargo.toml"
+    "Cargo.lock"
+  ];
   # One declaration drives both Git selectors and the immutable byte projection.
   literals =
     rootInputs
@@ -35,9 +55,13 @@ let
     ++ map relative (import ./buck2-launcher-inputs.nix)
     ++ map relative publicationOwner.source-inputs
     ++ [ (relative editorViewLease.src) ]
-    ++ map relative (builtins.attrValues (import ./task-authority-inputs.nix {
-      inherit repositoryRoot;
-    }))
+    ++ map relative (
+      builtins.attrValues (
+        import ./task-authority-inputs.nix {
+          inherit repositoryRoot;
+        }
+      )
+    )
     ++ [
       "flake.nix"
       "flake.lock"

@@ -15,7 +15,8 @@ let
   # runs separately through the retained authority, before Buck is invoked.
   sequence = import ./quick-contracts-sequence.nix { };
   targets = builtins.fromJSON (builtins.readFile ./quick-contracts-targets.json);
-  selectedAfter = name: builtins.filter (dependency: builtins.elem dependency sequence) config.tasks.${name}.after;
+  selectedAfter =
+    name: builtins.filter (dependency: builtins.elem dependency sequence) config.tasks.${name}.after;
   validRequires = builtins.all (
     name:
     builtins.sort builtins.lessThan targets.${name}.requires
@@ -147,18 +148,28 @@ let
           # Inherit, never embed, the caller's selected profile. worktree-env.py
           # rejects a base-profile override against a published full generation;
           # nested commands retain the pinned direct BUCK2_BIN binding instead.
-          ${lib.optionalString (builtins.elem name [
-            "buck2:task-guards:check"
-            "check:buck2-producer-overlap"
-          ]) ''
-            export DEVENV_TASK_FILE=${taskAuthority} DEVENV_TASKS_JSON=${taskAuthority}
-          ''}
+          ${lib.optionalString
+            (builtins.elem name [
+              "buck2:task-guards:check"
+              "check:buck2-producer-overlap"
+            ])
+            ''
+              export DEVENV_TASK_FILE=${taskAuthority} DEVENV_TASKS_JSON=${taskAuthority}
+            ''
+          }
           ${lib.optionalString (name == "test:notion-integration:ci-skip") ''
             export NOTION_INTEGRATION_TASK_COMMANDS_FILE=${notionCiTaskCommands}
           ''}
           ${taskScripts.${name}}
           mkdir -p -- "$(dirname "$verdict")"
-          printf '%s\n' ${lib.escapeShellArg (builtins.toJSON { task = name; status = "passed"; })} > "$verdict"
+          printf '%s\n' ${
+            lib.escapeShellArg (
+              builtins.toJSON {
+                task = name;
+                status = "passed";
+              }
+            )
+          } > "$verdict"
         '';
       in
       {
@@ -270,24 +281,27 @@ in
       assert lib.assertMsg validRequires
         "quick-contracts: catalog requires must match the selected evaluated task.after dependencies";
       pkgs.runCommand "quick-contracts" { } ''
-      mkdir -p "$out/bin"
-      ln -s ${runner} "$out/bin/quick-contracts"
-      ln -s ${prepare} "$out/bin/quick-contracts-prepare"
-      ln -s ${reporter} "$out/bin/quick-contracts-report"
-      ln -s ${taskAuthority} "$out/tasks.json"
-    '';
+        mkdir -p "$out/bin"
+        ln -s ${runner} "$out/bin/quick-contracts"
+        ln -s ${prepare} "$out/bin/quick-contracts-prepare"
+        ln -s ${reporter} "$out/bin/quick-contracts-report"
+        ln -s ${taskAuthority} "$out/tasks.json"
+      '';
     capabilities =
       (import ./buck2-capabilities.nix {
         inherit pkgs;
         src = root;
         inherit (baseCapabilities) capabilityPackages;
-        extraCapabilities = baseCapabilities.extraCapabilities // taskCapabilities // {
-          quick-contracts = {
-            kind = "directory";
-            package = cfg.package;
-            protocol = "effect-utils/quick-contracts/v1";
+        extraCapabilities =
+          baseCapabilities.extraCapabilities
+          // taskCapabilities
+          // {
+            quick-contracts = {
+              kind = "directory";
+              package = cfg.package;
+              protocol = "effect-utils/quick-contracts/v1";
+            };
           };
-        };
       }).overrideAttrs
         (previous: {
           # Preserve the producer's regular metadata files and exact tool links.

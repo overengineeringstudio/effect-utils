@@ -649,9 +649,7 @@ let
   );
 
   # Reader roots are shared with the trusted proof's declaration closure.
-  readerComposition = builtins.fromJSON (
-    builtins.readFile taskAuthorityInputs.readerComposition
-  );
+  readerComposition = builtins.fromJSON (builtins.readFile taskAuthorityInputs.readerComposition);
   packagesWithStorybook = readerComposition.storybooks;
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
   consumerPublicationPackagePaths = lib.unique (

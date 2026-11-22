@@ -28,21 +28,25 @@ let
       );
     }
   );
-  identityDigest = pkgs.runCommand "worktree-tools-identity-inputs-digest"
-    {
-      nativeBuildInputs = [ pkgs.git pkgs.python3 ];
-    }
-    ''
-      export HOME="$TMPDIR/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
-      export WORKTREE_GIT=${pkgs.git}/bin/git
-      mkdir -p "$HOME" "$TMPDIR/snapshot"
-      cp -R ${identityInputs.source}/. "$TMPDIR/snapshot/"
-      chmod -R u+w "$TMPDIR/snapshot"
-      git -c init.defaultBranch=identity init --template= "$TMPDIR/snapshot" >&2
-      git -C "$TMPDIR/snapshot" add -f --all
-      ${pkgs.python3}/bin/python3 ${publication} inputs-digest \
-        ${identityManifest} "$TMPDIR/snapshot" > "$out"
-    '';
+  identityDigest =
+    pkgs.runCommand "worktree-tools-identity-inputs-digest"
+      {
+        nativeBuildInputs = [
+          pkgs.git
+          pkgs.python3
+        ];
+      }
+      ''
+        export HOME="$TMPDIR/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+        export WORKTREE_GIT=${pkgs.git}/bin/git
+        mkdir -p "$HOME" "$TMPDIR/snapshot"
+        cp -R ${identityInputs.source}/. "$TMPDIR/snapshot/"
+        chmod -R u+w "$TMPDIR/snapshot"
+        git -c init.defaultBranch=identity init --template= "$TMPDIR/snapshot" >&2
+        git -C "$TMPDIR/snapshot" add -f --all
+        ${pkgs.python3}/bin/python3 ${publication} inputs-digest \
+          ${identityManifest} "$TMPDIR/snapshot" > "$out"
+      '';
   bridge = import ./worktree-buck-trace.nix {
     inherit
       pkgs

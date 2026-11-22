@@ -1,5 +1,7 @@
 # Shared by evaluated task commands and prepared-tool source selection.
-{ repositoryRoot ? ../. }:
+{
+  repositoryRoot ? ../.,
+}:
 {
   testPlatforms = repositoryRoot + "/genie/ci-workflow/test-platforms.json";
   testScheduling = repositoryRoot + "/genie/ci-workflow/test-scheduling.json";
