@@ -286,7 +286,7 @@ def _cargo_rust_test_impl(ctx):
     # allow_args returns the written artifact and macro files, not its runtime inputs.
     # ".." from the symlinked sources tree follows physical parents, not its lexical
     # Buck path. Anchor marked artifact arguments on the runtime project root before cd;
-    # marking only artifacts preserves literal RunInfo arguments (e.g. python3 and flags).
+    # marking only artifacts preserves literal RunInfo arguments such as the injector's interpreter and flags.
     launcher, launcher_macros = ctx.actions.write(
         "cargo-test.sh",
         [
