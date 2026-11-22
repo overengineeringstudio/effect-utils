@@ -202,7 +202,8 @@ describe('quick contract task runtime', () => {
       const { bash, coreutils } = declaredTools()
       expect(runtime).toBeDefined()
       const root = fixture()
-      const deep = join(root, 'buck-out', 'deep-scratch-'.repeat(20))
+      // Exceed socket limits without exceeding NAME_MAX for any component.
+      const deep = join(root, 'buck-out', 'deep-scratch/'.repeat(20))
       mkdirSync(deep, { recursive: true })
       const observed: string[] = []
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -294,7 +295,15 @@ exit "$1"`,
           '-euc',
           `${copy}\n${replace}\nprintf 'fixture replacement\\n' > "$work/buck2/toolchains/BUCK"`,
         ],
-        { env: { CP_BIN: cp, repo_root: repository, work }, encoding: 'utf8' },
+        {
+          env: {
+            PATH: `${dirname(cp)}:${dirname(bash)}`,
+            CP_BIN: cp,
+            repo_root: repository,
+            work,
+          },
+          encoding: 'utf8',
+        },
       )
       expect(result.stderr).toBe('')
       expect(result.status).toBe(0)
