@@ -66,8 +66,9 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
           ...taskStep,
           env: {
             ...('env' in taskStep ? taskStep.env : {}),
-            PIPELINE_RUN_PREFIX:
-              "${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}",
+            PIPELINE_RUN_PREFIX: taskStep.run.includes('scripts/worktree-env.py run -- ')
+              ? 'otel-span pipeline-run --'
+              : "${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}",
           },
         }
       }

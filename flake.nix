@@ -387,6 +387,7 @@ rec {
                 pkgs.git
                 pkgs.nix
                 pkgs.watchman
+                self.packages.${system}.otel-span
               ];
               environment.BUCK2_BIN = "${buck2}/bin/buck2";
               environment.BUCK2_NATIVE_BIN = "${buck2}/libexec/buck2";

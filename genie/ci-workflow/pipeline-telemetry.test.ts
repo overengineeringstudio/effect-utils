@@ -21,6 +21,7 @@ test('each task step in a job shares the pipeline run prefix', () => {
   expect(taskSteps).toHaveLength(2)
   for (const step of taskSteps) {
     expect('env' in step && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
+    expect('env' in step && step.env?.PIPELINE_RUN_PREFIX).toContain('shell -- otel-span')
   }
   expect('env' in taskSteps[1]! && taskSteps[1]!.env?.EXISTING).toBe('yes')
   const exports = steps.filter(
@@ -40,6 +41,10 @@ test('Buck quick contracts retain the existing pipeline trace boundary', () => {
   expect(step).toBeDefined()
   expect('run' in step! && step.run).toContain('buck2 run //:check-quick')
   expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
+  expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toBe('otel-span pipeline-run --')
+  expect('run' in step! && step.run).toContain(
+    'scripts/worktree-env.py run -- ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }buck2',
+  )
   expect('env' in step! && step.env?.EFFECT_UTILS_CI_TEST).toBe('1')
 })
 

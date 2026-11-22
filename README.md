@@ -629,6 +629,8 @@ for test/validation edits and sensitivity to real runtime and configuration edit
 The evaluated quick-contract PATH declares its process tools and C compiler.
 Retained Cargo protocol-bindings checks use the Nix Apple SDK and iconv on Darwin,
 not an ambient `cc` or Xcode installation.
+CI enters that prepared PATH before its declared `otel-span pipeline-run` prefix;
+native Buck checks never re-enter `devenv shell` just to start tracing.
 
 `EFFECT_UTILS_CI_TEST=1` selects the existing hermetic cache-posture CI task;
 host quick checks retain the full fleet-gate suite, including real max-hold expiry.
