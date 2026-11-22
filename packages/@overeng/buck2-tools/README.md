@@ -269,16 +269,16 @@ Scoped devenv publishers retain their explicit consumer sets; Storybook builds d
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
-The supervisor uses a blocking kernel `flock`, without polling or lock theft,
+The authority holds a process-local kernel `flock` until publisher close,
 with a **5 s kill grace** on interruption or deadline expiry. The execution clock
-starts only after admission: scoped/bootstrap work keeps its 300 s cap and
+starts only after admission; each task retains its declared execution budget.
 Storybook play tests keep their derived 380 s cap, excluding queue time.
 Each admitted invocation logs the lock path and admission wait in seconds.
 Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
 treated as termination only after a process census proves no live members remain;
-live-member permission failures still fail closed. The supervisor retains ownership through
-process-group cleanup; process exit releases it automatically. The persistent
+live-member permission failures still fail closed. The authority retains ownership
+until publisher close; its process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled

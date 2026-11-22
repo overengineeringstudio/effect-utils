@@ -340,7 +340,7 @@ else:
         ):
             with self.subTest(termination=termination, payload=payload), \
                  tempfile.TemporaryDirectory() as scratch:
-                root = Path(scratch)
+                root = Path(scratch).resolve()
                 ready = root / "ready"
                 os.mkfifo(root / "release")
                 os.mkfifo(root / "publication-release")
@@ -382,6 +382,8 @@ with open(".devenv/editor-view-publication.lock", "r+b") as probe:
         pass
     else:
         raise AssertionError("native build ran without the real publication owner")
+if sys.argv[-1] == "status":
+    sys.exit(0)  # This per-command fixture has no daemon to report.
 event = sys.argv[sys.argv.index("--event-log") + 1]
 pathlib.Path(event).touch()
 if os.environ["PAYLOAD"] == "lines":
@@ -488,7 +490,7 @@ def elapsed():
     return clock
 supervisor.time.monotonic = elapsed
 sys.exit(supervisor.supervise_locked(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication") else None, 0.2,
-                                   str(pathlib.Path(".devenv/editor-view-publication.lock").resolve())))
+                                   ".devenv/editor-view-publication.lock"))
 '''
                 result = subprocess.run(
                     [sys.executable, "-c", driver, bun, str(runner)],
