@@ -79,6 +79,8 @@ worktree's Nix tool closure. Runtime selection reads the immutable
 it never evaluates Nix or prepares implicitly. The selection reuses the product
 projection and includes Nix configuration, launchers, manifests, lockfiles and
 task authority. Changing a selected input requires explicit preparation.
+Full check profiles also verify the frozen selected-input digest they were built
+from; reusing an old profile cannot re-publish obsolete task authority.
 
 Check sources outside that tool selection belong to Buck's per-action input
 digests: editing or committing them does not invalidate the prepared tools.

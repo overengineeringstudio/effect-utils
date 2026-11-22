@@ -1,6 +1,6 @@
 # Transitional execution projection: devenv still owns evaluated task definitions;
 # Buck owns the bounded check invocation. No task runner is called at check time.
-{ baseCapabilities }:
+{ baseCapabilities, preparedTools }:
 {
   config,
   inputs,
@@ -175,7 +175,19 @@ let
       }
     ) sequence
   );
+  # The profile must prove the selected tool/task bytes it was evaluated from.
+  # Checking fresh tools alone would let an old full-profile override re-publish
+  # obsolete task commands after an authority edit.
+  validateAuthority = ''
+    actual_inputs="$(${pkgs.python3}/bin/python3 ${../scripts/worktree-env.py} \
+      inputs-digest ${preparedTools.identity-inputs-manifest} "$PWD")"
+    if ! printf '%s\n' "$actual_inputs" | cmp -s - ${preparedTools.identity-inputs-digest}; then
+      echo 'quick-contracts: frozen tool/task authority is stale; rebuild effectUtils.quickContracts.capabilities, republish WORKTREE_CAPABILITIES_PROFILE and prepare again' >&2
+      exit 78
+    fi
+  '';
   validatePrepared = ''
+    ${validateAuthority}
     if ! printf '%s\n%s\n' ${taskAuthority} "$WORKTREE_CAPABILITIES_PROFILE" | \
       cmp -s - .devenv/quick-contracts-prepared; then
       echo 'quick-contracts: source views are not prepared for this authority/profile; run the selected quick-contracts capability bin/quick-contracts-prepare before buck2 run //:check-quick' >&2
@@ -207,6 +219,7 @@ let
     generation="''${2:?usage: quick-contracts-prepare ROOT GENERATION}"
     cd "$root"
     ${environment}
+    ${validateAuthority}
     if [ "$(realpath "$generation/profile")" != "$WORKTREE_CAPABILITIES_PROFILE" ]; then
       echo 'quick-contracts: preparation generation does not root the selected capability profile' >&2
       exit 78

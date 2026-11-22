@@ -178,6 +178,8 @@ class Publication(unittest.TestCase):
         mode = path.stat().st_mode
         path.chmod(0o600)
         self.assertEqual(module.selected(state, self.root), (generation, self.tools))
+        path.chmod(0o610)
+        self.assertEqual(module.selected(state, self.root), (generation, self.tools))
         path.chmod(0o700)
         self.assertIsNone(module.selected(state, self.root))
         path.chmod(mode)
@@ -192,10 +194,49 @@ class Publication(unittest.TestCase):
 
     def test_owning_root_is_part_of_identity(self):
         before = module.identity(self.root, self.tools)
+        manifest = self.tools / "share/worktree-tools/identity-inputs.json"
+        digest = module.inputs_digest(manifest, self.root)
         with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
             other = Path(directory).resolve()
             subprocess.run(["git", "clone", "-q", str(self.root), str(other)], check=True)
             self.assertNotEqual(before, module.identity(other, self.tools))
+            self.assertEqual(digest, module.inputs_digest(manifest, other))
+
+    def test_inputs_digest_refuses_frozen_authority_after_selected_edit(self):
+        manifest = self.tools / "share/worktree-tools/identity-inputs.json"
+        expected = module.inputs_digest(manifest, self.root)
+        (self.root / "scripts/fixture.unit.test.ts").write_text("// source-only change\n")
+        self.assertEqual(expected, module.inputs_digest(manifest, self.root))
+        (self.root / "nix/fixture.nix").write_text("{ changedAuthority = true; }\n")
+        self.assertNotEqual(expected, module.inputs_digest(manifest, self.root))
+
+    def test_inputs_digest_cli_is_read_only_and_needs_no_publication(self):
+        manifest = self.tools / "share/worktree-tools/identity-inputs.json"
+        expected = module.inputs_digest(manifest, self.root)
+        with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
+            environment = dict(os.environ)
+            environment["GIT_DIR"] = str(Path(directory) / "not-a-repository")
+            result = subprocess.run(
+                [module.sys.executable, module.__file__, "inputs-digest", str(manifest), str(self.root)],
+                cwd=directory, env=environment, text=True, capture_output=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, expected + "\n")
+            self.assertEqual(result.stderr, "")
+            self.assertFalse((Path(directory) / ".worktree-tools").exists())
+        self.assertFalse((self.root / ".worktree-tools").exists())
+
+    def test_inputs_digest_cli_does_not_take_publication_lock(self):
+        state, _ = self.publish()
+        manifest = self.tools / "share/worktree-tools/identity-inputs.json"
+        with (state / "publication.lock").open("a") as lock:
+            module.fcntl.flock(lock, module.fcntl.LOCK_EX)
+            result = subprocess.run(
+                [module.sys.executable, module.__file__, "inputs-digest", str(manifest), str(self.root)],
+                text=True, capture_output=True, timeout=10,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, module.inputs_digest(manifest, self.root) + "\n")
 
     def test_v1_publication_is_not_selected_in_v2(self):
         state, generation = self.publish()

@@ -38,8 +38,8 @@ def source_snapshot(root):
     return digest.hexdigest()
 
 
-def identity(root, tools):
-    selection = json.loads((tools / "share/worktree-tools/identity-inputs.json").read_text())
+def inputs_digest(manifest, root):
+    selection = json.loads(manifest.read_text())
     if not isinstance(selection, dict) or set(selection) != {"schemaVersion", "paths"}:
         raise ValueError("Invalid worktree tools identity input manifest")
     paths = selection["paths"]
@@ -75,12 +75,19 @@ def identity(root, tools):
         if stat.S_ISLNK(mode):
             kind, content = "symlink", os.fsencode(os.readlink(path))
         elif stat.S_ISREG(mode):
-            kind = "executable" if mode & 0o111 else "regular"
+            # Git/NAR preserve the owner-executable bit, not ambient group modes.
+            kind = "executable" if mode & stat.S_IXUSR else "regular"
             content = path.read_bytes()
         else:
             raise RuntimeError("Unsupported worktree tools input: " + os.fsdecode(name))
         entries.append([os.fsdecode(name), kind, hashlib.sha256(content).hexdigest()])
-    payload = ["effect-utils/worktree-tools/v2", str(root), paths, entries]
+    payload = ["effect-utils/worktree-tools/inputs/v1", paths, entries]
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def identity(root, tools):
+    digest = inputs_digest(tools / "share/worktree-tools/identity-inputs.json", root)
+    payload = ["effect-utils/worktree-tools/v2", str(root), digest]
     return hashlib.sha256(json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -107,15 +114,23 @@ def main():
     # Git hooks must never redirect the worktree or index used for identity.
     for variable in git("rev-parse", "--local-env-vars").decode().splitlines():
         os.environ.pop(variable, None)
+    args = sys.argv[1:]
+    if args and args[0] == "inputs-digest":
+        if len(args) != 3:
+            raise RuntimeError("Usage: worktree-env.py inputs-digest MANIFEST ROOT")
+        print(inputs_digest(Path(args[1]).resolve(strict=True), Path(args[2]).resolve(strict=True)))
+        return
     inherited = os.environ.get("PATH", "").split(os.pathsep)
     guards = [p for p in inherited if p.endswith("/agent-seat/policy-bin")]
     os.environ["WORKTREE_POLICY_PATH"] = os.pathsep.join(guards)
     root = Path(git("rev-parse", "--show-toplevel").decode().strip()).resolve()
     os.chdir(root)
     state = root / ".worktree-tools/v2"
-    args = sys.argv[1:]
     if not args or args[0] not in ("prepare", "check", "run"):
-        raise RuntimeError("Usage: worktree-env.py prepare | check OUTPUT | run -- COMMAND...")
+        raise RuntimeError(
+            "Usage: worktree-env.py prepare | check OUTPUT | run -- COMMAND... "
+            "| inputs-digest MANIFEST ROOT"
+        )
     mode = args.pop(0)
     state.mkdir(parents=True, exist_ok=True)
     with (state / "publication.lock").open("a") as lock:
@@ -176,6 +191,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError, OSError) as error:
+    except (RuntimeError, ValueError, subprocess.CalledProcessError, OSError) as error:
         print("worktree-env: " + str(error), file=sys.stderr)
         sys.exit(1)

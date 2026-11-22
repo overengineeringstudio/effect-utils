@@ -26,38 +26,49 @@ let
   rootInputs = import ./buck2-products/root-projection-inputs.nix {
     inherit pkgs repositoryRoot;
   };
+  stage0Names = [ "events" "archive-tool" "product" "fingerprint" ];
+  manifestNames = [ "package.json" "pnpm-lock.yaml" "Cargo.toml" "Cargo.lock" ];
+  # One declaration drives both Git selectors and the immutable byte projection.
+  literals =
+    rootInputs
+    ++ lib.concatMap (product: product.sourcePaths) products
+    ++ map relative (import ./buck2-launcher-inputs.nix)
+    ++ map relative publicationOwner.source-inputs
+    ++ [ (relative editorViewLease.src) ]
+    ++ map relative (builtins.attrValues (import ./task-authority-inputs.nix {
+      inherit repositoryRoot;
+    }))
+    ++ [
+      "flake.nix"
+      "flake.lock"
+      "nix"
+      "devenv.nix"
+      "devenv.yaml"
+      "devenv.lock"
+      "buck2-member.json"
+      "scripts/worktree-env.py"
+      "scripts/buck2-capability-publish.ts"
+      "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"
+      "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts"
+      "pnpm-workspace.yaml"
+      "pnpm-lock.yaml"
+      "megarepo.kdl"
+      "megarepo.lock"
+    ];
 in
-rootInputs
-++ lib.concatMap (product: product.sourcePaths) products
-++ lib.concatMap (name: stage0Tools.source-pathspecs.${name}) [
-  "events" "archive-tool" "product" "fingerprint"
-]
-++ map relative (import ./buck2-launcher-inputs.nix)
-++ map relative publicationOwner.source-inputs
-++ [ (relative editorViewLease.src) ]
-++ [
-  "flake.nix"
-  "flake.lock"
-  "nix"
-  "devenv.nix"
-  "devenv.yaml"
-  "devenv.lock"
-  "buck2-member.json"
-  "scripts/worktree-env.py"
-  "scripts/buck2-capability-publish.ts"
-  "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"
-  "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts"
-  # Task definitions import these generated scheduling declarations.
-  "genie/ci-workflow/test-platforms.json"
-  "genie/ci-workflow/test-scheduling.json"
-  # Explicit Git globs retain new nested manifest/lockfile membership without
-  # turning ordinary check-only source edits into environment invalidations.
-  ":(glob)**/package.json"
-  ":(glob)**/pnpm-lock.yaml"
-  ":(glob)**/Cargo.toml"
-  ":(glob)**/Cargo.lock"
-  "pnpm-workspace.yaml"
-  "pnpm-lock.yaml"
-  "megarepo.kdl"
-  "megarepo.lock"
-]
+{
+  paths =
+    literals
+    ++ lib.concatMap (name: stage0Tools.source-pathspecs.${name}) stage0Names
+    ++ map (name: ":(glob)**/${name}") manifestNames;
+  source = lib.fileset.toSource {
+    root = repositoryRoot;
+    fileset = lib.fileset.unions (
+      map (path: repositoryRoot + "/${path}") literals
+      ++ lib.concatMap (name: stage0Tools.source-inputs.${name}) stage0Names
+      ++ [
+        (lib.fileset.fileFilter (file: builtins.elem file.name manifestNames) repositoryRoot)
+      ]
+    );
+  };
+}

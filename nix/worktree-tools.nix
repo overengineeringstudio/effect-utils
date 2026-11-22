@@ -8,22 +8,41 @@
   tools,
   prepare,
   preflight,
-  # Owning-repository Git pathspecs, not store paths or precomputed hashes.
+  # Shared { paths; source; } projection of the owning tool input declaration.
   identityInputs,
   environment ? { },
 }:
 let
-  publication = ../scripts/worktree-env.py;
+  # Capture the executable file, not its enclosing flake source context.
+  publication = builtins.path {
+    path = ../scripts/worktree-env.py;
+    name = "worktree-env.py";
+  };
   identityManifest = pkgs.writeText "worktree-tools-identity-inputs.json" (
     builtins.toJSON {
       schemaVersion = 1;
       # Owning-root Git selectors are metadata, not executable/store references.
       # Do not retain the whole flake's source context through relative names.
       paths = builtins.sort builtins.lessThan (
-        pkgs.lib.unique (map builtins.unsafeDiscardStringContext identityInputs)
+        pkgs.lib.unique (map builtins.unsafeDiscardStringContext identityInputs.paths)
       );
     }
   );
+  identityDigest = pkgs.runCommand "worktree-tools-identity-inputs-digest"
+    {
+      nativeBuildInputs = [ pkgs.git pkgs.python3 ];
+    }
+    ''
+      export HOME="$TMPDIR/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+      export WORKTREE_GIT=${pkgs.git}/bin/git
+      mkdir -p "$HOME" "$TMPDIR/snapshot"
+      cp -R ${identityInputs.source}/. "$TMPDIR/snapshot/"
+      chmod -R u+w "$TMPDIR/snapshot"
+      git -c init.defaultBranch=identity init --template= "$TMPDIR/snapshot" >&2
+      git -C "$TMPDIR/snapshot" add -f --all
+      ${pkgs.python3}/bin/python3 ${publication} inputs-digest \
+        ${identityManifest} "$TMPDIR/snapshot" > "$out"
+    '';
   bridge = import ./worktree-buck-trace.nix {
     inherit
       pkgs
@@ -76,14 +95,21 @@ let
   '';
 in
 assert pkgs.lib.assertMsg (
-  builtins.isList identityInputs
-  && identityInputs != [ ]
-  && builtins.all (path: builtins.isString path && path != "") identityInputs
-) "worktree-tools: identityInputs must be nonempty owning-repository Git pathspecs";
+  builtins.isAttrs identityInputs
+  && identityInputs ? source
+  && identityInputs ? paths
+  && builtins.isList identityInputs.paths
+  && identityInputs.paths != [ ]
+  && builtins.all (path: builtins.isString path && path != "") identityInputs.paths
+) "worktree-tools: identityInputs must project nonempty owning-repository Git selectors and source";
 pkgs.symlinkJoin {
   name = "worktree-tools";
   # The guarded/traced launcher is the only bin/buck2 provider in this output.
   paths = tools;
+  passthru = {
+    identity-inputs-manifest = identityManifest;
+    identity-inputs-digest = identityDigest;
+  };
   postBuild = ''
     test ! -e "$out/bin/buck2"
     mkdir -p "$out/bin" "$out/share/worktree-tools"
@@ -93,5 +119,6 @@ pkgs.symlinkJoin {
     ln -s ${check} "$out/share/worktree-tools/preflight"
     ln -s ${publication} "$out/share/worktree-tools/worktree-env.py"
     ln -s ${identityManifest} "$out/share/worktree-tools/identity-inputs.json"
+    ln -s ${identityDigest} "$out/share/worktree-tools/identity-inputs-digest"
   '';
 }

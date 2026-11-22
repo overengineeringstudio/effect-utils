@@ -33,8 +33,9 @@ let
   ciUnitTest = builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1";
   isolateMegarepoGcTests = (ciUnitTest || builtins.getEnv "CI" == "true") && pkgs.stdenv.isLinux;
   testPlatform = builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM";
-  testPlatforms = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-platforms.json);
-  testScheduling = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-scheduling.json);
+  taskAuthorityInputs = import ./nix/task-authority-inputs.nix { };
+  testPlatforms = builtins.fromJSON (builtins.readFile taskAuthorityInputs.testPlatforms);
+  testScheduling = builtins.fromJSON (builtins.readFile taskAuthorityInputs.testScheduling);
   darwinTestTasks = map (suite: suite.task) testPlatforms.darwin;
   classifiedTestTasks = darwinTestTasks ++ map (suite: suite.task) testPlatforms.neutral;
   extraSourceTestTasks = [
@@ -131,7 +132,7 @@ let
   publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
   # Immutable production-supervisor entrypoint for native owner diagnostics.
   editorViewSupervisor = pkgs.writeShellScript "editor-view-supervisor" ''
-    exec ${pkgs.python3}/bin/python ${./scripts/editor-view-supervisor.py} "$@"
+    exec ${pkgs.python3}/bin/python ${taskAuthorityInputs.editorViewSupervisor} "$@"
   '';
   # Real kernel lifetime and CLI-signal children, never an implementation of the digest algorithm.
   fingerprintLifetimeTestChild = pkgs.writeShellScriptBin "buck2-fingerprint" ''
@@ -649,7 +650,7 @@ let
 
   # Reader roots are shared with the trusted proof's declaration closure.
   readerComposition = builtins.fromJSON (
-    builtins.readFile ./genie/ci-workflow/reader-composition.json
+    builtins.readFile taskAuthorityInputs.readerComposition
   );
   packagesWithStorybook = readerComposition.storybooks;
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
@@ -952,7 +953,10 @@ in
   };
 
   imports = [
-    (import ./nix/quick-contracts.nix { baseCapabilities = buck2Capabilities; })
+    (import ./nix/quick-contracts.nix {
+      baseCapabilities = buck2Capabilities;
+      preparedTools = repoPackages.worktree-tools;
+    })
     # Git hook: prevent commits on default branch + enforce linked worktrees
     (taskModules.worktree-guard { })
     (repoFlake.devenvModules.tasks.github-ruleset {
@@ -2323,7 +2327,7 @@ in
     description = "Keep fixture Git commands out of the hook caller repository and staged index";
     exec = trace.exec "git-hooks:environment:test" ''
       exec ${pkgs.bash}/bin/bash \
-        ${./scripts/without-git-local-env.sh} \
+        ${taskAuthorityInputs.withoutGitLocalEnv} \
         ${pkgs.bash}/bin/bash "$DEVENV_ROOT/scripts/without-git-local-env.test.sh"
     '';
   };
@@ -2406,7 +2410,7 @@ in
   git-hooks.enable = true;
   git-hooks.hooks.check-quick = {
     enable = true;
-    entry = "${pkgs.bash}/bin/bash ${./scripts/without-git-local-env.sh} env DEVENV_TUI=false devenv tasks run check:quick";
+    entry = "${pkgs.bash}/bin/bash ${taskAuthorityInputs.withoutGitLocalEnv} env DEVENV_TUI=false devenv tasks run check:quick";
     stages = [ "pre-commit" ];
     always_run = true;
     pass_filenames = false;
