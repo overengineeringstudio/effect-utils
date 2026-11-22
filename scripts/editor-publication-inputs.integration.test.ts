@@ -30,13 +30,13 @@ it('keeps private publication inputs intact while default Buck restarts and rema
   await withNativePublicationFixture(
     async ({ root, authority, run, build, measured, stopPrivate, privateIsRetired }) => {
       expect(existsSync(join(root, 'buck-out', 'v2'))).toBe(false)
-      const defaultOutput = await measured('coldDefaultBuildMs', () => build())
+      const defaultOutput = await measured({ name: 'coldDefaultBuildMs', action: () => build() })
       await withEditorPublicationOwner({
         root,
         run: async (owner) => {
           let publicationFailure: { cause: unknown } | undefined
           try {
-            const output = await measured('coldPrivateBuildMs', () => build(owner))
+            const output = await measured({ name: 'coldPrivateBuildMs', action: () => build(owner) })
             expect(output).toContain(`/buck-out/${editorPublicationIsolation}/`)
             expect(output).not.toBe(defaultOutput)
             const before = inventory(output)
@@ -61,7 +61,7 @@ it('keeps private publication inputs intact while default Buck restarts and rema
               contentStore: join(root, 'content', 'v1'),
               admissionDirectory: join(root, 'fingerprint-admission'),
               beforeVerify: async () =>
-                measured('verifyBarrierMs', async () => {
+                measured({ name: 'verifyBarrierMs', action: async () => {
                   reachedVerify = true
                   expect(
                     requireEditorPublicationOwner({
@@ -69,21 +69,20 @@ it('keeps private publication inputs intact while default Buck restarts and rema
                       owner,
                     }),
                   ).toBe(owner)
-                  await measured('defaultDaemonStopMs', () => run(['kill']))
-                  await measured('defaultOutputCleanMs', () =>
-                    run(['--isolation-dir', 'v2', 'clean']),
-                  )
+                  await measured({ name: 'defaultDaemonStopMs', action: () => run({ args: ['kill'] }) })
+                  await measured({ name: 'defaultOutputCleanMs', action: () =>
+                    run({ args: ['--isolation-dir', 'v2', 'clean'] }) })
                   expect(existsSync(defaultOutput)).toBe(false)
-                  expect(await measured('defaultRestartRematerializeMs', () => build())).toBe(
+                  expect(await measured({ name: 'defaultRestartRematerializeMs', action: () => build() })).toBe(
                     defaultOutput,
                   )
                   expect(
                     readFileSync(join(defaultOutput, 'node_modules', 'dep', 'index.js'), 'utf8'),
                   ).toBe('export default 1\n')
                   expect(inventory(output)).toEqual(before)
-                }),
+                } }),
             }
-            const record = await measured('privatePublicationMs', () => publishEditorView(options))
+            const record = await measured({ name: 'privatePublicationMs', action: () => publishEditorView(options) })
             expect(reachedVerify).toBe(true)
             expect(inventory(output)).toEqual(before)
             expect(await verifyEditorViewSnapshot(options)).toEqual(record)

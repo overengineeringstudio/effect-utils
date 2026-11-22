@@ -27,7 +27,7 @@ it('defers real native authority census until exclusive publication admission', 
               preparingAuthority = true
               let censusFailure: { cause: unknown } | undefined
               try {
-                await measured('authorityCensusMs', () =>
+                await measured({ name: 'authorityCensusMs', action: () =>
                   writeEditorViewAuthority({
                     repoRoot: root,
                     workspaceRoot: root,
@@ -42,15 +42,11 @@ it('defers real native authority census until exclusive publication admission', 
                         : {
                             status: 0,
                             stdout: Buffer.from(
-                              await run(
-                                ['--isolation-dir', editorPublicationIsolation, ...command.args],
-                                owner,
-                              ),
+                              await run({ args: ['--isolation-dir', editorPublicationIsolation, ...command.args], owner }),
                             ),
                             stderr: Buffer.alloc(0),
                           },
-                  }),
-                )
+                  }) })
               } catch (cause) {
                 censusFailure = { cause }
               }

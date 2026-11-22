@@ -4745,19 +4745,22 @@ const dispatchEditorViewRequest = async ({
 }
 
 /** Preserve real native termination through aggregate/cause wrappers at the CLI boundary. */
-const nativeCommandSignal = (
-  error: unknown,
+const nativeCommandSignal = ({
+  error,
   seen = new Set<unknown>(),
-): NodeJS.Signals | undefined => {
-  if (seen.has(error)) return undefined
+}: {
+  error: unknown
+  seen?: Set<unknown>
+}): NodeJS.Signals | undefined => {
+  if (seen.has(error) === true) return undefined
   seen.add(error)
   if (error instanceof EditorViewCommandFailure && error.signal !== undefined) return error.signal
   if (error instanceof AggregateError)
     for (const failure of error.errors) {
-      const signal = nativeCommandSignal(failure, seen)
+      const signal = nativeCommandSignal({ error: failure, seen })
       if (signal !== undefined) return signal
     }
-  return error instanceof Error ? nativeCommandSignal(error.cause, seen) : undefined
+  return error instanceof Error ? nativeCommandSignal({ error: error.cause, seen }) : undefined
 }
 
 const main = async (): Promise<void> => {
@@ -4784,7 +4787,7 @@ const main = async (): Promise<void> => {
     if (result.exitCode !== 0) process.exitCode = result.exitCode
   } catch (error) {
     if (controller.signal.aborted === false) {
-      nativeSignal = nativeCommandSignal(error)
+      nativeSignal = nativeCommandSignal({ error })
       if (nativeSignal === undefined) throw error
     }
   } finally {

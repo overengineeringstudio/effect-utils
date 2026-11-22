@@ -23,8 +23,7 @@ import {
   stopOwnedEditorPublicationDaemon,
 } from './buck2-entrypoint.ts'
 
-// Required pinned tools and owner DSO are declared by the integration target.
-// Every build uses the real managed native boundary; no descriptors cross it.
+/** Require an integration tool from the owning target's pinned Nix closure. */
 export const tool = (name: string): string => {
   const value = process.env[name]
   assert(value, `required integration tool: ${name}`)
@@ -38,19 +37,24 @@ const unlockDirectories = (path: string): void => {
   for (const name of readdirSync(path)) unlockDirectories(join(path, name))
 }
 
+/** Real managed/native Buck fixture and measurements for publication ownership proofs. */
 export type NativePublicationFixture = {
   root: string
   buck: string
   native: string
   git: string
   authority: string
-  run: (args: readonly string[], owner?: EditorPublicationOwner) => Promise<string>
+  run: (options: {
+    args: readonly string[]
+    owner?: EditorPublicationOwner | undefined
+  }) => Promise<string>
   build: (owner?: EditorPublicationOwner) => Promise<string>
-  measured: <T>(name: string, action: () => Promise<T>) => Promise<T>
+  measured: <T>(options: { name: string; action: () => Promise<T> }) => Promise<T>
   stopPrivate: (owner: EditorPublicationOwner) => void
   privateIsRetired: () => boolean
 }
 
+/** Run the immutable native input fixture and retire both daemon isolations on completion. */
 export const withNativePublicationFixture = async (
   action: (fixture: NativePublicationFixture) => Promise<void>,
 ): Promise<void> => {
@@ -81,7 +85,13 @@ export const withNativePublicationFixture = async (
   const started = performance.now()
   const savedBudget = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
   process.env.EDITOR_VIEW_HOST_BUDGET_STATE = join(root, 'host-budget.json')
-  const run = async (args: readonly string[], owner?: EditorPublicationOwner): Promise<string> => {
+  const run = async ({
+    args,
+    owner,
+  }: {
+    args: readonly string[]
+    owner?: EditorPublicationOwner | undefined
+  }): Promise<string> => {
     const env = { ...process.env, HOME: home }
     if (owner !== undefined) {
       privateRetired = false
@@ -117,12 +127,12 @@ export const withNativePublicationFixture = async (
       stderr += String(chunk)
     })
     const exited = Promise.withResolvers<void>()
-    let failure: Error | undefined
+    let commandFailure: Error | undefined
     child.once('error', (cause) => {
-      failure = cause
+      commandFailure = cause
     })
     child.once('close', (code, signal) => {
-      if (failure !== undefined) exited.reject(failure)
+      if (commandFailure !== undefined) exited.reject(commandFailure)
       else if (code === 0) exited.resolve()
       else exited.reject(new Error(`Buck ${args.join(' ')} failed (${code ?? signal}): ${stderr}`))
     })
@@ -130,10 +140,16 @@ export const withNativePublicationFixture = async (
     if (args[0] === 'kill') defaultRetired = true
     return stdout
   }
-  const measured = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
+  const measured = async <T>({
+    name,
+    action: operation,
+  }: {
+    name: string
+    action: () => Promise<T>
+  }): Promise<T> => {
     const start = performance.now()
     try {
-      return await action()
+      return await operation()
     } finally {
       timings[name] = performance.now() - start
     }
@@ -141,7 +157,7 @@ export const withNativePublicationFixture = async (
   const build = async (owner?: EditorPublicationOwner): Promise<string> => {
     const selection = owner === undefined ? [] : ['--isolation-dir', editorPublicationIsolation]
     const result: unknown = JSON.parse(
-      await run([...selection, 'build', '--show-full-json-output', '//:inputs'], owner),
+      await run({ args: [...selection, 'build', '--show-full-json-output', '//:inputs'], owner }),
     )
     assert(result !== null && typeof result === 'object')
     const outputs = Object.values(result)
@@ -192,7 +208,7 @@ export const withNativePublicationFixture = async (
     failure = { cause }
   }
   try {
-    if (defaultRetired === false) await run(['kill'])
+    if (defaultRetired === false) await run({ args: ['kill'] })
     // A failed mandatory stop keeps the owned fixture available for diagnosis.
     if (privateRetired === true && defaultRetired === true) {
       unlockDirectories(root)
