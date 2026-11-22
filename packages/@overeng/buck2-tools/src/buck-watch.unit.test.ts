@@ -484,14 +484,18 @@ describe('Buck watch reconciliation', () => {
         outputs: new Map([[candidate.editor.inputsManifestTarget, fixture.manifest]]),
         options: { ...fixture.options, fingerprintTool: fixture.nativeSignalFingerprint },
       })
-      const failure = await fixture.runPublisher({
-        command: fixture.publisherCommand[0],
-        args: [...fixture.publisherCommand.slice(1), ...args],
-        cwd: fixture.root,
-      }).then(
-        () => { throw new Error('publisher did not retain its native child signal') },
-        (error: unknown) => error,
-      )
+      const failure = await fixture
+        .runPublisher({
+          command: fixture.publisherCommand[0],
+          args: [...fixture.publisherCommand.slice(1), ...args],
+          cwd: fixture.root,
+        })
+        .then(
+          () => {
+            throw new Error('publisher did not retain its native child signal')
+          },
+          (error: unknown) => error,
+        )
       expect(failure).toBeInstanceOf(CommandFailure)
       expect(failure).toMatchObject({ signal: 'SIGTERM', exitCode: undefined })
       expect(readFileSync(marker, 'utf8')).toBe('native-child-signal\n')
