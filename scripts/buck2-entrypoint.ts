@@ -1087,8 +1087,6 @@ export const reconcileGateDaemon = ({
   readonly phase: 'start' | 'exit'
   readonly cwd?: string
 }): void => {
-  // Non-Linux daemons own no gate cgroup; retain their DICE state between jobs.
-  if (phase === 'exit' && process.platform !== 'linux') return
   const invocation = resolveGateInvocation({ args, env, cwd })
   if (invocation === undefined) {
     if (phase === 'start')
@@ -1163,6 +1161,8 @@ export const reconcileGateDaemon = ({
       return
     }
   } else if (decision === 'keep-active') return
+  // Non-Linux daemons own no gate cgroup; retain their DICE state between jobs.
+  if (phase === 'exit' && process.platform !== 'linux') return
   // Buck has no conditional kill RPC. A client arriving after this idle status
   // read can still race the kill; never kill a daemon already observed as busy.
   const stopped = spawnSync(native, [...globalArgs, 'kill'], options)
