@@ -68,7 +68,10 @@ export const createPreparedContractMembershipFixture = () => {
   writeFileSync(authority, '{}\n')
   // This receipt belongs only to this synthetic fixture, never a real checkout.
   mkdirSync(join(base.root, '.devenv'))
-  writeFileSync(join(base.root, '.devenv', 'quick-contracts-prepared'), `${authority}\n${profile}\n`)
+  writeFileSync(
+    join(base.root, '.devenv', 'quick-contracts-prepared'),
+    `${authority}\n${profile}\n`,
+  )
   const gitExecPath = execFileSync(git, ['--exec-path'], { env: base.env, encoding: 'utf8' }).trim()
   return {
     ...base,

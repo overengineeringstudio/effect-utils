@@ -174,7 +174,8 @@ describe('quick contract task runtime', () => {
   const declaredTools = () => {
     const cp = Bun.which('cp')
     const bash = Bun.which('bash')
-    if (cp === null || bash === null) throw new Error('Contract fixtures require pinned cp and bash')
+    if (cp === null || bash === null)
+      throw new Error('Contract fixtures require pinned cp and bash')
     const coreutils = dirname(dirname(realpathSync(cp)))
     expect(coreutils.startsWith('/nix/store/')).toBe(true)
     expect(realpathSync(bash).startsWith('/nix/store/')).toBe(true)
@@ -184,7 +185,10 @@ describe('quick contract task runtime', () => {
   it('scopes external temporary storage to each task, not prepare/report', () => {
     expect(runtime).toBeDefined()
     expect(source).toContain('${taskRuntime} ${taskScripts.${name}}')
-    const shared = source.slice(source.indexOf('runtimeEnvironment ='), source.indexOf('runtimeExports ='))
+    const shared = source.slice(
+      source.indexOf('runtimeEnvironment ='),
+      source.indexOf('runtimeExports ='),
+    )
     expect(shared).not.toContain('taskRuntime')
     expect(shared).not.toContain('TMPDIR')
   })
@@ -201,9 +205,14 @@ describe('quick contract task runtime', () => {
         const result = spawnSync(
           bash,
           [
-            '-c', runtime!.replaceAll('${pkgs.coreutils}', coreutils), '--', bash, '-c',
+            '-c',
+            runtime!.replaceAll('${pkgs.coreutils}', coreutils),
+            '--',
+            bash,
+            '-c',
             'printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP"; test -d "$TMPDIR"; exit "$1"',
-            '--', String(status),
+            '--',
+            String(status),
           ],
           {
             cwd: root,
@@ -219,7 +228,9 @@ describe('quick contract task runtime', () => {
         expect(paths.every((path) => path === temporary)).toBe(true)
         expect(temporary.startsWith(`${realpathSync('/tmp')}/qc.`)).toBe(true)
         expect(temporary.startsWith(realpathSync(root))).toBe(false)
-        expect(Buffer.byteLength(`${temporary}/direct-buck-posture-XXXXXX/watchman.sock`)).toBeLessThan(104)
+        expect(
+          Buffer.byteLength(`${temporary}/direct-buck-posture-XXXXXX/watchman.sock`),
+        ).toBeLessThan(104)
         expect(existsSync(temporary)).toBe(false)
         observed.push(temporary)
       }
@@ -231,9 +242,14 @@ describe('quick contract task runtime', () => {
   for (const linked of [false, true]) {
     it(`owns writable cache-admission copies of ${linked === true ? 'symlinked' : 'readonly'} inputs`, () => {
       const { cp, bash } = declaredTools()
-      const source = readFileSync(new URL('./buck2-cache-admission-check.sh', import.meta.url), 'utf8')
+      const source = readFileSync(
+        new URL('./buck2-cache-admission-check.sh', import.meta.url),
+        'utf8',
+      )
       const copy = source.split('\n').find((line) => line.startsWith('"$CP_BIN" -'))
-      const replace = source.split('\n').find((line) => line === 'rm -f -- "$work/buck2/toolchains/BUCK"')
+      const replace = source
+        .split('\n')
+        .find((line) => line === 'rm -f -- "$work/buck2/toolchains/BUCK"')
       expect(copy).toBeDefined()
       expect(replace).toBeDefined()
       const root = fixture()
@@ -257,7 +273,10 @@ describe('quick contract task runtime', () => {
       symlinkSync(backing, join(repository, 'buck2', 'dependency.bzl'))
       const result = spawnSync(
         bash,
-        ['-euc', `${copy}\n${replace}\nprintf 'fixture replacement\\n' > "$work/buck2/toolchains/BUCK"`],
+        [
+          '-euc',
+          `${copy}\n${replace}\nprintf 'fixture replacement\\n' > "$work/buck2/toolchains/BUCK"`,
+        ],
         { env: { CP_BIN: cp, repo_root: repository, work }, encoding: 'utf8' },
       )
       expect(result.stderr).toBe('')
