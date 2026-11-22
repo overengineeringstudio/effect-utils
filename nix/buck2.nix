@@ -96,6 +96,7 @@ pkgs.runCommand native.name
     mkdir -p "$launcher_context/scripts" "$launcher_context/packages/@overeng/buck2-tools/src"
     cp ${launcherSource}/buck2-entrypoint.ts "$launcher_context/scripts/buck2-entrypoint.ts"
     cp ${launcherSource}/buck2-cache-posture.ts "$launcher_context/scripts/buck2-cache-posture.ts"
+    cp ${launcherSource}/buck2-contract-membership.ts "$launcher_context/scripts/buck2-contract-membership.ts"
     cp ${launcherSource}/buck2-file-watcher.ts "$launcher_context/scripts/buck2-file-watcher.ts"
     cp ${publicationOwnerSource} "$launcher_context/packages/@overeng/buck2-tools/src/editor-publication-owner.ts"
     ${pkgs.stdenv.cc}/bin/cc ${

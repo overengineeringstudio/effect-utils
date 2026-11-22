@@ -44,6 +44,7 @@ import {
   type ReapiAdmissionFailure,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
+import { profileContractMembershipDigests } from './buck2-contract-membership.ts'
 import {
   initializeWatchmanRoot,
   prepareWatchmanEnvironment,
@@ -714,6 +715,7 @@ export const directBuckArguments = async ({
   if (agentActor !== undefined) overrides['quick_contracts.agent_actor'] = agentActor
   const policyPath = env['WORKTREE_POLICY_PATH']
   if (policyPath !== undefined) overrides['quick_contracts.policy_path'] = policyPath
+  Object.assign(overrides, profileContractMembershipDigests({ root, env }))
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =

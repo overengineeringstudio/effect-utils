@@ -28,8 +28,10 @@ import {
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
 import * as readerShadowUnitTests from './buck2-entrypoint.unit.test.ts'
+import * as contractMembershipTests from './buck2-contract-membership.integration.test.ts'
 import { createTestTempDirectoryFactory } from './test-tmp.ts'
 void readerShadowUnitTests
+void contractMembershipTests
 
 const createTestTempDirectory = createTestTempDirectoryFactory()
 

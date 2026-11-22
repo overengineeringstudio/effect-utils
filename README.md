@@ -679,11 +679,13 @@ TypeScript lowering; unrelated runtime requirements and JSX transforms still app
 
 `buck2 build //:quick` checks deterministic declared inputs, including exact
 work-storage resource parity. Full quick parity additionally needs the bounded
-checkout contracts exposed by `buck2 run //:check-quick`. This native run preserves
-caller-owned policy, identity and trace context. The uncached checks observe Git
-inventories, capability publication, daemon
-lifecycle, Nix imports, generated bindings, hook isolation, and interruption.
-They are not hermetic build actions or remote-execution candidates.
+checkout contracts exposed by `buck2 run //:check-quick`. Contract-specific Buck
+targets preserve the evaluated prerequisite DAG and declare package-owned live
+source globs plus the prepared executable closure. These checkout proofs remain
+local-only, with shared action-cache upload disabled; a warm same-daemon no-op is
+DICE reuse, not evidence that remote or persistent caching is safe. Git inventory,
+capability publication, lifecycle, hook and interruption guards are not remote
+execution candidates.
 
 While devenv remains the evaluated task authority, prepare its immutable
 execution projection explicitly with
@@ -704,14 +706,27 @@ the canonical immutable operator admission package ahead of the declared Nix run
 closure; no ambient executable directory is forwarded. The real gate-slot lifecycle
 regression requires the operator-provided Nix-installed `gate-slot`. A receipt
 binds prepared views to the evaluated task authority and selected capability
-profile. Tracked-source changes invalidate the immutable projection: stage new
-source files, rebuild the profile, republish it, and prepare again. All existing
-devenv tasks remain available; removing their evaluated authority requires a
-separate contract replacement, not deleting these guards.
+profile. Only changes to the declared prepared-tool inputs require rebuilding,
+republishing and explicit preparation; check-only source edits are hashed by
+Buck directly. The managed entrypoint also fingerprints each contract's real Git
+filename membership with the declared Git binary, preserving tracked versus
+tracked-and-untracked selection without hashing HEAD or index bookkeeping.
+All existing devenv tasks remain available; removing their evaluated authority
+requires a separate contract replacement, not deleting these guards.
 
 When extending retained guards, update their evaluated tool closure rather than
 adding an ambient PATH or skipping a check. CI and fresh-worktree runs must use
 the same prepared task authority.
+
+Each package exports `quick_contract_sources__<task-with-colons-replaced-by-hyphens>`
+through its owning `BUCK.genie.ts`; formerly static packages retain their authored
+definitions in `BUCK.template` and use the same renderer. Run the owning Genie
+generation when adding a Buck package boundary or a deeper hidden-directory
+chain. Buck has no `include_dotfiles`: generated selectors anchor all current
+hidden directories, but arbitrarily deep new chains are not covered until
+regeneration. Source groups are check inputs only; product projections continue
+to exclude tests and fixtures. Adding files within covered existing packages
+uses live globs, not a source-dependent Nix realization.
 
 The transitional runtime deliberately retains `config.packages` in addition to
 its explicit process/compiler tools; it is not the thin `worktree-tools` closure.

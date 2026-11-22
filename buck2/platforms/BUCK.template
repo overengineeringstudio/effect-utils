@@ -1,0 +1,245 @@
+load("//buck2/platforms:defs.bzl", "host_execution_platform_label", "host_platform_label", "native_execution_platform", "nativelink_pilot_enabled", "nativelink_pilot_platform", "portable_product_platform", "product_platform", "ts_action_execution_policy")
+
+constraint_setting(name = "cache_admission", visibility = ["PUBLIC"])
+
+constraint_value(
+    name = "cache_hermetic",
+    constraint_setting = ":cache_admission",
+    visibility = ["PUBLIC"],
+)
+
+constraint_setting(name = "compute_lane", visibility = ["PUBLIC"])
+
+constraint_value(
+    name = "nativelink_pilot",
+    constraint_setting = ":compute_lane",
+    visibility = ["PUBLIC"],
+)
+
+# Only register the remote-only lane under explicit opt-in. Ordinary actions
+# retain the earlier local platforms; only the closed TS cohort requests this.
+nativelink_pilot_platform(name = "exec_nativelink_pilot")
+
+config_setting(
+    name = "ts_cache_admitted",
+    constraint_values = [":cache_hermetic"],
+)
+
+# Configured in the selected execution platform via a default-only exec_dep.
+# Do not change Darwin's general cache platform: other action families own
+# their admission independently of the TypeScript sandbox policy.
+ts_action_execution_policy(
+    name = "ts_action_execution_policy",
+    cache_admitted = select({
+        ":ts_cache_admitted": True,
+        "DEFAULT": False,
+    }),
+    os = select({
+        "prelude//os/constraints:linux": "linux",
+        "prelude//os/constraints:macos": "darwin",
+        "DEFAULT": "unsupported",
+    }),
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_x86_64_hermetic",
+    cache_hermetic = True,
+    constraint_values = [
+        ":cache_hermetic",
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_aarch64_hermetic",
+    cache_hermetic = True,
+    constraint_values = [
+        ":cache_hermetic",
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_macos_aarch64_hermetic",
+    cache_hermetic = True,
+    constraint_values = [
+        ":cache_hermetic",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:macos",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_x86_64",
+    hermetic_platform = ":exec_linux_x86_64_hermetic",
+    pilot_platform = ":exec_nativelink_pilot" if nativelink_pilot_enabled() and host_info().os.is_linux and host_info().arch.is_x86_64 else None,
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_linux_aarch64",
+    hermetic_platform = ":exec_linux_aarch64_hermetic",
+    pilot_platform = ":exec_nativelink_pilot" if nativelink_pilot_enabled() and host_info().os.is_linux and host_info().arch.is_aarch64 else None,
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+native_execution_platform(
+    name = "exec_macos_aarch64",
+    hermetic_platform = ":exec_macos_aarch64_hermetic",
+    constraint_values = [
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:macos",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "linux_x86_64",
+    os = "linux",
+    architecture = "x86_64",
+    abi = "glibc",
+    rust_target_triple = "x86_64-unknown-linux-gnu",
+    runtime_contract = "elf-dynamic/v1",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "linux_x86_64_static",
+    os = "linux",
+    architecture = "x86_64",
+    abi = "glibc",
+    rust_target_triple = "x86_64-unknown-linux-gnu",
+    runtime_contract = "elf-static/v1",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:x86_64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "linux_aarch64",
+    os = "linux",
+    architecture = "aarch64",
+    abi = "glibc",
+    rust_target_triple = "aarch64-unknown-linux-gnu",
+    runtime_contract = "elf-dynamic/v1",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "linux_aarch64_static",
+    os = "linux",
+    architecture = "aarch64",
+    abi = "glibc",
+    rust_target_triple = "aarch64-unknown-linux-gnu",
+    runtime_contract = "elf-static/v1",
+    constraint_values = [
+        "prelude//abi/constraints:gnu",
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:linux",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+product_platform(
+    name = "macos_aarch64",
+    os = "darwin",
+    architecture = "aarch64",
+    abi = "darwin",
+    rust_target_triple = "aarch64-apple-darwin",
+    runtime_contract = "mach-o-dynamic/v1",
+    constraint_values = [
+        "prelude//cpu/constraints:arm64",
+        "prelude//os/constraints:macos",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# The one platform-invariant JavaScript product identity. Every JavaScript
+# product is CONFIGURED for it, so a module's bytes and its descriptor are the
+# same on every admitted host.
+#
+# Its constraint settings are its own: prelude's cpu/os values all name a
+# concrete machine, and a constraint-free configuration would leave the
+# lockfile-derived store selects unresolvable. Declaring `any` explicitly keeps
+# the four-way platform select exhaustive without a catch-all default.
+constraint_setting(name = "portable_os")
+
+constraint_value(
+    name = "os_any",
+    constraint_setting = ":portable_os",
+    visibility = ["PUBLIC"],
+)
+
+constraint_setting(name = "portable_cpu")
+
+constraint_value(
+    name = "cpu_any",
+    constraint_setting = ":portable_cpu",
+    visibility = ["PUBLIC"],
+)
+
+constraint_setting(name = "portable_abi")
+
+constraint_value(
+    name = "abi_any",
+    constraint_setting = ":portable_abi",
+    visibility = ["PUBLIC"],
+)
+
+portable_product_platform(
+    name = "javascript_portable",
+    os = "any",
+    architecture = "any",
+    abi = "any",
+    constraint_values = [
+        ":abi_any",
+        ":cpu_any",
+        ":os_any",
+    ],
+    runtime_contract = "javascript-esm",
+    runtime_contract_version = "v1",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "host_platform",
+    actual = host_platform_label(),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "host_execution_platform",
+    actual = host_execution_platform_label(),
+    visibility = ["PUBLIC"],
+)

@@ -12,20 +12,24 @@ def _contract_slug(task):
 def _contract_impl(ctx):
     tool = ctx.attrs.runtime[BuckSupportToolInfo]
     verdict = ctx.actions.declare_output("passed.json")
-    membership = ctx.actions.write_json("membership.json", ctx.attrs.members)
-    wanted = {path: None for path in ctx.attrs.input_paths}
+    digest = ctx.attrs.membership_digest
+    if ctx.attrs.membership and (len(digest) != 64 or any([character not in "0123456789abcdef" for character in digest.elems()])):
+        fail("quick contract {} requires a valid membership SHA256; invoke Buck through the managed entrypoint (quick_contracts.membership_{})".format(ctx.attrs.task, _contract_slug(ctx.attrs.task)))
+    membership = ctx.actions.write_json("membership.json", {
+        "schemaVersion": 1,
+        "task": ctx.attrs.task,
+        "membership": ctx.attrs.membership,
+        "membership_mode": ctx.attrs.membership_mode,
+        "digest": digest,
+    })
     sources = {}
     for dependency in ctx.attrs.source_sets:
         source_set = dependency[StaticSourceSetInfo]
         for source in source_set.files:
             path = source.short_path if not source_set.prefix else source_set.prefix + "/" + source.short_path
-            if path in wanted:
-                if path in sources:
-                    fail("duplicate quick contract input {}".format(path))
-                sources[path] = source
-    missing = sorted([path for path in wanted if path not in sources])
-    if missing:
-        fail("quick contract {} has undeclared inputs {}".format(ctx.attrs.task, missing))
+            if path in sources:
+                fail("duplicate quick contract input {}".format(path))
+            sources[path] = source
     predecessors = []
     for dependency in ctx.attrs.requires:
         predecessors.extend(dependency[DefaultInfo].default_outputs)
@@ -60,8 +64,9 @@ _contract = cache_guarded_rule(
         "task": attrs.string(),
         "runtime": attrs.exec_dep(providers = [BuckSupportToolInfo]),
         "source_sets": attrs.list(attrs.dep(providers = [StaticSourceSetInfo])),
-        "input_paths": attrs.list(attrs.string()),
-        "members": attrs.list(attrs.string()),
+        "membership": attrs.list(attrs.string()),
+        "membership_mode": attrs.enum(["tracked", "tracked-and-untracked"]),
+        "membership_digest": attrs.string(),
         "requires": attrs.list(attrs.dep()),
         "cache_policy": attrs.enum(["local-validation", "local-fixture"]),
         "agent_actor": attrs.string(),
@@ -126,8 +131,9 @@ def quick_contracts(name, quick, runtime, source_sets, contracts, **kwargs):
             task = task,
             runtime = "//buck2/toolchains:quick_contract_" + _contract_slug(task),
             source_sets = spec["source_sets"],
-            input_paths = spec["input_paths"],
-            members = spec.get("members", []),
+            membership = spec["membership"],
+            membership_mode = spec["membership_mode"],
+            membership_digest = read_root_config("quick_contracts", "membership_" + _contract_slug(task), ""),
             requires = [":" + name + "__" + _contract_slug(dependency) for dependency in spec["requires"]],
             cache_policy = spec["cache_policy"],
             agent_actor = read_root_config("quick_contracts", "agent_actor", ""),

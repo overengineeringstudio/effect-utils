@@ -15,6 +15,18 @@ let
   # runs separately through the retained authority, before Buck is invoked.
   sequence = import ./quick-contracts-sequence.nix { };
   targets = builtins.fromJSON (builtins.readFile ./quick-contracts-targets.json);
+  # Only the selected catalog semantics, never source bytes or frozen filenames.
+  membershipSpecification = pkgs.writeText "quick-contracts-membership-inputs.json" (
+    builtins.toJSON {
+      schemaVersion = 1;
+      contracts = lib.genAttrs (
+        builtins.filter (name: (targets.${name}.membership or [ ]) != [ ]) sequence
+      ) (name: {
+        inherit (targets.${name}) membership;
+        membership_mode = targets.${name}.membership_mode or "tracked";
+      });
+    }
+  );
   selectedAfter =
     name: builtins.filter (dependency: builtins.elem dependency sequence) config.tasks.${name}.after;
   validRequires = builtins.all (
@@ -279,11 +291,12 @@ in
       assert lib.assertMsg validRequires
         "quick-contracts: catalog requires must match the selected evaluated task.after dependencies";
       pkgs.runCommand "quick-contracts" { } ''
-        mkdir -p "$out/bin"
+        mkdir -p "$out/bin" "$out/share"
         ln -s ${runner} "$out/bin/quick-contracts"
         ln -s ${prepare} "$out/bin/quick-contracts-prepare"
         ln -s ${reporter} "$out/bin/quick-contracts-report"
         ln -s ${taskAuthority} "$out/tasks.json"
+        ln -s ${membershipSpecification} "$out/share/membership-inputs.json"
       '';
     capabilities =
       (import ./buck2-capabilities.nix {

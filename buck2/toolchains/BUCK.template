@@ -1,0 +1,259 @@
+load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/toolchains:defs.bzl", "bun_toolchain", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "nix_go_bootstrap_toolchain", "nix_python_bootstrap_toolchain")
+load("//buck2/rust:toolchains.bzl", "native_rust_toolchains")
+load(":configured.bzl", "store_directory", "support_tool")
+load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
+load(":ts_sandbox.bzl", "ts_sandbox_toolchain")
+load("//buck2:quick_contracts.bzl", "quick_contracts_runtime")
+
+ts_sandbox_toolchain(
+    name = "ts_sandbox",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "archive_tool",
+    protocol = "effect-utils/buck2-archive-tool/v2",
+    tool_id = "archive-tool",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "fingerprint_tool",
+    protocol = "effect-utils/buck2-fingerprint/v1",
+    tool_id = "buck2-fingerprint",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "product_tool",
+    protocol = "effect-utils/buck2-product/v1",
+    tool_id = "product",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_coreutils_readlink",
+    protocol = "gnu/coreutils/v9",
+    tool_id = "coreutils-readlink",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_action_env",
+    protocol = "gnu/coreutils-env/v9",
+    tool_id = "action-env",
+    visibility = ["PUBLIC"],
+)
+
+# The Node runtime Vitest lanes select when a suite exercises Node built-ins Bun
+# does not implement. Attested like every other executable a contained action
+# launches, so the lane reads the realization's whole closure rather than one file.
+support_tool(
+    name = "tool_node",
+    protocol = "nodejs/node/v24",
+    tool_id = "node",
+    visibility = ["PUBLIC"],
+)
+
+# Contained fixture installs use the repo-pinned pnpm, not ambient Corepack.
+support_tool(
+    name = "tool_pnpm",
+    protocol = "pnpm/pnpm/v12.17.0",
+    tool_id = "pnpm",
+    visibility = ["PUBLIC"],
+)
+
+# Offline fixture installs read a declared immutable, lockfile-pinned pnpm store.
+store_directory(
+    name = "stylex_next_fixture",
+    protocol = "effect-utils/stylex-next-fixture/v1",
+    input_id = "stylex-next-fixture",
+    visibility = ["PUBLIC"],
+)
+
+# Stage-zero authority: ordinary source queries work before profile preparation.
+quick_contracts_runtime(
+    name = "quick_contracts",
+    visibility = ["PUBLIC"],
+)
+
+# The pinned Bun a bounded CLI-contract lane spawns as a child process. The
+# toolchain already carries Bun for the action itself; this is the separate,
+# attested capability a test's own subprocess resolves through PATH.
+support_tool(
+    name = "tool_bun",
+    protocol = "effect-utils/buck2-bun/v1",
+    tool_id = "bun",
+    visibility = ["PUBLIC"],
+)
+
+# The official Bun release a compiled product embeds (`bun build --compile
+# --compile-executable-path`). Actions only read its bytes; see
+# nix/bun-compile-runtime.nix.
+support_tool(
+    name = "bun_compile_runtime",
+    protocol = "effect-utils/buck2-bun-compile-runtime/v1",
+    tool_id = "bun-compile-runtime",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_cargo",
+    protocol = "rust-lang/cargo/v1",
+    tool_id = "cargo",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_wasm_bindgen",
+    protocol = "rustwasm/wasm-bindgen/v0.2.127",
+    tool_id = "wasm-bindgen",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_wasm_opt",
+    protocol = "webassembly/binaryen/v133",
+    tool_id = "wasm-opt",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_deadnix",
+    protocol = "astro/deadnix/v1",
+    tool_id = "deadnix",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_nixfmt",
+    protocol = "nix-community/nixfmt/v1",
+    tool_id = "nixfmt",
+    visibility = ["PUBLIC"],
+)
+support_tool(
+    name = "tool_nix",
+    protocol = "nixos/nix/v1",
+    tool_id = "nix",
+    visibility = ["PUBLIC"],
+)
+
+
+support_tool(
+    name = "tool_rust_shell",
+    protocol = "effect-utils/buck2-rust-tool/v1",
+    tool_id = "rust-shell",
+    visibility = ["PUBLIC"],
+)
+
+
+# Source-static tools remain Nix-realized capabilities; Buck owns their declared
+# repository inputs, invocation, invalidation, and result identity.
+support_tool(
+    name = "tool_oxfmt",
+    protocol = "oxc/oxfmt/v1",
+    tool_id = "oxfmt",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_oxlint",
+    protocol = "oxc/oxlint/v1",
+    tool_id = "oxlint",
+    visibility = ["PUBLIC"],
+)
+
+
+support_tool(
+    name = "tool_weaver",
+    protocol = "opentelemetry/weaver-cli/v0",
+    tool_id = "weaver",
+    visibility = ["PUBLIC"],
+)
+
+support_tool(
+    name = "tool_semconv_model",
+    protocol = "opentelemetry/semconv-model/v1",
+    tool_id = "semconv-model",
+    visibility = ["PUBLIC"],
+)
+
+native_rust_toolchains(
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    target_platform = host_platform_label(),
+)
+
+nix_python_bootstrap_toolchain(
+    name = "python_bootstrap",
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    visibility = ["PUBLIC"],
+)
+
+# `go_bootstrap` is the `go build` driver every
+# `buck2/go/defs.bzl:go_vendored_binary` action uses. Prelude's per-package
+# compile/link graph (`GoToolchainInfo`) is deliberately not declared: it needs
+# GOROOT as a Buck `Artifact` (`prelude//go:go_stdlib.bzl`), which for a Nix
+# realization means an action-language helper decision 0028 does not admit and a
+# 250 MB copy per configuration. See decision 0029.
+nix_go_bootstrap_toolchain(
+    name = "go_bootstrap",
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    visibility = ["PUBLIC"],
+)
+
+bun_toolchain(
+    name = "bun",
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    visibility = ["PUBLIC"],
+)
+
+# TypeScript vertical-slice toolchain. Bun and effect-tsgo come from the same
+# `.buck2/capabilities` projection the Rust and support tools use, so both are
+# exact executables from the Nix realizations of this run rather than
+# hand-maintained pins that go stale on the next nixpkgs bump. The selected pair
+# is immutable and identical across worktrees on the same host platform, so both
+# commands are represented in the action-key identity (EXEC-R02).
+effect_tsgo_toolchain(
+    name = "effect_tsgo",
+    capabilities = CAPABILITIES,
+    generation = GENERATION,
+    runner = "//packages/@overeng/buck2-tools:typescript-runner.ts",
+    visibility = ["PUBLIC"],
+)
+
+# attrs.source is eager even for the unselected analysis fixture below. Reuse
+# this package's already-loaded rule input, not the unrelated products fixtures.
+export_file(name = "provider_identity_fixture.bzl", visibility = ["PUBLIC"])
+
+# Analysis-only fixture: the rule and platform live in the hub cell and must
+# consume the exact same ProductPlatformInfo identity.
+configured_rust_toolchain(
+    name = "cross_cell_provider_identity",
+    archiver = ":archive_tool",
+    compile_env = {},
+    compiler = ":archive_tool",
+    identity = "cross-cell-provider-identity/v1",
+    linker = ":archive_tool",
+    target_platform = host_platform_label(),
+    target_triple = host_rust_target_triple(),
+    visibility = ["PUBLIC"],
+)
+
+cross_cell_product_identity(
+    name = "cross_cell_product_identity",
+    target_platform = host_platform_label(),
+    visibility = ["PUBLIC"],
+)
+
+cross_cell_product_identity(
+    name = "cross_cell_product_mismatch",
+    executable_target_platform = "//buck2/platforms:macos_aarch64",
+    target_platform = "//buck2/platforms:linux_x86_64",
+    visibility = ["PUBLIC"],
+)

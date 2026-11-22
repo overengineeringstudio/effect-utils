@@ -1481,6 +1481,7 @@ in
     execIfModified = [
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
+      "scripts/buck2-contract-membership.*"
       "packages/@overeng/buck2-tools/src/bun-test-runner.ts"
       "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
       "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"

@@ -1,0 +1,6 @@
+load(":defs.bzl", "identity_probe")
+
+identity_probe(name = "selected", tool = "//buck2/toolchains:tool_bun", mode = "selected")
+identity_probe(name = "unselected", tool = "//buck2/toolchains:tool_node", mode = "unselected")
+identity_probe(name = "dependency_negative", tool = "//buck2/toolchains:tool_bun", mode = "dependency_negative")
+identity_probe(name = "dependency_positive", tool = "//buck2/toolchains:tool_bun", mode = "dependency_positive", dependency = "//buck2/toolchains:tool_node")

@@ -81,6 +81,7 @@
   "buck2:rust-deps:check": {
     "paths": [
       "genie/buck2/quick-contract-inputs.ts",
+      "genie/buck2/quick-contract-source-groups.ts",
       "nix/quick-contracts-sequence.nix",
       "nix/quick-contracts-targets.json",
       "nix/devenv-modules/tasks/shared/buck2-rust-deps.nix",
@@ -197,7 +198,9 @@
       "scripts/fixtures/rust-foreign/"
     ],
     "requires": ["content-address:contract:check", "genie:editor-view-closure:check"],
-    "cache_policy": "local-validation"
+    "cache_policy": "local-validation",
+    "membership_mode": "tracked-and-untracked",
+    "membership": ["**"]
   },
   "genie:editor-view-closure:check": {
     "paths": [
@@ -226,7 +229,9 @@
     ],
     "requires": [],
     "cache_policy": "local-validation",
-    "extensions": [".ts", ".tsx", ".json"]
+    "extensions": [".ts", ".tsx", ".json"],
+    "membership_mode": "tracked-and-untracked",
+    "membership": ["**"]
   },
   "git-hooks:environment:test": {
     "paths": ["scripts/without-git-local-env.sh", "scripts/without-git-local-env.test.sh"],

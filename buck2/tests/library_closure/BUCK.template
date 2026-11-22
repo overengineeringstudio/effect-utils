@@ -1,0 +1,65 @@
+# Authored internal fixture, like the other buck2/tests packages; not a projection.
+load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:library.bzl", "rust_product_library")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/products:defs.bzl", "build_product")
+load(":defs.bzl", "panic_rejection")
+
+native.rust_library(
+    name = "generic_leaf",
+    crate = "generic_leaf",
+    crate_root = "generic.rs",
+    srcs = ["generic.rs"],
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "generic_leaf_v2",
+    crate = "generic_leaf",
+    crate_root = "generic.rs",
+    srcs = ["generic.rs"],
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "generic_bridge",
+    crate = "generic_bridge",
+    crate_root = "bridge.rs",
+    srcs = ["bridge.rs"],
+    deps = [":generic_leaf"],
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "probe_derive",
+    crate = "probe_derive",
+    crate_root = "derive.rs",
+    srcs = ["derive.rs"],
+    proc_macro = True,
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "example_library",
+    crate = "example_library",
+    crate_root = "library.rs",
+    srcs = ["library.rs"],
+    # Duplicate edge to the leaf exercises transitive-set deduplication.
+    deps = [":generic_bridge", ":generic_leaf", ":probe_derive", "//rust/third-party:serde"],
+    named_deps = {"alternate_leaf": ":generic_leaf_v2"},
+    edition = "2024",
+)
+
+rust_product_library(
+    name = "closure", library = ":example_library", recipe = "library-closure-fixture/v1",
+    target_platform = host_platform_label(),
+)
+
+build_product(
+    name = "product", artifact = ":closure", product_name = "example-library",
+    target_platform = host_platform_label(),
+)
+
+# Both routes compile abort artifacts behind the normal unwind product toolchain.
+panic_rejection("flags", {"rustc_flags": ["-Cpanic=abort"]})
+panic_rejection("env", {"env": {"NIX_RUSTFLAGS": "-Cpanic=abort"}})
