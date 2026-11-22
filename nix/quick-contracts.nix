@@ -134,10 +134,10 @@ let
       name:
       let
         id = "quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name;
-        check = pkgs.writeShellScript id ''
+        check = pkgs.writeShellScriptBin id ''
           ${runtimeEnvironment}
           if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-            echo 'usage: check VERDICT_OUTPUT' >&2
+            echo 'usage: ${id} VERDICT_OUTPUT' >&2
             exit 64
           fi
           # Resolve before the evaluated task script applies its own cwd.
@@ -176,11 +176,9 @@ let
         name = id;
         value = {
           kind = "executable";
-          package = pkgs.runCommand id { } ''
-            mkdir -p "$out/bin"
-            ln -s ${check} "$out/bin/check"
-          '';
-          executable = "bin/check";
+          # Executable capabilities must resolve inside their own Nix output.
+          package = check;
+          executable = "bin/${id}";
           protocol = "effect-utils/quick-contract-task/v1";
         };
       }
