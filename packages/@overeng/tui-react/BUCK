@@ -7,6 +7,7 @@
 # Semantic fingerprint: sha256:5bc01948c7b051d30c7262b24f07246b2cc735600426d56d814f5c9f39e8269b
 # Regenerate: devenv tasks run genie:run
 
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
@@ -636,5 +637,303 @@ vitest_collect(
         "NODE_BIN": "//buck2/toolchains:tool_node",
     },
     vitest_runtime = "node",
+    visibility = ["PUBLIC"],
+)
+
+# Package boundaries and hidden-directory anchors are owned by Genie. Regenerate
+# owning BUCK files for new packages or deeper hidden-directory chains; Buck has
+# no include_dotfiles switch. Existing anchored directories retain live globs.
+_quick_contract_source_excludes = [
+    anchor + ancestor + directory + "/" + tail
+    for anchor in ["",".storybook/","docs/.decisions/"]
+    for ancestor in ["", "**/", "**/.*/**/", "**/.*/**/.*/**/"]
+    for directory in [".buck2",".cache",".codex",".context",".devenv",".direnv",".editor-view",".evergreen",".git",".playwright-cli",".playwright-mcp",".pnpm",".pnpm-home",".pnpm-store",".vercel",".vitest-attachments",".worktree-tools","buck-out","dist","genie-locks","node_modules","repos","result","storybook-static","target","tmp"]
+    for tail in ["**/*","**/.*","**/.*/**/*","**/.*/**/.*","**/.*/**/.*/**/*"]
+] + [
+    anchor + tail[:-1] + temporary
+    for anchor in ["",".storybook/","docs/.decisions/"]
+    for tail in ["**/*","**/.*","**/.*/**/*","**/.*/**/.*","**/.*/**/.*/**/*"]
+    for temporary in [".BUCK.next.*", ".git-archives.json.next.*"]
+]
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__check-buck2-producer-overlap",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*.json",
+    "**/*.ts",
+    "**/.*.json",
+    "**/.*.ts",
+    "**/.*/**/*.json",
+    "**/.*/**/*.ts",
+    "**/.*/**/.*.json",
+    "**/.*/**/.*.ts",
+    "**/.*/**/.*/**/*.json",
+    "**/.*/**/.*/**/*.ts",
+    ".storybook/**/*.json",
+    ".storybook/**/*.ts",
+    ".storybook/**/.*.json",
+    ".storybook/**/.*.ts",
+    ".storybook/**/.*/**/*.json",
+    ".storybook/**/.*/**/*.ts",
+    ".storybook/**/.*/**/.*.json",
+    ".storybook/**/.*/**/.*.ts",
+    ".storybook/**/.*/**/.*/**/*.json",
+    ".storybook/**/.*/**/.*/**/*.ts",
+    "docs/.decisions/**/*.json",
+    "docs/.decisions/**/*.ts",
+    "docs/.decisions/**/.*.json",
+    "docs/.decisions/**/.*.ts",
+    "docs/.decisions/**/.*/**/*.json",
+    "docs/.decisions/**/.*/**/*.ts",
+    "docs/.decisions/**/.*/**/.*.json",
+    "docs/.decisions/**/.*/**/.*.ts",
+    "docs/.decisions/**/.*/**/.*/**/*.json",
+    "docs/.decisions/**/.*/**/.*/**/*.ts"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__genie-check",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*",
+    "**/.*",
+    "**/.*/**/*",
+    "**/.*/**/.*",
+    "**/.*/**/.*/**/*",
+    ".storybook/**/*",
+    ".storybook/**/.*",
+    ".storybook/**/.*/**/*",
+    ".storybook/**/.*/**/.*",
+    ".storybook/**/.*/**/.*/**/*",
+    "docs/.decisions/**/*",
+    "docs/.decisions/**/.*",
+    "docs/.decisions/**/.*/**/*",
+    "docs/.decisions/**/.*/**/.*",
+    "docs/.decisions/**/.*/**/.*/**/*"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__genie-editor-view-closure-check",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*.json",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/.*.json",
+    "**/.*.ts",
+    "**/.*.tsx",
+    "**/.*/**/*.json",
+    "**/.*/**/*.ts",
+    "**/.*/**/*.tsx",
+    "**/.*/**/.*.json",
+    "**/.*/**/.*.ts",
+    "**/.*/**/.*.tsx",
+    "**/.*/**/.*/**/*.json",
+    "**/.*/**/.*/**/*.ts",
+    "**/.*/**/.*/**/*.tsx",
+    ".storybook/**/*.json",
+    ".storybook/**/*.ts",
+    ".storybook/**/*.tsx",
+    ".storybook/**/.*.json",
+    ".storybook/**/.*.ts",
+    ".storybook/**/.*.tsx",
+    ".storybook/**/.*/**/*.json",
+    ".storybook/**/.*/**/*.ts",
+    ".storybook/**/.*/**/*.tsx",
+    ".storybook/**/.*/**/.*.json",
+    ".storybook/**/.*/**/.*.ts",
+    ".storybook/**/.*/**/.*.tsx",
+    ".storybook/**/.*/**/.*/**/*.json",
+    ".storybook/**/.*/**/.*/**/*.ts",
+    ".storybook/**/.*/**/.*/**/*.tsx",
+    "docs/.decisions/**/*.json",
+    "docs/.decisions/**/*.ts",
+    "docs/.decisions/**/*.tsx",
+    "docs/.decisions/**/.*.json",
+    "docs/.decisions/**/.*.ts",
+    "docs/.decisions/**/.*.tsx",
+    "docs/.decisions/**/.*/**/*.json",
+    "docs/.decisions/**/.*/**/*.ts",
+    "docs/.decisions/**/.*/**/*.tsx",
+    "docs/.decisions/**/.*/**/.*.json",
+    "docs/.decisions/**/.*/**/.*.ts",
+    "docs/.decisions/**/.*/**/.*.tsx",
+    "docs/.decisions/**/.*/**/.*/**/*.json",
+    "docs/.decisions/**/.*/**/.*/**/*.ts",
+    "docs/.decisions/**/.*/**/.*/**/*.tsx"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__lint-check-format-parity",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*.bzl",
+    "**/*.genie.ts",
+    "**/*BUCK",
+    "**/.*.bzl",
+    "**/.*.genie.ts",
+    "**/.*/**/*.bzl",
+    "**/.*/**/*.genie.ts",
+    "**/.*/**/*BUCK",
+    "**/.*/**/.*.bzl",
+    "**/.*/**/.*.genie.ts",
+    "**/.*/**/.*/**/*.bzl",
+    "**/.*/**/.*/**/*.genie.ts",
+    "**/.*/**/.*/**/*BUCK",
+    "**/.*/**/.*BUCK",
+    "**/.*BUCK",
+    ".storybook/**/*.bzl",
+    ".storybook/**/*.genie.ts",
+    ".storybook/**/*BUCK",
+    ".storybook/**/.*.bzl",
+    ".storybook/**/.*.genie.ts",
+    ".storybook/**/.*/**/*.bzl",
+    ".storybook/**/.*/**/*.genie.ts",
+    ".storybook/**/.*/**/*BUCK",
+    ".storybook/**/.*/**/.*.bzl",
+    ".storybook/**/.*/**/.*.genie.ts",
+    ".storybook/**/.*/**/.*/**/*.bzl",
+    ".storybook/**/.*/**/.*/**/*.genie.ts",
+    ".storybook/**/.*/**/.*/**/*BUCK",
+    ".storybook/**/.*/**/.*BUCK",
+    ".storybook/**/.*BUCK",
+    "docs/.decisions/**/*.bzl",
+    "docs/.decisions/**/*.genie.ts",
+    "docs/.decisions/**/*BUCK",
+    "docs/.decisions/**/.*.bzl",
+    "docs/.decisions/**/.*.genie.ts",
+    "docs/.decisions/**/.*/**/*.bzl",
+    "docs/.decisions/**/.*/**/*.genie.ts",
+    "docs/.decisions/**/.*/**/*BUCK",
+    "docs/.decisions/**/.*/**/.*.bzl",
+    "docs/.decisions/**/.*/**/.*.genie.ts",
+    "docs/.decisions/**/.*/**/.*/**/*.bzl",
+    "docs/.decisions/**/.*/**/.*/**/*.genie.ts",
+    "docs/.decisions/**/.*/**/.*/**/*BUCK",
+    "docs/.decisions/**/.*/**/.*BUCK",
+    "docs/.decisions/**/.*BUCK"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__lint-check-getflake",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*.nix",
+    "**/*.sh",
+    "**/.*.nix",
+    "**/.*.sh",
+    "**/.*/**/*.nix",
+    "**/.*/**/*.sh",
+    "**/.*/**/.*.nix",
+    "**/.*/**/.*.sh",
+    "**/.*/**/.*/**/*.nix",
+    "**/.*/**/.*/**/*.sh",
+    ".storybook/**/*.nix",
+    ".storybook/**/*.sh",
+    ".storybook/**/.*.nix",
+    ".storybook/**/.*.sh",
+    ".storybook/**/.*/**/*.nix",
+    ".storybook/**/.*/**/*.sh",
+    ".storybook/**/.*/**/.*.nix",
+    ".storybook/**/.*/**/.*.sh",
+    ".storybook/**/.*/**/.*/**/*.nix",
+    ".storybook/**/.*/**/.*/**/*.sh",
+    "docs/.decisions/**/*.nix",
+    "docs/.decisions/**/*.sh",
+    "docs/.decisions/**/.*.nix",
+    "docs/.decisions/**/.*.sh",
+    "docs/.decisions/**/.*/**/*.nix",
+    "docs/.decisions/**/.*/**/*.sh",
+    "docs/.decisions/**/.*/**/.*.nix",
+    "docs/.decisions/**/.*/**/.*.sh",
+    "docs/.decisions/**/.*/**/.*/**/*.nix",
+    "docs/.decisions/**/.*/**/.*/**/*.sh"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__lint-check-standalone-staging",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*.nix",
+    "**/.*.nix",
+    "**/.*/**/*.nix",
+    "**/.*/**/.*.nix",
+    "**/.*/**/.*/**/*.nix",
+    ".storybook/**/*.nix",
+    ".storybook/**/.*.nix",
+    ".storybook/**/.*/**/*.nix",
+    ".storybook/**/.*/**/.*.nix",
+    ".storybook/**/.*/**/.*/**/*.nix",
+    "docs/.decisions/**/*.nix",
+    "docs/.decisions/**/.*.nix",
+    "docs/.decisions/**/.*/**/*.nix",
+    "docs/.decisions/**/.*/**/.*.nix",
+    "docs/.decisions/**/.*/**/.*/**/*.nix"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__nix-buck2-launcher-independence-check",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*",
+    "**/.*",
+    "**/.*/**/*",
+    "**/.*/**/.*",
+    "**/.*/**/.*/**/*",
+    ".storybook/**/*",
+    ".storybook/**/.*",
+    ".storybook/**/.*/**/*",
+    ".storybook/**/.*/**/.*",
+    ".storybook/**/.*/**/.*/**/*",
+    "docs/.decisions/**/*",
+    "docs/.decisions/**/.*",
+    "docs/.decisions/**/.*/**/*",
+    "docs/.decisions/**/.*/**/.*",
+    "docs/.decisions/**/.*/**/.*/**/*"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__nix-javascript-product-import-check",
+    prefix = "packages/@overeng/tui-react",
+    srcs = glob([
+    "**/*",
+    "**/.*",
+    "**/.*/**/*",
+    "**/.*/**/.*",
+    "**/.*/**/.*/**/*",
+    ".storybook/**/*",
+    ".storybook/**/.*",
+    ".storybook/**/.*/**/*",
+    ".storybook/**/.*/**/.*",
+    ".storybook/**/.*/**/.*/**/*",
+    "docs/.decisions/**/*",
+    "docs/.decisions/**/.*",
+    "docs/.decisions/**/.*/**/*",
+    "docs/.decisions/**/.*/**/.*",
+    "docs/.decisions/**/.*/**/.*/**/*"
+], exclude = _quick_contract_source_excludes),
     visibility = ["PUBLIC"],
 )

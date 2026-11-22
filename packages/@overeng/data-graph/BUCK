@@ -7,6 +7,7 @@
 # Semantic fingerprint: sha256:8577f9ee1aa432b5472b4d7bb51a6a9c501fa98fd9dc5051c4d2cb866c7ba623
 # Regenerate: devenv tasks run genie:run
 
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
@@ -215,5 +216,163 @@ vitest_test(
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+# Package boundaries and hidden-directory anchors are owned by Genie. Regenerate
+# owning BUCK files for new packages or deeper hidden-directory chains; Buck has
+# no include_dotfiles switch. Existing anchored directories retain live globs.
+_quick_contract_source_excludes = [
+    anchor + ancestor + directory + "/" + tail
+    for anchor in [""]
+    for ancestor in ["", "**/", "**/.*/**/", "**/.*/**/.*/**/"]
+    for directory in [".buck2",".cache",".codex",".context",".devenv",".direnv",".editor-view",".evergreen",".git",".playwright-cli",".playwright-mcp",".pnpm",".pnpm-home",".pnpm-store",".vercel",".vitest-attachments",".worktree-tools","buck-out","dist","genie-locks","node_modules","repos","result","storybook-static","target","tmp"]
+    for tail in ["**/*","**/.*","**/.*/**/*","**/.*/**/.*","**/.*/**/.*/**/*"]
+] + [
+    anchor + tail[:-1] + temporary
+    for anchor in [""]
+    for tail in ["**/*","**/.*","**/.*/**/*","**/.*/**/.*","**/.*/**/.*/**/*"]
+    for temporary in [".BUCK.next.*", ".git-archives.json.next.*"]
+]
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__check-buck2-producer-overlap",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*.json",
+    "**/*.ts",
+    "**/.*.json",
+    "**/.*.ts",
+    "**/.*/**/*.json",
+    "**/.*/**/*.ts",
+    "**/.*/**/.*.json",
+    "**/.*/**/.*.ts",
+    "**/.*/**/.*/**/*.json",
+    "**/.*/**/.*/**/*.ts"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__genie-check",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*",
+    "**/.*",
+    "**/.*/**/*",
+    "**/.*/**/.*",
+    "**/.*/**/.*/**/*"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__genie-editor-view-closure-check",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*.json",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/.*.json",
+    "**/.*.ts",
+    "**/.*.tsx",
+    "**/.*/**/*.json",
+    "**/.*/**/*.ts",
+    "**/.*/**/*.tsx",
+    "**/.*/**/.*.json",
+    "**/.*/**/.*.ts",
+    "**/.*/**/.*.tsx",
+    "**/.*/**/.*/**/*.json",
+    "**/.*/**/.*/**/*.ts",
+    "**/.*/**/.*/**/*.tsx"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__lint-check-format-parity",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*.bzl",
+    "**/*.genie.ts",
+    "**/*BUCK",
+    "**/.*.bzl",
+    "**/.*.genie.ts",
+    "**/.*/**/*.bzl",
+    "**/.*/**/*.genie.ts",
+    "**/.*/**/*BUCK",
+    "**/.*/**/.*.bzl",
+    "**/.*/**/.*.genie.ts",
+    "**/.*/**/.*/**/*.bzl",
+    "**/.*/**/.*/**/*.genie.ts",
+    "**/.*/**/.*/**/*BUCK",
+    "**/.*/**/.*BUCK",
+    "**/.*BUCK"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__lint-check-getflake",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*.nix",
+    "**/*.sh",
+    "**/.*.nix",
+    "**/.*.sh",
+    "**/.*/**/*.nix",
+    "**/.*/**/*.sh",
+    "**/.*/**/.*.nix",
+    "**/.*/**/.*.sh",
+    "**/.*/**/.*/**/*.nix",
+    "**/.*/**/.*/**/*.sh"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__lint-check-standalone-staging",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*.nix",
+    "**/.*.nix",
+    "**/.*/**/*.nix",
+    "**/.*/**/.*.nix",
+    "**/.*/**/.*/**/*.nix"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__nix-buck2-launcher-independence-check",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*",
+    "**/.*",
+    "**/.*/**/*",
+    "**/.*/**/.*",
+    "**/.*/**/.*/**/*"
+], exclude = _quick_contract_source_excludes),
+    visibility = ["PUBLIC"],
+)
+
+# Buck hashes these package-local check inputs, independently of product inputs.
+_quick_contract_source_set(
+    name = "quick_contract_sources__nix-javascript-product-import-check",
+    prefix = "packages/@overeng/data-graph",
+    srcs = glob([
+    "**/*",
+    "**/.*",
+    "**/.*/**/*",
+    "**/.*/**/.*",
+    "**/.*/**/.*/**/*"
+], exclude = _quick_contract_source_excludes),
     visibility = ["PUBLIC"],
 )
