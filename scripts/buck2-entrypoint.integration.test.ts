@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
@@ -695,6 +695,10 @@ describe('native daemon admission diagnostics', () => {
         writeFileSync(
           native,
           `#!${Bun.which('sh')}
+if [ "$1" = '--fixture-ready' ]; then
+  printf '%s\\n' 'fixture-ready'
+  exit 0
+fi
 printf '%s\\n' "$*" >> '${calls}'
 if [ "$3" = '${subcommand}' ]; then
   printf '%s\\n' '${secret}' >&2
@@ -707,6 +711,19 @@ fi
 `,
           { mode: 0o700 },
         )
+        // Darwin's first exec of a new script can outlast the command deadline
+        // before its body runs. Establish fixture readiness, not a native call,
+        // before measuring the failure path; do not retry a failed readiness check.
+        const ready = spawnSync(native, ['--fixture-ready'], {
+          env: { BUCK2_CI_POSTURE: '1' },
+          encoding: 'utf8',
+        })
+        expect(ready.error).toBeUndefined()
+        expect(ready.status).toBe(0)
+        expect(ready.signal).toBeNull()
+        expect(ready.stdout).toBe('fixture-ready\n')
+        expect(ready.stderr).toBe('')
+        expect(existsSync(calls)).toBe(false)
         let caught: unknown
         try {
           await admitCacheDaemonCommand({

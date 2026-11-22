@@ -64,6 +64,7 @@ import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import readerComposition from '../../genie/ci-workflow/reader-composition.json'
 import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
+import { shellSingleQuote, withAppendedNixConfig } from '../../genie/ci-workflow/shared.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
@@ -71,6 +72,27 @@ import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runt
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
+
+// Keep realization/publication explicit; Buck owns every check verdict.
+const runBuckChecks = (args: string, fullContracts = false) => {
+  const script = [
+    ...(fullContracts
+      ? [
+          `WORKTREE_CAPABILITIES_PROFILE="$("\${DEVENV_BIN:?DEVENV_BIN not set}" build effectUtils.quickContracts.capabilities --no-tui | python3 -c 'import json,sys; print(json.load(sys.stdin)["effectUtils.quickContracts.capabilities"])')"`,
+          'export WORKTREE_CAPABILITIES_PROFILE',
+        ]
+      : []),
+    'python3 scripts/worktree-env.py prepare',
+    `\${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }python3 scripts/worktree-env.py run -- buck2 ${args}`,
+  ].join('\n')
+  const command = withCiSourceRoot(
+    withAppendedNixConfig({
+      opts: { unrestrictedEval: true },
+      command: `bash -euo pipefail -c ${shellSingleQuote(script)}`,
+    }),
+  )
+  return withGcRaceRetry({ command, label: `buck2 ${args}` })
+}
 
 const trustedCachixStep = cachixStep({ name: 'overeng-effect-utils' })
 const binaryCache = readBinaryCacheDescriptors(
@@ -874,9 +896,9 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
         },
         buck2TrustedCacheWriterStep(verifyOtelShellEntryStep),
         buck2TrustedCacheWriterStep({
-          name: 'Type check (Buck)',
-          env: githubTokenEnv(),
-          run: runDevenvTasksBefore('buck2:quick'),
+          name: 'Quick contracts (Buck)',
+          env: { ...githubTokenEnv(), EFFECT_UTILS_CI_TEST: '1' },
+          run: runBuckChecks('run //:check-quick', true),
         }),
         frozenLockfileStep,
         buck2TrustedCacheWriterStep({
@@ -1105,7 +1127,10 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     step: {
       name: 'Weaver registry gates (Buck quick + diff + live-check)',
       env: githubTokenEnv(),
-      run: runDevenvTasksBefore('buck2:quick', 'weaver:diff', 'weaver:live-check'),
+      run: [
+        runBuckChecks('build //:quick'),
+        runDevenvTasksBefore('weaver:diff', 'weaver:live-check'),
+      ].join('\n'),
     },
   }),
 }

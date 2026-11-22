@@ -636,6 +636,8 @@ Host quick also retains the Notion CI-skip before-edge, using the same five
 declared task commands without starting devenv. That task family is absent from
 the CI unit profile. The mandatory guard proves both selections preserve the
 remaining ordered contracts.
+The CI quick step declares this flag before constructing the immutable authority;
+host profile construction leaves it unset and retains the complete gate suite.
 
 ### Type Checking
 

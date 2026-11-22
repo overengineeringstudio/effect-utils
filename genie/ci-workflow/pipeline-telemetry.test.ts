@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { withPipelineTelemetry } from './pipeline-telemetry.ts'
 
 test('each task step in a job shares the pipeline run prefix', () => {
@@ -32,6 +33,16 @@ test('each task step in a job shares the pipeline run prefix', () => {
   })
 })
 
+test('Buck quick contracts retain the existing pipeline trace boundary', () => {
+  const step = ciWorkflow.data.jobs.quality!.steps.find(
+    (candidate) => 'name' in candidate && candidate.name === 'Quick contracts (Buck)',
+  )
+  expect(step).toBeDefined()
+  expect('run' in step! && step.run).toContain('buck2 run //:check-quick')
+  expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
+  expect('env' in step! && step.env?.EFFECT_UTILS_CI_TEST).toBe('1')
+})
+
 test('GitBucket adds OIDC authority only to the same-repo PR reporter override', () => {
   const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
   const reporterJob = workflow.match(/\n  pipeline-traces:\n([\s\S]*?)(?=\n  [^\s]|$)/)?.[1]
@@ -61,7 +72,7 @@ test('Playwright jobs capture network events only during tests and upload failur
     expect(steps[testStepIndex + 1]).toMatchObject({
       name: 'Upload Playwright failure evidence',
       if: 'failure()',
-      uses: 'actions/upload-artifact@v4',
+      uses: pinnedAction({ name: 'uploadArtifact' }).uses,
       with: {
         name: `playwright-test-results-${packageName}-run-\${{ github.run_id }}-attempt-\${{ github.run_attempt }}`,
         path: `packages/@overeng/${packageName}/test-results/`,

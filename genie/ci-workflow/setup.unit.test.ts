@@ -1208,7 +1208,7 @@ describe('Buck2 CI job instance projection', () => {
 })
 
 describe('unit-test shell selection', () => {
-  it('selects the narrow shell only at job scope for required unit-test jobs', () => {
+  it('selects the narrow shell only for unit-test jobs and the explicit quick-contract step', () => {
     const workflow: GitHubWorkflowArgs = ciWorkflow.data
     expect(workflow.env?.EFFECT_UTILS_CI_TEST).toBeUndefined()
     expect(
@@ -1223,7 +1223,10 @@ describe('unit-test shell selection', () => {
         ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) === true ? '1' : undefined,
       )
       for (const step of job.steps) {
-        expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBeUndefined()
+        const isQuickContractStep = jobId === 'quality' && step.name === 'Quick contracts (Buck)'
+        expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBe(
+          isQuickContractStep === true ? '1' : undefined,
+        )
       }
     }
   })
