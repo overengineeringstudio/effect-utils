@@ -178,6 +178,7 @@ extract_vercel_static_task_script() {
               {
                 name = \"web\";
                 staticDir = \"$static_dir\";
+                assetManifest = \"$tmpdir/vercel-assets.json\";
                 projectIdEnv = \"VERCEL_PROJECT_ID_WEB\";
                 scopeEnv = \"VERCEL_SCOPE_WEB\";
                 aliasPrefix = \"web-preview\";
@@ -290,6 +291,7 @@ mkdir -p \
 echo "storybook marker" > "$workspace/storybook-static/index.html"
 echo "vercel marker" > "$workspace/static/index.html"
 echo '{"name":"fixture-app"}' > "$workspace/app/package.json"
+printf '["/index.html"]\n' > "$tmpdir/vercel-assets.json"
 
 cat > "$tmpdir/fake-api.mjs" <<'EOF'
 import { createServer } from 'node:http'
@@ -300,6 +302,10 @@ const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1')
   response.setHeader('content-type', 'application/json')
 
+  if (url.pathname === '/readiness' || url.pathname === '/index.html') {
+    response.end('vercel marker')
+    return
+  }
   if (url.pathname === '/api/v1/sites/fake-site-id') {
     response.end(JSON.stringify({ name: 'fake-site', account_slug: 'fake-account' }))
     return
@@ -431,6 +437,17 @@ exit 1
 EOF
 chmod +x "$tmpdir/fake-vercel"
 
+cat > "$tmpdir/fetch-preload.mjs" <<'EOF'
+const originalFetch = globalThis.fetch
+globalThis.fetch = (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input))
+  if (url.hostname.endsWith('.vercel.app')) {
+    return originalFetch(process.env.FAKE_API_BASE_URL + (url.pathname === '/' ? '/readiness' : url.pathname), init)
+  }
+  return originalFetch(input, init)
+}
+EOF
+
 cat > "$tmpdir/ci-tools-wrapper" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -442,7 +459,7 @@ case "\${1:-}:\${2:-}" in
     exec bun "$ROOT/packages/@overeng/ci-tools/bin/ci-tools.ts" "\$@" --netlify-api-base-url "\${FAKE_API_BASE_URL:?}"
     ;;
   deploy:vercel)
-    exec bun "$ROOT/packages/@overeng/ci-tools/bin/ci-tools.ts" "\$@" --vercel-api-base-url "\${FAKE_API_BASE_URL:?}"
+    exec bun --preload "$tmpdir/fetch-preload.mjs" "$ROOT/packages/@overeng/ci-tools/bin/ci-tools.ts" "\$@" --vercel-api-base-url "\${FAKE_API_BASE_URL:?}"
     ;;
   *)
     echo "unexpected ci-tools wrapper invocation: \$*" >&2
@@ -546,6 +563,7 @@ assert_contains "$vercel_static_args" "--target web" "Vercel static wrapper shou
 assert_contains "$vercel_static_args" "--alias-prefix web-preview" "Vercel static wrapper should preserve alias prefix"
 assert_contains "$vercel_static_args" "--alias-suffix team" "Vercel static wrapper should preserve alias suffix"
 assert_contains "$vercel_static_args" "--artifact-kind static" "Vercel static wrapper should pass static artifact kind"
+assert_contains "$vercel_static_args" "--asset-manifest $tmpdir/vercel-assets.json" "Vercel static wrapper should pass the local asset manifest"
 assert_contains "$vercel_static_args" "--project-id-env VERCEL_PROJECT_ID_WEB" "Vercel static wrapper should pass project id env"
 assert_contains "$vercel_static_args" "--scope-env VERCEL_SCOPE_WEB" "Vercel static wrapper should pass scope env"
 assert_contains "$vercel_static_args" "--github-output-file $vercel_github_output" "Vercel static wrapper should pass GitHub output path"
