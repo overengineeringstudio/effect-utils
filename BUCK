@@ -623,6 +623,7 @@ _quick_contract_source_set(
     "nix/quick-contracts-sequence.nix",
     "nix/quick-contracts-sequence.test.nix",
     "nix/quick-contracts.nix",
+    "nix/quick-contracts.test.nix",
     "nix/reindeer.nix",
     "nix/restate.nix",
     "nix/stage0-cargo/check.nix",
