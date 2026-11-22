@@ -649,6 +649,17 @@ itself shared-state access; ownership of their mutations is what matters:
   startup, migration stop, and cleanup names that private HOME/root/isolation.
   Every Watchman operation names its private socket; startup, state, config,
   log, PID file, and native shutdown are fixture-owned.
+  Steady rotation still requires the same daemon, the new output, and the
+  materialized capability input. Native watcher evidence must report either
+  `capabilities//defs.bzl` in `FileWatcherEnd.stats.events`, or (Watchman only)
+  boolean `FileWatcherEnd.stats.fresh_instance=true`, which triggers rehashing
+  rather than requiring a per-path event. Synthetic predicate cases cover both
+  alternatives and rejection of missing/untyped evidence; they are not native
+  recrawl qualification receipts. On failure, the fixture copies its private
+  Watchman log and captured native events before deleting temporary state into
+  a private `capability-daemon.*` directory under `CAPABILITY_TEST_EVIDENCE_DIR`
+  (default: `$XDG_STATE_HOME/buck2-cache-reports/capability-daemon`, falling back
+  to `$HOME/.local/state`). Only the receipt path is printed; logs remain private.
 - `buck2-capability-publish.test.sh` owns its publication roots, lock files,
   synthetic Buck state, and HOME. The five competing publishers and crash
   victim all use those roots; signals/cleanup address only captured fixture

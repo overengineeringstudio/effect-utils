@@ -32,6 +32,22 @@ mkdir -p "$TEST_HOME"
 declare -a daemon_roots=() daemon_isolations=()
 private_watchman_started=false
 private_watchman_socket_dir=""
+retain_failure_evidence() {
+  local evidence_base evidence fixture phase
+  evidence_base="${CAPABILITY_TEST_EVIDENCE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/buck2-cache-reports/capability-daemon}"
+  umask 077
+  mkdir -p "$evidence_base" || return 1
+  evidence="$(mktemp -d "$evidence_base/capability-daemon.XXXXXX")" || return 1
+  if [ -f "$TEMP_ROOT/w.log" ]; then cp "$TEMP_ROOT/w.log" "$evidence/watchman.log" || return 1; fi
+  for fixture in "${daemon_roots[@]}"; do
+    for phase in before after steady; do
+      if [ -f "$fixture/$phase.events" ]; then
+        cp "$fixture/$phase.events" "$evidence/${fixture##*/}-$phase.events" || return 1
+      fi
+    done
+  done
+  printf 'Private capability failure evidence retained at %s (not public output)\n' "$evidence" >&2
+}
 cleanup() {
   local exit_code=$? index
   for ((index=0; index<${#daemon_roots[@]}; index++)); do
@@ -48,6 +64,10 @@ cleanup() {
       exit_code=1
     fi
   fi
+  # Copy after private service shutdown has flushed its log, before EXIT cleanup.
+  if [ "$exit_code" -ne 0 ]; then
+    retain_failure_evidence || echo 'FAIL: could not retain private capability failure evidence' >&2
+  fi
   if [ -n "$private_watchman_socket_dir" ]; then rm -rf "$private_watchman_socket_dir"; fi
   chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
   rm -rf "$TEMP_ROOT"
@@ -57,6 +77,22 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# Predicate contract cases use the vendored native FileWatcherEnd schema. These
+# are synthetic unit inputs, never evidence that a real recrawl occurred.
+while IFS='|' read -r label watcher expected events; do
+  actual=0
+  printf '%s\n' "$events" | jq -e --arg watcher "$watcher" \
+    -f "$TESTS_DIR/buck2-capability-watcher-change.jq" >/dev/null || actual=$?
+  [ "$actual" = "$expected" ] || fail "watcher evidence predicate: $label (exit $actual, expected $expected)"
+done <<'WATCHER_CASES'
+path|notify|0|[{"Event":{"data":{"SpanEnd":{"data":{"FileWatcher":{"stats":{"events":[{"path":"capabilities//defs.bzl","event":1,"kind":0}],"fresh_instance":false}}}}}}}]
+fresh|watchman|0|[{"Event":{"data":{"SpanEnd":{"data":{"FileWatcher":{"stats":{"events":[],"fresh_instance":true}}}}}}}]
+neither|watchman|1|[{"Event":{"data":{"SpanEnd":{"data":{"FileWatcher":{"stats":{"events":[],"fresh_instance":false}}}}}}}]
+notify-fresh|notify|1|[{"Event":{"data":{"SpanEnd":{"data":{"FileWatcher":{"stats":{"events":[],"fresh_instance":true}}}}}}}]
+untyped-marker|watchman|1|[{"message":"fresh_instance capabilities//defs.bzl"}]
+string-not-bool|watchman|1|[{"Event":{"data":{"SpanEnd":{"data":{"FileWatcher":{"stats":{"events":[],"fresh_instance":"true"}}}}}}}]
+WATCHER_CASES
 
 # Real pinned Nix packages and the production projection generator. No npm
 # acquisition or repository graph/network cache is involved in this fixture.
@@ -330,7 +366,9 @@ CONFIG
     assert_native_log steady
     assert_output steady one steady
     assert_materialized_input steady "$GEN_ONE"
-    grep -Fq -- 'capabilities//defs.bzl' "$fixture/steady.events" || fail "$watcher steady rotation did not report watched defs.bzl change"
+    jq -es --arg watcher "$watcher" -f "$TESTS_DIR/buck2-capability-watcher-change.jq" \
+      "$fixture/steady.events" >/dev/null \
+      || fail "$watcher steady rotation reported neither watched defs.bzl change nor native Watchman fresh-instance rehash"
     assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
     assert_gc_root "$fixture" "$GEN_TWO" "$PROFILE_TWO"
     # A real native daemon, not a fabricated PID, holds an old action identity
