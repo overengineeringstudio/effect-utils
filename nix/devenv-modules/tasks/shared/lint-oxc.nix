@@ -388,16 +388,19 @@ let
         # without serializing independent installs and checks.
         acquire_pnpm_store_cache_lease ${lib.escapeShellArg "${pkgs.flock}/bin/flock"} shared "$npm_config_store_dir" 600
         # Validate without rewriting node_modules while concurrent checks read it.
-        pnpm install \
-          --lockfile-only \
-          --frozen-lockfile \
-          --ignore-scripts \
-          --config.side-effects-cache=false \
-          --config.verify-store-integrity=true \
-          --config.strict-store-pkg-content-check=true \
-          --pm-on-fail=ignore \
-          --config.store-dir="$npm_config_store_dir" \
-          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD"
+        (
+          pnpm_install_umask
+          pnpm install \
+            --lockfile-only \
+            --frozen-lockfile \
+            --ignore-scripts \
+            --config.side-effects-cache=false \
+            --config.verify-store-integrity=true \
+            --config.strict-store-pkg-content-check=true \
+            --pm-on-fail=ignore \
+            --config.store-dir="$npm_config_store_dir" \
+            --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD"
+        )
       '';
     };
     "lint:check:no-tailwind" = {

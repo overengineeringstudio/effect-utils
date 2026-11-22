@@ -327,7 +327,7 @@ export const runFingerprintTool = ({
           else
             reject(
               new Error(
-                `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
+                `fingerprint tool failed (input ${args[0] ?? ''}, exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
               ),
             )
         })
