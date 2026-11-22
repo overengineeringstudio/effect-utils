@@ -30,6 +30,7 @@ describe('root Buck aggregate projection', () => {
         ':weaver_check',
         ':weaver_version_smoke',
         '//buck2/static:check',
+        '//buck2/static:work_storage_resources_check',
       ],
       all: [
         ':quick',
@@ -72,6 +73,7 @@ describe('root Buck aggregate projection', () => {
     )
     expect(output).toContain('name = "quick"')
     expect(output).toContain('name = "all"')
+    expect(output).toContain('alias(name = "check-quick", actual = "//buck2/static:check_quick"')
     expect(output).toContain('check_aggregate(')
     expect(output).toContain('weaver_checks(')
     expect(output).not.toContain('# Semantic inputs:')
@@ -146,6 +148,7 @@ describe('root Buck aggregate projection', () => {
       ':weaver_check',
       ':weaver_version_smoke',
       '//buck2/static:check',
+      '//buck2/static:work_storage_resources_check',
     ])
   })
 })

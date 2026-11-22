@@ -651,6 +651,46 @@ as parameter properties, enums, and runtime namespaces, before merge-group
 consumer tests. Source exports can therefore use Node's strip-only mode without
 TypeScript lowering; unrelated runtime requirements and JSX transforms still apply.
 
+#### Full quick contracts without a task-runner invocation
+
+`buck2 build //:quick` checks deterministic declared inputs, including exact
+work-storage resource parity. Full quick parity additionally needs the bounded
+checkout contracts exposed by `buck2 run //:check-quick`. This native run preserves
+caller-owned policy, identity and trace context. The uncached checks observe Git
+inventories, capability publication, daemon
+lifecycle, Nix imports, generated bindings, hook isolation, and interruption.
+They are not hermetic build actions or remote-execution candidates.
+
+While devenv remains the evaluated task authority, prepare its immutable
+execution projection explicitly with
+`devenv build effectUtils.quickContracts.capabilities`. Publish that returned
+store profile as `WORKTREE_CAPABILITIES_PROFILE` through the normal capability
+publisher. The profile's stable `quick-contracts` symlink exposes the same declared
+capability. Invoke its `bin/quick-contracts-prepare ROOT GENERATION` **before**
+running Buck; `GENERATION/profile` must root the selected profile.
+Preparation uses the pinned retained task graph to publish the
+source-generator and standalone-staging views; the Buck run never calls devenv
+or performs that setup itself.
+
+Preparation and execution preserve `WORKTREE_POLICY_PATH` guard directories and
+the canonical immutable operator admission package ahead of the declared Nix runtime
+closure; no ambient executable directory is forwarded. The real gate-slot lifecycle
+regression requires the operator-provided Nix-installed `gate-slot`. A receipt
+binds prepared views to the evaluated task authority and selected capability
+profile. Tracked-source changes invalidate the immutable projection: stage new
+source files, rebuild the profile, republish it, and prepare again. All existing
+devenv tasks remain available; removing their evaluated authority requires a
+separate contract replacement, not deleting these guards.
+
+The transitional runtime deliberately retains `config.packages` in addition to
+its explicit process/compiler tools; it is not the thin `worktree-tools` closure.
+Consequently constructing this profile can realize unrelated shell CLI products.
+That source-level coupling is not a Buck execution timing or cache-hit claim.
+The separate standalone-staging preparation can also realize the retained shell;
+measure setup separately from the 23 host / 22 CI runtime command verdicts.
+Generic task PATH Bun remains raw; publication-aware task commands retain their
+own scoped launcher, and native Buck/publication-owner bindings are declared.
+
 Audit cross-cell Buck provider identity separately:
 
 ```bash

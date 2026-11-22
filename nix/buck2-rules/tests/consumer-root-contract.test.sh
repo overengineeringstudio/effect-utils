@@ -58,6 +58,8 @@ grep -Fx '  file_watcher = fs_hash_crawler' "$immutable_root/.buckconfig" >/dev/
 [ -f "$root/.buck2/capabilities/defs.bzl" ]
 [ -f "$root/.buck2/rules/packages/@overeng/buck2-tools/src/typescript-runner.ts" ]
 [ -f "$root/.buck2/rules/buck2/dependencies/runtime-closure.ts" ]
+# The packaged toolchain file loads this even for a TypeScript-only consumer.
+[ -f "$root/.buck2/rules/buck2/quick_contracts.bzl" ]
 
 # Verify the realized distribution, not another copy of its source file list.
 python3 - "$root/.buck2/rules" "$repo_root/nix/buck2-rules/inventory.json" <<'PY'

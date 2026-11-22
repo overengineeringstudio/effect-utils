@@ -34,6 +34,7 @@ const expectedFiles = [
   'buck2/products/defs.bzl',
   'buck2/provenance/BUCK',
   'buck2/provenance/defs.bzl',
+  'buck2/quick_contracts.bzl',
   'buck2/rust/BUCK',
   'buck2/rust/content-address-parity.bzl',
   'buck2/rust/crates.bzl',
