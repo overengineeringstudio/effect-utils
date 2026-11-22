@@ -162,13 +162,11 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
-The publication task entrypoint owns the worktree before its authority census
-and native build, and holds that owner until same-process publication completes.
-`reconcileBuckViews` requires the opaque `publicationOwner` and its `runOwned`
-native-command runner; it validates ownership and selects the reserved
-`editor-publication` isolation. No owner descriptor crosses a child boundary.
-The supervisor observes an admission notification only; time waiting for ownership
-does not consume the publication execution budget.
+The publication task entrypoint owns the worktree before authority census and native build,
+holding ownership until same-process publication completes. `reconcileBuckViews` requires
+the opaque `publicationOwner` and its `runOwned` native-command runner, validates ownership,
+and selects reserved `editor-publication` isolation. No owner descriptor crosses a child boundary.
+The supervisor observes admission notification only; queue time is outside execution budgets.
 
 Publication, budget, reader, and content-store diagnostics share an invocation-local
 sink in `editor-view-diagnostics.ts`. Scoped callers receive the original stderr
@@ -271,7 +269,7 @@ Scoped devenv publishers retain their explicit consumer sets; Storybook builds d
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
-The authority holds a process-local kernel `flock` until publisher close,
+The authority holds a process-local kernel `flock` until publication completes,
 with a **5 s kill grace** on interruption or deadline expiry. The execution clock
 starts only after admission; each task retains its declared execution budget.
 Storybook play tests keep their derived 380 s cap, excluding queue time.
@@ -280,7 +278,7 @@ Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
 treated as termination only after a process census proves no live members remain;
 live-member permission failures still fail closed. The authority retains ownership
-until publisher close; its process exit releases it automatically. The persistent
+until publication completes; its process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
