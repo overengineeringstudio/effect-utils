@@ -80,7 +80,7 @@ export type PageProps = Children & {
   readonly cover?: PageCover | null
 }
 
-export type ParagraphProps = Children & BlockKey
+export type ParagraphProps = Children & BlockKey & { readonly color?: NotionColor }
 
 /**
  * Notion's block-level color enum. Foreground colors (e.g. `red`) tint the
@@ -130,14 +130,15 @@ export type HeadingProps = Children &
     readonly color?: NotionColor
   }
 
-export type BulletedListItemProps = Children & BlockKey
-export type NumberedListItemProps = Children & BlockKey
+export type BulletedListItemProps = Children & BlockKey & { readonly color?: NotionColor }
+export type NumberedListItemProps = Children & BlockKey & { readonly color?: NotionColor }
 
-export type ToDoProps = Children & BlockKey & { readonly checked?: boolean }
+export type ToDoProps = Children & BlockKey & { readonly checked?: boolean; readonly color?: NotionColor }
 
 export type ToggleProps = Children &
   BlockKey & {
-    readonly title?: string
+    readonly title?: ReactNode
+    readonly color?: NotionColor
     /**
      * Web-mirror-only hint: initial expanded state (`<details open>`). Never
      * emitted to Notion — Notion toggles have no server-side "default open"
@@ -148,14 +149,10 @@ export type ToggleProps = Children &
 
 export type CodeProps = Children & BlockKey & { readonly language?: string }
 
-export type QuoteProps = Children & BlockKey
+export type QuoteProps = Children & BlockKey & { readonly color?: NotionColor }
 
-/**
- * Notion accepts two icon envelopes on callouts: a bare emoji or an external
- * file URL. The component surface mirrors this: pass a string for the emoji
- * case, or `{ external: url }` for the external-image case.
- */
-export type CalloutIcon = string | { readonly external: string }
+/** Unicode, external image, or workspace-scoped custom emoji resolved by the host. */
+export type CalloutIcon = string | { readonly external: string } | { readonly customEmojiId: string }
 
 export type CalloutProps = Children &
   BlockKey & {

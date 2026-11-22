@@ -68,11 +68,11 @@ export const Page = (props: PageProps) => {
  * so unkeyed components continue to produce a clean `{}`-free payload.
  * `blockKey` is a renderer identity hint, never projected to Notion.
  */
-const keyedProps = (blockKey: string | undefined): Record<string, unknown> | null =>
-  blockKey === undefined ? null : { blockKey }
+const keyedProps = (blockKey: string | undefined, color?: string): Record<string, unknown> | null =>
+  blockKey === undefined && color === undefined ? null : { ...(blockKey === undefined ? {} : { blockKey }), ...(color === undefined ? {} : { color }) }
 
-export const Paragraph = ({ children, blockKey }: ParagraphProps) =>
-  h('paragraph', keyedProps(blockKey), children)
+export const Paragraph = ({ children, blockKey, color }: ParagraphProps) =>
+  h('paragraph', keyedProps(blockKey, color), children)
 
 const heading =
   (tag: 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4') =>
@@ -92,21 +92,23 @@ export const Heading2 = heading('heading_2')
 export const Heading3 = heading('heading_3')
 export const Heading4 = heading('heading_4')
 
-export const BulletedListItem = ({ children, blockKey }: BulletedListItemProps) =>
-  h('bulleted_list_item', keyedProps(blockKey), children)
-export const NumberedListItem = ({ children, blockKey }: NumberedListItemProps) =>
-  h('numbered_list_item', keyedProps(blockKey), children)
+export const BulletedListItem = ({ children, blockKey, color }: BulletedListItemProps) =>
+  h('bulleted_list_item', keyedProps(blockKey, color), children)
+export const NumberedListItem = ({ children, blockKey, color }: NumberedListItemProps) =>
+  h('numbered_list_item', keyedProps(blockKey, color), children)
 
-export const ToDo = ({ children, checked, blockKey }: ToDoProps) => {
+export const ToDo = ({ children, checked, blockKey, color }: ToDoProps) => {
   const props: Record<string, unknown> = {}
   if (checked !== undefined) props.checked = checked
+  if (color !== undefined) props.color = color
   if (blockKey !== undefined) props.blockKey = blockKey
   return h('to_do', Object.keys(props).length === 0 ? null : props, children)
 }
 
-export const Toggle = ({ children, title, blockKey, defaultOpen }: ToggleProps) => {
+export const Toggle = ({ children, title, blockKey, defaultOpen, color }: ToggleProps) => {
   const props: Record<string, unknown> = {}
   if (title !== undefined) props.title = title
+  if (color !== undefined) props.color = color
   if (blockKey !== undefined) props.blockKey = blockKey
   // `defaultOpen` is a web-mirror-only hint and is not projected to the Notion
   // payload in `host-config.blockProps`.
@@ -121,8 +123,8 @@ export const Code = ({ children, language, blockKey }: CodeProps) => {
   return h('code', Object.keys(props).length === 0 ? null : props, children)
 }
 
-export const Quote = ({ children, blockKey }: QuoteProps) =>
-  h('quote', keyedProps(blockKey), children)
+export const Quote = ({ children, blockKey, color }: QuoteProps) =>
+  h('quote', keyedProps(blockKey, color), children)
 
 export const Callout = ({ children, icon, color, blockKey }: CalloutProps) => {
   const props: Record<string, unknown> = {}

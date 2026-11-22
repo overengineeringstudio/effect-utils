@@ -15,6 +15,13 @@ This library renders React → Notion **blocks**. Notion **databases**
 [`@overeng/notion-effect-client`](../notion-effect-client) directly for
 database operations.
 
+### Block styling
+
+Text-bearing blocks accept Notion `color` values. Toggle titles accept inline
+React nodes (including annotations and mentions). Callout icons accept a Unicode
+string, `{ external: url }`, or `{ customEmojiId: id }`; the host resolves workspace
+emoji names to IDs.
+
 ### Injected client
 
 The renderer and its default client use Effect 4.1.0. An application that already

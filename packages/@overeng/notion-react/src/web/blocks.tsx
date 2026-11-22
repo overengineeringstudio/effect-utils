@@ -121,8 +121,8 @@ const collectHeadings = (children: ReactNode): readonly TocEntry[] => {
 
 // rnx renders `text` blocks as <div>, not <p> — keeps margin behavior consistent
 // with the rest of the block stack and matches the vendored CSS contract.
-export const Paragraph = ({ children }: ParagraphProps) => (
-  <div className="notion-text">{children}</div>
+export const Paragraph = ({ children, color }: ParagraphProps) => (
+  <div className={`notion-text${color === undefined ? '' : ` notion-${color}`}`}>{children}</div>
 )
 
 const headingClass = (level: 1 | 2 | 3 | 4) => `notion-h notion-h${level}`
@@ -279,10 +279,10 @@ const CheckSvg = () => (
  * `components/checkbox.tsx`): the strike-through lives on
  * `.notion-to-do-body` so the checkbox stays visible.
  */
-export const ToDo = ({ children, checked }: ToDoProps) => {
+export const ToDo = ({ children, checked, color }: ToDoProps) => {
   const isChecked = checked === true
   return (
-    <div className="notion-to-do">
+    <div className={`notion-to-do${color === undefined ? '' : ` notion-${color}`}`}>
       <div className="notion-to-do-item">
         <span className="notion-property notion-property-checkbox">
           {isChecked ? (
@@ -301,8 +301,8 @@ export const ToDo = ({ children, checked }: ToDoProps) => {
   )
 }
 
-export const Toggle = ({ children, title, defaultOpen }: ToggleProps) => (
-  <details className="notion-toggle" open={defaultOpen ?? false}>
+export const Toggle = ({ children, title, defaultOpen, color }: ToggleProps) => (
+  <details className={`notion-toggle${color === undefined ? '' : ` notion-${color}`}`} open={defaultOpen ?? false}>
     <summary>{title ?? ''}</summary>
     <div>{children}</div>
   </details>
@@ -312,8 +312,8 @@ export const Code = ({ children, language }: CodeProps) => (
   <HighlightsRender language={language}>{children}</HighlightsRender>
 )
 
-export const Quote = ({ children }: QuoteProps) => (
-  <blockquote className="notion-quote">{children}</blockquote>
+export const Quote = ({ children, color }: QuoteProps) => (
+  <blockquote className={`notion-quote${color === undefined ? '' : ` notion-${color}`}`}>{children}</blockquote>
 )
 
 /**
@@ -323,6 +323,7 @@ export const Quote = ({ children }: QuoteProps) => (
  */
 const renderCalloutIcon = (icon: NonNullable<CalloutProps['icon']>): ReactNode => {
   if (typeof icon === 'string') return icon
+  if ('customEmojiId' in icon) return renderPageIcon({ type: 'custom_emoji', custom_emoji: { id: icon.customEmojiId } }, 'inline')
   return <img src={icon.external} alt="" className="notion-page-icon-image" />
 }
 
