@@ -813,7 +813,9 @@ describe('Buck watch reconciliation', () => {
         '//packages/app:editor_view_inputs',
         '--show-full-output',
         '--event-log',
-        expect.stringMatching(/^\.devenv\/otel\/buck2-events\/editor-view-\d+-[0-9a-f-]+\.pb\.zst$/),
+        expect.stringMatching(
+          /^\.devenv\/otel\/buck2-events\/editor-view-\d+-[0-9a-f-]+\.pb\.zst$/,
+        ),
       ])
       expect(batchInvocations[0]?.detached).toBeUndefined()
       expect(batchInvocations[0]?.input).toBeUndefined()
@@ -833,7 +835,10 @@ describe('Buck watch reconciliation', () => {
             ...fixture.options,
             runOwned: async ({ command, owner }) => {
               expect(requireEditorPublicationOwner({ root: fixture.root, owner })).toBe(owner)
-              expect(command.args.slice(0, 2)).toEqual(['--isolation-dir', editorPublicationIsolation])
+              expect(command.args.slice(0, 2)).toEqual([
+                '--isolation-dir',
+                editorPublicationIsolation,
+              ])
               failedInvocations.push(command.command)
               throw new Error('stale build')
             },
@@ -943,7 +948,6 @@ describe('Buck watch reconciliation', () => {
             ...fixture.options,
             batchPublication,
             onTiming,
-
           },
         })
         completed = true
