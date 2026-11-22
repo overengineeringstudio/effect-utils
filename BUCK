@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:f68eb17bd78debd10d780c75b87a3d9509c8716a9d59ae1a05d25447ce7a6e2f
+# Semantic fingerprint: sha256:1bf8a86afc339919f7b4061e2382c4c8d1ff157a7ffdaad0c305de0c4b71f1cf
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -149,6 +149,9 @@ static_source_set(
     srcs = glob(
         [
         "**/*.ts",
+        "**/*.sh",
+        "**/*.mjs",
+        "**/*.bzl",
         "nix/**/*.json",
         "nix/**/*.nix",
         "rust/*.lock",
@@ -251,6 +254,7 @@ check_aggregate(
         ":weaver_check",
         ":weaver_version_smoke",
         "//buck2/static:check",
+        "//buck2/static:work_storage_resources_check",
     ],
     visibility = ["PUBLIC"],
 )
@@ -389,3 +393,6 @@ check_aggregate(
     ],
     visibility = ["PUBLIC"],
 )
+
+# Full quick parity includes live, uncached checkout contracts after //:quick.
+alias(name = "check-quick", actual = "//buck2/static:check_quick", visibility = ["PUBLIC"])
