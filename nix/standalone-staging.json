@@ -22,6 +22,9 @@
     "nix/buck2-capabilities.nix": {
       "noStandaloneStaging": "closure: The capability projector is carried in a directory source projection with its manifest."
     },
+    "nix/buck2-launcher-inputs.nix": {
+      "noStandaloneStaging": "closure: Declares the shared multi-file launcher source selection; no standalone source is staged."
+    },
     "nix/buck2-products/buck-inputs.nix": {
       "noStandaloneStaging": "not-a-source: The .genie.ts suffix excludes generator inputs from the Buck dependency projection; no standalone JavaScript or TypeScript source is staged."
     },
@@ -34,7 +37,7 @@
     "nix/buck2-products/launcher-independence.nix": {
       "noStandaloneStaging": "closure: Synthetic launcher edits preserve the multi-file launcher source closure; the entrypoint is not staged as a standalone source."
     },
-    "nix/buck2-products/root-projection.nix": {
+    "nix/buck2-products/root-projection-inputs.nix": {
       "noStandaloneStaging": "closure: Generator sources and suffix filters belong to the repository directory projection."
     },
     "nix/buck2-products/vite-runtime-fixture.nix": {
@@ -105,6 +108,9 @@
     },
     "nix/provider-clis/vercel-cli/default.nix": {
       "noStandaloneStaging": "closure: The upstream CLI entrypoint is inside its installed package dependency tree."
+    },
+    "nix/worktree-tool-inputs.nix": {
+      "noStandaloneStaging": "not-a-source: JavaScript and TypeScript paths declare prepared tool identity inputs; no standalone source is staged."
     },
     "nix/workspace-tools/lib/buck2-product-candidates.nix": {
       "noStandaloneStaging": "not-a-source: JavaScript paths name symlinks to already-built plugin products."

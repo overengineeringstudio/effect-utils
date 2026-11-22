@@ -8,10 +8,22 @@
   tools,
   prepare,
   preflight,
+  # Owning-repository Git pathspecs, not store paths or precomputed hashes.
+  identityInputs,
   environment ? { },
 }:
 let
   publication = ../scripts/worktree-env.py;
+  identityManifest = pkgs.writeText "worktree-tools-identity-inputs.json" (
+    builtins.toJSON {
+      schemaVersion = 1;
+      # Owning-root Git selectors are metadata, not executable/store references.
+      # Do not retain the whole flake's source context through relative names.
+      paths = builtins.sort builtins.lessThan (
+        pkgs.lib.unique (map builtins.unsafeDiscardStringContext identityInputs)
+      );
+    }
+  );
   bridge = import ./worktree-buck-trace.nix {
     inherit
       pkgs
@@ -63,6 +75,11 @@ let
       -- ${bridge} "$@"
   '';
 in
+assert pkgs.lib.assertMsg (
+  builtins.isList identityInputs
+  && identityInputs != [ ]
+  && builtins.all (path: builtins.isString path && path != "") identityInputs
+) "worktree-tools: identityInputs must be nonempty owning-repository Git pathspecs";
 pkgs.symlinkJoin {
   name = "worktree-tools";
   # The guarded/traced launcher is the only bin/buck2 provider in this output.
@@ -75,5 +92,6 @@ pkgs.symlinkJoin {
     ln -s ${pkgs.writeShellScript "worktree-tools-prepare" prepare} "$out/share/worktree-tools/prepare"
     ln -s ${check} "$out/share/worktree-tools/preflight"
     ln -s ${publication} "$out/share/worktree-tools/worktree-env.py"
+    ln -s ${identityManifest} "$out/share/worktree-tools/identity-inputs.json"
   '';
 }

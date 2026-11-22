@@ -12,13 +12,7 @@
   pkgs,
   launcherSource ? pkgs.lib.fileset.toSource {
     root = ../scripts;
-    fileset = pkgs.lib.fileset.unions [
-      ../scripts/buck2-entrypoint.ts
-      ../scripts/buck2-cache-posture.ts
-      ../scripts/buck2-file-watcher.ts
-      ../scripts/buck2-stdio.c
-      ../scripts/buck2-entrypoint.sh
-    ];
+    fileset = pkgs.lib.fileset.unions (import ./buck2-launcher-inputs.nix);
   },
   publicationOwnerSource ? ../packages + "/@overeng/buck2-tools/src/editor-publication-owner.ts",
 }:

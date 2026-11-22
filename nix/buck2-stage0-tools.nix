@@ -79,4 +79,14 @@ tools
 // {
   metadata-check = import ./stage0-cargo/check.nix { inherit pkgs tools; };
   source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition) toolDefinitions;
+  # Mirror the Rust projection's membership rule, not its current file census:
+  # new .rs files in a selected member must also invalidate prepared tools.
+  source-pathspecs = lib.mapAttrs (
+    _: definition:
+    map (file: lib.removePrefix "${toString repositoryRoot}/" (toString file)) sharedRootFiles
+    ++ lib.concatMap (member: [
+      "rust/${member}/Cargo.toml"
+      ":(glob)rust/${member}/src/**/*.rs"
+    ]) definition.members
+  ) toolDefinitions;
 }

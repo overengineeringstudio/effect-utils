@@ -52,15 +52,6 @@ let
   # fail-fast/export semantics and all dependency/status/input metadata.
   # Guards inspect omitted/legacy producers as well as the selected cohort.
   taskAuthority = config.task.config;
-  # Conservatively bind the complete tracked source closure, including scripts
-  # embedded by Nix path interpolation. Stage new sources before preparation.
-  sourceFiles = lib.fileset.toList (lib.fileset.gitTracked root);
-  sourceIdentity = pkgs.writeText "quick-contract-source-identity" (
-    lib.concatMapStrings (
-      file:
-      "${builtins.hashFile "sha256" file}  ${lib.removePrefix (toString root + "/") (toString file)}\n"
-    ) sourceFiles
-  );
   runtimePath = lib.makeBinPath (
     [
       pkgs.bash
@@ -101,8 +92,8 @@ let
     "BUCK2_STDIO_LIBRARY"
     "BUCK2_MACHINE_VERSION"
   ]) config.env;
-  # Shared native/policy bindings, deliberately excluding the aggregate profile,
-  # source census and prepared receipt from individual executable closures.
+  # Shared native/policy bindings, deliberately excluding the aggregate profile
+  # and prepared receipt from individual executable closures.
   runtimeEnvironment = ''
     set -euo pipefail
     export PATH="''${WORKTREE_POLICY_PATH:+$WORKTREE_POLICY_PATH:}${runtimePath}"
@@ -184,28 +175,19 @@ let
       }
     ) sequence
   );
-  validateSource = ''
-    if ! sha256sum --check --status ${sourceIdentity}; then
-      echo 'quick-contracts: evaluated task authority is stale; run devenv build effectUtils.quickContracts.capabilities and republish WORKTREE_CAPABILITIES_PROFILE' >&2
-      exit 78
-    fi
-    expected=$(wc -l < ${sourceIdentity})
-    actual=$(git ls-files | wc -l)
-    if [ "$actual" -ne "$expected" ]; then
-      echo 'quick-contracts: tracked source census changed; run devenv build effectUtils.quickContracts.capabilities and republish WORKTREE_CAPABILITIES_PROFILE' >&2
-      exit 78
-    fi
-  '';
   validatePrepared = ''
     if ! printf '%s\n%s\n' ${taskAuthority} "$WORKTREE_CAPABILITIES_PROFILE" | \
       cmp -s - .devenv/quick-contracts-prepared; then
       echo 'quick-contracts: source views are not prepared for this authority/profile; run the selected quick-contracts capability bin/quick-contracts-prepare before buck2 run //:check-quick' >&2
       exit 78
     fi
+    # Buck owns each contract's source digests. Only frozen tool/task inputs
+    # belong to the prepared environment; a check-source edit needs no Nix.
+    ${pkgs.python3}/bin/python3 ${../scripts/worktree-env.py} check \
+      "$PWD/.worktree-tools/v2/current/tools" > /dev/null
   '';
   reporter = pkgs.writeShellScript "quick-contracts-report" ''
     ${environment}
-    ${validateSource}
     ${validatePrepared}
     if [ "$#" -ne ${toString (builtins.length sequence)} ]; then
       echo 'quick-contracts-report: supply exactly one successful verdict per selected task' >&2
@@ -229,7 +211,6 @@ let
       echo 'quick-contracts: preparation generation does not root the selected capability profile' >&2
       exit 78
     fi
-    ${validateSource}
     mkdir -p .devenv
     rm -f .devenv/quick-contracts-prepared
     # This is an explicit setup operation, never called by a Buck target.
@@ -244,7 +225,6 @@ let
     ${environment}
     export DEVENV_TASK_FILE=${taskAuthority} DEVENV_TASKS_JSON=${taskAuthority}
     ${runtimeExports}
-    ${validateSource}
     ${validatePrepared}
     ${selectionExports}
     ${lib.optionalString (builtins.elem "test:notion-integration:ci-skip" sequence) ''
@@ -279,7 +259,6 @@ assert lib.assertMsg validRequires
       ln -s ${prepare} "$out/bin/quick-contracts-prepare"
       ln -s ${reporter} "$out/bin/quick-contracts-report"
       ln -s ${taskAuthority} "$out/tasks.json"
-      ln -s ${sourceIdentity} "$out/source-identity"
     '';
     capabilities =
       (import ./buck2-capabilities.nix {

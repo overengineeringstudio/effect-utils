@@ -71,6 +71,21 @@ It builds both immutable image/runner closures first, then exercises cold boot,
 update, automatic rollback, restart and persistent state with no enrollment,
 provider credentials, deployment or cache publishing.
 
+## Prepared worktree tools
+
+`python3 scripts/worktree-env.py prepare` explicitly realizes and publishes the
+worktree's Nix tool closure. Runtime selection reads the immutable
+`share/worktree-tools/identity-inputs.json` and hashes its declared live inputs;
+it never evaluates Nix or prepares implicitly. The selection reuses the product
+projection and includes Nix configuration, launchers, manifests, lockfiles and
+task authority. Changing a selected input requires explicit preparation.
+
+Check sources outside that tool selection belong to Buck's per-action input
+digests: editing or committing them does not invalidate the prepared tools.
+Preparation still refuses an untracked source or a source tree that changes
+during realization. Publications use the rebuildable `.worktree-tools/v2`
+namespace; older generations remain untouched but are not selected.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)

@@ -11,6 +11,9 @@
   mkConsumerBuckRoot = args: import ./buck2-products/consumer-root.nix args;
 
   # One immutable development PATH; repositories keep their publisher/guards.
+  # Required identityInputs are nonempty owning-repository Git pathspecs for
+  # prepared tool/product, environment, lockfile and task-authority inputs.
+  # They are published as share/worktree-tools/identity-inputs.json (schema 1).
   mkWorktreeTools = args: import ./worktree-tools.nix args;
   # Producer authority for no-follow classification of generated worktree roots.
   buck2GeneratedWorktreeRootsFile = ./buck2-generated-worktree-roots.json;

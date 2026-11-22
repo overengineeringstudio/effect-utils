@@ -57,11 +57,11 @@ const repoRoot = repoRootFromModuleUrl(import.meta.url)
 // Match the workspace source census exclusions, including Cargo output. Do not
 // follow editor/dependency symlinks or accidentally admit local execution state.
 const excludedDirectories: Readonly<Record<string, true>> = {
-  '.cache': true, '.codex': true, '.context': true, '.devenv': true,
+  '.buck2': true, '.cache': true, '.codex': true, '.context': true, '.devenv': true,
   '.direnv': true, '.editor-view': true, '.evergreen': true, '.git': true,
   '.playwright-cli': true, '.playwright-mcp': true, '.pnpm': true,
   '.pnpm-home': true, '.pnpm-store': true, '.vercel': true,
-  '.vitest-attachments': true, 'buck-out': true, dist: true,
+  '.vitest-attachments': true, '.worktree-tools': true, 'buck-out': true, dist: true,
   'genie-locks': true, node_modules: true, repos: true, result: true,
   'storybook-static': true, target: true, tmp: true,
 }
@@ -201,7 +201,10 @@ for (const [owner, files] of Object.entries(contractSourceExports)) {
 
 export const quickContractInputs = { contracts, owners: contractSourceExports }
 
-/** Add the repository-owned provider to a generated Buck load header. */
+/**
+ * Keep check inputs in their owning Buck package. Globs tolerate their absence
+ * in a product-only source projection without copying test bytes into products.
+ */
 export const appendQuickContractSources = (rendered: string, owner: string): string => {
   const sources = contractSourceExports[owner]
   if (sources === undefined) return rendered
@@ -213,7 +216,7 @@ export const appendQuickContractSources = (rendered: string, owner: string): str
 _quick_contract_source_set(
     name = "quick_contract_sources",
     prefix = ${JSON.stringify(owner === '.' ? '' : owner)},
-    srcs = ${JSON.stringify(sources, null, 4)},
+    srcs = glob(${JSON.stringify(sources, null, 4)}),
     visibility = ["PUBLIC"],
 )
 `

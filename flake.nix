@@ -323,7 +323,7 @@ rec {
                   pkgs.git
                   pkgs.python3
                 ];
-                WORKTREE_TEST_TOOLS = buck2;
+                WORKTREE_TEST_TOOLS = self.packages.${system}.worktree-tools;
                 WORKTREE_TEST_GITIGNORE = ./.gitignore;
                 WORKTREE_TEST_OTEL = "${ciTestShellProducts.otel-span}/bin/otel-span";
                 WORKTREE_TEST_BRIDGE = import ./nix/worktree-buck-trace.nix {
@@ -381,6 +381,13 @@ rec {
               inherit pkgs buck2;
               events = capabilityPackages.buck2-events;
               otelSpan = self.packages.${system}.otel-span;
+              identityInputs = import ./nix/worktree-tool-inputs.nix {
+                inherit pkgs publicationOwner;
+                repositoryRoot = ./.;
+                stage0Tools = buck2-stage0-tools;
+                editorViewLease = self.packages.${system}.editor-view-lease;
+                retainedToolNames = builtins.attrNames ciTestShellProducts;
+              };
               tools = with capabilityPackages; [
                 bun
                 buck2-node

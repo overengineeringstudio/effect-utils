@@ -1,16 +1,20 @@
 { pkgs }:
 let
   libraryName = "libbuck2-publication-owner${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+  sourcePath = ../scripts/buck2-publication-owner.c;
   # Scoped publication runtimes capture this closure; discard unrelated flake source identity.
   source = builtins.path {
-    path = ../scripts/buck2-publication-owner.c;
+    path = sourcePath;
     name = "buck2-publication-owner.c";
   };
 in
 pkgs.runCommand "buck2-publication-owner-native"
   {
     nativeBuildInputs = [ pkgs.stdenv.cc ];
-    passthru = { inherit libraryName; };
+    passthru = {
+      inherit libraryName;
+      source-inputs = [ sourcePath ];
+    };
   }
   ''
     mkdir -p "$out/lib"

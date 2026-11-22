@@ -86,7 +86,7 @@ def _quick_contracts_impl(ctx):
     )
     return [
         DefaultInfo(other_outputs = inputs),
-        # The uncached reporter retains the caller-owned profile/census boundary.
+        # The uncached reporter retains caller-owned tool/authority preparation.
         RunInfo(args = command),
     ]
 
