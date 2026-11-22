@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7872817c58c70beb75238c3684a45ddb9d9d51c04d2fd69e47fbd57b0a6ca6e8
+# Semantic fingerprint: sha256:e4cad22ecb8f526ca1e65cb62d905b5a31d18801cdfd29e8ace2793907ad2541
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -34,6 +34,7 @@ export_materialization_inputs([
     "src/configured-check-selection.unit.test.ts",
     "src/editor-publication-inputs.ts",
     "src/editor-publication-inputs.unit.test.ts",
+    "src/editor-publication-owner.integration.test.ts",
     "src/editor-publication-owner.ts",
     "src/editor-publication-owner.unit.test.ts",
     "src/editor-view-authority.integration.test.ts",
@@ -140,6 +141,7 @@ package_view(
         "src/configured-check-selection.unit.test.ts": "src/configured-check-selection.unit.test.ts",
         "src/editor-publication-inputs.ts": "src/editor-publication-inputs.ts",
         "src/editor-publication-inputs.unit.test.ts": "src/editor-publication-inputs.unit.test.ts",
+        "src/editor-publication-owner.integration.test.ts": "src/editor-publication-owner.integration.test.ts",
         "src/editor-publication-owner.ts": "src/editor-publication-owner.ts",
         "src/editor-publication-owner.unit.test.ts": "src/editor-publication-owner.unit.test.ts",
         "src/editor-view-authority.integration.test.ts": "src/editor-view-authority.integration.test.ts",
@@ -224,6 +226,7 @@ package_view(
         "src/configured-check-selection.unit.test.ts": "src/configured-check-selection.unit.test.ts",
         "src/editor-publication-inputs.ts": "src/editor-publication-inputs.ts",
         "src/editor-publication-inputs.unit.test.ts": "src/editor-publication-inputs.unit.test.ts",
+        "src/editor-publication-owner.integration.test.ts": "src/editor-publication-owner.integration.test.ts",
         "src/editor-publication-owner.ts": "src/editor-publication-owner.ts",
         "src/editor-publication-owner.unit.test.ts": "src/editor-publication-owner.unit.test.ts",
         "src/editor-view-authority.integration.test.ts": "src/editor-view-authority.integration.test.ts",
