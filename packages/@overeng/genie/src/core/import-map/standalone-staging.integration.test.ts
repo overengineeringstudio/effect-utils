@@ -362,36 +362,39 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
   })
 
   for (const entry of inventory.sources) {
-    itWithTsApiBudget(`${entry.source} imports only runtime builtins or explicitly staged edges`, async () => {
-      assertIsolatableExtension(entry.source)
-      const source = path.join(root, entry.source)
-      await runTsFileAnalysis({
-        cwd: path.dirname(source),
-        initialFiles: [source],
-        use: async (session) => {
-          const outcome = await session.analyze(source)
-          expect(outcome.kind).toBe('analyzed')
-          if (outcome.kind !== 'analyzed') return
-          const specifiers = runtimeSpecifiers(outcome.analysis.sourceFile, entry.source)
-          const allowed = entry.allowedImports
-          expect(
-            specifiers.filter(
-              (specifier) => !isRuntimeBuiltin(specifier) && !Object.hasOwn(allowed, specifier),
-            ),
-            entry.source,
-          ).toEqual([])
-          for (const [specifier, target] of Object.entries(allowed)) {
-            expect(specifiers, `Stale allowed edge: ${entry.source} -> ${specifier}`).toContain(
-              specifier,
-            )
+    itWithTsApiBudget(
+      `${entry.source} imports only runtime builtins or explicitly staged edges`,
+      async () => {
+        assertIsolatableExtension(entry.source)
+        const source = path.join(root, entry.source)
+        await runTsFileAnalysis({
+          cwd: path.dirname(source),
+          initialFiles: [source],
+          use: async (session) => {
+            const outcome = await session.analyze(source)
+            expect(outcome.kind).toBe('analyzed')
+            if (outcome.kind !== 'analyzed') return
+            const specifiers = runtimeSpecifiers(outcome.analysis.sourceFile, entry.source)
+            const allowed = entry.allowedImports
             expect(
-              inventory.sources.some((candidate) => candidate.source === target),
-              `Allowed edge must itself be isolation-checked: ${target}`,
-            ).toBe(true)
-          }
-        },
-      })
-    })
+              specifiers.filter(
+                (specifier) => !isRuntimeBuiltin(specifier) && !Object.hasOwn(allowed, specifier),
+              ),
+              entry.source,
+            ).toEqual([])
+            for (const [specifier, target] of Object.entries(allowed)) {
+              expect(specifiers, `Stale allowed edge: ${entry.source} -> ${specifier}`).toContain(
+                specifier,
+              )
+              expect(
+                inventory.sources.some((candidate) => candidate.source === target),
+                `Allowed edge must itself be isolation-checked: ${target}`,
+              ).toBe(true)
+            }
+          },
+        })
+      },
+    )
     it(`${entry.source} loads from an isolated directory without node_modules`, () => {
       assertIsolatableExtension(entry.source)
       const isolated = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'standalone-staging-')))
