@@ -562,6 +562,13 @@ ownership freshly under the existing deletion lease, retaining the Git, root, se
 daemon identity and client safety gates. A holder or foreign owner arriving after
 output measurement still vetoes maintenance.
 
+`withBuckIsolationMaintenance` is the standalone Effect bracket for the
+`editor-publication` isolation: it defers on a busy or uninspectable opaque publication
+owner and releases ownership after success, failure, or interruption. Other isolations
+run unchanged. Its real-filesystem owner proofs run in the native source test complement.
+This prerequisite does not yet change maintenance commands or the daemon shutdown path;
+those callers must adopt the bracket in a separate coherent layer.
+
 ## Testing
 
 Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical

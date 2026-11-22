@@ -11,6 +11,11 @@ export const buck2TypeScriptAdmission = {
   sourceRoots: ['src', 'bin'],
   workspaceSiblings: [
     {
+      packageName: '@overeng/buck2-tools',
+      packagePath: 'packages/@overeng/buck2-tools',
+      distTarget: '//packages/@overeng/buck2-tools:dist',
+    },
+    {
       packageName: '@overeng/effect-path',
       packagePath: 'packages/@overeng/effect-path',
       distTarget: '//packages/@overeng/effect-path:dist',
@@ -88,6 +93,8 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-buck-maintain-evidence.integration.test.ts',
         'src/store/store-buck-maintain-safety.integration.test.ts',
         'src/store/store-buck-maintain.integration.test.ts',
+        // Real publication-owner FFI requires the source lane's native owner library.
+        'src/store/store-buck-publication-owner.unit.test.ts',
         'src/store/store-deletion-lease.integration.test.ts',
         'src/store/store-fetch-refspec.integration.test.ts',
         'src/store/store-fetch.integration.test.ts',
