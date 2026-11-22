@@ -937,6 +937,13 @@ describe('Buck watch reconciliation', () => {
         ) {
           expect(completed).toBe(false)
           if (observed.length === 0) expect(publisherCompleted).toBe(false)
+          expect(line.endsWith('\n')).toBe(true)
+          const diagnostic = JSON.parse(line.slice(line.indexOf(' ') + 1))
+          if (
+            diagnosticPrefix === 'budget' &&
+            diagnostic.event.startsWith('editor-view.host-budget.reserve-') === false
+          )
+            return true
           observed.push(line)
         }
         return true
