@@ -106,7 +106,10 @@ export const contractSourceGroup = ({
           (directory === nested || directory.startsWith(`${nested}/`)),
       ),
   )
-  const anchors = unique(['', ...hiddenDirectories.map((directory) => `${directory.slice(base.length)}/`)])
+  const anchors = unique([
+    '',
+    ...hiddenDirectories.map((directory) => `${directory.slice(base.length)}/`),
+  ])
   const tails = unique(anchors.flatMap((anchor) => descendants.map((tail) => anchor + tail)))
   const include: string[] = []
   const suffixes = selection.extensions ?? ['']
@@ -116,7 +119,9 @@ export const contractSourceGroup = ({
     } else if (prefix.startsWith(base)) {
       const relative = prefix.slice(base.length)
       if (relative.endsWith('/')) {
-        include.push(...descendants.flatMap((tail) => suffixes.map((suffix) => relative + tail + suffix)))
+        include.push(
+          ...descendants.flatMap((tail) => suffixes.map((suffix) => relative + tail + suffix)),
+        )
       } else {
         // startsWith is a string prefix, not a directory selector: retain both
         // matching filenames and descendants of matching directory names.
@@ -128,7 +133,9 @@ export const contractSourceGroup = ({
           }
         }
         include.push(
-          ...descendants.flatMap((tail) => suffixes.map((suffix) => `${relative}*/${tail}${suffix}`)),
+          ...descendants.flatMap((tail) =>
+            suffixes.map((suffix) => `${relative}*/${tail}${suffix}`),
+          ),
         )
       }
     }
