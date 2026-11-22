@@ -50,7 +50,7 @@ retain_failure_evidence() {
   printf 'Private capability failure evidence retained at %s (not public output)\n' "$evidence" >&2
 }
 cleanup() {
-  local exit_code=$? index
+  local exit_code=$? index preserve_temp_root=false
   for ((index=0; index<${#daemon_roots[@]}; index++)); do
     (cd "${daemon_roots[$index]}" && HOME="$TEST_HOME" "$BUCK2" --isolation-dir "${daemon_isolations[$index]}" kill) >/dev/null 2>&1 || true
   done
@@ -67,11 +67,16 @@ cleanup() {
   fi
   # Copy after private service shutdown has flushed its log, before EXIT cleanup.
   if [ "$exit_code" -ne 0 ]; then
-    retain_failure_evidence || echo 'FAIL: could not retain private capability failure evidence' >&2
+    if ! retain_failure_evidence; then
+      preserve_temp_root=true
+      printf 'FAIL: evidence copy failed; original private evidence retained at %s\n' "$TEMP_ROOT" >&2
+    fi
   fi
   if [ -n "$private_watchman_socket_dir" ]; then rm -rf "$private_watchman_socket_dir"; fi
-  chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
-  rm -rf "$TEMP_ROOT"
+  if [ "$preserve_temp_root" = false ]; then
+    chmod -R u+w "$TEMP_ROOT" 2>/dev/null || true
+    rm -rf "$TEMP_ROOT"
+  fi
   exit "$exit_code"
 }
 trap cleanup EXIT
