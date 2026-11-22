@@ -197,15 +197,15 @@ export const Heading4 = heading(4)
  * by `groupBlocks` (applied in `Page` / `Column`). Standalone usage outside a
  * grouping container falls back to a self-contained one-item list.
  */
-export const BulletedListItem = ({ children }: BulletedListItemProps) => (
+export const BulletedListItem = ({ children, color }: BulletedListItemProps) => (
   <ul className="notion-list notion-list-disc">
-    <li>{children}</li>
+    <li className={color === undefined ? undefined : `notion-${color}`}>{children}</li>
   </ul>
 )
 
-export const NumberedListItem = ({ children }: NumberedListItemProps) => (
+export const NumberedListItem = ({ children, color }: NumberedListItemProps) => (
   <ol className="notion-list notion-list-numbered">
-    <li>{children}</li>
+    <li className={color === undefined ? undefined : `notion-${color}`}>{children}</li>
   </ol>
 )
 
@@ -223,10 +223,18 @@ const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): R
     const Tag = run.tag
     out.push(
       <Tag key={`group-${out.length}`} className={run.className}>
-        {run.items.map((el, idx) => (
-          // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
-          <li key={el.key ?? `li-${idx}`}>{(el.props as { children?: ReactNode }).children}</li>
-        ))}
+        {run.items.map((el, idx) => {
+          const { children, color } = el.props as BulletedListItemProps | NumberedListItemProps
+          return (
+            <li
+              // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
+              key={el.key ?? `li-${idx}`}
+              className={color === undefined ? undefined : `notion-${color}`}
+            >
+              {children}
+            </li>
+          )
+        })}
       </Tag>,
     )
     run = undefined
