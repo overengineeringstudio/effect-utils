@@ -48,7 +48,8 @@ class ReceiptTest(unittest.TestCase):
         name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True).stdout.strip()
         self.git("-c", f"user.name={name or 'Receipt test'}", "-c", f"user.email={email or 'test@example.com'}", "commit", "-qm", "fixture")
         authority = self.root / ".devenv/editor-workspace-authority.json"
-        authority.parent.mkdir()
+        # Git tooling can already have created this ignored runtime directory.
+        authority.parent.mkdir(exist_ok=True)
         authority.write_text("authority-one")
         snapshot = self.root / ".editor-view/.store/root-digest"
         snapshot.mkdir(parents=True)

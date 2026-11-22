@@ -15,6 +15,8 @@ mapfile -t inventory_files < <("$nix_bin" eval --impure --json --expr "
 for path in "${inventory_files[@]}"; do
   mkdir -p "$fixture/$(dirname "$path")"
   cp "$repo_root/$path" "$fixture/$path"
+  # Only the owned copy is mutable; source projections may be read-only.
+  chmod u+w "$fixture/$path"
 done
 printf '%s\n' 'unrelated' > "$fixture/unrelated-note.txt"
 

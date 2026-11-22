@@ -709,6 +709,9 @@ boundaries are:
   `workflow-report-module-source`. Source mutations affect copies under
   mktemp, not the checkout. Store realization uses `--no-link`; concurrent Nix
   store access remains Nix-daemon-owned, with no store GC or checkout result link.
+  Source-identity mutation probes make only their owned copies writable, since
+  checkout projections may be read-only. Receipt fixtures tolerate an existing
+  ignored `.devenv` directory after normal Git setup; assertions remain unchanged.
 - **Private state/fixtures:** `buck2-rust-deps`, `changeset-check-bodies`,
   `devenv-eval-input-budget`, `megarepo-lock-sync`, `megarepo-status`,
   `pnpm-source-input-staging`, and `setup-cache`. Generated graphs, fake Cargo
