@@ -35,9 +35,13 @@ it('admits immutable inputs but rejects unowned symlink carriers before a real n
               cause:
                 failure === undefined
                   ? cause
-                  : new AggregateError([failure.cause, cause], 'Native admission and daemon retirement failed', {
-                      cause: failure.cause,
-                    }),
+                  : new AggregateError(
+                      [failure.cause, cause],
+                      'Native admission and daemon retirement failed',
+                      {
+                        cause: failure.cause,
+                      },
+                    ),
             }
           }
         }
