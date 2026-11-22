@@ -54,6 +54,32 @@ const fixture = () => {
 const tracked: ContractMembership = { membership: ['*.ts'], membership_mode: 'tracked' }
 const all: ContractMembership = { ...tracked, membership_mode: 'tracked-and-untracked' }
 
+/** Build a synthetic prepared contract fixture using the existing isolated real Git repository. */
+export const createPreparedContractMembershipFixture = () => {
+  const base = fixture()
+  const profile = join(base.directory, 'profile')
+  const share = join(profile, 'quick-contracts', 'share')
+  const authority = join(base.directory, 'task-authority.json')
+  mkdirSync(share, { recursive: true })
+  writeFileSync(
+    join(share, 'membership-inputs.json'),
+    JSON.stringify({ schemaVersion: 1, contracts: { 'test:types': tracked } }),
+  )
+  writeFileSync(authority, '{}\n')
+  // This receipt belongs only to this synthetic fixture, never a real checkout.
+  mkdirSync(join(base.root, '.devenv'))
+  writeFileSync(join(base.root, '.devenv', 'quick-contracts-prepared'), `${authority}\n${profile}\n`)
+  const gitExecPath = execFileSync(git, ['--exec-path'], { env: base.env, encoding: 'utf8' }).trim()
+  return {
+    ...base,
+    env: {
+      ...base.env,
+      WORKTREE_CAPABILITIES_PROFILE: profile,
+      WORKTREE_GIT: realpathSync(join(gitExecPath, 'git')),
+    },
+  }
+}
+
 describe('live quick-contract Git membership', () => {
   it('is unchanged by content edits, staging, commits, and unrelated HEAD changes', () => {
     const { root, run, digest } = fixture()

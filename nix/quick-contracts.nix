@@ -142,6 +142,33 @@ let
     export EFFECT_UTILS_TEST_PLATFORM=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM")}
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
   '';
+  # Buck's scratch TMPDIR is inside buck-out and can exceed AF_UNIX limits.
+  # Own a short external directory only for the task, not preparation/reporting.
+  taskRuntime = pkgs.writeShellScript "quick-contract-task-runtime" ''
+    set -euo pipefail
+    task_tmp="$(${pkgs.coreutils}/bin/mktemp -d /tmp/qc.XXXXXXXX)"
+    task_pid=""
+    cleanup() {
+      if [ -n "$task_pid" ]; then
+        kill -TERM "$task_pid" 2>/dev/null || true
+        wait "$task_pid" 2>/dev/null || true
+      fi
+      ${pkgs.coreutils}/bin/rm -rf -- "$task_tmp"
+    }
+    trap cleanup EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    # Canonicalize /tmp on Darwin before guards compare physical repo paths.
+    export TMPDIR="$(${pkgs.coreutils}/bin/realpath -e -- "$task_tmp")"
+    export TMP="$TMPDIR" TEMP="$TMPDIR" RUNNER_TEMP="$TMPDIR"
+    "$@" <&0 &
+    task_pid=$!
+    task_status=0
+    wait "$task_pid" || task_status=$?
+    task_pid=""
+    exit "$task_status"
+  '';
   taskCapabilities = builtins.listToAttrs (
     map (
       name:
@@ -173,7 +200,7 @@ let
           ${lib.optionalString (name == "test:notion-integration:ci-skip") ''
             export NOTION_INTEGRATION_TASK_COMMANDS_FILE=${notionCiTaskCommands}
           ''}
-          ${taskScripts.${name}}
+          ${taskRuntime} ${taskScripts.${name}}
           mkdir -p -- "$(dirname "$verdict")"
           printf '%s\n' ${
             lib.escapeShellArg (

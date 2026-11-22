@@ -46,7 +46,11 @@ describe('daemon RE posture', () => {
     { primary: 'fixture-primary', fallback: 'fixture-fallback', expected: 'fixture-primary' },
     { primary: undefined, fallback: 'fixture-fallback', expected: 'fixture-fallback' },
   ])('declares stable quick context before literal tool argv ($expected)', async (actor) => {
-    const root = realpathSync(createTestTempDirectory('buck2-quick-context-'))
+    const {
+      root,
+      directory,
+      env: preparedEnvironment,
+    } = contractMembershipTests.createPreparedContractMembershipFixture()
     const traceparent = '00-11111111111111111111111111111111-2222222222222222-01'
     const policyPath = '/fixture/agent-seat/policy-bin'
     try {
@@ -59,6 +63,7 @@ describe('daemon RE posture', () => {
         cwd: root,
         args: ['run', '//:fixture', '--', '--literal-tool-argument'],
         env: {
+          ...preparedEnvironment,
           FRACTAL_AGENT: actor.primary,
           ST_AGENT: actor.fallback,
           WORKTREE_POLICY_PATH: policyPath,
@@ -77,7 +82,7 @@ describe('daemon RE posture', () => {
       expect(admitted.join(' ')).not.toContain(traceparent)
       expect(admitted.join(' ')).not.toContain(secret)
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      rmSync(directory, { recursive: true, force: true })
     }
   })
 

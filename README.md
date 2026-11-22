@@ -94,6 +94,15 @@ anchors, not source-file lists. Regenerate for a new package or deeper hidden
 directory chain. Each package shares one compact exclusion expression across
 its contracts instead of emitting the expanded pattern product per contract.
 
+Each Buck contract task gets its own private, short directory under `/tmp`
+(physically resolved on Darwin) for `TMPDIR`, `TMP`, `TEMP`, and `RUNNER_TEMP`.
+The task wrapper owns cleanup on success, failure, and handled termination;
+preparation and aggregate reporting retain their existing environments. This
+keeps fixture repositories outside `buck-out` and leaves Unix-socket path room
+without weakening repository-discovery or input-ownership guards. The cache
+admission fixture copies read-only inputs into a writable owned tree and replaces
+only its fixture `BUCK` entry; source modes and dependency symlinks stay intact.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)

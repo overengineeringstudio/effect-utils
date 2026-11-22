@@ -25,7 +25,10 @@ trap cleanup EXIT
 # performs real analysis without running Bun or materializing a package tree.
 # One Darwin-branch launcher fixture additionally executes pinned host tools to
 # prove that a fresh declared directory exists before a nested verdict is written.
-cp -R "$repo_root/buck2" "$work/buck2"
+# cp -R retains generated inputs' read-only modes. Give only the independent
+# fixture copy writable modes; never chmod shared/source inputs. Keep dependency
+# symlinks intact, replacing only the fixture BUCK entry before writing it below.
+"$CP_BIN" -R --no-preserve=mode "$repo_root/buck2" "$work/buck2"
 # Expose the shipped private acquisition rule only inside this disposable cell:
 # the negative control must request admission for its real ambient-env action.
 printf '\nfixture_unadmitted_crate_acquisition = _crate_acquisition\n' >> "$work/buck2/rust/crates.bzl"
@@ -283,6 +286,7 @@ def fixture_negative_cases(suffix, constraint):
         exec_compatible_with = [constraint],
     )
 BZL
+rm -f -- "$work/buck2/toolchains/BUCK"
 cat > "$work/buck2/toolchains/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
 

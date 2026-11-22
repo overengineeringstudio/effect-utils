@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
+/** Filename selection semantics carried by the immutable quick-contract catalog. */
 export type ContractMembership = {
   readonly membership: readonly string[]
   readonly membership_mode: 'tracked' | 'tracked-and-untracked'
@@ -44,7 +45,7 @@ export const decodeMembershipSpecification = (value: unknown): MembershipSpecifi
       throw new Error(`quick-contracts: invalid membership specification for ${task}`)
     keys.add(key)
     contracts[task] = {
-      membership: [...new Set<string>(spec['membership'])].sort(),
+      membership: [...new Set<string>(spec['membership'])].toSorted(),
       membership_mode: spec['membership_mode'],
     }
   }
@@ -87,8 +88,8 @@ export const contractMembershipDigests = ({
   const digests: Record<string, string> = Object.create(null)
   const censuses = new Map<string, string>()
   const clean = membershipGitEnvironment({ git, root, env })
-  for (const [task, spec] of Object.entries(specification.contracts).sort()) {
-    const membership = [...new Set(spec.membership)].sort()
+  for (const [task, spec] of Object.entries(specification.contracts).toSorted()) {
+    const membership = [...new Set(spec.membership)].toSorted()
     const group = JSON.stringify([spec.membership_mode, membership])
     let digest = censuses.get(group)
     if (digest === undefined) {
@@ -113,7 +114,7 @@ export const contractMembershipDigests = ({
           maxBuffer: 64 * 1024 * 1024,
         },
       )
-      const members = [...new Set(names.split('\0').filter((name) => name !== ''))].sort()
+      const members = [...new Set(names.split('\0').filter((name) => name !== ''))].toSorted()
       digest = createHash('sha256')
         .update(
           JSON.stringify({

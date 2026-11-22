@@ -166,6 +166,121 @@ const options = (root: string) => ({
   probeDeadlineSignal: fixtureProbeDeadlineSignal,
 })
 
+describe('quick contract task runtime', () => {
+  const source = readFileSync(new URL('../nix/quick-contracts.nix', import.meta.url), 'utf8')
+  const runtime = source.match(
+    /taskRuntime = pkgs\.writeShellScript "quick-contract-task-runtime" ''\n([\s\S]*?)\n  '';/u,
+  )?.[1]
+  const declaredTools = () => {
+    const cp = Bun.which('cp')
+    const bash = Bun.which('bash')
+    if (cp === null || bash === null) throw new Error('Contract fixtures require pinned cp and bash')
+    const coreutils = dirname(dirname(realpathSync(cp)))
+    expect(coreutils.startsWith('/nix/store/')).toBe(true)
+    expect(realpathSync(bash).startsWith('/nix/store/')).toBe(true)
+    return { cp, bash, coreutils }
+  }
+
+  it('scopes external temporary storage to each task, not prepare/report', () => {
+    expect(runtime).toBeDefined()
+    expect(source).toContain('${taskRuntime} ${taskScripts.${name}}')
+    const shared = source.slice(source.indexOf('runtimeEnvironment ='), source.indexOf('runtimeExports ='))
+    expect(shared).not.toContain('taskRuntime')
+    expect(shared).not.toContain('TMPDIR')
+  })
+
+  for (const status of [0, 23]) {
+    it(`uses private short external temps and cleans up after task exit ${status}`, () => {
+      const { bash, coreutils } = declaredTools()
+      expect(runtime).toBeDefined()
+      const root = fixture()
+      const deep = join(root, 'buck-out', 'deep-scratch-'.repeat(20))
+      mkdirSync(deep, { recursive: true })
+      const observed: string[] = []
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = spawnSync(
+          bash,
+          [
+            '-c', runtime!.replaceAll('${pkgs.coreutils}', coreutils), '--', bash, '-c',
+            'printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP"; test -d "$TMPDIR"; exit "$1"',
+            '--', String(status),
+          ],
+          {
+            cwd: root,
+            env: { TMPDIR: deep, TMP: deep, TEMP: deep, RUNNER_TEMP: deep },
+            encoding: 'utf8',
+          },
+        )
+        expect(result.stderr).toBe('')
+        expect(result.status).toBe(status)
+        const paths = result.stdout.trim().split('\n')
+        expect(paths).toHaveLength(4)
+        const temporary = paths[0]!
+        expect(paths.every((path) => path === temporary)).toBe(true)
+        expect(temporary.startsWith(`${realpathSync('/tmp')}/qc.`)).toBe(true)
+        expect(temporary.startsWith(realpathSync(root))).toBe(false)
+        expect(Buffer.byteLength(`${temporary}/direct-buck-posture-XXXXXX/watchman.sock`)).toBeLessThan(104)
+        expect(existsSync(temporary)).toBe(false)
+        observed.push(temporary)
+      }
+      expect(observed[0]).not.toBe(observed[1])
+      expect(existsSync(deep)).toBe(true)
+    })
+  }
+
+  for (const linked of [false, true]) {
+    it(`owns writable cache-admission copies of ${linked === true ? 'symlinked' : 'readonly'} inputs`, () => {
+      const { cp, bash } = declaredTools()
+      const source = readFileSync(new URL('./buck2-cache-admission-check.sh', import.meta.url), 'utf8')
+      const copy = source.split('\n').find((line) => line.startsWith('"$CP_BIN" -'))
+      const replace = source.split('\n').find((line) => line === 'rm -f -- "$work/buck2/toolchains/BUCK"')
+      expect(copy).toBeDefined()
+      expect(replace).toBeDefined()
+      const root = fixture()
+      const repository = join(root, 'source')
+      const work = join(root, 'owned')
+      const backing = join(root, 'shared.BUCK')
+      mkdirSync(join(repository, 'buck2', 'toolchains'), { recursive: true })
+      mkdirSync(work)
+      const original = join(repository, 'buck2', 'toolchains', 'BUCK')
+      writeFileSync(backing, 'original\n')
+      chmodSync(backing, 0o444)
+      const rules = join(repository, 'buck2', 'toolchains', 'configured.bzl')
+      writeFileSync(rules, 'readonly rules\n')
+      chmodSync(rules, 0o444)
+      if (linked === true) symlinkSync(backing, original)
+      else {
+        writeFileSync(original, 'original\n')
+        chmodSync(original, 0o444)
+      }
+      // Unrelated shipped dependency links must keep their original semantics.
+      symlinkSync(backing, join(repository, 'buck2', 'dependency.bzl'))
+      const result = spawnSync(
+        bash,
+        ['-euc', `${copy}\n${replace}\nprintf 'fixture replacement\\n' > "$work/buck2/toolchains/BUCK"`],
+        { env: { CP_BIN: cp, repo_root: repository, work }, encoding: 'utf8' },
+      )
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      const copied = join(work, 'buck2', 'toolchains', 'BUCK')
+      expect(lstatSync(copied).isSymbolicLink()).toBe(false)
+      expect(statSync(copied).mode & 0o200).toBe(0o200)
+      expect(readFileSync(copied, 'utf8')).toBe('fixture replacement\n')
+      expect(lstatSync(join(work, 'buck2', 'dependency.bzl')).isSymbolicLink()).toBe(true)
+      expect(lstatSync(original).isSymbolicLink()).toBe(linked)
+      expect(readFileSync(original, 'utf8')).toBe('original\n')
+      expect(readFileSync(backing, 'utf8')).toBe('original\n')
+      expect(statSync(original).mode & 0o777).toBe(0o444)
+      expect(statSync(backing).mode & 0o777).toBe(0o444)
+      const copiedRules = join(work, 'buck2', 'toolchains', 'configured.bzl')
+      expect(statSync(copiedRules).mode & 0o200).toBe(0o200)
+      writeFileSync(copiedRules, 'owned rules\n')
+      expect(readFileSync(rules, 'utf8')).toBe('readonly rules\n')
+      expect(statSync(rules).mode & 0o777).toBe(0o444)
+    })
+  }
+})
+
 describe('short persistent Watchman location', () => {
   it('reuses one owned location per resolved HOME and separates concurrent job HOMEs', () => {
     const root = fixture()
