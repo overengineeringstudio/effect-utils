@@ -43,6 +43,17 @@ STATIC_SOURCE_GLOBS = [
     for prefix in _STATIC_SOURCE_PATH_PATTERNS
     for pattern in _STATIC_VISIBLE_SOURCE_GLOBS
 ]
+# Compiler workspace snapshots retain imported source assets too; these are not
+# formatter/linter admissions and must not widen STATIC_SOURCE_GLOBS.
+WORKSPACE_SOURCE_GLOBS = [
+    prefix + pattern.removeprefix("**/*")
+    for prefix in _STATIC_SOURCE_PATH_PATTERNS
+    for pattern in _STATIC_VISIBLE_SOURCE_GLOBS + [
+        "**/*.svg", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.webp",
+        "**/*.gif", "**/*.ico", "**/*.woff", "**/*.woff2", "**/*.ttf",
+        "**/*.otf", "**/*.wasm",
+    ]
+]
 _STATIC_SOURCE_EXCLUDES = [
     "**/.cache/**",
     "**/.codex/**",

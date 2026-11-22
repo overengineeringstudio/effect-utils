@@ -1119,7 +1119,18 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
         output,
         packageRoot,
       })
-      await validateOutput({ declarationEntrypoint: options.declarationEntrypoint, output })
+      if (stagedAfter !== stagedBefore)
+        fail(`staged input roots changed during emit (before ${stagedBefore}, after ${stagedAfter})`)
+      if (status === 0) {
+        await copyDeclarationSources({
+          declarationSources: options.declarationSources,
+          output,
+          packageRoot,
+        })
+        await validateOutput({ declarationEntrypoint: options.declarationEntrypoint, output })
+      }
+    } else if (status === 0) {
+      await writeFile(output, `${options.tsgo}\n`)
     }
   } catch (error) {
     primaryError = error
