@@ -111,6 +111,8 @@ if (JSON.stringify(sequenceNames) !== JSON.stringify(Object.keys(catalog).sort()
 // Expose exact owner-relative export requirements to the owning projections.
 // These are individual files, not static_source_set or whole-tree dependencies.
 const contractSourceExports: Record<string, string[]> = {}
+// Qualify one real contract before scaling input groups to the whole cohort.
+const prototypeContract = 'lint:check:getflake'
 const membershipCensuses = new Map<string, readonly string[]>()
 const contracts: Readonly<Record<string, ContractProjection>> = Object.fromEntries(
   Object.entries(catalog).sort(([left], [right]) =>
@@ -172,10 +174,12 @@ const contracts: Readonly<Record<string, ContractProjection>> = Object.fromEntri
     ),
   ])].sort()
   if (files.length === 0) throw new Error(`${name}: contract input projection is empty`)
-  for (const file of files) {
-    const owner = sourceOwner(path.posix.dirname(file))
-    const exported = contractSourceExports[owner] ??= []
-    exported.push(path.posix.relative(owner, file))
+  if (name === prototypeContract) {
+    for (const file of files) {
+      const owner = sourceOwner(path.posix.dirname(file))
+      const exported = contractSourceExports[owner] ??= []
+      exported.push(path.posix.relative(owner, file))
+    }
   }
   return [name, {
     input_paths: files,

@@ -1,4 +1,3 @@
-load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("@prelude//:prelude.bzl", "native")
 
 # Public Rust rule and toolchain APIs live in defs.bzl and toolchains.bzl.
@@ -57,26 +56,3 @@ native.config_setting(name = "wasm_lto_off", constraint_values = [":lto_off"], v
 native.config_setting(name = "wasm_strip_symbols", constraint_values = [":strip_symbols"], visibility = ["PUBLIC"])
 native.config_setting(name = "wasm_strip_debuginfo", constraint_values = [":strip_debuginfo"], visibility = ["PUBLIC"])
 native.config_setting(name = "wasm_strip_none", constraint_values = [":strip_none"], visibility = ["PUBLIC"])
-
-_quick_contract_source_set(
-    name = "quick_contract_sources",
-    prefix = "buck2/rust",
-    srcs = [
-    "BUCK",
-    "content-address-contract.integration.test.ts",
-    "content-address-parity.bzl",
-    "crates.bzl",
-    "defs.bzl",
-    "interop-package.ts",
-    "interop-service-package.ts",
-    "interop-service.integration.test.ts",
-    "interop-service.ts",
-    "interop.bzl",
-    "library-closure.mjs",
-    "library.bzl",
-    "toolchains.bzl",
-    "wasm-guest-package.integration.test.ts",
-    "wasm-guest-package.ts"
-],
-    visibility = ["PUBLIC"],
-)
