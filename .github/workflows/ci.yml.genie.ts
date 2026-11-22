@@ -83,7 +83,7 @@ const runBuckChecks = (args: string, fullContracts = false) => {
         ]
       : []),
     'python3 scripts/worktree-env.py prepare',
-    `python3 scripts/worktree-env.py run -- \${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }buck2 ${args}`,
+    `python3 scripts/worktree-env.py run -- \${PIPELINE_NATIVE_RUN_PREFIX:+$PIPELINE_NATIVE_RUN_PREFIX }buck2 ${args}`,
   ].join('\n')
   const command = withCiSourceRoot(
     withAppendedNixConfig({

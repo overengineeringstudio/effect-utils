@@ -631,6 +631,8 @@ Retained Cargo protocol-bindings checks use the Nix Apple SDK and iconv on Darwi
 not an ambient `cc` or Xcode installation.
 CI enters that prepared PATH before its declared `otel-span pipeline-run` prefix;
 native Buck checks never re-enter `devenv shell` just to start tracing.
+Mixed steps keep the separate declared devenv-task prefix in their parent shell;
+only the native prefix runs inside the prepared tool environment.
 
 `EFFECT_UTILS_CI_TEST=1` selects the existing hermetic cache-posture CI task;
 host quick checks retain the full fleet-gate suite, including real max-hold expiry.

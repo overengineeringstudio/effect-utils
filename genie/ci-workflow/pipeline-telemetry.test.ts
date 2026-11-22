@@ -41,11 +41,30 @@ test('Buck quick contracts retain the existing pipeline trace boundary', () => {
   expect(step).toBeDefined()
   expect('run' in step! && step.run).toContain('buck2 run //:check-quick')
   expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toContain('otel-span pipeline-run')
-  expect('env' in step! && step.env?.PIPELINE_RUN_PREFIX).toBe('otel-span pipeline-run --')
+  expect('env' in step! && step.env?.PIPELINE_NATIVE_RUN_PREFIX).toBe('otel-span pipeline-run --')
   expect('run' in step! && step.run).toContain(
-    'scripts/worktree-env.py run -- ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }buck2',
+    'scripts/worktree-env.py run -- ${PIPELINE_NATIVE_RUN_PREFIX:+$PIPELINE_NATIVE_RUN_PREFIX }buck2',
   )
   expect('env' in step! && step.env?.EFFECT_UTILS_CI_TEST).toBe('1')
+})
+
+test('mixed native and legacy steps retain separately declared pipeline launchers', () => {
+  const mixedSteps = Object.values(ciWorkflow.data.jobs).flatMap((job) =>
+    job.steps.filter(
+      (step) =>
+        'run' in step &&
+        typeof step.run === 'string' &&
+        step.run.includes('scripts/worktree-env.py run -- ') &&
+        step.run.includes('tasks run '),
+    ),
+  )
+  expect(mixedSteps.length).toBeGreaterThan(0)
+  for (const step of mixedSteps) {
+    expect('env' in step && step.env?.PIPELINE_RUN_PREFIX).toContain(
+      'shell -- otel-span pipeline-run --',
+    )
+    expect('env' in step && step.env?.PIPELINE_NATIVE_RUN_PREFIX).toBe('otel-span pipeline-run --')
+  }
 })
 
 test('GitBucket adds OIDC authority only to the same-repo PR reporter override', () => {
