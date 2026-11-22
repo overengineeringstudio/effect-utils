@@ -79,16 +79,29 @@ it('requires an explicit declared argument to select Nix Darwin isolation', () =
   expect(() => parseEmitOptions([...args, '--darwin-isolation', 'auto'])).toThrow(
     'unknown Darwin emit isolation mode',
   )
-  expect(() =>
-    parseTypecheckOptions([
-      '/nix/store/toolchain/bin/tsgo',
-      '/package-tree',
-      'tsconfig.json',
-      '/output',
-      '--darwin-isolation',
-      'nix-build-sandbox',
-    ]),
-  ).toThrow('unexpected typecheck argument')
+  const typecheckArgs = [
+    '/nix/store/toolchain/bin/tsgo',
+    '/package-tree',
+    'tsconfig.check.json',
+    '/output',
+  ]
+  expect(parseTypecheckOptions(typecheckArgs).darwinIsolation).toBeUndefined()
+  const strict = parseTypecheckOptions([
+    ...typecheckArgs,
+    '--darwin-isolation',
+    'nix-build-sandbox',
+    '--read-root',
+    '/declared',
+  ])
+  expect(strict.darwinIsolation).toBe('nix-build-sandbox')
+  expect(strict.readRoots).toEqual(['/declared'])
+  expect(strict.project).toBe('tsconfig.check.json')
+  expect(() => parseTypecheckOptions([...typecheckArgs, '--darwin-isolation', 'auto'])).toThrow(
+    'unknown Darwin emit isolation mode',
+  )
+  expect(() => parseTypecheckOptions([...typecheckArgs, '--unknown-option', 'value'])).toThrow(
+    'unexpected typecheck argument',
+  )
 })
 
 type FingerprintTestChild = EventEmitter & FingerprintChild
@@ -335,6 +348,37 @@ it('projects declared workspace package trees beside the relocated package', asy
   expect(JSON.parse(readFileSync(join(stagedSibling, 'tsconfig.json'), 'utf8'))).toEqual({
     compilerOptions: { composite: true, noEmit: false },
   })
+})
+
+it('preserves declared sibling compiler configuration for workspace builds', async () => {
+  const { root } = createFixture()
+  const artifactRoot = join(root, 'buck-out', 'packages', '@overeng')
+  const packageTree = join(artifactRoot, 'notion-cli', '__package_tree__', 'package_tree')
+  const siblingTree = join(artifactRoot, 'effect-path', '__package_tree__', 'package_tree')
+  const stagingRoot = join(root, 'system-temp')
+  const stagedPackageRoot = join(stagingRoot, 'package')
+  const parentConfig = '{"files":[],"references":[{"path":"../effect-path"}]}\n'
+  const siblingConfig =
+    '{"compilerOptions":{"composite":true,"noEmit":true},"files":["src/index.ts"]}\n'
+  mkdirSync(packageTree, { recursive: true })
+  mkdirSync(join(siblingTree, 'node_modules'), { recursive: true })
+  writeFileSync(join(packageTree, 'tsconfig.json'), parentConfig)
+  writeFileSync(join(siblingTree, 'tsconfig.json'), siblingConfig)
+  mkdirSync(stagedPackageRoot, { recursive: true })
+
+  await linkStagedWorkspaceProjects({
+    packageTree,
+    readRoots: [packageTree, siblingTree],
+    stagedPackageRoot,
+    stagingRoot,
+    preserveProjectConfiguration: true,
+  })
+
+  expect(readFileSync(join(stagingRoot, 'effect-path', 'tsconfig.json'), 'utf8')).toBe(
+    siblingConfig,
+  )
+  expect(readFileSync(join(siblingTree, 'tsconfig.json'), 'utf8')).toBe(siblingConfig)
+  expect(readFileSync(join(packageTree, 'tsconfig.json'), 'utf8')).toBe(parentConfig)
 })
 
 it('stages a nested example and its declared siblings without escaping the scratch root', async () => {

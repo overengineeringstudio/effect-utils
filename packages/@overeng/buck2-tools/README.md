@@ -152,6 +152,23 @@ the previous cache endpoints/TLS/instance, then replace the selected daemon agai
 This unregisters the pilot platform and restores the original local TS action path.
 No source-rule edits, materialization changes or cache deletion are needed.
 
+## Referenced TypeScript workspace checks
+
+`tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`
+contract, including project references and compiler options. It shares the existing
+compiler capability, fingerprint admission, cancellation and Darwin isolation
+boundary. Compilation writes only a private scratch copy; the action publishes a
+verdict, not generated declarations or incremental state.
+Sibling staging preserves authored `noEmit` settings for workspace builds, so the
+compiler retains its original project-reference diagnostics. Ordinary declaration
+emit keeps its existing writable-sibling `noEmit: false` staging behavior.
+
+`package_view` accepts package-local `source_sets`, repo-relative `dependency_roots`
+and `workspace_sources`. These retain original relative imports and each importer's
+declared dependency closure without reading an installed checkout. Source snapshots
+may deliberately use the shared static source globs/exclusions for conservative
+workspace-wide cache identity; this does not promise per-project invalidation.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.

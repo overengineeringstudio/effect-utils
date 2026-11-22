@@ -326,6 +326,12 @@ rec {
                 WORKTREE_TEST_TOOLS = buck2;
                 WORKTREE_TEST_GITIGNORE = ./.gitignore;
                 WORKTREE_TEST_OTEL = "${ciTestShellProducts.otel-span}/bin/otel-span";
+                WORKTREE_TEST_BRIDGE = import ./nix/worktree-buck-trace.nix {
+                  inherit pkgs;
+                  buck2 = buck2.native;
+                  events = capabilityPackages.buck2-events;
+                  otelSpan = ciTestShellProducts.otel-span;
+                };
               }
               ''
                 export HOME="$TMPDIR/home"
