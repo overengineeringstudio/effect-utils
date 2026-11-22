@@ -50,7 +50,10 @@ import { FingerprintCommandFailure } from './typescript-runner.ts'
 const fixtureProcessIds = new Set([process.pid])
 const reconcileBuckViews = scopeEditorViewTestProcesses({
   processIds: fixtureProcessIds,
-  operation: (request: Parameters<typeof reconcileBuckViewsUnscoped>[0]) =>
+  operation: (request: {
+    readonly request: Parameters<typeof reconcileBuckViewsUnscoped>[0]['request']
+    readonly options: Omit<BuckReconcilerOptions, 'publicationOwner'>
+  }) =>
     withEditorPublicationOwner({
       root: request.options.workspaceRoot,
       ...(request.options.signal === undefined ? {} : { signal: request.options.signal }),
