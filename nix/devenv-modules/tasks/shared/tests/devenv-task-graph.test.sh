@@ -163,6 +163,8 @@ const child = spawn(process.execPath, [checker, fixture], {
   env: process.env,
   stdio: ["ignore", "pipe", "pipe"],
 })
+child.stdout.setEncoding("utf8")
+child.stderr.setEncoding("utf8")
 let stdout = ""
 let stderr = ""
 child.stdout.on("data", (chunk) => { stdout += chunk })
