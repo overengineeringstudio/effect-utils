@@ -88,6 +88,11 @@ export type CargoBuck2PackageProjectionOptions = {
   readonly buildScriptInputs?: readonly CargoBuck2BuildScriptInput[]
   /** Explicit rustc inputs, separate from build-script inputs; no macro scanning. */
   readonly compileTimeResources?: readonly CargoBuck2CompileTimeResource[]
+  /**
+   * Declared test runtime files in the same resource model. Runtime std::env::var
+   * CARGO_MANIFEST_DIR is supported; baked env! manifest paths at runtime are gated.
+   */
+  readonly runtimeResources?: readonly CargoBuck2CompileTimeResource[]
   readonly sourceUrl: string
 }
 
@@ -97,10 +102,28 @@ export type CargoBuck2BuildScriptInput = {
   readonly label?: string
 }
 
-/** Local paths are repository-relative. Destinations are normalized crate-relative paths. */
+/** Destinations default to crate-relative; a tagged form preserves repository layout. */
+export type CargoBuck2ResourceDestination =
+  | string
+  | { readonly kind: 'repository'; readonly path: string }
+
+/**
+ * Declared file model shared by compile-time and test runtime resources. Cross-package
+ * files require the owning package's export_file label. Local bytes and executability enter
+ * the projection fingerprint; generated artifacts' bytes and normalized modes are inventoried
+ * by cargo_resource_inventory at build time. A path plus label also verifies the staged bytes.
+ */
 export type CargoBuck2CompileTimeResource =
-  | { readonly path: string; readonly destination?: string; readonly label?: never }
-  | { readonly label: string; readonly destination: string; readonly path?: string }
+  | {
+      readonly path: string
+      readonly destination?: CargoBuck2ResourceDestination
+      readonly label?: never
+    }
+  | {
+      readonly label: string
+      readonly destination: CargoBuck2ResourceDestination
+      readonly path?: string
+    }
 
 /** Renders a package's Buck2 output using a configured Cargo workspace projection. */
 export type CargoBuck2PackageProjection = (
@@ -420,6 +443,7 @@ const cargoBuck2PackageProjectionFor = ({
   foreignBuildScriptExportsOnly = false,
   buildScriptInputs,
   compileTimeResources,
+  runtimeResources,
   cliBuildStamp = false,
   wasmBindgen,
   wasmGuest,
@@ -666,11 +690,12 @@ const cargoBuck2PackageProjectionFor = ({
     )
   }
   const sources = discoverRustSources({ packagePath, repo })
-  const resources = resolveCompileTimeResources({
+  const resources = resolveCargoResources({
     compileTimeResources,
+    runtimeResources,
     packagePath,
     repo,
-    sources,
+    sources: [...sources, 'Cargo.toml', ...(buildScript === undefined ? [] : [buildScript.path])],
   })
   const { binaries: declaredBinaries, library } = discoverCargoTargets({
     member,
@@ -752,6 +777,7 @@ const cargoBuck2PackageProjectionFor = ({
       : []
   const reservedTargetNames = new Set([
     'static_sources',
+    ...(resources.length === 0 ? [] : ['cargo-resource-inventory']),
     ...(library === undefined ? [] : ['lib']),
     ...products.flatMap((product) => [
       `${product.name}-product-${product.kind}`,
@@ -857,7 +883,7 @@ const cargoBuck2PackageProjectionFor = ({
       'Cargo.toml',
       ...librarySources,
       ...resources
-        .filter((resource) => resource.label === undefined)
+        .filter((resource) => resource.phase === 'compile' && resource.label === undefined)
         .map((resource) =>
           path.posix.relative(
             packagePath,
@@ -1010,7 +1036,7 @@ const cargoBuck2PackageProjectionFor = ({
   const semanticData = {
     binaries,
     compileEnv,
-    ...(resources.length === 0 ? {} : { compileTimeResources: resources }),
+    ...(resources.length === 0 ? {} : { resources }),
     ...(foreignProjections.length === 0
       ? {}
       : { foreignPackages: foreignProjections.map((projection) => projection.data) }),
@@ -1024,6 +1050,7 @@ const cargoBuck2PackageProjectionFor = ({
     testHarnesses,
     testProjection: testsEnabled === true ? 'unit-and-integration' : 'disabled',
     doctests: 'unsupported',
+    runtimeManifestPaths: 'runtime-environment-only; baked env! paths unsupported',
     library,
     librarySources,
     normalDependencies,
@@ -1052,25 +1079,52 @@ const cargoBuck2PackageProjectionFor = ({
   })
 
   const buildScriptRun = `${packageName}-build-script-run`
+  const resourceInventoryTarget =
+    foreignMember === undefined
+      ? 'cargo-resource-inventory'
+      : `${foreignTargetName(foreignMember)}-resource-inventory`
+  const resourceInventoryLabel = buckLabel({
+    packagePath: foreignMember === undefined ? packagePath : context.foreignTargetPackage,
+    target: resourceInventoryTarget,
+  })
+  const renderMappedSources = ({
+    ruleSources,
+    test = false,
+  }: {
+    readonly ruleSources: readonly string[]
+    readonly test?: boolean
+  }): readonly string[] => [
+    '    mapped_srcs = {',
+    ...sorted([...new Set(['Cargo.toml', ...ruleSources])]).map(
+      (file) =>
+        `        ${starlarkString(sourceLabel({ file, foreignMember }))}: ${starlarkString(path.posix.join(packagePath, file))},`,
+    ),
+    ...resources.flatMap((resource, index) =>
+      resource.phase === 'runtime' && test === false
+        ? []
+        : [
+            `        ${starlarkString(`${resourceInventoryLabel}[file-${index}]`)}: ${starlarkString(resource.destination)},`,
+          ],
+    ),
+    '    },',
+  ]
   const envLines = ({
     buildScriptOutputs,
     crateName,
     binName,
     integration = false,
-    test = false,
   }: {
     readonly buildScriptOutputs: boolean
     readonly crateName: string
     readonly binName?: string
     readonly integration?: boolean
-    readonly test?: boolean
   }): readonly string[] => [
     '    env = {',
     ...Object.entries(compileEnv).map(
       ([name, value]) => `        ${starlarkString(name)}: ${starlarkString(value)},`,
     ),
     `        "CARGO_CRATE_NAME": ${starlarkString(crateName)},`,
-    `        "CARGO_MANIFEST_DIR": ${starlarkString(test === true ? '.' : packagePath)},`,
+    `        "CARGO_MANIFEST_DIR": ${starlarkString(packagePath)},`,
     ...(integration === true
       ? binaries.map(
           (binary) =>
@@ -1122,34 +1176,10 @@ const cargoBuck2PackageProjectionFor = ({
     `${rule === 'rust_test' ? 'cargo_rust_test' : `native.${rule}`}(`,
     `    name = ${starlarkString(name)},`,
     `    crate = ${starlarkString(crate)},`,
-    `    crate_root = ${starlarkString(crateRoot)},`,
+    `    crate_root = ${starlarkString(path.posix.join(packagePath, crateRoot))},`,
     ...(procMacro === true ? ['    proc_macro = True,'] : []),
-    ...(resources.length === 0
-      ? renderSources({ name: 'srcs', values: ruleSources, foreignMember })
-      : [
-          '    mapped_srcs = {',
-          ...ruleSources.map(
-            (file) =>
-              `        ${starlarkString(sourceLabel({ file, foreignMember }))}: ${starlarkString(file)},`,
-          ),
-          ...resources.map(
-            (resource) =>
-              `        ${starlarkString(
-                resource.label ??
-                  sourceLabel({
-                    file: path.posix.relative(
-                      packagePath,
-                      requireValue({
-                        value: resource.path,
-                        field: 'local compileTimeResources path',
-                      }),
-                    ),
-                    foreignMember,
-                  }),
-              )}: ${starlarkString(resource.destination)},`,
-          ),
-          '    },',
-        ]),
+    ...(rule === 'rust_test' ? [`    cargo_package_path = ${starlarkString(packagePath)},`] : []),
+    ...renderMappedSources({ ruleSources, test: rule === 'rust_test' }),
     ...renderDependencies({ unconditional: dependencies, conditional: conditionalDependencies }),
     ...(ruleNamedDependencies.length === 0
       ? []
@@ -1167,7 +1197,6 @@ const cargoBuck2PackageProjectionFor = ({
       crateName: crate,
       ...(binName === undefined ? (rule === 'rust_binary' ? { binName: name } : {}) : { binName }),
       integration,
-      test: rule === 'rust_test',
     }),
     ...renderRustcFlags([
       // The build script's `cargo:rustc-*` directives (cfgs, link flags) reach every target.
@@ -1191,6 +1220,44 @@ const cargoBuck2PackageProjectionFor = ({
   ]
 
   const rules: string[] = []
+  if (resources.length > 0) {
+    rules.push(
+      'cargo_resource_inventory(',
+      `    name = ${starlarkString(resourceInventoryTarget)},`,
+      '    resources = {',
+      ...resources.map(
+        (resource, index) =>
+          `        "file-${index}": ${starlarkString(
+            resource.label ??
+              sourceLabel({
+                file: path.posix.relative(
+                  packagePath,
+                  requireValue({ value: resource.path, field: 'resource.path' }),
+                ),
+                foreignMember,
+              }),
+          )},`,
+      ),
+      '    },',
+      '    destinations = {',
+      ...resources.map(
+        (resource, index) => `        "file-${index}": ${starlarkString(resource.destination)},`,
+      ),
+      '    },',
+      '    expected_digests = {',
+      ...resources.flatMap((resource, index) =>
+        resource.fingerprint === undefined
+          ? []
+          : [
+              `        "file-${index}": ${starlarkString(resource.fingerprint.slice('sha256:'.length))},`,
+            ],
+      ),
+      '    },',
+      ')',
+      '',
+    )
+  }
+
   if (buildScript !== undefined) {
     const buildScriptBuild = `${packageName}-build-script-build`
     const buildScriptLauncher = `${packageName}-build-script`
@@ -1231,8 +1298,8 @@ const cargoBuck2PackageProjectionFor = ({
       'native.rust_binary(',
       `    name = ${starlarkString(buildScriptBuild)},`,
       '    crate = "build_script_build",',
-      `    crate_root = ${starlarkString(buildScript.path)},`,
-      ...renderSources({ name: 'srcs', values: [buildScript.path], foreignMember }),
+      `    crate_root = ${starlarkString(path.posix.join(packagePath, buildScript.path))},`,
+      ...renderMappedSources({ ruleSources: [buildScript.path] }),
       ...renderStringList({
         name: 'deps',
         values: sorted(buildDependencies.map((dependency) => dependency.label)),
@@ -1452,6 +1519,7 @@ const cargoBuck2PackageProjectionFor = ({
       ? '# Test projection: unit and integration harnesses enabled.'
       : '# Test projection: disabled (opt in with testPackagePaths).',
     '# Doctests: unsupported (unit and integration harnesses only).',
+    '# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.',
     `# Regenerate: ${regenerationCommand}`,
     '',
     'load("@prelude//:prelude.bzl", "native")',
@@ -1459,6 +1527,11 @@ const cargoBuck2PackageProjectionFor = ({
     ...(testHarnesses.length === 0
       ? []
       : [`load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "cargo_rust_test")`]),
+    ...(resources.length === 0 && hostedForeignPackages.length === 0
+      ? []
+      : [
+          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "cargo_resource_inventory")`,
+        ]),
     ...(wasmBindgen === undefined && napi === undefined && wasmGuest === undefined
       ? []
       : [
@@ -1783,26 +1856,6 @@ const sourceLabel = ({
   foreignMember === undefined
     ? file
     : buckLabel({ packagePath: foreignMember.packagePath, target: `cargo-source/${file}` })
-
-const renderSources = ({
-  name,
-  values,
-  foreignMember,
-}: {
-  readonly name: string
-  readonly values: readonly string[]
-  readonly foreignMember?: WorkspaceMember
-}): readonly string[] =>
-  foreignMember === undefined
-    ? renderStringList({ name, values })
-    : [
-        '    mapped_srcs = {',
-        ...values.map(
-          (file) =>
-            `        ${starlarkString(sourceLabel({ file, foreignMember }))}: ${starlarkString(file)},`,
-        ),
-        '    },',
-      ]
 
 const contextForMember = ({
   context,
@@ -2592,38 +2645,94 @@ const renderDependencies = ({
 
 const crateIdentifier = (value: string): string => value.replaceAll(/[^A-Za-z0-9_]/g, '_')
 
-type ResolvedCompileTimeResource = {
+type ResolvedCargoResource = {
   readonly path?: string
   readonly label?: string
   readonly destination: string
   readonly fingerprint?: string
+  readonly executable?: boolean
+  readonly phase: 'compile' | 'runtime'
 }
 
-const resolveCompileTimeResources = ({
+class CargoResourceContainment extends Error {
+  readonly _tag = 'CargoResourceContainment'
+}
+
+class CargoResourceCollision extends Error {
+  readonly _tag = 'CargoResourceCollision'
+}
+
+class CargoResourceOwnership extends Error {
+  readonly _tag = 'CargoResourceOwnership'
+}
+
+/** A nested BUCK package owns its sources even when it sits inside this crate. */
+const findBuckSourceOwner = ({
+  repo,
+  file,
+}: {
+  readonly repo: RepoContext
+  readonly file: string
+}): string => {
+  let directory = path.posix.dirname(file)
+  for (;;) {
+    if (
+      existsSync(repo.resolve(directory, 'BUCK')) === true ||
+      existsSync(repo.resolve(directory, 'BUCK.genie.ts')) === true ||
+      directory === '.'
+    )
+      return directory
+    directory = path.posix.dirname(directory)
+  }
+}
+
+/** Normalize both resource classes into one collision-checked repository namespace. */
+const resolveCargoResources = ({
   compileTimeResources,
+  runtimeResources,
   packagePath,
   repo,
   sources,
 }: {
   readonly compileTimeResources: readonly CargoBuck2CompileTimeResource[] | undefined
+  readonly runtimeResources: readonly CargoBuck2CompileTimeResource[] | undefined
   readonly packagePath: string
   readonly repo: RepoContext
   readonly sources: readonly string[]
-}): readonly ResolvedCompileTimeResource[] => {
-  const destinations = [...sources]
-  return (compileTimeResources ?? [])
-    .map((resource, index) => {
-      const field = `compileTimeResources[${index}]`
+}): readonly ResolvedCargoResource[] => {
+  const destinations = sources.map((source) => path.posix.join(packagePath, source))
+  const declarations = [
+    ...(compileTimeResources ?? []).map((resource, index) => ({
+      resource,
+      field: `compileTimeResources[${index}]`,
+      phase: 'compile' as const,
+    })),
+    ...(runtimeResources ?? []).map((resource, index) => ({
+      resource,
+      field: `runtimeResources[${index}]`,
+      phase: 'runtime' as const,
+    })),
+  ]
+  return declarations
+    .map(({ resource, field, phase }) => {
       assertKnownKeys({ value: resource, allowed: ['path', 'label', 'destination'], field })
       if (resource.path !== undefined) {
-        validateRepoPath({ repo, value: resource.path, field: `${field}.path` })
-        if (statSync(repo.resolve(resource.path)).isFile() === false) {
-          throw new Error(`${field}.path must be a file: ${resource.path}`)
+        try {
+          validateRepoPath({ repo, value: resource.path, field: `${field}.path` })
+          if (statSync(repo.resolve(resource.path)).isFile() === false) {
+            throw new Error(`${field}.path must be a file: ${resource.path}`)
+          }
+        } catch (cause) {
+          throw new CargoResourceContainment(
+            `${field}.path: ${cause instanceof Error ? cause.message : String(cause)}`,
+            { cause },
+          )
         }
       }
-      const inPackage =
-        resource.path !== undefined &&
-        (packagePath === '.' || resource.path.startsWith(`${packagePath}/`) === true)
+      const owner =
+        resource.path === undefined ? undefined : findBuckSourceOwner({ repo, file: resource.path })
+      const inPackage = owner === packagePath
+      let labelPackage: string | undefined
       if (resource.label !== undefined) {
         const label =
           /^(?:(?:@?[A-Za-z0-9_.-]+)?\/\/([A-Za-z0-9_./@-]*))?:([A-Za-z0-9_.+=,@~/-]+)$/.exec(
@@ -2640,42 +2749,72 @@ const resolveCompileTimeResources = ({
                 .some((segment) => segment === '' || segment === '.' || segment === '..') === true,
           ) === true
         ) {
-          throw new Error(`${field}.label must be a normalized Buck target label`)
+          throw new CargoResourceOwnership(`${field}.label must be a normalized Buck target label`)
         }
+        labelPackage = label[1] === undefined ? packagePath : label[1] === '' ? '.' : label[1]
       }
       if (
         inPackage === false &&
         (resource.label === undefined || resource.destination === undefined)
       ) {
-        throw new Error(
+        throw new CargoResourceOwnership(
           `${field} external or generated resource needs a label and explicit destination`,
         )
       }
-      if (inPackage === true && resource.label !== undefined) {
-        throw new Error(`${field} inside ${packagePath} takes no label`)
+      if (resource.path !== undefined && resource.label !== undefined) {
+        if (inPackage === true)
+          throw new CargoResourceOwnership(`${field} inside ${packagePath} takes no label`)
+        if (
+          labelPackage !== owner ||
+          (resource.label.startsWith('//') === false && resource.label.startsWith(':') === false)
+        ) {
+          throw new CargoResourceOwnership(
+            `${field}.label must name the owning package's export_file: ${owner}`,
+          )
+        }
       }
-      const destination =
+      const configuredDestination =
         resource.destination ??
         path.posix.relative(
           packagePath,
           requireValue({ value: resource.path, field: `${field}.path` }),
         )
+      const repositoryDestination = typeof configuredDestination !== 'string'
+      if (typeof configuredDestination !== 'string') {
+        assertKnownKeys({
+          value: configuredDestination,
+          allowed: ['kind', 'path'],
+          field: `${field}.destination`,
+        })
+        if (configuredDestination.kind !== 'repository') {
+          throw new CargoResourceContainment(`${field}.destination.kind must be repository`)
+        }
+      }
+      const relativeDestination =
+        typeof configuredDestination === 'string'
+          ? configuredDestination
+          : configuredDestination.path
       if (
-        destination === '' ||
-        path.posix.isAbsolute(destination) === true ||
-        /^[A-Za-z]:/.test(destination) === true ||
-        destination.includes('\\') === true ||
-        path.posix.normalize(destination) !== destination ||
-        // oxlint-disable-next-line no-control-regex -- Resource destinations must reject ASCII control characters.
-        /[\u0000-\u001f\u007f]/.test(destination) === true ||
-        destination
+        typeof relativeDestination !== 'string' ||
+        relativeDestination === '' ||
+        path.posix.isAbsolute(relativeDestination) === true ||
+        /^[A-Za-z]:/.test(relativeDestination) === true ||
+        relativeDestination.includes('\\') === true ||
+        path.posix.normalize(relativeDestination) !== relativeDestination ||
+        // oxlint-disable-next-line no-control-regex -- Resource destinations reject ASCII controls.
+        /[\u0000-\u001f\u007f]/.test(relativeDestination) === true ||
+        relativeDestination
           .split('/')
           .some((segment) => segment === '' || segment === '.' || segment === '..') === true
       ) {
-        throw new Error(
-          `${field}.destination must be a normalized crate-relative path: ${destination}`,
+        throw new CargoResourceContainment(
+          `${field}.destination must be a normalized ${repositoryDestination === true ? 'repository' : 'crate'}-relative path: ${String(relativeDestination)}`,
         )
       }
+      const destination =
+        repositoryDestination === true
+          ? relativeDestination
+          : path.posix.join(packagePath, relativeDestination)
       if (
         destinations.some(
           (existing) =>
@@ -2684,23 +2823,25 @@ const resolveCompileTimeResources = ({
             destination.startsWith(`${existing}/`) === true,
         ) === true
       ) {
-        throw new Error(
-          `${field}.destination collides with a Rust source or resource: ${destination}`,
+        throw new CargoResourceCollision(
+          `${field}.destination collides with a Rust source, manifest or resource: ${destination}`,
         )
       }
       destinations.push(destination)
-      return Object.assign(
-        { destination },
-        resource.label === undefined ? {} : { label: resource.label },
-        resource.path === undefined
+      return {
+        destination,
+        phase,
+        ...(resource.label === undefined ? {} : { label: resource.label }),
+        ...(resource.path === undefined
           ? {}
           : {
               path: resource.path,
+              executable: (statSync(repo.resolve(resource.path)).mode & 0o111) !== 0,
               fingerprint: `sha256:${createHash('sha256')
                 .update(readFileSync(repo.resolve(resource.path)))
                 .digest('hex')}`,
-            },
-      )
+            }),
+      }
     })
     .toSorted((left, right) => compareStrings({ left: left.destination, right: right.destination }))
 }

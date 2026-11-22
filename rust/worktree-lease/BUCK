@@ -4,10 +4,11 @@
 # Projection source: rust/worktree-lease/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:68aae73001d515c77b5dd91ed657855022cc8967358b59d787b9668c40d02658
+# Semantic fingerprint: sha256:2ff32da99fff294317f53489c89ed73a626feb7bee6245d05054685947424406
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/BUCK.genie.ts, rust/worktree-lease/Cargo.toml, rust/worktree-lease/src/**/*.rs, rust/worktree-lease/tests/**/*.rs
 # Test projection: disabled (opt in with testPackagePaths).
 # Doctests: unsupported (unit and integration harnesses only).
+# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -108,19 +109,20 @@ native.export_file(
 native.rust_library(
     name = "lib",
     crate = "worktree_lease",
-    crate_root = "src/lib.rs",
-    srcs = [
-        "src/actor.rs",
-        "src/compat.rs",
-        "src/guard.rs",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/reap.rs",
-        "src/reap_safety.rs",
-        "src/record.rs",
-        "src/record_cli.rs",
-        "src/schedule.rs",
-    ],
+    crate_root = "rust/worktree-lease/src/lib.rs",
+    mapped_srcs = {
+        "Cargo.toml": "rust/worktree-lease/Cargo.toml",
+        "src/actor.rs": "rust/worktree-lease/src/actor.rs",
+        "src/compat.rs": "rust/worktree-lease/src/compat.rs",
+        "src/guard.rs": "rust/worktree-lease/src/guard.rs",
+        "src/lib.rs": "rust/worktree-lease/src/lib.rs",
+        "src/main.rs": "rust/worktree-lease/src/main.rs",
+        "src/reap.rs": "rust/worktree-lease/src/reap.rs",
+        "src/reap_safety.rs": "rust/worktree-lease/src/reap_safety.rs",
+        "src/record.rs": "rust/worktree-lease/src/record.rs",
+        "src/record_cli.rs": "rust/worktree-lease/src/record_cli.rs",
+        "src/schedule.rs": "rust/worktree-lease/src/schedule.rs",
+    },
     deps = [
         "//rust/third-party:chrono",
         "//rust/third-party:clap",
@@ -156,19 +158,20 @@ native.rust_library(
 native.rust_binary(
     name = "worktree-lease",
     crate = "worktree_lease",
-    crate_root = "src/main.rs",
-    srcs = [
-        "src/actor.rs",
-        "src/compat.rs",
-        "src/guard.rs",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/reap.rs",
-        "src/reap_safety.rs",
-        "src/record.rs",
-        "src/record_cli.rs",
-        "src/schedule.rs",
-    ],
+    crate_root = "rust/worktree-lease/src/main.rs",
+    mapped_srcs = {
+        "Cargo.toml": "rust/worktree-lease/Cargo.toml",
+        "src/actor.rs": "rust/worktree-lease/src/actor.rs",
+        "src/compat.rs": "rust/worktree-lease/src/compat.rs",
+        "src/guard.rs": "rust/worktree-lease/src/guard.rs",
+        "src/lib.rs": "rust/worktree-lease/src/lib.rs",
+        "src/main.rs": "rust/worktree-lease/src/main.rs",
+        "src/reap.rs": "rust/worktree-lease/src/reap.rs",
+        "src/reap_safety.rs": "rust/worktree-lease/src/reap_safety.rs",
+        "src/record.rs": "rust/worktree-lease/src/record.rs",
+        "src/record_cli.rs": "rust/worktree-lease/src/record_cli.rs",
+        "src/schedule.rs": "rust/worktree-lease/src/schedule.rs",
+    },
     deps = [
         "//rust/third-party:chrono",
         "//rust/third-party:clap",

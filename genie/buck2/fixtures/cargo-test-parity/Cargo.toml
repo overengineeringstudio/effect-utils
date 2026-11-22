@@ -1,16 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["."]
+members = ["crates/app"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-[package]
-name = "cargo-test-parity"
-version.workspace = true
-edition.workspace = true
-[lib]
-# Doctests are unsupported by the projector; exclude only from this exact inventory comparison.
-doctest = false
-[dev-dependencies]
-serde = "=1.0.229"
-number = { package = "serde_json", version = "=1.0.151" }

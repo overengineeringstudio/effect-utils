@@ -1,5 +1,6 @@
 import {
   appendFileSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -512,7 +513,7 @@ describe('repository-root Cargo workspaces', () => {
       })
       if (render === '.') {
         expect(output).toContain('"shared"')
-        expect(output).toContain('"schema.json": "schema.json"')
+        expect(output).toContain('"//:cargo-resource-inventory[file-0]": "schema.json"')
         expect(output).toContain('build-script')
         expect(output).toContain('    prefix = "",')
         expect(output).toContain('    package_path = "",')
@@ -813,6 +814,225 @@ describe('Cargo compile-time resources', () => {
   })
 })
 
+describe('Cargo repository-layout resources', () => {
+  const repository = (file: string) => ({ kind: 'repository' as const, path: file })
+  const render = (
+    options: Pick<CargoBuck2PackageProjectionOptions, 'compileTimeResources' | 'runtimeResources'>,
+    prepareFixture?: (root: string) => void,
+  ) =>
+    renderCargoFixture({
+      members: {
+        'crates/app': {
+          manifest: '[package]\nname = "app"',
+          files: ['src/lib.rs', 'src/main.rs', 'tests/one.rs', 'data/local.bin'],
+        },
+      },
+      testMembers: ['crates/app'],
+      render: 'crates/app',
+      extraFiles: [
+        'shared/BUCK',
+        'shared/fixture.bin',
+        'shared/runtime.txt',
+        'shared/undeclared.txt',
+      ],
+      projectOptions: options,
+      prepareFixture: (root) => {
+        writeFileSync(path.join(root, 'shared/fixture.bin'), Buffer.from([0xff, 0, 0x80]))
+        writeFileSync(
+          path.join(root, 'shared/BUCK'),
+          'export_file(name = "fixture", src = "fixture.bin")\nexport_file(name = "runtime", src = "runtime.txt")\n',
+        )
+        prepareFixture?.(root)
+      },
+    })
+  const compileResource = {
+    path: 'shared/fixture.bin',
+    label: '//shared:fixture',
+    destination: repository('shared/fixture.bin'),
+  }
+  const runtimeResource = {
+    path: 'shared/runtime.txt',
+    label: '//shared:runtime',
+    destination: repository('shared/runtime.txt'),
+  }
+
+  it('maps source roots, manifests and resources in one repository namespace', () => {
+    const output = render({
+      compileTimeResources: [compileResource],
+      runtimeResources: [runtimeResource],
+    })
+    const library = renderedRules(output).lib!
+    expect(library).toContain('crate_root = "rust/crates/app/src/lib.rs"')
+    expect(library).toContain('"Cargo.toml": "rust/crates/app/Cargo.toml"')
+    expect(library).toContain('"src/lib.rs": "rust/crates/app/src/lib.rs"')
+    expect(library).toContain(
+      '"//rust/crates/app:cargo-resource-inventory[file-0]": "shared/fixture.bin"',
+    )
+    expect(library).not.toContain('shared/runtime.txt')
+    expect(output).toContain('"file-0": "//shared:fixture"')
+    expect(output).toContain('"file-1": "//shared:runtime"')
+    expect(output).toContain('expected_digests = {')
+    for (const [, test] of output.matchAll(/cargo_rust_test\(\n([\s\S]*?)\n\)/g)) {
+      expect(test).toContain('cargo_package_path = "rust/crates/app"')
+      expect(test).toContain('"CARGO_MANIFEST_DIR": "rust/crates/app"')
+      expect(test).toContain(
+        '"//rust/crates/app:cargo-resource-inventory[file-1]": "shared/runtime.txt"',
+      )
+      expect(test).not.toContain('undeclared.txt')
+    }
+    expect(output).toContain('baked env! paths at runtime unsupported/gated')
+  })
+
+  it('translates legacy crate destinations exactly once', () => {
+    const legacy = render({
+      compileTimeResources: [
+        { path: 'rust/crates/app/data/local.bin', destination: 'data/relocated.bin' },
+      ],
+    })
+    const tagged = render({
+      compileTimeResources: [
+        {
+          path: 'rust/crates/app/data/local.bin',
+          destination: repository('rust/crates/app/data/relocated.bin'),
+        },
+      ],
+    })
+    expect(legacy.replace(/^# Semantic fingerprint: .*$/m, '')).toBe(
+      tagged.replace(/^# Semantic fingerprint: .*$/m, ''),
+    )
+    expect(legacy).toContain('"file-0": "rust/crates/app/data/relocated.bin"')
+  })
+
+  it('fingerprints raw compile-time and runtime bytes even behind export_file labels', () => {
+    const options = { compileTimeResources: [compileResource], runtimeResources: [runtimeResource] }
+    const fingerprint = (output: string) => /^# Semantic fingerprint: (.+)$/m.exec(output)?.[1]
+    const initial = fingerprint(render(options))
+    expect(
+      fingerprint(
+        render(options, (root) =>
+          writeFileSync(path.join(root, 'shared/fixture.bin'), Buffer.from([0xfe, 0, 0x80])),
+        ),
+      ),
+    ).not.toBe(initial)
+    expect(
+      fingerprint(
+        render(options, (root) =>
+          writeFileSync(path.join(root, 'shared/runtime.txt'), 'changed runtime bytes'),
+        ),
+      ),
+    ).not.toBe(initial)
+  })
+
+  it.each(['shared/fixture.bin', 'shared/runtime.txt'])(
+    'fingerprints executable-mode changes to %s',
+    (resourcePath) => {
+      const options = {
+        compileTimeResources: [compileResource],
+        runtimeResources: [runtimeResource],
+      }
+      const fingerprint = (mode: number) =>
+        /^# Semantic fingerprint: (.+)$/m.exec(
+          render(options, (root) => chmodSync(path.join(root, resourcePath), mode)),
+        )?.[1]
+      expect(fingerprint(0o755)).not.toBe(fingerprint(0o644))
+      expect(fingerprint(0o744)).toBe(fingerprint(0o755))
+    },
+  )
+
+  it.each(['../outside', '/outside', 'a/../outside', 'C:/outside', 'a\\outside', ''])(
+    'refuses unsafe repository destination %j with a typed error',
+    (destination) => {
+      expect(() =>
+        render({
+          compileTimeResources: [{ ...compileResource, destination: repository(destination) }],
+        }),
+      ).toThrow('normalized repository-relative path')
+      try {
+        render({
+          compileTimeResources: [{ ...compileResource, destination: repository(destination) }],
+        })
+        throw new Error('Expected containment refusal')
+      } catch (error) {
+        expect(error).toMatchObject({ _tag: 'CargoResourceContainment' })
+      }
+    },
+  )
+
+  it.each([
+    'rust/crates/app/Cargo.toml',
+    'rust/crates/app/src/lib.rs',
+    'rust/crates/app/src',
+    'rust/crates/app/src/lib.rs/child',
+  ])('refuses destination collision with declared source or manifest %s', (destination) => {
+    try {
+      render({
+        compileTimeResources: [{ ...compileResource, destination: repository(destination) }],
+      })
+      throw new Error('Expected collision refusal')
+    } catch (error) {
+      expect(error).toMatchObject({ _tag: 'CargoResourceCollision' })
+    }
+  })
+
+  it('rejects duplicate compile/runtime destinations and file/directory prefixes before the dictionary merge', () => {
+    expect(() =>
+      render({ compileTimeResources: [compileResource], runtimeResources: [compileResource] }),
+    ).toThrow('collides')
+    expect(() =>
+      render({
+        compileTimeResources: [compileResource],
+        runtimeResources: [
+          { ...runtimeResource, destination: repository('shared/fixture.bin/child') },
+        ],
+      }),
+    ).toThrow('collides')
+  })
+
+  it('requires the source-owning Buck package rather than any artifact with a label', () => {
+    try {
+      render({ compileTimeResources: [{ ...compileResource, label: '//other:fixture' }] })
+      throw new Error('Expected ownership refusal')
+    } catch (error) {
+      expect(error).toMatchObject({ _tag: 'CargoResourceOwnership' })
+    }
+    expect(() =>
+      render(
+        {
+          compileTimeResources: [
+            { path: 'rust/crates/app/data/local.bin', destination: repository('data/local.bin') },
+          ],
+        },
+        (root) =>
+          writeFileSync(
+            path.join(root, 'rust/crates/app/data/BUCK'),
+            'export_file(name = "local.bin")\n',
+          ),
+      ),
+    ).toThrow('needs a label')
+  })
+
+  it('refuses source containment escape with a typed error', () => {
+    try {
+      render({ compileTimeResources: [{ path: '../outside.bin' }] })
+      throw new Error('Expected source containment refusal')
+    } catch (error) {
+      expect(error).toMatchObject({ _tag: 'CargoResourceContainment' })
+    }
+  })
+
+  it('reserves the inventory rule name against Cargo binary collisions', () => {
+    expect(() =>
+      render({ compileTimeResources: [compileResource] }, (root) => {
+        mkdirSync(path.join(root, 'rust/crates/app/src/bin'))
+        writeFileSync(
+          path.join(root, 'rust/crates/app/src/bin/cargo-resource-inventory.rs'),
+          'fn main() {}',
+        )
+      }),
+    ).toThrow('Cargo binary names collide')
+  })
+})
+
 /** The rendered `native.*` rule blocks keyed by target name. */
 const renderedRules = (rendered: string): Readonly<Record<string, string>> =>
   Object.fromEntries(
@@ -1012,6 +1232,11 @@ describe('Cargo compile-time package identity', () => {
 })
 
 describe('Cargo target discovery', () => {
+  const mappedSources = (packagePath: string, files: readonly string[]): string =>
+    `mapped_srcs = {\n${['Cargo.toml', ...files]
+      .toSorted()
+      .map((file) => `        "${file}": "${packagePath}/${file}",`)
+      .join('\n')}\n    },`
   it('discovers src/lib.rs, src/main.rs, src/bin/*.rs, and src/bin/<name>/main.rs', () => {
     const rules = renderedRules(
       renderCargoFixture({
@@ -1032,19 +1257,35 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['lib', 'extra', 'multi', 'my-tool'])
-    expect(rules.lib).toContain('crate = "my_tool",\n    crate_root = "src/lib.rs",')
+    expect(rules.lib).toContain('crate = "my_tool",\n    crate_root = "rust/my-tool/src/lib.rs",')
     // Every src/ file, binary roots included, can be a library module (`mod main;`).
     expect(rules.lib).toContain(
-      'srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
+      mappedSources('rust/my-tool', [
+        'src/bin/extra.rs',
+        'src/bin/multi/args.rs',
+        'src/bin/multi/main.rs',
+        'src/lib.rs',
+        'src/main.rs',
+        'src/util.rs',
+      ]),
     )
-    expect(rules['my-tool']).toContain('crate = "my_tool",\n    crate_root = "src/main.rs",')
+    expect(rules['my-tool']).toContain(
+      'crate = "my_tool",\n    crate_root = "rust/my-tool/src/main.rs",',
+    )
     expect(rules['my-tool']).toContain('deps = [\n        ":lib",\n    ],')
-    expect(rules.extra).toContain(
-      'crate_root = "src/bin/extra.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
-    )
-    expect(rules.multi).toContain(
-      'crate_root = "src/bin/multi/main.rs",\n    srcs = [\n        "src/bin/extra.rs",\n        "src/bin/multi/args.rs",\n        "src/bin/multi/main.rs",\n        "src/lib.rs",\n        "src/main.rs",\n        "src/util.rs",\n    ],',
-    )
+    expect(rules.extra).toContain('crate_root = "rust/my-tool/src/bin/extra.rs"')
+    expect(rules.multi).toContain('crate_root = "rust/my-tool/src/bin/multi/main.rs"')
+    for (const rule of [rules.extra, rules.multi])
+      expect(rule).toContain(
+        mappedSources('rust/my-tool', [
+          'src/bin/extra.rs',
+          'src/bin/multi/args.rs',
+          'src/bin/multi/main.rs',
+          'src/lib.rs',
+          'src/main.rs',
+          'src/util.rs',
+        ]),
+      )
   })
 
   it('lets flat src/bin binaries load every src/bin module', () => {
@@ -1065,12 +1306,17 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['dir', 'helper', 'tool'])
-    expect(rules.tool).toContain(
-      'crate_root = "src/bin/tool.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
-    )
-    expect(rules.dir).toContain(
-      'crate_root = "src/bin/dir/main.rs",\n    srcs = [\n        "src/bin/dir/main.rs",\n        "src/bin/dir/x.rs",\n        "src/bin/helper.rs",\n        "src/bin/tool.rs",\n    ],',
-    )
+    expect(rules.tool).toContain('crate_root = "rust/kit/src/bin/tool.rs"')
+    expect(rules.dir).toContain('crate_root = "rust/kit/src/bin/dir/main.rs"')
+    for (const rule of [rules.tool, rules.dir])
+      expect(rule).toContain(
+        mappedSources('rust/kit', [
+          'src/bin/dir/main.rs',
+          'src/bin/dir/x.rs',
+          'src/bin/helper.rs',
+          'src/bin/tool.rs',
+        ]),
+      )
   })
 
   it('rejects binary names that collide with generated Buck targets', () => {
@@ -1101,9 +1347,8 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['tool', 'app'])
-    expect(rules.app).toContain(
-      'crate_root = "src/main.rs",\n    srcs = [\n        "src/main.rs",\n        "src/tool.rs",\n    ],',
-    )
+    expect(rules.app).toContain('crate_root = "rust/app/src/main.rs"')
+    expect(rules.app).toContain(mappedSources('rust/app', ['src/main.rs', 'src/tool.rs']))
   })
 
   it('keeps binary sources the library can load as modules', () => {
@@ -1120,7 +1365,12 @@ describe('Cargo target discovery', () => {
     )
     expect(Object.keys(rules)).toEqual(['lib', 'tool', 'helper', 'mod'])
     expect(rules.lib).toContain(
-      'srcs = [\n        "src/bin/helper.rs",\n        "src/bin/mod.rs",\n        "src/lib.rs",\n        "src/tool.rs",\n    ],',
+      mappedSources('rust/pkg', [
+        'src/bin/helper.rs',
+        'src/bin/mod.rs',
+        'src/lib.rs',
+        'src/tool.rs',
+      ]),
     )
   })
 
@@ -1134,9 +1384,8 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['app', 'mod'])
-    expect(rules.app).toContain(
-      'crate_root = "src/main.rs",\n    srcs = [\n        "src/bin/mod.rs",\n        "src/main.rs",\n    ],',
-    )
+    expect(rules.app).toContain('crate_root = "rust/app/src/main.rs"')
+    expect(rules.app).toContain(mappedSources('rust/app', ['src/bin/mod.rs', 'src/main.rs']))
   })
 
   it('keeps targets that share a crate root', () => {
@@ -1153,12 +1402,10 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['lib', 'one', 'two'])
-    expect(rules.lib).toContain(
-      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
-    )
-    expect(rules.two).toContain(
-      'crate_root = "src/shared.rs",\n    srcs = [\n        "src/shared.rs",\n    ],',
-    )
+    for (const rule of [rules.lib, rules.two]) {
+      expect(rule).toContain('crate_root = "rust/pkg/src/shared.rs"')
+      expect(rule).toContain(mappedSources('rust/pkg', ['src/shared.rs']))
+    }
   })
 
   it('skips hidden paths in automatic binary discovery', () => {
@@ -1180,8 +1427,8 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['solo', 'tool'])
-    expect(rules.solo).toContain('crate_root = "src/main.rs",')
-    expect(rules.tool).toContain('crate_root = "src/bin/tool.rs",')
+    expect(rules.solo).toContain('crate_root = "rust/solo/src/main.rs",')
+    expect(rules.tool).toContain('crate_root = "rust/solo/src/bin/tool.rs",')
   })
 
   it('names empty and path-only [lib] tables after the package', () => {
@@ -1196,7 +1443,9 @@ describe('Cargo target discovery', () => {
         render: 'cli-version',
       }),
     )
-    expect(emptyLib.lib).toContain('crate = "cli_version",\n    crate_root = "src/lib.rs",')
+    expect(emptyLib.lib).toContain(
+      'crate = "cli_version",\n    crate_root = "rust/cli-version/src/lib.rs",',
+    )
     const pathOnlyLib = renderedRules(
       renderCargoFixture({
         members: {
@@ -1209,7 +1458,9 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(pathOnlyLib)).toEqual(['lib', 'nix-trace'])
-    expect(pathOnlyLib.lib).toContain('crate = "nix_trace",\n    crate_root = "src/trace.rs",')
+    expect(pathOnlyLib.lib).toContain(
+      'crate = "nix_trace",\n    crate_root = "rust/nix-trace/src/trace.rs",',
+    )
   })
 
   it('honors autolib and autobins = false and infers explicit binary paths', () => {
@@ -1226,7 +1477,7 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['chosen'])
-    expect(rules.chosen).toContain('crate_root = "src/bin/chosen.rs",')
+    expect(rules.chosen).toContain('crate_root = "rust/quiet/src/bin/chosen.rs",')
     expect(rules.chosen).toContain('deps = [\n    ],')
   })
 
@@ -1243,7 +1494,7 @@ describe('Cargo target discovery', () => {
       }),
     )
     expect(Object.keys(rules)).toEqual(['app', 'helper'])
-    expect(rules.app).toContain('crate_root = "src/cli.rs",')
+    expect(rules.app).toContain('crate_root = "rust/app/src/cli.rs",')
   })
 
   it('rejects conflicting, ambiguous, missing, and absent targets', () => {
@@ -1669,7 +1920,7 @@ describe('Cargo multi-product packages', () => {
       projectOptions: { buildProducts: [{ kind: 'library', name: 'relay-library' }] },
     })
     expect(rendered).toContain('crate = "relay_core"')
-    expect(rendered).toContain('crate_root = "src/core.rs"')
+    expect(rendered).toContain('crate_root = "rust/relay/src/core.rs"')
     expect(rendered).toContain('edition = "2024"')
     expect(rendered).toContain('"//rust/third-party:serde"')
     expect(rendered).toContain('load("//buck2/rust:library.bzl", "rust_product_library")')
@@ -2070,7 +2321,7 @@ describe('Cargo build scripts', () => {
   it('honors package.build paths and ignores build dependencies without a script', () => {
     expect(
       render({ manifest: '\nbuild = "tools/gen.rs"', files: ['src/lib.rs', 'tools/gen.rs'] }),
-    ).toContain('    crate_root = "tools/gen.rs",')
+    ).toContain('    crate_root = "rust/axe/tools/gen.rs",')
     const scriptless = render({
       manifest: '\nbuild = false\n\n[build-dependencies]\nserde.workspace = true',
     })
@@ -2131,10 +2382,10 @@ describe('Cargo test harness projection', () => {
       for (const file of files) expect(test).toContain(`"${file}"`)
       expect(test).toContain('"//rust/third-party:serde"')
       expect(test).toContain('"json": "//rust/third-party:serde_json"')
-      expect(test).toContain('"CARGO_MANIFEST_DIR": "."')
+      expect(test).toContain('"CARGO_MANIFEST_DIR": "rust/pkg"')
     }
-    expect(tests[0]).toContain('crate_root = "src/lib.rs"')
-    expect(tests[1]).toContain('crate_root = "src/main.rs"')
+    expect(tests[0]).toContain('crate_root = "rust/pkg/src/lib.rs"')
+    expect(tests[1]).toContain('crate_root = "rust/pkg/src/main.rs"')
     for (const test of tests.slice(0, 2)) expect(test).not.toContain('CARGO_BIN_EXE_')
     for (const test of tests.slice(2)) {
       expect(test).toContain('"CARGO_BIN_EXE_pkg": "$(location //rust/pkg:pkg)"')
@@ -2238,7 +2489,8 @@ describe('Cargo test harness projection', () => {
         },
       })
       expect(harnesses(output)[0]?.match(/"\/\/rust\/third-party:serde"/g)).toHaveLength(1)
-      if (edgeKind === 'consumer-build') expect(output).toContain('crate_root = "build.rs"')
+      if (edgeKind === 'consumer-build')
+        expect(output).toContain('crate_root = "rust/pkg/build.rs"')
     },
   )
 

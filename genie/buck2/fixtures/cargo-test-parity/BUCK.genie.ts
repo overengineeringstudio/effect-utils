@@ -1,19 +1,28 @@
-import { basename } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { createGenieOutput } from '../../../../packages/@overeng/genie/src/runtime/core.ts'
 
-import { defineCargoBuck2PackageProjection } from '../../../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
+const content = `load("@prelude//:prelude.bzl", "native")
+load(":generated_resource.bzl", "generated_resource")
 
-const workspaceRoot = `genie/buck2/fixtures/${basename(fileURLToPath(new URL('.', import.meta.url)))}`
-export default defineCargoBuck2PackageProjection({
-  repoName: 'effect-utils',
-  repoImportMetaUrl: import.meta.url,
-  workspaceRoot,
-  workspaceMemberManifestPaths: [`${workspaceRoot}/Cargo.toml`],
-  testPackagePaths: [workspaceRoot],
-  thirdPartyBuckPath: `${workspaceRoot}/vendor/BUCK`,
-  thirdPartyPackage: `//${workspaceRoot}/vendor`,
-  generatorSourcePaths: [],
-})({
-  sourceUrl: import.meta.url,
-  compileTimeResources: [{ path: `${workspaceRoot}/fixtures/message.txt` }],
+# Root-owned resources are explicit inputs to the nested Cargo package.
+native.export_file(
+    name = "message",
+    src = "fixtures/message.txt",
+    visibility = ["PUBLIC"],
+)
+native.export_file(
+    name = "ancestor-script",
+    src = "ancestor-script.sh",
+    visibility = ["PUBLIC"],
+)
+
+# Inventory must accept a real generated single-file artifact without a digest.
+generated_resource(
+    name = "generated-resource",
+    visibility = ["PUBLIC"],
+)
+`
+
+export default createGenieOutput({
+  data: content,
+  stringify: () => content,
 })
