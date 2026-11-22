@@ -152,6 +152,7 @@ rec {
         capabilityPackages = {
           inherit buck2 buck2-go buck2-bun-compile-runtime;
           inherit pnpm;
+          # Hermetic actions need the raw runtime, not publication-specific environment.
           bun = pkgs.bun;
           buck2-node = pkgs.writeShellScriptBin "node" ''
             exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
@@ -311,6 +312,7 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+          publication-owner-identity = import ./nix/buck2-publication-owner.test.nix { inherit pkgs; };
           worktree-teardown-runtime = pkgs.runCommand "worktree-teardown-runtime" { } ''
             export HOME="$TMPDIR/home"
             root="$TMPDIR/retired"

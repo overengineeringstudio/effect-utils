@@ -22,6 +22,7 @@
   },
 }:
 let
+  publicationOwner = import ./buck2-publication-owner.nix { inherit pkgs; };
   release = import ./buck2-release.nix;
   system = pkgs.stdenv.hostPlatform.system;
   platform =
@@ -88,6 +89,7 @@ pkgs.runCommand native.name
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \
       --replace-fail '@launcher@' "$out/libexec/buck2-entrypoint" \
+      --replace-fail '@publicationOwnerLibrary@' '${publicationOwner}/lib/${publicationOwner.libraryName}' \
       --replace-fail '@sha256@' '${pkgs.coreutils}/bin/sha256sum'
     chmod +x "$out/bin/buck2"
   ''
