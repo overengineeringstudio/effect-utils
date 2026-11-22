@@ -806,7 +806,15 @@ describe('Buck watch reconciliation', () => {
         },
       })
       expect(batchInvocations).toHaveLength(1)
-      expect(batchInvocations[0]?.args).toEqual(invocations[0]?.args)
+      expect(batchInvocations[0]?.args).toEqual([
+        '--isolation-dir',
+        editorPublicationIsolation,
+        'build',
+        '//packages/app:editor_view_inputs',
+        '--show-full-output',
+        '--event-log',
+        expect.stringMatching(/^\.devenv\/otel\/buck2-events\/editor-view-\d+-[0-9a-f-]+\.pb\.zst$/),
+      ])
       expect(batchInvocations[0]?.detached).toBeUndefined()
       expect(batchInvocations[0]?.input).toBeUndefined()
       const second = fixture.record()
