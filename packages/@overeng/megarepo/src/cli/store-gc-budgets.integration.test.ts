@@ -117,6 +117,8 @@ describe('versioned budget owner contract', () => {
     }
     const evidence = {
       schemaVersion: 'megarepo.build-output-budget-plan.v3' as const,
+      complete: true,
+      unaccounted: [],
       results: [rows[0]!],
       classes: {},
     }
@@ -612,6 +614,9 @@ const twoTargets = ({
 // =============================================================================
 
 const OWNER_NAMESPACE_ARGS = ['--user', '--map-current-user', '--pid', '--fork', '--mount-proc']
+// The subprocess runs the entire acceptance suite, not one 240-second case.
+// Keep its aggregate deadline separate from Vitest's unchanged per-case limit.
+const OWNER_NAMESPACE_SUITE_TIMEOUT_MS = 15 * 60_000
 const inOwnerNamespace = process.env['MEGAREPO_BUDGET_TEST_NAMESPACE'] === '1'
 if (inOwnerNamespace === false) {
   let skipReason: string | undefined
@@ -643,53 +648,114 @@ if (inOwnerNamespace === false) {
   describeOwnerNamespace(
     `mr budget owner namespace preconditions${skipReason === undefined ? '' : ` (skipped: ${skipReason})`}`,
     () => {
-      it('runs acceptance 1-11 in an unprivileged user/PID namespace with real fixture processes', () => {
-        const file = fileURLToPath(import.meta.url)
-        const packageDir = dirname(dirname(dirname(file)))
-        const vitestBin = join(
-          dirname(fileURLToPath(import.meta.resolve('vitest/package.json'))),
-          'vitest.mjs',
-        )
-        const result = spawnSync(
-          'unshare',
-          [
-            ...OWNER_NAMESPACE_ARGS,
-            process.execPath,
-            vitestBin,
-            'run',
-            'src/cli/store-gc-budgets.integration.test.ts',
-            // Runner loading and disabled result caching keep readonly snapshots
-            // free of node_modules/.vite-temp and node_modules/.vite writes.
-            '--configLoader',
-            'runner',
-            '--no-cache',
-            '--reporter',
-            'verbose',
-            '--testTimeout',
-            '240000',
-          ],
-          {
-            cwd: packageDir,
-            env: { ...process.env, MEGAREPO_BUDGET_TEST_NAMESPACE: '1' },
-            encoding: 'utf8',
-            timeout: 240_000,
-          },
-        )
-        console.log(result.stdout)
-        expect(
-          result.error,
-          'budget acceptance requires unshare and unprivileged user/PID namespaces',
-        ).toBeUndefined()
-        expect(
-          result.status,
-          `budget acceptance requires usable unprivileged user/PID namespaces and a populated /proc: ${result.stderr}`,
-        ).toBe(0)
-      }, 240_000)
+      it(
+        'runs acceptance 1-11 in an unprivileged user/PID namespace with real fixture processes',
+        () => {
+          const file = fileURLToPath(import.meta.url)
+          const packageDir = dirname(dirname(dirname(file)))
+          const vitestBin = join(
+            dirname(fileURLToPath(import.meta.resolve('vitest/package.json'))),
+            'vitest.mjs',
+          )
+          const result = spawnSync(
+            'unshare',
+            [
+              ...OWNER_NAMESPACE_ARGS,
+              process.execPath,
+              vitestBin,
+              'run',
+              'src/cli/store-gc-budgets.integration.test.ts',
+              // Runner loading and disabled result caching keep readonly snapshots
+              // free of node_modules/.vite-temp and node_modules/.vite writes.
+              '--configLoader',
+              'runner',
+              '--no-cache',
+              '--reporter',
+              'verbose',
+              '--testTimeout',
+              '240000',
+            ],
+            {
+              cwd: packageDir,
+              env: { ...process.env, MEGAREPO_BUDGET_TEST_NAMESPACE: '1' },
+              encoding: 'utf8',
+              timeout: OWNER_NAMESPACE_SUITE_TIMEOUT_MS,
+            },
+          )
+          console.log(result.stdout)
+          expect(
+            result.error,
+            'budget acceptance requires unshare and unprivileged user/PID namespaces',
+          ).toBeUndefined()
+          expect(
+            result.status,
+            `budget acceptance requires usable unprivileged user/PID namespaces and a populated /proc: ${result.stderr}`,
+          ).toBe(0)
+        },
+        OWNER_NAMESPACE_SUITE_TIMEOUT_MS + 10_000,
+      )
     },
   )
 }
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
+    it.effect(
+      'reports incomplete v3 budget plans and refuses application without touching unknown bytes',
+      Effect.fnUntraced(
+        function* () {
+          const { f, targetA, targetB } = yield* twoTargets({ budgetBytes: 0 })
+          const fs = yield* FileSystem.FileSystem
+          const deep = `${f.storePath}github.com/unknown/${Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')}`
+          yield* fs.makeDirectory(deep, { recursive: true })
+          yield* fs.writeFileString(`${deep}/sentinel`, 'unaccounted')
+          const registered = `${deep}/registered`
+          yield* Git.createWorktree({
+            repoPath: f.bareRepoPaths[REPO_KEY]!,
+            worktreePath: registered,
+            branch: 'unaccounted-registration',
+            createBranch: true,
+          })
+          yield* fs.makeDirectory(`${registered}/target`, { recursive: true })
+          yield* fs.writeFileString(`${registered}/target/sentinel`, 'unknown allocation')
+          const plan = planOk(f)
+          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v3')
+          expect(plan.complete).toBe(false)
+          expect(plan.unaccounted).toEqual([
+            {
+              path: expect.stringContaining(`${f.storePath}github.com/unknown/`),
+              reason: 'depth-limit',
+            },
+          ])
+          expect(plan.results.every((candidate) => !candidate.path.includes('/unknown/'))).toBe(
+            true,
+          )
+          expect(plan.complete).toBe(plan.unaccounted.length === 0)
+          for (const entry of plan.unaccounted) {
+            expect(entry.path).toBe(yield* fs.realPath(entry.path))
+            expect(
+              plan.results.some(
+                (candidate) =>
+                  candidate.path === entry.path ||
+                  candidate.path.startsWith(`${entry.path}/`) ||
+                  entry.path.startsWith(`${candidate.path}/`),
+              ),
+            ).toBe(false)
+          }
+          const applied = applyCandidate(f, { plan, path: targetA })
+          expect(applied.exitCode).toBe(1)
+          expect(applied.stderr).toContain('Store census is incomplete')
+          expect(yield* fs.readFileString(`${deep}/sentinel`)).toBe('unaccounted')
+          expect(yield* fs.readFileString(`${registered}/target/sentinel`)).toBe(
+            'unknown allocation',
+          )
+          expect(yield* exists(targetA)).toBe(true)
+          expect(yield* exists(targetB)).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
     for (const kind of ['repo-output', 'non-refs-worktree'] as const)
       for (const holder of ['cwd', 'flock', 'fd-only'] as const)
         for (const keying of ['root', 'container', 'cwd'] as const)

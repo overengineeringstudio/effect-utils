@@ -86,6 +86,8 @@ const StoreGcJsonOutput = Schema.Struct({
     }),
   ),
   censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
+  complete: Schema.Boolean,
+  unaccounted: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
   planSha256: Schema.optional(Schema.String),
   candidateOutcomes: Schema.optional(Schema.Array(StoreGcCandidateOutcome)),
   candidateCounts: Schema.optional(StoreGcCandidateCounts),
@@ -153,281 +155,1201 @@ const runMrCommand = ({
     }
   }).pipe(Effect.scoped)
 
-describe('mr store JSON subprocess output', () => {
-  for (const loosePath of ['tmp/x.sh', 'widget/refs/heads/loose.txt']) {
-    it.effect(`keeps enumeration warnings on stderr for ${loosePath}`, () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
-        ])
-        const looseEntry = `${storePath}github.com/acme/${loosePath}`
-        yield* fs.makeDirectory(looseEntry.slice(0, looseEntry.lastIndexOf('/')), {
-          recursive: true,
-        })
-        yield* fs.writeFileString(looseEntry, 'loose store entry\n')
-        const outside = yield* fs.makeTempDirectoryScoped()
-        const result = spawnSync(
-          'bun',
-          [
-            fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
-            'store',
-            'gc',
-            '--dry-run',
-            '--output',
-            'json',
-          ],
-          {
-            cwd: outside,
-            encoding: 'utf8',
-            timeout: 30_000,
-            env: { ...process.env, MEGAREPO_STORE: storePath, NO_COLOR: '1' },
-          },
-        )
-        expect(result.error).toBeUndefined()
-        expect(result.status, result.stderr).toBe(0)
-        expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
-        expect(result.stderr).toContain('store enumeration: skipped entries (non-directory=1,')
-        expect(result.stderr).not.toContain('store enumeration: skipping non-directory entry')
-        expect(result.stdout).not.toContain('store enumeration:')
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+// Keep native process probes real without unrelated host processes making the
+// fixture's otherwise idle worktrees conservatively unknown.
+if (process.platform === 'linux' && process.env['MEGAREPO_STORE_TEST_NAMESPACE'] !== '1') {
+  describe('mr store owner namespace', () => {
+    it('runs store acceptance with real fixture processes', () => {
+      const result = spawnSync(
+        'unshare',
+        [
+          '--user',
+          '--map-current-user',
+          '--pid',
+          '--fork',
+          '--mount-proc',
+          process.execPath,
+          fileURLToPath(new URL('./vitest.mjs', import.meta.resolve('vitest/package.json'))),
+          'run',
+          'src/cli/store.integration.test.ts',
+          '--configLoader',
+          'runner',
+          '--no-cache',
+          '--testTimeout',
+          '30000',
+          '--hookTimeout',
+          '30000',
+        ],
+        {
+          cwd: fileURLToPath(new URL('../../', import.meta.url)),
+          env: { ...process.env, MEGAREPO_STORE_TEST_NAMESPACE: '1' },
+          encoding: 'utf8',
+          timeout: 240_000,
+        },
+      )
+      console.log(result.stdout)
+      expect(result.error, result.stderr).toBeUndefined()
+      expect(result.status, result.stderr).toBe(0)
+    }, 240_000)
+  })
+} else {
+  describe('mr store JSON subprocess output', () => {
+    it.effect(
+      'emits census-bearing final JSON for ls and gc, never the Initial snapshot',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'final-json', branches: ['main'] },
+          ])
+          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          for (const subcommand of ['ls', 'gc'] as const) {
+            const result = yield* runMrCommand({
+              cwd,
+              command: [
+                'store',
+                subcommand,
+                ...(subcommand === 'gc' ? ['--dry-run'] : []),
+                '--output',
+                'json',
+              ],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(result.exitCode, result.failure).toBe(0)
+            const document = decodeJson(result.stdout)
+            expect(document).toMatchObject({
+              _tag: subcommand === 'ls' ? 'Ls' : 'Gc',
+              complete: true,
+              unaccounted: [],
+            })
+            expect(document).not.toHaveProperty('_tag', 'Initial')
+          }
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
     )
-  }
-})
 
-describe('mr store status bare repository health', () => {
-  for (const acquisition of [
-    'store-new',
-    'store-add-existing',
-    'pin-checkout',
-    'pin-current',
-    'add',
-    'engine-apply',
-    'engine-lock',
-    'engine-fetch',
-  ] as const) {
-    it.effect(`refuses unhealthy CLI acquisition before mutation: ${acquisition}`, () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'test',
-            repo: 'acquire',
-            branches: ['main'],
-            withRemote: true,
-          },
-        ])
-        const bare = bareRepoPaths['github.com/test/acquire']!
-        const worktree = worktreePaths['github.com/test/acquire#main']!
-        const commit = yield* getWorktreeCommit(worktree)
-        // The remote fixture fetches once while seeding origin refs. Remove that
-        // receipt so any acquisition-time fetch is observable as a new file.
-        yield* fs.remove(`${bare}FETCH_HEAD`)
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: { member: 'test/acquire#main' },
-          lockEntries: {
-            member: { url: 'https://github.com/test/acquire', ref: 'main', commit },
-          },
-        })
-        const mount = `${workspacePath}repos/member`
-        const hasMount = acquisition.startsWith('engine-') === false
-        if (hasMount === true) {
-          yield* fs.makeDirectory(`${workspacePath}repos`, { recursive: true })
-          yield* fs.symlink(worktree, mount)
-        } else {
-          expect(yield* fs.exists(`${workspacePath}repos`)).toBe(false)
-        }
-        yield* Git.runCommand({
-          cwd: bare,
-          args: [
-            'config',
-            '-f',
-            `${bare}config`,
-            '--no-includes',
-            'extensions.worktreeConfig',
-            'true',
-          ],
-        })
-        const manifest = yield* fs.readFileString(`${workspacePath}megarepo.json`)
-        const lock = yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)
-        const commonConfig = yield* fs.readFileString(`${bare}config`)
-        const storeEntries = (yield* fs.readDirectory(storePath, { recursive: true })).toSorted()
-        // Include sibling preparation markers/locks, not just workspace contents.
-        const workspaceParent = EffectPath.ops.parent(workspacePath)!
-        const workspaceEntries = (yield* fs.readDirectory(workspaceParent, {
-          recursive: true,
-        })).toSorted()
-        const link = hasMount === true ? yield* fs.readLink(mount) : undefined
-        expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
-        const command =
-          acquisition === 'store-new'
-            ? ['store', 'worktree', 'new', 'test/acquire', '--ref', 'topic/new', '--base', 'main']
-            : acquisition === 'store-add-existing'
-              ? ['store', 'add', 'test/acquire#main']
-              : acquisition === 'pin-checkout'
-                ? ['config', 'pin', 'member', '--checkout', 'topic/new']
-                : acquisition === 'pin-current'
-                  ? ['config', 'pin', 'member']
-                  : acquisition === 'add'
-                    ? ['add', 'test/acquire#main', '--name', 'added']
-                    : [acquisition.slice('engine-'.length)]
-        const result = yield* runMrCommand({
-          cwd: workspacePath,
-          command: [...command, '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(result.exitCode).toBe(1)
-        expect(result.failure).toContain('CommonBareWorktreeConfigError')
-        expect(result.failure).toContain(bare.replace(/\/$/, ''))
-        expect(result.failure).toContain('mr store fix')
-        expect(yield* fs.readFileString(`${workspacePath}megarepo.json`)).toBe(manifest)
-        expect(yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)).toBe(lock)
-        expect(yield* fs.readFileString(`${bare}config`)).toBe(commonConfig)
-        if (hasMount === true) {
-          expect(yield* fs.readLink(mount)).toBe(link)
-        } else {
-          expect(yield* fs.exists(`${workspacePath}repos`)).toBe(false)
-        }
-        expect((yield* fs.readDirectory(storePath, { recursive: true })).toSorted()).toEqual(
-          storeEntries,
-        )
-        expect((yield* fs.readDirectory(workspaceParent, { recursive: true })).toSorted()).toEqual(
-          workspaceEntries,
-        )
-        expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-    )
-  }
+    for (const loosePath of ['tmp/x.sh', 'widget/refs/heads/loose.txt']) {
+      it.effect(`keeps enumeration warnings on stderr for ${loosePath}`, () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+          ])
+          const looseEntry = `${storePath}github.com/acme/${loosePath}`
+          yield* fs.makeDirectory(looseEntry.slice(0, looseEntry.lastIndexOf('/')), {
+            recursive: true,
+          })
+          yield* fs.writeFileString(looseEntry, 'loose store entry\n')
+          const outside = yield* fs.makeTempDirectoryScoped()
+          const result = spawnSync(
+            'bun',
+            [
+              fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+              'store',
+              'gc',
+              '--dry-run',
+              '--output',
+              'json',
+            ],
+            {
+              cwd: outside,
+              encoding: 'utf8',
+              timeout: 30_000,
+              env: { ...process.env, MEGAREPO_STORE: storePath, NO_COLOR: '1' },
+            },
+          )
+          expect(result.error).toBeUndefined()
+          expect(result.status, result.stderr).toBe(0)
+          expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
+          expect(result.stderr).toContain('store enumeration: skipped entries (non-directory=1,')
+          expect(result.stderr).not.toContain('store enumeration: skipping non-directory entry')
+          expect(result.stdout).not.toContain('store enumeration:')
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      )
+    }
+  })
 
-  it.effect(
-    'reports and repairs common core.bare with worktreeConfig without changing other keys',
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath, bareRepoPaths } = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'test',
-            repo: 'config-health',
-            branches: [],
-            withRemote: true,
-          },
-        ])
-        const bare = bareRepoPaths['github.com/test/config-health']!
-        for (const [key, value] of [
-          ['extensions.worktreeConfig', 'true'],
-          ['core.logAllRefUpdates', 'always'],
-        ]) {
+  describe('mr store status bare repository health', () => {
+    for (const acquisition of [
+      'store-new',
+      'store-add-existing',
+      'pin-checkout',
+      'pin-current',
+      'add',
+      'engine-apply',
+      'engine-lock',
+      'engine-fetch',
+    ] as const) {
+      it.effect(`refuses unhealthy CLI acquisition before mutation: ${acquisition}`, () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, bareRepoPaths, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test',
+              repo: 'acquire',
+              branches: ['main'],
+              withRemote: true,
+            },
+          ])
+          const bare = bareRepoPaths['github.com/test/acquire']!
+          const worktree = worktreePaths['github.com/test/acquire#main']!
+          const commit = yield* getWorktreeCommit(worktree)
+          // The remote fixture fetches once while seeding origin refs. Remove that
+          // receipt so any acquisition-time fetch is observable as a new file.
+          yield* fs.remove(`${bare}FETCH_HEAD`)
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: { member: 'test/acquire#main' },
+            lockEntries: {
+              member: { url: 'https://github.com/test/acquire', ref: 'main', commit },
+            },
+          })
+          const mount = `${workspacePath}repos/member`
+          const hasMount = acquisition.startsWith('engine-') === false
+          if (hasMount === true) {
+            yield* fs.makeDirectory(`${workspacePath}repos`, { recursive: true })
+            yield* fs.symlink(worktree, mount)
+          } else {
+            expect(yield* fs.exists(`${workspacePath}repos`)).toBe(false)
+          }
           yield* Git.runCommand({
             cwd: bare,
-            args: ['config', '-f', `${bare}config`, '--no-includes', key!, value!],
+            args: [
+              'config',
+              '-f',
+              `${bare}config`,
+              '--no-includes',
+              'extensions.worktreeConfig',
+              'true',
+            ],
           })
-        }
-        const before = yield* runMrCommand({
-          cwd: storePath,
-          command: ['store', 'status', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(before.exitCode, before.failure).toBe(0)
-        const status = yield* Schema.decodeUnknownEffect(
-          Schema.Struct({ repoIssues: Schema.Array(StoreRepoIssue) }),
-        )(decodeJson(before.stdout))
-        expect(status.repoIssues).toEqual([
-          expect.objectContaining({
-            repo: 'github.com/test/config-health/',
-            type: 'common_bare_worktree_config',
-            severity: 'warning',
-            message: expect.stringContaining('mr store fix'),
-          }),
-        ])
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: {},
-        })
-        yield* writeLockFile({
-          lockPath: EffectPath.ops.join(
-            workspacePath,
-            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-          ),
-          lockFile: new LockFile({ version: 1, members: {} }),
-        })
-        for (const attempt of [0, 1]) {
-          const fixed = yield* runMrCommand({
+          const manifest = yield* fs.readFileString(`${workspacePath}megarepo.json`)
+          const lock = yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)
+          const commonConfig = yield* fs.readFileString(`${bare}config`)
+          const storeEntries = (yield* fs.readDirectory(storePath, { recursive: true })).toSorted()
+          // Include sibling preparation markers/locks, not just workspace contents.
+          const workspaceParent = EffectPath.ops.parent(workspacePath)!
+          const workspaceEntries = (yield* fs.readDirectory(workspaceParent, {
+            recursive: true,
+          })).toSorted()
+          const link = hasMount === true ? yield* fs.readLink(mount) : undefined
+          expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
+          const command =
+            acquisition === 'store-new'
+              ? ['store', 'worktree', 'new', 'test/acquire', '--ref', 'topic/new', '--base', 'main']
+              : acquisition === 'store-add-existing'
+                ? ['store', 'add', 'test/acquire#main']
+                : acquisition === 'pin-checkout'
+                  ? ['config', 'pin', 'member', '--checkout', 'topic/new']
+                  : acquisition === 'pin-current'
+                    ? ['config', 'pin', 'member']
+                    : acquisition === 'add'
+                      ? ['add', 'test/acquire#main', '--name', 'added']
+                      : [acquisition.slice('engine-'.length)]
+          const result = yield* runMrCommand({
             cwd: workspacePath,
-            command: ['store', 'fix', '--output', 'json'],
+            command: [...command, '--output', 'json'],
             env: { MEGAREPO_STORE: storePath },
           })
-          expect(fixed.exitCode, fixed.failure).toBe(0)
-          expect(yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
-          const config = yield* fs.readFileString(`${bare}config`)
-          expect(config).toContain('worktreeConfig = true')
-          expect(config).toContain('logAllRefUpdates = always')
-          if (attempt === 0) expect(fixed.stdout).toContain('common_bare_worktree_config')
-        }
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-  )
+          expect(result.exitCode).toBe(1)
+          expect(result.failure).toContain('CommonBareWorktreeConfigError')
+          expect(result.failure).toContain(bare.replace(/\/$/, ''))
+          expect(result.failure).toContain('mr store fix')
+          expect(yield* fs.readFileString(`${workspacePath}megarepo.json`)).toBe(manifest)
+          expect(yield* fs.readFileString(`${workspacePath}${LOCK_FILE_NAME}`)).toBe(lock)
+          expect(yield* fs.readFileString(`${bare}config`)).toBe(commonConfig)
+          if (hasMount === true) {
+            expect(yield* fs.readLink(mount)).toBe(link)
+          } else {
+            expect(yield* fs.exists(`${workspacePath}repos`)).toBe(false)
+          }
+          expect((yield* fs.readDirectory(storePath, { recursive: true })).toSorted()).toEqual(
+            storeEntries,
+          )
+          expect(
+            (yield* fs.readDirectory(workspaceParent, { recursive: true })).toSorted(),
+          ).toEqual(workspaceEntries)
+          expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      )
+    }
 
-  for (const refsState of ['absent', 'empty'] as const) {
-    it.effect(`reports bare config issues with ${refsState} refs and no worktrees`, () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath, bareRepoPaths } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'test', repo: 'legacy', branches: [], withRemote: true },
-        ])
-        const bare = bareRepoPaths['github.com/test/legacy']!
-        yield* Git.runCommand({
-          cwd: bare,
-          args: ['config', '--local', '--unset-all', 'remote.origin.fetch'],
-        })
-        if (refsState === 'absent') {
-          yield* fs.remove(`${storePath}github.com/test/legacy/refs`, { recursive: true })
-        }
-        for (const missingOrigin of [false, true]) {
-          if (missingOrigin === true) {
+    it.effect(
+      'reports and repairs common core.bare with worktreeConfig without changing other keys',
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, bareRepoPaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test',
+              repo: 'config-health',
+              branches: [],
+              withRemote: true,
+            },
+          ])
+          const bare = bareRepoPaths['github.com/test/config-health']!
+          for (const [key, value] of [
+            ['extensions.worktreeConfig', 'true'],
+            ['core.logAllRefUpdates', 'always'],
+          ]) {
             yield* Git.runCommand({
               cwd: bare,
-              args: ['config', '--local', '--unset-all', 'remote.origin.url'],
+              args: ['config', '-f', `${bare}config`, '--no-includes', key!, value!],
             })
           }
-          const result = yield* runMrCommand({
+          const before = yield* runMrCommand({
             cwd: storePath,
             command: ['store', 'status', '--output', 'json'],
             env: { MEGAREPO_STORE: storePath },
           })
-          expect(result.exitCode, result.failure).toBe(0)
+          expect(before.exitCode, before.failure).toBe(0)
           const status = yield* Schema.decodeUnknownEffect(
-            Schema.Struct({
-              worktreeCount: Schema.Finite,
-              worktrees: Schema.Array(Schema.Unknown),
-              repoIssues: Schema.Array(Schema.Struct({ type: Schema.String, repo: Schema.String })),
-            }),
-          )(decodeJson(result.stdout))
-          expect(status.worktreeCount).toBe(0)
-          expect(status.worktrees).toEqual([])
+            Schema.Struct({ repoIssues: Schema.Array(StoreRepoIssue) }),
+          )(decodeJson(before.stdout))
           expect(status.repoIssues).toEqual([
-            {
-              type: missingOrigin === true ? 'missing_origin' : 'missing_fetch_refspec',
-              repo: 'github.com/test/legacy/',
-            },
+            expect.objectContaining({
+              repo: 'github.com/test/config-health/',
+              type: 'common_bare_worktree_config',
+              severity: 'warning',
+              message: expect.stringContaining('mr store fix'),
+            }),
           ])
-        }
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {},
+          })
+          yield* writeLockFile({
+            lockPath: EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+            ),
+            lockFile: new LockFile({ version: 1, members: {} }),
+          })
+          for (const attempt of [0, 1]) {
+            const fixed = yield* runMrCommand({
+              cwd: workspacePath,
+              command: ['store', 'fix', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(fixed.exitCode, fixed.failure).toBe(0)
+            expect(yield* Git.hasCommonBareWithWorktreeConfig({ repoPath: bare })).toBe(false)
+            const config = yield* fs.readFileString(`${bare}config`)
+            expect(config).toContain('worktreeConfig = true')
+            expect(config).toContain('logAllRefUpdates = always')
+            if (attempt === 0) expect(fixed.stdout).toContain('common_bare_worktree_config')
+          }
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
-  }
-})
 
-describe('mr store gc', () => {
-  for (const scenario of ['same', 'dirty', 'other', 'unknown', 'duplicate', 'during'] as const) {
-    it.effect.skipIf(process.platform !== 'linux')(
-      `applies candidates-file safely: ${scenario}`,
-      () =>
+    for (const refsState of ['absent', 'empty'] as const) {
+      it.effect(`reports bare config issues with ${refsState} refs and no worktrees`, () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem
-          const commits = ['a'.repeat(40), 'b'.repeat(40)]
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            { host: 'github.com', owner: 'acme', repo: 'batch', branches: ['main'], commits },
+          const { storePath, bareRepoPaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'test', repo: 'legacy', branches: [], withRemote: true },
           ])
-          const paths = commits.map((ref) => worktreePaths[`github.com/acme/batch#${ref}`]!)
+          const bare = bareRepoPaths['github.com/test/legacy']!
+          yield* Git.runCommand({
+            cwd: bare,
+            args: ['config', '--local', '--unset-all', 'remote.origin.fetch'],
+          })
+          if (refsState === 'absent') {
+            yield* fs.remove(`${storePath}github.com/test/legacy/refs`, { recursive: true })
+          }
+          for (const missingOrigin of [false, true]) {
+            if (missingOrigin === true) {
+              yield* Git.runCommand({
+                cwd: bare,
+                args: ['config', '--local', '--unset-all', 'remote.origin.url'],
+              })
+            }
+            const result = yield* runMrCommand({
+              cwd: storePath,
+              command: ['store', 'status', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(result.exitCode, result.failure).toBe(0)
+            const status = yield* Schema.decodeUnknownEffect(
+              Schema.Struct({
+                worktreeCount: Schema.Finite,
+                worktrees: Schema.Array(Schema.Unknown),
+                repoIssues: Schema.Array(
+                  Schema.Struct({ type: Schema.String, repo: Schema.String }),
+                ),
+              }),
+            )(decodeJson(result.stdout))
+            expect(status.worktreeCount).toBe(0)
+            expect(status.worktrees).toEqual([])
+            expect(status.repoIssues).toEqual([
+              {
+                type: missingOrigin === true ? 'missing_origin' : 'missing_fetch_refspec',
+                repo: 'github.com/test/legacy/',
+              },
+            ])
+          }
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      )
+    }
+  })
+
+  describe('mr store gc', () => {
+    for (const scenario of ['same', 'dirty', 'other', 'unknown', 'duplicate', 'during'] as const) {
+      it.effect.skipIf(process.platform !== 'linux')(
+        `applies candidates-file safely: ${scenario}`,
+        () =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            const commits = ['a'.repeat(40), 'b'.repeat(40)]
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              { host: 'github.com', owner: 'acme', repo: 'batch', branches: ['main'], commits },
+            ])
+            const paths = commits.map((ref) => worktreePaths[`github.com/acme/batch#${ref}`]!)
+            const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+            const run = (...args: string[]) =>
+              runMrCommand({
+                cwd,
+                env: { MEGAREPO_STORE: storePath },
+                command: ['store', 'gc', '--output', 'json', ...args],
+              })
+            const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
+            const candidates = paths.map((path) => {
+              const row = plan.results.find((result) => result.path === path)
+              expect(row?.candidateSha256).toMatch(/^[0-9a-f]{64}$/)
+              return { path, candidateSha256: row!.candidateSha256! }
+            })
+            if (scenario === 'dirty' || scenario === 'other') {
+              const path =
+                scenario === 'dirty' ? paths[0]! : worktreePaths['github.com/acme/batch#main']!
+              yield* fs.writeFileString(`${path}untracked.txt`, 'changed\n')
+            }
+            const file = `${cwd}candidates.json`
+            const invalid = scenario === 'unknown' || scenario === 'duplicate'
+            const entries = scenario === 'duplicate' ? [candidates[0]!, candidates[0]!] : candidates
+            const contents =
+              scenario === 'unknown'
+                ? entries.map((entry) => ({ ...entry, unknown: true }))
+                : entries
+            yield* fs.writeFileString(file, encodeJson(contents))
+            const applied = yield* Effect.gen(function* () {
+              if (scenario !== 'during') return yield* run('--candidates-file', file)
+              const acquired = yield* Deferred.make<void>()
+              const release = yield* Deferred.make<void>()
+              const holder = yield* Effect.gen(function* () {
+                const lock = yield* StoreLock
+                yield* lock.withWorktreeLock(paths[1]!)(
+                  Deferred.succeed(acquired, undefined).pipe(
+                    Effect.andThen(Deferred.await(release)),
+                  ),
+                )
+              }).pipe(Effect.provide(makeStoreLockLayer(storePath)), Effect.forkScoped)
+              yield* Deferred.await(acquired)
+              const batch = yield* run('--candidates-file', file).pipe(Effect.forkScoped)
+              // First deletion proves the upfront census finished; the second owner stays locked.
+              yield* fs.exists(paths[0]!).pipe(
+                Effect.repeat({
+                  while: (exists) => exists,
+                  schedule: Schedule.spaced('10 millis'),
+                }),
+                Effect.timeout('10 seconds'),
+              )
+              yield* fs.writeFileString(`${paths[1]}untracked.txt`, 'changed during batch\n')
+              yield* Deferred.succeed(release, undefined)
+              yield* Fiber.join(holder)
+              return yield* Fiber.join(batch)
+            }).pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
+            expect(applied.exitCode, applied.stdout + applied.failure).toBe(
+              invalid === true ? 1 : 0,
+            )
+            if (invalid === true) {
+              for (const path of paths) expect(yield* fs.exists(path)).toBe(true)
+              return
+            }
+            const batch = decodeStoreGcJsonOutput(applied.stdout)
+            const skippedCount = scenario === 'dirty' || scenario === 'during' ? 1 : 0
+            expect(batch.candidateCounts).toEqual({
+              applied: 2 - skippedCount,
+              skipped: skippedCount,
+              failed: 0,
+            })
+            expect(batch.candidateOutcomes).toHaveLength(2)
+            for (const [index, path] of paths.entries()) {
+              const skipped =
+                (scenario === 'dirty' && index === 0) || (scenario === 'during' && index === 1)
+              const outcome = batch.candidateOutcomes?.find((entry) => entry.path === path)
+              if (skipped === true) expect(outcome?._tag).toMatch(/^skipped-(changed|ineligible)$/)
+              else expect(outcome).toEqual({ _tag: 'applied', path })
+              expect(yield* fs.exists(path)).toBe(skipped)
+            }
+          }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      )
+    }
+
+    it.effect(
+      'completes gc and reports foreign files at every enumeration level without deleting them',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'test-owner', repo: 'test-repo', branches: ['main'] },
+            { host: 'github.com', owner: 'test-owner', repo: 'foreign-refs', branches: [] },
+          ])
+          // The fixture creates an empty refs/ even when no worktrees are requested.
+          yield* fs.rename(
+            `${storePath}github.com/test-owner/foreign-refs/refs`,
+            `${storePath}github.com/test-owner/foreign-refs/.fixture-refs`,
+          )
+          const foreignPaths = [
+            `${storePath}foreign-host`,
+            `${storePath}github.com/foreign-owner`,
+            `${storePath}github.com/test-owner/foreign-backup.sqlite3`,
+            `${storePath}github.com/test-owner/test-repo/refs/tags`,
+            `${storePath}github.com/test-owner/test-repo/refs/heads/foreign-ref`,
+            `${storePath}github.com/test-owner/foreign-refs/refs`,
+          ]
+          for (const path of foreignPaths) yield* fs.writeFileString(path, '')
+          const warnings: Array<string> = []
+          const loggerLayer = Logger.layer(
+            [
+              Logger.make(({ logLevel, message }) => {
+                if (logLevel === 'Warn') warnings.push(String(message))
+              }),
+            ],
+            { mergeWithExisting: false },
+          )
+          const gc = yield* runMrCommand({
+            cwd: storePath,
+            command: ['store', 'gc', '--dry-run', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          }).pipe(Effect.provide(loggerLayer))
+          expect(gc.failure).toBe('')
+          expect(gc.exitCode).toBe(0)
+          expect(decodeStoreGcJsonOutput(gc.stdout).results.length).toBeGreaterThan(0)
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+          const listed = yield* store
+            .listWorktrees(parseSourceString('test-owner/test-repo')!)
+            .pipe(Effect.provide(loggerLayer))
+          expect(listed.map((worktree) => worktree.ref)).toEqual(['main'])
+          expect(
+            yield* store
+              .listWorktrees(parseSourceString('test-owner/foreign-refs')!)
+              .pipe(Effect.provide(loggerLayer)),
+          ).toEqual([])
+          for (const count of [1, 2, 3]) {
+            expect(warnings).toContain(
+              `store enumeration: skipped entries (non-directory=${count}, foreign-namespace=0, depth-limited=0)`,
+            )
+          }
+          for (const path of foreignPaths) {
+            expect((yield* fs.stat(path)).size).toBe(0n)
+          }
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    describe('with unused worktrees', () => {
+      it.effect(
+        'should identify unused worktrees when not in a megarepo',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+
+            // Create a store with some repos and worktrees
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'test-repo',
+                branches: ['main', 'feature-a'],
+              },
+            ])
+
+            // Verify worktrees were created
+            expect(worktreePaths['github.com/test-owner/test-repo#main']).toBeDefined()
+            expect(worktreePaths['github.com/test-owner/test-repo#feature-a']).toBeDefined()
+
+            // Verify worktrees exist on disk
+            const mainWorktreePath = worktreePaths['github.com/test-owner/test-repo#main']!
+            const featureWorktreePath = worktreePaths['github.com/test-owner/test-repo#feature-a']!
+
+            expect(yield* fs.exists(mainWorktreePath)).toBe(true)
+            expect(yield* fs.exists(featureWorktreePath)).toBe(true)
+
+            // Use the store to list worktrees
+            const storeLayer = makeStoreLayer({ basePath: storePath })
+            const store = yield* Effect.provide(Store, storeLayer)
+
+            const { repos } = yield* store.listRepos
+            expect(repos).toHaveLength(1)
+            expect(repos[0]?.relativePath).toBe('github.com/test-owner/test-repo/')
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+
+      it.effect(
+        'should skip dirty worktrees without --force',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+
+            // Create store with a dirty worktree
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'dirty-repo',
+                branches: ['main'],
+                dirtyWorktrees: ['main'],
+              },
+            ])
+
+            const mainWorktreePath = worktreePaths['github.com/test-owner/dirty-repo#main']!
+
+            // Verify dirty file was created
+            const dirtyFilePath = EffectPath.ops.join(
+              mainWorktreePath,
+              EffectPath.unsafe.relativeFile('dirty.txt'),
+            )
+            expect(yield* fs.exists(dirtyFilePath)).toBe(true)
+
+            // Use store to verify structure
+            const storeLayer = makeStoreLayer({ basePath: storePath })
+            const store = yield* Effect.provide(Store, storeLayer)
+
+            const { repos } = yield* store.listRepos
+            expect(repos).toHaveLength(1)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    })
+
+    describe('with workspace lock file', () => {
+      it.effect(
+        'should mark worktrees as in-use when referenced in lock file',
+        Effect.fnUntraced(
+          function* () {
+            // Create store with worktrees
+            const { worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'locked-repo',
+                branches: ['main', 'unused-branch'],
+              },
+            ])
+
+            // Get commit SHA from the main worktree
+            const mainWorktreePath = worktreePaths['github.com/test-owner/locked-repo#main']!
+            const commitSha = yield* getWorktreeCommit(mainWorktreePath)
+
+            // Create workspace with lock file referencing main branch
+            const { workspacePath } = yield* createWorkspaceWithLock({
+              members: {
+                'my-lib': 'test-owner/locked-repo',
+              },
+              lockEntries: {
+                'my-lib': {
+                  url: 'git@github.com:test-owner/locked-repo.git',
+                  ref: 'main',
+                  commit: commitSha,
+                },
+              },
+            })
+
+            // Verify lock file was created
+            const lockPath = EffectPath.ops.join(
+              workspacePath,
+              EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+            )
+            const lockFileOpt = yield* readLockFile(lockPath)
+            expect(Option.isSome(lockFileOpt)).toBe(true)
+            const lockFile = Option.getOrThrow(lockFileOpt)
+            expect(lockFile.members['my-lib']).toBeDefined()
+            expect(lockFile.members['my-lib']!.ref).toBe('main')
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+
+      it.effect(
+        'should protect active worktrees registered by another workspace',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'repo-a',
+                branches: ['main'],
+              },
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'repo-b',
+                branches: ['main'],
+              },
+            ])
+
+            const repoAPath = worktreePaths['github.com/test-owner/repo-a#main']!
+            const repoBPath = worktreePaths['github.com/test-owner/repo-b#main']!
+            const repoACommit = yield* getWorktreeCommit(repoAPath)
+            const repoBCommit = yield* getWorktreeCommit(repoBPath)
+
+            const { workspacePath: workspaceA } = yield* createWorkspaceWithLock({
+              members: { 'repo-a': 'test-owner/repo-a#main' },
+              lockEntries: {
+                'repo-a': {
+                  url: 'git@github.com:test-owner/repo-a.git',
+                  ref: 'main',
+                  commit: repoACommit,
+                },
+              },
+            })
+            const { workspacePath: workspaceB } = yield* createWorkspaceWithLock({
+              members: { 'repo-b': 'test-owner/repo-b#main' },
+              lockEntries: {
+                'repo-b': {
+                  url: 'git@github.com:test-owner/repo-b.git',
+                  ref: 'main',
+                  commit: repoBCommit,
+                },
+              },
+            })
+
+            yield* fs.makeDirectory(
+              EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeDir('repos/')),
+              { recursive: true },
+            )
+            yield* fs.makeDirectory(
+              EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeDir('repos/')),
+              { recursive: true },
+            )
+            yield* fs.symlink(
+              repoAPath.replace(/\/$/, ''),
+              EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeFile('repos/repo-a')),
+            )
+            yield* fs.symlink(
+              repoBPath.replace(/\/$/, ''),
+              EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeFile('repos/repo-b')),
+            )
+
+            const env = { MEGAREPO_STORE: storePath }
+            const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+            yield* refreshWorkspaceRegistry({ workspaceRoot: workspaceB, store, now: Date.now() })
+            const statusB = yield* runMrCommand({
+              cwd: workspaceB,
+              command: ['status', '--output', 'json'],
+              env,
+            })
+            expect(statusB.exitCode).toBe(0)
+
+            const gcA = yield* runMrCommand({
+              cwd: workspaceA,
+              command: ['store', 'gc', '--dry-run', '--output', 'json'],
+              env,
+            })
+            expect(gcA.exitCode).toBe(0)
+            const json = decodeStoreGcJsonOutput(gcA.stdout)
+            const repoBResult = json.results.find((r) => r.repo === 'github.com/test-owner/repo-b/')
+            // Named branch worktrees registered by another workspace are now owned
+            // by the cold reclamation path (decisions 0001–0010): the worktree is
+            // still PROTECTED, surfaced as `kept` (the prior status was the
+            // commit-path `skipped_in_use`). The protection guarantee is unchanged.
+            expect(repoBResult?.status).toBe('kept')
+            expect(yield* fs.exists(repoBPath)).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+
+      it.effect(
+        'should protect the current workspace commit-mode symlink target',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+
+            const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'commit-mode-repo',
+                commits: [commitRef],
+              },
+            ])
+
+            const commitWorktreePath =
+              worktreePaths[`github.com/test-owner/commit-mode-repo#${commitRef}`]!
+            const commit = yield* getWorktreeCommit(commitWorktreePath)
+
+            const { workspacePath } = yield* createWorkspaceWithLock({
+              members: { repo: 'test-owner/commit-mode-repo#main' },
+              lockEntries: {
+                repo: {
+                  url: 'git@github.com:test-owner/commit-mode-repo.git',
+                  ref: 'main',
+                  commit,
+                },
+              },
+            })
+
+            yield* fs.makeDirectory(
+              EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
+              { recursive: true },
+            )
+            yield* fs.symlink(
+              commitWorktreePath.replace(/\/$/, ''),
+              EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
+            )
+            const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+            yield* refreshWorkspaceRegistry({
+              workspaceRoot: workspacePath,
+              store,
+              now: Date.now(),
+            })
+
+            const gc = yield* runMrCommand({
+              cwd: workspacePath,
+              command: ['store', 'gc', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(gc.exitCode).toBe(0)
+            const json = decodeStoreGcJsonOutput(gc.stdout)
+            const commitResult = findGcResult(
+              json.results,
+              'github.com/test-owner/commit-mode-repo/',
+              commitRef,
+            )
+            expect(commitResult?.status).toBe('skipped_in_use')
+            expect(yield* fs.exists(commitWorktreePath)).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+
+      it.effect(
+        'should keep clean heads and tags while removing clean unprotected commit worktrees by default',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'default-policy-repo',
+                branches: ['main'],
+                tags: ['v1.0.0'],
+                commits: [commitRef],
+              },
+            ])
+
+            const branchWorktreePath =
+              worktreePaths['github.com/test-owner/default-policy-repo#main']!
+            const tagWorktreePath =
+              worktreePaths['github.com/test-owner/default-policy-repo#v1.0.0']!
+            const commitWorktreePath =
+              worktreePaths[`github.com/test-owner/default-policy-repo#${commitRef}`]!
+
+            const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+            const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
+            yield* fs.makeDirectory(cwd, { recursive: true })
+
+            const gc = yield* runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(gc.exitCode).toBe(0)
+            const json = decodeStoreGcJsonOutput(gc.stdout)
+            const branchResult = json.results.find((r) => r.path === branchWorktreePath)
+            const tagResult = json.results.find((r) => r.path === tagWorktreePath)
+            const commitResult = json.results.find((r) => r.path === commitWorktreePath)
+
+            expect(branchResult?.status).not.toBe('removed')
+            expect(tagResult?.status).not.toBe('removed')
+            expect(commitResult?.status).toBe('removed')
+            expect(yield* fs.exists(branchWorktreePath)).toBe(true)
+            expect(yield* fs.exists(tagWorktreePath)).toBe(true)
+            expect(yield* fs.exists(commitWorktreePath)).toBe(false)
+
+            const bareRepoPath = EffectPath.ops.join(
+              storePath,
+              EffectPath.unsafe.relativeDir('github.com/test-owner/default-policy-repo/.bare/'),
+            )
+            const gitWorktrees = yield* Git.listWorktrees(bareRepoPath)
+            expect(
+              gitWorktrees.some(
+                (worktree) => worktree.path === commitWorktreePath.replace(/\/$/, ''),
+              ),
+            ).toBe(false)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+      it.effect(
+        'applies exactly one whole-worktree candidate from an unchanged dry-run plan',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const first = 'abcdef1234567890abcdef1234567890abcdef12'
+            const second = '1234567890abcdef1234567890abcdef12345678'
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'targeted-repo',
+                branches: ['main'],
+                commits: [first, second],
+              },
+            ])
+            const candidate = worktreePaths[`github.com/test-owner/targeted-repo#${first}`]!
+            const sibling = worktreePaths[`github.com/test-owner/targeted-repo#${second}`]!
+            const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+            const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
+            yield* fs.makeDirectory(cwd, { recursive: true })
+
+            const planned = yield* runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--dry-run', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            const plan = decodeStoreGcJsonOutput(planned.stdout)
+            expect(plan.planSha256).toMatch(/^[0-9a-f]{64}$/)
+            const applied = yield* runMrCommand({
+              cwd,
+              command: [
+                'store',
+                'gc',
+                '--expected-plan',
+                plan.planSha256!,
+                '--candidate-path',
+                candidate,
+                '--output',
+                'json',
+              ],
+              env: { MEGAREPO_STORE: storePath },
+            })
+
+            expect(
+              applied.exitCode,
+              `${applied.stdout}\n${applied.stderr}\n${applied.failure}`,
+            ).toBe(0)
+            expect(decodeStoreGcJsonOutput(applied.stdout).results).toHaveLength(1)
+            expect(yield* fs.exists(candidate)).toBe(false)
+            expect(yield* fs.exists(sibling)).toBe(true)
+
+            const secondPlanRun = yield* runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--dry-run', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            const secondPlan = decodeStoreGcJsonOutput(secondPlanRun.stdout)
+            const textApplied = yield* runMrCommand({
+              cwd,
+              command: [
+                'store',
+                'gc',
+                '--expected-plan',
+                secondPlan.planSha256!,
+                '--candidate-path',
+                sibling,
+              ],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(
+              textApplied.exitCode,
+              `${textApplied.stdout}\n${textApplied.stderr}\n${textApplied.failure}`,
+            ).toBe(0)
+            expect(textApplied.stdout.length).toBeGreaterThan(0)
+            expect(yield* fs.exists(sibling)).toBe(false)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    })
+
+    describe('non-Linux deletion policy', () => {
+      it.effect(
+        'preserves legacy all/default dry-run rows and identity-free hashes, and still removes safe worktrees',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+            const repo = 'github.com/test-owner/platform-legacy/'
+            const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'platform-legacy',
+                branches: ['main'],
+                tags: ['v1.0.0'],
+                commits: [commitRef],
+                dirtyWorktrees: ['v1.0.0'],
+                withRemote: true,
+              },
+            ])
+            const main = worktreePaths['github.com/test-owner/platform-legacy#main']!
+            const tag = worktreePaths['github.com/test-owner/platform-legacy#v1.0.0']!
+            const commit = worktreePaths[`github.com/test-owner/platform-legacy#${commitRef}`]!
+            const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+            const env = { MEGAREPO_STORE: storePath }
+            const canonicalRows = (results: ReadonlyArray<StoreGcJsonResult>) =>
+              results
+                .map(({ repo, ref, refType, path, status, reason }) => ({
+                  repo,
+                  ref,
+                  refType,
+                  path,
+                  status,
+                  reason,
+                }))
+                .toSorted((left, right) =>
+                  Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)),
+                )
+            const allRows = canonicalRows([
+              { repo, ref: 'main', refType: 'heads', path: main, status: 'removed' },
+              { repo, ref: 'v1.0.0', refType: 'tags', path: tag, status: 'skipped_dirty' },
+              { repo, ref: commitRef, refType: 'commits', path: commit, status: 'removed' },
+            ])
+            const defaultRows = canonicalRows([
+              {
+                repo,
+                ref: 'main',
+                refType: 'heads',
+                path: main,
+                status: 'kept',
+                reason: 'default-branch',
+              },
+              {
+                repo,
+                ref: 'v1.0.0',
+                refType: 'tags',
+                path: tag,
+                status: 'kept',
+                reason: 'named-tag-ref',
+              },
+              { repo, ref: commitRef, refType: 'commits', path: commit, status: 'removed' },
+            ])
+
+            for (const { flags, expected } of [
+              { flags: ['--all'], expected: allRows },
+              { flags: [], expected: defaultRows },
+            ]) {
+              const command = ['store', 'gc', ...flags, '--dry-run', '--output', 'json']
+              const result = yield* runMrCommand({ cwd, command, env, platform: 'darwin' })
+              expect(result.exitCode, `${result.stderr}\n${result.failure}`).toBe(0)
+              const plan = decodeStoreGcJsonOutput(result.stdout)
+              expect(plan.censusStatus).toBe('complete')
+              expect(canonicalRows(plan.results)).toEqual(expected)
+              expect(plan.results.some((row) => row.status === 'error')).toBe(false)
+              expect(`${result.stdout}\n${result.stderr}\n${result.failure}`).not.toContain(
+                'identity_failed',
+              )
+              // Legacy non-Linux plans contain only the established row fields:
+              // adding a captured deletionIdentity would change this exact digest.
+              expect(plan.planSha256).toBe(
+                createHash('sha256').update(encodeJson(expected)).digest('hex'),
+              )
+              if (process.platform === 'linux') {
+                const linux = yield* runMrCommand({ cwd, command, env, platform: 'linux' })
+                expect(linux.exitCode, `${linux.stderr}\n${linux.failure}`).toBe(0)
+                expect(canonicalRows(decodeStoreGcJsonOutput(linux.stdout).results)).toEqual(
+                  expected,
+                )
+              }
+              for (const path of [main, tag, commit]) {
+                expect(yield* fs.exists(path)).toBe(true)
+              }
+            }
+
+            const defaultApply = yield* runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--output', 'json'],
+              env,
+              platform: 'darwin',
+            })
+            expect(defaultApply.exitCode, `${defaultApply.stderr}\n${defaultApply.failure}`).toBe(0)
+            expect(canonicalRows(decodeStoreGcJsonOutput(defaultApply.stdout).results)).toEqual(
+              defaultRows,
+            )
+            expect(yield* fs.exists(commit)).toBe(false)
+            expect(yield* fs.exists(main)).toBe(true)
+            expect(yield* fs.exists(tag)).toBe(true)
+
+            const allApply = yield* runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--all', '--output', 'json'],
+              env,
+              platform: 'darwin',
+            })
+            expect(allApply.exitCode, `${allApply.stderr}\n${allApply.failure}`).toBe(0)
+            expect(canonicalRows(decodeStoreGcJsonOutput(allApply.stdout).results)).toEqual(
+              allRows.filter((row) => row.path !== commit),
+            )
+            expect(yield* fs.exists(main)).toBe(false)
+            expect(yield* fs.exists(tag)).toBe(true)
+            const registered = yield* Git.listWorktrees(
+              bareRepoPaths['github.com/test-owner/platform-legacy']!,
+            )
+            expect(
+              registered.some(
+                (worktree) =>
+                  worktree.path === main.replace(/\/$/, '') ||
+                  worktree.path === commit.replace(/\/$/, ''),
+              ),
+            ).toBe(false)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+
+      it.effect(
+        'refuses budgets and configured worklog-delete on non-Linux before removing real files',
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'platform-budget',
+                branches: ['main'],
+                commits: [commitRef],
+              },
+            ])
+            const main = worktreePaths['github.com/test-owner/platform-budget#main']!
+            const commit = worktreePaths[`github.com/test-owner/platform-budget#${commitRef}`]!
+            const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+            const target = EffectPath.ops.join(main, EffectPath.unsafe.relativeDir('target/'))
+            const outputFile = EffectPath.ops.join(
+              target,
+              EffectPath.unsafe.relativeFile('build-output'),
+            )
+            const worklog = EffectPath.ops.join(main, EffectPath.unsafe.relativeDir('tmp/worklog/'))
+            const worklogFile = EffectPath.ops.join(
+              worklog,
+              EffectPath.unsafe.relativeFile('session.log'),
+            )
+            yield* fs.makeDirectory(target, { recursive: true })
+            yield* fs.makeDirectory(worklog, { recursive: true })
+            yield* fs.writeFileString(outputFile, 'real rebuildable output\n')
+            yield* fs.writeFileString(worklogFile, 'worklog must survive unsupported teardown\n')
+            const policyPath = EffectPath.ops.join(
+              cwd,
+              EffectPath.unsafe.relativeFile('build-output-budgets.json'),
+            )
+            yield* fs.writeFileString(
+              policyPath,
+              encodeJson({
+                schemaVersion: 'megarepo.build-output-budgets.v2',
+                host: hostname(),
+                storeRoots: [storePath],
+                quotaBytes: 1024 * 1024,
+                idleRetentionMs: 0,
+                classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
+                worklog: { path: 'tmp/worklog', teardown: 'delete' },
+              }),
+            )
+            const policyReceipt = yield* loadBuildOutputBudgetPolicyReceipt({ path: policyPath })
+            expect(policyReceipt.policy.worklog?.teardown).toBe('delete')
+            const env = { MEGAREPO_STORE: storePath }
+            const assertUnchanged = Effect.gen(function* () {
+              for (const path of [main, commit, target, worklog]) {
+                expect(yield* fs.exists(path)).toBe(true)
+              }
+              expect(yield* fs.readFileString(outputFile)).toBe('real rebuildable output\n')
+              expect(yield* fs.readFileString(worklogFile)).toBe(
+                'worklog must survive unsupported teardown\n',
+              )
+            })
+
+            for (const flags of [
+              ['--dry-run'],
+              ['--expected-plan', '0'.repeat(64), '--candidate-path', target],
+            ]) {
+              const result = yield* runMrCommand({
+                cwd,
+                command: ['store', 'gc', '--budgets', policyPath, ...flags, '--output', 'json'],
+                env,
+                platform: 'darwin',
+              })
+              expect(result.exitCode).not.toBe(0)
+              expect(`${result.stderr}\n${result.failure}`).toMatch(
+                /store gc --budgets is unsupported on platform 'darwin'/,
+              )
+              yield* assertUnchanged
+            }
+
+            const state = EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir('.state/'))
+            yield* fs.makeDirectory(state, { recursive: true })
+            yield* fs.writeFileString(
+              EffectPath.ops.join(state, EffectPath.unsafe.relativeFile('gc-config.json')),
+              encodeJson({ buildOutputBudgetsPath: policyPath }),
+            )
+            for (const flags of [['--dry-run'], []]) {
+              const result = yield* runMrCommand({
+                cwd,
+                command: ['store', 'gc', ...flags, '--output', 'json'],
+                env,
+                platform: 'darwin',
+              })
+              expect(result.exitCode).not.toBe(0)
+              expect(`${result.stderr}\n${result.failure}`).toMatch(
+                /merged worklog-delete teardown is unsupported on platform 'darwin'/,
+              )
+              yield* assertUnchanged
+            }
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    })
+  })
+
+  describe('mr store lease', () => {
+    it.effect.skipIf(process.platform !== 'linux')(
+      'refuses a candidate whose directory identity changes during lease acquisition',
+      (context) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const ref = 'c'.repeat(40)
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'acme',
+              repo: 'lease-recheck',
+              branches: ['main'],
+              commits: [ref],
+            },
+          ])
+          const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
+          const identity = yield* captureDeletionIdentity({ rootPath: storePath, path: candidate })
+          if (identity.at(-1)?._tag === 'OverlayDirectory') {
+            return context.skip(
+              'Overlay directory identity binds only mountId + path; inode replacement cannot be proven',
+            )
+          }
+          const original = yield* fs.stat(candidate)
+          const backup = `${candidate.replace(/\/$/u, '')}-original`
           const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
           const run = (...args: string[]) =>
             runMrCommand({
@@ -436,511 +1358,220 @@ describe('mr store gc', () => {
               command: ['store', 'gc', '--output', 'json', ...args],
             })
           const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
-          const candidates = paths.map((path) => {
-            const row = plan.results.find((result) => result.path === path)
-            expect(row?.candidateSha256).toMatch(/^[0-9a-f]{64}$/)
-            return { path, candidateSha256: row!.candidateSha256! }
+          expect(plan.results.find((row) => row.path === candidate)?.candidateSha256).toMatch(
+            /^[0-9a-f]{64}$/,
+          )
+          const leasePath = deletionLeasePath({
+            storeBasePath: storePath,
+            ownerPath: yield* canonicalizeOwnerPath(candidate),
           })
-          if (scenario === 'dirty' || scenario === 'other') {
-            const path =
-              scenario === 'dirty' ? paths[0]! : worktreePaths['github.com/acme/batch#main']!
-            yield* fs.writeFileString(`${path}untracked.txt`, 'changed\n')
-          }
-          const file = `${cwd}candidates.json`
-          const invalid = scenario === 'unknown' || scenario === 'duplicate'
-          const entries = scenario === 'duplicate' ? [candidates[0]!, candidates[0]!] : candidates
-          const contents =
-            scenario === 'unknown' ? entries.map((entry) => ({ ...entry, unknown: true })) : entries
-          yield* fs.writeFileString(file, encodeJson(contents))
-          const applied = yield* Effect.gen(function* () {
-            if (scenario !== 'during') return yield* run('--candidates-file', file)
-            const acquired = yield* Deferred.make<void>()
-            const release = yield* Deferred.make<void>()
-            const holder = yield* Effect.gen(function* () {
-              const lock = yield* StoreLock
-              yield* lock.withWorktreeLock(paths[1]!)(
-                Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Deferred.await(release))),
-              )
-            }).pipe(Effect.provide(makeStoreLockLayer(storePath)), Effect.forkScoped)
-            yield* Deferred.await(acquired)
-            const batch = yield* run('--candidates-file', file).pipe(Effect.forkScoped)
-            // First deletion proves the upfront census finished; the second owner stays locked.
-            yield* fs.exists(paths[0]!).pipe(
-              Effect.repeat({
-                while: (exists) => exists,
-                schedule: Schedule.spaced('10 millis'),
-              }),
-              Effect.timeout('10 seconds'),
-            )
-            yield* fs.writeFileString(`${paths[1]}untracked.txt`, 'changed during batch\n')
-            yield* Deferred.succeed(release, undefined)
-            yield* Fiber.join(holder)
-            return yield* Fiber.join(batch)
-          }).pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
-          expect(applied.exitCode, applied.stdout + applied.failure).toBe(invalid === true ? 1 : 0)
-          if (invalid === true) {
-            for (const path of paths) expect(yield* fs.exists(path)).toBe(true)
-            return
-          }
-          const batch = decodeStoreGcJsonOutput(applied.stdout)
-          const skippedCount = scenario === 'dirty' || scenario === 'during' ? 1 : 0
-          expect(batch.candidateCounts).toEqual({
-            applied: 2 - skippedCount,
-            skipped: skippedCount,
-            failed: 0,
-          })
-          expect(batch.candidateOutcomes).toHaveLength(2)
-          for (const [index, path] of paths.entries()) {
-            const skipped =
-              (scenario === 'dirty' && index === 0) || (scenario === 'during' && index === 1)
-            const outcome = batch.candidateOutcomes?.find((entry) => entry.path === path)
-            if (skipped === true) expect(outcome?._tag).toMatch(/^skipped-(changed|ineligible)$/)
-            else expect(outcome).toEqual({ _tag: 'applied', path })
-            expect(yield* fs.exists(path)).toBe(skipped)
-          }
+          let changed = false
+          const applied = yield* run(
+            '--expected-plan',
+            plan.planSha256!,
+            '--candidate-path',
+            candidate,
+          ).pipe(
+            Effect.provideService(FileSystem.FileSystem, {
+              ...fs,
+              link: (from, to) =>
+                Effect.gen(function* () {
+                  // The second plan and owner lock precede this real lease acquisition.
+                  if (to === leasePath && changed === false) {
+                    changed = true
+                    yield* fs.rename(candidate, backup)
+                    yield* fs.copy(backup, candidate)
+                  }
+                  return yield* fs.link(from, to)
+                }),
+            }),
+          )
+          expect(changed).toBe(true)
+          expect(applied.exitCode, applied.stdout + applied.failure).toBe(1)
+          expect(applied.failure).toContain('GC candidate refused: skipped-changed')
+          expect(yield* fs.exists(candidate)).toBe(true)
+          expect((yield* fs.stat(candidate)).ino).not.toEqual(original.ino)
+          expect((yield* fs.stat(backup)).ino).toEqual(original.ino)
+          expect(yield* Git.getCurrentCommit(candidate)).toBe(yield* Git.getCurrentCommit(backup))
+          expect(yield* Git.runCommand({ cwd: candidate, args: ['status', '--porcelain'] })).toBe(
+            '',
+          )
+          expect(yield* fs.exists(leasePath)).toBe(false)
         }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
-  }
 
-  it.effect(
-    'completes gc and reports foreign files at every enumeration level without deleting them',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'test-owner', repo: 'test-repo', branches: ['main'] },
-          { host: 'github.com', owner: 'test-owner', repo: 'foreign-refs', branches: [] },
-        ])
-        // The fixture creates an empty refs/ even when no worktrees are requested.
-        yield* fs.rename(
-          `${storePath}github.com/test-owner/foreign-refs/refs`,
-          `${storePath}github.com/test-owner/foreign-refs/.fixture-refs`,
-        )
-        const foreignPaths = [
-          `${storePath}foreign-host`,
-          `${storePath}github.com/foreign-owner`,
-          `${storePath}github.com/test-owner/foreign-backup.sqlite3`,
-          `${storePath}github.com/test-owner/test-repo/refs/tags`,
-          `${storePath}github.com/test-owner/test-repo/refs/heads/foreign-ref`,
-          `${storePath}github.com/test-owner/foreign-refs/refs`,
-        ]
-        for (const path of foreignPaths) yield* fs.writeFileString(path, '')
-        const warnings: Array<string> = []
-        const loggerLayer = Logger.layer(
-          [
-            Logger.make(({ logLevel, message }) => {
-              if (logLevel === 'Warn') warnings.push(String(message))
-            }),
-          ],
-          { mergeWithExisting: false },
-        )
-        const gc = yield* runMrCommand({
-          cwd: storePath,
-          command: ['store', 'gc', '--dry-run', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        }).pipe(Effect.provide(loggerLayer))
-        expect(gc.failure).toBe('')
-        expect(gc.exitCode).toBe(0)
-        expect(decodeStoreGcJsonOutput(gc.stdout).results.length).toBeGreaterThan(0)
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-        const listed = yield* store
-          .listWorktrees(parseSourceString('test-owner/test-repo')!)
-          .pipe(Effect.provide(loggerLayer))
-        expect(listed.map((worktree) => worktree.ref)).toEqual(['main'])
-        expect(
-          yield* store
-            .listWorktrees(parseSourceString('test-owner/foreign-refs')!)
-            .pipe(Effect.provide(loggerLayer)),
-        ).toEqual([])
-        for (const count of [1, 2, 3]) {
-          expect(warnings).toContain(
-            `store enumeration: skipped entries (non-directory=${count}, foreign-namespace=0, depth-limited=0)`,
-          )
-        }
-        for (const path of foreignPaths) {
-          expect((yield* fs.stat(path)).size).toBe(0n)
-        }
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  describe('with unused worktrees', () => {
     it.effect(
-      'should identify unused worktrees when not in a megarepo',
+      'holds the owner lease for the wrapped command and releases it on both outcomes',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-
-          // Create a store with some repos and worktrees
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'test-repo',
-              branches: ['main', 'feature-a'],
-            },
+          const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'test-owner', repo: 'leased-repo', branches: ['main'] },
           ])
-
-          // Verify worktrees were created
-          expect(worktreePaths['github.com/test-owner/test-repo#main']).toBeDefined()
-          expect(worktreePaths['github.com/test-owner/test-repo#feature-a']).toBeDefined()
-
-          // Verify worktrees exist on disk
-          const mainWorktreePath = worktreePaths['github.com/test-owner/test-repo#main']!
-          const featureWorktreePath = worktreePaths['github.com/test-owner/test-repo#feature-a']!
-
-          expect(yield* fs.exists(mainWorktreePath)).toBe(true)
-          expect(yield* fs.exists(featureWorktreePath)).toBe(true)
-
-          // Use the store to list worktrees
-          const storeLayer = makeStoreLayer({ basePath: storePath })
-          const store = yield* Effect.provide(Store, storeLayer)
-
-          const repos = yield* store.listRepos
-          expect(repos).toHaveLength(1)
-          expect(repos[0]?.relativePath).toBe('github.com/test-owner/test-repo/')
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-
-    it.effect(
-      'should skip dirty worktrees without --force',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-
-          // Create store with a dirty worktree
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'dirty-repo',
-              branches: ['main'],
-              dirtyWorktrees: ['main'],
-            },
-          ])
-
-          const mainWorktreePath = worktreePaths['github.com/test-owner/dirty-repo#main']!
-
-          // Verify dirty file was created
-          const dirtyFilePath = EffectPath.ops.join(
-            mainWorktreePath,
-            EffectPath.unsafe.relativeFile('dirty.txt'),
-          )
-          expect(yield* fs.exists(dirtyFilePath)).toBe(true)
-
-          // Use store to verify structure
-          const storeLayer = makeStoreLayer({ basePath: storePath })
-          const store = yield* Effect.provide(Store, storeLayer)
-
-          const repos = yield* store.listRepos
-          expect(repos).toHaveLength(1)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  })
-
-  describe('with workspace lock file', () => {
-    it.effect(
-      'should mark worktrees as in-use when referenced in lock file',
-      Effect.fnUntraced(
-        function* () {
-          // Create store with worktrees
-          const { worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'locked-repo',
-              branches: ['main', 'unused-branch'],
-            },
-          ])
-
-          // Get commit SHA from the main worktree
-          const mainWorktreePath = worktreePaths['github.com/test-owner/locked-repo#main']!
-          const commitSha = yield* getWorktreeCommit(mainWorktreePath)
-
-          // Create workspace with lock file referencing main branch
-          const { workspacePath } = yield* createWorkspaceWithLock({
-            members: {
-              'my-lib': 'test-owner/locked-repo',
-            },
-            lockEntries: {
-              'my-lib': {
-                url: 'git@github.com:test-owner/locked-repo.git',
-                ref: 'main',
-                commit: commitSha,
-              },
-            },
+          const owner = worktreePaths['github.com/test-owner/leased-repo#main']!
+          const base = yield* Git.getCurrentCommit(owner)
+          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const leasePath = deletionLeasePath({
+            storeBasePath: storePath,
+            ownerPath: yield* canonicalizeOwnerPath(owner),
           })
 
-          // Verify lock file was created
-          const lockPath = EffectPath.ops.join(
-            workspacePath,
-            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-          )
-          const lockFileOpt = yield* readLockFile(lockPath)
-          expect(Option.isSome(lockFileOpt)).toBe(true)
-          const lockFile = Option.getOrThrow(lockFileOpt)
-          expect(lockFile.members['my-lib']).toBeDefined()
-          expect(lockFile.members['my-lib']!.ref).toBe('main')
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-
-    it.effect(
-      'should protect active worktrees registered by another workspace',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'repo-a',
-              branches: ['main'],
-            },
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'repo-b',
-              branches: ['main'],
-            },
-          ])
-
-          const repoAPath = worktreePaths['github.com/test-owner/repo-a#main']!
-          const repoBPath = worktreePaths['github.com/test-owner/repo-b#main']!
-          const repoACommit = yield* getWorktreeCommit(repoAPath)
-          const repoBCommit = yield* getWorktreeCommit(repoBPath)
-
-          const { workspacePath: workspaceA } = yield* createWorkspaceWithLock({
-            members: { 'repo-a': 'test-owner/repo-a#main' },
-            lockEntries: {
-              'repo-a': {
-                url: 'git@github.com:test-owner/repo-a.git',
-                ref: 'main',
-                commit: repoACommit,
-              },
-            },
-          })
-          const { workspacePath: workspaceB } = yield* createWorkspaceWithLock({
-            members: { 'repo-b': 'test-owner/repo-b#main' },
-            lockEntries: {
-              'repo-b': {
-                url: 'git@github.com:test-owner/repo-b.git',
-                ref: 'main',
-                commit: repoBCommit,
-              },
-            },
-          })
-
-          yield* fs.makeDirectory(
-            EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeDir('repos/')),
-            { recursive: true },
-          )
-          yield* fs.makeDirectory(
-            EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeDir('repos/')),
-            { recursive: true },
-          )
-          yield* fs.symlink(
-            repoAPath.replace(/\/$/, ''),
-            EffectPath.ops.join(workspaceA, EffectPath.unsafe.relativeFile('repos/repo-a')),
-          )
-          yield* fs.symlink(
-            repoBPath.replace(/\/$/, ''),
-            EffectPath.ops.join(workspaceB, EffectPath.unsafe.relativeFile('repos/repo-b')),
-          )
-
-          const env = { MEGAREPO_STORE: storePath }
-          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-          yield* refreshWorkspaceRegistry({ workspaceRoot: workspaceB, store, now: Date.now() })
-          const statusB = yield* runMrCommand({
-            cwd: workspaceB,
-            command: ['status', '--output', 'json'],
-            env,
-          })
-          expect(statusB.exitCode).toBe(0)
-
-          const gcA = yield* runMrCommand({
-            cwd: workspaceA,
-            command: ['store', 'gc', '--dry-run', '--output', 'json'],
-            env,
-          })
-          expect(gcA.exitCode).toBe(0)
-          const json = decodeStoreGcJsonOutput(gcA.stdout)
-          const repoBResult = json.results.find((r) => r.repo === 'github.com/test-owner/repo-b/')
-          // Named branch worktrees registered by another workspace are now owned
-          // by the cold reclamation path (decisions 0001–0010): the worktree is
-          // still PROTECTED, surfaced as `kept` (the prior status was the
-          // commit-path `skipped_in_use`). The protection guarantee is unchanged.
-          expect(repoBResult?.status).toBe('kept')
-          expect(yield* fs.exists(repoBPath)).toBe(true)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-
-    it.effect(
-      'should protect the current workspace commit-mode symlink target',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-
-          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'commit-mode-repo',
-              commits: [commitRef],
-            },
-          ])
-
-          const commitWorktreePath =
-            worktreePaths[`github.com/test-owner/commit-mode-repo#${commitRef}`]!
-          const commit = yield* getWorktreeCommit(commitWorktreePath)
-
-          const { workspacePath } = yield* createWorkspaceWithLock({
-            members: { repo: 'test-owner/commit-mode-repo#main' },
-            lockEntries: {
-              repo: {
-                url: 'git@github.com:test-owner/commit-mode-repo.git',
-                ref: 'main',
-                commit,
-              },
-            },
-          })
-
-          yield* fs.makeDirectory(
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeDir('repos/')),
-            { recursive: true },
-          )
-          yield* fs.symlink(
-            commitWorktreePath.replace(/\/$/, ''),
-            EffectPath.ops.join(workspacePath, EffectPath.unsafe.relativeFile('repos/repo')),
-          )
-          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-          yield* refreshWorkspaceRegistry({ workspaceRoot: workspacePath, store, now: Date.now() })
-
-          const gc = yield* runMrCommand({
-            cwd: workspacePath,
-            command: ['store', 'gc', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(gc.exitCode).toBe(0)
-          const json = decodeStoreGcJsonOutput(gc.stdout)
-          const commitResult = findGcResult(
-            json.results,
-            'github.com/test-owner/commit-mode-repo/',
-            commitRef,
-          )
-          expect(commitResult?.status).toBe('skipped_in_use')
-          expect(yield* fs.exists(commitWorktreePath)).toBe(true)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-
-    it.effect(
-      'should keep clean heads and tags while removing clean unprotected commit worktrees by default',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
-
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'default-policy-repo',
-              branches: ['main'],
-              tags: ['v1.0.0'],
-              commits: [commitRef],
-            },
-          ])
-
-          const branchWorktreePath =
-            worktreePaths['github.com/test-owner/default-policy-repo#main']!
-          const tagWorktreePath = worktreePaths['github.com/test-owner/default-policy-repo#v1.0.0']!
-          const commitWorktreePath =
-            worktreePaths[`github.com/test-owner/default-policy-repo#${commitRef}`]!
-
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
-          yield* fs.makeDirectory(cwd, { recursive: true })
-
-          const gc = yield* runMrCommand({
+          // The wrapped command observes its own lease, proving external activation
+          // is covered from before its first write until after it exits.
+          const observed = yield* runMrCommand({
             cwd,
-            command: ['store', 'gc', '--output', 'json'],
+            command: [
+              'store',
+              'lease',
+              '--owner-path',
+              owner,
+              '--',
+              'sh',
+              '-c',
+              'test -f "$1" && shift && exec "$@"',
+              'lease-test',
+              leasePath,
+              'bun',
+              fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+              'store',
+              'worktree',
+              'new',
+              'test-owner/leased-repo',
+              '--no-fetch',
+              '--ref',
+              'nested',
+              '--base',
+              base,
+              '--porcelain',
+            ],
             env: { MEGAREPO_STORE: storePath },
           })
-          expect(gc.exitCode).toBe(0)
-          const json = decodeStoreGcJsonOutput(gc.stdout)
-          const branchResult = json.results.find((r) => r.path === branchWorktreePath)
-          const tagResult = json.results.find((r) => r.path === tagWorktreePath)
-          const commitResult = json.results.find((r) => r.path === commitWorktreePath)
-
-          expect(branchResult?.status).not.toBe('removed')
-          expect(tagResult?.status).not.toBe('removed')
-          expect(commitResult?.status).toBe('removed')
-          expect(yield* fs.exists(branchWorktreePath)).toBe(true)
-          expect(yield* fs.exists(tagWorktreePath)).toBe(true)
-          expect(yield* fs.exists(commitWorktreePath)).toBe(false)
-
-          const bareRepoPath = EffectPath.ops.join(
-            storePath,
-            EffectPath.unsafe.relativeDir('github.com/test-owner/default-policy-repo/.bare/'),
-          )
-          const gitWorktrees = yield* Git.listWorktrees(bareRepoPath)
+          expect(observed.exitCode).toBe(0)
+          expect(yield* fs.exists(leasePath)).toBe(false)
           expect(
-            gitWorktrees.some(
-              (worktree) => worktree.path === commitWorktreePath.replace(/\/$/, ''),
+            yield* Git.getCurrentBranch(
+              EffectPath.unsafe.absoluteDir(
+                `${storePath}github.com/test-owner/leased-repo/refs/heads/nested/`,
+              ),
             ),
-          ).toBe(false)
+          ).toEqual(Option.some('nested'))
+          const external = `${cwd}prospective`
+          const args = ['store', 'lease', '--owner-path', external]
+          const child = [
+            '--',
+            'git',
+            '--git-dir',
+            bareRepoPaths['github.com/test-owner/leased-repo']!,
+            'worktree',
+            'add',
+            '-b',
+            'external',
+            external,
+            'main',
+          ]
+          const missingSource = yield* runMrCommand({
+            cwd,
+            command: [...args, ...child],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(missingSource.exitCode).toBe(1)
+          expect(yield* fs.exists(external)).toBe(false)
+          const explicitSource = yield* runMrCommand({
+            cwd,
+            command: [...args, '--repo-path', owner, ...child],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(explicitSource.exitCode, explicitSource.failure).toBe(0)
+          expect(
+            yield* Git.getCurrentBranch(EffectPath.unsafe.absoluteDir(`${external}/`)),
+          ).toEqual(Option.some('external'))
+
+          // Wrapping is transparent: the child's own code becomes the command's
+          // code (`process.exitCode`, honored by the CLI teardown), never a
+          // collapsed generic failure — and the lease is freed either way.
+          const previousExitCode = process.exitCode
+          try {
+            process.exitCode = undefined
+            const failed = yield* runMrCommand({
+              cwd,
+              command: ['store', 'lease', '--owner-path', owner, '--', 'sh', '-c', 'exit 42'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(failed.exitCode).toBe(0)
+            expect(process.exitCode).toBe(42)
+            expect(yield* fs.exists(leasePath)).toBe(false)
+          } finally {
+            process.exitCode = previousExitCode
+          }
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
     it.effect(
-      'applies exactly one whole-worktree candidate from an unchanged dry-run plan',
+      'refuses whole-worktree application while an activation holds that owner lease',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-          const first = 'abcdef1234567890abcdef1234567890abcdef12'
-          const second = '1234567890abcdef1234567890abcdef12345678'
+          const commit = 'abcdef1234567890abcdef1234567890abcdef12'
           const { storePath, worktreePaths } = yield* createStoreFixture([
             {
               host: 'github.com',
               owner: 'test-owner',
-              repo: 'targeted-repo',
+              repo: 'leased-worktree-repo',
               branches: ['main'],
-              commits: [first, second],
+              commits: [commit],
             },
           ])
-          const candidate = worktreePaths[`github.com/test-owner/targeted-repo#${first}`]!
-          const sibling = worktreePaths[`github.com/test-owner/targeted-repo#${second}`]!
-          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const cwd = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('outside/'))
-          yield* fs.makeDirectory(cwd, { recursive: true })
+          const candidate = worktreePaths[`github.com/test-owner/leased-worktree-repo#${commit}`]!
+          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const plan = decodeStoreGcJsonOutput(
+            (yield* runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--dry-run', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })).stdout,
+          )
 
-          const planned = yield* runMrCommand({
+          // An activation of this very worktree holds its lease, so the plan-bound
+          // whole-worktree deletion must fail closed rather than delete underneath it.
+          const held = yield* acquireDeletionLease({
+            storeBasePath: storePath,
+            ownerPath: yield* canonicalizeOwnerPath(candidate),
+            now: Date.now(),
+          })
+          const refused = yield* runMrCommand({
             cwd,
-            command: ['store', 'gc', '--dry-run', '--output', 'json'],
+            command: [
+              'store',
+              'gc',
+              '--expected-plan',
+              plan.planSha256!,
+              '--candidate-path',
+              candidate,
+              '--output',
+              'json',
+            ],
             env: { MEGAREPO_STORE: storePath },
           })
-          const plan = decodeStoreGcJsonOutput(planned.stdout)
-          expect(plan.planSha256).toMatch(/^[0-9a-f]{64}$/)
+          expect(refused.exitCode).toBe(1)
+          expect(yield* fs.exists(candidate)).toBe(true)
+          const legacy = yield* runMrCommand({
+            cwd,
+            command: ['store', 'gc', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(legacy.exitCode, `${legacy.stdout}\n${legacy.failure}`).toBe(0)
+          expect(
+            findGcResult(
+              decodeStoreGcJsonOutput(legacy.stdout).results,
+              'github.com/test-owner/leased-worktree-repo/',
+              commit,
+            )?.status,
+          ).toBe('skipped_in_use')
+          expect(yield* fs.exists(candidate)).toBe(true)
+
+          yield* releaseDeletionLease(held)
           const applied = yield* runMrCommand({
             cwd,
             command: [
@@ -955,840 +1586,381 @@ describe('mr store gc', () => {
             ],
             env: { MEGAREPO_STORE: storePath },
           })
-
           expect(applied.exitCode, `${applied.stdout}\n${applied.stderr}\n${applied.failure}`).toBe(
             0,
           )
-          expect(decodeStoreGcJsonOutput(applied.stdout).results).toHaveLength(1)
           expect(yield* fs.exists(candidate)).toBe(false)
-          expect(yield* fs.exists(sibling)).toBe(true)
-
-          const secondPlanRun = yield* runMrCommand({
-            cwd,
-            command: ['store', 'gc', '--dry-run', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          const secondPlan = decodeStoreGcJsonOutput(secondPlanRun.stdout)
-          const textApplied = yield* runMrCommand({
-            cwd,
-            command: [
-              'store',
-              'gc',
-              '--expected-plan',
-              secondPlan.planSha256!,
-              '--candidate-path',
-              sibling,
-            ],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(
-            textApplied.exitCode,
-            `${textApplied.stdout}\n${textApplied.stderr}\n${textApplied.failure}`,
-          ).toBe(0)
-          expect(textApplied.stdout.length).toBeGreaterThan(0)
-          expect(yield* fs.exists(sibling)).toBe(false)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  })
-
-  describe('non-Linux deletion policy', () => {
-    it.effect(
-      'preserves legacy all/default dry-run rows and identity-free hashes, and still removes safe worktrees',
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
-          const repo = 'github.com/test-owner/platform-legacy/'
-          const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'platform-legacy',
-              branches: ['main'],
-              tags: ['v1.0.0'],
-              commits: [commitRef],
-              dirtyWorktrees: ['v1.0.0'],
-              withRemote: true,
-            },
-          ])
-          const main = worktreePaths['github.com/test-owner/platform-legacy#main']!
-          const tag = worktreePaths['github.com/test-owner/platform-legacy#v1.0.0']!
-          const commit = worktreePaths[`github.com/test-owner/platform-legacy#${commitRef}`]!
-          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const env = { MEGAREPO_STORE: storePath }
-          const canonicalRows = (results: ReadonlyArray<StoreGcJsonResult>) =>
-            results
-              .map(({ repo, ref, refType, path, status, reason }) => ({
-                repo,
-                ref,
-                refType,
-                path,
-                status,
-                reason,
-              }))
-              .toSorted((left, right) =>
-                Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)),
-              )
-          const allRows = canonicalRows([
-            { repo, ref: 'main', refType: 'heads', path: main, status: 'removed' },
-            { repo, ref: 'v1.0.0', refType: 'tags', path: tag, status: 'skipped_dirty' },
-            { repo, ref: commitRef, refType: 'commits', path: commit, status: 'removed' },
-          ])
-          const defaultRows = canonicalRows([
-            {
-              repo,
-              ref: 'main',
-              refType: 'heads',
-              path: main,
-              status: 'kept',
-              reason: 'default-branch',
-            },
-            {
-              repo,
-              ref: 'v1.0.0',
-              refType: 'tags',
-              path: tag,
-              status: 'kept',
-              reason: 'named-tag-ref',
-            },
-            { repo, ref: commitRef, refType: 'commits', path: commit, status: 'removed' },
-          ])
-
-          for (const { flags, expected } of [
-            { flags: ['--all'], expected: allRows },
-            { flags: [], expected: defaultRows },
-          ]) {
-            const command = ['store', 'gc', ...flags, '--dry-run', '--output', 'json']
-            const result = yield* runMrCommand({ cwd, command, env, platform: 'darwin' })
-            expect(result.exitCode, `${result.stderr}\n${result.failure}`).toBe(0)
-            const plan = decodeStoreGcJsonOutput(result.stdout)
-            expect(plan.censusStatus).toBe('complete')
-            expect(canonicalRows(plan.results)).toEqual(expected)
-            expect(plan.results.some((row) => row.status === 'error')).toBe(false)
-            expect(`${result.stdout}\n${result.stderr}\n${result.failure}`).not.toContain(
-              'identity_failed',
-            )
-            // Legacy non-Linux plans contain only the established row fields:
-            // adding a captured deletionIdentity would change this exact digest.
-            expect(plan.planSha256).toBe(
-              createHash('sha256').update(encodeJson(expected)).digest('hex'),
-            )
-            if (process.platform === 'linux') {
-              const linux = yield* runMrCommand({ cwd, command, env, platform: 'linux' })
-              expect(linux.exitCode, `${linux.stderr}\n${linux.failure}`).toBe(0)
-              expect(canonicalRows(decodeStoreGcJsonOutput(linux.stdout).results)).toEqual(expected)
-            }
-            for (const path of [main, tag, commit]) {
-              expect(yield* fs.exists(path)).toBe(true)
-            }
-          }
-
-          const defaultApply = yield* runMrCommand({
-            cwd,
-            command: ['store', 'gc', '--output', 'json'],
-            env,
-            platform: 'darwin',
-          })
-          expect(defaultApply.exitCode, `${defaultApply.stderr}\n${defaultApply.failure}`).toBe(0)
-          expect(canonicalRows(decodeStoreGcJsonOutput(defaultApply.stdout).results)).toEqual(
-            defaultRows,
-          )
-          expect(yield* fs.exists(commit)).toBe(false)
-          expect(yield* fs.exists(main)).toBe(true)
-          expect(yield* fs.exists(tag)).toBe(true)
-
-          const allApply = yield* runMrCommand({
-            cwd,
-            command: ['store', 'gc', '--all', '--output', 'json'],
-            env,
-            platform: 'darwin',
-          })
-          expect(allApply.exitCode, `${allApply.stderr}\n${allApply.failure}`).toBe(0)
-          expect(canonicalRows(decodeStoreGcJsonOutput(allApply.stdout).results)).toEqual(
-            allRows.filter((row) => row.path !== commit),
-          )
-          expect(yield* fs.exists(main)).toBe(false)
-          expect(yield* fs.exists(tag)).toBe(true)
-          const registered = yield* Git.listWorktrees(
-            bareRepoPaths['github.com/test-owner/platform-legacy']!,
-          )
-          expect(
-            registered.some(
-              (worktree) =>
-                worktree.path === main.replace(/\/$/, '') ||
-                worktree.path === commit.replace(/\/$/, ''),
-            ),
-          ).toBe(false)
+          expect(yield* fs.exists(held.leasePath)).toBe(false)
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
 
+    // Run through a REAL `mr` process: the probe deliberately excludes its own
+    // descendants (a `git` child megarepo spawns inside the worktree must not
+    // self-veto), so an in-process CLI call could never observe a holder spawned
+    // by this test. A separate process tree is exactly production's shape.
     it.effect(
-      'refuses budgets and configured worklog-delete on non-Linux before removing real files',
+      'refuses whole-worktree application while a live process works inside the candidate',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
-          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+          const commit = 'fedcba9876543210fedcba9876543210fedcba98'
           const { storePath, worktreePaths } = yield* createStoreFixture([
             {
               host: 'github.com',
               owner: 'test-owner',
-              repo: 'platform-budget',
-              branches: ['main'],
-              commits: [commitRef],
-            },
-          ])
-          const main = worktreePaths['github.com/test-owner/platform-budget#main']!
-          const commit = worktreePaths[`github.com/test-owner/platform-budget#${commitRef}`]!
-          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const target = EffectPath.ops.join(main, EffectPath.unsafe.relativeDir('target/'))
-          const outputFile = EffectPath.ops.join(
-            target,
-            EffectPath.unsafe.relativeFile('build-output'),
-          )
-          const worklog = EffectPath.ops.join(main, EffectPath.unsafe.relativeDir('tmp/worklog/'))
-          const worklogFile = EffectPath.ops.join(
-            worklog,
-            EffectPath.unsafe.relativeFile('session.log'),
-          )
-          yield* fs.makeDirectory(target, { recursive: true })
-          yield* fs.makeDirectory(worklog, { recursive: true })
-          yield* fs.writeFileString(outputFile, 'real rebuildable output\n')
-          yield* fs.writeFileString(worklogFile, 'worklog must survive unsupported teardown\n')
-          const policyPath = EffectPath.ops.join(
-            cwd,
-            EffectPath.unsafe.relativeFile('build-output-budgets.json'),
-          )
-          yield* fs.writeFileString(
-            policyPath,
-            encodeJson({
-              schemaVersion: 'megarepo.build-output-budgets.v2',
-              host: hostname(),
-              storeRoots: [storePath],
-              quotaBytes: 1024 * 1024,
-              idleRetentionMs: 0,
-              classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
-              worklog: { path: 'tmp/worklog', teardown: 'delete' },
-            }),
-          )
-          const policyReceipt = yield* loadBuildOutputBudgetPolicyReceipt({ path: policyPath })
-          expect(policyReceipt.policy.worklog?.teardown).toBe('delete')
-          const env = { MEGAREPO_STORE: storePath }
-          const assertUnchanged = Effect.gen(function* () {
-            for (const path of [main, commit, target, worklog]) {
-              expect(yield* fs.exists(path)).toBe(true)
-            }
-            expect(yield* fs.readFileString(outputFile)).toBe('real rebuildable output\n')
-            expect(yield* fs.readFileString(worklogFile)).toBe(
-              'worklog must survive unsupported teardown\n',
-            )
-          })
-
-          for (const flags of [
-            ['--dry-run'],
-            ['--expected-plan', '0'.repeat(64), '--candidate-path', target],
-          ]) {
-            const result = yield* runMrCommand({
-              cwd,
-              command: ['store', 'gc', '--budgets', policyPath, ...flags, '--output', 'json'],
-              env,
-              platform: 'darwin',
-            })
-            expect(result.exitCode).not.toBe(0)
-            expect(`${result.stderr}\n${result.failure}`).toMatch(
-              /store gc --budgets is unsupported on platform 'darwin'/,
-            )
-            yield* assertUnchanged
-          }
-
-          const state = EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir('.state/'))
-          yield* fs.makeDirectory(state, { recursive: true })
-          yield* fs.writeFileString(
-            EffectPath.ops.join(state, EffectPath.unsafe.relativeFile('gc-config.json')),
-            encodeJson({ buildOutputBudgetsPath: policyPath }),
-          )
-          for (const flags of [['--dry-run'], []]) {
-            const result = yield* runMrCommand({
-              cwd,
-              command: ['store', 'gc', ...flags, '--output', 'json'],
-              env,
-              platform: 'darwin',
-            })
-            expect(result.exitCode).not.toBe(0)
-            expect(`${result.stderr}\n${result.failure}`).toMatch(
-              /merged worklog-delete teardown is unsupported on platform 'darwin'/,
-            )
-            yield* assertUnchanged
-          }
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  })
-})
-
-describe('mr store lease', () => {
-  it.effect.skipIf(process.platform !== 'linux')(
-    'refuses a candidate whose directory identity changes during lease acquisition',
-    (context) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const ref = 'c'.repeat(40)
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'acme',
-            repo: 'lease-recheck',
-            branches: ['main'],
-            commits: [ref],
-          },
-        ])
-        const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
-        const identity = yield* captureDeletionIdentity({ rootPath: storePath, path: candidate })
-        if (identity.at(-1)?._tag === 'OverlayDirectory') {
-          return context.skip(
-            'Overlay directory identity binds only mountId + path; inode replacement cannot be proven',
-          )
-        }
-        const original = yield* fs.stat(candidate)
-        const backup = `${candidate.replace(/\/$/u, '')}-original`
-        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const run = (...args: string[]) =>
-          runMrCommand({
-            cwd,
-            env: { MEGAREPO_STORE: storePath },
-            command: ['store', 'gc', '--output', 'json', ...args],
-          })
-        const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
-        expect(plan.results.find((row) => row.path === candidate)?.candidateSha256).toMatch(
-          /^[0-9a-f]{64}$/,
-        )
-        const leasePath = deletionLeasePath({
-          storeBasePath: storePath,
-          ownerPath: yield* canonicalizeOwnerPath(candidate),
-        })
-        let changed = false
-        const applied = yield* run(
-          '--expected-plan',
-          plan.planSha256!,
-          '--candidate-path',
-          candidate,
-        ).pipe(
-          Effect.provideService(FileSystem.FileSystem, {
-            ...fs,
-            link: (from, to) =>
-              Effect.gen(function* () {
-                // The second plan and owner lock precede this real lease acquisition.
-                if (to === leasePath && changed === false) {
-                  changed = true
-                  yield* fs.rename(candidate, backup)
-                  yield* fs.copy(backup, candidate)
-                }
-                return yield* fs.link(from, to)
-              }),
-          }),
-        )
-        expect(changed).toBe(true)
-        expect(applied.exitCode, applied.stdout + applied.failure).toBe(1)
-        expect(applied.failure).toContain('GC candidate refused: skipped-changed')
-        expect(yield* fs.exists(candidate)).toBe(true)
-        expect((yield* fs.stat(candidate)).ino).not.toEqual(original.ino)
-        expect((yield* fs.stat(backup)).ino).toEqual(original.ino)
-        expect(yield* Git.getCurrentCommit(candidate)).toBe(yield* Git.getCurrentCommit(backup))
-        expect(yield* Git.runCommand({ cwd: candidate, args: ['status', '--porcelain'] })).toBe('')
-        expect(yield* fs.exists(leasePath)).toBe(false)
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-  )
-
-  it.effect(
-    'holds the owner lease for the wrapped command and releases it on both outcomes',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'test-owner', repo: 'leased-repo', branches: ['main'] },
-        ])
-        const owner = worktreePaths['github.com/test-owner/leased-repo#main']!
-        const base = yield* Git.getCurrentCommit(owner)
-        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const leasePath = deletionLeasePath({
-          storeBasePath: storePath,
-          ownerPath: yield* canonicalizeOwnerPath(owner),
-        })
-
-        // The wrapped command observes its own lease, proving external activation
-        // is covered from before its first write until after it exits.
-        const observed = yield* runMrCommand({
-          cwd,
-          command: [
-            'store',
-            'lease',
-            '--owner-path',
-            owner,
-            '--',
-            'sh',
-            '-c',
-            'test -f "$1" && shift && exec "$@"',
-            'lease-test',
-            leasePath,
-            'bun',
-            fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
-            'store',
-            'worktree',
-            'new',
-            'test-owner/leased-repo',
-            '--no-fetch',
-            '--ref',
-            'nested',
-            '--base',
-            base,
-            '--porcelain',
-          ],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(observed.exitCode).toBe(0)
-        expect(yield* fs.exists(leasePath)).toBe(false)
-        expect(
-          yield* Git.getCurrentBranch(
-            EffectPath.unsafe.absoluteDir(
-              `${storePath}github.com/test-owner/leased-repo/refs/heads/nested/`,
-            ),
-          ),
-        ).toEqual(Option.some('nested'))
-        const external = `${cwd}prospective`
-        const args = ['store', 'lease', '--owner-path', external]
-        const child = [
-          '--',
-          'git',
-          '--git-dir',
-          bareRepoPaths['github.com/test-owner/leased-repo']!,
-          'worktree',
-          'add',
-          '-b',
-          'external',
-          external,
-          'main',
-        ]
-        const missingSource = yield* runMrCommand({
-          cwd,
-          command: [...args, ...child],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(missingSource.exitCode).toBe(1)
-        expect(yield* fs.exists(external)).toBe(false)
-        const explicitSource = yield* runMrCommand({
-          cwd,
-          command: [...args, '--repo-path', owner, ...child],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(explicitSource.exitCode, explicitSource.failure).toBe(0)
-        expect(yield* Git.getCurrentBranch(EffectPath.unsafe.absoluteDir(`${external}/`))).toEqual(
-          Option.some('external'),
-        )
-
-        // Wrapping is transparent: the child's own code becomes the command's
-        // code (`process.exitCode`, honored by the CLI teardown), never a
-        // collapsed generic failure — and the lease is freed either way.
-        const previousExitCode = process.exitCode
-        try {
-          process.exitCode = undefined
-          const failed = yield* runMrCommand({
-            cwd,
-            command: ['store', 'lease', '--owner-path', owner, '--', 'sh', '-c', 'exit 42'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(failed.exitCode).toBe(0)
-          expect(process.exitCode).toBe(42)
-          expect(yield* fs.exists(leasePath)).toBe(false)
-        } finally {
-          process.exitCode = previousExitCode
-        }
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-  it.effect(
-    'refuses whole-worktree application while an activation holds that owner lease',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const commit = 'abcdef1234567890abcdef1234567890abcdef12'
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'test-owner',
-            repo: 'leased-worktree-repo',
-            branches: ['main'],
-            commits: [commit],
-          },
-        ])
-        const candidate = worktreePaths[`github.com/test-owner/leased-worktree-repo#${commit}`]!
-        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const plan = decodeStoreGcJsonOutput(
-          (yield* runMrCommand({
-            cwd,
-            command: ['store', 'gc', '--dry-run', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })).stdout,
-        )
-
-        // An activation of this very worktree holds its lease, so the plan-bound
-        // whole-worktree deletion must fail closed rather than delete underneath it.
-        const held = yield* acquireDeletionLease({
-          storeBasePath: storePath,
-          ownerPath: yield* canonicalizeOwnerPath(candidate),
-          now: Date.now(),
-        })
-        const refused = yield* runMrCommand({
-          cwd,
-          command: [
-            'store',
-            'gc',
-            '--expected-plan',
-            plan.planSha256!,
-            '--candidate-path',
-            candidate,
-            '--output',
-            'json',
-          ],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(refused.exitCode).toBe(1)
-        expect(yield* fs.exists(candidate)).toBe(true)
-        const legacy = yield* runMrCommand({
-          cwd,
-          command: ['store', 'gc', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(legacy.exitCode, `${legacy.stdout}\n${legacy.failure}`).toBe(0)
-        expect(
-          findGcResult(
-            decodeStoreGcJsonOutput(legacy.stdout).results,
-            'github.com/test-owner/leased-worktree-repo/',
-            commit,
-          )?.status,
-        ).toBe('skipped_in_use')
-        expect(yield* fs.exists(candidate)).toBe(true)
-
-        yield* releaseDeletionLease(held)
-        const applied = yield* runMrCommand({
-          cwd,
-          command: [
-            'store',
-            'gc',
-            '--expected-plan',
-            plan.planSha256!,
-            '--candidate-path',
-            candidate,
-            '--output',
-            'json',
-          ],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        expect(applied.exitCode, `${applied.stdout}\n${applied.stderr}\n${applied.failure}`).toBe(0)
-        expect(yield* fs.exists(candidate)).toBe(false)
-        expect(yield* fs.exists(held.leasePath)).toBe(false)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  // Run through a REAL `mr` process: the probe deliberately excludes its own
-  // descendants (a `git` child megarepo spawns inside the worktree must not
-  // self-veto), so an in-process CLI call could never observe a holder spawned
-  // by this test. A separate process tree is exactly production's shape.
-  it.effect(
-    'refuses whole-worktree application while a live process works inside the candidate',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const commit = 'fedcba9876543210fedcba9876543210fedcba98'
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'test-owner',
-            repo: 'inuse-repo',
-            branches: ['main'],
-            commits: [commit],
-          },
-        ])
-        const candidate = worktreePaths[`github.com/test-owner/inuse-repo#${commit}`]!
-        const cliPath = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
-        const runCli = (...args: ReadonlyArray<string>) =>
-          spawnSync('bun', [cliPath, ...args], {
-            encoding: 'utf8',
-            env: { ...process.env, MEGAREPO_STORE: storePath, NO_COLOR: '1' },
-          })
-
-        const plan = decodeStoreGcJsonOutput(
-          runCli('store', 'gc', '--dry-run', '--output', 'json').stdout,
-        )
-        const applyArgs = [
-          'store',
-          'gc',
-          '--expected-plan',
-          plan.planSha256!,
-          '--candidate-path',
-          candidate,
-          '--output',
-          'json',
-        ] as const
-
-        // A session that never took a lease is still working inside the
-        // worktree; deleting it would yank that live cwd.
-        const holder = yield* Effect.promise(() => {
-          const { promise, resolve, reject } = Promise.withResolvers<ChildProcess>()
-          const child = spawn('sleep', ['120'], { cwd: candidate, stdio: 'ignore' })
-          child.once('spawn', () => resolve(child))
-          child.once('error', reject)
-          return promise
-        })
-        const refused = runCli(...applyArgs)
-        expect(refused.status).toBe(1)
-        expect(yield* fs.exists(candidate)).toBe(true)
-
-        // Once the session is gone the SAME plan applies, so the veto — not the
-        // plan, the lease, or liveness — was the only thing refusing.
-        yield* Effect.promise(() => {
-          const { promise, resolve } = Promise.withResolvers<void>()
-          holder.once('exit', () => resolve())
-          holder.kill('SIGKILL')
-          return promise
-        })
-        const applied = runCli(...applyArgs)
-        expect(applied.status, `${applied.stdout}\n${applied.stderr}`).toBe(0)
-        expect(yield* fs.exists(candidate)).toBe(false)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  for (const reference of ['cwd', 'open-file', 'unreadable-daemon'] as const) {
-    it.effect.skipIf(process.platform !== 'linux')(
-      `legacy GC skips a live ${reference} holder without a deletion lease`,
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const commit = '1234567890abcdef1234567890abcdef12345678'
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'legacy-inuse',
+              repo: 'inuse-repo',
               branches: ['main'],
               commits: [commit],
             },
           ])
-          const candidate = worktreePaths[`github.com/test-owner/legacy-inuse#${commit}`]!
-          const outside = yield* fs.makeTempDirectoryScoped()
-          // A copied shell supplies a real /proc/<pid>/exe ending in buck2.
-          // Its receipt is deliberately unreadable; no real daemon or kill is needed.
-          const binary = reference === 'unreadable-daemon' ? `${outside}/buck2` : '/bin/sh'
-          if (reference === 'unreadable-daemon') {
-            yield* fs.copyFile('/bin/sh', binary)
-            yield* fs.chmod(binary, 0o755)
-          }
-          const heldPath = `${candidate}README.md`
-          const holder = yield* Effect.acquireRelease(
-            Effect.promise(
-              () =>
-                new Promise<ChildProcess>((resolve, reject) => {
-                  const child = spawn(
-                    binary,
-                    [
-                      '-c',
-                      reference === 'open-file'
-                        ? 'exec 3<"$1"; printf ready; read input'
-                        : 'printf ready; read input',
-                      'daemon',
-                      ...(reference === 'open-file'
-                        ? [heldPath]
-                        : ['--isolation-dir', 'gc-test', '--daemon-id', 'unreadable']),
-                    ],
-                    { cwd: reference === 'open-file' ? outside : candidate, stdio: 'pipe' },
-                  )
-                  child.once('error', reject)
-                  child.stdout!.once('data', () => resolve(child))
-                  child.once('exit', (code) => reject(new Error(`holder exited early: ${code}`)))
-                }),
-            ),
-            (child) =>
+          const candidate = worktreePaths[`github.com/test-owner/inuse-repo#${commit}`]!
+          const cliPath = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
+          const runCli = (...args: ReadonlyArray<string>) =>
+            spawnSync('bun', [cliPath, ...args], {
+              encoding: 'utf8',
+              env: { ...process.env, MEGAREPO_STORE: storePath, NO_COLOR: '1' },
+            })
+
+          const plan = decodeStoreGcJsonOutput(
+            runCli('store', 'gc', '--dry-run', '--output', 'json').stdout,
+          )
+          const applyArgs = [
+            'store',
+            'gc',
+            '--expected-plan',
+            plan.planSha256!,
+            '--candidate-path',
+            candidate,
+            '--output',
+            'json',
+          ] as const
+
+          // A session that never took a lease is still working inside the
+          // worktree; deleting it would yank that live cwd.
+          const holder = yield* Effect.promise(() => {
+            const { promise, resolve, reject } = Promise.withResolvers<ChildProcess>()
+            const child = spawn('sleep', ['120'], { cwd: candidate, stdio: 'ignore' })
+            child.once('spawn', () => resolve(child))
+            child.once('error', reject)
+            return promise
+          })
+          const refused = runCli(...applyArgs)
+          expect(refused.status).toBe(1)
+          expect(yield* fs.exists(candidate)).toBe(true)
+
+          // Once the session is gone the SAME plan applies, so the veto — not the
+          // plan, the lease, or liveness — was the only thing refusing.
+          yield* Effect.promise(() => {
+            const { promise, resolve } = Promise.withResolvers<void>()
+            holder.once('exit', () => resolve())
+            holder.kill('SIGKILL')
+            return promise
+          })
+          const applied = runCli(...applyArgs)
+          expect(applied.status, `${applied.stdout}\n${applied.stderr}`).toBe(0)
+          expect(yield* fs.exists(candidate)).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    for (const reference of ['cwd', 'open-file', 'unreadable-daemon'] as const) {
+      it.effect.skipIf(process.platform !== 'linux')(
+        `legacy GC skips a live ${reference} holder without a deletion lease`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const commit = '1234567890abcdef1234567890abcdef12345678'
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'legacy-inuse',
+                branches: ['main'],
+                commits: [commit],
+              },
+            ])
+            const candidate = worktreePaths[`github.com/test-owner/legacy-inuse#${commit}`]!
+            const outside = yield* fs.makeTempDirectoryScoped()
+            // A copied shell supplies a real /proc/<pid>/exe ending in buck2.
+            // Its receipt is deliberately unreadable; no real daemon or kill is needed.
+            const binary = reference === 'unreadable-daemon' ? `${outside}/buck2` : '/bin/sh'
+            if (reference === 'unreadable-daemon') {
+              yield* fs.copyFile('/bin/sh', binary)
+              yield* fs.chmod(binary, 0o755)
+            }
+            const heldPath = `${candidate}README.md`
+            const holder = yield* Effect.acquireRelease(
               Effect.promise(
                 () =>
-                  new Promise<void>((resolve) => {
-                    if (child.exitCode !== null || child.signalCode !== null) return resolve()
-                    child.once('exit', () => resolve())
-                    child.kill('SIGKILL')
+                  new Promise<ChildProcess>((resolve, reject) => {
+                    const child = spawn(
+                      binary,
+                      [
+                        '-c',
+                        reference === 'open-file'
+                          ? 'exec 3<"$1"; printf ready; read input'
+                          : 'printf ready; read input',
+                        'daemon',
+                        ...(reference === 'open-file'
+                          ? [heldPath]
+                          : ['--isolation-dir', 'gc-test', '--daemon-id', 'unreadable']),
+                      ],
+                      { cwd: reference === 'open-file' ? outside : candidate, stdio: 'pipe' },
+                    )
+                    child.once('error', reject)
+                    child.stdout!.once('data', () => resolve(child))
+                    child.once('exit', (code) => reject(new Error(`holder exited early: ${code}`)))
                   }),
               ),
-          )
-          const result = spawnSync(
-            'bun',
-            [
-              fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
-              'store',
-              'gc',
-              '--output',
-              'json',
-            ],
-            {
-              cwd: outside,
-              encoding: 'utf8',
-              env: {
-                ...process.env,
-                MEGAREPO_STORE: storePath,
-                MEGAREPO_GC_BUCK2_BIN: '/bin/false',
-                NO_COLOR: '1',
+              (child) =>
+                Effect.promise(
+                  () =>
+                    new Promise<void>((resolve) => {
+                      if (child.exitCode !== null || child.signalCode !== null) return resolve()
+                      child.once('exit', () => resolve())
+                      child.kill('SIGKILL')
+                    }),
+                ),
+            )
+            const result = spawnSync(
+              'bun',
+              [
+                fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+                'store',
+                'gc',
+                '--output',
+                'json',
+              ],
+              {
+                cwd: outside,
+                encoding: 'utf8',
+                env: {
+                  ...process.env,
+                  MEGAREPO_STORE: storePath,
+                  MEGAREPO_GC_BUCK2_BIN: '/bin/false',
+                  NO_COLOR: '1',
+                },
               },
-            },
-          )
-          expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
-          const entry = findGcResult(
-            decodeStoreGcJsonOutput(result.stdout).results,
-            'github.com/test-owner/legacy-inuse/',
-            commit,
-          )
-          expect(entry?.status).toBe('skipped_in_use')
-          expect(entry?.message).toContain(`pid ${holder.pid}`)
-          if (reference === 'unreadable-daemon') {
-            expect(entry?.buckDaemonsUnreachable).toEqual([
-              expect.objectContaining({ pid: holder.pid, reason: 'status-unreadable' }),
-            ])
-          }
-          expect(yield* fs.exists(candidate)).toBe(true)
-          const receipts = (yield* fs.readFileString(
-            `${storePath}${GC_DELETION_RECEIPTS_RELATIVE_PATH}`,
-          ))
-            .trim()
-            .split('\n')
-            .map((line) => Schema.decodeSync(Schema.fromJsonString(GcDeletionReceipt))(line))
-          expect(
-            receipts.some(
-              (receipt) => receipt.path === candidate && receipt.decision === 'skipped-in-use',
-            ),
-          ).toBe(true)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  }
+            )
+            expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
+            const entry = findGcResult(
+              decodeStoreGcJsonOutput(result.stdout).results,
+              'github.com/test-owner/legacy-inuse/',
+              commit,
+            )
+            expect(entry?.status).toBe('skipped_in_use')
+            expect(entry?.message).toContain(`pid ${holder.pid}`)
+            if (reference === 'unreadable-daemon') {
+              expect(entry?.buckDaemonsUnreachable).toEqual([
+                expect.objectContaining({ pid: holder.pid, reason: 'status-unreadable' }),
+              ])
+            }
+            expect(yield* fs.exists(candidate)).toBe(true)
+            const receipts = (yield* fs.readFileString(
+              `${storePath}${GC_DELETION_RECEIPTS_RELATIVE_PATH}`,
+            ))
+              .trim()
+              .split('\n')
+              .map((line) => Schema.decodeSync(Schema.fromJsonString(GcDeletionReceipt))(line))
+            expect(
+              receipts.some(
+                (receipt) => receipt.path === candidate && receipt.decision === 'skipped-in-use',
+              ),
+            ).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
 
-  for (const manifestState of ['active', 'unavailable'] as const) {
-    it.effect(
-      `legacy GC keeps an owner with ${manifestState} configured activity evidence`,
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const commit = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd'
-          const { storePath, worktreePaths } = yield* createStoreFixture([
-            {
-              host: 'github.com',
-              owner: 'test-owner',
-              repo: 'legacy-activity',
-              branches: ['main'],
-              commits: [commit],
-            },
-          ])
-          const candidate = worktreePaths[`github.com/test-owner/legacy-activity#${commit}`]!
-          const outside = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-          const manifestPath = `${outside}activity.json`
-          yield* fs.makeDirectory(`${storePath}.state`, { recursive: true })
-          yield* fs.writeFileString(
-            `${storePath}.state/gc-config.json`,
-            encodeJson({
-              generatedArtifacts: {
-                manifestPath,
-                agentLivenessProducers: ['legacy-test'],
-                builtin: false,
+    for (const manifestState of ['active', 'unavailable'] as const) {
+      it.effect(
+        `legacy GC keeps an owner with ${manifestState} configured activity evidence`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const commit = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd'
+            const { storePath, worktreePaths } = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'legacy-activity',
+                branches: ['main'],
+                commits: [commit],
               },
-            }),
-          )
-          if (manifestState === 'active') {
-            const now = yield* Clock.currentTimeMillis
+            ])
+            const candidate = worktreePaths[`github.com/test-owner/legacy-activity#${commit}`]!
+            const outside = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+            const manifestPath = `${outside}activity.json`
+            yield* fs.makeDirectory(`${storePath}.state`, { recursive: true })
             yield* fs.writeFileString(
-              manifestPath,
+              `${storePath}.state/gc-config.json`,
               encodeJson({
-                schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
-                producer: { name: 'legacy-test', version: '1' },
-                epoch: { host: hostname(), snapshotId: 'legacy-activity', storeIndex: 1 },
-                capturedAt: new Date(now).toISOString(),
-                expiresAt: new Date(now + 60_000).toISOString(),
-                complete: true,
-                errors: [],
-                claims: [
-                  {
-                    workspace: yield* fs.realPath(candidate),
-                    sources: ['st3-seat'],
-                    agents: ['active-agent'],
-                    activeRuntimeIds: ['active-runtime'],
-                    active: true,
-                  },
-                ],
+                generatedArtifacts: {
+                  manifestPath,
+                  agentLivenessProducers: ['legacy-test'],
+                  builtin: false,
+                },
               }),
             )
-          }
-          const result = yield* runMrCommand({
-            cwd: outside,
-            command: ['store', 'gc', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          })
-          expect(result.exitCode, `${result.stdout}\n${result.failure}`).toBe(0)
-          const entry = findGcResult(
-            decodeStoreGcJsonOutput(result.stdout).results,
-            'github.com/test-owner/legacy-activity/',
-            commit,
-          )
-          expect(entry?.status).toBe('skipped_in_use')
-          expect(entry?.message).toContain(
-            manifestState === 'active'
-              ? 'workspace activity manifest reports activity'
-              : 'configured activity manifest is unavailable',
-          )
-          expect(yield* fs.exists(candidate)).toBe(true)
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  }
-})
+            if (manifestState === 'active') {
+              const now = yield* Clock.currentTimeMillis
+              yield* fs.writeFileString(
+                manifestPath,
+                encodeJson({
+                  schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
+                  producer: { name: 'legacy-test', version: '1' },
+                  epoch: { host: hostname(), snapshotId: 'legacy-activity', storeIndex: 1 },
+                  capturedAt: new Date(now).toISOString(),
+                  expiresAt: new Date(now + 60_000).toISOString(),
+                  complete: true,
+                  errors: [],
+                  claims: [
+                    {
+                      workspace: yield* fs.realPath(candidate),
+                      sources: ['st3-seat'],
+                      agents: ['active-agent'],
+                      activeRuntimeIds: ['active-runtime'],
+                      active: true,
+                    },
+                  ],
+                }),
+              )
+            }
+            const result = yield* runMrCommand({
+              cwd: outside,
+              command: ['store', 'gc', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            })
+            expect(result.exitCode, `${result.stdout}\n${result.failure}`).toBe(0)
+            const entry = findGcResult(
+              decodeStoreGcJsonOutput(result.stdout).results,
+              'github.com/test-owner/legacy-activity/',
+              commit,
+            )
+            expect(entry?.status).toBe('skipped_in_use')
+            expect(entry?.message).toContain(
+              manifestState === 'active'
+                ? 'workspace activity manifest reports activity'
+                : 'configured activity manifest is unavailable',
+            )
+            expect(yield* fs.exists(candidate)).toBe(true)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+  })
 
-describe('store discovery is bounded to the layout', () => {
-  // Regression: the store-layer fs walks must never descend into a checked-out
-  // working tree or a non-member directory. Before these guards a single broken
-  // worktree (no `.git`) or a non-member co-tenant dir in the store root made the
-  // walk enumerate the entire subtree, exhausting memory on the real store.
-  //
-  // `_`-prefixed roots are the relevant real case: external tooling continuously
-  // checks out isolated worktrees into `_iso/<slug>/` co-tenant namespaces under
-  // the shared store root (each a worktree CLIENT: a `.git` FILE pointing at a
-  // bare, with a full working tree). The `_`-prefix skip is the PRIMARY
-  // membership boundary that keeps them out — they are co-tenants, never members.
+  describe('store discovery is bounded to the layout', () => {
+    // Regression: the store-layer fs walks must never descend into a checked-out
+    // working tree or a non-member directory. Before these guards a single broken
+    // worktree (no `.git`) or a non-member co-tenant dir in the store root made the
+    // walk enumerate the entire subtree, exhausting memory on the real store.
+    //
+    // `_`-prefixed roots are the relevant real case: external tooling continuously
+    // checks out isolated worktrees into `_iso/<slug>/` co-tenant namespaces under
+    // the shared store root (each a worktree CLIENT: a `.git` FILE pointing at a
+    // bare, with a full working tree). The `_`-prefix skip is the PRIMARY
+    // membership boundary that keeps them out — they are co-tenants, never members.
 
-  for (const walk of ['repos', 'worktrees'] as const) {
+    for (const walk of ['repos', 'worktrees'] as const) {
+      it.effect(
+        `${walk} aggregates many loose entries without per-entry spans or warnings`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const { storePath } = yield* createStoreFixture([
+              { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+            ])
+            const directory =
+              walk === 'repos' ? storePath : `${storePath}github.com/acme/widget/refs/heads/`
+            yield* fs.makeDirectory(directory, { recursive: true })
+            for (let i = 0; i < 100; i++) {
+              yield* fs.writeFileString(`${directory}loose-${i}`, 'foreign entry')
+            }
+            const warnings: Array<string> = []
+            const logger = Logger.layer(
+              [
+                Logger.make(({ logLevel, message }) => {
+                  if (logLevel === 'Warn') warnings.push(String(message))
+                }),
+              ],
+              { mergeWithExisting: false },
+            )
+            const spans: Array<Tracer.NativeSpan> = []
+            const tracer = Tracer.make({
+              span: (options) => {
+                const span = new Tracer.NativeSpan(options)
+                spans.push(span)
+                return span
+              },
+            })
+            const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+            const source = parseSourceString('acme/widget')!
+            const enumerate =
+              walk === 'repos'
+                ? Effect.asVoid(store.listRepos)
+                : Effect.asVoid(store.listWorktrees(source))
+            for (let run = 0; run < 2; run++) {
+              yield* enumerate.pipe(Effect.provide(logger), Effect.withTracer(tracer))
+            }
+            expect(warnings).toEqual(
+              Array(2).fill(
+                'store enumeration: skipped entries (non-directory=100, foreign-namespace=0, depth-limited=0)',
+              ),
+            )
+            expect(spans.map((span) => span.name)).toEqual(
+              Array(2).fill(`megarepo/store/list-${walk}`),
+            )
+            for (const span of spans) {
+              expect(span.attributes.get('megarepo.store.enumeration.non_directory.count')).toBe(
+                100,
+              )
+              const samples = yield* Schema.decodeUnknownEffect(
+                Schema.fromJsonString(Schema.Array(Schema.String)),
+              )(span.attributes.get('megarepo.store.enumeration.non_directory.samples'))
+              expect(samples).toHaveLength(10)
+            }
+            expect(yield* fs.readFileString(`${directory}loose-99`)).toBe('foreign entry')
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+
     it.effect(
-      `${walk} aggregates many loose entries without per-entry spans or warnings`,
+      'admits fixed-depth member layouts without descending into co-tenant payloads during GC',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
           const { storePath } = yield* createStoreFixture([
-            { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+            { host: 'github.com', owner: 'acme', repo: 'real', branches: [] },
+            { host: 'intranet', owner: 'team', repo: 'real', branches: [] },
           ])
-          const directory =
-            walk === 'repos' ? storePath : `${storePath}github.com/acme/widget/refs/heads/`
-          yield* fs.makeDirectory(directory, { recursive: true })
-          for (let i = 0; i < 100; i++) {
-            yield* fs.writeFileString(`${directory}loose-${i}`, 'foreign entry')
+          const payloads = ['pnpm-store-shared-v1', 'store', 'cache.example']
+          const deep = 'v11/links/@libsql/core/0.17.4/hash/node_modules/deep/payload'
+          for (const root of payloads) {
+            yield* fs.makeDirectory(`${storePath}${root}/${deep}/.bare`, { recursive: true })
+            yield* fs.writeFileString(`${storePath}${root}/${deep}/keep`, 'co-tenant')
+          }
+          yield* fs.writeFileString(`${storePath}loose.log`, 'log')
+          yield* fs.writeFileString(`${storePath}loose.sh`, 'script')
+          const visited: Array<string> = []
+          const trackedFs = {
+            ...fs,
+            readDirectory: (path: string) => {
+              visited.push(path)
+              return fs.readDirectory(path)
+            },
           }
           const warnings: Array<string> = []
           const logger = Logger.layer(
@@ -1799,620 +1971,936 @@ describe('store discovery is bounded to the layout', () => {
             ],
             { mergeWithExisting: false },
           )
-          const spans: Array<Tracer.NativeSpan> = []
-          const tracer = Tracer.make({
-            span: (options) => {
-              const span = new Tracer.NativeSpan(options)
-              spans.push(span)
-              return span
-            },
-          })
-          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-          const source = parseSourceString('acme/widget')!
-          const enumerate =
-            walk === 'repos'
-              ? Effect.asVoid(store.listRepos)
-              : Effect.asVoid(store.listWorktrees(source))
-          for (let run = 0; run < 2; run++) {
-            yield* enumerate.pipe(Effect.provide(logger), Effect.withTracer(tracer))
-          }
-          expect(warnings).toEqual(
-            Array(2).fill(
-              'store enumeration: skipped entries (non-directory=100, foreign-namespace=0, depth-limited=0)',
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
+            Effect.provideService(FileSystem.FileSystem, trackedFs),
+          )
+          expect(
+            (yield* store.listRepos.pipe(Effect.provide(logger))).repos.map(
+              (repo) => repo.relativePath,
             ),
-          )
-          expect(spans.map((span) => span.name)).toEqual(
-            Array(2).fill(`megarepo/store/list-${walk}`),
-          )
-          for (const span of spans) {
-            expect(span.attributes.get('megarepo.store.enumeration.non_directory.count')).toBe(100)
-            const samples = yield* Schema.decodeUnknownEffect(
-              Schema.fromJsonString(Schema.Array(Schema.String)),
-            )(span.attributes.get('megarepo.store.enumeration.non_directory.samples'))
-            expect(samples).toHaveLength(10)
+          ).toEqual(['github.com/acme/real/', 'intranet/team/real/'])
+          expect(warnings).toEqual([
+            'store enumeration: skipped entries (non-directory=2, foreign-namespace=3, depth-limited=0)',
+          ])
+          if (process.platform === 'linux') {
+            const outside = yield* fs.makeTempDirectoryScoped()
+            const policy = `${outside}/budgets.json`
+            yield* fs.writeFileString(
+              policy,
+              encodeJson({
+                schemaVersion: 'megarepo.build-output-budgets.v2',
+                host: hostname(),
+                storeRoots: [storePath],
+                quotaBytes: 1024 * 1024,
+                idleRetentionMs: 0,
+                classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
+              }),
+            )
+            const budgetGc = yield* runMrCommand({
+              cwd: storePath,
+              command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
+              env: { MEGAREPO_STORE: storePath },
+            }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+            expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
           }
-          expect(yield* fs.readFileString(`${directory}loose-99`)).toBe('foreign entry')
+          const gc = yield* runMrCommand({
+            cwd: storePath,
+            command: ['store', 'gc', '--all', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+          expect(gc.exitCode, gc.failure).toBe(0)
+          for (const root of payloads) {
+            expect(
+              visited
+                .filter((path) => path.startsWith(`${storePath}${root}/`))
+                .every(
+                  (path) => path.replace(/\/$/, '').slice(storePath.length).split('/').length <= 2,
+                ),
+            ).toBe(true)
+            expect(yield* fs.readFileString(`${storePath}${root}/${deep}/keep`)).toBe('co-tenant')
+          }
+          expect(yield* fs.readFileString(`${storePath}loose.log`)).toBe('log')
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
-  }
 
-  it.effect(
-    'admits fixed-depth member layouts without descending into co-tenant payloads during GC',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'real', branches: [] },
-          { host: 'intranet', owner: 'team', repo: 'real', branches: [] },
-        ])
-        const payloads = ['pnpm-store-shared-v1', 'store', 'cache.example']
-        const deep = 'v11/links/@libsql/core/0.17.4/hash/node_modules/deep/payload'
-        for (const root of payloads) {
-          yield* fs.makeDirectory(`${storePath}${root}/${deep}/.bare`, { recursive: true })
-          yield* fs.writeFileString(`${storePath}${root}/${deep}/keep`, 'co-tenant')
-        }
-        yield* fs.writeFileString(`${storePath}loose.log`, 'log')
-        yield* fs.writeFileString(`${storePath}loose.sh`, 'script')
-        const visited: Array<string> = []
-        const trackedFs = {
-          ...fs,
-          readDirectory: (path: string) => {
-            visited.push(path)
-            return fs.readDirectory(path)
-          },
-        }
-        const warnings: Array<string> = []
-        const logger = Logger.layer(
-          [
-            Logger.make(({ logLevel, message }) => {
-              if (logLevel === 'Warn') warnings.push(String(message))
-            }),
-          ],
-          { mergeWithExisting: false },
-        )
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
-          Effect.provideService(FileSystem.FileSystem, trackedFs),
-        )
-        expect(
-          (yield* store.listRepos.pipe(Effect.provide(logger))).map((repo) => repo.relativePath),
-        ).toEqual(['github.com/acme/real/', 'intranet/team/real/'])
-        expect(warnings).toEqual([
-          'store enumeration: skipped entries (non-directory=2, foreign-namespace=3, depth-limited=0)',
-        ])
-        if (process.platform === 'linux') {
-          const outside = yield* fs.makeTempDirectoryScoped()
-          const policy = `${outside}/budgets.json`
+    it.effect(
+      'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
+          ])
+          const mkdirp = (rel: string) =>
+            fs.makeDirectory(
+              EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir(`${rel}/`)),
+              { recursive: true },
+            )
+
+          // A marker outside host/owner/repo is not namespace admission evidence.
+          yield* mkdirp('other/contrib/.bare')
+          // Host namespaces may carry their own metadata; a lone `.state` must not
+          // make the host look like a nested store and hide all repos below it.
+          yield* mkdirp('github.com/.state')
+          // `_`-prefixed co-tenant namespace holding a NESTED store with a deep working
+          // tree: root-skipped, so its `.bare` is never discovered AND its subtree
+          // never walked.
+          yield* mkdirp('_iso/exp/github.com/x/y/.bare')
+          yield* mkdirp('_iso/exp/github.com/x/y/refs/heads/b/node_modules/a/b/c')
+          // The real `_iso/<slug>` shape: a worktree CLIENT — a `.git` FILE (not a
+          // dir) pointing at a bare, with a full checked-out working tree. Excluded by
+          // the `_`-prefix root skip BEFORE the `.git` shape ever matters, so the
+          // working tree is never descended.
+          yield* mkdirp('_iso/iso-slug/src/deep/nested')
+          yield* mkdirp('_iso/iso-slug/node_modules/a/b/c')
           yield* fs.writeFileString(
-            policy,
-            encodeJson({
-              schemaVersion: 'megarepo.build-output-budgets.v2',
-              host: hostname(),
-              storeRoots: [storePath],
-              quotaBytes: 1024 * 1024,
-              idleRetentionMs: 0,
-              classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
-            }),
+            EffectPath.ops.join(storePath, EffectPath.unsafe.relativeFile('_iso/iso-slug/.git')),
+            'gitdir: /somewhere/.bare/worktrees/iso-slug\n',
           )
-          const budgetGc = yield* runMrCommand({
-            cwd: storePath,
-            command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
-            env: { MEGAREPO_STORE: storePath },
-          }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
-          expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
-        }
-        const gc = yield* runMrCommand({
-          cwd: storePath,
-          command: ['store', 'gc', '--all', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
-        expect(gc.exitCode, gc.failure).toBe(0)
-        for (const root of payloads) {
-          expect(
-            visited
-              .filter((path) => path.startsWith(`${storePath}${root}/`))
-              .every(
-                (path) => path.replace(/\/$/, '').slice(storePath.length).split('/').length <= 2,
-              ),
-          ).toBe(true)
-          expect(yield* fs.readFileString(`${storePath}${root}/${deep}/keep`)).toBe('co-tenant')
-        }
-        expect(yield* fs.readFileString(`${storePath}loose.log`)).toBe('log')
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+          // A nested megarepo store (own `.state`/`.locks`): its repos are its members,
+          // not ours — must be EXCLUDED, not walked.
+          yield* mkdirp('evergreen/.state')
+          yield* mkdirp('evergreen/.locks')
+          yield* mkdirp('evergreen/github.com/x/z/.bare')
+          // A bare git worktree (`.git`) sitting in the store: never a namespace dir,
+          // its working tree must not be descended.
+          yield* mkdirp('stray/.git')
+          yield* mkdirp('stray/node_modules/deep/deeper')
 
-  it.effect(
-    'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
-        ])
-        const mkdirp = (rel: string) =>
-          fs.makeDirectory(
-            EffectPath.ops.join(storePath, EffectPath.unsafe.relativeDir(`${rel}/`)),
-            { recursive: true },
-          )
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+          const repos = (yield* store.listRepos).repos.map((r) => r.relativePath)
 
-        // A marker outside host/owner/repo is not namespace admission evidence.
-        yield* mkdirp('other/contrib/.bare')
-        // Host namespaces may carry their own metadata; a lone `.state` must not
-        // make the host look like a nested store and hide all repos below it.
-        yield* mkdirp('github.com/.state')
-        // `_`-prefixed co-tenant namespace holding a NESTED store with a deep working
-        // tree: root-skipped, so its `.bare` is never discovered AND its subtree
-        // never walked.
-        yield* mkdirp('_iso/exp/github.com/x/y/.bare')
-        yield* mkdirp('_iso/exp/github.com/x/y/refs/heads/b/node_modules/a/b/c')
-        // The real `_iso/<slug>` shape: a worktree CLIENT — a `.git` FILE (not a
-        // dir) pointing at a bare, with a full checked-out working tree. Excluded by
-        // the `_`-prefix root skip BEFORE the `.git` shape ever matters, so the
-        // working tree is never descended.
-        yield* mkdirp('_iso/iso-slug/src/deep/nested')
-        yield* mkdirp('_iso/iso-slug/node_modules/a/b/c')
-        yield* fs.writeFileString(
-          EffectPath.ops.join(storePath, EffectPath.unsafe.relativeFile('_iso/iso-slug/.git')),
-          'gitdir: /somewhere/.bare/worktrees/iso-slug\n',
-        )
-        // A nested megarepo store (own `.state`/`.locks`): its repos are its members,
-        // not ours — must be EXCLUDED, not walked.
-        yield* mkdirp('evergreen/.state')
-        yield* mkdirp('evergreen/.locks')
-        yield* mkdirp('evergreen/github.com/x/z/.bare')
-        // A bare git worktree (`.git`) sitting in the store: never a namespace dir,
-        // its working tree must not be descended.
-        yield* mkdirp('stray/.git')
-        yield* mkdirp('stray/node_modules/deep/deeper')
+          expect(repos).toContain('github.com/acme/real/')
+          expect(repos).not.toContain('other/contrib/')
+          expect(repos.some((p) => p.startsWith('_iso/'))).toBe(false)
+          expect(repos.some((p) => p.startsWith('evergreen/'))).toBe(false)
+          expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
+          expect(repos).toHaveLength(1)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
 
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-        const repos = (yield* store.listRepos).map((r) => r.relativePath)
-
-        expect(repos).toContain('github.com/acme/real/')
-        expect(repos).not.toContain('other/contrib/')
-        expect(repos.some((p) => p.startsWith('_iso/'))).toBe(false)
-        expect(repos.some((p) => p.startsWith('evergreen/'))).toBe(false)
-        expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
-        expect(repos).toHaveLength(1)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'skips tool caches, diagnoses unknown foreign trees once, and narrows member repair',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
-        ])
-        const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
-        for (const root of ['pnpm-store-shared-v1/v11/links', 'unknown-cache']) {
-          yield* fs.makeDirectory(`${storePath}${root}/${deep}/node_modules`, { recursive: true })
-        }
-        yield* fs.writeFileString(`${storePath}foreign-file`, 'ignored')
-        // SSH/HTTP hosts need not contain dots; URL namespaces may have subgroups.
-        yield* fs.makeDirectory(`${storePath}intranet/group/subgroup/repo/.bare`, {
-          recursive: true,
-        })
-        yield* fs.makeDirectory(`${storePath}intranet/group/direct/.bare`, { recursive: true })
-        const visited: Array<string> = []
-        const trackedFs = {
-          ...fs,
-          readDirectory: (path: string) => {
-            visited.push(path)
-            return fs.readDirectory(path)
-          },
-        }
-        const warnings: Array<string> = []
-        const loggerLayer = Logger.layer(
-          [
-            Logger.make(({ logLevel, message }) => {
-              if (logLevel === 'Warn') warnings.push(String(message))
-            }),
-          ],
-          { mergeWithExisting: false },
-        )
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
-          Effect.provideService(FileSystem.FileSystem, trackedFs),
-        )
-        const repos = yield* store.listRepos.pipe(Effect.provide(loggerLayer))
-        expect(repos.map((repo) => repo.relativePath)).toEqual([
-          'github.com/acme/real/',
-          'intranet/group/direct/',
-          'intranet/group/subgroup/repo/',
-        ])
-        const expectedWarnings = [
-          'store enumeration: skipped entries (non-directory=1, foreign-namespace=2, depth-limited=0)',
-        ]
-        expect(warnings).toEqual(expectedWarnings)
-        expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
-        expect(visited.some((path) => path.includes('/refs/'))).toBe(false)
-        // Remove the synthetic marker: CLI health checks require actual Git repos.
-        yield* fs.remove(`${storePath}intranet`, { recursive: true })
-        const commit = yield* getWorktreeCommit(worktreePaths['github.com/acme/real#main']!)
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: { real: 'acme/real' },
-          lockEntries: {
-            real: { url: 'https://github.com/acme/real', ref: 'main', commit },
-          },
-        })
-        for (const command of [
-          ['store', 'status'],
-          ['store', 'fix', '--dry-run'],
-          ['store', 'fix', 'real', '--dry-run'],
-          ['store', 'fix', 'real'],
-        ]) {
-          visited.length = 0
-          warnings.length = 0
-          const result = yield* runMrCommand({
-            cwd: workspacePath,
-            command,
-            env: { MEGAREPO_STORE: storePath },
-          }).pipe(
-            Effect.provideService(FileSystem.FileSystem, trackedFs),
-            Effect.provide(loggerLayer),
-          )
-          expect(result.exitCode, result.failure).toBe(0)
-          expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
-          if (command.includes('real') === true) {
-            expect(visited.some((path) => path.includes('unknown-cache'))).toBe(false)
-            expect(warnings).toEqual([])
-          } else {
-            expect(warnings.toSorted()).toEqual(expectedWarnings)
+    it.effect(
+      'skips tool caches, diagnoses unknown foreign trees once, and narrows member repair',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
+          ])
+          const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
+          for (const root of ['pnpm-store-shared-v1/v11/links', 'unknown-cache']) {
+            yield* fs.makeDirectory(`${storePath}${root}/${deep}/node_modules`, { recursive: true })
           }
-        }
-        // Partial discovery in a real namespace must still fail closed.
-        yield* fs.makeDirectory(`${storePath}github.com/unknown/${deep}`, { recursive: true })
-        const exit = yield* Effect.exit(store.listRepos)
-        expect(Exit.isFailure(exit)).toBe(true)
-        if (Exit.isFailure(exit) === true) {
-          expect(Cause.pretty(exit.cause)).toContain('census exceeded the supported depth')
-        }
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'store gc --dry-run treats a broken worktree as one entry, not its whole working tree',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'r', branches: ['main', 'feature'] },
-        ])
-        const wt = worktreePaths['github.com/acme/r#feature']!
-        // Break the worktree (interrupted op): drop `.git`, leave a working tree.
-        yield* fs
-          .remove(EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('.git')), {
+          yield* fs.writeFileString(`${storePath}foreign-file`, 'ignored')
+          // SSH/HTTP hosts need not contain dots; URL namespaces may have subgroups.
+          yield* fs.makeDirectory(`${storePath}intranet/group/subgroup/repo/.bare`, {
             recursive: true,
           })
-          .pipe(Effect.ignore)
-        for (const sub of ['node_modules/a/b/c', 'src/x/y', 'dist/p/q']) {
+          yield* fs.makeDirectory(`${storePath}intranet/group/direct/.bare`, { recursive: true })
+          const visited: Array<string> = []
+          const trackedFs = {
+            ...fs,
+            readDirectory: (path: string) => {
+              visited.push(path)
+              return fs.readDirectory(path)
+            },
+          }
+          const warnings: Array<string> = []
+          const loggerLayer = Logger.layer(
+            [
+              Logger.make(({ logLevel, message }) => {
+                if (logLevel === 'Warn') warnings.push(String(message))
+              }),
+            ],
+            { mergeWithExisting: false },
+          )
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
+            Effect.provideService(FileSystem.FileSystem, trackedFs),
+          )
+          const { repos } = yield* store.listRepos.pipe(Effect.provide(loggerLayer))
+          expect(repos.map((repo) => repo.relativePath)).toEqual([
+            'github.com/acme/real/',
+            'intranet/group/direct/',
+            'intranet/group/subgroup/repo/',
+          ])
+          const expectedWarnings = [
+            'store enumeration: skipped entries (non-directory=1, foreign-namespace=2, depth-limited=0)',
+          ]
+          expect(warnings).toEqual(expectedWarnings)
+          expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
+          expect(visited.some((path) => path.includes('/refs/'))).toBe(false)
+          // Remove the synthetic marker: CLI health checks require actual Git repos.
+          yield* fs.remove(`${storePath}intranet`, { recursive: true })
+          const commit = yield* getWorktreeCommit(worktreePaths['github.com/acme/real#main']!)
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: { real: 'acme/real' },
+            lockEntries: {
+              real: { url: 'https://github.com/acme/real', ref: 'main', commit },
+            },
+          })
+          for (const command of [
+            ['store', 'status'],
+            ['store', 'fix', '--dry-run'],
+            ['store', 'fix', 'real', '--dry-run'],
+            ['store', 'fix', 'real'],
+          ]) {
+            visited.length = 0
+            warnings.length = 0
+            const result = yield* runMrCommand({
+              cwd: workspacePath,
+              command,
+              env: { MEGAREPO_STORE: storePath },
+            }).pipe(
+              Effect.provideService(FileSystem.FileSystem, trackedFs),
+              Effect.provide(loggerLayer),
+            )
+            expect(result.exitCode, result.failure).toBe(0)
+            expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
+            if (command.includes('real') === true) {
+              expect(visited.some((path) => path.includes('unknown-cache'))).toBe(false)
+              expect(warnings).toEqual([])
+            } else {
+              expect(warnings.toSorted()).toEqual(expectedWarnings)
+            }
+          }
+          // Partial discovery reports its exact boundary and still fails closed for mutation.
+          yield* fs.makeDirectory(`${storePath}github.com/unknown/${deep}`, { recursive: true })
+          const census = yield* store.listRepos
+          expect(census.complete).toBe(false)
+          expect(census.repos.map((repo) => repo.relativePath)).toEqual(['github.com/acme/real/'])
+          expect(census.unaccounted).toEqual([
+            {
+              path: expect.stringContaining(`${storePath}github.com/unknown/`),
+              reason: 'depth-limit',
+            },
+          ])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'reports an incomplete gc dry-run and refuses mutating gc without touching either subtree',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'known', branches: ['main'] },
+          ])
+          const deep = `${storePath}github.com/unknown/${Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')}`
+          yield* fs.makeDirectory(deep, { recursive: true })
+          yield* fs.writeFileString(`${deep}/sentinel`, 'unaccounted')
+          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const run = (...args: string[]) =>
+            runMrCommand({
+              cwd,
+              command: ['store', 'gc', '--output', 'json', ...args],
+              env: { MEGAREPO_STORE: storePath },
+            })
+          const report = yield* run('--dry-run')
+          expect(report.exitCode, report.failure).toBe(0)
+          const plan = decodeStoreGcJsonOutput(report.stdout)
+          expect(plan.complete).toBe(false)
+          expect(plan.censusStatus).toBe('unknown')
+          expect(plan.unaccounted).toEqual([
+            {
+              path: expect.stringContaining(`${storePath}github.com/unknown/`),
+              reason: 'depth-limit',
+            },
+          ])
+          expect(plan.results.every((row) => !row.path.includes('/unknown/'))).toBe(true)
+          const mutation = yield* run('--all')
+          expect(mutation.exitCode).toBe(1)
+          expect(mutation.failure).toContain('Store census is incomplete')
+          expect(yield* fs.readFileString(`${deep}/sentinel`)).toBe('unaccounted')
+          expect(yield* fs.exists(worktreePaths['github.com/acme/known#main']!)).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'store gc --dry-run treats a broken worktree as one entry, not its whole working tree',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'r', branches: ['main', 'feature'] },
+          ])
+          const wt = worktreePaths['github.com/acme/r#feature']!
+          // Break the worktree (interrupted op): drop `.git`, leave a working tree.
+          yield* fs
+            .remove(EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('.git')), {
+              recursive: true,
+            })
+            .pipe(Effect.ignore)
+          for (const sub of ['node_modules/a/b/c', 'src/x/y', 'dist/p/q']) {
+            yield* fs.makeDirectory(
+              EffectPath.ops.join(wt, EffectPath.unsafe.relativeDir(`${sub}/`)),
+              { recursive: true },
+            )
+          }
+
+          const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const { stdout } = yield* runMrCommand({
+            cwd,
+            command: ['store', 'gc', '--dry-run', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          const { results, censusStatus } = decodeStoreGcJsonOutput(stdout)
+          expect(censusStatus).toBe('complete')
+
+          // Exactly one result for the broken worktree root, and NONE for paths
+          // inside its working tree (pre-fix the walk emitted one per leaf dir).
+          const featureResults = results.filter(
+            (r) => r.ref === 'feature' || r.ref.startsWith('feature/'),
+          )
+          expect(featureResults).toHaveLength(1)
+          expect(featureResults[0]?.ref).toBe('feature')
+          expect(results.some((r) => r.ref.includes('node_modules'))).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'listWorktrees caps the nested-worktree walk and still finds a real deeply-nested worktree',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          // A real worktree at a legitimately-nested ref (`refs/heads/a/b/c/wt`,
+          // depth 4 under refs/heads) must still be discovered.
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'r', branches: ['a/b/c/wt'] },
+          ])
+          const realWt = worktreePaths['github.com/acme/r#a/b/c/wt']!
+
+          // A worktree-LESS subtree nested far past the walk's depth cap (no `.git`
+          // anywhere). Pre-fix this drove unbounded recursion; the cap must stop it.
+          const headsDir = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir('github.com/acme/r/refs/heads/'),
+          )
+          const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
           yield* fs.makeDirectory(
-            EffectPath.ops.join(wt, EffectPath.unsafe.relativeDir(`${sub}/`)),
+            EffectPath.ops.join(headsDir, EffectPath.unsafe.relativeDir(`deep/${deep}/`)),
             { recursive: true },
           )
-        }
 
-        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const { stdout } = yield* runMrCommand({
-          cwd,
-          command: ['store', 'gc', '--dry-run', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        })
-        const { results, censusStatus } = decodeStoreGcJsonOutput(stdout)
-        expect(censusStatus).toBe('complete')
+          const source = parseSourceString('acme/r')!
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+          const worktrees = yield* store.listWorktrees(source)
 
-        // Exactly one result for the broken worktree root, and NONE for paths
-        // inside its working tree (pre-fix the walk emitted one per leaf dir).
-        const featureResults = results.filter(
-          (r) => r.ref === 'feature' || r.ref.startsWith('feature/'),
+          // The real worktree is found...
+          const real = worktrees.find((w) => w.path === realWt)
+          expect(real).toBeDefined()
+          expect(real?.broken).toBe(false)
+          // ...and the walk terminated at the cap: no ref nests anywhere near the
+          // 30-deep stray tree (the cap is 8 segments under refs/heads), so the
+          // enumeration never followed the pathological subtree to its leaf.
+          expect(worktrees.every((w) => w.ref.split('/').length <= 8)).toBe(true)
+          expect(worktrees.some((w) => w.ref.includes('d29'))).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
+  describe('mr store ls', () => {
+    it.effect(
+      'should list repos in the store',
+      Effect.fnUntraced(
+        function* () {
+          // Create store with multiple repos
+          const { storePath } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'owner1',
+              repo: 'repo-a',
+              branches: ['main'],
+            },
+            {
+              host: 'github.com',
+              owner: 'owner2',
+              repo: 'repo-b',
+              branches: ['main'],
+            },
+          ])
+
+          const storeLayer = makeStoreLayer({ basePath: storePath })
+          const store = yield* Effect.provide(Store, storeLayer)
+
+          const { repos } = yield* store.listRepos
+          expect(repos).toHaveLength(2)
+
+          const paths = repos.map((r) => r.relativePath).sort()
+          expect(paths).toContain('github.com/owner1/repo-a/')
+          expect(paths).toContain('github.com/owner2/repo-b/')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should return empty list for empty store',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          // Create empty store directory
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+          yield* fs.makeDirectory(storePath, { recursive: true })
+
+          const storeLayer = makeStoreLayer({ basePath: storePath })
+          const store = yield* Effect.provide(Store, storeLayer)
+
+          const { repos } = yield* store.listRepos
+          expect(repos).toHaveLength(0)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should ignore internal scratch roots when listing repos',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+          const repoPath = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir('localhost/owner/repo/'),
+          )
+          const scratchRepoPath = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir('tmp/owner/repo/'),
+          )
+
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('.bare/')),
+            { recursive: true },
+          )
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(scratchRepoPath, EffectPath.unsafe.relativeDir('.bare/')),
+            { recursive: true },
+          )
+
+          const storeLayer = makeStoreLayer({ basePath: storePath })
+          const store = yield* Effect.provide(Store, storeLayer)
+
+          const { repos } = yield* store.listRepos
+          expect(repos.map((repo) => repo.relativePath)).toStrictEqual(['localhost/owner/repo/'])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should discover repos below path segments named refs',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+          const repoPath = EffectPath.ops.join(
+            storePath,
+            EffectPath.unsafe.relativeDir('example.com/refs/project/'),
+          )
+          yield* fs.makeDirectory(
+            EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('.bare/')),
+            { recursive: true },
+          )
+
+          const storeLayer = makeStoreLayer({ basePath: storePath })
+          const store = yield* Effect.provide(Store, storeLayer)
+
+          const { repos } = yield* store.listRepos
+          expect(repos.map((repo) => repo.relativePath)).toContain('example.com/refs/project/')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
+  describe('mr store worktree new', () => {
+    for (const localBase of [false, true]) {
+      for (const baseArg of ['base', 'origin/base', 'topic/base']) {
+        it.effect(
+          `creates NEW from ${baseArg} with BASE ${localBase === true ? 'also local' : 'remote only'}`,
+          Effect.fnUntraced(
+            function* () {
+              const fixture = yield* createStoreFixture([
+                {
+                  host: 'github.com',
+                  owner: 'test-owner',
+                  repo: 'test-repo',
+                  withRemote: true,
+                },
+              ])
+              const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
+              const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+              const baseBranch = baseArg.replace(/^origin\//u, '')
+              const main = yield* Git.runCommand({ cwd: upstream, args: ['rev-parse', 'main'] })
+              const tree = yield* Git.runCommand({
+                cwd: upstream,
+                args: ['rev-parse', 'main^{tree}'],
+              })
+              const baseCommit = yield* Git.runCommand({
+                cwd: upstream,
+                args: [
+                  '-c',
+                  'user.name=Test User',
+                  '-c',
+                  'user.email=test@example.com',
+                  'commit-tree',
+                  tree,
+                  '-p',
+                  main,
+                  '-m',
+                  'Distinct base commit',
+                ],
+              })
+              yield* Git.runCommand({
+                cwd: upstream,
+                args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
+              })
+              yield* Git.fetchBare({ repoPath: bare })
+              if (localBase === true) {
+                yield* Git.runCommand({
+                  cwd: bare,
+                  args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
+                })
+              }
+              const result = spawnSync(
+                'bun',
+                [
+                  fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+                  'store',
+                  'worktree',
+                  'new',
+                  'test-owner/test-repo',
+                  '--ref',
+                  'NEW',
+                  '--base',
+                  baseArg,
+                  '--porcelain',
+                ],
+                {
+                  cwd: fixture.storePath,
+                  encoding: 'utf8',
+                  timeout: 30_000,
+                  env: { ...process.env, MEGAREPO_STORE: fixture.storePath, NO_COLOR: '1' },
+                },
+              )
+              expect(result.error).toBeUndefined()
+              expect(result.status, result.stderr).toBe(0)
+              const path = `${fixture.storePath}github.com/test-owner/test-repo/refs/heads/NEW`
+              expect(result.stdout.trim()).toBe(path)
+              expect(yield* Git.runCommand({ cwd: path, args: ['symbolic-ref', 'HEAD'] })).toBe(
+                'refs/heads/NEW',
+              )
+              expect(yield* Git.runCommand({ cwd: path, args: ['rev-parse', 'HEAD'] })).toBe(
+                baseCommit,
+              )
+              expect(
+                yield* Git.runCommand({
+                  cwd: upstream,
+                  args: ['rev-parse', `refs/heads/${baseBranch}`],
+                }),
+              ).toBe(baseCommit)
+              if (localBase === true) {
+                expect(
+                  yield* Git.runCommand({
+                    cwd: bare,
+                    args: ['rev-parse', `refs/heads/${baseBranch}`],
+                  }),
+                ).toBe(baseCommit)
+              } else {
+                expect(
+                  yield* Git.runCommand({
+                    cwd: bare,
+                    args: ['show-ref', '--verify', `refs/heads/${baseBranch}`],
+                  }).pipe(Effect.exit),
+                ).toSatisfy(Exit.isFailure)
+              }
+              const registrations = yield* Git.listWorktrees(bare)
+              expect(
+                registrations
+                  .filter((entry) => entry.path.replace(/\/$/u, '') === path)
+                  .map((entry) => Option.getOrUndefined(entry.branch)),
+              ).toEqual(['NEW'])
+            },
+            Effect.provide(NodeServices.layer),
+            Effect.scoped,
+          ),
         )
-        expect(featureResults).toHaveLength(1)
-        expect(featureResults[0]?.ref).toBe('feature')
-        expect(results.some((r) => r.ref.includes('node_modules'))).toBe(false)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+      }
+    }
 
-  it.effect(
-    'listWorktrees caps the nested-worktree walk and still finds a real deeply-nested worktree',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        // A real worktree at a legitimately-nested ref (`refs/heads/a/b/c/wt`,
-        // depth 4 under refs/heads) must still be discovered.
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'r', branches: ['a/b/c/wt'] },
-        ])
-        const realWt = worktreePaths['github.com/acme/r#a/b/c/wt']!
-
-        // A worktree-LESS subtree nested far past the walk's depth cap (no `.git`
-        // anywhere). Pre-fix this drove unbounded recursion; the cap must stop it.
-        const headsDir = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeDir('github.com/acme/r/refs/heads/'),
-        )
-        const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
-        yield* fs.makeDirectory(
-          EffectPath.ops.join(headsDir, EffectPath.unsafe.relativeDir(`deep/${deep}/`)),
-          { recursive: true },
-        )
-
-        const source = parseSourceString('acme/r')!
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
-        const worktrees = yield* store.listWorktrees(source)
-
-        // The real worktree is found...
-        const real = worktrees.find((w) => w.path === realWt)
-        expect(real).toBeDefined()
-        expect(real?.broken).toBe(false)
-        // ...and the walk terminated at the cap: no ref nests anywhere near the
-        // 30-deep stray tree (the cap is 8 segments under refs/heads), so the
-        // enumeration never followed the pathological subtree to its leaf.
-        expect(worktrees.every((w) => w.ref.split('/').length <= 8)).toBe(true)
-        expect(worktrees.some((w) => w.ref.includes('d29'))).toBe(false)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
-
-describe('mr store ls', () => {
-  it.effect(
-    'should list repos in the store',
-    Effect.fnUntraced(
-      function* () {
-        // Create store with multiple repos
-        const { storePath } = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'owner1',
-            repo: 'repo-a',
-            branches: ['main'],
-          },
-          {
-            host: 'github.com',
-            owner: 'owner2',
-            repo: 'repo-b',
-            branches: ['main'],
-          },
-        ])
-
-        const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Effect.provide(Store, storeLayer)
-
-        const repos = yield* store.listRepos
-        expect(repos).toHaveLength(2)
-
-        const paths = repos.map((r) => r.relativePath).sort()
-        expect(paths).toContain('github.com/owner1/repo-a/')
-        expect(paths).toContain('github.com/owner2/repo-b/')
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should return empty list for empty store',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        // Create empty store directory
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
-        yield* fs.makeDirectory(storePath, { recursive: true })
-
-        const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Effect.provide(Store, storeLayer)
-
-        const repos = yield* store.listRepos
-        expect(repos).toHaveLength(0)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should ignore internal scratch roots when listing repos',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
-        const repoPath = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeDir('localhost/owner/repo/'),
-        )
-        const scratchRepoPath = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeDir('tmp/owner/repo/'),
-        )
-
-        yield* fs.makeDirectory(
-          EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('.bare/')),
-          { recursive: true },
-        )
-        yield* fs.makeDirectory(
-          EffectPath.ops.join(scratchRepoPath, EffectPath.unsafe.relativeDir('.bare/')),
-          { recursive: true },
-        )
-
-        const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Effect.provide(Store, storeLayer)
-
-        const repos = yield* store.listRepos
-        expect(repos.map((repo) => repo.relativePath)).toStrictEqual(['localhost/owner/repo/'])
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should discover repos below path segments named refs',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
-        const repoPath = EffectPath.ops.join(
-          storePath,
-          EffectPath.unsafe.relativeDir('example.com/refs/project/'),
-        )
-        yield* fs.makeDirectory(
-          EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('.bare/')),
-          { recursive: true },
-        )
-
-        const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Effect.provide(Store, storeLayer)
-
-        const repos = yield* store.listRepos
-        expect(repos.map((repo) => repo.relativePath)).toContain('example.com/refs/project/')
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
-
-describe('mr store worktree new', () => {
-  for (const localBase of [false, true]) {
-    for (const baseArg of ['base', 'origin/base', 'topic/base']) {
+    for (const remoteState of ['conflicting-tag', 'unavailable'] as const) {
       it.effect(
-        `creates NEW from ${baseArg} with BASE ${localBase === true ? 'also local' : 'remote only'}`,
+        `creates an isolated mutable branch without fetching when remote is ${remoteState}`,
         Effect.fnUntraced(
           function* () {
+            const fs = yield* FileSystem.FileSystem
             const fixture = yield* createStoreFixture([
               {
                 host: 'github.com',
                 owner: 'test-owner',
                 repo: 'test-repo',
+                branches: ['main'],
+                tags: ['edge'],
                 withRemote: true,
               },
             ])
             const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
             const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
-            const baseBranch = baseArg.replace(/^origin\//u, '')
-            const main = yield* Git.runCommand({ cwd: upstream, args: ['rev-parse', 'main'] })
+            const canonical = fixture.worktreePaths['github.com/test-owner/test-repo#main']!
+            const base = yield* Git.getCurrentCommit(canonical)
+            // Move the upstream edge tag to a newer commit, leaving the local tag stale.
             const tree = yield* Git.runCommand({
-              cwd: upstream,
               args: ['rev-parse', 'main^{tree}'],
-            })
-            const baseCommit = yield* Git.runCommand({
               cwd: upstream,
+            })
+            const nextCommit = yield* Git.runCommand({
               args: [
                 '-c',
                 'user.name=Test User',
                 '-c',
                 'user.email=test@example.com',
+                '-c',
+                'commit.gpgsign=false',
                 'commit-tree',
                 tree,
                 '-p',
-                main,
+                base,
                 '-m',
-                'Distinct base commit',
+                'Move edge',
               ],
+              cwd: upstream,
             })
             yield* Git.runCommand({
+              args: ['update-ref', 'refs/tags/edge', nextCommit],
               cwd: upstream,
-              args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
             })
-            yield* Git.fetchBare({ repoPath: bare })
-            if (localBase === true) {
-              yield* Git.runCommand({
-                cwd: bare,
-                args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
-              })
+            if (remoteState === 'unavailable') {
+              yield* fs.rename(upstream, `${upstream.replace(/\/$/u, '')}-offline`)
             }
-            const result = spawnSync(
-              'bun',
-              [
-                fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+            const refsBefore = yield* Git.runCommand({ args: ['show-ref'], cwd: bare })
+            const fetchHeadBefore = yield* fs.readFileString(`${bare}FETCH_HEAD`)
+            const configBefore = yield* fs.readFileString(`${bare}config`)
+            const canonicalStatus = yield* Git.runCommand({
+              args: ['status', '--porcelain'],
+              cwd: canonical,
+            })
+            const result = yield* runMrCommand({
+              cwd: fixture.storePath,
+              command: [
                 'store',
                 'worktree',
                 'new',
                 'test-owner/test-repo',
+                '--no-fetch',
                 '--ref',
-                'NEW',
+                'source-patch',
                 '--base',
-                baseArg,
-                '--porcelain',
+                base,
+                '--output',
+                'json',
               ],
-              {
-                cwd: fixture.storePath,
-                encoding: 'utf8',
-                timeout: 30_000,
-                env: { ...process.env, MEGAREPO_STORE: fixture.storePath, NO_COLOR: '1' },
-              },
+              env: { MEGAREPO_STORE: fixture.storePath },
+            })
+            expect(result.exitCode).toBe(0)
+            const source = parseSourceString('test-owner/test-repo')!
+            const store = yield* Effect.provide(
+              Store,
+              makeStoreLayer({ basePath: fixture.storePath }),
             )
-            expect(result.error).toBeUndefined()
-            expect(result.status, result.stderr).toBe(0)
-            const path = `${fixture.storePath}github.com/test-owner/test-repo/refs/heads/NEW`
-            expect(result.stdout.trim()).toBe(path)
-            expect(yield* Git.runCommand({ cwd: path, args: ['symbolic-ref', 'HEAD'] })).toBe(
-              'refs/heads/NEW',
-            )
-            expect(yield* Git.runCommand({ cwd: path, args: ['rev-parse', 'HEAD'] })).toBe(
-              baseCommit,
-            )
+            const worktree = store.getWorktreePath({
+              source,
+              ref: 'source-patch',
+              refType: 'branch',
+            })
+            expect(yield* Git.getCurrentCommit(worktree)).toBe(base)
+            expect(yield* Git.getCurrentBranch(worktree)).toEqual(Option.some('source-patch'))
             expect(
-              yield* Git.runCommand({
-                cwd: upstream,
-                args: ['rev-parse', `refs/heads/${baseBranch}`],
-              }),
-            ).toBe(baseCommit)
-            if (localBase === true) {
-              expect(
-                yield* Git.runCommand({
-                  cwd: bare,
-                  args: ['rev-parse', `refs/heads/${baseBranch}`],
-                }),
-              ).toBe(baseCommit)
-            } else {
-              expect(
-                yield* Git.runCommand({
-                  cwd: bare,
-                  args: ['show-ref', '--verify', `refs/heads/${baseBranch}`],
-                }).pipe(Effect.exit),
-              ).toSatisfy(Exit.isFailure)
-            }
+              (yield* Git.runCommand({ args: ['show-ref'], cwd: bare }))
+                .split('\n')
+                .filter((line) => line.endsWith(' refs/heads/source-patch') === false)
+                .join('\n'),
+            ).toBe(refsBefore)
+            expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).toBe(fetchHeadBefore)
+            expect(yield* fs.readFileString(`${bare}config`)).toBe(configBefore)
+            yield* fs.writeFileString(`${worktree}source-patch.txt`, 'local patch\n')
+            expect(
+              yield* Git.runCommand({ args: ['status', '--porcelain'], cwd: worktree }),
+            ).toContain('source-patch.txt')
+            expect(yield* fs.exists(`${canonical}source-patch.txt`)).toBe(false)
+            expect(yield* Git.getCurrentCommit(canonical)).toBe(base)
+            expect(yield* Git.runCommand({ args: ['status', '--porcelain'], cwd: canonical })).toBe(
+              canonicalStatus,
+            )
+            expect(yield* fs.exists(`${worktree}megarepo.kdl`)).toBe(false)
+            expect(yield* fs.exists(`${worktree}megarepo.lock`)).toBe(false)
+            expect(yield* fs.exists(`${worktree}repos`)).toBe(false)
             const registrations = yield* Git.listWorktrees(bare)
-            expect(
-              registrations
-                .filter((entry) => entry.path.replace(/\/$/u, '') === path)
-                .map((entry) => Option.getOrUndefined(entry.branch)),
-            ).toEqual(['NEW'])
+            expect(registrations.some((entry) => entry.path === worktree.replace(/\/$/u, ''))).toBe(
+              true,
+            )
+            if (remoteState === 'conflicting-tag') {
+              const defaultResult = yield* runMrCommand({
+                cwd: fixture.storePath,
+                command: [
+                  'store',
+                  'worktree',
+                  'new',
+                  'test-owner/test-repo',
+                  '--ref',
+                  'default-fetch',
+                  '--base',
+                  base,
+                  '--output',
+                  'json',
+                ],
+                env: { MEGAREPO_STORE: fixture.storePath },
+              })
+              // The default path fetches branches only, so the moved upstream tag no longer
+              // fails it ("would clobber existing tag") and the unrequested local tag stays.
+              expect(defaultResult.exitCode).toBe(0)
+              expect(
+                yield* Git.refExists({ repoPath: bare, ref: 'refs/heads/default-fetch' }),
+              ).toBe(true)
+              expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).not.toBe(fetchHeadBefore)
+              expect(yield* Git.resolveRef({ repoPath: bare, ref: 'refs/tags/edge' })).toBe(base)
+            }
           },
           Effect.provide(NodeServices.layer),
           Effect.scoped,
         ),
       )
     }
-  }
 
-  for (const remoteState of ['conflicting-tag', 'unavailable'] as const) {
+    for (const invalidInput of [
+      'missing-repo',
+      'missing-object',
+      'missing-base',
+      'non-commit',
+      'branch-name',
+      'abbreviated-sha',
+    ] as const) {
+      it.effect(
+        `rejects --no-fetch with ${invalidInput} without writing store state`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const fixture = yield* createStoreFixture(
+              invalidInput === 'missing-repo'
+                ? []
+                : [{ host: 'github.com', owner: 'test-owner', repo: 'test-repo' }],
+            )
+            const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']
+            const base =
+              invalidInput === 'branch-name'
+                ? 'main'
+                : invalidInput === 'abbreviated-sha' && bare !== undefined
+                  ? (yield* Git.getCurrentCommit(bare)).slice(0, 12)
+                  : invalidInput === 'non-commit' && bare !== undefined
+                    ? yield* Git.runCommand({ args: ['rev-parse', 'main^{tree}'], cwd: bare })
+                    : '0123456789012345678901234567890123456789'
+            const before =
+              bare === undefined
+                ? undefined
+                : yield* Git.runCommand({ args: ['show-ref'], cwd: bare })
+            const worktreesBefore = bare === undefined ? undefined : yield* Git.listWorktrees(bare)
+            const result = yield* runMrCommand({
+              cwd: fixture.storePath,
+              command: [
+                'store',
+                'worktree',
+                'new',
+                'test-owner/test-repo',
+                '--no-fetch',
+                '--ref',
+                'source-patch',
+                ...(invalidInput === 'missing-base' ? [] : ['--base', base]),
+                '--output',
+                'json',
+              ],
+              env: { MEGAREPO_STORE: fixture.storePath },
+            })
+            expect(result.exitCode).toBe(1)
+            expect(String(result.exit)).toContain(
+              invalidInput === 'missing-repo'
+                ? 'requires an existing bare repository'
+                : invalidInput === 'missing-base'
+                  ? 'requires --ref <new-branch> and an explicit local --base'
+                  : invalidInput === 'branch-name' || invalidInput === 'abbreviated-sha'
+                    ? 'requires --base to be a full 40-character commit SHA'
+                    : 'must resolve to a commit already present',
+            )
+            if (bare === undefined) {
+              expect(yield* fs.readDirectory(fixture.storePath)).toEqual([])
+            } else {
+              expect(yield* Git.runCommand({ args: ['show-ref'], cwd: bare })).toBe(before)
+              expect(yield* Git.listWorktrees(bare)).toEqual(worktreesBefore)
+              expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
+            }
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+
+    for (const missingObject of ['blob', 'commit'] as const) {
+      it.effect(
+        `rejects a partial clone with a missing ${missingObject} without contacting its promisor remote`,
+        Effect.fnUntraced(
+          function* () {
+            const fs = yield* FileSystem.FileSystem
+            const fixture = yield* createStoreFixture([
+              { host: 'github.com', owner: 'test-owner', repo: 'test-repo', withRemote: true },
+            ])
+            const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
+            const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+            const base = yield* Git.runCommand({ args: ['rev-parse', 'main'], cwd: upstream })
+            const blob = yield* Git.runCommand({
+              args: ['rev-parse', 'main:README.md'],
+              cwd: upstream,
+            })
+            yield* Git.runCommand({
+              args: ['config', 'uploadpack.allowFilter', 'true'],
+              cwd: upstream,
+            })
+            yield* fs.remove(bare, { recursive: true })
+            yield* Git.runCommand({
+              args: ['clone', '--bare', '--filter=blob:none', `file://${upstream}`, bare],
+              cwd: fixture.storePath,
+            })
+            // Confirm this is a real filtered clone, not a complete local copy.
+            expect(
+              yield* Git.runCommand({ args: ['config', 'remote.origin.promisor'], cwd: bare }),
+            ).toBe('true')
+            expect(
+              Exit.isFailure(
+                yield* Git.runCommand({
+                  args: ['cat-file', '-e', blob],
+                  cwd: bare,
+                  env: { GIT_NO_LAZY_FETCH: '1' },
+                }).pipe(Effect.exit),
+              ),
+            ).toBe(true)
+            const unreachable = `${fixture.storePath}nonexistent-promisor`
+            yield* Git.runCommand({
+              args: ['remote', 'set-url', 'origin', unreachable],
+              cwd: bare,
+            })
+            const tracePath = `${fixture.storePath}no-fetch-${missingObject}.trace.jsonl`
+            const result = yield* runMrCommand({
+              cwd: fixture.storePath,
+              command: [
+                'store',
+                'worktree',
+                'new',
+                'test-owner/test-repo',
+                '--no-fetch',
+                '--ref',
+                'source-patch',
+                '--base',
+                missingObject === 'blob' ? base : '0123456789012345678901234567890123456789',
+                '--output',
+                'json',
+              ],
+              env: { MEGAREPO_STORE: fixture.storePath, GIT_TRACE2_EVENT: tracePath },
+            })
+            expect(result.exitCode).toBe(1)
+            expect(String(result.exit)).toContain('StoreCommandError')
+            expect(String(result.exit)).toContain(
+              missingObject === 'blob'
+                ? 'could not create worktree from local objects'
+                : 'must resolve to a commit already present',
+            )
+            const trace = yield* fs.readFileString(tracePath)
+            expect(trace).toContain('"name":"cat-file"')
+            expect(trace).not.toContain('"name":"fetch"')
+            expect(trace).not.toContain('"name":"upload-pack"')
+            expect(trace).not.toContain('"child_class":"transport/')
+            expect(trace).not.toContain(unreachable)
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+
     it.effect(
-      `creates an isolated mutable branch without fetching when remote is ${remoteState}`,
+      'creates from a newly fetched remote branch',
+      Effect.fnUntraced(
+        function* () {
+          const fixture = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'test-repo',
+              withRemote: true,
+            },
+          ])
+          const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+          yield* Git.runCommand({ args: ['branch', 'feature', 'main'], cwd: upstream })
+
+          const result = yield* runMrCommand({
+            cwd: fixture.storePath,
+            command: [
+              'store',
+              'worktree',
+              'new',
+              'test-owner/test-repo',
+              '--ref',
+              'feature',
+              '--output',
+              'json',
+            ],
+            env: { MEGAREPO_STORE: fixture.storePath },
+          })
+
+          expect(result.exitCode).toBe(0)
+          const source = parseSourceString('test-owner/test-repo')!
+          const store = yield* Effect.provide(
+            Store,
+            makeStoreLayer({ basePath: fixture.storePath }),
+          )
+          const worktreePath = store.getWorktreePath({
+            source,
+            ref: 'feature',
+            refType: 'branch',
+          })
+          expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('feature'))
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'creates a tag-like branch from --base',
       Effect.fnUntraced(
         function* () {
           const fs = yield* FileSystem.FileSystem
@@ -2421,48 +2909,9 @@ describe('mr store worktree new', () => {
               host: 'github.com',
               owner: 'test-owner',
               repo: 'test-repo',
-              branches: ['main'],
-              tags: ['edge'],
               withRemote: true,
             },
           ])
-          const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
-          const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
-          const canonical = fixture.worktreePaths['github.com/test-owner/test-repo#main']!
-          const base = yield* Git.getCurrentCommit(canonical)
-          // Move the upstream edge tag to a newer commit, leaving the local tag stale.
-          const tree = yield* Git.runCommand({ args: ['rev-parse', 'main^{tree}'], cwd: upstream })
-          const nextCommit = yield* Git.runCommand({
-            args: [
-              '-c',
-              'user.name=Test User',
-              '-c',
-              'user.email=test@example.com',
-              '-c',
-              'commit.gpgsign=false',
-              'commit-tree',
-              tree,
-              '-p',
-              base,
-              '-m',
-              'Move edge',
-            ],
-            cwd: upstream,
-          })
-          yield* Git.runCommand({
-            args: ['update-ref', 'refs/tags/edge', nextCommit],
-            cwd: upstream,
-          })
-          if (remoteState === 'unavailable') {
-            yield* fs.rename(upstream, `${upstream.replace(/\/$/u, '')}-offline`)
-          }
-          const refsBefore = yield* Git.runCommand({ args: ['show-ref'], cwd: bare })
-          const fetchHeadBefore = yield* fs.readFileString(`${bare}FETCH_HEAD`)
-          const configBefore = yield* fs.readFileString(`${bare}config`)
-          const canonicalStatus = yield* Git.runCommand({
-            args: ['status', '--porcelain'],
-            cwd: canonical,
-          })
           const result = yield* runMrCommand({
             cwd: fixture.storePath,
             command: [
@@ -2470,823 +2919,533 @@ describe('mr store worktree new', () => {
               'worktree',
               'new',
               'test-owner/test-repo',
-              '--no-fetch',
               '--ref',
-              'source-patch',
+              'v2.0.0',
               '--base',
-              base,
+              'origin/main',
               '--output',
               'json',
             ],
             env: { MEGAREPO_STORE: fixture.storePath },
           })
+
           expect(result.exitCode).toBe(0)
           const source = parseSourceString('test-owner/test-repo')!
           const store = yield* Effect.provide(
             Store,
             makeStoreLayer({ basePath: fixture.storePath }),
           )
-          const worktree = store.getWorktreePath({
+          const worktreePath = store.getWorktreePath({
             source,
-            ref: 'source-patch',
+            ref: 'v2.0.0',
             refType: 'branch',
           })
-          expect(yield* Git.getCurrentCommit(worktree)).toBe(base)
-          expect(yield* Git.getCurrentBranch(worktree)).toEqual(Option.some('source-patch'))
           expect(
-            (yield* Git.runCommand({ args: ['show-ref'], cwd: bare }))
-              .split('\n')
-              .filter((line) => line.endsWith(' refs/heads/source-patch') === false)
-              .join('\n'),
-          ).toBe(refsBefore)
-          expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).toBe(fetchHeadBefore)
-          expect(yield* fs.readFileString(`${bare}config`)).toBe(configBefore)
-          yield* fs.writeFileString(`${worktree}source-patch.txt`, 'local patch\n')
-          expect(
-            yield* Git.runCommand({ args: ['status', '--porcelain'], cwd: worktree }),
-          ).toContain('source-patch.txt')
-          expect(yield* fs.exists(`${canonical}source-patch.txt`)).toBe(false)
-          expect(yield* Git.getCurrentCommit(canonical)).toBe(base)
-          expect(yield* Git.runCommand({ args: ['status', '--porcelain'], cwd: canonical })).toBe(
-            canonicalStatus,
-          )
-          expect(yield* fs.exists(`${worktree}megarepo.kdl`)).toBe(false)
-          expect(yield* fs.exists(`${worktree}megarepo.lock`)).toBe(false)
-          expect(yield* fs.exists(`${worktree}repos`)).toBe(false)
-          const registrations = yield* Git.listWorktrees(bare)
-          expect(registrations.some((entry) => entry.path === worktree.replace(/\/$/u, ''))).toBe(
-            true,
-          )
-          if (remoteState === 'conflicting-tag') {
-            const defaultResult = yield* runMrCommand({
-              cwd: fixture.storePath,
-              command: [
-                'store',
-                'worktree',
-                'new',
-                'test-owner/test-repo',
-                '--ref',
-                'default-fetch',
-                '--base',
-                base,
-                '--output',
-                'json',
-              ],
-              env: { MEGAREPO_STORE: fixture.storePath },
-            })
-            // The default path fetches branches only, so the moved upstream tag no longer
-            // fails it ("would clobber existing tag") and the unrequested local tag stays.
-            expect(defaultResult.exitCode).toBe(0)
-            expect(yield* Git.refExists({ repoPath: bare, ref: 'refs/heads/default-fetch' })).toBe(
-              true,
-            )
-            expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).not.toBe(fetchHeadBefore)
-            expect(yield* Git.resolveRef({ repoPath: bare, ref: 'refs/tags/edge' })).toBe(base)
-          }
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  }
-
-  for (const invalidInput of [
-    'missing-repo',
-    'missing-object',
-    'missing-base',
-    'non-commit',
-    'branch-name',
-    'abbreviated-sha',
-  ] as const) {
-    it.effect(
-      `rejects --no-fetch with ${invalidInput} without writing store state`,
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const fixture = yield* createStoreFixture(
-            invalidInput === 'missing-repo'
-              ? []
-              : [{ host: 'github.com', owner: 'test-owner', repo: 'test-repo' }],
-          )
-          const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']
-          const base =
-            invalidInput === 'branch-name'
-              ? 'main'
-              : invalidInput === 'abbreviated-sha' && bare !== undefined
-                ? (yield* Git.getCurrentCommit(bare)).slice(0, 12)
-                : invalidInput === 'non-commit' && bare !== undefined
-                  ? yield* Git.runCommand({ args: ['rev-parse', 'main^{tree}'], cwd: bare })
-                  : '0123456789012345678901234567890123456789'
-          const before =
-            bare === undefined
-              ? undefined
-              : yield* Git.runCommand({ args: ['show-ref'], cwd: bare })
-          const worktreesBefore = bare === undefined ? undefined : yield* Git.listWorktrees(bare)
-          const result = yield* runMrCommand({
-            cwd: fixture.storePath,
-            command: [
-              'store',
-              'worktree',
-              'new',
-              'test-owner/test-repo',
-              '--no-fetch',
-              '--ref',
-              'source-patch',
-              ...(invalidInput === 'missing-base' ? [] : ['--base', base]),
-              '--output',
-              'json',
-            ],
-            env: { MEGAREPO_STORE: fixture.storePath },
-          })
-          expect(result.exitCode).toBe(1)
-          expect(String(result.exit)).toContain(
-            invalidInput === 'missing-repo'
-              ? 'requires an existing bare repository'
-              : invalidInput === 'missing-base'
-                ? 'requires --ref <new-branch> and an explicit local --base'
-                : invalidInput === 'branch-name' || invalidInput === 'abbreviated-sha'
-                  ? 'requires --base to be a full 40-character commit SHA'
-                  : 'must resolve to a commit already present',
-          )
-          if (bare === undefined) {
-            expect(yield* fs.readDirectory(fixture.storePath)).toEqual([])
-          } else {
-            expect(yield* Git.runCommand({ args: ['show-ref'], cwd: bare })).toBe(before)
-            expect(yield* Git.listWorktrees(bare)).toEqual(worktreesBefore)
-            expect(yield* fs.exists(`${bare}FETCH_HEAD`)).toBe(false)
-          }
-        },
-        Effect.provide(NodeServices.layer),
-        Effect.scoped,
-      ),
-    )
-  }
-
-  for (const missingObject of ['blob', 'commit'] as const) {
-    it.effect(
-      `rejects a partial clone with a missing ${missingObject} without contacting its promisor remote`,
-      Effect.fnUntraced(
-        function* () {
-          const fs = yield* FileSystem.FileSystem
-          const fixture = yield* createStoreFixture([
-            { host: 'github.com', owner: 'test-owner', repo: 'test-repo', withRemote: true },
-          ])
-          const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
-          const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
-          const base = yield* Git.runCommand({ args: ['rev-parse', 'main'], cwd: upstream })
-          const blob = yield* Git.runCommand({
-            args: ['rev-parse', 'main:README.md'],
-            cwd: upstream,
-          })
-          yield* Git.runCommand({
-            args: ['config', 'uploadpack.allowFilter', 'true'],
-            cwd: upstream,
-          })
-          yield* fs.remove(bare, { recursive: true })
-          yield* Git.runCommand({
-            args: ['clone', '--bare', '--filter=blob:none', `file://${upstream}`, bare],
-            cwd: fixture.storePath,
-          })
-          // Confirm this is a real filtered clone, not a complete local copy.
-          expect(
-            yield* Git.runCommand({ args: ['config', 'remote.origin.promisor'], cwd: bare }),
-          ).toBe('true')
-          expect(
-            Exit.isFailure(
-              yield* Git.runCommand({
-                args: ['cat-file', '-e', blob],
-                cwd: bare,
-                env: { GIT_NO_LAZY_FETCH: '1' },
-              }).pipe(Effect.exit),
+            yield* fs.exists(
+              EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('.git')),
             ),
           ).toBe(true)
-          const unreachable = `${fixture.storePath}nonexistent-promisor`
-          yield* Git.runCommand({
-            args: ['remote', 'set-url', 'origin', unreachable],
-            cwd: bare,
-          })
-          const tracePath = `${fixture.storePath}no-fetch-${missingObject}.trace.jsonl`
-          const result = yield* runMrCommand({
-            cwd: fixture.storePath,
-            command: [
-              'store',
-              'worktree',
-              'new',
-              'test-owner/test-repo',
-              '--no-fetch',
-              '--ref',
-              'source-patch',
-              '--base',
-              missingObject === 'blob' ? base : '0123456789012345678901234567890123456789',
-              '--output',
-              'json',
-            ],
-            env: { MEGAREPO_STORE: fixture.storePath, GIT_TRACE2_EVENT: tracePath },
-          })
-          expect(result.exitCode).toBe(1)
-          expect(String(result.exit)).toContain('StoreCommandError')
-          expect(String(result.exit)).toContain(
-            missingObject === 'blob'
-              ? 'could not create worktree from local objects'
-              : 'must resolve to a commit already present',
-          )
-          const trace = yield* fs.readFileString(tracePath)
-          expect(trace).toContain('"name":"cat-file"')
-          expect(trace).not.toContain('"name":"fetch"')
-          expect(trace).not.toContain('"name":"upload-pack"')
-          expect(trace).not.toContain('"child_class":"transport/')
-          expect(trace).not.toContain(unreachable)
+          expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('v2.0.0'))
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
       ),
     )
-  }
-
-  it.effect(
-    'creates from a newly fetched remote branch',
-    Effect.fnUntraced(
-      function* () {
-        const fixture = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'test-owner',
-            repo: 'test-repo',
-            withRemote: true,
-          },
-        ])
-        const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
-        yield* Git.runCommand({ args: ['branch', 'feature', 'main'], cwd: upstream })
-
-        const result = yield* runMrCommand({
-          cwd: fixture.storePath,
-          command: [
-            'store',
-            'worktree',
-            'new',
-            'test-owner/test-repo',
-            '--ref',
-            'feature',
-            '--output',
-            'json',
-          ],
-          env: { MEGAREPO_STORE: fixture.storePath },
-        })
-
-        expect(result.exitCode).toBe(0)
-        const source = parseSourceString('test-owner/test-repo')!
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: fixture.storePath }))
-        const worktreePath = store.getWorktreePath({
-          source,
-          ref: 'feature',
-          refType: 'branch',
-        })
-        expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('feature'))
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'creates a tag-like branch from --base',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-        const fixture = yield* createStoreFixture([
-          {
-            host: 'github.com',
-            owner: 'test-owner',
-            repo: 'test-repo',
-            withRemote: true,
-          },
-        ])
-        const result = yield* runMrCommand({
-          cwd: fixture.storePath,
-          command: [
-            'store',
-            'worktree',
-            'new',
-            'test-owner/test-repo',
-            '--ref',
-            'v2.0.0',
-            '--base',
-            'origin/main',
-            '--output',
-            'json',
-          ],
-          env: { MEGAREPO_STORE: fixture.storePath },
-        })
-
-        expect(result.exitCode).toBe(0)
-        const source = parseSourceString('test-owner/test-repo')!
-        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: fixture.storePath }))
-        const worktreePath = store.getWorktreePath({
-          source,
-          ref: 'v2.0.0',
-          refType: 'branch',
-        })
-        expect(
-          yield* fs.exists(
-            EffectPath.ops.join(worktreePath, EffectPath.unsafe.relativeFile('.git')),
-          ),
-        ).toBe(true)
-        expect(yield* Git.getCurrentBranch(worktreePath)).toEqual(Option.some('v2.0.0'))
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
-
-describe('store worktree paths', () => {
-  it.effect(
-    'should generate correct worktree paths for different ref types',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        // Create store directory
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
-        yield* fs.makeDirectory(storePath, { recursive: true })
-
-        const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Effect.provide(Store, storeLayer)
-
-        // Test path generation for branch
-        const branchSource = parseSourceString('owner/repo#main')!
-        const branchPath = store.getWorktreePath({
-          source: branchSource,
-          ref: 'main',
-        })
-        expect(branchPath).toContain('refs/heads/main/')
-
-        // Test path generation for tag
-        const tagSource = parseSourceString('owner/repo#v1.0.0')!
-        const tagPath = store.getWorktreePath({
-          source: tagSource,
-          ref: 'v1.0.0',
-        })
-        expect(tagPath).toContain('refs/tags/v1.0.0/')
-
-        // Test path generation for commit (must be exactly 40 hex chars)
-        const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
-        const commitSource = parseSourceString(`owner/repo#${commitRef}`)!
-        const commitPath = store.getWorktreePath({
-          source: commitSource,
-          ref: commitRef,
-        })
-        expect(commitPath).toContain('refs/commits/')
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should preserve raw nested branch paths in ref names',
-    Effect.fnUntraced(
-      function* () {
-        const fs = yield* FileSystem.FileSystem
-
-        const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
-        yield* fs.makeDirectory(storePath, { recursive: true })
-
-        const storeLayer = makeStoreLayer({ basePath: storePath })
-        const store = yield* Effect.provide(Store, storeLayer)
-
-        // Test path generation for branch with special characters
-        const source = parseSourceString('owner/repo')!
-        const pathWithSlash = store.getWorktreePath({
-          source,
-          ref: 'feature/my-branch',
-        })
-        expect(pathWithSlash).toContain('refs/heads/feature/my-branch/')
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
-
-describe('lock file pin/unpin operations', () => {
-  it.effect(
-    'should pin a member in the lock file',
-    Effect.fnUntraced(
-      function* () {
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: {
-            'my-lib': 'owner/repo',
-          },
-          lockEntries: {
-            'my-lib': {
-              url: 'git@github.com:owner/repo.git',
-              ref: 'main',
-              commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-              pinned: false,
-            },
-          },
-        })
-
-        const lockPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-
-        // Read lock file and verify initial state
-        const lockFileOpt = yield* readLockFile(lockPath)
-        const lockFile = Option.getOrThrow(lockFileOpt)
-        expect(lockFile.members['my-lib']!.pinned).toBe(false)
-
-        // Import and use pinMember
-        const { pinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
-        const pinnedLockFile = pinMember({ lockFile, memberName: 'my-lib' })
-
-        // Verify the member is now pinned
-        expect(pinnedLockFile.members['my-lib']!.pinned).toBe(true)
-        expect(pinnedLockFile.members['my-lib']!.commit).toBe(
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        )
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should unpin a member in the lock file',
-    Effect.fnUntraced(
-      function* () {
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: {
-            'my-lib': 'owner/repo',
-          },
-          lockEntries: {
-            'my-lib': {
-              url: 'git@github.com:owner/repo.git',
-              ref: 'main',
-              commit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-              pinned: true,
-            },
-          },
-        })
-
-        const lockPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-
-        // Read lock file and verify initial state
-        const lockFileOpt = yield* readLockFile(lockPath)
-        const lockFile = Option.getOrThrow(lockFileOpt)
-        expect(lockFile.members['my-lib']!.pinned).toBe(true)
-
-        // Import and use unpinMember
-        const { unpinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
-        const unpinnedLockFile = unpinMember({
-          lockFile,
-          memberName: 'my-lib',
-        })
-
-        // Verify the member is now unpinned
-        expect(unpinnedLockFile.members['my-lib']!.pinned).toBe(false)
-        expect(unpinnedLockFile.members['my-lib']!.commit).toBe(
-          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-        )
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should not modify other members when pinning/unpinning',
-    Effect.fnUntraced(
-      function* () {
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: {
-            lib1: 'owner/lib1',
-            lib2: 'owner/lib2',
-          },
-          lockEntries: {
-            lib1: {
-              url: 'git@github.com:owner/lib1.git',
-              ref: 'main',
-              commit: '1111111111111111111111111111111111111111',
-              pinned: false,
-            },
-            lib2: {
-              url: 'git@github.com:owner/lib2.git',
-              ref: 'main',
-              commit: '2222222222222222222222222222222222222222',
-              pinned: false,
-            },
-          },
-        })
-
-        const lockPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-
-        const lockFileOpt = yield* readLockFile(lockPath)
-        const lockFile = Option.getOrThrow(lockFileOpt)
-
-        // Pin lib1
-        const { pinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
-        const pinnedLockFile = pinMember({ lockFile, memberName: 'lib1' })
-
-        // Verify lib1 is pinned but lib2 is unchanged
-        expect(pinnedLockFile.members['lib1']!.pinned).toBe(true)
-        expect(pinnedLockFile.members['lib2']!.pinned).toBe(false)
-        expect(pinnedLockFile.members['lib2']!.commit).toBe(
-          '2222222222222222222222222222222222222222',
-        )
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
-
-describe('lock file operations', () => {
-  it.effect(
-    'should create and read lock file with pinned member',
-    Effect.fnUntraced(
-      function* () {
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: {
-            'pinned-lib': 'owner/repo',
-          },
-          lockEntries: {
-            'pinned-lib': {
-              url: 'git@github.com:owner/repo.git',
-              ref: 'main',
-              commit: 'abc1234567890abcdef1234567890abcdef1234',
-              pinned: true,
-            },
-          },
-        })
-
-        const lockPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-        const lockFileOpt = yield* readLockFile(lockPath)
-        expect(Option.isSome(lockFileOpt)).toBe(true)
-
-        const lockFile = Option.getOrThrow(lockFileOpt)
-        expect(lockFile.members['pinned-lib']).toBeDefined()
-        expect(lockFile.members['pinned-lib']!.pinned).toBe(true)
-        expect(lockFile.members['pinned-lib']!.commit).toBe(
-          'abc1234567890abcdef1234567890abcdef1234',
-        )
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-
-  it.effect(
-    'should handle multiple members with different pin states',
-    Effect.fnUntraced(
-      function* () {
-        const { workspacePath } = yield* createWorkspaceWithLock({
-          members: {
-            lib1: 'owner/lib1',
-            lib2: 'owner/lib2',
-            lib3: 'owner/lib3',
-          },
-          lockEntries: {
-            lib1: {
-              url: 'git@github.com:owner/lib1.git',
-              ref: 'main',
-              commit: '1111111111111111111111111111111111111111',
-              pinned: true,
-            },
-            lib2: {
-              url: 'git@github.com:owner/lib2.git',
-              ref: 'v2.0.0',
-              commit: '2222222222222222222222222222222222222222',
-              pinned: false,
-            },
-            lib3: {
-              url: 'git@github.com:owner/lib3.git',
-              ref: 'develop',
-              commit: '3333333333333333333333333333333333333333',
-              pinned: false,
-            },
-          },
-        })
-
-        const lockPath = EffectPath.ops.join(
-          workspacePath,
-          EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
-        )
-        const lockFileOpt = yield* readLockFile(lockPath)
-        const lockFile = Option.getOrThrow(lockFileOpt)
-
-        expect(Object.keys(lockFile.members)).toHaveLength(3)
-        expect(lockFile.members['lib1']!.pinned).toBe(true)
-        expect(lockFile.members['lib2']!.pinned).toBe(false)
-        expect(lockFile.members['lib3']!.pinned).toBe(false)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
-
-describe('source string parsing', () => {
-  it('should correctly identify remote vs local sources', () => {
-    // GitHub shorthand
-    const github = parseSourceString('owner/repo')
-    expect(github).toBeDefined()
-    expect(github!.type).toBe('github')
-    expect(isRemoteSource(github!)).toBe(true)
-
-    // GitHub shorthand with ref
-    const githubWithRef = parseSourceString('owner/repo#main')
-    expect(githubWithRef).toBeDefined()
-    expect(githubWithRef!.type).toBe('github')
-    expect(isRemoteSource(githubWithRef!)).toBe(true)
-
-    // SSH URL
-    const sshUrl = parseSourceString('git@github.com:owner/repo.git')
-    expect(sshUrl).toBeDefined()
-    expect(sshUrl!.type).toBe('url')
-    expect(isRemoteSource(sshUrl!)).toBe(true)
-
-    // HTTPS URL
-    const httpsUrl = parseSourceString('https://github.com/owner/repo.git')
-    expect(httpsUrl).toBeDefined()
-    expect(httpsUrl!.type).toBe('url')
-    expect(isRemoteSource(httpsUrl!)).toBe(true)
-
-    // Local path
-    const localPath = parseSourceString('/path/to/repo')
-    expect(localPath).toBeDefined()
-    expect(localPath!.type).toBe('path')
-    expect(isRemoteSource(localPath!)).toBe(false)
-
-    // Relative path
-    const relativePath = parseSourceString('./relative/repo')
-    expect(relativePath).toBeDefined()
-    expect(relativePath!.type).toBe('path')
-    expect(isRemoteSource(relativePath!)).toBe(false)
-
-    // Home path
-    const homePath = parseSourceString('~/my-repos/lib')
-    expect(homePath).toBeDefined()
-    expect(homePath!.type).toBe('path')
-    expect(isRemoteSource(homePath!)).toBe(false)
-  })
-})
-
-describe('mr store activity snapshot', () => {
-  const snapshotFixture = Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
-    const manifestPath = `${root}/activity.json`
-    // Keep ownership tests deterministic even when Vitest itself runs as root.
-    // The filesystem is real; only this directory's UID is simulated as non-root.
-    const nonRootFs: FileSystem.FileSystem = {
-      ...fs,
-      stat: (path) =>
-        fs
-          .stat(path)
-          .pipe(Effect.map((info) => (path === root ? { ...info, uid: Option.some(1000) } : info))),
-    }
-    const run = (args: ReadonlyArray<string>) =>
-      runMrCommand({
-        cwd: EffectPath.unsafe.absoluteDir(`${root}/`),
-        command: ['store', 'activity', 'snapshot', ...args],
-        env: { MEGAREPO_STORE: root },
-      }).pipe(Effect.provideService(FileSystem.FileSystem, nonRootFs))
-    return { fs, root, manifestPath, nonRootFs, run }
   })
 
-  it.live(
-    '--stdout captures all-uid JSON without publishing into the non-root-controlled store',
-    Effect.fnUntraced(
-      function* () {
-        const { fs, root, run } = yield* snapshotFixture
-        const result = yield* run(['--stdout'])
-        expect(result.exitCode, result.failure).toBe(0)
-        expect(result.stderr).toBe('')
-        // Decode the entire stdout: renderer summaries or log lines would fail.
-        expect(decodeJson(result.stdout)).toMatchObject({
-          schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
-          producer: { name: PROCESS_SNAPSHOT_PRODUCER, version: expect.any(String) },
-          epoch: { host: hostname(), snapshotId: expect.any(String), storeIndex: 0 },
-          capturedAt: expect.any(String),
-          expiresAt: expect.any(String),
-          complete: expect.any(Boolean),
-          errors: expect.any(Array),
-          processCoverage: 'all-uids',
-          processRoots: [root],
-          processIdentities: expect.any(Array),
-          claims: expect.any(Array),
-        })
-        expect(yield* fs.readDirectory(root)).toEqual([])
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+  describe('store worktree paths', () => {
+    it.effect(
+      'should generate correct worktree paths for different ref types',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
 
-  it.live(
-    '--output still rejects a non-root-controlled directory without writing a temp file',
-    Effect.fnUntraced(
-      function* () {
-        const { fs, root, manifestPath, run } = yield* snapshotFixture
-        const result = yield* run(['--output', manifestPath])
-        expect(result.exitCode).toBe(1)
-        expect(result.failure).toContain(
-          'All-uid activity manifest directory is not root-controlled',
-        )
-        expect(result.stdout).toBe('')
-        expect(yield* fs.readDirectory(root)).toEqual([])
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+          // Create store directory
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+          yield* fs.makeDirectory(storePath, { recursive: true })
 
-  it.live(
-    'readers still reject capture JSON in a non-root-controlled directory',
-    Effect.fnUntraced(
-      function* () {
-        const { fs, root, manifestPath, nonRootFs } = yield* snapshotFixture
-        const snapshot = yield* captureProcessActivityManifest({ fs, storeRoots: [root] })
-        const bootId = 'ownership-test-boot'
-        // Remove incomplete-proc rejection as a confounder: ownership must reject
-        // even apparently complete evidence, including a root-owned file.
-        yield* fs.writeFileString(
-          manifestPath,
-          yield* encodeWorkspaceActivityManifest({
-            ...snapshot,
-            epoch: { ...snapshot.epoch, snapshotId: bootId },
-            complete: true,
-            errors: [],
-          }),
-        )
-        let directoryChecked = false
-        const readerFs: FileSystem.FileSystem = {
-          ...nonRootFs,
-          // Boot admission precedes ownership. macOS has no Linux /proc boot ID,
-          // so supply the fixture's identity to reach the same ownership check.
-          readFileString: (...args) =>
-            args[0] === '/proc/sys/kernel/random/boot_id'
-              ? Effect.succeed(bootId)
-              : nonRootFs.readFileString(...args),
-          stat: (path) =>
-            nonRootFs.stat(path).pipe(
-              Effect.map((info) => {
-                if (path === root) directoryChecked = true
-                return path === manifestPath ? { ...info, uid: Option.some(0), mode: 0o644 } : info
-              }),
+          const storeLayer = makeStoreLayer({ basePath: storePath })
+          const store = yield* Effect.provide(Store, storeLayer)
+
+          // Test path generation for branch
+          const branchSource = parseSourceString('owner/repo#main')!
+          const branchPath = store.getWorktreePath({
+            source: branchSource,
+            ref: 'main',
+          })
+          expect(branchPath).toContain('refs/heads/main/')
+
+          // Test path generation for tag
+          const tagSource = parseSourceString('owner/repo#v1.0.0')!
+          const tagPath = store.getWorktreePath({
+            source: tagSource,
+            ref: 'v1.0.0',
+          })
+          expect(tagPath).toContain('refs/tags/v1.0.0/')
+
+          // Test path generation for commit (must be exactly 40 hex chars)
+          const commitRef = 'abcdef1234567890abcdef1234567890abcdef12'
+          const commitSource = parseSourceString(`owner/repo#${commitRef}`)!
+          const commitPath = store.getWorktreePath({
+            source: commitSource,
+            ref: commitRef,
+          })
+          expect(commitPath).toContain('refs/commits/')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should preserve raw nested branch paths in ref names',
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+
+          const tmpDir = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const storePath = EffectPath.ops.join(tmpDir, EffectPath.unsafe.relativeDir('.megarepo/'))
+          yield* fs.makeDirectory(storePath, { recursive: true })
+
+          const storeLayer = makeStoreLayer({ basePath: storePath })
+          const store = yield* Effect.provide(Store, storeLayer)
+
+          // Test path generation for branch with special characters
+          const source = parseSourceString('owner/repo')!
+          const pathWithSlash = store.getWorktreePath({
+            source,
+            ref: 'feature/my-branch',
+          })
+          expect(pathWithSlash).toContain('refs/heads/feature/my-branch/')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
+  describe('lock file pin/unpin operations', () => {
+    it.effect(
+      'should pin a member in the lock file',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {
+              'my-lib': 'owner/repo',
+            },
+            lockEntries: {
+              'my-lib': {
+                url: 'git@github.com:owner/repo.git',
+                ref: 'main',
+                commit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                pinned: false,
+              },
+            },
+          })
+
+          const lockPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          )
+
+          // Read lock file and verify initial state
+          const lockFileOpt = yield* readLockFile(lockPath)
+          const lockFile = Option.getOrThrow(lockFileOpt)
+          expect(lockFile.members['my-lib']!.pinned).toBe(false)
+
+          // Import and use pinMember
+          const { pinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
+          const pinnedLockFile = pinMember({ lockFile, memberName: 'my-lib' })
+
+          // Verify the member is now pinned
+          expect(pinnedLockFile.members['my-lib']!.pinned).toBe(true)
+          expect(pinnedLockFile.members['my-lib']!.commit).toBe(
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          )
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should unpin a member in the lock file',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {
+              'my-lib': 'owner/repo',
+            },
+            lockEntries: {
+              'my-lib': {
+                url: 'git@github.com:owner/repo.git',
+                ref: 'main',
+                commit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                pinned: true,
+              },
+            },
+          })
+
+          const lockPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          )
+
+          // Read lock file and verify initial state
+          const lockFileOpt = yield* readLockFile(lockPath)
+          const lockFile = Option.getOrThrow(lockFileOpt)
+          expect(lockFile.members['my-lib']!.pinned).toBe(true)
+
+          // Import and use unpinMember
+          const { unpinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
+          const unpinnedLockFile = unpinMember({
+            lockFile,
+            memberName: 'my-lib',
+          })
+
+          // Verify the member is now unpinned
+          expect(unpinnedLockFile.members['my-lib']!.pinned).toBe(false)
+          expect(unpinnedLockFile.members['my-lib']!.commit).toBe(
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          )
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should not modify other members when pinning/unpinning',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {
+              lib1: 'owner/lib1',
+              lib2: 'owner/lib2',
+            },
+            lockEntries: {
+              lib1: {
+                url: 'git@github.com:owner/lib1.git',
+                ref: 'main',
+                commit: '1111111111111111111111111111111111111111',
+                pinned: false,
+              },
+              lib2: {
+                url: 'git@github.com:owner/lib2.git',
+                ref: 'main',
+                commit: '2222222222222222222222222222222222222222',
+                pinned: false,
+              },
+            },
+          })
+
+          const lockPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          )
+
+          const lockFileOpt = yield* readLockFile(lockPath)
+          const lockFile = Option.getOrThrow(lockFileOpt)
+
+          // Pin lib1
+          const { pinMember } = yield* Effect.promise(() => import('../core/lock.ts'))
+          const pinnedLockFile = pinMember({ lockFile, memberName: 'lib1' })
+
+          // Verify lib1 is pinned but lib2 is unchanged
+          expect(pinnedLockFile.members['lib1']!.pinned).toBe(true)
+          expect(pinnedLockFile.members['lib2']!.pinned).toBe(false)
+          expect(pinnedLockFile.members['lib2']!.commit).toBe(
+            '2222222222222222222222222222222222222222',
+          )
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
+  describe('lock file operations', () => {
+    it.effect(
+      'should create and read lock file with pinned member',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {
+              'pinned-lib': 'owner/repo',
+            },
+            lockEntries: {
+              'pinned-lib': {
+                url: 'git@github.com:owner/repo.git',
+                ref: 'main',
+                commit: 'abc1234567890abcdef1234567890abcdef1234',
+                pinned: true,
+              },
+            },
+          })
+
+          const lockPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          )
+          const lockFileOpt = yield* readLockFile(lockPath)
+          expect(Option.isSome(lockFileOpt)).toBe(true)
+
+          const lockFile = Option.getOrThrow(lockFileOpt)
+          expect(lockFile.members['pinned-lib']).toBeDefined()
+          expect(lockFile.members['pinned-lib']!.pinned).toBe(true)
+          expect(lockFile.members['pinned-lib']!.commit).toBe(
+            'abc1234567890abcdef1234567890abcdef1234',
+          )
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'should handle multiple members with different pin states',
+      Effect.fnUntraced(
+        function* () {
+          const { workspacePath } = yield* createWorkspaceWithLock({
+            members: {
+              lib1: 'owner/lib1',
+              lib2: 'owner/lib2',
+              lib3: 'owner/lib3',
+            },
+            lockEntries: {
+              lib1: {
+                url: 'git@github.com:owner/lib1.git',
+                ref: 'main',
+                commit: '1111111111111111111111111111111111111111',
+                pinned: true,
+              },
+              lib2: {
+                url: 'git@github.com:owner/lib2.git',
+                ref: 'v2.0.0',
+                commit: '2222222222222222222222222222222222222222',
+                pinned: false,
+              },
+              lib3: {
+                url: 'git@github.com:owner/lib3.git',
+                ref: 'develop',
+                commit: '3333333333333333333333333333333333333333',
+                pinned: false,
+              },
+            },
+          })
+
+          const lockPath = EffectPath.ops.join(
+            workspacePath,
+            EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
+          )
+          const lockFileOpt = yield* readLockFile(lockPath)
+          const lockFile = Option.getOrThrow(lockFileOpt)
+
+          expect(Object.keys(lockFile.members)).toHaveLength(3)
+          expect(lockFile.members['lib1']!.pinned).toBe(true)
+          expect(lockFile.members['lib2']!.pinned).toBe(false)
+          expect(lockFile.members['lib3']!.pinned).toBe(false)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+
+  describe('source string parsing', () => {
+    it('should correctly identify remote vs local sources', () => {
+      // GitHub shorthand
+      const github = parseSourceString('owner/repo')
+      expect(github).toBeDefined()
+      expect(github!.type).toBe('github')
+      expect(isRemoteSource(github!)).toBe(true)
+
+      // GitHub shorthand with ref
+      const githubWithRef = parseSourceString('owner/repo#main')
+      expect(githubWithRef).toBeDefined()
+      expect(githubWithRef!.type).toBe('github')
+      expect(isRemoteSource(githubWithRef!)).toBe(true)
+
+      // SSH URL
+      const sshUrl = parseSourceString('git@github.com:owner/repo.git')
+      expect(sshUrl).toBeDefined()
+      expect(sshUrl!.type).toBe('url')
+      expect(isRemoteSource(sshUrl!)).toBe(true)
+
+      // HTTPS URL
+      const httpsUrl = parseSourceString('https://github.com/owner/repo.git')
+      expect(httpsUrl).toBeDefined()
+      expect(httpsUrl!.type).toBe('url')
+      expect(isRemoteSource(httpsUrl!)).toBe(true)
+
+      // Local path
+      const localPath = parseSourceString('/path/to/repo')
+      expect(localPath).toBeDefined()
+      expect(localPath!.type).toBe('path')
+      expect(isRemoteSource(localPath!)).toBe(false)
+
+      // Relative path
+      const relativePath = parseSourceString('./relative/repo')
+      expect(relativePath).toBeDefined()
+      expect(relativePath!.type).toBe('path')
+      expect(isRemoteSource(relativePath!)).toBe(false)
+
+      // Home path
+      const homePath = parseSourceString('~/my-repos/lib')
+      expect(homePath).toBeDefined()
+      expect(homePath!.type).toBe('path')
+      expect(isRemoteSource(homePath!)).toBe(false)
+    })
+  })
+
+  describe('mr store activity snapshot', () => {
+    const snapshotFixture = Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+      const manifestPath = `${root}/activity.json`
+      // Keep ownership tests deterministic even when Vitest itself runs as root.
+      // The filesystem is real; only this directory's UID is simulated as non-root.
+      const nonRootFs: FileSystem.FileSystem = {
+        ...fs,
+        stat: (path) =>
+          fs
+            .stat(path)
+            .pipe(
+              Effect.map((info) => (path === root ? { ...info, uid: Option.some(1000) } : info)),
             ),
-        }
-        expect(
-          yield* readBudgetWorkspaceActivity({
-            fs: readerFs,
-            config: {
-              manifestPath,
-              agentLivenessProducers: [PROCESS_SNAPSHOT_PRODUCER],
-              builtin: false,
-            },
-          }),
-        ).toBeUndefined()
-        expect(directoryChecked).toBe(true)
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+      }
+      const run = (args: ReadonlyArray<string>) =>
+        runMrCommand({
+          cwd: EffectPath.unsafe.absoluteDir(`${root}/`),
+          command: ['store', 'activity', 'snapshot', ...args],
+          env: { MEGAREPO_STORE: root },
+        }).pipe(Effect.provideService(FileSystem.FileSystem, nonRootFs))
+      return { fs, root, manifestPath, nonRootFs, run }
+    })
 
-  it.live(
-    'requires exactly one destination and retains normalized absolute --output validation',
-    Effect.fnUntraced(
-      function* () {
-        const { fs, root, manifestPath, run } = yield* snapshotFixture
-        for (const args of [[], ['--stdout', '--output', manifestPath]]) {
-          const result = yield* run(args)
+    it.live(
+      '--stdout captures all-uid JSON without publishing into the non-root-controlled store',
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, run } = yield* snapshotFixture
+          const result = yield* run(['--stdout'])
+          expect(result.exitCode, result.failure).toBe(0)
+          expect(result.stderr).toBe('')
+          // Decode the entire stdout: renderer summaries or log lines would fail.
+          expect(decodeJson(result.stdout)).toMatchObject({
+            schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
+            producer: { name: PROCESS_SNAPSHOT_PRODUCER, version: expect.any(String) },
+            epoch: { host: hostname(), snapshotId: expect.any(String), storeIndex: 0 },
+            capturedAt: expect.any(String),
+            expiresAt: expect.any(String),
+            complete: expect.any(Boolean),
+            errors: expect.any(Array),
+            processCoverage: 'all-uids',
+            processRoots: [root],
+            processIdentities: expect.any(Array),
+            claims: expect.any(Array),
+          })
+          expect(yield* fs.readDirectory(root)).toEqual([])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.live(
+      '--output still rejects a non-root-controlled directory without writing a temp file',
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, manifestPath, run } = yield* snapshotFixture
+          const result = yield* run(['--output', manifestPath])
           expect(result.exitCode).toBe(1)
-          expect(result.failure).toContain('Specify exactly one of --output or --stdout')
+          expect(result.failure).toContain(
+            'All-uid activity manifest directory is not root-controlled',
+          )
           expect(result.stdout).toBe('')
-        }
-        for (const path of ['activity.json', `${root}/../activity.json`]) {
-          const result = yield* run(['--output', path])
-          expect(result.exitCode).toBe(1)
-          expect(result.failure).toContain('--output must be a normalized absolute file path')
-        }
-        expect(yield* fs.readDirectory(root)).toEqual([])
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
-})
+          expect(yield* fs.readDirectory(root)).toEqual([])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.live(
+      'readers still reject capture JSON in a non-root-controlled directory',
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, manifestPath, nonRootFs } = yield* snapshotFixture
+          const snapshot = yield* captureProcessActivityManifest({ fs, storeRoots: [root] })
+          const bootId = 'ownership-test-boot'
+          // Remove incomplete-proc rejection as a confounder: ownership must reject
+          // even apparently complete evidence, including a root-owned file.
+          yield* fs.writeFileString(
+            manifestPath,
+            yield* encodeWorkspaceActivityManifest({
+              ...snapshot,
+              epoch: { ...snapshot.epoch, snapshotId: bootId },
+              complete: true,
+              errors: [],
+            }),
+          )
+          let directoryChecked = false
+          const readerFs: FileSystem.FileSystem = {
+            ...nonRootFs,
+            // Boot admission precedes ownership. macOS has no Linux /proc boot ID,
+            // so supply the fixture's identity to reach the same ownership check.
+            readFileString: (...args) =>
+              args[0] === '/proc/sys/kernel/random/boot_id'
+                ? Effect.succeed(bootId)
+                : nonRootFs.readFileString(...args),
+            stat: (path) =>
+              nonRootFs.stat(path).pipe(
+                Effect.map((info) => {
+                  if (path === root) directoryChecked = true
+                  return path === manifestPath
+                    ? { ...info, uid: Option.some(0), mode: 0o644 }
+                    : info
+                }),
+              ),
+          }
+          expect(
+            yield* readBudgetWorkspaceActivity({
+              fs: readerFs,
+              config: {
+                manifestPath,
+                agentLivenessProducers: [PROCESS_SNAPSHOT_PRODUCER],
+                builtin: false,
+              },
+            }),
+          ).toBeUndefined()
+          expect(directoryChecked).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.live(
+      'requires exactly one destination and retains normalized absolute --output validation',
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, manifestPath, run } = yield* snapshotFixture
+          for (const args of [[], ['--stdout', '--output', manifestPath]]) {
+            const result = yield* run(args)
+            expect(result.exitCode).toBe(1)
+            expect(result.failure).toContain('Specify exactly one of --output or --stdout')
+            expect(result.stdout).toBe('')
+          }
+          for (const path of ['activity.json', `${root}/../activity.json`]) {
+            const result = yield* run(['--output', path])
+            expect(result.exitCode).toBe(1)
+            expect(result.failure).toContain('--output must be a normalized absolute file path')
+          }
+          expect(yield* fs.readDirectory(root)).toEqual([])
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  })
+}

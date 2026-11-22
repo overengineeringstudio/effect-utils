@@ -588,22 +588,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "pipeline-attempt-close",
-      "rule": "hosted-runner",
-      "path": "jobs.pipeline-attempt-close.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pipeline-attempt-close",
-      "rule": "runner-not-admitted",
-      "path": "jobs.pipeline-attempt-close.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "pipeline-traces",
       "rule": "runner-fallback",
       "path": "jobs.pipeline-traces.runs-on",

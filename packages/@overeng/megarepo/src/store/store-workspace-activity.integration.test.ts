@@ -7,13 +7,14 @@
  * and a configured manifest never falls back to builtin evidence.
  */
 
+import { Buffer } from 'node:buffer'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { hostname } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Schema } from 'effect'
+import { Effect, Schema, Tracer } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -33,6 +34,18 @@ import {
 } from './store-workspace-activity.ts'
 
 const PRODUCER = 'acceptance-fixture'
+
+const captureSpans = () => {
+  const spans: Array<Tracer.NativeSpan> = []
+  const tracer = Tracer.make({
+    span: (options) => {
+      const span = new Tracer.NativeSpan(options)
+      spans.push(span)
+      return span
+    },
+  })
+  return { spans, tracer }
+}
 const runsAsRoot = process.getuid?.() === 0
 const ptyProbe = spawnSync('pty', ['--version'], { stdio: 'ignore', timeout: 10_000 })
 const ptyMissing =
@@ -579,7 +592,31 @@ describe('readWorkspaceActivity native ownership', () => {
               },
             },
           })
-          const activity = yield* readWorkspaceActivity({ fs })
+          const { spans, tracer } = captureSpans()
+          const activity = yield* readWorkspaceActivity({ fs }).pipe(Effect.withTracer(tracer))
+          const nativeSpans = spans.filter((span) => span.name === 'store.readWorkspaceActivity')
+          expect(nativeSpans).toHaveLength(1)
+          expect(spans.some((span) => span.name === 'store.captureWorkspaceActivity')).toBe(false)
+          const attributes = nativeSpans[0]!.attributes
+          expect(attributes.get('megarepo.store.workspace_activity.commands')).toBe(10)
+          expect(attributes.get('megarepo.store.workspace_activity.failures')).toBe(0)
+          expect(attributes.has('megarepo.store.workspace_activity.first_failure')).toBe(false)
+          expect(attributes.get('megarepo.store.workspace_activity.bytes_read')).toBeGreaterThan(0)
+          if (capture === 'fixture') {
+            const files = (yield* fs.readDirectory(root)).filter(
+              (name) =>
+                (name.startsWith('st3-') === true && name.endsWith('.json') === true) ||
+                name === 'pty-fixture.json',
+            )
+            const sizes = yield* Effect.forEach(files, (name) =>
+              fs
+                .readFileString(`${root}/${name}`)
+                .pipe(Effect.map((value) => Buffer.byteLength(value))),
+            )
+            expect(attributes.get('megarepo.store.workspace_activity.bytes_read')).toBe(
+              sizes.reduce((total, size) => total + size, 0),
+            )
+          }
           expect(activity).toBeDefined()
           expect(activity?.ownerClaims).toEqual([
             {
@@ -619,6 +656,33 @@ describe('readWorkspaceActivity native ownership', () => {
         const activity = yield* readWorkspaceActivity({ fs })
         expect(activity?.ownerClaims).toEqual([])
         expect(activity?.activePaths).toEqual(new Set())
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'retains aggregate bytes and the first budget failure without per-command spans',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root } = yield* fixture
+        yield* withNativeProjection({ fs, root, subjects: {} })
+        yield* fs.writeFileString(`${root}/st3-page.json`, ' '.repeat(2 * 1024 * 1024 + 1))
+        const { spans, tracer } = captureSpans()
+        expect(yield* readWorkspaceActivity({ fs }).pipe(Effect.withTracer(tracer))).toBeUndefined()
+        const nativeSpans = spans.filter((span) => span.name === 'store.readWorkspaceActivity')
+        expect(nativeSpans).toHaveLength(1)
+        expect(spans.some((span) => span.name === 'store.captureWorkspaceActivity')).toBe(false)
+        const attributes = nativeSpans[0]!.attributes
+        expect(attributes.get('megarepo.store.workspace_activity.commands')).toBe(1)
+        expect(attributes.get('megarepo.store.workspace_activity.bytes_read')).toBeGreaterThan(
+          2 * 1024 * 1024,
+        )
+        expect(attributes.get('megarepo.store.workspace_activity.failures')).toBe(1)
+        expect(attributes.get('megarepo.store.workspace_activity.first_failure')).toBe(
+          'ActivityUnavailable: Activity capture exceeds byte limit',
+        )
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

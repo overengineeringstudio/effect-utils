@@ -23,6 +23,7 @@ import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { fleetWorkflowPolicy } from './policy.ts'
 import { publishedRefIf } from './published-ref.ts'
+import { fleetRunnerLabels } from './runners.ts'
 import {
   installNixStep,
   linuxSandboxPrerequisitesStep,
@@ -955,9 +956,17 @@ describe('Linux Nix sandbox fallback', () => {
     )
   })
 
+  it('keeps the tested-tree pipeline prerequisite on hosted capacity', () => {
+    const job = ciWorkflow.data.jobs['tested-tree']!
+    expect(job['runs-on']).toBe('ubuntu-latest')
+    expect(job.if).toBe(
+      "${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (success()) }}",
+    )
+  })
+
   it('denies pipeline close local-flake execution on forks and failed source admission', () => {
     const job = ciWorkflow.data.jobs['pipeline-attempt-close']!
-    expect(job['runs-on']).toBe('ubuntu-latest')
+    expect(job['runs-on']).toBe(fleetRunnerLabels.linuxX64)
     const close = job.steps.find((step) => step.name === 'Link started job roots')!
     expect(close.if).toContain(namespacePrivilegeTrustedPredicate)
     expect(close.if).toContain("needs.default-ref-policy.result == 'success'")
@@ -1431,7 +1440,7 @@ describe('published consumer ref', () => {
     )
     expect(dependents.map(([id]) => id)).toEqual(['pipeline-attempt-close'])
     expect(dependents[0]![1].if).toBe(
-      "${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}",
+      `\${{ (${sameRepoPullRequestGuard()}) && (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always())) }}`,
     )
     expect(JSON.stringify(dependents[0]![1])).not.toContain('needs.publish-manifest-pr.result')
     expect(JSON.stringify(ciWorkflow.data.jobs['published-status']!)).not.toContain(

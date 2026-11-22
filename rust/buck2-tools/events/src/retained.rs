@@ -1,13 +1,13 @@
 //! Host-owned compact evidence, independent of OTLP acknowledgement and worktrees.
-use super::{identity_attributes, sha256_hex, Model};
+use super::{attr, identity_attributes, sha256_hex, spool_chunk, spool_directory, Model};
 use clap::{Args, ValueEnum};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
+    io::{self, BufRead, BufReader, Read, Seek, Write},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 const RETENTION_SECONDS: u64 = 30 * 24 * 60 * 60;
@@ -35,6 +35,8 @@ pub(super) struct Census {
     capture_error: bool,
     #[arg(long)]
     records_dir: Option<PathBuf>,
+    #[arg(long)]
+    spool_dir: Option<PathBuf>,
 }
 
 pub(super) fn directory(explicit: Option<PathBuf>) -> io::Result<PathBuf> {
@@ -81,13 +83,13 @@ fn publish(
     dir: &Path,
     key: &str,
     write: impl FnOnce(&mut File) -> io::Result<()>,
-) -> io::Result<()> {
+) -> io::Result<PathBuf> {
     durable_directory(dir)?;
     let temporary = dir.join(format!(".{}.{}.tmp", std::process::id(), now_ns()?));
     let content_addressed = key.starts_with("build:");
     let mut target = dir.join(format!("{}.jsonl", sha256_hex(key.as_bytes())));
     if !content_addressed && target.exists() {
-        return Ok(());
+        return Ok(target);
     }
     let result = (|| {
         let mut file = OpenOptions::new()
@@ -130,13 +132,13 @@ fn publish(
         File::open(dir)?.sync_all()
     })();
     let _ = fs::remove_file(temporary);
-    result
+    result.map(|()| target)
 }
 fn line(file: &mut File, value: &Value) -> io::Result<()> {
     serde_json::to_writer(&mut *file, value)?;
     file.write_all(b"\n")
 }
-fn manifest(dir: &Path, host: &str) -> io::Result<()> {
+fn manifest(dir: &Path, host: &str) -> io::Result<PathBuf> {
     publish(dir, &format!("manifest:{host}"), |file| {
         line(
             file,
@@ -202,7 +204,8 @@ pub(super) fn census(args: Census) -> io::Result<()> {
         ));
     }
     let dir = directory(args.records_dir)?;
-    manifest(&dir, &args.host)?;
+    let spool = spool_directory(args.spool_dir);
+    let enrollment = manifest(&dir, &args.host)?;
     let phase = match args.phase {
         Phase::Open => "open",
         Phase::Terminal => "terminal",
@@ -214,7 +217,7 @@ pub(super) fn census(args: Census) -> io::Result<()> {
         .as_deref()
         .filter(|id| id.starts_with("ci/"))
         .map_or(Some("supported-entrypoint/local"), |_| None);
-    publish(
+    let snapshot = publish(
         &dir,
         &format!("census:{}:{phase}", args.invocation_id),
         |file| {
@@ -230,6 +233,8 @@ pub(super) fn census(args: Census) -> io::Result<()> {
             )
         },
     )?;
+    queue_snapshot(&enrollment, &spool, &mut 0, None)?;
+    queue_snapshot(&snapshot, &spool, &mut 0, None)?;
     prune(&dir)
 }
 fn allowed(attribute: &Value, resource: bool) -> bool {
@@ -269,7 +274,7 @@ fn allowed(attribute: &Value, resource: bool) -> bool {
         )
     }
 }
-pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
+pub(super) fn capture(model: &Model, dir: &Path, spool: &Path) -> io::Result<()> {
     if model.uuid.is_empty() {
         return Err(io::Error::other(
             "cannot retain evidence without native build ID",
@@ -282,13 +287,12 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
         .chain(identity.iter())
         .filter(|attr| allowed(attr, true))
         .collect();
-    if let Some(host) = resource
+    let enrollment = resource
         .iter()
         .find(|attr| attr["key"] == "host.name")
         .and_then(|attr| attr["value"]["stringValue"].as_str())
-    {
-        manifest(dir, host)?;
-    }
+        .map(|host| manifest(dir, host))
+        .transpose()?;
     let root_id = model
         .resource_attrs
         .iter()
@@ -301,7 +305,7 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
         )
         .find(|attr| attr["key"] == "buck2.root_id")
         .and_then(|attr| attr["value"]["stringValue"].as_str());
-    publish(dir, &format!("build:{}", model.uuid), |file| {
+    let snapshot = publish(dir, &format!("build:{}", model.uuid), |file| {
         line(
             file,
             &json!({"type":"conversion", "build_id":model.uuid,
@@ -325,5 +329,162 @@ pub(super) fn capture(model: &Model, dir: &Path) -> io::Result<()> {
         }
         Ok(())
     })?;
+    if let Some(enrollment) = enrollment {
+        queue_snapshot(&enrollment, spool, &mut 0, None)?;
+    }
+    queue_snapshot(&snapshot, spool, &mut 0, None)?;
     prune(dir)
+}
+
+const MAX_LOG_BODY: usize = 8 * 1024;
+const MAX_REPLAY_BYTES: u64 = 512 * 1024 * 1024;
+
+// The retained bytes, not the transport ACK, are the replay authority.
+fn queue_snapshot(
+    path: &Path,
+    spool: &Path,
+    queued: &mut u64,
+    deadline: Option<Instant>,
+) -> io::Result<()> {
+    let mut file = File::open(path)?;
+    if file.metadata()?.len() > MAX_RECORD_BYTES {
+        return Err(io::Error::other("coverage UNKNOWN: snapshot >64 MiB"));
+    }
+    let mut digest = Sha256::new();
+    let mut record_count = 0usize;
+    let mut last = 0;
+    let mut source_bytes = 0;
+    let mut buffer = [0u8; 65536];
+    loop {
+        let size = file.read(&mut buffer)?;
+        if size == 0 {
+            break;
+        }
+        source_bytes += size;
+        if source_bytes as u64 > MAX_RECORD_BYTES
+            || deadline.is_some_and(|end| Instant::now() >= end)
+        {
+            return Err(io::Error::other(
+                "coverage UNKNOWN: snapshot byte/time limit",
+            ));
+        }
+        digest.update(&buffer[..size]);
+        record_count += buffer[..size].iter().filter(|byte| **byte == b'\n').count();
+        last = buffer[size - 1];
+    }
+    if last != b'\n' {
+        return Err(io::Error::other("coverage UNKNOWN: missing final LF"));
+    }
+    use std::fmt::Write as _;
+    let mut snapshot = String::with_capacity(64);
+    for byte in digest.finalize() {
+        write!(&mut snapshot, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    file.rewind()?;
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    let mut resource = Value::Null;
+    let mut logs = Vec::new();
+    let emission = now_ns()?.to_string();
+    for ordinal in 0..record_count {
+        if deadline.is_some_and(|end| Instant::now() >= end) {
+            return Err(io::Error::other("coverage UNKNOWN: replay time limit"));
+        }
+        line.clear();
+        (&mut reader)
+            .take((MAX_LOG_BODY + 1) as u64)
+            .read_until(b'\n', &mut line)?;
+        if line.pop() != Some(b'\n') {
+            return Err(io::Error::other("coverage UNKNOWN: oversized log line"));
+        }
+        let text = std::str::from_utf8(&line).map_err(io::Error::other)?;
+        if ordinal == 0 {
+            let header: Value = serde_json::from_str(text)?;
+            let host = header["host"]
+                .as_str()
+                .or_else(|| {
+                    header["resource_attributes"]
+                        .as_array()?
+                        .iter()
+                        .find(|attr| attr["key"] == "host.name")?["value"]["stringValue"]
+                        .as_str()
+                })
+                .filter(|host| !host.is_empty())
+                .ok_or_else(|| io::Error::other("coverage UNKNOWN: missing observed host"))?;
+            resource = json!({"attributes":[attr("service.name", "buck2-events"), attr("host.name", host)]});
+            if serde_json::to_vec(&resource)?.len() > 4096 {
+                return Err(io::Error::other("coverage UNKNOWN: resource >4 KiB"));
+            }
+        }
+        let body = serde_json::to_string(&json!({
+            "type":"buck2.occurrence.ledger", "version":1, "snapshotSha256":snapshot,
+            "ordinal":ordinal, "recordCount":record_count, "line":text
+        }))?;
+        if body.len() > MAX_LOG_BODY {
+            return Err(io::Error::other("coverage UNKNOWN: log body >8 KiB"));
+        }
+        let log =
+            serde_json::to_vec(&json!({"timeUnixNano":emission, "body":{"stringValue":body}}))?;
+        if log.len() > 12 * 1024 {
+            return Err(io::Error::other("coverage UNKNOWN: OTLP record >12 KiB"));
+        }
+        if logs.len() + log.len() > super::MAX_OTLP_BODY - 8192 {
+            queue_logs(spool, &resource, &mut logs, queued)?;
+        }
+        if !logs.is_empty() {
+            logs.push(b',');
+        }
+        logs.extend_from_slice(&log);
+    }
+    queue_logs(spool, &resource, &mut logs, queued)
+}
+
+fn queue_logs(
+    spool: &Path,
+    resource: &Value,
+    logs: &mut Vec<u8>,
+    queued: &mut u64,
+) -> io::Result<()> {
+    if logs.is_empty() {
+        return Ok(());
+    }
+    let mut body = Vec::with_capacity(logs.len() + 8192);
+    body.extend_from_slice(b"{\"resourceLogs\":[{\"resource\":");
+    serde_json::to_writer(&mut body, resource)?;
+    body.extend_from_slice(b",\"scopeLogs\":[{\"scope\":{\"name\":\"buck2-events.occurrence-ledger\"},\"logRecords\":[");
+    body.extend_from_slice(logs);
+    body.extend_from_slice(b"]}]}]}");
+    if *queued + body.len() as u64 > MAX_REPLAY_BYTES {
+        return Err(io::Error::other("coverage UNKNOWN: queued >512 MiB"));
+    }
+    spool_chunk(spool, "logs", &body)?;
+    *queued += body.len() as u64;
+    logs.clear();
+    Ok(())
+}
+
+pub(super) fn replay(dir: &Path, spool: &Path, deadline: Instant) -> io::Result<()> {
+    let mut files = Vec::new();
+    let mut bytes = 0u64;
+    for (seen, entry) in fs::read_dir(dir)?.enumerate() {
+        if seen >= 100_000 || Instant::now() >= deadline {
+            return Err(io::Error::other(format!("coverage UNKNOWN: replay entry/time limit; files={} source_bytes={bytes} queued_bytes=0", files.len())));
+        }
+        let entry = entry?;
+        if entry.path().extension().is_none_or(|ext| ext != "jsonl") {
+            continue;
+        }
+        bytes = bytes.saturating_add(entry.metadata()?.len());
+        if !entry.file_type()?.is_file() || files.len() >= 100_000 || bytes > MAX_REPLAY_BYTES {
+            return Err(io::Error::other(format!("coverage UNKNOWN: replay file/count/512 MiB limit; files={} source_bytes={bytes} queued_bytes=0", files.len())));
+        }
+        files.push(entry.path());
+    }
+    files.sort();
+    let mut queued = 0;
+    let result = files
+        .iter()
+        .try_for_each(|path| queue_snapshot(path, spool, &mut queued, Some(deadline)));
+    eprintln!("buck2-events: retained replay files={} source_bytes={bytes} queued_bytes={queued} complete={}; sources retained", files.len(), result.is_ok());
+    result
 }
