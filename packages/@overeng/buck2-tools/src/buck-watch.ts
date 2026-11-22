@@ -13,8 +13,8 @@ import {
 } from './editor-publication-owner.ts'
 import { dispatchEditorView, EditorViewCommandFailure } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
-import { realpathThroughName } from './real-path.ts'
 import { requireRepositoryRelativePath } from './owned-files.ts'
+import { realpathThroughName } from './real-path.ts'
 import { FingerprintCommandFailure } from './typescript-runner.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
@@ -670,7 +670,11 @@ const readEditorInputs = async ({
   workspaceRoot: string
 }): Promise<EditorViewInputs> => {
   const manifestPath = isAbsolute(path) === true ? path : `${workspaceRoot}/${path}`
-  requireEditorPublicationInputs({ root: workspaceRoot, paths: [manifestPath], owner: publicationOwner })
+  requireEditorPublicationInputs({
+    root: workspaceRoot,
+    paths: [manifestPath],
+    owner: publicationOwner,
+  })
   const raw: unknown = JSON.parse(await readFile(manifestPath, 'utf8'))
   if (
     typeof raw !== 'object' ||
@@ -729,9 +733,10 @@ export const prepareEditorPublicationRequest = async ({
   })
   const absoluteArtifact = (path: string): string =>
     isAbsolute(path) === true ? path : `${options.workspaceRoot}/${path}`
-  const authority = isAbsolute(options.workspaceAuthority) === true
-    ? options.workspaceAuthority
-    : `${realpathThroughName(options.repoRoot)}/${options.workspaceAuthority}`
+  const authority =
+    isAbsolute(options.workspaceAuthority) === true
+      ? options.workspaceAuthority
+      : `${realpathThroughName(options.repoRoot)}/${options.workspaceAuthority}`
   requireEditorPublicationInputs({
     root: options.workspaceRoot,
     paths: [
@@ -756,7 +761,10 @@ export const prepareEditorPublicationRequest = async ({
     realpathThroughName(absoluteArtifact(manifest.editorInputs)),
     '--node-modules',
     realpathThroughName(absoluteArtifact(manifest.editorInputs)),
-    ...manifest.readRoots.flatMap((root) => ['--backing-root', realpathThroughName(absoluteArtifact(root))]),
+    ...manifest.readRoots.flatMap((root) => [
+      '--backing-root',
+      realpathThroughName(absoluteArtifact(root)),
+    ]),
     '--cp',
     options.cp,
     '--mv',

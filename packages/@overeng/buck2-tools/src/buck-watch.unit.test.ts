@@ -464,9 +464,10 @@ describe('Buck watch reconciliation', () => {
         prepareEditorPublicationRequest({
           entry,
           outputs: new Map([[entry.editor.inputsManifestTarget, manifest]]),
-          options: publicationOwner === undefined
-            ? fixture.options
-            : { ...fixture.options, publicationOwner },
+          options:
+            publicationOwner === undefined
+              ? fixture.options
+              : { ...fixture.options, publicationOwner },
         })
       const privateManifest = join(privateRoot, 'manifest.json')
       await expect(prepare(privateManifest)).rejects.toThrow()
@@ -479,12 +480,15 @@ describe('Buck watch reconciliation', () => {
           )
           const declared = join(fixture.root, 'declared.json')
           for (const directory of [privateRoot, defaultRoot]) {
-            writeFileSync(declared, JSON.stringify({
-              schema: 'effect-utils/editor-view-inputs/v1',
-              editorInputs: join(directory, 'modules'),
-              packageTree: fixture.packageTree,
-              readRoots: [fixture.dependency],
-            }))
+            writeFileSync(
+              declared,
+              JSON.stringify({
+                schema: 'effect-utils/editor-view-inputs/v1',
+                editorInputs: join(directory, 'modules'),
+                packageTree: fixture.packageTree,
+                readRoots: [fixture.dependency],
+              }),
+            )
             await expect(prepare(declared)).rejects.toThrow()
             if (directory === privateRoot)
               expect(await prepare(declared, owner)).toContain(fixture.nodeModules)
@@ -499,29 +503,38 @@ describe('Buck watch reconciliation', () => {
           symlinkSync(fixture.nodeModules, join(privateRoot, 'buck-out/v2/inputs'))
           mkdirSync(join(defaultRoot, 'inputs'))
           const spelling = `${fixture.root}/alias/../buck-out/v2/inputs`
-          writeFileSync(declared, JSON.stringify({
-            schema: 'effect-utils/editor-view-inputs/v1',
-            editorInputs: spelling,
-            packageTree: fixture.packageTree,
-            readRoots: [spelling],
-          }))
-          expect(await prepare(declared, owner)).toEqual(expect.arrayContaining([fixture.nodeModules]))
-          await expect(prepare(`${privateManifest}/../manifest.json`, owner)).rejects.toMatchObject({
-            code: 'ENOTDIR',
-          })
+          writeFileSync(
+            declared,
+            JSON.stringify({
+              schema: 'effect-utils/editor-view-inputs/v1',
+              editorInputs: spelling,
+              packageTree: fixture.packageTree,
+              readRoots: [spelling],
+            }),
+          )
+          expect(await prepare(declared, owner)).toEqual(
+            expect.arrayContaining([fixture.nodeModules]),
+          )
+          await expect(prepare(`${privateManifest}/../manifest.json`, owner)).rejects.toMatchObject(
+            {
+              code: 'ENOTDIR',
+            },
+          )
           expect(requireEditorPublicationOwner({ root: fixture.root, owner })).toBe(owner)
         },
       })
-      expect(await prepareEditorPublicationRequest({
-        entry,
-        outputs: new Map([[entry.editor.inputsManifestTarget, fixture.manifest]]),
-        options: {
-          ...fixture.options,
-          repoRoot: relative(process.cwd(), fixture.root),
-          workspaceRoot: fixture.packageTree,
-          workspaceAuthority: 'authority.json',
-        },
-      })).toContain(fixture.options.workspaceAuthority)
+      expect(
+        await prepareEditorPublicationRequest({
+          entry,
+          outputs: new Map([[entry.editor.inputsManifestTarget, fixture.manifest]]),
+          options: {
+            ...fixture.options,
+            repoRoot: relative(process.cwd(), fixture.root),
+            workspaceRoot: fixture.packageTree,
+            workspaceAuthority: 'authority.json',
+          },
+        }),
+      ).toContain(fixture.options.workspaceAuthority)
       await reconcileBuckViews({
         request: publicationRequest,
         options: {
@@ -535,8 +548,12 @@ describe('Buck watch reconciliation', () => {
           },
         },
       })
-      expect(readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8')).toContain('λ')
-      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toContain('雪')
+      expect(
+        readFileSync(join(fixture.current, 'node_modules/workspace/index.js'), 'utf8'),
+      ).toContain('λ')
+      expect(readFileSync(join(fixture.current, 'node_modules/dep/index.js'), 'utf8')).toContain(
+        '雪',
+      )
     } finally {
       fixture.cleanup()
     }

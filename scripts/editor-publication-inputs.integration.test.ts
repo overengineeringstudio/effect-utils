@@ -103,19 +103,44 @@ it('keeps private publication inputs intact while default Buck restarts and rema
             expect(admittedOwner).toBe(owner)
             for (const invoke of [publishEditorView, checkEditorView]) {
               await expect(invoke(unowned)).rejects.toThrow()
-              await expect(invoke({
-                ...options,
-                editorInputs: join(defaultOutput, 'editor_inputs'),
-              })).rejects.toThrow('outside its reserved Buck isolation')
+              await expect(
+                invoke({
+                  ...options,
+                  editorInputs: join(defaultOutput, 'editor_inputs'),
+                }),
+              ).rejects.toThrow('outside its reserved Buck isolation')
             }
             await expect(publishEditorViews({ options: [unowned] })).rejects.toThrow()
             const cli = [
-              'check', '--repo-root', root, '--package', '.', '--view-name', 'root',
-              '--cell', 'fixture', '--target', '//:inputs',
-              '--editor-inputs', options.editorInputs, '--node-modules', options.nodeModules,
-              '--backing-root', options.nodeModules, '--workspace-authority', authority,
-              '--cp', options.cp, '--mv', options.mv, '--fingerprint-tool', options.fingerprintTool,
-              '--consumer-cache', options.consumerCache, '--snapshot-retention', '2',
+              'check',
+              '--repo-root',
+              root,
+              '--package',
+              '.',
+              '--view-name',
+              'root',
+              '--cell',
+              'fixture',
+              '--target',
+              '//:inputs',
+              '--editor-inputs',
+              options.editorInputs,
+              '--node-modules',
+              options.nodeModules,
+              '--backing-root',
+              options.nodeModules,
+              '--workspace-authority',
+              authority,
+              '--cp',
+              options.cp,
+              '--mv',
+              options.mv,
+              '--fingerprint-tool',
+              options.fingerprintTool,
+              '--consumer-cache',
+              options.consumerCache,
+              '--snapshot-retention',
+              '2',
             ]
             // Dispatch rejects; only the executable main maps failures to process status.
             await expect(dispatchEditorView({ args: cli })).rejects.toThrow(

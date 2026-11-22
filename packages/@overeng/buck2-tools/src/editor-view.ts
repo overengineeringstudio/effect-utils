@@ -3279,9 +3279,10 @@ const budgetReservationBytes = ({
 const interruptedPublicationPhases = new Set<() => void>()
 
 const admitPublicationInputs = (options: EditorViewOptions): EditorViewOptions => {
-  const workspaceAuthority = isAbsolute(options.workspaceAuthority) === true
-    ? options.workspaceAuthority
-    : `${realpathThroughName(options.repoRoot)}/${options.workspaceAuthority}`
+  const workspaceAuthority =
+    isAbsolute(options.workspaceAuthority) === true
+      ? options.workspaceAuthority
+      : `${realpathThroughName(options.repoRoot)}/${options.workspaceAuthority}`
   requireEditorPublicationInputs({
     root: options.repoRoot,
     paths: [
@@ -4353,7 +4354,9 @@ export const verifyEditorViewSnapshot = async (
 }
 
 /** Validate the live two-hop view against freshly admitted Buck artifacts. */
-export const checkEditorView = async (requestedOptions: EditorViewOptions): Promise<EditorViewRecord> => {
+export const checkEditorView = async (
+  requestedOptions: EditorViewOptions,
+): Promise<EditorViewRecord> => {
   const options = admitPublicationInputs(requestedOptions)
   requireRecordIdentity(options)
   const paths = makePaths(options)
