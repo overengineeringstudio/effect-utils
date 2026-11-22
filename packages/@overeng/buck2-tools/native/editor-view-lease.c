@@ -376,7 +376,23 @@ static void retain(int fd) {
   }
   leases[count++]=(struct lease){fd,status.st_dev,status.st_ino};
 }
-static void defaultCloseOnExec(void) {
+/* Deadline notification is a write-only pipe, never a reader or owner lease.
+ * Validate before targetProgram is set: malformed protocol must not fail open. */
+static int publicationNotificationFd(void) {
+  const char *value=getenv("EDITOR_VIEW_ADMISSION_READY_FD");
+  if(!value) return -1;
+  char *end; errno=0; long fd=strtol(value,&end,10);
+  struct stat status;
+  if(errno || value[0]<'1' || value[0]>'9' || *end || fd<3 || fd>INT_MAX ||
+      fstat((int)fd,&status) || !S_ISFIFO(status.st_mode) ||
+      (fcntl((int)fd,F_GETFL)&O_ACCMODE)!=O_WRONLY) {
+    errno=EINVAL;
+    die("invalid publication notification pipe","EDITOR_VIEW_ADMISSION_READY_FD");
+  }
+  return (int)fd;
+}
+
+static void defaultCloseOnExec(int notificationFd) {
 #ifdef __APPLE__
   const char *path="/dev/fd";
 #else
@@ -388,7 +404,8 @@ static void defaultCloseOnExec(void) {
     char *end; long fd=strtol(entry->d_name,&end,10);
     if(*entry->d_name && !*end && fd>=3 && fd<=INT_MAX) {
       int flags=fcntl((int)fd,F_GETFD);
-      if(flags<0 || fcntl((int)fd,F_SETFD,flags|FD_CLOEXEC)) die("cannot protect inherited descriptor",entry->d_name);
+      int desired=fd==notificationFd?flags&~FD_CLOEXEC:flags|FD_CLOEXEC;
+      if(flags<0 || fcntl((int)fd,F_SETFD,desired)) die("cannot protect inherited descriptor",entry->d_name);
     }
     errno=0;
   }
@@ -649,10 +666,11 @@ int main(int argc, char **argv) {
   }
   if(!trampolineMode && (!command || command>=argc || !roots))
     die("root and command required","arguments");
+  int notificationFd=publicationNotificationFd();
   targetProgram=trampolineMode?trampoline:argv[command];
   targetArgv=trampolineMode?argv:argv+command;
   if(trampolineMode) argv[0]=(char *)trampoline;
-  defaultCloseOnExec();
+  defaultCloseOnExec(notificationFd);
   if(workspaceRoot && setenv("EDITOR_VIEW_LEASE_WORKSPACE_ROOT",workspaceRoot,1))
     die("cannot export workspace",workspaceRoot);
   const char *inherited=getenv("EDITOR_VIEW_LEASE_FDS");
