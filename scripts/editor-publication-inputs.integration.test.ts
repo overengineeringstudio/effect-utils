@@ -117,7 +117,10 @@ it('keeps private publication inputs intact while default Buck restarts and rema
               '--cp', options.cp, '--mv', options.mv, '--fingerprint-tool', options.fingerprintTool,
               '--consumer-cache', options.consumerCache, '--snapshot-retention', '2',
             ]
-            expect((await dispatchEditorView({ args: cli })).exitCode).not.toBe(0)
+            // Dispatch rejects; only the executable main maps failures to process status.
+            await expect(dispatchEditorView({ args: cli })).rejects.toThrow(
+              'live in-process publication owner',
+            )
             expect(reachedVerify).toBe(false)
             const record = await measured({
               name: 'privatePublicationMs',
