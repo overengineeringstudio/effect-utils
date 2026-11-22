@@ -89,8 +89,18 @@ _reader's_ proto (a measured misrendering hazard), so it is fallback-only.
 
 ## Compact local occurrence evidence
 
+```text
+wrapper open -> native Buck -> wrapper terminal
+native log -> compact durable projection -> existing OTLP spool -> export
+```
+
 `buck2-events` owns `${XDG_STATE_HOME:-$HOME/.local/state}/buck2-events/occurrence-records/v1`,
-outside disposable worktrees. `ingest --records-dir DIR` overrides the state root
+outside disposable worktrees. Supported Buck task wrappers persist
+`census --invocation-id ID --phase open --host HOST` before execution and
+`--phase terminal --build-id NATIVE_UUID --exit-code CODE` afterward; a missing
+native build ID is omitted, never synthesized. `--capture-error` on the terminal
+records a failed open write. The census does not require a native log or OTLP.
+`ingest --records-dir DIR` and `census --records-dir DIR` override the state root
 for isolated tests/operator capture; normal callers share the default.
 
 Every immutable JSONL file is atomically published and synced before ingest
@@ -105,9 +115,64 @@ The conversion header carries `build_id`, `root_id`, typed `resource_attributes`
 `ended`, and allowlisted typed OTLP `attributes`. Only native action spans enter
 this projection, not command roots, raw argv, environment, paths, or full traces.
 `retained.rs` is the format/allowlist authority; absent attributes stay unknown.
-A conversion is capped at 64 MiB; overflow/I/O errors fail ingest so native input
-remains available. Records are retained without expiry in this capture boundary;
-worktree teardown must not remove this host-owned evidence.
+
+Census records carry `invocation_id`, `phase`, observed `host`, decimal-string
+`timestamp_ns`, nullable `build_id`/`exit_code`, `capture_error`, `run_id`, and
+`lane`. Local lane is `supported-entrypoint/local`; CI without a supplied native
+lane stays null. Host manifests carry `enrolled_at_ns`, `retention_seconds`,
+`scope: supported-entrypoints`, and `coverage: unknown-until-reconciled`.
+They establish enrollment, not continuous fleet coverage.
+
+Records remain at least 30 days from first durable capture; replay does not
+refresh that clock. A host-wide scan is claimed at most once per UTC day and
+prunes only expired records, never manifests or younger records.
+A conversion is capped at 64 MiB; overflow/I/O errors fail ingest
+so native input remains available. There is no silent size eviction or claim of
+unlimited disk capacity. Existing OTLP delivery remains diagnostic until the
+reader reconciles census opens, terminals, and converted native build IDs.
+Unmatched opens, missing mappings/conversions, capture errors, truncated/conflicting
+snapshots, unknown native fields, unsupported entrypoints and unenrolled hosts
+must remain unknown, not zero. Operator 24-hour per-host counts reconcile exact
+retained snapshots through the existing join reader/read authority, not Tempo
+counts or CI's public artifact credentials. Worktree teardown must not remove
+this host-owned evidence; no new daemon, remote store, exporter or transport
+service is introduced.
+
+Backfill retained native logs without fabricating historical census:
+
+```sh
+buck2-events ingest /preserved/run_events.pb.zst --spool-dir /existing/otel/pending
+```
+
+Inputs are zstd-compressed, varint-length-delimited protobuf: first
+`buck.data.Invocation`, then `buck.daemon.CommandProgress` records. JSON from
+`buck2 log show` is not accepted by this command. Select every preserved input in
+the requested window without sampling; native timestamps govern reader windows,
+not capture time. Backfilled occurrences remain observed-only under unknown
+coverage when independent wrapper census is absent. Ingest queues existing OTLP
+chunks but does not require or invoke export.
+
+Conversion, census and enrollment snapshots also queue through the existing typed
+OTLP chunk spool as logs (`/v1/logs`). Census `--spool-dir` selects the same pending
+directory used by ingest/export; pipeline closure owns later export. Each log body
+is a JSON string `{type:"buck2.occurrence.ledger",version:1,snapshotSha256,ordinal,recordCount,line}`:
+SHA-256 covers the exact LF-terminated retained JSONL bytes, ordinal is zero-based,
+recordCount includes every line, and line is exact UTF-8 without its final LF.
+Reassemble `line + "\n"` in ordinal order and verify the hash before reconciliation.
+Resources carry the snapshot's observed `host.name`, `service.name=buck2-events`,
+and scope `buck2-events.occurrence-ledger`; outer timestamps are emission time,
+while exact native epoch-nanosecond strings remain inside the original line.
+Envelope bodies exceed neither 8 KiB nor 12 KiB as serialized OTLP log records;
+resource metadata is bounded to 4 KiB. Oversize fails with unknown coverage and
+retains source; no row is silently dropped or truncated.
+
+HTTP acceptance can delete pending chunks but never proves downstream durability.
+`buck2-events export --replay-records [--records-dir DIR] --spool-dir DIR` repairs
+downstream loss from retained snapshots, without decoding native logs or a timer.
+Replay fails explicitly on 100,000 scanned entries, 512 MiB source/queued bytes,
+or the shared export time budget, and reports counters; it never silently samples.
+Normal export does not scan 30 days of sources. Transport loss, rejection,
+truncation, incomplete snapshots and conflicts remain unknown until reconciled.
 
 ## Producer Metrics
 

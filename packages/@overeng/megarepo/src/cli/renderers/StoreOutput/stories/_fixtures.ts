@@ -82,6 +82,8 @@ export const createFetchState = (opts: {
   elapsedMs: number
 }): StoreStateType => ({
   _tag: 'Fetch',
+  complete: true,
+  unaccounted: [],
   basePath: '/Users/dev/.megarepo',
   results: opts.results,
   elapsedMs: opts.elapsedMs,
@@ -93,6 +95,8 @@ export const createFetchState = (opts: {
 
 type FetchTimelineAction = {
   _tag: 'SetFetch'
+  complete: boolean
+  unaccounted: []
   basePath: string
   results: StoreFetchResult[]
   elapsedMs: number
@@ -114,6 +118,8 @@ export const createFetchTimeline = (finalState: {
         at: 0,
         action: {
           _tag: 'SetFetch',
+          complete: true,
+          unaccounted: [],
           basePath: '/Users/dev/.megarepo',
           results: [],
           elapsedMs,
@@ -131,6 +137,8 @@ export const createFetchTimeline = (finalState: {
     at: 0,
     action: {
       _tag: 'SetFetch',
+      complete: true,
+      unaccounted: [],
       basePath: '/Users/dev/.megarepo',
       results: [],
       elapsedMs: 0,
@@ -146,6 +154,8 @@ export const createFetchTimeline = (finalState: {
       at: (i + 1) * stepDuration,
       action: {
         _tag: 'SetFetch',
+        complete: true,
+        unaccounted: [],
         basePath: '/Users/dev/.megarepo',
         results: currentResults,
         elapsedMs: i === results.length - 1 ? elapsedMs : currentElapsed,
@@ -245,6 +255,8 @@ export const createGcState = (opts: {
   showForceHint: boolean
 }): StoreStateType => ({
   _tag: 'Gc',
+  complete: true,
+  unaccounted: [],
   basePath: '/Users/dev/.megarepo',
   results: opts.results,
   dryRun: opts.dryRun,
@@ -258,6 +270,8 @@ export const createGcState = (opts: {
 
 type GcTimelineAction = {
   _tag: 'SetGc'
+  complete: boolean
+  unaccounted: []
   basePath: string
   results: StoreGcResult[]
   dryRun: boolean
@@ -273,6 +287,8 @@ const makeGcAction = (opts: {
 }): GcTimelineAction => {
   const action: GcTimelineAction = {
     _tag: 'SetGc',
+    complete: true,
+    unaccounted: [],
     basePath: '/Users/dev/.megarepo',
     results: opts.results,
     dryRun: opts.dryRun,
@@ -350,6 +366,8 @@ export const exampleStoreRepos: StoreRepo[] = [
 
 export const createLsState = (repos: StoreRepo[]): StoreStateType => ({
   _tag: 'Ls',
+  complete: true,
+  unaccounted: [],
   basePath: '/Users/dev/.megarepo',
   repos,
 })
@@ -421,6 +439,8 @@ export const createStatusState = (opts: {
   worktrees: StoreWorktreeStatus[]
 }): StoreStateType => ({
   _tag: 'Status',
+  complete: true,
+  unaccounted: [],
   basePath: '/Users/dev/.megarepo',
   repoCount: opts.repoCount,
   worktreeCount: opts.worktreeCount,
@@ -494,6 +514,8 @@ export const createFixState = (opts: {
   noIssues: boolean
 }): StoreStateType => ({
   _tag: 'Fix',
+  complete: true,
+  unaccounted: [],
   basePath: '/Users/dev/.megarepo',
   results: opts.results,
   dryRun: opts.dryRun,

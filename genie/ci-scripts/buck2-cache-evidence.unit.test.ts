@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import type { ReaderReapiUnavailableShadow } from '../../scripts/buck2-cache-posture.ts'
 import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 import {
   classifyCacheUploadError,
@@ -22,7 +23,6 @@ import {
   finalizeNativeLogFreshness,
   maxCacheEvidenceActions,
   mergeCacheEvidence,
-  type ReaderReapiUnavailableShadow,
 } from './buck2-cache-evidence.ts'
 
 // Reduced native `buck2 log show` records from local-build.pb.zst, decoded by
@@ -1103,12 +1103,12 @@ describe('native Buck cache evidence projection', () => {
       ['invalid argument', 'invalid-argument'],
       ['arbitrary! secret', 'other'],
     ]) {
-      expect(classifyCacheUploadError(message, 'unknown!code')).toEqual({
+      expect(classifyCacheUploadError({ error: message, code: 'unknown!code' })).toEqual({
         category,
         reErrorCode: null,
       })
     }
-    expect(classifyCacheUploadError('', 'PERMISSION_DENIED')).toEqual({
+    expect(classifyCacheUploadError({ error: '', code: 'PERMISSION_DENIED' })).toEqual({
       category: 'permission-denied',
       reErrorCode: 7,
     })

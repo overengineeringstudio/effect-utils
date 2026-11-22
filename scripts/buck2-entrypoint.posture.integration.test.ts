@@ -41,13 +41,73 @@ const values = {
 
 describe('daemon RE posture', () => {
   it.each([
-    { nativeEvidence: false, reader: true, termination: 'exit' },
-    { nativeEvidence: true, reader: true, termination: 'exit' },
-    { nativeEvidence: true, reader: false, termination: 'SIGTERM' },
-    { nativeEvidence: true, reader: true, termination: 'SIGTERM' },
+    {
+      nativeEvidence: false,
+      reader: true,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: true,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: true,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 7,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'exit',
+      optional: true,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'exit',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'exit',
+      optional: true,
+      trusted: true,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: false,
+      termination: 'SIGTERM',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
+    {
+      nativeEvidence: true,
+      reader: true,
+      termination: 'SIGTERM',
+      optional: false,
+      trusted: false,
+      localExit: 0,
+    },
   ])(
-    'preserves native termination through the entrypoint (evidence: $nativeEvidence, reader: $reader, termination: $termination)',
-    async ({ nativeEvidence, reader, termination }) => {
+    'retains original failure and performs at most one LOCAL replay (evidence: $nativeEvidence, reader: $reader, optional: $optional, trusted: $trusted, localExit: $localExit, termination: $termination)',
+    async ({ nativeEvidence, reader, termination, optional, trusted, localExit }) => {
       const root = realpathSync(createTestTempDirectory('buck2-reader-shadow-'))
       const grpc = createServer()
       grpc.on('stream', (stream) => {
@@ -94,11 +154,17 @@ else if(args.includes('audit')) writeFileSync(state,JSON.stringify({project_root
 else if(args.includes('build')) {
  const policy=readFileSync(args[args.lastIndexOf('--config-file')+1],'utf8');
  appendFileSync('commands.jsonl',JSON.stringify({args,policy,noRemote:process.env.BUCK2_NO_REMOTE_CACHE})+'\\n');
+ if(args.includes('--write-build-id')) writeFileSync(args[args.indexOf('--write-build-id')+1],process.env.BUCK_WRAPPER_UUID);
  const sink=args[args.indexOf('--event-log')+1];
  if(args.includes('--event-log')) {
    const trace_id=process.env.BUCK_WRAPPER_UUID;
    const event=phase=>({Event:{trace_id,span_id:1,timestamp:[Math.floor(Date.now()/1000),0],data:{[phase]:{data:{Command:{}}}}}});
    writeFileSync(sink,[event('SpanStart'),event('SpanEnd')].map(JSON.stringify).join('\\n')+'\\n');
+ }
+ if(process.env.BUCK2_NO_REMOTE_CACHE==='1') {
+   if(!args.includes('--local-only') || !args.includes('--no-remote-cache') ||
+     process.env.BUCK2_CACHE_WRITE_BASIC_AUTH || process.env.BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH) process.exit(99);
+   process.exit(${localExit});
  }
  writeSync(2,${JSON.stringify(`${incidentOutput}\n`)});
  ${termination === 'SIGTERM' ? "process.kill(process.pid,'SIGTERM');" : 'process.exit(1);'}
@@ -121,11 +187,13 @@ else if(args.includes('build')) {
               ...process.env,
               HOME: root,
               XDG_CACHE_HOME: join(root, 'cache'),
-              BUCK2_PUBLIC_CACHE_READ_ONLY: '1',
-              BUCK2_NO_REMOTE_CACHE: reader === true ? '' : '1',
+              BUCK2_PUBLIC_CACHE_READ_ONLY: reader === true ? '1' : '',
+              BUCK2_NO_REMOTE_CACHE: '',
+              BUCK2_CACHE_WRITE_OPTIONAL: optional === true ? '1' : '',
+              BUCK2_CACHE_TRUSTED_QUALIFICATION: trusted === true ? '1' : '',
               BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
               BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
-              BUCK2_CACHE_WRITE_BASIC_AUTH: '',
+              BUCK2_CACHE_WRITE_BASIC_AUTH: reader === true ? '' : secret,
               CI: '1',
               BUCK2_CI_POSTURE: '1',
               GITHUB_RUN_ID: 'reader-shadow-fixture',
@@ -145,7 +213,9 @@ else if(args.includes('build')) {
           new Response(child.stderr).text(),
           child.exited,
         ])
-        const expectedExitCode = termination === 'SIGTERM' ? 143 : 1
+        const replay =
+          termination === 'exit' && (reader === true || optional === true) && trusted === false
+        const expectedExitCode = termination === 'SIGTERM' ? 143 : replay === true ? localExit : 1
         expect(code, stderr).toBe(expectedExitCode)
         expect(child.signalCode).toBe(termination === 'SIGTERM' ? 'SIGTERM' : null)
         expect(stdout).toBe('')
@@ -157,52 +227,63 @@ else if(args.includes('build')) {
           const completion = JSON.parse(
             readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'),
           )
-          expect(completion.exitCode).toBe(expectedExitCode)
+          expect(completion.exitCode).toBe(termination === 'SIGTERM' ? 143 : 1)
           expect(completion.sourceComplete).toBe(true)
         }
         const commands = readFileSync(join(root, 'commands.jsonl'), 'utf8')
           .trim()
           .split('\n')
           .map((line) => JSON.parse(line))
-        expect(commands).toHaveLength(1)
-        if (termination === 'SIGTERM') {
-          expect(stderr).not.toContain('no rerun happened; the native failure stands')
+        expect(commands).toHaveLength(replay === true ? 2 : 1)
+        if (replay === false) {
+          expect(stderr).not.toContain('exactly one bounded LOCAL re-execution follows')
+          expect(existsSync(`${evidence}.local-fallbacks.jsonl`)).toBe(false)
           return
         }
-        expect(stderr).toContain('no rerun happened; the native failure stands')
+        expect(stderr).toContain('exactly one bounded LOCAL re-execution follows')
+        expect(stderr).toContain(`original_build_id=${buildId}`)
         expect(commands[0].noRemote).not.toBe('1')
-        expect(buckConfigValues(commands[0].policy)['buck2.remote_cache_enabled']).toBe('true')
-        expect(buckConfigValues(commands[0].policy)['buck2.allow_cache_uploads']).toBe('false')
+        expect(commands[1].noRemote).toBe('1')
+        expect(commands[1].args).toContain('--local-only')
+        expect(commands[1].args).toContain('--no-remote-cache')
+        const policy = buckConfigValues(commands[1].policy)
+        expect(policy['buck2.remote_cache_enabled']).toBe('false')
+        expect(policy['buck2.allow_cache_uploads']).toBe('false')
+        expect(policy['buck2_re_client.http_headers']).toBe('x-buck2-local-only: 1')
+        const relationships = readFileSync(`${evidence}.local-fallbacks.jsonl`, 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        expect(relationships).toHaveLength(1)
+        const relationship = relationships[0]
+        expect(relationship.originalBuildId).toBe(buildId)
+        expect(relationship.localBuildId).not.toBe(buildId)
+        expect(relationship.originalExitCode).toBe(1)
+        expect(relationship.localExitCode).toBe(localExit)
+        expect(relationship.reason).toBe('capabilities')
+        expect(relationship.classification.cause.transportMessage).toBe('tls-handshake-eof')
+        expect(relationship.classification.nativeExitCode).toBe(1)
+        expect(relationship.localOnly).toBe(true)
+        if (nativeEvidence === true) {
+          const original = JSON.parse(
+            readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'),
+          )
+          const local = JSON.parse(
+            readFileSync(
+              `${evidence}.native-build-ids/${relationship.localBuildId}.exit.json`,
+              'utf8',
+            ),
+          )
+          expect(original.exitCode).toBe(1)
+          expect(original.reapiUnavailable).toEqual(relationship.classification)
+          expect(local.exitCode).toBe(localExit)
+        }
         const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
           .trim()
           .split('\n')
           .map((line) => JSON.parse(line))
         expect(rows).toHaveLength(2)
-        expect(rows[1].event).toBe('reader-reapi-unavailable-shadow')
-        expect(rows[1].reason).toBe('capabilities')
-        expect(rows[1].phase).toBe('in_build')
-        expect(rows[1].admissionFallbacks.reapi).toBe(0)
-        expect(rows[1].invocationId).toBe(rows[0].invocationId)
-        expect(rows[1].shadow).toEqual({
-          cause: {
-            capabilitiesUnavailable: true,
-            connectRetry: true,
-            clientInitialization: true,
-            connectUnavailable: false,
-            transportMessage: 'tls-handshake-eof',
-          },
-          command: {
-            subcommand: 'build',
-            // The private evidence sink is transport metadata, not part of the admitted command.
-            argumentCount: commands[0].args.length - (nativeEvidence === true ? 2 : 0),
-          },
-          nativeExitCode: 1,
-          durationMs: expect.any(Number),
-          failedActionCount: nativeEvidence === true ? 2 : 1,
-          wouldDisableRemoteCache: true,
-        })
-        expect(Number.isSafeInteger(rows[1].shadow.durationMs)).toBe(true)
-        expect(rows[1].shadow.durationMs).toBeGreaterThanOrEqual(0)
+        expect(rows.every((row) => row.event !== 'reader-reapi-unavailable-shadow')).toBe(true)
         const collector = Bun.spawn(
           [
             process.execPath,
@@ -217,7 +298,7 @@ else if(args.includes('build')) {
         )
         expect(await collector.exited, await new Response(collector.stderr).text()).toBe(0)
         const projected = JSON.parse(readFileSync(evidence, 'utf8'))
-        expect(projected.admissionInvocations).toEqual([rows[1]])
+        expect(projected.admissionInvocations).toHaveLength(2)
         expect(projected.admissionFallbacks.reapi).toBe(0)
       } finally {
         await new Promise<void>((resolve, reject) =>
@@ -528,7 +609,7 @@ if(process.env.STALLED_TERMINATION==='exit') process.exit(0);
           BUCK2_CACHE_WRITE_OPTIONAL: posture === 'optional-writer-outage' ? '1' : '',
           CI_BUCK2_CACHE_EVIDENCE_PATH: '',
         }
-        const overlay = standaloneCachePostureConfig({ current: '', env })
+        const overlay = standaloneCachePostureConfig({ base: {}, current: '', env })
         // Use the production publisher block and the actual tracked config: neither
         // declares remote_cache_enabled, whose native default is enabled.
         if (posture === 'publisher')
@@ -703,6 +784,206 @@ if(await launcher.exited!==0) throw new Error(launcherStderr);
     expect(cacheDaemonRestartDecision({ daemon: 'busy', matched: false })).toBe('refuse')
     expect(cacheDaemonRestartDecision({ daemon: 'unknown', matched: false })).toBe('refuse')
   })
+
+  it('does not gate an unmanaged reader header or let a map replace GitHub CI declaration', async () => {
+    const root = realpathSync(createTestTempDirectory('buck2-unmanaged-reader-header-'))
+    const args = ['build', '//:fixture']
+    try {
+      writeFileSync(join(root, '.buckconfig'), '[buck2]\nremote_cache_enabled = true\n')
+      writeFileSync(
+        join(root, '.buckconfig.local'),
+        '[buck2_re_client]\nhttp_headers = x-buck2-reader: read-only\n' +
+          '# effect-utils standalone cache posture: begin\n' +
+          '# effect-utils standalone cache posture: end\n',
+      )
+      expect(
+        await admitCacheDaemonCommand({
+          native: '/unused-native',
+          root,
+          args,
+          env: {},
+          admit: async () => args,
+        }),
+      ).toEqual(args)
+      expect(existsSync(join(root, 'buck-out'))).toBe(false)
+      await expect(
+        admitCacheDaemonCommand({
+          native: '/unused-native',
+          root,
+          args,
+          env: {
+            GITHUB_ACTIONS: 'true',
+            BUCK2_REAPI_READ_FORWARDERS:
+              '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41045"}',
+          },
+          admit: async () => {
+            throw new Error('GitHub job reached admission without declaration')
+          },
+        }),
+      ).rejects.toThrow('GitHub Actions job without BUCK2_CI_POSTURE declaration')
+      expect(existsSync(join(root, 'buck-out'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('locks default host reader routing, restarts idle route transitions and refuses active ones', async () => {
+    const root = realpathSync(createTestTempDirectory('buck2-host-reader-posture-'))
+    const native = join(root, 'native')
+    const state = join(root, 'native-state')
+    const calls = join(root, 'calls')
+    const source = 'grpc://cache.fixture.ts.net:41045'
+    const services = [0, 1].map(() => {
+      const service = createServer()
+      service.on('stream', (stream) => {
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      return service
+    })
+    await Promise.all(
+      services.map((service) => {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        service.listen(0, '127.0.0.1', resolve)
+        return promise
+      }),
+    )
+    try {
+      writeFileSync(join(root, '.buckroot'), '')
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = ${source}\ncas_address = ${source}\nengine_address = ${source}\ntls = false\ninstance_name = fixture\n`,
+      )
+      const initial = {
+        project_root: root,
+        isolation_dir: 'v2',
+        active_commands: [],
+        process_info: { pid: 12345 },
+        start_time: 'original-direct-daemon',
+        address: source,
+      }
+      writeFileSync(state, JSON.stringify(initial))
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import {appendFileSync,existsSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {buckConfigValues,readConfig} from ${JSON.stringify(join(import.meta.dir, 'buck2-cache-posture.ts'))};
+const command=process.argv[4];
+appendFileSync(${JSON.stringify(calls)},command+'\\n');
+if(command==='status') { if(existsSync(${JSON.stringify(state)})) console.log(readFileSync(${JSON.stringify(state)},'utf8')); }
+else if(command==='kill') rmSync(${JSON.stringify(state)},{force:true});
+else if(command==='audit') {
+ const values=buckConfigValues(readConfig({path:'.buckconfig'})+'\\n'+readConfig({path:'.buckconfig.local'}));
+ writeFileSync(${JSON.stringify(state)},JSON.stringify({
+  project_root:${JSON.stringify(root)},isolation_dir:'v2',active_commands:[],
+  process_info:{pid:process.pid},start_time:'fixture',
+  address:values['buck2_re_client.action_cache_address'],header:values['buck2_re_client.http_headers']
+ }));
+} else process.exit(9);
+`,
+        { mode: 0o700 },
+      )
+      const targets = services.map((service) => {
+        const address = service.address()
+        if (address === null || typeof address === 'string')
+          throw new Error('expected TCP listener')
+        return `grpc://127.0.0.1:${address.port}`
+      })
+      const env: Record<string, string | undefined> = {
+        BUCK2_REAPI_READ_FORWARDERS: JSON.stringify({ [source]: targets[0] }),
+      }
+      const args = ['build', '//:fixture']
+      const reconcile = () =>
+        admitCacheDaemonCommand({
+          native,
+          root,
+          args,
+          env,
+          admit: (beforeCachePosture) =>
+            directBuckArguments({
+              cwd: root,
+              args,
+              env,
+              cacheDirectory: join(root, 'cache'),
+              beforeCachePosture,
+            }),
+        })
+      await reconcile()
+      await reconcile()
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(1)
+      expect(JSON.parse(readFileSync(state, 'utf8')).address).toBe(targets[0])
+      expect(JSON.parse(readFileSync(state, 'utf8')).header).toBe('x-buck2-reader: read-only')
+      env.BUCK2_REAPI_READ_FORWARDERS = JSON.stringify({ [source]: targets[1] })
+      await reconcile()
+      await reconcile()
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(2)
+      expect(JSON.parse(readFileSync(state, 'utf8')).address).toBe(targets[1])
+      const active = JSON.parse(readFileSync(state, 'utf8'))
+      active.active_commands = [{ trace_id: 'concurrent-command' }]
+      writeFileSync(state, JSON.stringify(active))
+      const overlay = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+      env.BUCK2_REAPI_READ_FORWARDERS = JSON.stringify({ [source]: targets[0] })
+      await expect(reconcile()).rejects.toThrow('refusing to stop it')
+      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(overlay)
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(2)
+      expect(
+        readdirSync(join(root, 'buck-out', '.cache-daemon-posture')).some((name) =>
+          name.startsWith('reapi-job-'),
+        ),
+      ).toBe(false)
+      active.active_commands = []
+      writeFileSync(state, JSON.stringify(active))
+      env.BUCK2_REAPI_READ_FORWARDERS = ''
+      env.BUCK2_NO_REMOTE_CACHE = '1'
+      await reconcile()
+      expect(
+        readFileSync(calls, 'utf8')
+          .split('\n')
+          .filter((call) => call === 'kill'),
+      ).toHaveLength(3)
+      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).not.toContain('x-buck2-reader')
+      expect(JSON.parse(readFileSync(state, 'utf8')).address).toBe(source)
+      const invalidRoot = createTestTempDirectory('buck2-invalid-host-reader-')
+      try {
+        await expect(
+          admitCacheDaemonCommand({
+            native,
+            root: invalidRoot,
+            args,
+            env: {
+              BUCK2_REAPI_READ_FORWARDERS:
+                '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}',
+            },
+            admit: async () => {
+              throw new Error('invalid map reached admission')
+            },
+          }),
+        ).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+        expect(existsSync(join(invalidRoot, 'buck-out'))).toBe(false)
+        expect(existsSync(join(invalidRoot, '.buckconfig.local'))).toBe(false)
+      } finally {
+        rmSync(invalidRoot, { recursive: true, force: true })
+      }
+    } finally {
+      for (const service of services) service.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 15000)
 
   it('reconciles reader to writer and rotated auth once, persists only private keyed state and fails closed while busy', async () => {
     const root = realpathSync(createTestTempDirectory('buck2-daemon-posture-'))

@@ -12,6 +12,11 @@ The fleet policy is maintained in the maintainers' dotfiles.
 
 # Development Commands
 
+For package-local SCG source feedback without devenv, use
+`bash scripts/package-feedback.sh packages/@overeng/scg-<package>`.
+See [the measured loop and prerequisites](context/ci/scg-feedback.md).
+This does not replace Buck or the exact-head `check:quick` merge receipt.
+
 Use `devenv tasks run <task>` (devenv tasks) to execute tasks with dependencies:
 
 - **TypeScript**: `devenv tasks run buck2:quick`

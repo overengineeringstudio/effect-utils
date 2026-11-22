@@ -403,6 +403,49 @@ print("fresh-discovery-required")
             self.assertRegex(stderr, r"admitted on lock .* after waiting \d+\.\d{3}s")
             self.assertIn(str(lock_path), stderr)
 
+    def test_queued_publisher_has_a_separate_finite_execution_deadline(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock_path = Path(scratch) / "publication.lock"
+            entered = Path(scratch) / "entered"
+            env = {**os.environ, "DEVENV_ROOT": scratch,
+                   "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
+                   "BUCK_ISOLATION_DIR": str(Path(scratch) / "private-isolation")}
+            env.pop("BUCK2_NATIVE_BIN", None)
+            with lock_path.open("a") as holder:
+                fcntl.flock(holder, fcntl.LOCK_EX)
+                process = subprocess.Popen(
+                    [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                     "1", "0.1", "--lock", str(lock_path), sys.executable, "-c",
+                     "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(60)",
+                     str(entered)],
+                    env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                try:
+                    # Observe actual queued admission before waiting longer than
+                    # the execution budget; process startup is not the clock.
+                    captured = b""
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(process.stderr, selectors.EVENT_READ)
+                        while b"[editor-view-admission-wait] end\n" not in captured:
+                            self.assertTrue(selector.select(timeout=10), captured.decode())
+                            chunk = os.read(process.stderr.fileno(), 8192)
+                            self.assertTrue(chunk, captured.decode())
+                            captured += chunk
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        process.communicate(timeout=2)
+                    self.assertFalse(entered.exists())
+                    fcntl.flock(holder, fcntl.LOCK_UN)
+                    _, stderr = process.communicate(timeout=5)
+                    self.assertEqual(process.returncode, 124, stderr)
+                    self.assertTrue(entered.exists())
+                    self.assertIn("admitted on lock", stderr)
+                    self.assertIn("exceeded its 1s execution deadline", stderr)
+                finally:
+                    fcntl.flock(holder, fcntl.LOCK_UN)
+                    if process.poll() is None:
+                        process.terminate()
+                    process.communicate(timeout=5)
+
     def test_signal_cancels_queued_admission_and_names_lock(self):
         with tempfile.TemporaryDirectory() as scratch:
             lock_path = Path(scratch) / "publication.lock"

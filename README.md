@@ -65,7 +65,11 @@ epochs reject before restart. This is not publisher verification or permission
 to promote arbitrary releases: consumers own that human-controlled boundary.
 The Linux nested-KVM proof is
 `nix build ./nix/immutable-microvm#checks.x86_64-linux.lifecycle`.
-It needs a KVM-capable admitted lane, not an unapproved new hosted CI job.
+The `Immutable Authority Lifecycle` same-repository PR workflow runs that proof on
+the admitted public Namespace KVM selector, serialized across public heavy jobs.
+It builds both immutable image/runner closures first, then exercises cold boot,
+update, automatic rollback, restart and persistent state with no enrollment,
+provider credentials, deployment or cache publishing.
 
 ## Standalone Nix-staged JavaScript and TypeScript
 
@@ -496,10 +500,22 @@ optimization is tracked in [#1915](https://github.com/overengineeringstudio/effe
 devenv tasks run buck2:editor:publish:all
 ```
 
-Each authority/bootstrap/publication invocation has a **300-second total deadline**
-(plus a 5-second forced-kill grace), including Buck builds, filesystem work and
-lock waits. A separate supervisor owns the publication session and always escalates
-to a group-wide kill after the grace, even if the authority already exited.
+Authority and default scoped-publication invocations retain a **300-second execution
+deadline**. Standalone-staging publication explicitly reserves **600 seconds**:
+300 seconds for preparation plus a 300-second payload allowance. A cold
+run spent 202.793 seconds preparing its single Genie view before the payload
+started; its successful total duration is unknown because the old 300-second cap
+expired. This is a bounded allowance, not a measured completion guarantee. The
+`buck2:editor:publish:test:megarepo:unbounded` publisher likewise reserves
+**600 seconds**: a cold run spent 135.8 seconds reserving its megarepo view and
+entered materialization at 160.5 seconds elapsed, and its Buck build had already
+succeeded when the old 300-second cap killed the publication.
+Source bootstrap reserves **300 seconds for startup plus 300 seconds per requested
+package**. Aggregate batch policies and every other scoped default are unchanged.
+Execution deadlines begin
+after per-worktree publication-lock admission and cover Buck builds and filesystem
+work. A separate supervisor owns the publication session and always escalates to a
+group-wide kill after a 5-second grace, even if the authority already exited.
 Fingerprint admission closes on termination. Expiry prints a deadline diagnostic and fails nonzero; partial
 publication is never reported as success. This bounds shared-lane occupancy
 well below the 53-minute TT-148 incident. Both view preparations and fingerprint
@@ -870,6 +886,10 @@ which can contain isolation-looking options. Lifecycle resolution conservatively
 supports `run TARGET [-- payload]` with Buck options before `run`; other run
 forms retain daemons with the same fail-closed warning rather than guessing
 where Buck options end.
+CI cache admission separately uses the native arity-aware resolver for declared
+`run` trace flags; unknown arity and unsafe isolation/argfiles still fail closed.
+The ordinary-clone runtime CAS is ignored state, not source; other untracked
+sources refuse with at most ten JSON-escaped paths.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
 At exit it invokes native `buck2 kill` only when a fresh status identifies the

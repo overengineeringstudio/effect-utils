@@ -295,6 +295,25 @@ for (const [checkTask, aggregateTask] of [
     name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
+ok({
+  condition:
+    reaches({ start: 'check:quick', target: 'buck2:editor:publish:standalone-staging:quick' }) &&
+    reaches({ start: 'buck2:editor:publish:standalone-staging:quick', target: 'buck2:quick' }) &&
+    reaches({ start: 'check:quick', target: 'buck2:editor:publish:standalone-staging' }) === false,
+  name: 'check:quick completes its Buck writer before standalone publication reads mutable outputs',
+})
+ok({
+  condition:
+    reaches({ start: 'lint:check:standalone-staging', target: 'buck2:quick' }) === false &&
+    reaches({ start: 'lint:check', target: 'buck2:quick' }) === false,
+  name: 'standalone lint does not select the quick Buck aggregate',
+})
+ok({
+  condition:
+    readFileSync(requireTask('check:quick:standalone-staging').command, 'utf8') ===
+    readFileSync(requireTask('lint:check:standalone-staging').command, 'utf8'),
+  name: 'quick and standalone lint execute the same staging guard payload',
+})
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
     condition: reaches({ start: checkTask, target: 'nix:check:quick' }),
@@ -762,6 +781,7 @@ if (ciUnitTest === false) {
 const editorPublishers = [...dependencies.keys()].filter(
   (name) =>
     name === 'buck2:editor:bootstrap' ||
+    name === 'content-address:contract:prepare' ||
     name === 'buck2:editor:publish' ||
     name.startsWith('buck2:editor:publish:'),
 )
@@ -856,10 +876,36 @@ for (const name of editorPublishers) {
         actualDeadline === 'none' && body.includes('# editor-view-batch-budget:') === false,
       name: `${name} has no total publication deadline or unused budget metadata`,
     })
+  } else if (/editor-view-authority\.ts"\s+bootstrap\s/u.test(body) === true) {
+    const expectedDeadline = 300 * (1 + packages.length)
+    ok({
+      condition: Number(actualDeadline) === expectedDeadline,
+      name: `${name} reserves 300s startup plus 300s per bootstrap package (${expectedDeadline}s)`,
+    })
+  } else if (
+    name === 'buck2:editor:publish:standalone-staging' ||
+    name === 'buck2:editor:publish:standalone-staging:quick'
+  ) {
+    ok({
+      condition:
+        actualDeadline === '600' &&
+        packages.length === 1 &&
+        packages[0] === 'packages/@overeng/genie' &&
+        /editor-view-authority\.ts"\s+publish\s/u.test(body) === true,
+      name: `${name} reserves 300s preparation plus 300s payload for its single Genie view`,
+    })
+  } else if (name === 'buck2:editor:publish:test:megarepo:unbounded') {
+    ok({
+      condition:
+        actualDeadline === '600' &&
+        packages.includes('packages/@overeng/megarepo') &&
+        /editor-view-authority\.ts"\s+publish\s/u.test(body) === true,
+      name: `${name} reserves 300s preparation plus 300s payload for the cold megarepo view`,
+    })
   } else {
     ok({
       condition: actualDeadline === '300',
-      name: `${name} retains the 300s scoped/bootstrap publication cap`,
+      name: `${name} retains the 300s scoped publication cap`,
     })
   }
   publisherStateRoots.set(
@@ -1136,6 +1182,9 @@ ok({
 ok({
   condition:
     editorViewHelper.includes('deadlineSeconds ? 300') &&
+    /deadlineSeconds\s*\?\s*\(?\s*if mode == "bootstrap" && packagePaths != null then\s+300 \* \(1 \+ builtins\.length packagePaths\)\s+else\s+300\s*\)?,/u.test(
+      editorViewHelper,
+    ) &&
     editorViewHelper.includes(
       'if deadlineSeconds == null then "none" else toString deadlineSeconds',
     ) &&

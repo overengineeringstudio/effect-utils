@@ -87,6 +87,40 @@ behavior is unchanged. Baseline-measurement dispatches still exclude the lane.
 
 `.github/repo-settings.json.genie.ts` derives the repository ruleset directly from `requiredCIJobs` (the expanded `REQUIRED_CI_JOB_NAMES` plus `STANDALONE_REQUIRED_CI_JOB_NAMES`). The same ruleset requires GitHub's native merge queue with `SQUASH`, `ALLGREEN`, build concurrency one, merge limit one, and a 180-minute check-response timeout. Required contexts are unchanged by the queue cutover: a PR's skipped heavy checks permit queue admission, not direct merge; the native queue must obtain successful real heavy-job results on its synthetic combined head. There are no admission labels, sentinel successes, or per-PR heavy cohorts.
 
+### Local exact-head receipt admission
+
+The authorized repository enqueuer runs
+`node scripts/check-quick-receipt.mjs --pr N` locally on Linux. The command
+fetches the current PR head into a separate detached gate worktree, runs the
+canonical `check:quick` through `gate-slot`, requires its passing exact-head
+receipt, posts an allowlisted JSON receipt comment, waits for required PR
+checks, marks a draft ready, and requests SHA-guarded native queue admission.
+This allows a draft's first local check without a circular readiness hold.
+The enqueuer remains responsible for independent review; required queue checks
+remain separate gates. `--receipt-only` produces the same evidence without
+waiting for CI, changing readiness, or requesting admission.
+
+Receipt comments contain `check-quick-receipt/v1` JSON and a SHA-256 digest of
+the exact JSON line, excluding the code fence and trailing newline. The digest
+detects accidental modification; it is not a signature or independent proof of
+authorship. The native gate receipt and log remain in the local state directory
+printed by the command. Hostnames, local paths and logs are not published.
+The command raises the local task-trace capture bound to 256 MiB because the
+canonical check exceeds the gate's 8 MiB diagnostic default. Admission requires
+canonical exit zero, local clean/exact-head execution and complete failure and
+not-run diagnostics with no failures or skipped tasks. Truncated task traces,
+unknown failure diagnostics and reported unfinished tasks refuse admission.
+The bounded active-task summary can overflow during a successful concurrent
+check; `incompleteTasksTruncated` is published verbatim, not used as a new
+unfinished-work authority over a passing canonical check and complete failure
+trace. A failed, dirty, moved or nonlocal gate cannot enqueue. A head
+change during fetch or execution refuses admission; the final enqueue is also
+SHA-guarded. With an agent seat, worktrees follow the normal lease/reaping
+contract. Plain local sessions do not fabricate lease attribution: on exit,
+their clean worktree is removed; dirty trees remain available for inspection.
+CI execution is deliberately refused: hosted or merge-group evidence does not
+replace the required local exact-head check.
+
 Linux `test` and Darwin `test-macos` are physical workflow jobs with static check names `test (namespace-profile-linux-x86-64)` and `test (namespace-profile-macos-arm64)`. Both retain canonical pipeline job `test` with their respective runner dimension, so queue validation and historical trace identities agree. Darwin retains its native/compiled product smoke after unit tests.
 
 Darwin mounts the Namespace cache volume at `/Users/runner/.cache/nix-substituter`

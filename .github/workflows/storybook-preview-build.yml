@@ -277,5 +277,5 @@ jobs:
         shell: bash
         run: ':'
     concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code' }}-build-storybooks"
-      cancel-in-progress: true
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.run_attempt > 1 && format('code-rerun-{0}', github.run_id) || 'code-head') }}-build-storybooks"
+      cancel-in-progress: ${{ github.run_attempt == 1 }}
