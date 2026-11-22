@@ -1,6 +1,12 @@
+import {
+  quickContractInputs,
+  withQuickContractSources,
+} from '../../genie/buck2/quick-contract-inputs.ts'
 import { pnpmWorkspaceMemberPaths } from '../../genie/packages.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { cargoBuck2WorkspaceMemberPaths } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
+
+const { contracts, owners: contractSourceExports } = quickContractInputs
 
 const declaredPackages = pnpmWorkspaceMemberPaths
 
@@ -37,8 +43,8 @@ if (new Set(sourceSets).size !== sourceSets.length) {
   throw new Error('Static source-set census contains duplicate Buck labels')
 }
 
-export default createGenieOutput({
-  data: { declaredPackages, nixSourceSets, repositorySourceSets, sourceSets },
+export default withQuickContractSources(createGenieOutput({
+  data: { contracts, contractSourceExports, declaredPackages, nixSourceSets, repositorySourceSets, sourceSets },
   stringify: () => `# Generated file - DO NOT EDIT
 # Source: TypeScript admission package boundaries and root static source ownership
 
@@ -79,8 +85,9 @@ quick_contracts(
     name = "check_quick",
     quick = "//:quick",
     runtime = "//buck2/toolchains:quick_contracts",
+    contracts = ${JSON.stringify(contracts, null, 4)},
     source_sets = ${JSON.stringify([...new Set([...sourceSets, ...nixSourceSets, ...repositorySourceSets])].toSorted(), null, 4)},
     visibility = ["PUBLIC"],
 )
 `,
-})
+}), import.meta.url)

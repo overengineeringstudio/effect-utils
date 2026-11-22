@@ -1,2 +1,13 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 # Public rule API lives in defs.bzl; concrete producer bindings belong to
 # repository adapters next to their executable targets.
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/provenance",
+    srcs = [
+    "BUCK",
+    "defs.bzl"
+],
+    visibility = ["PUBLIC"],
+)

@@ -1,3 +1,4 @@
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { cargoBuck2PackageProjection } from '../../buck2-tools/core/cargo-buck2-package-projection.ts'
 
 const projection = cargoBuck2PackageProjection({
@@ -5,8 +6,8 @@ const projection = cargoBuck2PackageProjection({
   compileTimeResources: [{ path: 'rust/effect-rust-fixtures/math-interop/vectors.json' }],
 })
 
-export default {
+export default withQuickContractSources({
   ...projection,
   stringify: (args: Parameters<typeof projection.stringify>[0]) =>
     `${projection.stringify(args)}\nexport_file(name = "vectors", src = "vectors.json", visibility = ["PUBLIC"])\n`,
-}
+}, import.meta.url)

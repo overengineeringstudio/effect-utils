@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2/products:defs.bzl", "build_product", "javascript_product")
 load("//buck2/dependencies:defs.bzl", "pnpm_runtime_closure")
 
@@ -18,3 +19,14 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/products",
+    srcs = [
+    "BUCK",
+    "defs.bzl",
+    "vite-runtime-fixture.mjs"
+],
+    visibility = ["PUBLIC"],
+)

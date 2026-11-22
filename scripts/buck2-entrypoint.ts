@@ -708,6 +708,12 @@ export const directBuckArguments = async ({
     ) === true
   )
     reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv, base: effectiveBase })
+  // Stable, nonsecret caller context is a declared input of local check actions.
+  // Per-run trace IDs and credentials deliberately never enter their cache keys.
+  const agentActor = env['FRACTAL_AGENT'] || env['ST_AGENT']
+  if (agentActor !== undefined) overrides['quick_contracts.agent_actor'] = agentActor
+  const policyPath = env['WORKTREE_POLICY_PATH']
+  if (policyPath !== undefined) overrides['quick_contracts.policy_path'] = policyPath
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =

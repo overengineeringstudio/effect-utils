@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("//buck2/platforms:defs.bzl", "host_platform_label")
 load("//buck2/toolchains:defs.bzl", "bun_toolchain", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "nix_go_bootstrap_toolchain", "nix_python_bootstrap_toolchain")
@@ -255,5 +256,18 @@ cross_cell_product_identity(
     name = "cross_cell_product_mismatch",
     executable_target_platform = "//buck2/platforms:macos_aarch64",
     target_platform = "//buck2/platforms:linux_x86_64",
+    visibility = ["PUBLIC"],
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/toolchains",
+    srcs = [
+    "BUCK",
+    "configured.bzl",
+    "defs.bzl",
+    "provider_identity_fixture.bzl",
+    "ts_sandbox.bzl"
+],
     visibility = ["PUBLIC"],
 )

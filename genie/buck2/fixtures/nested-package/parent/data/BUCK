@@ -1,5 +1,16 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
 export_materialization_inputs([
     "fixture.json",
 ])
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "genie/buck2/fixtures/nested-package/parent/data",
+    srcs = [
+    "BUCK",
+    "fixture.json"
+],
+    visibility = ["PUBLIC"],
+)

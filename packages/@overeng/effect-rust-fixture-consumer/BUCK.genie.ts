@@ -1,3 +1,4 @@
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
 import { createGenieOutput } from '../genie/src/runtime/core.ts'
@@ -22,7 +23,7 @@ export const buck2TypeScriptAdmission = {
 } as const satisfies Buck2TypeScriptAdmission
 
 const projection = buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)
-export default createGenieOutput({
+export default withQuickContractSources(createGenieOutput({
   data: projection.data,
   stringify: (ctx) =>
     [
@@ -40,4 +41,4 @@ export default createGenieOutput({
         '',
       ]),
     ].join('\n'),
-})
+}), import.meta.url)

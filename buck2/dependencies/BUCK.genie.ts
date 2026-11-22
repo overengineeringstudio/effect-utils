@@ -1,4 +1,5 @@
 // @genie-bootstrap
+import { withQuickContractSources } from '../../genie/buck2/quick-contract-inputs.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { renderGenieOutput } from '../../packages/@overeng/genie/src/runtime/node/render.ts'
 import { loadRealPnpmLockData } from './generate.ts'
@@ -26,7 +27,7 @@ alias(
 )
 `
 
-const output = createGenieOutput({
+const output = withQuickContractSources(createGenieOutput({
   data: { store },
   stringify: () =>
     `# Generated file - DO NOT EDIT
@@ -57,7 +58,7 @@ ${renderPnpmPlatformGatedPackages({ metadata })}
 ${renderPnpmPackageTargets({ metadata, sidecar })}
 ${renderPnpmStoreBuck(store)}
 ${freshnessRuntime}`,
-})
+}), import.meta.url)
 
 export default output
 

@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load(":probe.bzl", "ts_sandbox_probe")
 
 # Linux containment receipt (the default output is JSON):
@@ -14,5 +15,17 @@ ts_sandbox_probe(
     name = "bash-probe",
     probe = "probe.sh",
     non_ts = True,
+    visibility = ["PUBLIC"],
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/tests/ts_sandbox",
+    srcs = [
+    "BUCK",
+    "probe.bzl",
+    "probe.sh",
+    "probe.ts"
+],
     visibility = ["PUBLIC"],
 )

@@ -1,1 +1,14 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 # Parent package boundary
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "genie/buck2/fixtures/nested-package/parent",
+    srcs = [
+    "BUCK",
+    "bin/main.ts",
+    "config.json",
+    "vitest.config.ts"
+],
+    visibility = ["PUBLIC"],
+)

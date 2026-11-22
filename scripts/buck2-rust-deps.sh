@@ -275,6 +275,16 @@ if (archives.length > 0)
   exit 1
 fi
 
+# This repository's native contract graph consumes exact files from Reindeer
+# package boundaries. Keep the generic gate unchanged for external consumers.
+if [ -f "$root/nix/quick-contracts-targets.json" ]; then
+  "$bun" -e '
+const [helper, candidate, owner] = process.argv.slice(1);
+const { appendQuickContractSources } = await import(helper);
+await Bun.write(candidate, appendQuickContractSources(await Bun.file(candidate).text(), owner));
+' "$root/genie/buck2/quick-contract-inputs.ts" "$candidate" "$(dirname "$third_party_buck_relative")"
+fi
+
 case "$mode" in
   generate)
     chmod 0644 "$candidate"

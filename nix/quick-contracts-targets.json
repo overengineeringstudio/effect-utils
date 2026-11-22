@@ -1,0 +1,458 @@
+{
+  "buck2:cache-admission:check": {
+    "paths": [
+      "scripts/buck2-cache-admission-check.sh"
+    ],
+    "prefixes": [
+      "buck2/",
+      "packages/@overeng/buck2-tools/src/",
+      "scripts/buck2-",
+      "scripts/fixtures/",
+      "scripts/test-tmp"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "buck2:cache-posture:ci-test": {
+    "paths": [
+      "genie/ci-scripts/buck2-action-evidence.ts",
+      "nix/buck2.nix",
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+    ],
+    "prefixes": [
+      "buck2/",
+      "packages/@overeng/buck2-tools/src/",
+      "scripts/buck2-",
+      "scripts/fixtures/",
+      "scripts/test-tmp"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "buck2:cache-posture:test": {
+    "paths": [
+      "genie/ci-scripts/buck2-action-evidence.ts",
+      "nix/buck2.nix",
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+    ],
+    "prefixes": [
+      "buck2/",
+      "packages/@overeng/buck2-tools/src/",
+      "scripts/buck2-",
+      "scripts/fixtures/",
+      "scripts/test-tmp"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "buck2:capabilities:test": {
+    "paths": [
+      "nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh",
+      "nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh",
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts",
+      "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
+      "nix/buck2-generated-worktree-roots.json"
+    ],
+    "prefixes": [
+      "buck2/",
+      "packages/@overeng/buck2-tools/src/",
+      "scripts/buck2-",
+      "scripts/fixtures/",
+      "scripts/test-tmp"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "buck2:providers:check": {
+    "paths": [
+      ".buckconfig",
+      ".buckroot"
+    ],
+    "prefixes": [
+      "buck2/",
+      "genie/buck2/",
+      "rust/third-party/"
+    ],
+    "requires": [
+      "buck2:cache-admission:check",
+      "buck2:rust-deps:check",
+      "buck2:task-guards:check",
+      "genie:check"
+    ],
+    "cache_policy": "local-validation"
+  },
+  "buck2:rust-deps:check": {
+    "paths": [
+      "genie/buck2/quick-contract-inputs.ts",
+      "nix/quick-contracts-sequence.nix",
+      "nix/quick-contracts-targets.json",
+      "nix/devenv-modules/tasks/shared/buck2-rust-deps.nix",
+      "nix/reindeer.nix",
+      "scripts/buck2-rust-deps.sh",
+      "scripts/buck2-rust-supply-manifest.ts"
+    ],
+    "prefixes": [
+      "nix/workspace-tools/lib/buck2-cargo",
+      "nix/workspace-tools/lib/buck2-git",
+      "packages/@overeng/genie/src/runtime/",
+      "rust/"
+    ],
+    "requires": [],
+    "cache_policy": "local-validation"
+  },
+  "buck2:task-guards:check": {
+    "paths": [
+      "devenv.nix",
+      "nix/devenv-modules/tasks/shared/tests/devenv-task-graph.test.sh",
+      "nix/devenv-modules/tasks/shared/tests/notion-integration-ci.test.sh",
+      "nix/quick-contracts-sequence.nix",
+      "nix/quick-contracts-sequence.test.nix",
+      "scripts/devenv-task-graph-check.mjs"
+    ],
+    "prefixes": [
+      "genie/buck2/",
+      "nix/devenv-modules/",
+      "packages/@overeng/buck2-tools/",
+      "scripts/buck2-"
+    ],
+    "requires": [],
+    "cache_policy": "local-validation"
+  },
+  "buck2:ts-sandbox:test": {
+    "paths": [
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+    ],
+    "prefixes": [
+      "buck2/",
+      "packages/@overeng/buck2-tools/src/"
+    ],
+    "requires": [
+      "buck2:providers:check"
+    ],
+    "cache_policy": "local-fixture"
+  },
+  "cargo:proto-bindings:check": {
+    "paths": [],
+    "prefixes": [
+      "rust/buck2-tools/events/"
+    ],
+    "requires": [],
+    "cache_policy": "local-validation"
+  },
+  "check:buck2-producer-overlap": {
+    "paths": [
+      "genie/buck2/producer-overlap.ts"
+    ],
+    "prefixes": [
+      "genie/",
+      "packages/"
+    ],
+    "requires": [
+      "genie:check"
+    ],
+    "cache_policy": "local-validation",
+    "extensions": [
+      ".ts",
+      ".json"
+    ]
+  },
+  "content-address:contract:check": {
+    "paths": [
+      "packages/@overeng/effect-rust/src/mod.ts",
+      "pnpm-lock.yaml",
+      "flake.lock",
+      "nix/bun-compile-runtime.nix",
+      "rust/Cargo.toml",
+      "rust/Cargo.lock"
+    ],
+    "prefixes": [
+      "packages/@overeng/content-address/",
+      "packages/@overeng/effect-rust/src/compiler/",
+      "packages/@overeng/effect-rust/src/schema/",
+      "rust/content-address-contract/"
+    ],
+    "requires": [],
+    "cache_policy": "local-validation"
+  },
+  "genie:check": {
+    "paths": [
+      ".buckconfig",
+      ".buckroot",
+      "flake.lock",
+      "flake.nix",
+      ".oxfmtrc.json",
+      ".oxlintrc.json",
+      ".watchmanconfig",
+      "BUCK",
+      "buck2-member.json",
+      "buck2-operation-dispositions.json",
+      "buck2-test-authority.json",
+      "pnpm-install-contract.json",
+      ".oxfmtrc.json.genie.ts",
+      ".oxlintrc.json.genie.ts",
+      ".watchmanconfig.genie.ts",
+      "BUCK.genie.ts",
+      "buck2-member.json.genie.ts",
+      "buck2-operation-dispositions.json.genie.ts",
+      "buck2-test-authority.json.genie.ts",
+      "devenv.nix",
+      "package.json",
+      "package.json.genie.ts",
+      "pnpm-lock.yaml",
+      "pnpm-install-contract.json.genie.ts",
+      "pnpm-workspace.yaml.genie.ts",
+      "pnpm-workspace.yaml",
+      "rust-toolchain.toml"
+    ],
+    "prefixes": [
+      ".github/",
+      "buck2/",
+      "context/",
+      "genie/",
+      "nix/",
+      "packages/",
+      "rust/",
+      "scripts/fixtures/rust-foreign/"
+    ],
+    "requires": [
+      "content-address:contract:check",
+      "genie:editor-view-closure:check"
+    ],
+    "cache_policy": "local-validation"
+  },
+  "genie:editor-view-closure:check": {
+    "paths": [
+      ".oxfmtrc.json.genie.ts",
+      ".oxlintrc.json.genie.ts",
+      ".watchmanconfig.genie.ts",
+      "BUCK.genie.ts",
+      "buck2-member.json.genie.ts",
+      "buck2-operation-dispositions.json.genie.ts",
+      "buck2-test-authority.json.genie.ts",
+      "package.json.genie.ts",
+      "pnpm-install-contract.json.genie.ts",
+      "pnpm-workspace.yaml.genie.ts",
+      "devenv.nix",
+      "package.json",
+      "pnpm-workspace.yaml"
+    ],
+    "prefixes": [
+      ".github/",
+      "buck2/",
+      "context/",
+      "genie/",
+      "packages/",
+      "rust/",
+      "scripts/fixtures/rust-foreign/"
+    ],
+    "requires": [],
+    "cache_policy": "local-validation",
+    "extensions": [
+      ".ts",
+      ".tsx",
+      ".json"
+    ]
+  },
+  "git-hooks:environment:test": {
+    "paths": [
+      "scripts/without-git-local-env.sh",
+      "scripts/without-git-local-env.test.sh"
+    ],
+    "prefixes": [],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "lint:check:format:parity": {
+    "paths": [
+      ".buckconfig",
+      ".buckroot",
+      "BUCK",
+      "BUCK.genie.ts",
+      "devenv.nix",
+      "nix/devenv-modules/tasks/shared/lint-oxc.nix",
+      "scripts/buck2-format-known-differences.json",
+      "scripts/buck2-format-parity.ts"
+    ],
+    "prefixes": [
+      "buck2/",
+      "genie/buck2/",
+      "packages/",
+      "rust/"
+    ],
+    "requires": [
+      "genie:check"
+    ],
+    "cache_policy": "local-validation",
+    "extensions": [
+      ".bzl",
+      ".genie.ts",
+      "BUCK"
+    ],
+    "membership_mode": "tracked-and-untracked",
+    "membership": [
+      "**"
+    ]
+  },
+  "lint:check:getflake": {
+    "paths": [
+      "scripts/lint-getflake.mjs",
+      "scripts/lint-getflake.unit.test.mjs"
+    ],
+    "prefixes": [
+      ""
+    ],
+    "requires": [],
+    "cache_policy": "local-validation",
+    "extensions": [
+      ".nix",
+      ".sh"
+    ],
+    "membership": [
+      "*.nix",
+      "*.sh"
+    ]
+  },
+  "lint:check:standalone-staging": {
+    "paths": [
+      "devenv.nix",
+      "flake.nix",
+      "nix/standalone-staging.json",
+      "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
+      "packages/@overeng/pty-effect/test/node-pty-native-hook.ts",
+      "scripts/lint-no-tailwind.mjs",
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+    ],
+    "prefixes": [
+      "buck2/dependencies/",
+      "nix/",
+      "packages/@overeng/genie/",
+      "scripts/buck2-",
+      "scripts/otel-",
+      "scripts/worktree-"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture",
+    "membership_inputs": true,
+    "membership_mode": "tracked-and-untracked",
+    "membership": [
+      "*.nix"
+    ]
+  },
+  "nix:buck2-artifact-import:check": {
+    "paths": [
+      "flake.lock",
+      "flake.nix"
+    ],
+    "prefixes": [
+      "buck2/",
+      "nix/buck2-",
+      "nix/workspace-tools/lib/",
+      "rust/buck2-tools/"
+    ],
+    "requires": [
+      "genie:check"
+    ],
+    "cache_policy": "local-fixture"
+  },
+  "nix:buck2-cargo-archives:check": {
+    "paths": [
+      "buck2/dependencies/nix-archive.ts",
+      "flake.lock",
+      "flake.nix"
+    ],
+    "prefixes": [
+      "nix/workspace-tools/lib/",
+      "packages/@overeng/buck2-tools/src/"
+    ],
+    "requires": [
+      "genie:check"
+    ],
+    "cache_policy": "local-fixture"
+  },
+  "nix:buck2-launcher-independence:check": {
+    "paths": [
+      "flake.lock",
+      "flake.nix"
+    ],
+    "prefixes": [
+      "buck2/",
+      "genie/",
+      "nix/",
+      "packages/",
+      "rust/"
+    ],
+    "requires": [],
+    "cache_policy": "local-validation"
+  },
+  "nix:javascript-product-import:check": {
+    "paths": [
+      "flake.lock",
+      "flake.nix"
+    ],
+    "prefixes": [
+      "buck2/",
+      "genie/",
+      "nix/",
+      "packages/",
+      "rust/"
+    ],
+    "requires": [
+      "genie:check"
+    ],
+    "cache_policy": "local-fixture",
+    "membership": [
+      "**"
+    ]
+  },
+  "otel:pipeline-run:test": {
+    "paths": [
+      "genie/ci-scripts/evidence-job.sh",
+      "nix/devenv-modules/tasks/shared/tests/pipeline-run.test.sh"
+    ],
+    "prefixes": [
+      "genie/ci-scripts/",
+      "nix/devenv-modules/otel/",
+      "packages/@overeng/otelite/"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "test:notion-integration:ci-skip": {
+    "paths": [
+      "devenv.nix",
+      "nix/devenv-modules/tasks/shared/tests/notion-integration-ci.test.sh"
+    ],
+    "prefixes": [
+      "nix/devenv-modules/tasks/shared/test"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  },
+  "worktree:teardown:test": {
+    "paths": [
+      "devenv.lock",
+      "nix/devenv-modules/tasks/shared/setup.nix",
+      "nix/devenv-modules/tasks/shared/tests/worktree-teardown.test.sh",
+      "nix/devenv-modules/tasks/shared/worktree-teardown.sh"
+    ],
+    "prefixes": [
+      "buck2/",
+      "packages/@overeng/buck2-tools/src/",
+      "scripts/buck2-",
+      "scripts/fixtures/",
+      "scripts/test-tmp"
+    ],
+    "requires": [],
+    "cache_policy": "local-fixture"
+  }
+}

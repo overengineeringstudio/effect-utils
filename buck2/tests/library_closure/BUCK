@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 # Authored internal fixture, like the other buck2/tests packages; not a projection.
 load("@prelude//:prelude.bzl", "native")
 load("//buck2/rust:library.bzl", "rust_product_library")
@@ -63,3 +64,26 @@ build_product(
 # Both routes compile abort artifacts behind the normal unwind product toolchain.
 panic_rejection("flags", {"rustc_flags": ["-Cpanic=abort"]})
 panic_rejection("env", {"env": {"NIX_RUSTFLAGS": "-Cpanic=abort"}})
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/tests/library_closure",
+    srcs = [
+    "BUCK",
+    "Cargo.toml",
+    "accept.py",
+    "bridge.rs",
+    "closure.unit.test.mjs",
+    "consumer.rs",
+    "defs.bzl",
+    "derive.rs",
+    "example_library/Cargo.toml",
+    "generic.rs",
+    "generic_bridge/Cargo.toml",
+    "generic_leaf/Cargo.toml",
+    "generic_leaf_v2/Cargo.toml",
+    "library.rs",
+    "probe_derive/Cargo.toml"
+],
+    visibility = ["PUBLIC"],
+)

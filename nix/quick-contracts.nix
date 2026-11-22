@@ -14,6 +14,13 @@ let
   # Fixed bounded check cohort, not a dependency resolver. Source preparation
   # runs separately through the retained authority, before Buck is invoked.
   sequence = import ./quick-contracts-sequence.nix { };
+  targets = builtins.fromJSON (builtins.readFile ./quick-contracts-targets.json);
+  selectedAfter = name: builtins.filter (dependency: builtins.elem dependency sequence) config.tasks.${name}.after;
+  validRequires = builtins.all (
+    name:
+    builtins.sort builtins.lessThan targets.${name}.requires
+    == builtins.sort builtins.lessThan (selectedAfter name)
+  ) sequence;
   taskScripts = lib.mapAttrs (
     name: task:
     if task.command == null then
@@ -94,11 +101,22 @@ let
     "BUCK2_STDIO_LIBRARY"
     "BUCK2_MACHINE_VERSION"
   ]) config.env;
-  environment = ''
+  # Shared native/policy bindings, deliberately excluding the aggregate profile,
+  # source census and prepared receipt from individual executable closures.
+  runtimeEnvironment = ''
     set -euo pipefail
     export PATH="''${WORKTREE_POLICY_PATH:+$WORKTREE_POLICY_PATH:}${runtimePath}"
     export DEVENV_ROOT="$PWD" WORKSPACE_ROOT="$PWD"
-    : "''${WORKTREE_CAPABILITIES_PROFILE:?run devenv build effectUtils.quickContracts.capabilities and publish the returned profile}"
+    # Pin the runtime fallback to the owning prepare receipt, not a mutable
+    # current-generation link. Preserve an explicit caller override.
+    if [ -z "''${WORKTREE_CAPABILITIES_PROFILE:-}" ]; then
+      {
+        IFS= read -r prepared_authority
+        IFS= read -r prepared_profile
+      } < "$PWD/.devenv/quick-contracts-prepared"
+      : "''${prepared_profile:?quick-contracts: prepared receipt has no profile}"
+      WORKTREE_CAPABILITIES_PROFILE="$(${pkgs.coreutils}/bin/realpath -e "$prepared_profile")"
+    fi
     export WORKTREE_CAPABILITIES_PROFILE
     ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
       export SDKROOT=${lib.escapeShellArg pkgs.apple-sdk.sdkroot}
@@ -106,6 +124,66 @@ let
       export NIX_LDFLAGS_${pkgs.stdenv.cc.suffixSalt}=${lib.escapeShellArg "-L${pkgs.libiconv}/lib"}
     ''}
   '';
+  environment = ''
+    ${runtimeEnvironment}
+    : "''${WORKTREE_CAPABILITIES_PROFILE:?run devenv build effectUtils.quickContracts.capabilities and publish the returned profile}"
+    export WORKTREE_CAPABILITIES_PROFILE
+  '';
+  runtimeExports = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") runtimeEnv
+  );
+  selectionExports = ''
+    export EFFECT_UTILS_CI_TEST=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_CI_TEST")}
+    export EFFECT_UTILS_TEST_PLATFORM=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM")}
+    export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
+  '';
+  taskCapabilities = builtins.listToAttrs (
+    map (
+      name:
+      let
+        id = "quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name;
+        check = pkgs.writeShellScript id ''
+          ${runtimeEnvironment}
+          if [ "$#" -ne 1 ] || [ -z "$1" ]; then
+            echo 'usage: check VERDICT_OUTPUT' >&2
+            exit 64
+          fi
+          # Resolve before the evaluated task script applies its own cwd.
+          verdict=$(realpath -m -- "$1")
+          rm -f -- "$verdict"
+          ${runtimeExports}
+          ${selectionExports}
+          # Inherit, never embed, the caller's selected profile. worktree-env.py
+          # rejects a base-profile override against a published full generation;
+          # nested commands retain the pinned direct BUCK2_BIN binding instead.
+          ${lib.optionalString (builtins.elem name [
+            "buck2:task-guards:check"
+            "check:buck2-producer-overlap"
+          ]) ''
+            export DEVENV_TASK_FILE=${taskAuthority} DEVENV_TASKS_JSON=${taskAuthority}
+          ''}
+          ${lib.optionalString (name == "test:notion-integration:ci-skip") ''
+            export NOTION_INTEGRATION_TASK_COMMANDS_FILE=${notionCiTaskCommands}
+          ''}
+          ${taskScripts.${name}}
+          mkdir -p -- "$(dirname "$verdict")"
+          printf '%s\n' ${lib.escapeShellArg (builtins.toJSON { task = name; status = "passed"; })} > "$verdict"
+        '';
+      in
+      {
+        name = id;
+        value = {
+          kind = "executable";
+          package = pkgs.runCommand id { } ''
+            mkdir -p "$out/bin"
+            ln -s ${check} "$out/bin/check"
+          '';
+          executable = "bin/check";
+          protocol = "effect-utils/quick-contract-task/v1";
+        };
+      }
+    ) sequence
+  );
   validateSource = ''
     if ! sha256sum --check --status ${sourceIdentity}; then
       echo 'quick-contracts: evaluated task authority is stale; run devenv build effectUtils.quickContracts.capabilities and republish WORKTREE_CAPABILITIES_PROFILE' >&2
@@ -117,6 +195,30 @@ let
       echo 'quick-contracts: tracked source census changed; run devenv build effectUtils.quickContracts.capabilities and republish WORKTREE_CAPABILITIES_PROFILE' >&2
       exit 78
     fi
+  '';
+  validatePrepared = ''
+    if ! printf '%s\n%s\n' ${taskAuthority} "$WORKTREE_CAPABILITIES_PROFILE" | \
+      cmp -s - .devenv/quick-contracts-prepared; then
+      echo 'quick-contracts: source views are not prepared for this authority/profile; run the selected quick-contracts capability bin/quick-contracts-prepare before buck2 run //:check-quick' >&2
+      exit 78
+    fi
+  '';
+  reporter = pkgs.writeShellScript "quick-contracts-report" ''
+    ${environment}
+    ${validateSource}
+    ${validatePrepared}
+    if [ "$#" -ne ${toString (builtins.length sequence)} ]; then
+      echo 'quick-contracts-report: supply exactly one successful verdict per selected task' >&2
+      exit 64
+    fi
+    if ! jq -e -s --argjson expected ${lib.escapeShellArg (builtins.toJSON sequence)} '
+      all(.[]; type == "object" and keys == ["status", "task"] and .status == "passed")
+      and (map(.task) | sort) == ($expected | sort)
+    ' "$@" > /dev/null; then
+      echo 'quick-contracts-report: verdicts do not cover the selected tasks exactly once' >&2
+      exit 1
+    fi
+    printf 'quick-contracts: %s selected contracts passed\n' ${toString (builtins.length sequence)}
   '';
   prepare = pkgs.writeShellScript "quick-contracts-prepare" ''
     root="''${1:?usage: quick-contracts-prepare ROOT GENERATION}"
@@ -141,18 +243,10 @@ let
   transaction = pkgs.writeShellScript "quick-contract-transaction" ''
     ${environment}
     export DEVENV_TASK_FILE=${taskAuthority} DEVENV_TASKS_JSON=${taskAuthority}
-    ${lib.concatStringsSep "\n" (
-      lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") runtimeEnv
-    )}
+    ${runtimeExports}
     ${validateSource}
-    if ! printf '%s\n%s\n' ${taskAuthority} "$WORKTREE_CAPABILITIES_PROFILE" | \
-      cmp -s - .devenv/quick-contracts-prepared; then
-      echo 'quick-contracts: source views are not prepared for this authority/profile; run the selected quick-contracts capability bin/quick-contracts-prepare before buck2 run //:check-quick' >&2
-      exit 78
-    fi
-    export EFFECT_UTILS_CI_TEST=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_CI_TEST")}
-    export EFFECT_UTILS_TEST_PLATFORM=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM")}
-    export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
+    ${validatePrepared}
+    ${selectionExports}
     ${lib.optionalString (builtins.elem "test:notion-integration:ci-skip" sequence) ''
       export NOTION_INTEGRATION_TASK_COMMANDS_FILE=${notionCiTaskCommands}
     ''}
@@ -165,6 +259,8 @@ let
     exec ${pkgs.coreutils}/bin/timeout --kill-after=5 3600 ${transaction}
   '';
 in
+assert lib.assertMsg validRequires
+  "quick-contracts: catalog requires must match the selected evaluated task.after dependencies";
 {
   options.effectUtils.quickContracts = {
     package = lib.mkOption {
@@ -181,6 +277,7 @@ in
       mkdir -p "$out/bin"
       ln -s ${runner} "$out/bin/quick-contracts"
       ln -s ${prepare} "$out/bin/quick-contracts-prepare"
+      ln -s ${reporter} "$out/bin/quick-contracts-report"
       ln -s ${taskAuthority} "$out/tasks.json"
       ln -s ${sourceIdentity} "$out/source-identity"
     '';
@@ -189,7 +286,7 @@ in
         inherit pkgs;
         src = root;
         inherit (baseCapabilities) capabilityPackages;
-        extraCapabilities = baseCapabilities.extraCapabilities // {
+        extraCapabilities = baseCapabilities.extraCapabilities // taskCapabilities // {
           quick-contracts = {
             kind = "directory";
             package = cfg.package;

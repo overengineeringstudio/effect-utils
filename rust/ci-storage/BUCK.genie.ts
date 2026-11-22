@@ -1,10 +1,11 @@
+import { withQuickContractSources } from '../../genie/buck2/quick-contract-inputs.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { cargoBuck2PackageProjection } from '../buck2-tools/core/cargo-buck2-package-projection.ts'
 
 const projection = cargoBuck2PackageProjection({ buildProduct: true, sourceUrl: import.meta.url })
 
 // Execute library contract tests through Buck's full repository authority.
-export default createGenieOutput({
+export default withQuickContractSources(createGenieOutput({
   ...projection,
   stringify: (context) => `load("//buck2/rust:defs.bzl", "rust_test_receipt")
 ${projection.stringify(context)}
@@ -35,4 +36,4 @@ rust_test_receipt(
     visibility = ["PUBLIC"],
 )
 `,
-})
+}), import.meta.url)

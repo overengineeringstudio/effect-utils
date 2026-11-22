@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
 export_materialization_inputs([
@@ -10,3 +11,20 @@ export_materialization_inputs([
     "input.json",
     "value$input.ts",
 ])
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "genie/buck2/fixtures/nested-package/parent/src/deeper",
+    srcs = [
+    "BUCK",
+    "__snapshots__/main.test.jsx.snap",
+    "input.json",
+    "main.test.jsx",
+    "main.ts",
+    "tsconfig.json",
+    "types.d.ts",
+    "value$input.ts",
+    "vitest.config.ts"
+],
+    visibility = ["PUBLIC"],
+)

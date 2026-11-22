@@ -1,5 +1,18 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
+load("@prelude//:prelude.bzl", _quick_contract_native = "native")
+
+http_archive = _quick_contract_native.http_archive
 http_archive(
     name = "serde",
     sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     urls = ["https://static.crates.io/crates/serde/serde-1.0.0.crate"],
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "genie/buck2/fixtures/cargo-consumer/vendor/cargo",
+    srcs = [
+    "BUCK"
+],
+    visibility = ["PUBLIC"],
 )

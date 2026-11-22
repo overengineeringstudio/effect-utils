@@ -41,6 +41,45 @@ const values = {
 
 describe('daemon RE posture', () => {
   it.each([
+    { primary: 'fixture-primary', fallback: 'fixture-fallback', expected: 'fixture-primary' },
+    { primary: undefined, fallback: 'fixture-fallback', expected: 'fixture-fallback' },
+  ])('declares stable quick context before literal tool argv ($expected)', async (actor) => {
+    const root = realpathSync(createTestTempDirectory('buck2-quick-context-'))
+    const traceparent = '00-11111111111111111111111111111111-2222222222222222-01'
+    const policyPath = '/fixture/agent-seat/policy-bin'
+    try {
+      writeFileSync(join(root, '.buckroot'), '')
+      writeFileSync(
+        join(root, '.buckconfig'),
+        '[buck2]\nremote_cache_enabled = false\nallow_cache_uploads = false\n',
+      )
+      const admitted = await directBuckArguments({
+        cwd: root,
+        args: ['run', '//:fixture', '--', '--literal-tool-argument'],
+        env: {
+          FRACTAL_AGENT: actor.primary,
+          ST_AGENT: actor.fallback,
+          WORKTREE_POLICY_PATH: policyPath,
+          TRACEPARENT: traceparent,
+          BUCK2_REMOTE_CACHE_BASIC_AUTH: secret,
+        },
+      })
+      const sentinel = admitted.indexOf('--')
+      expect(admitted.slice(sentinel - 4, sentinel)).toEqual([
+        '--config',
+        `quick_contracts.agent_actor=${actor.expected}`,
+        '--config',
+        `quick_contracts.policy_path=${policyPath}`,
+      ])
+      expect(admitted.slice(sentinel)).toEqual(['--', '--literal-tool-argument'])
+      expect(admitted.join(' ')).not.toContain(traceparent)
+      expect(admitted.join(' ')).not.toContain(secret)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
     {
       nativeEvidence: false,
       reader: true,

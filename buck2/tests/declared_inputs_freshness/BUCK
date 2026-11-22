@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2:declared_inputs_freshness.bzl", "declared_inputs_freshness_check")
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 
@@ -33,5 +34,21 @@ declared_inputs_freshness_check(
         "buck2/dependencies/pnpm-lock.sha256.json": "pnpm-lock.sha256.json",
     },
     runtime_sources = {"node_modules/effect": "//buck2/dependencies:declared_inputs_freshness_runtime"},
+    visibility = ["PUBLIC"],
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/tests/declared_inputs_freshness",
+    srcs = [
+    "BUCK",
+    "consumer-generator.ts.fixture",
+    "expected.BUCK",
+    "megarepo.json",
+    "package.json",
+    "pnpm-lock.sha256.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml"
+],
     visibility = ["PUBLIC"],
 )

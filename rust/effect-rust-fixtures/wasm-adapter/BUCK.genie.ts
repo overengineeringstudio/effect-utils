@@ -1,6 +1,7 @@
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { cargoBuck2PackageProjection } from '../../buck2-tools/core/cargo-buck2-package-projection.ts'
 
-export default cargoBuck2PackageProjection({
+export default withQuickContractSources(cargoBuck2PackageProjection({
   sourceUrl: import.meta.url,
   wasmBindgen: {
     name: 'wasm',
@@ -16,4 +17,4 @@ export default cargoBuck2PackageProjection({
     recipe: 'effect-utils/rust-wasm-guest/v1',
     toolchain: 'effect-utils/buck2-rust-wasm-toolchain/v1',
   },
-})
+}), import.meta.url)

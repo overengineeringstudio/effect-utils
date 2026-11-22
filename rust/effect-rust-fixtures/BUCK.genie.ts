@@ -1,3 +1,4 @@
+import { withQuickContractSources } from '../../genie/buck2/quick-contract-inputs.ts'
 import { buck2SemanticFingerprint } from '../../genie/buck2/mod.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
@@ -9,7 +10,7 @@ const fingerprint = buck2SemanticFingerprint({
   semanticData: { data, source: readFileSync(new URL(import.meta.url), 'utf8') },
 })
 
-export default createGenieOutput({
+export default withQuickContractSources(createGenieOutput({
   data,
   stringify: () =>
     [
@@ -62,4 +63,4 @@ export default createGenieOutput({
       'export_file(name = "workerd-smoke-config", src = "workerd-smoke-config.mjs", visibility = ["PUBLIC"])',
       '',
     ].join('\n'),
-})
+}), import.meta.url)

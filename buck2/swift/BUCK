@@ -1,3 +1,4 @@
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 # Public rule API lives in defs.bzl; concrete Swift products belong to
 # repository adapters next to their app targets.
 
@@ -28,5 +29,22 @@ export_file(
 export_file(
     name = "test-verdict",
     src = "test-verdict.ts",
+    visibility = ["PUBLIC"],
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "buck2/swift",
+    srcs = [
+    "BUCK",
+    "compile.ts",
+    "compile.unit.test.ts",
+    "defs.bzl",
+    "info-plist.ts",
+    "stamp.ts",
+    "test-main.ts",
+    "test-verdict.ts",
+    "tools.unit.test.ts"
+],
     visibility = ["PUBLIC"],
 )

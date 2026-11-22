@@ -1,3 +1,4 @@
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { withJavaScriptCandidates } from '../../../genie/buck2/javascript-candidates.ts'
 import { javaScriptProductsFor } from '../../../genie/buck2/javascript-product-registry.ts'
 import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-admissions.ts'
@@ -49,7 +50,7 @@ export const buck2TypeScriptAdmission = {
   ],
 } as const satisfies Buck2TypeScriptAdmission
 
-export default withJavaScriptCandidates({
+export default withQuickContractSources(withJavaScriptCandidates({
   projection: buck2TypeScriptPackageProjection(buck2TypeScriptAdmission),
   products: javaScriptProductsFor(buck2TypeScriptAdmission.packagePath),
-})
+}), import.meta.url)

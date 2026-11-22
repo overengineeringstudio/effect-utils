@@ -1,3 +1,4 @@
+import { withQuickContractSources } from '../../../genie/buck2/quick-contract-inputs.ts'
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
 import { createGenieOutput } from '../../../packages/@overeng/genie/src/runtime/core.ts'
 import { inputReadFileSync as readFileSync } from '../../../packages/@overeng/genie/src/runtime/node/inputs.ts'
@@ -18,7 +19,7 @@ const fingerprint = buck2SemanticFingerprint({
 })
 const dict = (value: unknown): string => JSON.stringify(value, undefined, 4)
 
-export default createGenieOutput({
+export default withQuickContractSources(createGenieOutput({
   data: { manifest, crates },
   stringify: () =>
     [
@@ -47,4 +48,4 @@ export default createGenieOutput({
         '',
       ]),
     ].join('\n'),
-})
+}), import.meta.url)
