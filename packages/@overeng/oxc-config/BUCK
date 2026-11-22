@@ -1,6 +1,7 @@
 # Generated file - DO NOT EDIT
 # Source: BUCK.genie.ts
 
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("//buck2:package_tools.bzl", "package_bin_artifact")
 load("//buck2/products:defs.bzl", "javascript_product")
 
@@ -360,5 +361,14 @@ javascript_product(
     module = ":oxc-config-stylex-upstream-plugin-candidate-module",
     product_kind = "module",
     product_name = "oxc-config-stylex-upstream-plugin",
+    visibility = ["PUBLIC"],
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "packages/@overeng/oxc-config",
+    srcs = [
+    "nix/build.nix"
+],
     visibility = ["PUBLIC"],
 )

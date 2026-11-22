@@ -8,6 +8,7 @@
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/BUCK.genie.ts, rust/worktree-lease/Cargo.toml, rust/worktree-lease/src/**/*.rs, rust/worktree-lease/tests/**/*.rs
 # Regenerate: devenv tasks run genie:run
 
+load("//buck2:static_checks.bzl", _quick_contract_source_set = "static_source_set")
 load("@prelude//:prelude.bzl", "native")
 load("//buck2:static_checks.bzl", "static_source_set")
 load("//buck2/products:defs.bzl", "build_product")
@@ -214,4 +215,15 @@ build_product(
     artifact = ":worktree-lease-product-executable",
     product_name = "worktree-lease",
     target_platform = host_platform_label(),
+)
+
+_quick_contract_source_set(
+    name = "quick_contract_sources",
+    prefix = "rust/worktree-lease",
+    srcs = [
+    "tests/await.sh",
+    "tests/schema.sh",
+    "tests/try.sh"
+],
+    visibility = ["PUBLIC"],
 )
