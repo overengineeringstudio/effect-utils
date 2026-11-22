@@ -148,9 +148,9 @@ let
     IFS= read -r _ <&3
     exit 1
   '';
-  # A real immutable copy child for publication cancellation and native-signal fixtures.
-  supervisorCopyTestChild = pkgs.writeShellApplication {
-    name = "cp";
+  # Immutable real-child barriers for publication cancellation and native signals.
+  supervisorPublicationTestChild = { name, native }: pkgs.writeShellApplication {
+    inherit name;
     text = ''
       for argument in "$@"; do
         case "$argument" in /*) directory="$argument" ;; *) continue ;; esac
@@ -167,15 +167,23 @@ let
                 kill -TERM "$$"
                 exit 1
                 ;;
-              *) printf 'Invalid supervisor copy fixture mode: %s\n' "$termination" >&2; exit 2 ;;
+              *) printf 'Invalid supervisor publication fixture mode: %s\n' "$termination" >&2; exit 2 ;;
             esac
-            exec ${pkgs.coreutils}/bin/cp "$@"
+            exec ${native} "$@"
           fi
           directory="''${directory%/*}"
         done
       done
-      exec ${pkgs.coreutils}/bin/cp "$@"
+      exec ${native} "$@"
     '';
+  };
+  supervisorCopyTestChild = supervisorPublicationTestChild {
+    name = "cp";
+    native = "${pkgs.coreutils}/bin/cp";
+  };
+  supervisorFingerprintTestChild = supervisorPublicationTestChild {
+    name = "buck2-fingerprint";
+    native = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
   sourceLease = import ./nix/editor-view-lease/consumer.nix {
     inherit pkgs;
@@ -1220,6 +1228,7 @@ in
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
     EDITOR_VIEW_SUPERVISOR_CP_BIN = "${supervisorCopyTestChild}/bin/cp";
+    EDITOR_VIEW_SUPERVISOR_FINGERPRINT_BIN = "${supervisorFingerprintTestChild}/bin/buck2-fingerprint";
   };
   # The source deploy complement evaluates real Nix task launchers against fake
   # providers; pin its evaluator and jq instead of relying on host PATH tools.

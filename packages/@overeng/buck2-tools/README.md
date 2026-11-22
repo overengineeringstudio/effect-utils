@@ -201,6 +201,8 @@ signals inside aggregate failures without replacing errors or their original cau
 The reconciliation fixtures use real finite workspace and external dependency bytes,
 the declared publisher CLI/tool closure, isolated budget/content stores, and tracked
 process scopes. FIFO-gated command streaming remains a separate process-boundary proof.
+Finite-root publication cancellation fixtures gate an immutable FIFO/signal wrapper around the
+declared Rust fingerprint executable, not the unused external-copy path; no digest is synthesized.
 
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.

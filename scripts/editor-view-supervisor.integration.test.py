@@ -333,7 +333,7 @@ else:
                 os.mkfifo(root / "release")
                 os.mkfifo(root / "publication-release")
                 (root / "supervisor-termination").write_text(termination + "\n")
-                for name in ("CP_BIN", "MV_BIN", "FINGERPRINT_BIN", "EDITOR_VIEW_SUPERVISOR_CP_BIN"):
+                for name in ("CP_BIN", "MV_BIN", "FINGERPRINT_BIN", "EDITOR_VIEW_SUPERVISOR_FINGERPRINT_BIN"):
                     self.assertTrue(os.environ.get(name), f"{name} is required for the real publication fixture")
                 package = root / "packages/app"
                 package.mkdir(parents=True)
@@ -404,8 +404,10 @@ await reconcileBuckViews({{
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
     buck2: './buck2', editorViewCommand: [process.execPath, {json.dumps(str(publisher))}],
     workspaceAuthority: process.cwd() + '/authority.json',
-    cp: process.env.TERMINATION?.startsWith('publication') ? process.env.EDITOR_VIEW_SUPERVISOR_CP_BIN! : process.env.CP_BIN!,
-    mv: process.env.MV_BIN!, fingerprintTool: process.env.FINGERPRINT_BIN!, snapshotRetention: 3,
+    cp: process.env.CP_BIN!, mv: process.env.MV_BIN!,
+    fingerprintTool: process.env.TERMINATION?.startsWith('publication')
+      ? process.env.EDITOR_VIEW_SUPERVISOR_FINGERPRINT_BIN! : process.env.FINGERPRINT_BIN!,
+    snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     diagnosticTaskName: 'buck2:editor:bootstrap',
     run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
