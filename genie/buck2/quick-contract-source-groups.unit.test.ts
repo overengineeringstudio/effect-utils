@@ -100,6 +100,10 @@ describe('per-contract Buck source selectors', () => {
     ['buck2:cache-posture:test', '.buckconfig'],
     ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
     ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
+    [
+      'buck2:capabilities:test',
+      'nix/devenv-modules/tasks/shared/tests/buck2-capability-watcher-change.jq',
+    ],
     ['buck2:task-guards:check', 'buck2-test-authority.json'],
     ['buck2:task-guards:check', 'buck2/toolchains/BUCK'],
     ['buck2:task-guards:check', 'buck2/toolchains/configured.bzl'],
