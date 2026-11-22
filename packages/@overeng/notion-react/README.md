@@ -15,6 +15,21 @@ This library renders React → Notion **blocks**. Notion **databases**
 [`@overeng/notion-effect-client`](../notion-effect-client) directly for
 database operations.
 
+### Injected client
+
+The renderer and its default client use Effect 4.1.0. An application that already
+owns Notion authorization, throttling, or an outbound journal can provide
+`NotionRendererClient` to `syncWithClient`, `planWithClient`, or
+`renderToNotionWithClient`. These entry points require only that capability,
+not a bearer token or `HttpClient`. `NotionRendererClientShape` uses the existing
+typed block/page operations, so responses and failures keep their normal contracts.
+
+`sync`, `plan`, and `renderToNotion` retain the default token + `HttpClient`
+path through `NotionRendererClientLive`. The injected client owns any retry
+policy. In particular, an ambiguous journaled write must fail closed rather than
+be automatically retried. Cache checkpoints still run after each successful batch.
+
+
 ### Root page metadata
 
 The root `<Page>` accepts `title`, `icon`, and `cover`. When any of

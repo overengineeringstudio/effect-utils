@@ -20,11 +20,13 @@ export { blockKey, NodeKey } from './keys.ts'
 export { NotionSyncError, CacheError } from './errors.ts'
 export {
   renderToNotion,
+  renderToNotionWithClient,
   collectOps,
   type SyncResult,
   type SyncFallbackReason,
 } from './render-to-notion.ts'
-export { sync, plan, type SyncPlan, type PlanStaleness } from './sync.ts'
+export { sync, syncWithClient, plan, planWithClient, type SyncPlan, type PlanStaleness } from './sync.ts'
+export { NotionRendererClient, NotionRendererClientLive, type NotionRendererClientShape } from './client.ts'
 export { pageLifecycleViolations, type PageLifecycle } from './page-lifecycle.ts'
 export { SyncEvent, type SyncEventHandler } from './sync-events.ts'
 export {

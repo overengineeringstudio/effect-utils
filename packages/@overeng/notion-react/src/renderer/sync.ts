@@ -1,13 +1,9 @@
 import { Duration, Effect, Option, Schedule, Stream } from 'effect'
-import type { HttpClient } from 'effect/http/HttpClient'
+
 import type { ReactNode } from 'react'
 
-import {
-  NotionApiError,
-  NotionBlocks,
-  NotionPages,
-  type NotionConfig,
-} from '@overeng/notion-effect-client'
+import { NotionApiError } from '@overeng/notion-effect-client'
+import { NotionBlocks, NotionPages, NotionRendererClientLive, type NotionRendererClient } from './client.ts'
 
 import type { CacheNode, CacheTree, NotionCache, PendingInlineNode } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
@@ -382,9 +378,9 @@ const flushAppendRun = (
   resolve: (id: string) => string,
   onBatch: (
     committed: readonly { op: AppendLike; serverId: string; afterId: string | undefined }[],
-  ) => Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient>,
+  ) => Effect.Effect<void, NotionSyncError, NotionRendererClient>,
   o11y: O11yCtx,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     if (run.length === 0) return
     const parentId = resolve(run[0]!.parent)
@@ -663,7 +659,7 @@ const resolveAbsorbedTmpIds = (
   containerServerId: string,
   descendants: readonly { readonly tmpId: string; readonly depth: number }[],
   idMap: Map<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     if (descendants.length === 0) return
     // Retrieve the full subtree by DFS. Order: for each child of a given
@@ -673,7 +669,7 @@ const resolveAbsorbedTmpIds = (
     const walk = (
       parentId: string,
       depth: number,
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
       Effect.gen(function* () {
         const live = yield* Stream.runCollect(
           NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -720,7 +716,7 @@ const resolveInlineChildrenIds = (
   candidate: PageOp & { readonly kind: 'createPage' },
   cands: readonly CandidateNode[],
   idMap: Map<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     // Resolve the newly-created page's tmp id.
     idMap.set(candidate.tmpPageId, createdPageId)
@@ -731,7 +727,7 @@ const resolveInlineChildrenIds = (
     const walk = (
       parentId: string,
       nodes: readonly CandidateNode[],
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
       Effect.gen(function* () {
         const live = yield* Stream.runCollect(
           NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -789,7 +785,7 @@ const applyDiff = (
   ) => Effect.Effect<void, NotionSyncError>,
   o11y: O11yCtx,
   priorHashById: ReadonlyMap<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     const resolve = (id: string): string => idMap.get(id) ?? id
     const { plan: ops, absorbed } = foldAtomicContainers(rawOps)
@@ -1128,7 +1124,7 @@ const retrieveLiveIdentities: (
   o11y: RetrieveO11yCtx,
   expectChildren?: boolean,
   excludedChildId?: string,
-) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionConfig | HttpClient> =
+) => Effect.Effect<readonly LiveIdentityNode[], NotionSyncError, NotionRendererClient> =
   Effect.fn('notion-react.retrieve-live-identities')(function* (
     parentId: string,
     recursive: boolean,
@@ -1296,7 +1292,7 @@ const withoutDriftGhosts = (nodes: readonly CacheNode[]): readonly CacheNode[] =
 const adoptInlineChildren = (
   parentId: string,
   nodes: readonly PendingInlineNode[],
-): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     const live = yield* Stream.runCollect(
       NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
@@ -1379,7 +1375,7 @@ const resolvePendingPages = ({
 }): Effect.Effect<
   { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
   NotionSyncError,
-  NotionConfig | HttpClient
+  NotionRendererClient
 > =>
   Effect.gen(function* () {
     let changed = false
@@ -1582,7 +1578,7 @@ const rootPageUpdateOpFor = ({
  */
 export type ColdBaseline = 'clean' | 'merge'
 
-export const sync = (
+export const syncWithClient = (
   element: ReactNode,
   opts: {
     readonly pageId: string
@@ -1649,7 +1645,7 @@ export const sync = (
      */
     readonly pageLifecycle?: PageLifecycle
   },
-): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient> => {
+): Effect.Effect<SyncResult, NotionSyncError, NotionRendererClient> => {
   /* Compose the user `onEvent` with an internal metrics aggregator iff
      `onMetrics` was supplied. Fan-out is cheap: both handlers receive
      every event. The aggregator's `getMetrics()` is called once after
@@ -2702,7 +2698,7 @@ export interface SyncPlan {
  * (nothing is synced) and no `CacheOutcome` (so plan probes don't skew
  * cache-efficiency metrics aggregated across real syncs).
  */
-export const plan = (
+export const planWithClient = (
   element: ReactNode,
   opts: {
     readonly pageId: string
@@ -2718,7 +2714,7 @@ export const plan = (
      */
     readonly pageLifecycle?: PageLifecycle
   },
-): Effect.Effect<SyncPlan, NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<SyncPlan, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     const staleness: PlanStaleness = opts.staleness ?? 'live'
     const onEvent = opts.onEvent
@@ -2816,3 +2812,11 @@ export const plan = (
         : {}),
     }
   })
+
+/** Default token route. Use syncWithClient with NotionRendererClient for injected I/O. */
+export const sync = (element: ReactNode, opts: Parameters<typeof syncWithClient>[1]) =>
+  syncWithClient(element, opts).pipe(Effect.provide(NotionRendererClientLive))
+
+/** Default token route for read-only planning. */
+export const plan = (element: ReactNode, opts: Parameters<typeof planWithClient>[1]) =>
+  planWithClient(element, opts).pipe(Effect.provide(NotionRendererClientLive))
