@@ -450,13 +450,15 @@ describe('namespaceRunner', () => {
   it('keeps binary cache setup off fleet and API-only jobs', () => {
     for (const id of ['test-live-alchemy-github', 'publish-manifest-pr', 'published-status']) {
       expect(
-        ciWorkflow.data.jobs[id]!.steps.some((step) => step.uses?.startsWith('cachix/cachix-action@')),
+        ciWorkflow.data.jobs[id]!.steps.some((step) =>
+          step.uses?.startsWith('cachix/cachix-action@'),
+        ),
         id,
       ).toBe(false)
     }
     expect(
-      ciWorkflow.data.jobs['test-integration-notion']!.steps.some(
-        (step) => step.uses?.startsWith('cachix/cachix-action@'),
+      ciWorkflow.data.jobs['test-integration-notion']!.steps.some((step) =>
+        step.uses?.startsWith('cachix/cachix-action@'),
       ),
     ).toBe(true)
     const live = ciWorkflow.data.jobs['test-live-alchemy-github']!

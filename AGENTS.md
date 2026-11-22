@@ -57,6 +57,7 @@ Build/test/run retain the existing Buck identity/converter/export boundary and
 emit a real environment entry span when OTLP delivery is configured. Pipeline
 spools remain pipeline-owned; standalone evidence is retained under `.worktree-tools/otel`.
 Immutable tool generations are rooted until normal safe worktree teardown.
+
 # Worktree removal
 
 Before removing a worktree, close its editors/builds and run the installed `worktree-teardown <worktree-path>` command from outside it, then run `git worktree remove`. The command is exported as the effect-utils flake's `worktree-teardown` package; it does not realize the retiring checkout's shell. Only editor-free checkouts skip editor release without explicit `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` (Nix builds remain disabled).

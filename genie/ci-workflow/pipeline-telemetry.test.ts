@@ -84,7 +84,9 @@ test('Playwright jobs capture network events only during tests and upload failur
   for (const packageName of ['utils', 'tui-react'] as const) {
     const steps = ciWorkflow.data.jobs[`test-playwright-${packageName}`]!.steps
     const testStepIndex = steps.findIndex(
-      (step) => 'name' in step && step.name === `${packageName === 'utils' ? 'Utils' : 'TUI React'} Playwright tests`,
+      (step) =>
+        'name' in step &&
+        step.name === `${packageName === 'utils' ? 'Utils' : 'TUI React'} Playwright tests`,
     )
     const testStep = steps[testStepIndex]!
     expect('run' in testStep && testStep.run).toContain('TZ=UTC ip -ts monitor link address route')
@@ -104,7 +106,9 @@ test('Playwright jobs capture network events only during tests and upload failur
       },
     })
     const tailnetStepIndex = steps.findIndex(
-      (step) => 'uses' in step && step.uses === 'tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c',
+      (step) =>
+        'uses' in step &&
+        step.uses === 'tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c',
     )
     expect(tailnetStepIndex).toBeGreaterThan(testStepIndex + 1)
   }
