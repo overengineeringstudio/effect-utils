@@ -2373,6 +2373,56 @@ for (let attempt = 0; attempt < 2; attempt++) {
     expect(identities[0]).toBe(identities[3])
   })
 
+  it('never replays the warm shell cache for a membership-aware or broken profile package', () => {
+    const root = fixture()
+    const bash = Bun.which('bash')
+    const sha256 = Bun.which('sha256sum')
+    if (bash === null || sha256 === null) throw new Error('expected packaged shell and sha256sum')
+    const profile = join(root, 'profile')
+    mkdirSync(profile)
+    const launcher = join(root, 'capture-membership-dispatch')
+    writeFileSync(launcher, `#!${bash}\nprintf '%s\\n' "$EPOCHSECONDS" "$@"\n`, {
+      mode: 0o700,
+    })
+    const wrapper = join(root, 'buck2-wrapper')
+    writeFileSync(
+      wrapper,
+      readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
+        .replaceAll('@shell@', bash)
+        .replaceAll('@native@', '/unused-native')
+        .replaceAll('@launcher@', launcher)
+        .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
+        .replaceAll('@sha256@', sha256),
+      { mode: 0o700 },
+    )
+    const run = () => {
+      const result = Bun.spawnSync([bash, wrapper, 'build', '//:app'], {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          XDG_CACHE_HOME: join(root, 'cache'),
+          WATCHMAN_SOCK: join(root, 'unused-watcher'),
+          WORKTREE_CAPABILITIES_PROFILE: profile,
+          BUCK2_NO_REMOTE_CACHE: '1',
+        },
+      })
+      expect(result.exitCode).toBe(0)
+      return result.stdout.toString().trim().split('\n')
+    }
+    const [epoch, native, option, cache] = run()
+    expect(native).toBe('/unused-native')
+    expect(option).toBe('--launch-cache')
+    mkdirSync(dirname(cache!), { recursive: true })
+    writeFileSync(cache!, `${Number(epoch) + 5}\nnever-replay-this\0`)
+    const packageRoot = join(profile, 'quick-contracts')
+    mkdirSync(packageRoot)
+    expect(run().slice(1)).toEqual(['/unused-native', 'build', '//:app'])
+    rmSync(packageRoot, { recursive: true })
+    symlinkSync(join(root, 'absent-package'), packageRoot)
+    expect(run().slice(1)).toEqual(['/unused-native', 'build', '//:app'])
+  })
+
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
     let requests = 0
     const grpc = createServer()

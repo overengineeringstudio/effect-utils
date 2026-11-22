@@ -63,6 +63,11 @@ if [[ -n "${GATE_SLOT_CLASS:-}" && "${BUCK2_GATE_WRAPPER_ACTIVE:-}" != 1 ]]; the
 fi
 root="$PWD"
 while [[ ! -f "$root/.buckroot" && "$root" != / ]]; do root="${root%/*}"; [[ -n "$root" ]] || root=/; done
+# Membership-only contracts require a fresh Git census on every invocation.
+# Never replay previously admitted arguments for a membership-aware profile.
+if [[ -n "${WORKTREE_CAPABILITIES_PROFILE:-}" && ( -e "$WORKTREE_CAPABILITIES_PROFILE/quick-contracts" || -L "$WORKTREE_CAPABILITIES_PROFILE/quick-contracts" ) ]]; then
+  exec @launcher@ @native@ "$@"
+fi
 cache=""
 if [[ $# -gt 0 && -n "${HOME:-}${XDG_CACHE_HOME:-}" && -f "$root/.buckroot" && -f "$root/.buckconfig" && ! -d "$root/.buckconfig.d" \
   && -z "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" \

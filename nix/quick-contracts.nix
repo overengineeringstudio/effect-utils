@@ -111,6 +111,7 @@ let
     set -euo pipefail
     export PATH="''${WORKTREE_POLICY_PATH:+$WORKTREE_POLICY_PATH:}${runtimePath}"
     export DEVENV_ROOT="$PWD" WORKSPACE_ROOT="$PWD"
+    export WORKTREE_GIT=${pkgs.git}/bin/git
     # Pin the runtime fallback to the owning prepare receipt, not a mutable
     # current-generation link. Preserve an explicit caller override.
     if [ -z "''${WORKTREE_CAPABILITIES_PROFILE:-}" ]; then

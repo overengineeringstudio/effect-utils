@@ -1,6 +1,9 @@
 {
   "buck2:cache-admission:check": {
-    "paths": ["scripts/buck2-cache-admission-check.sh"],
+    "paths": [
+      "nix/buck2-rules/patches/rust-action-adapter.patch",
+      "scripts/buck2-cache-admission-check.sh"
+    ],
     "prefixes": [
       "buck2/",
       "packages/@overeng/buck2-tools/src/",
@@ -13,7 +16,10 @@
   },
   "buck2:cache-posture:ci-test": {
     "paths": [
+      ".buckconfig",
+      "genie/ci-scripts/buck2-action-evidence-codec.ts",
       "genie/ci-scripts/buck2-action-evidence.ts",
+      "genie/ci-scripts/buck2-cache-evidence.ts",
       "nix/buck2.nix",
       "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
       "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
@@ -31,7 +37,10 @@
   },
   "buck2:cache-posture:test": {
     "paths": [
+      ".buckconfig",
+      "genie/ci-scripts/buck2-action-evidence-codec.ts",
       "genie/ci-scripts/buck2-action-evidence.ts",
+      "genie/ci-scripts/buck2-cache-evidence.ts",
       "nix/buck2.nix",
       "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
       "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
@@ -100,11 +109,17 @@
   },
   "buck2:task-guards:check": {
     "paths": [
+      "buck2-test-authority.json",
+      "buck2/toolchains/BUCK",
+      "buck2/toolchains/configured.bzl",
       "devenv.nix",
+      "genie/ci-workflow/test-platforms.json",
+      "genie/ci-workflow/test-scheduling.json",
       "nix/devenv-modules/tasks/shared/tests/devenv-task-graph.test.sh",
       "nix/devenv-modules/tasks/shared/tests/notion-integration-ci.test.sh",
       "nix/quick-contracts-sequence.nix",
       "nix/quick-contracts-sequence.test.nix",
+      "packages/@overeng/utils-dev/src/check-baseline-test-collection.ts",
       "scripts/devenv-task-graph-check.mjs"
     ],
     "prefixes": [

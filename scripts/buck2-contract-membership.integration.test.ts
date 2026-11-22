@@ -203,6 +203,15 @@ describe('live quick-contract Git membership', () => {
     expect(admitted).toContain(`${key}=${digest({ 'test:types': tracked })[key]}`)
     expect(admitted.slice(admitted.indexOf('--'))).toEqual(['--', '--literal-tool-argument'])
     expect(admitted.some((arg) => arg.includes('one.ts'))).toBe(false)
+    writeFileSync(join(root, 'two.ts'), 'new tracked contract member\n')
+    run('add', '--', 'two.ts')
+    const refreshed = await directBuckArguments({
+      args: canonical.args,
+      cwd: root,
+      env: managedEnv,
+    })
+    expect(refreshed).toContain(`${key}=${digest({ 'test:types': tracked })[key]}`)
+    expect(refreshed).not.toContain(admitted.find((arg) => arg.startsWith(`${key}=`)))
   })
 
   it('rejects invalid modes, empty memberships, and colliding config task keys', () => {

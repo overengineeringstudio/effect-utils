@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import targetCatalog from '../../nix/quick-contracts-targets.json'
 import {
   contractSourceGroup,
   contractSourceName,
@@ -89,5 +90,34 @@ describe('per-contract Buck source selectors', () => {
     expect(() =>
       group({ paths: [], prefixes: [], membership_inputs: true, membership: [':(glob)other/**'] }),
     ).toThrow('Unsupported membership byte-input Git pathspec')
+  })
+
+  it.each([
+    ['buck2:cache-admission:check', 'nix/buck2-rules/patches/rust-action-adapter.patch'],
+    ['buck2:cache-posture:ci-test', '.buckconfig'],
+    ['buck2:cache-posture:ci-test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
+    ['buck2:cache-posture:ci-test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
+    ['buck2:cache-posture:test', '.buckconfig'],
+    ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
+    ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
+    ['buck2:task-guards:check', 'buck2-test-authority.json'],
+    ['buck2:task-guards:check', 'buck2/toolchains/BUCK'],
+    ['buck2:task-guards:check', 'buck2/toolchains/configured.bzl'],
+    ['buck2:task-guards:check', 'genie/ci-workflow/test-platforms.json'],
+    ['buck2:task-guards:check', 'genie/ci-workflow/test-scheduling.json'],
+    [
+      'buck2:task-guards:check',
+      'packages/@overeng/utils-dev/src/check-baseline-test-collection.ts',
+    ],
+  ] as const)('projects %s real input %s into its owning Buck package', (task, file) => {
+    const dependencyOwners = [...owners, 'buck2/toolchains', 'packages/@overeng/utils-dev']
+    const owner = dependencyOwners
+      .toSorted((left, right) => right.length - left.length)
+      .find((candidate) => candidate === '.' || file.startsWith(`${candidate}/`))!
+    const selection = targetCatalog[task]
+    expect(contractSourceOwners(selection, dependencyOwners, [])).toContain(owner)
+    expect(
+      contractSourceGroup({ selection, owner, owners: dependencyOwners, directories: [] }).include,
+    ).toContain(owner === '.' ? file : file.slice(owner.length + 1))
   })
 })

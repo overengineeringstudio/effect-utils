@@ -717,6 +717,9 @@ republishing and explicit preparation; check-only source edits are hashed by
 Buck directly. The managed entrypoint also fingerprints each contract's real Git
 filename membership with the declared Git binary, preserving tracked versus
 tracked-and-untracked selection without hashing HEAD or index bookkeeping.
+Membership-aware profiles bypass admitted-argument shell caching: every invocation
+performs a fresh census, including newly staged names. Contract subprocesses bind
+`WORKTREE_GIT` to the same declared Nix Git closure rather than an ambient executable.
 All existing devenv tasks remain available; removing their evaluated authority
 requires a separate contract replacement, not deleting these guards.
 
