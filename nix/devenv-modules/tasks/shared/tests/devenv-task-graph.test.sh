@@ -152,3 +152,43 @@ writeFileSync(fixture, source.slice(0, start) +
   esac
 done
 printf 'PASS: every transitive host cache guard source is required\n'
+
+# Keep the real guard output complete when its reader applies backpressure.
+DEVENV_TASKS_JSON="${DEVENV_TASKS_JSON:-$ROOT/.devenv/gc/task-config-devenv-config-task-config}" \
+  DEVENV_TASK_GRAPH_DEPENDENCIES_ONLY=0 DEVENV_TASK_GRAPH_SCRIPT_CALLS_ONLY=0 \
+  "$NODE_BIN" --input-type=module --eval '
+import { spawn } from "node:child_process"
+const [checker, fixture, input] = process.argv.slice(1)
+const child = spawn(process.execPath, [checker, fixture], {
+  env: process.env,
+  stdio: ["ignore", "pipe", "pipe"],
+})
+let stdout = ""
+let stderr = ""
+child.stdout.on("data", (chunk) => { stdout += chunk })
+child.stderr.on("data", (chunk) => { stderr += chunk })
+child.stdout.pause()
+child.stderr.pause()
+const drain = () => {
+  child.stdout.resume()
+  child.stderr.resume()
+}
+const resume = setTimeout(drain, 5000)
+const watchdog = setTimeout(() => { child.kill("SIGKILL") }, 15000)
+child.once("exit", drain)
+const result = await new Promise((resolve, reject) => {
+  child.once("error", reject)
+  child.once("close", (code, signal) => { resolve({ code, signal }) })
+})
+clearTimeout(resume)
+clearTimeout(watchdog)
+const failure = /^not ok (\d+) - (.+)$/m.exec(stderr)
+const expected = `host cache posture watches transitive guard source: ${input}`
+if (result.code !== 1 || result.signal !== null || failure?.[2] !== expected)
+  throw new Error(`wrong guard failure under backpressure: ${JSON.stringify(result)} ${stderr}`)
+const lines = stdout.trimEnd().split("\n")
+const lastSuccess = Number(failure[1]) - 1
+if (lines.length !== lastSuccess || lines.every((line, index) => line.startsWith(`ok ${index + 1} - `)) === false)
+  throw new Error(`truncated guard output: expected ${lastSuccess} TAP lines, received ${lines.length}`)
+console.log("PASS: task graph guard retains every TAP line under backpressure")
+' "$ROOT/scripts/devenv-task-graph-check.mjs" "$cache_fixture" "$input"

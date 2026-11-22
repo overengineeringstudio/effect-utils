@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeSync } from 'node:fs'
 import { posix } from 'node:path'
 
 const root = process.argv[2]
@@ -87,11 +87,11 @@ for (const [name, task] of tasks) {
 let testCount = 0
 const ok = ({ condition, name, detail = '' }) => {
   if (condition === false) {
-    console.error(`not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}`)
+    writeSync(2, `not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}\n`)
     process.exit(1)
   }
   testCount += 1
-  console.log(`ok ${testCount} - ${name}`)
+  writeSync(1, `ok ${testCount} - ${name}\n`)
 }
 ok({
   condition: missingDependencies.length === 0,
@@ -1245,4 +1245,4 @@ ok({
   name: 'no legacy top-level toolchains directory remains',
 })
 
-console.log(`1..${testCount}`)
+writeSync(1, `1..${testCount}\n`)

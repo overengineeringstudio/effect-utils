@@ -587,7 +587,9 @@ operations. Publishers sharing `packages/.editor-view` must be ordered: their
 publication lock fails fast rather than waiting. Aggregate aliases use the one
 union publisher rather than concurrently scheduling per-package publishers.
 `scripts/devenv-task-graph-check.mjs` verifies scopes, direct-task isolation,
-batch ordering, and publisher ordering on the evaluated graph.
+batch ordering, and publisher ordering on the evaluated graph. Its TAP writes
+are synchronous so fail-fast exits preserve complete diagnostics under pipe
+backpressure.
 
 Missing, malformed, escaping, dangling, incomplete, or stale state fails with
 the recorded and current identities. `buck2:editor:recover-lock` is the only
