@@ -4,7 +4,7 @@
 # Projection source: rust/effect-rust-fixtures/app/BUCK.genie.ts
 # Projection generator: effect-utils/rust/wasm-aggregator-fixture
 # Projection schema version: 1
-# Semantic fingerprint: sha256:547f26ca963b82355c1c82f575eac59a70f7be0abdc6f40526a996f97b52a7cc
+# Semantic fingerprint: sha256:c9caab3dceda8224402d7b49cfe4f5dba6eb86887f2fb8d0b69c7c10bed04e80
 # Semantic inputs: rust/effect-rust-fixtures/app/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 

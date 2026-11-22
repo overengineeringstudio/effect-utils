@@ -4,7 +4,7 @@
 # Projection source: rust/effect-rust-fixtures/service/BUCK.genie.ts
 # Projection generator: effect-utils/rust/interop-service-fixture
 # Projection schema version: 1
-# Semantic fingerprint: sha256:70a43600dfa11999d5896fd2f30d506dc8fdda1ed2d05dfa69665b1dd437ce64
+# Semantic fingerprint: sha256:400fcc153d6d37c022fa1d927c75438e4d49839e8b3eca929d19acaff556302c
 # Semantic inputs: rust/effect-rust-fixtures/service/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
