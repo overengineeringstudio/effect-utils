@@ -404,7 +404,7 @@ describe('same-generation legacy symlink migration recovery', () => {
             throw new AggregateError(
               [aborted.error, error],
               'Publisher timeout and group cleanup failed',
-              { cause: aborted.error },
+              { cause: error },
             )
           throw error
         }
