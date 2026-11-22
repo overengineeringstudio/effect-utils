@@ -546,6 +546,7 @@ _quick_contract_source_set(
     "nix/buck2-generated-worktree-roots.json",
     "nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh",
     "nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh",
+    "nix/devenv-modules/tasks/shared/tests/buck2-capability-watcher-change.jq",
     "packages/@overeng/buck2-tools/src/**/*",
     "packages/@overeng/buck2-tools/src/**/.*",
     "packages/@overeng/buck2-tools/src/**/.*/**/*",
