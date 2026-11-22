@@ -20,8 +20,12 @@ class ReceiptTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "repo"
         self.root.mkdir()
+        # Isolate only synthetic fixture Git; real repository hooks/config stay unchanged.
+        git_config = Path(self.temporary.name) / "gitconfig"
+        git_config.write_text("")
         self.env = {**os.environ, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
-                    "GITHUB_JOB": "unit", "RUNNER_TEMP": self.temporary.name}
+                    "GITHUB_JOB": "unit", "RUNNER_TEMP": self.temporary.name,
+                    "GIT_CONFIG_GLOBAL": str(git_config), "GIT_CONFIG_NOSYSTEM": "1"}
         for name in ("devenv.nix", "nix/devenv-modules/tasks/shared/test.nix",
                      "scripts/editor-view-authority.ts", "scripts/editor-view-receipt.py",
                      "pnpm-lock.yaml", "outside-receipt-scope.txt",
@@ -44,12 +48,11 @@ class ReceiptTest(unittest.TestCase):
         self.git("init", "-q")
         self.git("add", ".")
         self.git("config", "commit.gpgsign", "false")
-        email = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True).stdout.strip()
-        name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True).stdout.strip()
-        self.git("-c", f"user.name={name or 'Receipt test'}", "-c", f"user.email={email or 'test@example.com'}", "commit", "-qm", "fixture")
+        self.git("config", "user.name", "Receipt test")
+        self.git("config", "user.email", "test@example.com")
+        self.git("commit", "-qm", "fixture")
         authority = self.root / ".devenv/editor-workspace-authority.json"
-        # Git tooling can already have created this ignored runtime directory.
-        authority.parent.mkdir(exist_ok=True)
+        authority.parent.mkdir()
         authority.write_text("authority-one")
         snapshot = self.root / ".editor-view/.store/root-digest"
         snapshot.mkdir(parents=True)
@@ -60,7 +63,8 @@ class ReceiptTest(unittest.TestCase):
         self.run_helper("write")
 
     def git(self, *args):
-        subprocess.run(["git", "-C", str(self.root), *args], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["git", "-C", str(self.root), *args], env=self.env,
+                       check=True, stdout=subprocess.DEVNULL)
 
     def run_helper(self, action):
         subprocess.run([sys.executable, str(HELPER), action, str(self.root), "publication", '["."]'],
