@@ -367,8 +367,8 @@ javascript_product(
 _quick_contract_source_set(
     name = "quick_contract_sources",
     prefix = "packages/@overeng/oxc-config",
-    srcs = [
+    srcs = glob([
     "nix/build.nix"
-],
+]),
     visibility = ["PUBLIC"],
 )

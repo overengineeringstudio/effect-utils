@@ -401,7 +401,7 @@ alias(name = "check-quick", actual = "//buck2/static:check_quick", visibility = 
 _quick_contract_source_set(
     name = "quick_contract_sources",
     prefix = "",
-    srcs = [
+    srcs = glob([
     ".github/actions/ci-policy/bun-package.nix",
     ".github/actions/ci-storage/jq-package.nix",
     "context/builds/.experiments/2026-09-30-namespace-remote-execution/real-graph-run.sh",
@@ -439,6 +439,7 @@ _quick_contract_source_set(
     "nix/binary-caches.nix",
     "nix/bubblewrap.nix",
     "nix/buck2-capabilities.nix",
+    "nix/buck2-launcher-inputs.nix",
     "nix/buck2-products/buck-inputs.nix",
     "nix/buck2-products/cache.nix",
     "nix/buck2-products/capability-closure.test.sh",
@@ -460,6 +461,7 @@ _quick_contract_source_set(
     "nix/buck2-products/production-helpers.nix",
     "nix/buck2-products/production-helpers.test.sh",
     "nix/buck2-products/publish.sh",
+    "nix/buck2-products/root-projection-inputs.nix",
     "nix/buck2-products/root-projection.nix",
     "nix/buck2-products/root-projection.test.sh",
     "nix/buck2-products/source-recipes.nix",
@@ -627,6 +629,7 @@ _quick_contract_source_set(
     "nix/stage0-cargo/refresh-inputs.nix",
     "nix/stage0-cargo/refresh.sh",
     "nix/stylex-next-fixture.nix",
+    "nix/task-authority-inputs.nix",
     "nix/weaver-flake/flake.nix",
     "nix/workspace-tools/lib/buck2-artifact-import.nix",
     "nix/workspace-tools/lib/buck2-artifact-realize.nix",
@@ -669,6 +672,7 @@ _quick_contract_source_set(
     "nix/workspace-tools/lib/tests/source-identity.sh",
     "nix/worktree-buck-trace.nix",
     "nix/worktree-teardown.nix",
+    "nix/worktree-tool-inputs.nix",
     "nix/worktree-tools.nix",
     "rust/workspace-contract.test.sh",
     "scripts/buck2-cache-admission-check.sh",
@@ -682,6 +686,6 @@ _quick_contract_source_set(
     "scripts/package-feedback.sh",
     "scripts/without-git-local-env.sh",
     "scripts/without-git-local-env.test.sh"
-],
+]),
     visibility = ["PUBLIC"],
 )

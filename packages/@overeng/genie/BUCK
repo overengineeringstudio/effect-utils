@@ -870,8 +870,8 @@ build_product(
 _quick_contract_source_set(
     name = "quick_contract_sources",
     prefix = "packages/@overeng/genie",
-    srcs = [
+    srcs = glob([
     "flake.nix"
-],
+]),
     visibility = ["PUBLIC"],
 )

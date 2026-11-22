@@ -220,10 +220,10 @@ build_product(
 _quick_contract_source_set(
     name = "quick_contract_sources",
     prefix = "rust/worktree-lease",
-    srcs = [
+    srcs = glob([
     "tests/await.sh",
     "tests/schema.sh",
     "tests/try.sh"
-],
+]),
     visibility = ["PUBLIC"],
 )
