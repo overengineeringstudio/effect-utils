@@ -73,6 +73,7 @@ export const discoverEntries = Effect.fn('changelog.discoverEntries')(function* 
     const module = yield* Effect.tryPromise({
       // Entry modules are discovered at runtime; each exports `entry` and type-only imports.
       try: (): Promise<{ readonly entry?: unknown }> =>
+        // oxlint-disable-next-line import/no-dynamic-require -- entry modules are product files discovered by path
         import(`${pathToFileURL(modulePath).href}?v=${version}`),
       catch: (cause) =>
         new ChangelogCompileError({ message: `cannot load ${file}: ${String(cause)}`, file }),
@@ -164,12 +165,12 @@ export const screenshotHash = Effect.fn('changelog.screenshotHash')(function* <T
   const hash = createHash('sha256')
   const { viewports, schemes, themes, inputs } = config.screenshots
   hash.update(
-    Schema.encodeSync(Schema.UnknownFromJsonString)({
+    yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
       renderer: RENDERER_VERSION,
       viewports,
       schemes,
       themes,
-    }),
+    }).pipe(Effect.orDie),
   )
   const files = [
     path.relative(config.root, entry.path),

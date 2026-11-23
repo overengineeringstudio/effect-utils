@@ -159,11 +159,10 @@ describe('changelog loading', () => {
         ],
         callouts: [{ n: 1, caption: 'This cell' }],
       })
-      expect(
-        contract.decodeManifest(
-          Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(built.bytes),
-        ),
-      ).toEqual(built.manifest)
+      const json = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
+        built.bytes,
+      )
+      expect(contract.decodeManifest(json)).toEqual(built.manifest)
     }).pipe(Effect.provide(NodeServices.layer)),
   )
 

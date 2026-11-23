@@ -191,6 +191,7 @@ export const renderScreenshots = Effect.fn('changelog.render')(function* <Text, 
     }
     const module = yield* Effect.tryPromise({
       try: (): Promise<{ readonly scene?: ChangelogScene<Browser> }> =>
+        // oxlint-disable-next-line import/no-dynamic-require -- scene modules are product files discovered by path
         import(pathToFileURL(entry.scenePath).href),
       catch: (cause) =>
         new ChangelogCompileError({
