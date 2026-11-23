@@ -12,7 +12,7 @@
  *     the `git`/`nix` namespace seams (`../git.contract.ts`, `../nix.contract.ts`) and the encoders
  *     below rebuild from those IMPORTED catalog schemas (identical encode).
  */
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema, type Tracer } from 'effect'
 
 import {
   OtelAttr,
@@ -139,6 +139,126 @@ export const annotateStoreEnumeration = (value: typeof StoreEnumerationAttribute
   trustOtelContract<void, never, never>(
     OtelSpan.annotate({ attributes: storeEnumerationAttrs, value }),
   )
+
+const StoreLivenessReconcileAttributes = Schema.Struct({
+  'megarepo.store.liveness.reconcile.workspaces': Schema.Int,
+  'megarepo.store.liveness.reconcile.derived': Schema.Int,
+  'megarepo.store.liveness.reconcile.unchanged': Schema.Int,
+  'megarepo.store.liveness.reconcile.rewritten': Schema.Int,
+  'megarepo.store.liveness.reconcile.failed': Schema.Int,
+  'megarepo.store.liveness.reconcile.pruned': Schema.Int,
+  'megarepo.store.liveness.reconcile.duration_ms': Schema.Finite,
+})
+const storeLivenessReconcileAttrs = OtelAttrs.defineSync(StoreLivenessReconcileAttributes)
+
+/** Annotate one strict registry reconciliation with aggregate results (trace-only). */
+export const annotateStoreLivenessReconcile = (
+  value: typeof StoreLivenessReconcileAttributes.Type,
+) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({ attributes: storeLivenessReconcileAttrs, value }),
+  )
+
+const processReferenceCensusAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    'megarepo.store.process_census.processes_read': Schema.Int,
+    'megarepo.store.process_census.failures': Schema.Int,
+    'megarepo.store.process_census.paths_found': Schema.Int,
+    'megarepo.store.process_census.bytes_read': Schema.Int,
+    'megarepo.store.process_census.first_failure': Schema.optionalKey(Schema.String),
+  }),
+)
+
+/** One census's observed work, including failed reads and partial path evidence (trace-only). */
+export const annotateProcessReferenceCensus = ({
+  processesRead,
+  failures,
+  pathsFound,
+  bytesRead,
+  firstFailure,
+}: {
+  processesRead: number
+  failures: number
+  pathsFound: number
+  bytesRead: number
+  firstFailure: string | undefined
+}) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({
+      attributes: processReferenceCensusAttrs,
+      value: {
+        'megarepo.store.process_census.processes_read': processesRead,
+        'megarepo.store.process_census.failures': failures,
+        'megarepo.store.process_census.paths_found': pathsFound,
+        'megarepo.store.process_census.bytes_read': bytesRead,
+        ...(firstFailure === undefined
+          ? {}
+          : { 'megarepo.store.process_census.first_failure': firstFailure }),
+      },
+    }),
+  )
+
+const workspaceActivityCaptureAttrs = OtelAttrs.defineSync(
+  Schema.Struct({
+    'megarepo.store.workspace_activity.commands': Schema.Int,
+    'megarepo.store.workspace_activity.bytes_read': Schema.Int,
+    'megarepo.store.workspace_activity.failures': Schema.Int,
+    'megarepo.store.workspace_activity.first_failure': Schema.optionalKey(Schema.String),
+  }),
+)
+
+/** Aggregate bounded native command work; retain failures even when admission fails closed. */
+export const annotateWorkspaceActivityCapture = ({
+  commands,
+  bytesRead,
+  failures,
+  firstFailure,
+}: {
+  commands: number
+  bytesRead: number
+  failures: number
+  firstFailure: string | undefined
+}) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({
+      attributes: workspaceActivityCaptureAttrs,
+      value: {
+        'megarepo.store.workspace_activity.commands': commands,
+        'megarepo.store.workspace_activity.bytes_read': bytesRead,
+        'megarepo.store.workspace_activity.failures': failures,
+        ...(firstFailure === undefined
+          ? {}
+          : { 'megarepo.store.workspace_activity.first_failure': firstFailure }),
+      },
+    }),
+  )
+
+const buckMaintainWorktreeOperation = OtelOperation.define({
+  name: 'store.buckMaintain.worktree',
+  attributes: OtelAttrs.defineSync(Schema.Struct({ worktreePath: MegarepoWorktreePath })),
+  label: ({ worktreePath }) => basename(worktreePath),
+})
+
+/** Bound maintenance traces to one worktree, retaining a link to the initiating run. */
+export const withBuckMaintainWorktreeSpan =
+  ({ worktreePath, runSpan }: { worktreePath: string; runSpan: Tracer.Span | undefined }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    trustOtelContract<A, E, R>(
+      buckMaintainWorktreeOperation.withRoot({
+        attributes: { worktreePath },
+        effect: Effect.gen(function* () {
+          if (runSpan !== undefined) {
+            const span = yield* Effect.currentSpan.pipe(Effect.option)
+            if (Option.isSome(span) === true) {
+              span.value.addLinks([
+                { span: runSpan, attributes: { 'link.type': 'maintenance-run' } },
+              ])
+            }
+          }
+          return yield* effect
+        }),
+      }),
+    )
 
 // ---- DYNAMIC-NAME BRIDGES (megarepo.*): span name varies → stay inline, rebuilt from catalog ----
 

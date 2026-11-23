@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Option, Schema, Tracer } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -453,9 +453,36 @@ it.live(
         summary: { worktrees: 5, actions: 0, skipped: 5 },
       }
       yield* fs.writeFileString(configPath, encodeJson({ ...config, maintainUnowned: false }))
+      const spans: Array<Tracer.NativeSpan> = []
+      const tracer = Tracer.make({
+        span: (options) => {
+          const span = new Tracer.NativeSpan(options)
+          spans.push(span)
+          return span
+        },
+      })
       const first = yield* runBuckMaintain({ configPath, dryRun: false }).pipe(
         Effect.provideService(FileSystem.FileSystem, idleFs),
+        Effect.withTracer(tracer),
       )
+      const runSpan = spans.find((span) => span.name === 'store.runBuckMaintain')
+      expect(runSpan).toBeDefined()
+      const worktreeSpans = spans.filter((span) => span.name === 'store.buckMaintain.worktree')
+      expect(worktreeSpans).toHaveLength(5)
+      expect(new Set(worktreeSpans.map((span) => span.traceId)).size).toBe(5)
+      for (const span of worktreeSpans) {
+        expect(span.parent).toEqual(Option.none())
+        expect(span.traceId).not.toBe(runSpan!.traceId)
+        expect(span.links).toHaveLength(1)
+        expect(span.links[0]!.span).toBe(runSpan)
+        expect(span.links[0]!.attributes).toEqual({ 'link.type': 'maintenance-run' })
+      }
+      const captures = spans.filter((span) => span.name === 'store.buckMaintain.capture')
+      if (process.platform === 'linux') expect(captures.length).toBeGreaterThan(0)
+      for (const capture of captures) {
+        expect(worktreeSpans.some((span) => span.traceId === capture.traceId)).toBe(true)
+        expect(capture.traceId).not.toBe(runSpan!.traceId)
+      }
       if (process.platform === 'linux') {
         const firstByPath = new Map(first.entries.map((entry) => [entry.worktree, entry]))
         expect(first.entries).toHaveLength(5)

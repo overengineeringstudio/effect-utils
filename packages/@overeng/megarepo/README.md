@@ -314,6 +314,14 @@ Replacing an ancestor with a symlink cannot redirect removal outside the verifie
 changed identities or unavailable primitives refuse deletion. The same boundary protects
 worktree and merged-worklog teardown.
 
+The native `beforeRemove` guard receives an engine-minted, immutable `OwnedDeletionPins`
+view. Capture all-UID holder evidence **inside** that guard, after pin acquisition. Only
+an `fd` reference matching an actual owned `(pid, fd, dev, ino)` is exempt from self-use;
+another fd from the same process, or any cwd/exe/map/mount reference, still vetoes.
+No caller-supplied ignore list or PID-wide exemption is accepted. The view's `has`
+predicate is revoked when the guard completes, fails, is interrupted, or throws; retained
+views do not authorize later actions. This seam is not census or deletion authorization.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
@@ -353,6 +361,9 @@ processes require a bounded `lsof` fallback or trusted lifetime-bound manifest c
 otherwise GC keeps with `own-uid-unreadable`. macOS retains the existing bounded `lsof -d cwd`
 probe; a failed probe keeps conservatively. Budget and worklog deletion retain their stricter
 activity contracts and reject non-Linux hosts with `unsupported-platform`.
+Only a lifetime-checked zombie with readable `Threads: 1` is considered exited.
+A zombie thread-group leader can still have live threads holding files; multiple
+threads or unreadable/malformed thread evidence retain the normal fail-closed probe.
 Unreadable own-UID privilege-transition processes have a fixed exemption. `systemd --user`
 must have parent PID 1 and match the root system manager's `user@<uid>.service` MainPID,
 with the same observed process start time. Its `(sd-pam)` child must name that verified
@@ -590,6 +601,28 @@ Native ownership safety assertions use deterministic subprocess projections on e
 host. An additional real-`pty` test skips only when the executable is absent from
 `PATH`; other probe failures fail the test. Empty native projections also require PTY
 capture: unavailable PTY evidence is unknown, not proof of no owners.
+
+## Incomplete store census
+
+Repository discovery returns `{ repos, complete, unaccounted }`. Each unaccounted
+entry is `{ path: string, reason: "depth-limit" }`, identifying the subtree at the
+walk boundary. Paths are absolute and realpath-resolved, using the same canonical
+store base as known repository/candidate paths. Discovery continues elsewhere.
+
+Store `ls`, `status`, `fetch`, `fix`, and GC JSON reports expose `complete` and
+`unaccounted` at the top level. GC dry-runs still produce reports when `complete`
+is false; human-readable reports list each unaccounted path and reason. The
+`megarepo.build-output-budget-plan.v3` literal is unchanged, with additive
+top-level `complete: boolean` and `unaccounted` fields. Unknown bytes never
+enter the known candidate inventory or reclaimable-byte accounting.
+Enumeration warnings go to stderr, preserving one valid JSON document on stdout
+even when the census is incomplete.
+Expanded Git worktree registrations that overlap an unaccounted boundary in
+either direction are excluded from candidate scanning and accounting too.
+
+Mutating GC and budget candidate application refuse an incomplete census before
+deletion. Budget application repeats this check under its deletion leases and
+before removal. No unaccounted subtree, or its ancestor, is reclaimed.
 
 ## Documentation
 

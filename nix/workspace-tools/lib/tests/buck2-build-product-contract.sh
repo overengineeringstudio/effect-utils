@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
-compiler_package="$(nix build --no-link --print-out-paths "$repo_root#buck2-rust-compiler")"
+# Match buck2-bridge.sh: managed worktrees may have intentionally shallow history.
+compiler_package="$(nix build --no-link --print-out-paths "git+file://$repo_root?shallow=1#buck2-rust-compiler")"
 BUCK2_RUST_COMPILER_IDENTITY="$("$compiler_package/bin/rustc" --effect-utils-compiler-identity)"
 if [[ -z "$BUCK2_RUST_COMPILER_IDENTITY" ]]; then
   echo "buck2-library-product-contract-test: real compiler capability returned an empty identity" >&2

@@ -8,6 +8,7 @@ import type { PlatformError } from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
+import * as Observability from '../core/observability.ts'
 import { MR_VERSION } from '../core/version.ts'
 import {
   isInsideWorktree,
@@ -175,21 +176,49 @@ export const isWorkspaceActive = ({
   return false
 }
 
+interface ActivityCommandCensus {
+  commands: number
+  bytesRead: number
+  failures: number
+  firstFailure: string | undefined
+}
+
+const recordActivityCommandFailure = ({
+  census,
+  error,
+}: {
+  census: ActivityCommandCensus
+  error: { readonly _tag: string; readonly message: string }
+}): void => {
+  census.failures += 1
+  // Schema errors can embed the entire command payload; never export that payload.
+  census.firstFailure ??=
+    error._tag === 'SchemaError'
+      ? 'SchemaError: activity command JSON does not match the expected schema'
+      : `${error._tag}: ${error.message}`.slice(0, 512)
+}
+
 /**
  * One bounded JSON command reader per activity capture. Its byte budget spans
  * every command in that capture, so pagination cannot grow without bound.
  */
 const makeActivityCommandJson = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner
-  let capturedBytes = 0
+  const census: ActivityCommandCensus = {
+    commands: 0,
+    bytesRead: 0,
+    failures: 0,
+    firstFailure: undefined,
+  }
 
-  const capture = Effect.fn('store.captureWorkspaceActivity')(function* ({
+  const capture = Effect.fnUntraced(function* ({
     command,
     args,
   }: {
     command: string
     args: ReadonlyArray<string>
   }) {
+    census.commands += 1
     const handle = yield* spawner.spawn(ChildProcess.make(command, args))
     const bounded = ({
       stream,
@@ -205,8 +234,8 @@ const makeActivityCommandJson = Effect.gen(function* () {
       return stream.pipe(
         Stream.runForEach((part) => {
           bytes += part.byteLength
-          capturedBytes += part.byteLength
-          if (bytes > limit || capturedBytes > CAPTURE_BYTES) {
+          census.bytesRead += part.byteLength
+          if (bytes > limit || census.bytesRead > CAPTURE_BYTES) {
             return Effect.fail(unavailable('Activity capture exceeds byte limit'))
           }
           if (retain === true) parts.push(part)
@@ -238,7 +267,7 @@ const makeActivityCommandJson = Effect.gen(function* () {
     if (exitCode !== 0) return yield* unavailable('Activity command failed')
     return stdout
   })
-  return <TType, TEncoded>({
+  const read = <TType, TEncoded>({
     command,
     args,
     schema,
@@ -251,7 +280,11 @@ const makeActivityCommandJson = Effect.gen(function* () {
       Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(schema))),
       Effect.scoped,
       Effect.timeout('5 seconds'),
+      Effect.tapError((error) =>
+        Effect.sync(() => recordActivityCommandFailure({ census, error })),
+      ),
     )
+  return { read, census }
 })
 
 /**
@@ -270,7 +303,7 @@ export const readWorkspaceActivity: (options: {
   const st3Binary = process.env['MEGAREPO_GC_ST3_BIN'] ?? 'st3'
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
   if (st3Binary.length === 0 || ptyBinary.length === 0) return undefined
-  const commandJson = yield* makeActivityCommandJson
+  const { read: commandJson, census } = yield* makeActivityCommandJson
 
   const read = Effect.gen(function* () {
     const agents: Array<typeof Agent.Type> = []
@@ -469,6 +502,13 @@ export const readWorkspaceActivity: (options: {
   })
   return yield* read.pipe(
     Effect.timeout(CAPTURE_TIMEOUT_MS),
+    Effect.tapError((error) =>
+      Effect.sync(() => {
+        // Command failures are already counted; admission failures still need a reason.
+        if (census.failures === 0) recordActivityCommandFailure({ census, error })
+      }),
+    ),
+    Effect.ensuring(Effect.suspend(() => Observability.annotateWorkspaceActivityCapture(census))),
     Effect.orElseSucceed(() => undefined),
   )
 })
@@ -871,12 +911,16 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   const sessions =
     preflight === undefined
       ? yield* Effect.gen(function* () {
-          const commandJson = yield* makeActivityCommandJson
+          const { read: commandJson, census } = yield* makeActivityCommandJson
           return yield* commandJson({
             command: ptyBinary,
             args: ['list', '--json', '--tags'],
             schema: PtySessions,
-          })
+          }).pipe(
+            Effect.ensuring(
+              Effect.suspend(() => Observability.annotateWorkspaceActivityCapture(census)),
+            ),
+          )
         })
       : yield* preflight.ownerSessions.pipe(
           Effect.flatMap(
@@ -956,12 +1000,16 @@ export const makeBudgetActivityPreflight = Effect.fn('store.makeBudgetActivityPr
     const nativeActivity = yield* Effect.cached(readWorkspaceActivity({ fs }))
     const ownerSessions = yield* Effect.cached(
       Effect.gen(function* () {
-        const commandJson = yield* makeActivityCommandJson
+        const { read: commandJson, census } = yield* makeActivityCommandJson
         return yield* commandJson({
           command: process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty',
           args: ['list', '--json', '--tags'],
           schema: PtySessions,
-        })
+        }).pipe(
+          Effect.ensuring(
+            Effect.suspend(() => Observability.annotateWorkspaceActivityCapture(census)),
+          ),
+        )
       }).pipe(Effect.option),
     )
     const scan = Effect.fn('store.budgetActivityPreflight.scan')(function* ({

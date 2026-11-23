@@ -159,6 +159,11 @@ and Nix owns GC-root registration, so neither uses this candidate-file format.
 The real-filesystem/Nix recovery regression runs without Buck builds through
 `buck2:capabilities:recovery-test` in the PR-only `pr/buck2-tools` lane, and
 through the complete `buck2:capabilities:test` task.
+The native publisher and daemon fixtures batch profile root queries within
+each mutation-free assertion checkpoint. Every retained root must still match
+its exact profile in Nix's real registration output, and pruned roots must be
+absent. The snapshot is discarded at the next publication boundary: host GC
+registrations and daemon state are not reusable cross-run test results.
 
 Retention keeps the three most recently published generations, including the
 current one, only at a daemon-free publication boundary. The publisher checks

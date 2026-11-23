@@ -680,6 +680,7 @@ describe('native daemon admission diagnostics', () => {
       // A kill/audit failure may follow two successful status probes. The test
       // watchdog must cover all three command deadlines and bounded cleanup.
       const deadlineMs = failure === 'timeout' ? 1000 : 30000
+
       const reportFailure = async () => {
         const root = fixture()
         const native = join(root, 'native-buck')

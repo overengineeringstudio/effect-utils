@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto'
 
-import { Effect, Option, Schema } from 'effect'
+import { Clock, Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
 
@@ -32,6 +32,8 @@ const REGISTRY_VERSION = 1
 const StoreWorkspaceRecord = Schema.Struct({
   version: Schema.Literal(REGISTRY_VERSION),
   workspaceRoot: Schema.String,
+  // Last persisted observation, not a freshness lease: unchanged reconciles
+  // preserve this timestamp and still re-derive liveness on every invocation.
   updatedAt: Schema.String,
   livePaths: Schema.Array(Schema.String),
 })
@@ -119,13 +121,7 @@ const collectWorkspaceSymlinkTargets = ({
     }
 
     return targets
-  }).pipe(
-    Observability.withWorkspaceSpan({
-      name: 'megarepo/store/liveness/scan-symlinks',
-      label: workspaceLabel(workspaceRoot),
-      workspaceRoot,
-    }),
-  )
+  })
 
 /** Collects store worktree paths used by one workspace from symlinks plus its lock file. */
 export const collectWorkspaceLivePaths = ({
@@ -186,13 +182,7 @@ export const collectWorkspaceLivePaths = ({
     }
 
     return paths
-  }).pipe(
-    Observability.withWorkspaceSpan({
-      name: 'megarepo/store/liveness/collect-workspace',
-      label: workspaceLabel(workspaceRoot),
-      workspaceRoot,
-    }),
-  )
+  })
 
 /**
  * Like {@link collectWorkspaceLivePaths} but SURFACES read errors instead of
@@ -282,9 +272,9 @@ const readRegistryRecords = ({
   pruneStale: boolean
   /**
    * When provided, re-derive each present workspace's live paths fresh from disk
-   * (decision 0010). On success the on-disk record is rewritten with `now` as
-   * `updatedAt`; on read error the existing record is KEPT unchanged (fail safe —
-   * never overwrite a non-empty record with empty) and flagged unclean.
+   * (decision 0010). On success, changed derived content is persisted with `now`
+   * as `updatedAt` (the content-change time, not a freshness lease). On read error
+   * the existing record is KEPT unchanged and flagged unclean.
    */
   reconcile?: { now: number } | undefined
 }): Effect.Effect<
@@ -294,6 +284,24 @@ const readRegistryRecords = ({
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
+    const startedAt = yield* Clock.currentTimeMillis
+    const counts = { workspaces: 0, derived: 0, unchanged: 0, rewritten: 0, failed: 0, pruned: 0 }
+    if (reconcile !== undefined) {
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          const endedAt = yield* Clock.currentTimeMillis
+          yield* Observability.annotateStoreLivenessReconcile({
+            'megarepo.store.liveness.reconcile.workspaces': counts.workspaces,
+            'megarepo.store.liveness.reconcile.derived': counts.derived,
+            'megarepo.store.liveness.reconcile.unchanged': counts.unchanged,
+            'megarepo.store.liveness.reconcile.rewritten': counts.rewritten,
+            'megarepo.store.liveness.reconcile.failed': counts.failed,
+            'megarepo.store.liveness.reconcile.pruned': counts.pruned,
+            'megarepo.store.liveness.reconcile.duration_ms': endedAt - startedAt,
+          })
+        }),
+      )
+    }
     const registryDir = workspaceRegistryDir(store)
     const exists = yield* fs.exists(registryDir)
     if (exists === false) return { records: [], uncleanReconcilePaths: new Set<string>() }
@@ -312,6 +320,7 @@ const readRegistryRecords = ({
             Schema.decodeEffect(Schema.fromJsonString(StoreWorkspaceRecord))(content),
           ),
         )
+      counts.workspaces++
 
       const workspaceRoot = EffectPath.unsafe.absoluteDir(`${parsed.workspaceRoot}/`)
       const workspaceExists = yield* fs.exists(parsed.workspaceRoot)
@@ -321,6 +330,7 @@ const readRegistryRecords = ({
       if (workspaceExists === false) {
         if (pruneStale === true) {
           yield* fs.remove(recordPath)
+          counts.pruned++
         }
         continue
       }
@@ -329,20 +339,43 @@ const readRegistryRecords = ({
         records.push(parsed)
         continue
       }
-
-      // Reconcile-all: re-derive from disk. Success ⇒ rewrite the record fresh.
+      // Re-derive every workspace, but persist only changed content. A timestamp
+      // alone never changes liveness and must not force an atomic rewrite.
       // Read error ⇒ keep the existing record verbatim and flag it unclean.
       const reconciled = yield* collectWorkspaceLivePathsStrict({ workspaceRoot, store }).pipe(
         Effect.map((paths) => ({ _tag: 'ok' as const, paths })),
-        Effect.orElseSucceed(() => ({ _tag: 'error' as const })),
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            const span = yield* Effect.currentSpan.pipe(Effect.option)
+            if (Option.isSome(span) === true) {
+              const timestamp = yield* Clock.currentTimeNanos
+              span.value.event('workspace-derivation-failed', timestamp, {
+                workspaceRoot: parsed.workspaceRoot,
+                'error.tag': error._tag,
+              })
+            }
+            return { _tag: 'error' as const }
+          }),
+        ),
       )
 
       if (reconciled._tag === 'ok') {
+        counts.derived++
         const record: StoreWorkspaceRecord = {
           version: REGISTRY_VERSION,
           workspaceRoot: normalizePath(parsed.workspaceRoot),
           updatedAt: new Date(reconcile.now).toISOString(),
           livePaths: [...reconciled.paths].toSorted(),
+        }
+        if (
+          record.version === parsed.version &&
+          record.workspaceRoot === parsed.workspaceRoot &&
+          record.livePaths.length === parsed.livePaths.length &&
+          record.livePaths.every((path, index) => path === parsed.livePaths[index]) === true
+        ) {
+          counts.unchanged++
+          records.push(parsed)
+          continue
         }
         const content = yield* Schema.encodeEffect(
           Schema.fromJsonString(StoreWorkspaceRecord, { space: 2 }),
@@ -350,8 +383,10 @@ const readRegistryRecords = ({
         // Atomic rewrite so a concurrent reader never sees a torn record and
         // drops a live workspace's veto right before deletion (decision 0010).
         yield* writeFileAtomic({ path: recordPath, content: content + '\n' })
+        counts.rewritten++
         records.push(record)
       } else {
+        counts.failed++
         records.push(parsed)
         for (const livePath of parsed.livePaths) {
           if (isStorePath({ store, path: livePath }) === true) {
@@ -363,9 +398,13 @@ const readRegistryRecords = ({
 
     return { records, uncleanReconcilePaths }
   }).pipe(
+    Effect.scoped,
     Observability.withLabelSpan({
-      name: 'megarepo/store/liveness/read-registry',
-      labelValue: 'registry',
+      name:
+        reconcile === undefined
+          ? 'megarepo/store/liveness/read-registry'
+          : 'megarepo/store/liveness/reconcile',
+      labelValue: reconcile === undefined ? 'registry' : 'reconcile',
     }),
   )
 
