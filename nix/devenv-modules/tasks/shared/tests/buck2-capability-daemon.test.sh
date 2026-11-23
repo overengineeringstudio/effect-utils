@@ -232,7 +232,8 @@ for watcher in "${watchers[@]}"; do
 [project]
   ignore = buck-out
 CONFIG
-  (cd "$fixture" && HOME="$TEST_HOME" "$BUCK2" worktree-watcher prepare "$watcher")
+  # A fresh root has no ambient profile shortcut around the compiled shell wrapper.
+  (cd "$fixture" && env -u WORKTREE_CAPABILITIES_PROFILE HOME="$TEST_HOME" "$BUCK2" worktree-watcher prepare "$watcher")
   printf '{"ignore_dirs":["buck-out"]}\n' >"$fixture/.watchmanconfig"
   if [ "$watcher" = watchman ]; then
     # Native CLI spawning performs the readiness handshake for this private

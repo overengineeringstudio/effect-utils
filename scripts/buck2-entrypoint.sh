@@ -4,9 +4,9 @@
 set -euo pipefail
 # The managed executable owns this binding, including every early dispatch.
 export BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY='@publicationOwnerLibrary@'
-# Lifecycle initialization never starts native Buck or participates in its
-# launch cache/daemon wrapper, including when called from an admitted gate.
-if [[ "${1:-}" == --initialize-watchman-root ]]; then
+# Lifecycle initialization and profile configuration never start native Buck or
+# participate in its launch cache/daemon wrapper, even inside an admitted gate.
+if [[ "${1:-}" == --initialize-watchman-root || "${1:-}" == worktree-watcher ]]; then
   exec @launcher@ @native@ "$@"
 fi
 # Keep local actions in the gate's cgroup. Native Buck cannot route individual
