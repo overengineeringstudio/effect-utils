@@ -348,6 +348,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "whole-pool",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -375,6 +376,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "whole-pool",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -402,6 +404,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "whole-pool",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -430,6 +433,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "whole-pool",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -463,7 +467,11 @@ quick_contracts(
         ],
         "cache_policy": "local-validation",
         "membership": [],
-        "membership_mode": "tracked"
+        "membership_mode": "tracked",
+        "native_providers": {
+            "toolchain": "//buck2/toolchains:cross_cell_provider_identity",
+            "product": "//buck2/toolchains:cross_cell_product_identity"
+        }
     },
     "buck2:rust-deps:check": {
         "source_sets": [
@@ -497,6 +505,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -514,6 +523,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -538,6 +548,7 @@ quick_contracts(
             "buck2:providers:check"
         ],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -548,6 +559,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "whole-pool",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -628,6 +640,7 @@ quick_contracts(
             "genie:check"
         ],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -640,6 +653,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -765,6 +779,7 @@ quick_contracts(
             "genie:editor-view-closure:check"
         ],
         "cache_policy": "local-validation",
+        "cpu_demand": "whole-pool",
         "membership": [
             "**"
         ],
@@ -889,6 +904,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [
             "**"
         ],
@@ -900,6 +916,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -1017,6 +1034,7 @@ quick_contracts(
             "genie:check"
         ],
         "cache_policy": "local-validation",
+        "cpu_demand": "whole-pool",
         "membership": [
             "**"
         ],
@@ -1141,6 +1159,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [
             "*.nix",
             "*.sh"
@@ -1266,6 +1285,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [
             "*.nix"
         ],
@@ -1296,6 +1316,7 @@ quick_contracts(
             "genie:check"
         ],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -1309,6 +1330,7 @@ quick_contracts(
             "genie:check"
         ],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -1424,6 +1446,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-validation",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -1541,6 +1564,7 @@ quick_contracts(
             "genie:check"
         ],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [
             "**"
         ],
@@ -1553,6 +1577,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -1562,6 +1587,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "single-thread",
         "membership": [],
         "membership_mode": "tracked"
     },
@@ -1589,6 +1615,7 @@ quick_contracts(
         ],
         "requires": [],
         "cache_policy": "local-fixture",
+        "cpu_demand": "whole-pool",
         "membership": [],
         "membership_mode": "tracked"
     }
