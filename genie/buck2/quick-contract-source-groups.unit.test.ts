@@ -55,6 +55,13 @@ describe('per-contract Buck source selectors', () => {
     expect(selected.include).not.toContain('check.unit.test.ts')
   })
 
+  it('keeps actual native-fixture rule inputs selected by the owning open prefix', () => {
+    const selection = targetCatalog['buck2:cache-posture:test']
+    expect(contractSourceOwners(selection, owners, [])).toContain('buck2')
+    expect(group(selection, 'buck2').include).toContain('**/*')
+    expect(group(selection, 'buck2').include).not.toContain('quick_contracts.bzl')
+  })
+
   it('includes hidden files and arbitrary current hidden directory depth', () => {
     const selected = group({ paths: [], prefixes: ['src/'], extensions: ['.ts'] }, '.', [
       'src/.one/.two/.three',
@@ -98,7 +105,6 @@ describe('per-contract Buck source selectors', () => {
     ['buck2:cache-posture:ci-test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
     ['buck2:cache-posture:ci-test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
     ['buck2:cache-posture:test', '.buckconfig'],
-    ['buck2:cache-posture:test', 'buck2/quick_contracts.bzl'],
     ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
     ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
     [
