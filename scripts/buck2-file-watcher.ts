@@ -192,30 +192,30 @@ export const prepareWatchmanEnvironment = ({
   if (uid === undefined) throw new Error('Watchman managed state requires a Unix UID')
   const root = realpathSync(repoRoot)
   const directory = join(root, '.worktree-tools', 'watchman')
-  const socket = join(directory, 'sock')
-  const limit = process.platform === 'darwin' ? 103 : 107
+  // The service socket is always addressed through a short owned /tmp alias:
+  // a socket inside the checkout breaks Nix source copying, which rejects
+  // non-regular files regardless of filters. Watchman state stays
+  // checkout-private under .worktree-tools/watchman.
   const alias = join('/tmp', `eu-wm-wt-${uid}-${createHash('sha256').update(root).digest('hex').slice(0, 12)}`)
-  if (Buffer.byteLength(socket) > limit) {
-    // A long in-tree socket is addressed through a short owned alias.
-    try {
-      mkdirSync(alias, { mode: 0o700 })
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-    }
-    const aliasStat = lstatSync(alias)
-    if (
-      aliasStat.isDirectory() === false ||
-      aliasStat.isSymbolicLink() === true ||
-      aliasStat.uid !== uid ||
-      (aliasStat.mode & 0o777) !== 0o700
-    )
-      throw new WatchmanAdmissionError({
-        reason: 'socket',
-        command: 'prepare Watchman address alias',
-        detail: `${alias} must be a current-user-owned directory with mode 0700`,
-        fix: `repair or remove the unsafe alias after stopping its Watchman service; no default-path fallback is permitted`,
-      })
+  const socket = join(alias, 'sock')
+  try {
+    mkdirSync(alias, { mode: 0o700 })
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
   }
+  const aliasStat = lstatSync(alias)
+  if (
+    aliasStat.isDirectory() === false ||
+    aliasStat.isSymbolicLink() === true ||
+    aliasStat.uid !== uid ||
+    (aliasStat.mode & 0o777) !== 0o700
+  )
+    throw new WatchmanAdmissionError({
+      reason: 'socket',
+      command: 'prepare Watchman address alias',
+      detail: `${alias} must be a current-user-owned directory with mode 0700`,
+      fix: `repair or remove the unsafe alias after stopping its Watchman service; no default-path fallback is permitted`,
+    })
   try {
     mkdirSync(directory, { mode: 0o700 })
   } catch (error) {
@@ -235,7 +235,7 @@ export const prepareWatchmanEnvironment = ({
       fix: 'repair or remove the unsafe directory after stopping its Watchman service; no default-path fallback is permitted',
     })
   // Native Buck's Rust connector reads this directly; CLI probes need --sockname.
-  env['WATCHMAN_SOCK'] = Buffer.byteLength(socket) > limit ? join(alias, 'sock') : socket
+  env['WATCHMAN_SOCK'] = socket
   return directory
 }
 
