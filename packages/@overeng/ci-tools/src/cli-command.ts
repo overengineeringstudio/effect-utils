@@ -496,6 +496,12 @@ const vercelDeployCommand = Command.make(
       ),
       Options.withDefault('static' as const),
     ),
+    assetManifest: Options.String('asset-manifest').pipe(
+      Options.withDescription(
+        'Local JSON array of root-relative asset paths required before alias promotion',
+      ),
+      Options.optional,
+    ),
     mode: Options.Literals('mode', ['prod', 'pr', 'preview']).pipe(
       Options.withDescription('Vercel deploy mode'),
       Options.withDefault('preview' as const),
@@ -613,6 +619,7 @@ const vercelDeployCommand = Command.make(
       displayName: optionToUndefined(opts.displayName),
       pr: optionToUndefined(opts.pr),
       artifactKind: opts.artifactKind,
+      assetManifest: optionToUndefined(opts.assetManifest),
       aliasPrefix: optionToUndefined(opts.aliasPrefix),
       aliasSuffix: optionToUndefined(opts.aliasSuffix),
       productionDomains: opts.productionDomain,
