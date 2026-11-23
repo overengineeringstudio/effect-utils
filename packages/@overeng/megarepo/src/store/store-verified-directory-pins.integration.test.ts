@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -195,14 +195,16 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
       function* () {
         const { fs, rootPath, paths, state } = yield* fixture
         yield* fs.remove(state)
+        const quote = Schema.encodeSync(Schema.fromJsonString(Schema.String))
+        const quotePaths = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)))
         const source = `
-import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
-import * as engine from ${JSON.stringify(new URL('./store-pinned-deletion.ts', import.meta.url).href)}
+import { Effect } from ${quote(import.meta.resolve('effect'))}
+import * as engine from ${quote(new URL('./store-pinned-deletion.ts', import.meta.url).href)}
 import * as fs from 'node:fs'
 process.stdin.resume()
-const rootPath = ${JSON.stringify(rootPath)}
-const paths = ${JSON.stringify(paths)}
-const state = ${JSON.stringify(state)}
+const rootPath = ${quote(rootPath)}
+const paths = ${quotePaths(paths)}
+const state = ${quote(state)}
 await Effect.runPromise(Effect.gen(function* () {
   const targets = []
   for (const path of paths)
@@ -212,7 +214,7 @@ await Effect.runPromise(Effect.gen(function* () {
     prepare: () => Effect.gen(function* () {
       const fd = fs.openSync(state, 'wx', 0o600)
       try { fs.writeFileSync(fd, 'HOLD'); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
-      const parent = fs.openSync(${JSON.stringify(dirname(state))}, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY)
+      const parent = fs.openSync(${quote(dirname(state))}, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY)
       try { fs.fsyncSync(parent) } finally { fs.closeSync(parent) }
       process.stdout.write('PREPARED\\n')
       return yield* Effect.never
@@ -240,7 +242,9 @@ await Effect.runPromise(Effect.gen(function* () {
           const { promise, resolve, reject } = Promise.withResolvers<string>()
           let stdout = ''
           let stderr = ''
-          child.stderr!.on('data', (data) => { stderr += String(data) })
+          child.stderr!.on('data', (data) => {
+            stderr += String(data)
+          })
           child.once('error', reject)
           child.once('exit', () => reject(new Error(`Child exited before prepare: ${stderr}`)))
           child.stdout!.on('data', (data) => {
@@ -256,6 +260,7 @@ await Effect.runPromise(Effect.gen(function* () {
           if (child.kill('SIGKILL') === false) reject(new Error('Failed to signal owned child'))
           return promise
         })
+        expect(signal).toBe('SIGKILL')
         expect(yield* fs.readFileString(state)).toBe('HOLD')
         for (const path of paths) expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
       },
