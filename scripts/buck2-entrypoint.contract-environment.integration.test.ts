@@ -172,6 +172,7 @@ profile_control(name = "control", runtime = ":runtime", exec_compatible_with = h
 quick_contract(
     name = "contract",
     task = "fixture:environment",
+    cpu_demand = "single-thread",
     runtime = ":runtime",
     source_sets = [],
     membership = [],
