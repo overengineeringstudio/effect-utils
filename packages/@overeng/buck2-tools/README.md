@@ -258,6 +258,32 @@ The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
 Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked child
 process groups; timeout cleanup joins the group before removing its inputs.
+Incomplete hostless cases retain private VM/import/production/result phases, bounded
+redacted child output and native-argument/result/shard census before and after cleanup.
+Only cases completing every existing assertion remove their fixture. The original
+test deadline and assertions remain authoritative, including late cancellation errors;
+these diagnostics neither identify the underlying stall nor suppress its failure.
+The retained Devenv host-contract cache watches the Bun runner, preload and timeout
+sources plus both gate integration suites and their imported isolation unit suite,
+not only the top-level entrypoint test.
+The task-graph regression removes each input in turn and requires rejection;
+immutable Bun/native tool paths remain bound through the watched task command.
+Real native-admission test registration derives its watchdog from the existing
+command budget: `max(5000, 3 * deadlineMs + 2000)`. The missing-executable errno
+fixture and hostless contracts retain their original 5,000 ms watchdogs.
+
+In `check:quick`, its dedicated standalone-staging publication waits for
+`buck2:quick` to finish: Buck output directories are mutable even after the
+publisher's build returns. The evaluated task-graph guard proves ordering over
+the whole build → fingerprint → copy interval and that standalone lint does
+not select `buck2:quick`. Devenv 2.4's `before`/`after` edges select upstream
+prerequisites, so a separate quick-only publication path reuses the same guard
+payload without adding quick to standalone lint. This avoids retries or a new
+immutable Buck snapshot action. Estimated extra `check:quick` critical-path
+cost is at most `min(quick duration, publication duration)` versus perfect
+overlap (other checks can hide that cost); standalone lint has no added work.
+Arbitrary concurrent Buck commands outside this graph still require caller
+coordination.
 
 `withEditorPublicationOwner` holds the root's persistent flock through its callback.
 Its opaque live object validates root and inode without acquiring or upgrading.
@@ -297,6 +323,15 @@ link spelling. Equivalent path relocations therefore reuse one generation;
 changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
+The copy records its symlink inventory in the first traversal and rewrites only
+those copied links, never discovers links through a second live-source walk.
+Recorded directory metadata detects late entries as `EditorViewInputChangedError`;
+hashing and copying share the same stability predicate, which tolerates inode-only
+directory reassignment on overlayfs while checking type, device, mtime, and ctime.
+The admitted-versus-candidate digest and literal-link comparison remain intact.
+Native filesystem failures report the operation and actual operand, including
+descendant links and declared owners, rather than attributing every failure to
+the command's first root argument.
 
 Root publication also converges the authority manifest's package-local dependency
 topology: real `node_modules` directories identified by a regular `.modules.yaml`

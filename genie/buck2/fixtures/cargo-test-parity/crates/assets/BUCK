@@ -1,0 +1,7 @@
+load("@prelude//:prelude.bzl", "native")
+
+native.export_file(
+    name = "blob",
+    src = "blob.bin",
+    visibility = ["PUBLIC"],
+)

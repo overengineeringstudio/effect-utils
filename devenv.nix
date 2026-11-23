@@ -843,10 +843,10 @@ let
       traceScope,
       publicationBudget ? null,
       deadlineSeconds ? 300,
+      after ? [ "genie:check" ],
     }:
     {
-      inherit description;
-      after = [ "genie:check" ];
+      inherit description after;
       # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
       exec = editorViewExec {
         mode = "publish";
@@ -1197,6 +1197,25 @@ in
     deadlineSeconds = 600;
   };
 
+  # devenv's after/before edges also select prerequisites. Keep this ordered
+  # path separate so standalone lint does not pull in the quick aggregate.
+  tasks."buck2:editor:publish:standalone-staging:quick" = scopedEditorViewPublisher {
+    description = "Publish standalone staging dependencies after the quick Buck writer";
+    packagePaths = [ "packages/@overeng/genie" ];
+    traceScope = "standalone-staging:quick";
+    deadlineSeconds = 600;
+    after = [
+      "genie:check"
+      "buck2:quick"
+    ];
+  };
+
+  tasks."check:quick:standalone-staging" = {
+    description = "Guard standalone staging after the quick Buck writer and publication";
+    after = [ "buck2:editor:publish:standalone-staging:quick" ];
+    exec = config.tasks."lint:check:standalone-staging".exec;
+  };
+
   # PR lint CI checks every standalone-staged source and inventory completeness.
   tasks."lint:check:standalone-staging" = {
     description = "Guard standalone Nix-staged JS/TS sources and inventory completeness";
@@ -1353,6 +1372,7 @@ in
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/published-ref.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/manifest-pr-enqueue.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts
+      BUCK2_EVENTS_BIN=${repoPackages.buck2-events}/bin/buck2-events ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-cache-occurrences.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
       ${pkgs.bash}/bin/bash ./genie/ci-workflow/manifest-pr-decide.test.sh
@@ -1383,7 +1403,14 @@ in
     '';
     execIfModified = [
       "nix/buck2.nix"
+      "nix/buck2-release.nix"
       "scripts/buck2-entrypoint.*"
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+      "scripts/buck2-gate-isolation.integration.test.ts"
+      "scripts/buck2-gate-isolation.unit.test.ts"
+      "scripts/buck2-gate-teardown.integration.test.ts"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"
@@ -1557,12 +1584,18 @@ in
       export STAGE0_RUSTC="$inputs/rustc/bin/rustc" STAGE0_VENDOR="$inputs/vendor"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
+      # This drives the shared Buck daemon; run it sequentially after the source suites,
+      # not in the parallel-safe/temp-root-only devenv module shell-test workers.
+      exec ${pkgs.bash}/bin/bash ./genie/buck2/cargo-buck2-test-parity.integration.test.sh
     '';
     execIfModified = [
       "BUCK"
       "genie/buck2/**/*.ts"
+      "genie/buck2/cargo-buck2-test-parity.integration.test.sh"
       "genie/buck2/fixtures/**/*"
+      "buck2/rust/defs.bzl"
+      "nix/buck2.nix"
       "nix/stage0-cargo/*"
       "rust/**/Cargo.toml"
       "rust/Cargo.lock"
@@ -2226,7 +2259,7 @@ in
     "work-storage:resources:check"
     "buck2:quick"
     "lint:check:format:parity"
-    "lint:check:standalone-staging"
+    "check:quick:standalone-staging"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"

@@ -433,7 +433,10 @@ let
       ''}
 
       if [ -z "''${CI:-}" ]; then
-        "$PNPM_NATIVE_BIN" "''${install_args[@]}"
+        (
+          pnpm_install_umask
+          "$PNPM_NATIVE_BIN" "''${install_args[@]}"
+        )
         return
       fi
 
@@ -443,6 +446,8 @@ let
 
       local log_file
       log_file="$diagnostics_dir/pnpm-install.log"
+      # Create the private log with the caller's umask, not pnpm's import policy.
+      : > "$log_file"
 
       echo "[pnpm] Running install; full log: $log_file"
       local rc
@@ -453,7 +458,10 @@ let
         # so teardown pressure does not fail otherwise-complete installs.
         export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
       ''}
-      "$PNPM_NATIVE_BIN" "''${install_args[@]}" > "$log_file" 2>&1
+      (
+        pnpm_install_umask
+        "$PNPM_NATIVE_BIN" "''${install_args[@]}" > "$log_file" 2>&1
+      )
       rc="$?"
       set -e
       if [ "$rc" -eq 0 ]; then
@@ -553,10 +561,13 @@ let
       fi
 
       set +e
-      ${lib.escapeShellArg "${effectivePnpmLockMutatorPkg}/bin/pnpm"} install --fix-lockfile${lockfileOnlyFlag} \
-        ${installFlagsString} "''${pnpm_policy_flags[@]}" \
-        --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
-        --config.store-dir="$npm_config_store_dir"
+      (
+        pnpm_install_umask
+        ${lib.escapeShellArg "${effectivePnpmLockMutatorPkg}/bin/pnpm"} install --fix-lockfile${lockfileOnlyFlag} \
+          ${installFlagsString} "''${pnpm_policy_flags[@]}" \
+          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+          --config.store-dir="$npm_config_store_dir"
+      )
       status=$?
       set -e
 
@@ -814,9 +825,12 @@ let
         ${managedPnpmMutationPrologue}
         ${stageSourceInputs}
         ${stageProductTarballs}
-        pnpm dedupe${lockfileOnlyFlag} ${installFlagsString} "''${pnpm_policy_flags[@]}" \
-          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
-          --config.store-dir="$npm_config_store_dir"
+        (
+          pnpm_install_umask
+          pnpm dedupe${lockfileOnlyFlag} ${installFlagsString} "''${pnpm_policy_flags[@]}" \
+            --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+            --config.store-dir="$npm_config_store_dir"
+        )
         ${gcSourceInputs}
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';
@@ -847,16 +861,49 @@ let
         ${ensureLocalPnpmHomeFn}
         ${configurePnpmStorageFn}
 
-        if [ -f node_modules/.modules.yaml ] && check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
-          doctor_decision="healthy"
-          doctor_reason="dependency-graph-healthy"
-        else
-          doctor_decision="repair-root"
-          doctor_reason="dependency-graph-unhealthy"
+        ${computeWorkspaceStateHash}
+        ${computeInstallStateHashFn}
+        ${computeProjectionStateHashFn}
+        _pnpm_install_contract_file="$PWD/pnpm-install-contract.json"
+        install_hash=""
+        projection_hash=""
+        storage_state="$(printf '%s\n%s\n%s\n' "$npm_config_store_dir" "$PNPM_PACKAGE_IMPORT_METHOD" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE")"
+        doctor_decision="repair-root"
+        doctor_reason="dependency-evidence-stale"
+        if [ -f node_modules/.modules.yaml ] && [ -f package.json ] &&
+           [ -f pnpm-lock.yaml ] && [ -f pnpm-workspace.yaml ] &&
+           [ -f "${cacheRoot}/install-state.hash" ] &&
+           [ -f "${cacheRoot}/projection-state.hash" ] &&
+           [ -f "${cacheRoot}/pnpm-storage-state" ]; then
+          install_hash="$(compute_install_state_hash)"
+          projection_hash="$(compute_projection_state_hash)"
+          if [ "$install_hash" = "$(cat "${cacheRoot}/install-state.hash")" ] &&
+             [ "$projection_hash" = "$(cat "${cacheRoot}/projection-state.hash")" ] &&
+             [ "$storage_state" = "$(cat "${cacheRoot}/pnpm-storage-state")" ] &&
+             check_node_modules_links_healthy ${pkgs.nodejs}/bin/node ${lib.escapeShellArg nodeModulesProjectionScript} ${healthCheckNodeModulesPaths}; then
+            doctor_decision="healthy"
+            doctor_reason="dependency-graph-healthy"
+          fi
         fi
-        ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" <<'EOF'
-        const [root, decision, reason] = process.argv.slice(2)
-        console.log(JSON.stringify({ phase: 'doctor', root, decision, reason }))
+        ${lib.optionalString (normalizedSourceInputPaths != [ ]) ''
+          if ! ( ${checkSourceInputs} ); then doctor_decision="repair-root"; fi
+        ''}
+        ${lib.optionalString (productTarballStage != null) ''
+          if ! ( ${checkProductTarballs} ); then doctor_decision="repair-root"; fi
+        ''}
+        ${lib.optionalString (workspaceRoot == ".") ''
+          if [ ! -f "$_pnpm_install_contract_file" ]; then doctor_decision="repair-root"; fi
+        ''}
+        ${pkgs.nodejs}/bin/node - "$PWD" "$doctor_decision" "$doctor_reason" \
+          "$install_hash" "$projection_hash" "$storage_state" "$(realpath "$PNPM_NATIVE_BIN")" <<'EOF'
+        const [root, decision, reason, installHash, projectionHash, storageState, pnpm] = process.argv.slice(2)
+        const report = JSON.stringify({ phase: 'doctor', version: 1, root, decision, reason,
+          installHash, projectionHash, storageState, pnpm, node: process.execPath })
+        if (process.env.PNPM_DOCTOR_OUTPUT_FILE) {
+          require('node:fs').writeFileSync(process.env.PNPM_DOCTOR_OUTPUT_FILE, report + '\n',
+            { flag: 'wx', mode: 0o600 })
+        }
+        console.log(report)
         EOF
       '';
     };

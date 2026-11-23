@@ -1,0 +1,329 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: genie/buck2/fixtures/cargo-test-parity/crates/app/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:151931b53e1e7b439b4ef4a61644c78017d1157ceba8e789bcc59a42d9651a26
+# Semantic inputs: genie/buck2/fixtures/cargo-test-parity/Cargo.lock, genie/buck2/fixtures/cargo-test-parity/Cargo.toml, genie/buck2/fixtures/cargo-test-parity/ancestor-script.sh, genie/buck2/fixtures/cargo-test-parity/crates/app/BUCK.genie.ts, genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml, genie/buck2/fixtures/cargo-test-parity/crates/app/src/**/*.rs, genie/buck2/fixtures/cargo-test-parity/crates/app/tests/**/*.rs, genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin, genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt, genie/buck2/fixtures/cargo-test-parity/reindeer.toml, genie/buck2/fixtures/cargo-test-parity/vendor/BUCK
+# Test projection: unit and integration harnesses enabled.
+# Doctests: unsupported (unit and integration harnesses only).
+# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+load("//buck2/rust:defs.bzl", "cargo_rust_test")
+load("//buck2/rust:defs.bzl", "cargo_resource_inventory")
+static_source_set(
+    name = "static_sources",
+    prefix = "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/main.rs",
+        "tests/common/mod.rs",
+        "tests/first.rs",
+        "tests/second.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+cargo_resource_inventory(
+    name = "cargo-resource-inventory",
+    resources = {
+        "file-0": "//genie/buck2/fixtures/cargo-test-parity:ancestor-script",
+        "file-1": "//genie/buck2/fixtures/cargo-test-parity/crates/assets:blob",
+        "file-2": "//genie/buck2/fixtures/cargo-test-parity:generated-resource",
+        "file-3": "//genie/buck2/fixtures/cargo-test-parity:message",
+    },
+    destinations = {
+        "file-0": "genie/buck2/fixtures/cargo-test-parity/ancestor-script.sh",
+        "file-1": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "file-2": "genie/buck2/fixtures/cargo-test-parity/fixtures/generated.txt",
+        "file-3": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    expected_digests = {
+        "file-0": "b62e87e07f4c5f8bbccc6194f5e6e389ac7695e1e4d36478fc1266645e62359f",
+        "file-1": "bfa9256aaad3d635a17279c3ecf9250e306cc7b43547e2a9119a2a9189617b3c",
+        "file-3": "43d6bdfbcfdd452b2eb69653e6de2638e7cc98ced234c50574d2db73e14a9faa",
+    },
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "cargo_test_parity",
+    crate_root = "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+    mapped_srcs = {
+        "Cargo.toml": "genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml",
+        "src/lib.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+        "src/main.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-1]": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-3]": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    deps = [
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "cargo-test-parity",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "cargo_test_parity",
+        "CARGO_MANIFEST_DIR": "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "cargo-test-parity",
+    crate = "cargo_test_parity",
+    crate_root = "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+    mapped_srcs = {
+        "Cargo.toml": "genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml",
+        "src/lib.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+        "src/main.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-1]": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-3]": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    deps = [
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "cargo-test-parity",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "cargo_test_parity",
+        "CARGO_MANIFEST_DIR": "genie/buck2/fixtures/cargo-test-parity/crates/app",
+        "CARGO_BIN_NAME": "cargo-test-parity",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+cargo_rust_test(
+    name = "unit-lib",
+    crate = "cargo_test_parity",
+    crate_root = "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+    cargo_package_path = "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    mapped_srcs = {
+        "Cargo.toml": "genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml",
+        "src/lib.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+        "src/main.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+        "tests/common/mod.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/common/mod.rs",
+        "tests/first.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/first.rs",
+        "tests/second.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/second.rs",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-0]": "genie/buck2/fixtures/cargo-test-parity/ancestor-script.sh",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-1]": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-2]": "genie/buck2/fixtures/cargo-test-parity/fixtures/generated.txt",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-3]": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    deps = [
+        "//genie/buck2/fixtures/cargo-test-parity/vendor:serde",
+    ],
+    named_deps = {
+        "number": "//genie/buck2/fixtures/cargo-test-parity/vendor:serde_json",
+    },
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "cargo-test-parity",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "cargo_test_parity",
+        "CARGO_MANIFEST_DIR": "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    },
+)
+
+cargo_rust_test(
+    name = "unit-bin-cargo-test-parity",
+    crate = "cargo_test_parity",
+    crate_root = "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+    cargo_package_path = "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    mapped_srcs = {
+        "Cargo.toml": "genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml",
+        "src/lib.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+        "src/main.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+        "tests/common/mod.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/common/mod.rs",
+        "tests/first.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/first.rs",
+        "tests/second.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/second.rs",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-0]": "genie/buck2/fixtures/cargo-test-parity/ancestor-script.sh",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-1]": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-2]": "genie/buck2/fixtures/cargo-test-parity/fixtures/generated.txt",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-3]": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    deps = [
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:lib",
+        "//genie/buck2/fixtures/cargo-test-parity/vendor:serde",
+    ],
+    named_deps = {
+        "number": "//genie/buck2/fixtures/cargo-test-parity/vendor:serde_json",
+    },
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "cargo-test-parity",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "cargo_test_parity",
+        "CARGO_MANIFEST_DIR": "genie/buck2/fixtures/cargo-test-parity/crates/app",
+        "CARGO_BIN_NAME": "cargo-test-parity",
+    },
+)
+
+cargo_rust_test(
+    name = "integration-first",
+    crate = "first",
+    crate_root = "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/first.rs",
+    cargo_package_path = "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    mapped_srcs = {
+        "Cargo.toml": "genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml",
+        "src/lib.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+        "src/main.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+        "tests/common/mod.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/common/mod.rs",
+        "tests/first.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/first.rs",
+        "tests/second.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/second.rs",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-0]": "genie/buck2/fixtures/cargo-test-parity/ancestor-script.sh",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-1]": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-2]": "genie/buck2/fixtures/cargo-test-parity/fixtures/generated.txt",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-3]": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    deps = [
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:lib",
+        "//genie/buck2/fixtures/cargo-test-parity/vendor:serde",
+    ],
+    named_deps = {
+        "number": "//genie/buck2/fixtures/cargo-test-parity/vendor:serde_json",
+    },
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "cargo-test-parity",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "first",
+        "CARGO_MANIFEST_DIR": "genie/buck2/fixtures/cargo-test-parity/crates/app",
+        "CARGO_BIN_EXE_cargo-test-parity": "$(location //genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-test-parity)",
+    },
+)
+
+cargo_rust_test(
+    name = "integration-second",
+    crate = "second",
+    crate_root = "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/second.rs",
+    cargo_package_path = "genie/buck2/fixtures/cargo-test-parity/crates/app",
+    mapped_srcs = {
+        "Cargo.toml": "genie/buck2/fixtures/cargo-test-parity/crates/app/Cargo.toml",
+        "src/lib.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/lib.rs",
+        "src/main.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/src/main.rs",
+        "tests/common/mod.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/common/mod.rs",
+        "tests/first.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/first.rs",
+        "tests/second.rs": "genie/buck2/fixtures/cargo-test-parity/crates/app/tests/second.rs",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-0]": "genie/buck2/fixtures/cargo-test-parity/ancestor-script.sh",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-1]": "genie/buck2/fixtures/cargo-test-parity/crates/assets/blob.bin",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-2]": "genie/buck2/fixtures/cargo-test-parity/fixtures/generated.txt",
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-resource-inventory[file-3]": "genie/buck2/fixtures/cargo-test-parity/fixtures/message.txt",
+    },
+    deps = [
+        "//genie/buck2/fixtures/cargo-test-parity/crates/app:lib",
+        "//genie/buck2/fixtures/cargo-test-parity/vendor:serde",
+    ],
+    named_deps = {
+        "number": "//genie/buck2/fixtures/cargo-test-parity/vendor:serde_json",
+    },
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "cargo-test-parity",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "second",
+        "CARGO_MANIFEST_DIR": "genie/buck2/fixtures/cargo-test-parity/crates/app",
+        "CARGO_BIN_EXE_cargo-test-parity": "$(location //genie/buck2/fixtures/cargo-test-parity/crates/app:cargo-test-parity)",
+    },
+)

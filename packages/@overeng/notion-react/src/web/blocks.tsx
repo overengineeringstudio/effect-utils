@@ -121,8 +121,8 @@ const collectHeadings = (children: ReactNode): readonly TocEntry[] => {
 
 // rnx renders `text` blocks as <div>, not <p> — keeps margin behavior consistent
 // with the rest of the block stack and matches the vendored CSS contract.
-export const Paragraph = ({ children }: ParagraphProps) => (
-  <div className="notion-text">{children}</div>
+export const Paragraph = ({ children, color }: ParagraphProps) => (
+  <div className={`notion-text${color === undefined ? '' : ` notion-${color}`}`}>{children}</div>
 )
 
 const headingClass = (level: 1 | 2 | 3 | 4) => `notion-h notion-h${level}`
@@ -197,15 +197,15 @@ export const Heading4 = heading(4)
  * by `groupBlocks` (applied in `Page` / `Column`). Standalone usage outside a
  * grouping container falls back to a self-contained one-item list.
  */
-export const BulletedListItem = ({ children }: BulletedListItemProps) => (
+export const BulletedListItem = ({ children, color }: BulletedListItemProps) => (
   <ul className="notion-list notion-list-disc">
-    <li>{children}</li>
+    <li className={color === undefined ? undefined : `notion-${color}`}>{children}</li>
   </ul>
 )
 
-export const NumberedListItem = ({ children }: NumberedListItemProps) => (
+export const NumberedListItem = ({ children, color }: NumberedListItemProps) => (
   <ol className="notion-list notion-list-numbered">
-    <li>{children}</li>
+    <li className={color === undefined ? undefined : `notion-${color}`}>{children}</li>
   </ol>
 )
 
@@ -223,10 +223,20 @@ const groupBlocks = (children: ReactNode, headings: readonly TocEntry[] = []): R
     const Tag = run.tag
     out.push(
       <Tag key={`group-${out.length}`} className={run.className}>
-        {run.items.map((el, idx) => (
-          // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
-          <li key={el.key ?? `li-${idx}`}>{(el.props as { children?: ReactNode }).children}</li>
-        ))}
+        {run.items.map((el, idx) => {
+          const { children: itemChildren, color } = el.props as
+            | BulletedListItemProps
+            | NumberedListItemProps
+          return (
+            <li
+              // eslint-disable-next-line react/no-array-index-key -- list items have no stable identity
+              key={el.key ?? `li-${idx}`}
+              className={color === undefined ? undefined : `notion-${color}`}
+            >
+              {itemChildren}
+            </li>
+          )
+        })}
       </Tag>,
     )
     run = undefined
@@ -279,10 +289,10 @@ const CheckSvg = () => (
  * `components/checkbox.tsx`): the strike-through lives on
  * `.notion-to-do-body` so the checkbox stays visible.
  */
-export const ToDo = ({ children, checked }: ToDoProps) => {
+export const ToDo = ({ children, checked, color }: ToDoProps) => {
   const isChecked = checked === true
   return (
-    <div className="notion-to-do">
+    <div className={`notion-to-do${color === undefined ? '' : ` notion-${color}`}`}>
       <div className="notion-to-do-item">
         <span className="notion-property notion-property-checkbox">
           {isChecked ? (
@@ -301,8 +311,11 @@ export const ToDo = ({ children, checked }: ToDoProps) => {
   )
 }
 
-export const Toggle = ({ children, title, defaultOpen }: ToggleProps) => (
-  <details className="notion-toggle" open={defaultOpen ?? false}>
+export const Toggle = ({ children, title, defaultOpen, color }: ToggleProps) => (
+  <details
+    className={`notion-toggle${color === undefined ? '' : ` notion-${color}`}`}
+    open={defaultOpen ?? false}
+  >
     <summary>{title ?? ''}</summary>
     <div>{children}</div>
   </details>
@@ -312,8 +325,10 @@ export const Code = ({ children, language }: CodeProps) => (
   <HighlightsRender language={language}>{children}</HighlightsRender>
 )
 
-export const Quote = ({ children }: QuoteProps) => (
-  <blockquote className="notion-quote">{children}</blockquote>
+export const Quote = ({ children, color }: QuoteProps) => (
+  <blockquote className={`notion-quote${color === undefined ? '' : ` notion-${color}`}`}>
+    {children}
+  </blockquote>
 )
 
 /**
@@ -323,6 +338,11 @@ export const Quote = ({ children }: QuoteProps) => (
  */
 const renderCalloutIcon = (icon: NonNullable<CalloutProps['icon']>): ReactNode => {
   if (typeof icon === 'string') return icon
+  if ('customEmojiId' in icon)
+    return renderPageIcon(
+      { type: 'custom_emoji', custom_emoji: { id: icon.customEmojiId } },
+      'inline',
+    )
   return <img src={icon.external} alt="" className="notion-page-icon-image" />
 }
 

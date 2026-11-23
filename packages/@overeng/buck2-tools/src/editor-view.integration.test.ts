@@ -48,6 +48,7 @@ import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
+  EditorViewInputChangedError,
   editorViewPublicationWorkers,
   pinEditorView,
   publishEditorView as publishEditorViewUnscoped,
@@ -3295,6 +3296,69 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
       }
     },
   )
+
+  it('publishes when a copied source directory only changes its reported inode', async () => {
+    const seed = makeFixture()
+    const fixture = makeFixture()
+    const directory = realpathSync(fixture.nodeModules)
+    let reassigned = false
+    let observations = 0
+    try {
+      await publishEditorView(seed.options)
+      fsMocks.lstatSync.mockImplementation((...args) => {
+        const status = nativeFs.lstatSync(...args)
+        if (status !== undefined && reassigned === true && String(args[0]) === directory) {
+          Object.defineProperty(status, 'ino', {
+            value: typeof status.ino === 'bigint' ? status.ino + 1n : status.ino + 1,
+          })
+          observations++
+        }
+        return status
+      })
+      const record = await publishEditorView({
+        ...fixture.options,
+        contentStore: seed.options.contentStore!,
+        backingRoots: [fixture.nodeModules],
+        afterDirectLink: () => {
+          reassigned = true
+        },
+      })
+      expect(reassigned).toBe(true)
+      expect(observations).toBeGreaterThan(0)
+      expect(ownedSnapshots(fixture)).toEqual([storeName(record.snapshot)])
+    } finally {
+      fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
+      cleanup(fixture)
+      cleanup(seed)
+    }
+  })
+
+  it('rejects a symlink added after the directory copy as typed changed input', async () => {
+    const seed = makeFixture()
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(seed.options)
+      let added = false
+      await expect(
+        publishEditorView({
+          ...fixture.options,
+          contentStore: seed.options.contentStore!,
+          backingRoots: [fixture.nodeModules],
+          afterDirectLink: () => {
+            if (added === true) return
+            added = true
+            symlinkSync('dep', join(fixture.nodeModules, 'late-link'))
+          },
+        }),
+      ).rejects.toBeInstanceOf(EditorViewInputChangedError)
+      expect(added).toBe(true)
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+    } finally {
+      cleanup(fixture)
+      cleanup(seed)
+    }
+  })
 
   it('fails closed when a declared backing root changes while materializing', async () => {
     const fixture = makeFixture()

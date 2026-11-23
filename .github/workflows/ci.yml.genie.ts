@@ -63,7 +63,7 @@ import {
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import readerComposition from '../../genie/ci-workflow/reader-composition.json'
-import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
+import { fleetRunnerLabels, linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
@@ -2534,6 +2534,21 @@ const {
   ...instrumentedProductCiJobs
 } = productCiJobs
 
+// Apply fleet admission after dispatch rewriting so pipeline close retains
+// the canonical same-repository guard as a top-level conjunct.
+const withGuardedMacosMeasurementDispatch = (
+  args: Parameters<typeof withMacosMeasurementDispatch>[0],
+): CiWorkflowArgs['jobs'] => {
+  const jobs = withMacosMeasurementDispatch(args)
+  const job = jobs['pipeline-attempt-close']!
+  const condition = job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'
+  jobs['pipeline-attempt-close'] = {
+    ...job,
+    if: `\${{ (${sameRepoPullRequestGuard()}) && (${condition}) }}`,
+  }
+  return jobs
+}
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   policy: effectUtilsWorkflowPolicy('ci.yml'),
@@ -2576,7 +2591,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read', 'id-token': 'write' },
-  jobs: withMacosMeasurementDispatch({
+  jobs: withGuardedMacosMeasurementDispatch({
     jobs: {
       ...withNixRealisationTimeouts(
         {
@@ -2617,7 +2632,7 @@ export default ciWorkflow({
           // Shared proof policy declares their `none` postures and disabled membership.
           'pipeline-attempt-close': pipelineCloseJob({
             jobs: productCiJobs,
-            runsOn: 'ubuntu-latest',
+            runsOn: fleetRunnerLabels.linuxX64,
           }),
           'pipeline-traces': pipelineTracesJob,
         },

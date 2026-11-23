@@ -295,6 +295,25 @@ for (const [checkTask, aggregateTask] of [
     name: `${checkTask} reaches the Buck producer overlap guard`,
   })
 }
+ok({
+  condition:
+    reaches({ start: 'check:quick', target: 'buck2:editor:publish:standalone-staging:quick' }) &&
+    reaches({ start: 'buck2:editor:publish:standalone-staging:quick', target: 'buck2:quick' }) &&
+    reaches({ start: 'check:quick', target: 'buck2:editor:publish:standalone-staging' }) === false,
+  name: 'check:quick completes its Buck writer before standalone publication reads mutable outputs',
+})
+ok({
+  condition:
+    reaches({ start: 'lint:check:standalone-staging', target: 'buck2:quick' }) === false &&
+    reaches({ start: 'lint:check', target: 'buck2:quick' }) === false,
+  name: 'standalone lint does not select the quick Buck aggregate',
+})
+ok({
+  condition:
+    readFileSync(requireTask('check:quick:standalone-staging').command, 'utf8') ===
+    readFileSync(requireTask('lint:check:standalone-staging').command, 'utf8'),
+  name: 'quick and standalone lint execute the same staging guard payload',
+})
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
     condition: reaches({ start: checkTask, target: 'nix:check:quick' }),
@@ -863,7 +882,10 @@ for (const name of editorPublishers) {
       condition: Number(actualDeadline) === expectedDeadline,
       name: `${name} reserves 300s startup plus 300s per bootstrap package (${expectedDeadline}s)`,
     })
-  } else if (name === 'buck2:editor:publish:standalone-staging') {
+  } else if (
+    name === 'buck2:editor:publish:standalone-staging' ||
+    name === 'buck2:editor:publish:standalone-staging:quick'
+  ) {
     ok({
       condition:
         actualDeadline === '600' &&
@@ -1054,6 +1076,21 @@ const taskSource = (name) => {
   ok({ condition: start !== -1, name: `devenv.nix contains ${name}` })
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
+}
+const hostCacheInputs =
+  taskSource('buck2:cache-posture:test').split('execIfModified = [')[1]?.split('];')[0] ?? ''
+for (const input of [
+  'packages/@overeng/buck2-tools/src/bun-test-runner.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-preload.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-timeout.ts',
+  'scripts/buck2-gate-isolation.integration.test.ts',
+  'scripts/buck2-gate-isolation.unit.test.ts',
+  'scripts/buck2-gate-teardown.integration.test.ts',
+]) {
+  ok({
+    condition: hostCacheInputs.includes(JSON.stringify(input)),
+    name: `host cache posture watches transitive guard source: ${input}`,
+  })
 }
 ok({
   condition: taskSource('genie:editor-view-closure:check').includes(

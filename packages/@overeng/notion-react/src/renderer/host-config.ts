@@ -143,16 +143,14 @@ const blockProps = (type: HostType, props: Record<string, unknown>): Record<stri
   }
   if (type === 'to_do' && typeof props.checked === 'boolean') p.checked = props.checked
   if (type === 'toggle') {
-    // Notion requires `rich_text` for toggle; the component exposes a `title`
-    // string prop for ergonomics. Empty string still yields `[]` which Notion
-    // accepts as a valid (empty) rich_text array.
-    p.rich_text = flattenRichText(typeof props.title === 'string' ? props.title : '')
+    // Titles use the same inline rich-text projection as text-bearing blocks.
+    p.rich_text = flattenRichText(props.title as ReactNode)
   }
+  if ((TEXT_LEAF.has(type) || type === 'toggle') && typeof props.color === 'string')
+    p.color = props.color
   if (type === 'code' && typeof props.language === 'string') p.language = props.language
   if (type === 'callout' && props.icon !== undefined) {
-    // Notion accepts `{ type: 'emoji', emoji }` or `{ type: 'external',
-    // external: { url } }`. The component takes a bare string (emoji) or
-    // `{ external: url }` for ergonomics and we project accordingly.
+    // Project ergonomic Unicode, external-image, and custom-emoji icon props.
     const icon = props.icon
     if (typeof icon === 'string') {
       p.icon = { type: 'emoji', emoji: icon }
@@ -162,9 +160,15 @@ const blockProps = (type: HostType, props: Record<string, unknown>): Record<stri
       typeof (icon as { external?: unknown }).external === 'string'
     ) {
       p.icon = { type: 'external', external: { url: (icon as { external: string }).external } }
+    } else if (
+      typeof icon === 'object' &&
+      icon !== null &&
+      'customEmojiId' in icon &&
+      typeof icon.customEmojiId === 'string'
+    ) {
+      p.icon = { type: 'custom_emoji', custom_emoji: { id: icon.customEmojiId } }
     }
   }
-  if (type === 'callout' && typeof props.color === 'string') p.color = props.color
   if (
     type === 'heading_1' ||
     type === 'heading_2' ||
