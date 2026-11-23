@@ -358,13 +358,19 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     )
     expect((await identity()).dirty).toBe(true)
     const dirtyIdentity = await identity()
+    // Served metadata is timeless; the module renders relative time at evaluation.
+    const dirtyMetadata = await (await fetch(probeUrl)).json()
+    expect(dirtyMetadata).toEqual({
+      ...dirtyIdentity,
+      displayVersion: expect.not.stringMatching(/committed/),
+    })
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
     try {
       await afterSourceUpdate('change', join(root, 'entry.js'), () =>
         writeFileSync(join(root, 'entry.js'), 'export const value = 3\n'),
       )
-      expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
+      expect(await (await fetch(probeUrl)).json()).toEqual(dirtyMetadata)
       expect(await identity()).toEqual(dirtyIdentity)
     } finally {
       clock.mockRestore()
@@ -377,7 +383,10 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     expect((await identity()).rev).toBe(revision)
     expect((await identity()).dirty).toBe(false)
     expect((await identity()).commitTs).toBe(Number(git('log', '-1', '--format=%ct', revision)))
-    expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
+    expect(await (await fetch(probeUrl)).json()).toEqual({
+      ...(await identity()),
+      displayVersion: expect.not.stringMatching(/committed/),
+    })
   } finally {
     await server?.close()
     rmSync(root, { recursive: true, force: true })
