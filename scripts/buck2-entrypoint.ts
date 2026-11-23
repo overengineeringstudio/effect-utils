@@ -407,39 +407,42 @@ const buckCliConfigValues = ({
   return values
 }
 
-const directBuckArgumentsWithConfig = async ({
-  args,
-  cwd,
-  env,
-  cacheDirectory = join(
-    env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'),
-    'effect-utils',
-    'buck2-posture-v2',
-  ),
-  deadlineMs,
-  probeDeadlineSignal,
-  beforeCachePosture,
-  onCachePosture,
-  onCacheAdmission,
-  workflowCommands = false,
-  watchmanDirectory,
-}: {
-  readonly args: readonly string[]
-  readonly cwd: string
-  readonly env: Readonly<Record<string, string | undefined>>
-  readonly cacheDirectory?: string
-  readonly deadlineMs?: number
-  /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
-  readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
-  /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
-  readonly beforeCachePosture?: CachePostureCheck
-  /** Observe the effective admitted posture, including CLI policy and probe fallback. */
-  readonly onCachePosture?: CachePostureCheck
-  readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
-  /** Only the executable launcher may emit workflow commands; imported probes are diagnostics only. */
-  readonly workflowCommands?: boolean
-  readonly watchmanDirectory?: string
-}, cliValues: Readonly<Record<string, string>>): Promise<string[]> => {
+const directBuckArgumentsWithConfig = async (
+  {
+    args,
+    cwd,
+    env,
+    cacheDirectory = join(
+      env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'),
+      'effect-utils',
+      'buck2-posture-v2',
+    ),
+    deadlineMs,
+    probeDeadlineSignal,
+    beforeCachePosture,
+    onCachePosture,
+    onCacheAdmission,
+    workflowCommands = false,
+    watchmanDirectory,
+  }: {
+    readonly args: readonly string[]
+    readonly cwd: string
+    readonly env: Readonly<Record<string, string | undefined>>
+    readonly cacheDirectory?: string
+    readonly deadlineMs?: number
+    /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
+    readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
+    /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
+    readonly beforeCachePosture?: CachePostureCheck
+    /** Observe the effective admitted posture, including CLI policy and probe fallback. */
+    readonly onCachePosture?: CachePostureCheck
+    readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
+    /** Only the executable launcher may emit workflow commands; imported probes are diagnostics only. */
+    readonly workflowCommands?: boolean
+    readonly watchmanDirectory?: string
+  },
+  cliValues: Readonly<Record<string, string>>,
+): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
   const sentinel = args.indexOf('--')
@@ -464,8 +467,7 @@ const directBuckArgumentsWithConfig = async ({
     })
   const localWithoutWatcher = withoutManagedWatcherBlock(currentLocal)
   const explicitWatcher =
-    cliValues['buck2.file_watcher'] ??
-    buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
+    cliValues['buck2.file_watcher'] ?? buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
   if (selectedWatcher === 'watchman') {
     const crawlBudget = env['BUCK2_WATCHMAN_CRAWL_BUDGET_MS']
@@ -2691,17 +2693,20 @@ const runManagedCommand = async (
         : undefined
     let fallbackEligible = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
-      const prepared = await directBuckArgumentsWithConfig({
-        args: requestedArgs,
-        cwd,
-        env,
-        workflowCommands: env['GITHUB_ACTIONS'] === 'true',
-        watchmanDirectory,
-        beforeCachePosture,
-        onCachePosture: (values) => {
-          fallbackEligible = cacheLocalFallbackEligible({ values, env })
+      const prepared = await directBuckArgumentsWithConfig(
+        {
+          args: requestedArgs,
+          cwd,
+          env,
+          workflowCommands: env['GITHUB_ACTIONS'] === 'true',
+          watchmanDirectory,
+          beforeCachePosture,
+          onCachePosture: (values) => {
+            fallbackEligible = cacheLocalFallbackEligible({ values, env })
+          },
         },
-      }, cliValues)
+        cliValues,
+      )
       const sentinel = prepared.indexOf('--')
       const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
       if (root !== undefined && skipsWatcherAdmission(configArgs) === false) {

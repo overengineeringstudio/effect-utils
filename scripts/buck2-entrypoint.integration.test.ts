@@ -396,8 +396,14 @@ describe('short persistent Watchman location', () => {
     writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
     writeFileSync(join(root, 'native.config'), '[buck2]\nfile_watcher = notify\n')
     const args = [
-      'targets', '//:', '--config', 'buck2.file_watcher=watchman',
-      '--config-file', 'native.config', '--', '--config-file=absent.config',
+      'targets',
+      '//:',
+      '--config',
+      'buck2.file_watcher=watchman',
+      '--config-file',
+      'native.config',
+      '--',
+      '--config-file=absent.config',
       '--config=buck2.file_watcher=watchman',
     ]
     expect(
@@ -479,8 +485,12 @@ describe('short persistent Watchman location', () => {
         writeFileSync(join(cliRoot, '.buckconfig'), '[buck2]\nfile_watcher = notify\n')
         writeFileSync(join(cliRoot, 'watcher.config'), '[buck2]\nfile_watcher = watchman\n')
         const cliArgs = [
-          'targets', '//:', '--config=buck2.file_watcher=notify',
-          '--config-file=watcher.config', '--', '-cbuck2.file_watcher=notify',
+          'targets',
+          '//:',
+          '--config=buck2.file_watcher=notify',
+          '--config-file=watcher.config',
+          '--',
+          '-cbuck2.file_watcher=notify',
         ]
         expect(
           await directBuckArguments({
