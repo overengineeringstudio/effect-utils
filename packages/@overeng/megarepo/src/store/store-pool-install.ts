@@ -180,7 +180,9 @@ export const poolInstallIdentity = ({
       if (process.platform === 'linux') {
         const getconf = process.env.MR_GETCONF_BIN
         if (getconf === undefined || isAbsolute(getconf) === false)
-          return yield* new PoolError({ message: 'MR_GETCONF_BIN must declare an absolute provider' })
+          return yield* new PoolError({
+            message: 'MR_GETCONF_BIN must declare an absolute provider',
+          })
         hash.update(yield* fs.realPath(getconf))
         hash.update(
           yield* runPoolCommand({ cwd: path, command: getconf, args: ['GNU_LIBC_VERSION'] }),
