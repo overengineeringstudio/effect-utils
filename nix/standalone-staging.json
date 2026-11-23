@@ -85,6 +85,9 @@
     "nix/devenv-modules/tasks/shared/tests/buck2-capability-fixture/profiles.nix": {
       "stages": true
     },
+    "nix/devenv-modules/tasks/shared/tests/worktree-teardown-fixture.nix": {
+      "noStandaloneStaging": "fixture: Runs editor-view.ts from the complete repository sourceRoot; no standalone file staging."
+    },
     "nix/devenv-modules/tasks/shared/weaver-live-check.nix": {
       "noStandaloneStaging": "workspace: The integration test runs from its workspace package."
     },
