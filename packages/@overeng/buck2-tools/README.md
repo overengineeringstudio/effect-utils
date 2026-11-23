@@ -285,6 +285,13 @@ overlap (other checks can hide that cost); standalone lint has no added work.
 Arbitrary concurrent Buck commands outside this graph still require caller
 coordination.
 
+`withEditorPublicationOwner` holds the root's persistent flock through its callback.
+Its opaque live object validates root and inode without acquiring or upgrading.
+Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant nothing.
+Cancellation wakes queued acquisition, but active subordinate work must join before release.
+`tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
+This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
