@@ -163,10 +163,7 @@ let
       getconf = {
         capability = "getconf";
         environment.MR_GETCONF_BIN =
-          if pkgs.stdenv.hostPlatform.isDarwin then
-            "/usr/bin/getconf"
-          else
-            "${pkgs.glibc.bin}/bin/getconf";
+          if pkgs.stdenv.hostPlatform.isDarwin then "/usr/bin/getconf" else "${pkgs.glibc.bin}/bin/getconf";
       };
       git = {
         capability = "git";

@@ -38,7 +38,7 @@ describe('pool authoritative lifecycle', () => {
       const fs = yield* FileSystem.FileSystem
       const getconf = process.env.MR_GETCONF_BIN
       if (getconf === undefined)
-        return yield* Effect.dieMessage('The normal task must declare MR_GETCONF_BIN')
+        return yield* Effect.die(new Error('The normal task must declare MR_GETCONF_BIN'))
       const output = yield* runPoolCommand({
         cwd: yield* fs.makeTempDirectoryScoped(),
         command: getconf,

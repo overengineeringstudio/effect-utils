@@ -1325,10 +1325,7 @@ in
   # its direct `devenv shell -- bash ...` CI invocation.
   env.JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN = "${pkgs.openssl}/bin/openssl";
   env.MR_GETCONF_BIN =
-    if pkgs.stdenv.hostPlatform.isDarwin then
-      "/usr/bin/getconf"
-    else
-      "${pkgs.glibc.bin}/bin/getconf";
+    if pkgs.stdenv.hostPlatform.isDarwin then "/usr/bin/getconf" else "${pkgs.glibc.bin}/bin/getconf";
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
