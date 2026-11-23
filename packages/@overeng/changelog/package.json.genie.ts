@@ -8,6 +8,12 @@ import {
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 
+/**
+ * Consumers provide Effect: the contract composes the product's own schemas, so library and
+ * product must share one Effect instance.
+ */
+const peerDepNames = ['@effect/platform-node', 'effect'] as const
+
 export default packageJson(
   {
     name: '@overeng/changelog',
@@ -41,10 +47,16 @@ export default packageJson(
   } satisfies PackageJsonInputData,
   catalog.compose({
     workspace: workspaceMember({ memberPath: 'packages/@overeng/changelog' }),
-    dependencies: { external: catalog.pick('@effect/platform-node', 'effect') },
     devDependencies: {
-      external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vite', 'vitest'),
+      external: catalog.pick(
+        ...peerDepNames,
+        '@effect/vitest',
+        '@types/node',
+        'typescript',
+        'vite',
+        'vitest',
+      ),
     },
-    peerDependencies: { external: catalog.pick('vite') },
+    peerDependencies: { external: catalog.peers(...peerDepNames, 'vite') },
   }),
 )
