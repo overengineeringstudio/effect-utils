@@ -97,6 +97,29 @@ export const captureDeletionIdentity = Effect.fn('store.captureDeletionIdentity'
   )
 })
 
+/** Only descriptors minted by this engine, never a caller-provided ignore list. */
+export interface OwnedDeletionPin {
+  readonly pid: number
+  readonly fd: number
+  readonly dev: string
+  readonly ino: string
+}
+
+const ownedDeletionPinsBrand = Symbol('OwnedDeletionPins')
+
+/** Valid only during beforeRemove; no process-wide or non-fd exemption is granted. */
+export interface OwnedDeletionPins {
+  readonly [ownedDeletionPinsBrand]: true
+  readonly pins: ReadonlyArray<OwnedDeletionPin>
+  readonly has: (reference: {
+    readonly kind: string
+    readonly pid: number
+    readonly fd: number | null
+    readonly dev: string
+    readonly ino: string
+  }) => boolean
+}
+
 /**
  * Pin the recorded chain before final authority checks, then quarantine and remove only through fds.
  * beforeRemove runs with every ancestor pinned, immediately before the final chain check/quarantine;
@@ -115,14 +138,19 @@ export const withPinnedDeletion = <TError = never, TRequirements = never>({
   rootPath: string
   path: string
   identity: DeletionIdentity
-  beforeRemove?: () => Effect.Effect<void, TError, TRequirements>
+  beforeRemove?: (ownedPins: OwnedDeletionPins) => Effect.Effect<void, TError, TRequirements>
   afterQuarantine?: (recoverPath: string) => void
 }): Effect.Effect<void, PinnedDeletionError | TError, TRequirements> =>
   Effect.acquireUseRelease(
     native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
     (chain) =>
       Effect.gen(function* () {
-        if (beforeRemove !== undefined) yield* beforeRemove()
+        if (beforeRemove !== undefined) {
+          const owned = ownDeletionPins(chain)
+          yield* Effect.suspend(() => beforeRemove(owned.view)).pipe(
+            Effect.ensuring(Effect.sync(owned.revoke)),
+          )
+        }
         yield* native({ path, operation: () => quarantineAndRemove({ chain, afterQuarantine }) })
       }),
     (chain) => Effect.sync(() => closeChain(chain)),
@@ -176,6 +204,33 @@ type PinnedDirectory = {
   readonly record: DeletionIdentity[number]
 }
 type PinnedInode = { readonly dev: bigint; readonly ino: bigint }
+
+const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
+  let active = true
+  const pins = Object.freeze(
+    chain.map(({ fd, dev, ino }) =>
+      Object.freeze({ pid: process.pid, fd, dev: dev.toString(), ino: ino.toString() }),
+    ),
+  )
+  const view = Object.freeze<OwnedDeletionPins>({
+    [ownedDeletionPinsBrand]: true,
+    pins,
+    has: (reference: Parameters<OwnedDeletionPins['has']>[0]) => {
+      if (active === false || reference.kind !== 'fd' || reference.pid !== process.pid) return false
+      for (const pin of pins) {
+        if (reference.fd === pin.fd && reference.dev === pin.dev && reference.ino === pin.ino)
+          return true
+      }
+      return false
+    },
+  })
+  return {
+    view,
+    revoke: () => {
+      active = false
+    },
+  }
+}
 const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
 const OVERLAYFS_SUPER_MAGIC = 0x794c7630n
 const fdPath = (fd: number): string => `/proc/self/fd/${fd}`
