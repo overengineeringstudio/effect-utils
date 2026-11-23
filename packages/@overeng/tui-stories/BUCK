@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:fdeee428e04640175fc83f619936012a8d1e5825add64e2d888be0c7f440b49f
+# Semantic fingerprint: sha256:d4a998138d1f7d8360cef879e9ce3f04be59b5ff122eff5d7b71f894008d4175
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -410,6 +410,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-rehome.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.ts": "//packages/@overeng/megarepo:src/store/store-rehome.ts",
         "node_modules/@overeng/megarepo/src/store/store-symlink.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-symlink.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-verified-directory-pins.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-verified-directory-pins.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.ts",
@@ -817,6 +818,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-rehome.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.ts": "//packages/@overeng/megarepo:src/store/store-rehome.ts",
         "node_modules/@overeng/megarepo/src/store/store-symlink.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-symlink.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-verified-directory-pins.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-verified-directory-pins.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.ts",
@@ -1224,6 +1226,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-rehome.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-rehome.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-rehome.ts": "//packages/@overeng/megarepo:src/store/store-rehome.ts",
         "node_modules/@overeng/megarepo/src/store/store-symlink.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-symlink.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-verified-directory-pins.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-verified-directory-pins.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.ts",
