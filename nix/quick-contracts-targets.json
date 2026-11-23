@@ -12,7 +12,8 @@
       "scripts/test-tmp"
     ],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "whole-pool"
   },
   "buck2:cache-posture:ci-test": {
     "paths": [
@@ -33,7 +34,8 @@
       "scripts/test-tmp"
     ],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "whole-pool"
   },
   "buck2:cache-posture:test": {
     "paths": [
@@ -54,7 +56,8 @@
       "scripts/test-tmp"
     ],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "whole-pool"
   },
   "buck2:capabilities:test": {
     "paths": [
@@ -75,11 +78,16 @@
       "scripts/test-tmp"
     ],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "whole-pool"
   },
   "buck2:providers:check": {
     "paths": [".buckconfig", ".buckroot"],
     "prefixes": ["buck2/", "genie/buck2/", "rust/third-party/"],
+    "native_providers": {
+      "toolchain": "//buck2/toolchains:cross_cell_provider_identity",
+      "product": "//buck2/toolchains:cross_cell_product_identity"
+    },
     "requires": [
       "buck2:cache-admission:check",
       "buck2:rust-deps:check",
@@ -106,7 +114,8 @@
       "rust/"
     ],
     "requires": [],
-    "cache_policy": "local-validation"
+    "cache_policy": "local-validation",
+    "cpu_demand": "single-thread"
   },
   "buck2:task-guards:check": {
     "paths": [
@@ -130,7 +139,8 @@
       "scripts/buck2-"
     ],
     "requires": [],
-    "cache_policy": "local-validation"
+    "cache_policy": "local-validation",
+    "cpu_demand": "single-thread"
   },
   "buck2:ts-sandbox:test": {
     "paths": [
@@ -140,19 +150,22 @@
     ],
     "prefixes": ["buck2/", "packages/@overeng/buck2-tools/src/"],
     "requires": ["buck2:providers:check"],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread"
   },
   "cargo:proto-bindings:check": {
     "paths": [],
     "prefixes": ["rust/buck2-tools/events/"],
     "requires": [],
-    "cache_policy": "local-validation"
+    "cache_policy": "local-validation",
+    "cpu_demand": "whole-pool"
   },
   "check:buck2-producer-overlap": {
     "paths": ["genie/buck2/producer-overlap.ts"],
     "prefixes": ["genie/", "packages/"],
     "requires": ["genie:check"],
     "cache_policy": "local-validation",
+    "cpu_demand": "single-thread",
     "extensions": [".ts", ".json"]
   },
   "content-address:contract:check": {
@@ -171,7 +184,8 @@
       "rust/content-address-contract/"
     ],
     "requires": [],
-    "cache_policy": "local-validation"
+    "cache_policy": "local-validation",
+    "cpu_demand": "single-thread"
   },
   "genie:check": {
     "paths": [
@@ -215,6 +229,7 @@
     ],
     "requires": ["content-address:contract:check", "genie:editor-view-closure:check"],
     "cache_policy": "local-validation",
+    "cpu_demand": "whole-pool",
     "membership_mode": "tracked-and-untracked",
     "membership": ["**"]
   },
@@ -245,6 +260,7 @@
     ],
     "requires": [],
     "cache_policy": "local-validation",
+    "cpu_demand": "single-thread",
     "extensions": [".ts", ".tsx", ".json"],
     "membership_mode": "tracked-and-untracked",
     "membership": ["**"]
@@ -253,7 +269,8 @@
     "paths": ["scripts/without-git-local-env.sh", "scripts/without-git-local-env.test.sh"],
     "prefixes": [],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread"
   },
   "lint:check:format:parity": {
     "paths": [
@@ -269,6 +286,7 @@
     "prefixes": ["buck2/", "genie/buck2/", "packages/", "rust/"],
     "requires": ["genie:check"],
     "cache_policy": "local-validation",
+    "cpu_demand": "whole-pool",
     "extensions": [".bzl", ".genie.ts", "BUCK"],
     "membership_mode": "tracked-and-untracked",
     "membership": ["**"]
@@ -278,6 +296,7 @@
     "prefixes": [""],
     "requires": [],
     "cache_policy": "local-validation",
+    "cpu_demand": "single-thread",
     "extensions": [".nix", ".sh"],
     "membership": ["*.nix", "*.sh"]
   },
@@ -303,6 +322,7 @@
     ],
     "requires": [],
     "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread",
     "membership_inputs": true,
     "membership_mode": "tracked-and-untracked",
     "membership": ["*.nix"]
@@ -311,25 +331,29 @@
     "paths": ["flake.lock", "flake.nix"],
     "prefixes": ["buck2/", "nix/buck2-", "nix/workspace-tools/lib/", "rust/buck2-tools/"],
     "requires": ["genie:check"],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread"
   },
   "nix:buck2-cargo-archives:check": {
     "paths": ["buck2/dependencies/nix-archive.ts", "flake.lock", "flake.nix"],
     "prefixes": ["nix/workspace-tools/lib/", "packages/@overeng/buck2-tools/src/"],
     "requires": ["genie:check"],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread"
   },
   "nix:buck2-launcher-independence:check": {
     "paths": ["flake.lock", "flake.nix"],
     "prefixes": ["buck2/", "genie/", "nix/", "packages/", "rust/"],
     "requires": [],
-    "cache_policy": "local-validation"
+    "cache_policy": "local-validation",
+    "cpu_demand": "single-thread"
   },
   "nix:javascript-product-import:check": {
     "paths": ["flake.lock", "flake.nix"],
     "prefixes": ["buck2/", "genie/", "nix/", "packages/", "rust/"],
     "requires": ["genie:check"],
     "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread",
     "membership": ["**"]
   },
   "otel:pipeline-run:test": {
@@ -339,13 +363,15 @@
     ],
     "prefixes": ["genie/ci-scripts/", "nix/devenv-modules/otel/", "packages/@overeng/otelite/"],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread"
   },
   "test:notion-integration:ci-skip": {
     "paths": ["devenv.nix", "nix/devenv-modules/tasks/shared/tests/notion-integration-ci.test.sh"],
     "prefixes": ["nix/devenv-modules/tasks/shared/test"],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "single-thread"
   },
   "worktree:teardown:test": {
     "paths": [
@@ -364,6 +390,7 @@
       "scripts/test-tmp"
     ],
     "requires": [],
-    "cache_policy": "local-fixture"
+    "cache_policy": "local-fixture",
+    "cpu_demand": "whole-pool"
   }
 }

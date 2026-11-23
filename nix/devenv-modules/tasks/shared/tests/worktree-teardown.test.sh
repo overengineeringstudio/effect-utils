@@ -40,6 +40,10 @@ descendant_state=""
 collision_started=false
 cleanup() {
   local result=$?
+  if [ "$result" -ne 0 ] && [ "$watchman_started" = true ] && [ -f "$TEMP_ROOT/w.log" ]; then
+    echo 'Fixture-owned Watchman failure log:'
+    cat "$TEMP_ROOT/w.log"
+  fi
   if [ -n "$descendant_state" ]; then rm -rf -- "$descendant_state"; fi
   if [ -n "$nested_outer" ] && [ -d "$nested_outer" ]; then
     if [ -d "$nested_child" ]; then
@@ -88,6 +92,11 @@ cleanup() {
   exit "$result"
 }
 trap cleanup EXIT
+# Publication's host-budget census and native Buck state belong to this fixture,
+# not the operator's HOME/XDG registry (which can contain live editor roots).
+export HOME="$TEMP_ROOT/home" XDG_STATE_HOME="$TEMP_ROOT/state"
+export EDITOR_VIEW_HOST_BUDGET_STATE="$XDG_STATE_HOME/editor-view-budget"
+mkdir -m 0700 -- "$HOME" "$XDG_STATE_HOME"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 run_teardown() {
   local checkout="$1"

@@ -1,15 +1,133 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { expect, it } from 'vitest'
 
+import targetCatalog from '../../nix/quick-contracts-targets.json'
+import { quickContractInputs } from './quick-contract-inputs.ts'
 import {
   contractSourceGroup,
   contractSourceOwners,
   discoverContractPackages,
   renderContractSourceExclusions,
 } from './quick-contract-source-groups.ts'
+
+it('projects the retained provider audit into the same real configured native guards', () => {
+  const source = (file: string): string =>
+    readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')
+  const task = 'buck2:providers:check'
+  const native = targetCatalog[task].native_providers
+  expect(quickContractInputs.contracts[task]!.native_providers).toEqual(native)
+  const legacy = source('devenv.nix').split(`tasks."${task}" = {`)[1]!.split('\n  };')[0]!
+  expect(legacy).toContain('exec "$BUCK2_BIN" audit providers')
+  expect(legacy).toContain('--target-platforms //buck2/platforms:host_platform')
+  expect([...legacy.matchAll(/\/\/buck2\/toolchains:[a-z_]+/g)].map(([label]) => label)).toEqual(
+    [native.toolchain, native.product],
+  )
+  const rule = source('buck2/quick_contracts.bzl')
+  const declaration = rule.split('if native_providers != None:')[1]!.split('continue')[0]!
+  expect(declaration).toContain('_provider_contract(')
+  expect(declaration).toContain('toolchain = native_providers["toolchain"]')
+  expect(declaration).toContain('product = native_providers["product"]')
+  expect(declaration).toContain('default_target_platform = "//buck2/platforms:host_platform"')
+  expect(declaration).not.toContain('runtime =')
+  const implementation = rule
+    .split('def _provider_contract_impl(ctx):')[1]!
+    .split('def _quick_contracts_impl(ctx):')[0]!
+  expect(implementation).toContain('ctx.attrs.toolchain[ConfiguredRustToolchainInfo]')
+  expect(implementation).toContain('ctx.attrs.product[BuildProductInfo]')
+  expect(implementation).toContain('attrs.toolchain_dep(providers = [ConfiguredRustToolchainInfo])')
+  expect(implementation).toContain('attrs.dep(providers = [BuildProductInfo])')
+  expect(implementation).toContain('"status": "passed"')
+  expect(implementation).toContain('toolchain_identity": toolchain.identity')
+  expect(implementation).toContain('other_outputs = predecessors')
+  expect(implementation).not.toContain('ctx.actions.run(')
+  expect(rule).toContain('inputs.extend(contract[DefaultInfo].other_outputs)')
+
+  // The native contract resolves the originals, not replacement identity
+  // providers or an alias bypassing the executable/product platform guard.
+  const targets = source('buck2/toolchains/BUCK.template')
+  expect(targets).toContain(
+    `configured_rust_toolchain(\n    name = "${native.toolchain.split(':')[1]}"`,
+  )
+  expect(targets).toContain(
+    `cross_cell_product_identity(\n    name = "${native.product.split(':')[1]}"`,
+  )
+  const fixture = source('buck2/toolchains/provider_identity_fixture.bzl')
+  expect(fixture).toContain('ctx.attrs.target_platform[ProductPlatformInfo]')
+  expect(fixture).toContain('target_platform = executable_target_platform')
+  expect(fixture).toContain('build_product(')
+  expect(fixture).toContain('artifact = ":" + executable')
+  expect(fixture).toContain('target_platform = target_platform')
+  const mismatch = targets.split('name = "cross_cell_product_mismatch",')[1]!.split('\n)')[0]!
+  expect(mismatch).toContain('executable_target_platform = "//buck2/platforms:macos_aarch64"')
+  expect(mismatch).toContain('target_platform = "//buck2/platforms:linux_x86_64"')
+  expect(source('buck2/toolchains/defs.bzl')).toContain(
+    'if ctx.attrs.target_triple != platform.rust_target_triple:\n        fail(',
+  )
+  expect(source('buck2/products/defs.bzl')).toContain(
+    'if actual_platform != expected_platform:\n        fail("build_product executable platform',
+  )
+})
+
+it('declares and projects per-contract CPU demands into honest local weights', () => {
+  const source = (file: string): string =>
+    readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')
+  const rule = source('buck2/quick_contracts.bzl')
+  const demands = new Map<string, string>()
+  for (const [name, inputs] of Object.entries(targetCatalog)) {
+    if (inputs.native_providers !== undefined) {
+      // The native provider verdict stays an analysis-only guard; no weight
+      // declaration may smuggle an execution claim into it.
+      expect(inputs.cpu_demand, `${name} must stay execution-free`).toBeUndefined()
+      expect(quickContractInputs.contracts[name]!.cpu_demand).toBeUndefined()
+      continue
+    }
+    expect(inputs.cpu_demand, `${name} must declare cpu_demand`).toMatch(
+      /^(single-thread|bounded:[1-9][0-9]*|whole-pool)$/,
+    )
+    expect(quickContractInputs.contracts[name]!.cpu_demand).toBe(inputs.cpu_demand)
+    demands.set(name, inputs.cpu_demand!)
+  }
+  // Host-wide tooling (live Buck daemons, watchers, pool-parallel generators,
+  // unbound rustc) reserves the whole local pool instead of one slot each.
+  expect([...demands.entries()].filter(([, demand]) => demand === 'whole-pool').map(([name]) => name).sort())
+    .toEqual(
+      [
+        'buck2:cache-admission:check',
+        'buck2:cache-posture:ci-test',
+        'buck2:cache-posture:test',
+        'buck2:capabilities:test',
+        'cargo:proto-bindings:check',
+        'genie:check',
+        'lint:check:format:parity',
+        'worktree:teardown:test',
+      ].sort(),
+    )
+  // The validation action projects the declared demand onto ctx.actions.run.
+  const contract = rule
+    .split('def _contract_impl(ctx):')[1]!
+    .split('def _provider_contract_impl(ctx):')[0]!
+  expect(contract).toContain('**_cpu_weight_args(ctx.attrs.cpu_demand)')
+  const projection = rule
+    .split('def _cpu_weight_args(demand):')[1]!
+    .split('def _contract_impl(ctx):')[0]!
+  expect(projection).toContain('return {"weight": 1}')
+  expect(projection).toContain('return {"weight": int(count)}')
+  expect(projection).toContain('return {"weight_percentage": 100}')
+  expect(rule).toContain('cpu_demand = spec.get("cpu_demand")')
+  expect(rule).toContain('cpu_demand = cpu_demand,')
+  // Threaded repo-wide scans reserve the full pool rather than claiming one slot.
+  expect(source('buck2/static_checks.bzl')).toContain('weight_percentage = 100,')
+  // tsgo actions bind the real Go thread setting to their declared budget.
+  const typescript = source('buck2/typescript.bzl')
+  expect(typescript).toContain('env = {"GOMAXPROCS": "2"},')
+  expect(typescript).toContain('weight = 2,')
+  expect(source('buck2/hermetic.bzl')).toContain(
+    'bind_args.add("--setenv", name, cmd_args(env[name], quote = "shell"))',
+  )
+})
 
 it('keeps live selectors stable across new files while discovering nested, hidden, and empty owners', () => {
   const temporary = path.resolve('tmp/quick-contract-source-groups')

@@ -190,7 +190,7 @@ describe('quick contract task runtime', () => {
     return { cp, bash, coreutils }
   }
 
-  it('scopes the short base to tasks without taking fixture ownership', () => {
+  it('declares action-owned private runtime scratch without taking fixture ownership', () => {
     expect(runtime).toBeDefined()
     expect(source).toContain('${taskRuntime} ${taskScripts.${name}}')
     const shared = source.slice(
@@ -199,10 +199,17 @@ describe('quick contract task runtime', () => {
     )
     expect(shared).not.toContain('taskRuntime')
     expect(shared).not.toContain('TMPDIR')
+    expect(runtime).toContain('BUCK_SCRATCH_PATH:?')
+    expect(runtime).toContain('realpath -e -- "$BUCK_SCRATCH_PATH"')
+    expect(runtime).toContain('mkdir -m 0700 -- "$runtime"')
+    expect(runtime).toContain('export TMPDIR="$runtime" TMP="$runtime" TEMP="$runtime" RUNNER_TEMP="$runtime"')
+    expect(runtime).toContain('export XDG_RUNTIME_DIR="$runtime"')
     expect(runtime).toContain('exec "$@"')
     expect(runtime).not.toContain('mktemp')
     expect(runtime).not.toContain('trap')
     expect(runtime).not.toContain('wait')
+    expect(runtime).not.toContain('shutdown')
+    expect(runtime).not.toContain('WATCHMAN_SOCK')
   })
 
   for (const status of [0, 23]) {
@@ -210,23 +217,23 @@ describe('quick contract task runtime', () => {
       const { bash, coreutils } = declaredTools()
       expect(runtime).toBeDefined()
       const root = fixture()
-      // Exceed socket limits without exceeding NAME_MAX for any component.
-      const deep = join(root, 'buck-out', 'deep-scratch/'.repeat(20))
-      mkdirSync(deep, { recursive: true })
       const observed: string[] = []
       for (let attempt = 0; attempt < 2; attempt++) {
+        // Each attempt receives its own action-owned Buck scratch.
+        const scratch = join(root, `scratch-${attempt}`)
+        mkdirSync(scratch, { mode: 0o700 })
         const result = spawnSync(
           bash,
           [
             '-c',
-            runtime!.replaceAll('${pkgs.coreutils}', coreutils),
+            runtime!.replaceAll('${pkgs.coreutils}', coreutils).replaceAll("''${", '${'),
             '--',
             bash,
             '-c',
             `task_tmp="$(mktemp -d "$TMPDIR/qc.XXXXXXXX")"
 trap 'rmdir -- "$task_tmp"' EXIT
-printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP" "$task_tmp" "$$"
-stat -c '%a' "$task_tmp"
+printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP" "$XDG_RUNTIME_DIR" "$task_tmp" "$$"
+stat -c '%a' "$TMPDIR"
 exit "$1"`,
             '--',
             String(status),
@@ -235,10 +242,7 @@ exit "$1"`,
             cwd: root,
             env: {
               PATH: `${coreutils}/bin:${dirname(bash)}`,
-              TMPDIR: deep,
-              TMP: deep,
-              TEMP: deep,
-              RUNNER_TEMP: deep,
+              BUCK_SCRATCH_PATH: scratch,
             },
             encoding: 'utf8',
           },
@@ -247,23 +251,49 @@ exit "$1"`,
         expect(result.status).toBe(status)
         const paths = result.stdout.trim().split('\n')
         expect(paths).toHaveLength(7)
-        const base = realpathSync('/tmp')
-        expect(paths.slice(0, 4).every((path) => path === base)).toBe(true)
-        const temporary = paths[4]!
-        expect(temporary.startsWith(`${base}/qc.`)).toBe(true)
-        expect(Number(paths[5])).toBe(result.pid)
-        expect(paths[6]).toBe('700')
-        expect(temporary.startsWith(realpathSync(root))).toBe(false)
+        const runtimeDir = realpathSync(join(scratch, 'runtime'))
+        expect(paths.slice(0, 5).every((path) => path === runtimeDir)).toBe(true)
+        const temporary = paths[5]!
+        expect(temporary.startsWith(`${runtimeDir}/qc.`)).toBe(true)
+        expect(Number(paths[6])).toBe(result.pid)
+        expect(statSync(runtimeDir).mode & 0o777).toBe(0o700)
+        expect(temporary.startsWith(realpathSync(root))).toBe(true)
         expect(
-          Buffer.byteLength(`${temporary}/direct-buck-posture-XXXXXX/watchman.sock`),
+          Buffer.byteLength(`${runtimeDir}/direct-buck-posture-XXXXXX/watchman.sock`),
         ).toBeLessThan(104)
         expect(existsSync(temporary)).toBe(false)
+        expect(existsSync(runtimeDir)).toBe(true)
         observed.push(temporary)
       }
       expect(observed[0]).not.toBe(observed[1])
-      expect(existsSync(deep)).toBe(true)
+      for (const attempt of [0, 1]) expect(existsSync(join(root, `scratch-${attempt}`))).toBe(true)
     })
   }
+
+  it('rejects missing, foreign, or group/world-writable scratch', () => {
+    const { bash, coreutils } = declaredTools()
+    expect(runtime).toBeDefined()
+    const root = fixture()
+    const script = runtime!.replaceAll('${pkgs.coreutils}', coreutils).replaceAll("''${", '${')
+    const invoke = (scratch: string | undefined) =>
+      spawnSync(bash, ['-c', script, '--', 'true'], {
+        cwd: root,
+        env: {
+          PATH: `${coreutils}/bin:${dirname(bash)}`,
+          ...(scratch === undefined ? {} : { BUCK_SCRATCH_PATH: scratch }),
+        },
+        encoding: 'utf8',
+      })
+    const missing = invoke(undefined)
+    expect(missing.status).not.toBe(0)
+    expect(missing.stderr).toContain('BUCK_SCRATCH_PATH')
+    const absent = invoke(join(root, 'absent-scratch'))
+    expect(absent.status).not.toBe(0)
+    const foreign = join(root, 'foreign-scratch')
+    mkdirSync(foreign)
+    chmodSync(foreign, 0o755)
+    expect(invoke(foreign).status).not.toBe(0)
+  })
 
   for (const linked of [false, true]) {
     it(`owns writable cache-admission copies of ${linked === true ? 'symlinked' : 'readonly'} inputs`, () => {
@@ -438,35 +468,53 @@ describe('worktree watcher management', () => {
 })
 
 describe('short persistent Watchman location', () => {
-  it('reuses one owned location per resolved HOME and separates concurrent job HOMEs', () => {
-    const root = fixture()
-    const home = join(root, 'long-runner-work-directory-'.repeat(6), '_home')
-    const other = join(root, 'other-home')
-    mkdirSync(home, { recursive: true })
-    mkdirSync(other)
-    const first: Record<string, string | undefined> = { HOME: home }
-    const second: Record<string, string | undefined> = { HOME: other }
-    const again: Record<string, string | undefined> = { HOME: home }
+  it('reuses one owned location per checkout and separates concurrent checkouts', () => {
+    const firstRoot = fixture()
+    const secondRoot = fixture()
+    const first: Record<string, string | undefined> = {}
+    const second: Record<string, string | undefined> = {}
+    const again: Record<string, string | undefined> = {}
     const directories: string[] = []
+    const aliases: string[] = []
     try {
-      for (const env of [first, second, again]) {
-        const directory = prepareWatchmanEnvironment(env)
+      for (const [env, repoRoot] of [
+        [first, firstRoot],
+        [second, secondRoot],
+        [again, firstRoot],
+      ] as const) {
+        const directory = prepareWatchmanEnvironment({ env, repoRoot })
         if (directory === undefined) throw new Error('managed directory expected')
         directories.push(directory)
+        const socket = env['WATCHMAN_SOCK']
+        if (socket === undefined) throw new Error('managed socket expected')
         expect(lstatSync(directory).uid).toBe(process.getuid?.())
         expect(lstatSync(directory).mode & 0o777).toBe(0o700)
-        expect(Buffer.byteLength(env['WATCHMAN_SOCK'] ?? '')).toBeLessThanOrEqual(45)
+        if (Buffer.byteLength(join(directory, 'sock')) > 103) {
+          const alias = dirname(socket)
+          aliases.push(alias)
+          expect(lstatSync(alias).uid).toBe(process.getuid?.())
+          expect(lstatSync(alias).mode & 0o777).toBe(0o700)
+          expect(realpathSync(alias)).toBe(directory)
+        }
       }
       expect(first['WATCHMAN_SOCK']).toBe(again['WATCHMAN_SOCK'])
       expect(first['WATCHMAN_SOCK']).not.toBe(second['WATCHMAN_SOCK'])
-      const explicit = { WATCHMAN_SOCK: '/tmp/explicit-watchman.sock' }
-      expect(prepareWatchmanEnvironment(explicit)).toBeUndefined()
+      const explicit: Record<string, string | undefined> = {
+        WATCHMAN_SOCK: '/tmp/explicit-watchman.sock',
+      }
+      expect(
+        prepareWatchmanEnvironment({ env: explicit, repoRoot: firstRoot }),
+      ).toBeUndefined()
       expect(explicit.WATCHMAN_SOCK).toBe('/tmp/explicit-watchman.sock')
       expect(() =>
-        prepareWatchmanEnvironment({ WATCHMAN_SOCK: `/tmp/${'x'.repeat(108)}` }),
+        prepareWatchmanEnvironment({
+          env: { WATCHMAN_SOCK: `/tmp/${'x'.repeat(108)}` },
+          repoRoot: firstRoot,
+        }),
       ).toThrow(WatchmanAdmissionError)
     } finally {
       for (const directory of new Set(directories)) rmSync(directory, { recursive: true })
+      for (const alias of new Set(aliases)) rmSync(alias, { recursive: true })
     }
     for (const directory of directories) expect(existsSync(directory)).toBe(false)
   })
@@ -490,7 +538,7 @@ describe('short persistent Watchman location', () => {
         WATCHMAN_CONFIG_FILE: config,
       }
       delete env['WATCHMAN_SOCK']
-      const directory = prepareWatchmanEnvironment(env)
+      const directory = prepareWatchmanEnvironment({ env, repoRoot: root })
       if (directory === undefined) throw new Error('managed directory expected')
       const tuple = [
         `--sockname=${env['WATCHMAN_SOCK']}`,
@@ -563,7 +611,7 @@ describe('short persistent Watchman location', () => {
           }),
         ).rejects.toThrow(WatchmanAdmissionError)
         expect(readFileSync(join(profileRoot, '.buckconfig.local'), 'utf8')).toBe(profileConfig)
-        expect(prepareWatchmanEnvironment({ HOME: home })).toBe(directory)
+        expect(prepareWatchmanEnvironment({ env: {}, repoRoot: root })).toBe(directory)
         const kept = realpathSync(fixture())
         const deleted = realpathSync(fixture())
         await command(['--no-spawn', '--no-local', 'watch', kept])
@@ -608,7 +656,7 @@ describe('short persistent Watchman location', () => {
         WATCHMAN_CONFIG_FILE: config,
       }
       delete env['WATCHMAN_SOCK']
-      const directory = prepareWatchmanEnvironment(env)
+      const directory = prepareWatchmanEnvironment({ env, repoRoot: root })
       if (directory === undefined) throw new Error('managed directory expected')
       const socket = join(directory, 'sock')
       const pidfile = join(directory, 'pid')

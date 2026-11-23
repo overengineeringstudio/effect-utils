@@ -20,17 +20,25 @@ import {
   type SourceSelection,
 } from './quick-contract-source-groups.ts'
 
+type NativeProviders = {
+  readonly toolchain: string
+  readonly product: string
+}
 type ContractInputs = SourceSelection & {
   readonly requires: readonly string[]
   readonly cache_policy: string
+  readonly cpu_demand?: string
   readonly membership_mode?: string
+  readonly native_providers?: NativeProviders
 }
 type ContractProjection = {
   readonly source_sets: readonly string[]
   readonly requires: readonly string[]
   readonly cache_policy: string
+  readonly cpu_demand?: string
   readonly membership: readonly string[]
   readonly membership_mode: 'tracked' | 'tracked-and-untracked'
+  readonly native_providers?: NativeProviders
 }
 const catalog: Readonly<Record<string, ContractInputs>> = targetCatalog
 const repoRoot = repoRootFromModuleUrl(import.meta.url)
@@ -57,6 +65,18 @@ const contracts: Readonly<Record<string, ContractProjection>> = Object.fromEntri
     .map(([name, inputs]) => {
       if (!['local-validation', 'local-fixture', 'live-guard'].includes(inputs.cache_policy))
         throw new Error(`${name}: unknown contract cache policy ${inputs.cache_policy}`)
+      const cpuDemand = inputs.native_providers === undefined ? inputs.cpu_demand : undefined
+      if (inputs.native_providers === undefined) {
+        if (
+          cpuDemand === undefined ||
+          !/^(single-thread|bounded:[1-9][0-9]*|whole-pool)$/.test(cpuDemand)
+        )
+          throw new Error(
+            `${name}: non-native contract requires cpu_demand declared as single-thread, bounded:<cpus>, or whole-pool`,
+          )
+      } else if (inputs.cpu_demand !== undefined) {
+        throw new Error(`${name}: native provider contract stays execution-free; cpu_demand must not be declared`)
+      }
       const membershipMode = inputs.membership_mode ?? 'tracked'
       if (membershipMode !== 'tracked' && membershipMode !== 'tracked-and-untracked')
         throw new Error(`${name}: unknown membership mode ${membershipMode}`)
@@ -88,8 +108,12 @@ const contracts: Readonly<Record<string, ContractProjection>> = Object.fromEntri
           ),
           requires: [...new Set(inputs.requires)].sort(),
           cache_policy: inputs.cache_policy,
+          ...(cpuDemand === undefined ? {} : { cpu_demand: cpuDemand }),
           membership: [...new Set(inputs.membership ?? [])].sort(),
           membership_mode: membershipMode,
+          ...(inputs.native_providers === undefined
+            ? {}
+            : { native_providers: inputs.native_providers }),
         },
       ]
     }),

@@ -33,7 +33,13 @@ const watcherMarkers = {
   },
 }
 
-const withoutWatcherBlock = (current: string, scope: keyof typeof watcherMarkers): string => {
+const withoutWatcherBlock = ({
+  current,
+  scope,
+}: {
+  readonly current: string
+  readonly scope: keyof typeof watcherMarkers
+}): string => {
   const { begin, end } = watcherMarkers[scope]
   const output: string[] = []
   let inside = false
@@ -72,9 +78,12 @@ export const reconcileFileWatcher = ({
     throw new Error('Buck file watcher: .buckconfig.local must not be a symbolic link')
   const current = existsSync(path) === true ? readFileSync(path, 'utf8') : ''
   // Validate both owners, and retire the old admission selection before a profile write.
-  withoutWatcherBlock(current, 'profile')
+  withoutWatcherBlock({ current, scope: 'profile' })
   const admissionFree = withoutManagedWatcherBlock(current)
-  const unmanaged = withoutWatcherBlock(scope === 'profile' ? admissionFree : current, scope)
+  const unmanaged = withoutWatcherBlock({
+    current: scope === 'profile' ? admissionFree : current,
+    scope,
+  })
   const { begin, end } = watcherMarkers[scope]
   const block =
     provider === undefined ? '' : `${begin}\n[buck2]\n  file_watcher = ${provider}\n${end}\n`
@@ -109,7 +118,7 @@ export const assertProfileFileWatcher = ({
     throw new Error('Buck file watcher: .buckconfig.local must not be a symbolic link')
   const current = existsSync(path) === true ? readFileSync(path, 'utf8') : ''
   withoutManagedWatcherBlock(current)
-  withoutWatcherBlock(current, 'profile')
+  withoutWatcherBlock({ current, scope: 'profile' })
   const { begin, end } = watcherMarkers.profile
   const lines = current.split(/\r?\n/u)
   const start = lines.indexOf(begin)
@@ -163,25 +172,50 @@ export const assertWatchmanSocket = (socket: string): void => {
     reason: 'socket',
     command: 'watchman --sockname=<socket> watch-project <root>',
     detail: `socket path must be at most ${limit} UTF-8 bytes without NUL (${Buffer.byteLength(socket)} bytes supplied)`,
-    fix: 'select a shorter absolute WATCHMAN_SOCK, or unset it to use the short HOME-keyed managed location',
+    fix: 'select a shorter absolute WATCHMAN_SOCK, or unset it to use the checkout-owned managed location',
   })
 }
 
-/** One persistent service per user/HOME, not per invocation or checkout. */
-export const prepareWatchmanEnvironment = (
-  env: Record<string, string | undefined>,
-): string | undefined => {
+/** One persistent service per checkout, isolated from other users and checkouts. */
+export const prepareWatchmanEnvironment = ({
+  env,
+  repoRoot,
+}: {
+  readonly env: Record<string, string | undefined>
+  readonly repoRoot: string
+}): string | undefined => {
   if (env['WATCHMAN_SOCK'] !== undefined) {
     assertWatchmanSocket(env['WATCHMAN_SOCK'])
     return undefined
   }
   const uid = process.getuid?.()
   if (uid === undefined) throw new Error('Watchman managed state requires a Unix UID')
-  const home = realpathSync(env['HOME'] ?? homedir())
-  const hash = createHash('sha256').update(home).digest('hex').slice(0, 12)
-  const directory = `/tmp/eu-wm-${uid}-${hash}`
+  const root = realpathSync(repoRoot)
+  const directory = join(root, '.worktree-tools', 'watchman')
   const socket = join(directory, 'sock')
-  assertWatchmanSocket(socket)
+  const limit = process.platform === 'darwin' ? 103 : 107
+  const alias = join('/tmp', `eu-wm-wt-${uid}-${createHash('sha256').update(root).digest('hex').slice(0, 12)}`)
+  if (Buffer.byteLength(socket) > limit) {
+    // A long in-tree socket is addressed through a short owned alias.
+    try {
+      mkdirSync(alias, { mode: 0o700 })
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+    }
+    const aliasStat = lstatSync(alias)
+    if (
+      aliasStat.isDirectory() === false ||
+      aliasStat.isSymbolicLink() === true ||
+      aliasStat.uid !== uid ||
+      (aliasStat.mode & 0o777) !== 0o700
+    )
+      throw new WatchmanAdmissionError({
+        reason: 'socket',
+        command: 'prepare Watchman address alias',
+        detail: `${alias} must be a current-user-owned directory with mode 0700`,
+        fix: `repair or remove the unsafe alias after stopping its Watchman service; no default-path fallback is permitted`,
+      })
+  }
   try {
     mkdirSync(directory, { mode: 0o700 })
   } catch (error) {
@@ -201,7 +235,7 @@ export const prepareWatchmanEnvironment = (
       fix: 'repair or remove the unsafe directory after stopping its Watchman service; no default-path fallback is permitted',
     })
   // Native Buck's Rust connector reads this directly; CLI probes need --sockname.
-  env['WATCHMAN_SOCK'] = socket
+  env['WATCHMAN_SOCK'] = Buffer.byteLength(socket) > limit ? join(alias, 'sock') : socket
   return directory
 }
 

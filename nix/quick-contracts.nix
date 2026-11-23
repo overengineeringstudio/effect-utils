@@ -172,13 +172,22 @@ let
     export EFFECT_UTILS_TEST_PLATFORM=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM")}
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
   '';
-  # Buck's scratch TMPDIR is inside buck-out and can exceed AF_UNIX limits.
-  # Preserve fixture-owned private dirs and process lifetimes; do not supervise them.
+  # Buck owns and retires action scratch, including this private runtime child.
+  # Socket-owning tools use their supported short-location boundary separately.
   taskRuntime = pkgs.writeShellScript "quick-contract-task-runtime" ''
     set -euo pipefail
-    # Canonicalize /tmp on Darwin before guards compare physical repo paths.
-    export TMPDIR="$(${pkgs.coreutils}/bin/realpath -e -- /tmp)"
-    export TMP="$TMPDIR" TEMP="$TMPDIR" RUNNER_TEMP="$TMPDIR"
+    : "''${BUCK_SCRATCH_PATH:?quick-contracts: Buck must supply action-owned scratch}"
+    scratch="$(${pkgs.coreutils}/bin/realpath -e -- "$BUCK_SCRATCH_PATH")"
+    owner="$(${pkgs.coreutils}/bin/stat -c %u -- "$scratch")"
+    mode="$(${pkgs.coreutils}/bin/stat -c %a -- "$scratch")"
+    if [ "$owner" != "$(${pkgs.coreutils}/bin/id -u)" ] || (( (8#$mode & 0022) != 0 )); then
+      echo "quick-contracts: unsafe action scratch $scratch" >&2
+      exit 1
+    fi
+    runtime="$scratch/runtime"
+    ${pkgs.coreutils}/bin/mkdir -m 0700 -- "$runtime"
+    export TMPDIR="$runtime" TMP="$runtime" TEMP="$runtime" RUNNER_TEMP="$runtime"
+    export XDG_RUNTIME_DIR="$runtime"
     exec "$@"
   '';
   taskCapabilities = builtins.listToAttrs (

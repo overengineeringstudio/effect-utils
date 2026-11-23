@@ -140,7 +140,7 @@ def hermetic_cacheable_sandboxed_action(ctx, sandbox, tool_closures, arguments, 
     )
 
 
-def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, inherit_nix_build_environment = False, require_cacheable_sandbox = False, remote_pilot = False, **kwargs):
+def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, env = {}, inherit_nix_build_environment = False, require_cacheable_sandbox = False, remote_pilot = False, **kwargs):
     """Runs admitted directory-output actions with exactly the supplied closures.
 
     Each closure must be attested by the caller's toolchain dependencies; their
@@ -167,7 +167,7 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
             inputs + tool_inputs,
             outputs,
         )
-        hermetic_action(ctx, command, cacheable = False, inherit_nix_build_environment = inherit_nix_build_environment, **kwargs)
+        hermetic_action(ctx, command, cacheable = False, inherit_nix_build_environment = inherit_nix_build_environment, env = env, **kwargs)
         return
     if not sandbox.bubblewrap:
         fail("Sandbox: declared Bubblewrap capability missing; unsandboxed execution is forbidden")
@@ -196,6 +196,10 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
         bind_args.add("--ro-bind", cmd_args(artifact, quote = "shell"), _sandbox_absolute(artifact))
     for path in sorted(closure.keys()):
         bind_args.add("--ro-bind", cmd_args(path, quote = "shell"), cmd_args(path, quote = "shell"))
+    # Bubblewrap clears the environment; explicit --setenv keeps admitted
+    # resource bindings (e.g. GOMAXPROCS) reaching the payload on this lane.
+    for name in sorted(env.keys()):
+        bind_args.add("--setenv", name, cmd_args(env[name], quote = "shell"))
     bind_args.add(
         "--remount-ro", "/", "--chdir", '"$PWD"',
         "--setenv", "LC_ALL", "C", "--setenv", "TZ", "UTC",
@@ -209,4 +213,4 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
         ctx, sandbox, bind_args, inputs + tool_inputs, outputs,
         fingerprint_locks = not require_cacheable_sandbox,
     )
-    hermetic_action(ctx, command, cacheable = cacheable, **kwargs)
+    hermetic_action(ctx, command, cacheable = cacheable, env = env, **kwargs)

@@ -74,6 +74,12 @@ def _tsgo_typecheck_impl(ctx):
         # Referenced workspace builds are not enrolled in the single-project pilot.
         remote_pilot = not ctx.attrs.workspace_build and nativelink_pilot_target(ctx.label.package, ctx.attrs.name),
         inherit_nix_build_environment = ctx.attrs.workspace_build and isolation == "nix-build-sandbox",
+        # tsgo is a Go binary and Bun sizes its work pool from GOMAXPROCS:
+        # this real thread setting binds both to the declared CPU budget,
+        # and the matching weight lets the local pool admit host/2 concurrent
+        # typechecks instead of host-wide goroutine sets per action.
+        env = {"GOMAXPROCS": "2"},
+        weight = 2,
     )
     return [
         DefaultInfo(default_output = verdict),
@@ -169,6 +175,10 @@ def _tsgo_emit_impl(ctx):
         identifier = ctx.attrs.name,
         remote_pilot = nativelink_pilot_target(ctx.label.package, ctx.attrs.name),
         inherit_nix_build_environment = isolation == "nix-build-sandbox",
+        # Same declared budget as typecheck: GOMAXPROCS binds tsgo's goroutines
+        # and Bun's pool; weight matches so emit never claims more slots.
+        env = {"GOMAXPROCS": "2"},
+        weight = 2,
     )
     return [
         DefaultInfo(default_output = directory),

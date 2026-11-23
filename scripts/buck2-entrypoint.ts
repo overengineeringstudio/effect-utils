@@ -2658,7 +2658,7 @@ const runManagedCommand = async (
       ] ??
         buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))['buck2.file_watcher']) ===
         'watchman'
-        ? prepareWatchmanEnvironment(env)
+        ? prepareWatchmanEnvironment({ env, repoRoot: root })
         : undefined
     let fallbackEligible = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {

@@ -154,6 +154,10 @@ def _repository_static_check_impl(ctx):
         category = "{}_check".format(ctx.attrs.kind),
         identifier = ctx.attrs.name,
         local_only = True,
+        # oxfmt and oxlint scan the whole repository source set with pool-based
+        # parallelism and no admitted per-action thread bound. Reserve the full
+        # local pool rather than claiming a single concurrency slot.
+        weight_percentage = 100,
     )
     return [DefaultInfo(default_output = result)]
 

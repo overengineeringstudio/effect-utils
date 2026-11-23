@@ -4,10 +4,30 @@ load("@capabilities//:defs.bzl", "CAPABILITIES")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints")
 load("//buck2/toolchains:configured.bzl", "BuckStoreDirectoryInfo", "BuckSupportToolInfo", "store_directory", "support_tool")
 load("//buck2:static_checks.bzl", "StaticSourceSetInfo")
-load("//buck2/toolchains:defs.bzl", "host_capability_platform")
+load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo", "host_capability_platform")
+load("//buck2/products:defs.bzl", "BuildProductInfo")
 
 def _contract_slug(task):
     return task.replace(":", "-")
+
+def _cpu_weight_args(demand):
+    """Project the declared CPU demand into Buck local-execution concurrency weight."""
+    if demand == "single-thread":
+        # One pool slot: the task runs one sequential process and stays
+        # independently schedulable next to other single-thread contracts.
+        return {"weight": 1}
+    if demand.startswith("bounded:"):
+        count = demand[len("bounded:"):]
+        if not count.isdigit() or int(count) < 1:
+            fail("quick contract bounded CPU demand must be a positive integer: {}".format(demand))
+        return {"weight": int(count)}
+    if demand == "whole-pool":
+        # The task's tooling spawns host-wide workers (live Buck daemons,
+        # watchers, pool-parallel generators, rustc) that no supported
+        # per-action thread bound admits; reserve the entire local pool so
+        # the contract DAG cannot oversubscribe the host.
+        return {"weight_percentage": 100}
+    fail("unknown quick contract CPU demand: {}".format(demand))
 
 def _contract_impl(ctx):
     tool = ctx.attrs.runtime[BuckSupportToolInfo]
@@ -57,6 +77,7 @@ def _contract_impl(ctx):
         allow_cache_upload = False,
         category = "quick_contract_fixture" if ctx.attrs.cache_policy == "local-fixture" else "quick_contract_validation",
         identifier = ctx.attrs.task,
+        **_cpu_weight_args(ctx.attrs.cpu_demand)
     )
     return [DefaultInfo(default_output = verdict)]
 
@@ -71,8 +92,41 @@ quick_contract = cache_guarded_rule(
         "membership_digest": attrs.string(),
         "requires": attrs.list(attrs.dep()),
         "cache_policy": attrs.enum(["local-validation", "local-fixture"]),
+        "cpu_demand": attrs.string(),
         "agent_actor": attrs.string(),
         "policy_path": attrs.string(),
+    },
+)
+
+def _provider_contract_impl(ctx):
+    # Resolving these configured deps runs the original toolchain/product
+    # implementations, including their shared-provider and platform guards.
+    # This is an analysis verdict, not a recursive `buck2 audit` action.
+    toolchain = ctx.attrs.toolchain[ConfiguredRustToolchainInfo]
+    product = ctx.attrs.product[BuildProductInfo]
+    verdict = ctx.actions.write_json("passed.json", {
+        "task": ctx.attrs.task,
+        "status": "passed",
+        "validation": {
+            "toolchain": str(ctx.attrs.toolchain.label),
+            "toolchain_identity": toolchain.identity,
+            "target_triple": toolchain.target_triple,
+            "product": str(ctx.attrs.product.label),
+            "product_descriptor": product.descriptor.short_path,
+        },
+    })
+    predecessors = []
+    for dependency in ctx.attrs.requires:
+        predecessors.extend(dependency[DefaultInfo].default_outputs)
+    return [DefaultInfo(default_output = verdict, other_outputs = predecessors)]
+
+_provider_contract = cache_guarded_rule(
+    impl = _provider_contract_impl,
+    attrs = {
+        "task": attrs.string(),
+        "toolchain": attrs.toolchain_dep(providers = [ConfiguredRustToolchainInfo]),
+        "product": attrs.dep(providers = [BuildProductInfo]),
+        "requires": attrs.list(attrs.dep()),
     },
 )
 
@@ -82,6 +136,8 @@ def _quick_contracts_impl(ctx):
     for contract in ctx.attrs.contracts:
         verdicts.extend(contract[DefaultInfo].default_outputs)
     inputs = list(verdicts)
+    for contract in ctx.attrs.contracts:
+        inputs.extend(contract[DefaultInfo].other_outputs)
     for source_set in ctx.attrs.source_sets:
         inputs.extend(source_set[StaticSourceSetInfo].files)
     inputs.extend(ctx.attrs.quick[DefaultInfo].default_outputs)
@@ -128,6 +184,23 @@ def quick_contracts(name, quick, runtime, source_sets, contracts, **kwargs):
         if missing:
             fail("quick contract {} has omitted prerequisites {}".format(task, missing))
         target = name + "__" + _contract_slug(task)
+        native_providers = spec.get("native_providers")
+        if native_providers != None:
+            _provider_contract(
+                name = target,
+                task = task,
+                toolchain = native_providers["toolchain"],
+                product = native_providers["product"],
+                requires = [":" + name + "__" + _contract_slug(dependency) for dependency in spec["requires"]],
+                default_target_platform = "//buck2/platforms:host_platform",
+                exec_compatible_with = host_execution_constraints(),
+                visibility = kwargs.get("visibility", []),
+            )
+            targets.append(":" + target)
+            continue
+        cpu_demand = spec.get("cpu_demand")
+        if cpu_demand == None:
+            fail("quick contract {} requires a cpu_demand declaration in nix/quick-contracts-targets.json; regenerate the owning BUCK with genie:run".format(task))
         quick_contract(
             name = target,
             task = task,
@@ -138,6 +211,7 @@ def quick_contracts(name, quick, runtime, source_sets, contracts, **kwargs):
             membership_digest = read_root_config("quick_contracts", "membership_" + _contract_slug(task), ""),
             requires = [":" + name + "__" + _contract_slug(dependency) for dependency in spec["requires"]],
             cache_policy = spec["cache_policy"],
+            cpu_demand = cpu_demand,
             agent_actor = read_root_config("quick_contracts", "agent_actor", ""),
             policy_path = read_root_config("quick_contracts", "policy_path", ""),
             exec_compatible_with = host_execution_constraints(),
