@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Effect, Exit } from 'effect'
+import { Cause, Effect, Exit, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -35,6 +35,7 @@ const slot: PoolSlot = {
 }
 
 const withPoolTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer })
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 describe('pool provenance observation', () => {
   it.effect('keeps an absent ledger absent without initializing directories or leases', (test) =>
@@ -63,7 +64,13 @@ describe('pool provenance observation', () => {
         'quarantined',
       ]
       const slots = states.map((state, index) => ({
-        ...slot,
+        bare: slot.bare,
+        commit: slot.commit,
+        identity: slot.identity,
+        charge: slot.charge,
+        generation: slot.generation,
+        reason: slot.reason,
+        chargeKnown: slot.chargeKnown,
         id: String(index),
         path: `${base}/${index}`,
         state,
@@ -97,8 +104,8 @@ describe('pool provenance observation', () => {
         ])
           expect(evidence).toEqual({ _tag: 'Missing', reason: 'not-recorded-in-pool-v1' })
       }
-      expect(JSON.stringify(snapshot)).not.toContain('secret-claim-')
-      expect(JSON.stringify(snapshot)).not.toContain('secret-barrier-')
+      expect(encodeJson(snapshot)).not.toContain('secret-claim-')
+      expect(encodeJson(snapshot)).not.toContain('secret-barrier-')
       expect(yield* fs.readFileString(path)).toBe(before)
       const after = yield* fs.stat(path)
       expect(after.ino).toEqual(info.ino)
@@ -116,14 +123,14 @@ describe('pool provenance observation', () => {
       const sentinel = 'private-pool-capability-property'
       for (const contents of [
         '{',
-        JSON.stringify({ version: 2, maxSlots: 1, maxBytes: 64, slots: [] }),
-        JSON.stringify({
+        encodeJson({ version: 2, maxSlots: 1, maxBytes: 64, slots: [] }),
+        encodeJson({
           version: 1,
           maxSlots: 1,
           maxBytes: 64,
           slots: [{ ...slot, generation: -1 }],
         }),
-        JSON.stringify({
+        encodeJson({
           version: 1,
           maxSlots: 1,
           maxBytes: 64,
@@ -142,7 +149,7 @@ describe('pool provenance observation', () => {
         expect(Exit.isFailure(result)).toBe(true)
         if (Exit.isFailure(result) === true) {
           const pretty = Cause.pretty(result.cause)
-          const json = JSON.stringify(result.cause)
+          const json = encodeJson(result.cause)
           expect(pretty).toContain('Pool provenance unavailable; removal remains HOLD')
           expect(pretty).not.toContain(sentinel)
           expect(json).not.toContain(sentinel)

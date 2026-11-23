@@ -121,10 +121,10 @@ export const readPoolProvenance = ({
     const contents = yield* fs.readFileString(`${base}/.state/pool/state.json`).pipe(
       Effect.catchIf(
         (error) => error.reason._tag === 'NotFound',
-        () => Effect.succeed(undefined),
+        () => Effect.void,
       ),
     )
-    if (contents === undefined)
+    if (typeof contents !== 'string')
       return {
         _tag: 'Absent',
         observations: [],
@@ -157,7 +157,6 @@ export const readPoolProvenance = ({
     Effect.mapError(
       () => new PoolError({ message: 'Pool provenance unavailable; removal remains HOLD' }),
     ),
-    Effect.withSpan('megarepo/store/pool/provenance'),
   )
 
 /** Fsync both contents and rename: readiness/ownership must survive process loss. */
