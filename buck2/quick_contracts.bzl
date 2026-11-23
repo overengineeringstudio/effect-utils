@@ -33,7 +33,9 @@ def _contract_impl(ctx):
     predecessors = []
     for dependency in ctx.attrs.requires:
         predecessors.extend(dependency[DefaultInfo].default_outputs)
-    context = {"NIX_CONFIG": "builders ="}
+    # Local actions inherit daemon-startup env. Resolve the owning receipt below
+    # the task boundary instead of preserving a stale daemon's profile override.
+    context = {"NIX_CONFIG": "builders =", "WORKTREE_CAPABILITIES_PROFILE": ""}
     actor = ctx.attrs.agent_actor
     if actor:
         context["FRACTAL_AGENT"] = actor
@@ -58,7 +60,7 @@ def _contract_impl(ctx):
     )
     return [DefaultInfo(default_output = verdict)]
 
-_contract = cache_guarded_rule(
+quick_contract = cache_guarded_rule(
     impl = _contract_impl,
     attrs = {
         "task": attrs.string(),
@@ -126,7 +128,7 @@ def quick_contracts(name, quick, runtime, source_sets, contracts, **kwargs):
         if missing:
             fail("quick contract {} has omitted prerequisites {}".format(task, missing))
         target = name + "__" + _contract_slug(task)
-        _contract(
+        quick_contract(
             name = target,
             task = task,
             runtime = "//buck2/toolchains:quick_contract_" + _contract_slug(task),
