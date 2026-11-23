@@ -2018,62 +2018,76 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
-  it('releases the flock when directory restoration fails and repairs on the next acquisition', async () => {
-    await withStore(async ({ contentStore, candidate }) => {
-      const seed = candidate('seed')
-      payload(seed, 'payload', 'seed bytes')
-      await shareSnapshotFiles({ candidate: seed, contentStore })
-      const directory = candidate('next')
-      const file = payload(directory, 'payload', 'restoration bytes')
-      const failure = new Error('injected content-store directory restoration failure')
-      const inStore = (path: unknown): path is string =>
-        typeof path === 'string' &&
-        (path === contentStore || path.startsWith(`${contentStore}/`) === true)
-      let unrestored: string | undefined
-      const originalOpen = fsPromises.open
-      // Fault only the first readonly restoration of a store directory handle.
-      const open = vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
-        const handle = await originalOpen(...args)
-        const path = args[0]
-        if (inStore(path) === true) {
-          const originalChmod = handle.chmod.bind(handle)
-          vi.spyOn(handle, 'chmod').mockImplementation(async (next) => {
-            if (unrestored === undefined && next === 0o555) {
-              unrestored = path
-              throw failure
-            }
-            return originalChmod(next)
-          })
-        }
-        return handle
-      })
+  it.each([0o077, 0o022])(
+    'releases the flock when directory restoration fails and repairs on the next acquisition (umask %s)',
+    async (mask) => {
+      const previousMask = process.umask(mask)
       try {
-        await expect(shareSnapshotFiles({ candidate: directory, contentStore })).rejects.toThrow()
+        await withStore(async ({ contentStore, candidate }) => {
+          const seed = candidate('seed')
+          payload(seed, 'payload', 'seed bytes')
+          await shareSnapshotFiles({ candidate: seed, contentStore })
+          const directory = candidate('next')
+          const file = payload(directory, 'payload', 'restoration bytes')
+          const failure = new Error('injected content-store directory restoration failure')
+          const inStore = (path: unknown): path is string =>
+            typeof path === 'string' &&
+            (path === contentStore || path.startsWith(`${contentStore}/`) === true)
+          let unrestored: string | undefined
+          const originalOpen = fsPromises.open
+          // Fault a writable-to-readonly transition, never initial readonly mode normalization.
+          const open = vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
+            const handle = await originalOpen(...args)
+            const path = args[0]
+            if (inStore(path) === true) {
+              const originalChmod = handle.chmod.bind(handle)
+              vi.spyOn(handle, 'chmod').mockImplementation(async (next) => {
+                if (
+                  unrestored === undefined &&
+                  next === 0o555 &&
+                  ((await handle.stat()).mode & 0o222) !== 0
+                ) {
+                  unrestored = path
+                  throw failure
+                }
+                return originalChmod(next)
+              })
+            }
+            return handle
+          })
+          try {
+            await expect(
+              shareSnapshotFiles({ candidate: directory, contentStore }),
+            ).rejects.toThrow()
+          } finally {
+            open.mockRestore()
+          }
+          const failedDirectory =
+            unrestored ?? fail('no content-store directory restoration was faulted')
+          expect(isWritable(failedDirectory)).toBe(true)
+          let repairedBeforeCallback = false
+          expect(
+            await collectEditorViewContentStore({
+              contentStore,
+              afterStoreLockContended: () => fail('failed restoration retained the store lock'),
+              afterStoreLock: () => {
+                expect(mode(failedDirectory)).toBe(0o555)
+                expectReadonlyStore(contentStore)
+                repairedBeforeCallback = true
+              },
+            }),
+          ).toEqual({ removedBlobs: 0, removedBytes: 0 })
+          expect(repairedBeforeCallback).toBe(true)
+          await shareSnapshotFiles({ candidate: directory, contentStore })
+          expect(inode(file)).toBe(inode(blobPath(contentStore, 'restoration bytes')))
+          expectReadonlyStore(contentStore)
+          expectIdleStoreLock(contentStore)
+        })
       } finally {
-        open.mockRestore()
+        process.umask(previousMask)
       }
-      const failedDirectory =
-        unrestored ?? fail('no content-store directory restoration was faulted')
-      expect(isWritable(failedDirectory)).toBe(true)
-      let repairedBeforeCallback = false
-      expect(
-        await collectEditorViewContentStore({
-          contentStore,
-          afterStoreLockContended: () => fail('failed restoration retained the store lock'),
-          afterStoreLock: () => {
-            expect(mode(failedDirectory)).toBe(0o555)
-            expectReadonlyStore(contentStore)
-            repairedBeforeCallback = true
-          },
-        }),
-      ).toEqual({ removedBlobs: 0, removedBytes: 0 })
-      expect(repairedBeforeCallback).toBe(true)
-      await shareSnapshotFiles({ candidate: directory, contentStore })
-      expect(inode(file)).toBe(inode(blobPath(contentStore, 'restoration bytes')))
-      expectReadonlyStore(contentStore)
-      expectIdleStoreLock(contentStore)
-    })
-  })
+    },
+  )
 
   it('refuses a symbolic-link flock without following or replacing it', async () => {
     await withStore(async ({ contentStore, candidate }) => {

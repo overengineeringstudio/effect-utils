@@ -8,6 +8,7 @@ import type { PlatformError } from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
+import * as Observability from '../core/observability.ts'
 import { MR_VERSION } from '../core/version.ts'
 import {
   isInsideWorktree,
@@ -18,6 +19,7 @@ import {
   type ProcessIdentity,
   type ProcessReference,
   type ProcessScanScope,
+  type ProcessReferenceScan,
 } from './store-inuse.ts'
 
 /** Host admission survives fresh captures; store indices naturally advance during work. */
@@ -174,21 +176,49 @@ export const isWorkspaceActive = ({
   return false
 }
 
+interface ActivityCommandCensus {
+  commands: number
+  bytesRead: number
+  failures: number
+  firstFailure: string | undefined
+}
+
+const recordActivityCommandFailure = ({
+  census,
+  error,
+}: {
+  census: ActivityCommandCensus
+  error: { readonly _tag: string; readonly message: string }
+}): void => {
+  census.failures += 1
+  // Schema errors can embed the entire command payload; never export that payload.
+  census.firstFailure ??=
+    error._tag === 'SchemaError'
+      ? 'SchemaError: activity command JSON does not match the expected schema'
+      : `${error._tag}: ${error.message}`.slice(0, 512)
+}
+
 /**
  * One bounded JSON command reader per activity capture. Its byte budget spans
  * every command in that capture, so pagination cannot grow without bound.
  */
 const makeActivityCommandJson = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner
-  let capturedBytes = 0
+  const census: ActivityCommandCensus = {
+    commands: 0,
+    bytesRead: 0,
+    failures: 0,
+    firstFailure: undefined,
+  }
 
-  const capture = Effect.fn('store.captureWorkspaceActivity')(function* ({
+  const capture = Effect.fnUntraced(function* ({
     command,
     args,
   }: {
     command: string
     args: ReadonlyArray<string>
   }) {
+    census.commands += 1
     const handle = yield* spawner.spawn(ChildProcess.make(command, args))
     const bounded = ({
       stream,
@@ -204,8 +234,8 @@ const makeActivityCommandJson = Effect.gen(function* () {
       return stream.pipe(
         Stream.runForEach((part) => {
           bytes += part.byteLength
-          capturedBytes += part.byteLength
-          if (bytes > limit || capturedBytes > CAPTURE_BYTES) {
+          census.bytesRead += part.byteLength
+          if (bytes > limit || census.bytesRead > CAPTURE_BYTES) {
             return Effect.fail(unavailable('Activity capture exceeds byte limit'))
           }
           if (retain === true) parts.push(part)
@@ -237,7 +267,7 @@ const makeActivityCommandJson = Effect.gen(function* () {
     if (exitCode !== 0) return yield* unavailable('Activity command failed')
     return stdout
   })
-  return <TType, TEncoded>({
+  const read = <TType, TEncoded>({
     command,
     args,
     schema,
@@ -250,7 +280,11 @@ const makeActivityCommandJson = Effect.gen(function* () {
       Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(schema))),
       Effect.scoped,
       Effect.timeout('5 seconds'),
+      Effect.tapError((error) =>
+        Effect.sync(() => recordActivityCommandFailure({ census, error })),
+      ),
     )
+  return { read, census }
 })
 
 /**
@@ -269,7 +303,7 @@ export const readWorkspaceActivity: (options: {
   const st3Binary = process.env['MEGAREPO_GC_ST3_BIN'] ?? 'st3'
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
   if (st3Binary.length === 0 || ptyBinary.length === 0) return undefined
-  const commandJson = yield* makeActivityCommandJson
+  const { read: commandJson, census } = yield* makeActivityCommandJson
 
   const read = Effect.gen(function* () {
     const agents: Array<typeof Agent.Type> = []
@@ -468,6 +502,13 @@ export const readWorkspaceActivity: (options: {
   })
   return yield* read.pipe(
     Effect.timeout(CAPTURE_TIMEOUT_MS),
+    Effect.tapError((error) =>
+      Effect.sync(() => {
+        // Command failures are already counted; admission failures still need a reason.
+        if (census.failures === 0) recordActivityCommandFailure({ census, error })
+      }),
+    ),
+    Effect.ensuring(Effect.suspend(() => Observability.annotateWorkspaceActivityCapture(census))),
     Effect.orElseSucceed(() => undefined),
   )
 })
@@ -856,21 +897,39 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
   scope,
   coveredProcesses,
   ignoredOwnProcesses,
+  preflight,
 }: {
   fs: FileSystem.FileSystem
   scope: ProcessScanScope
   coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   ignoredOwnProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  preflight?: BudgetActivityPreflight | undefined
 }) {
   const ptyBinary = process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty'
   if (ptyBinary.length === 0) return yield* unavailable('PTY activity source is disabled')
   const bootId = yield* readBootId(fs)
-  const commandJson = yield* makeActivityCommandJson
-  const sessions = yield* commandJson({
-    command: ptyBinary,
-    args: ['list', '--json', '--tags'],
-    schema: PtySessions,
-  })
+  const sessions =
+    preflight === undefined
+      ? yield* Effect.gen(function* () {
+          const { read: commandJson, census } = yield* makeActivityCommandJson
+          return yield* commandJson({
+            command: ptyBinary,
+            args: ['list', '--json', '--tags'],
+            schema: PtySessions,
+          }).pipe(
+            Effect.ensuring(
+              Effect.suspend(() => Observability.annotateWorkspaceActivityCapture(census)),
+            ),
+          )
+        })
+      : yield* preflight.ownerSessions.pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.fail(unavailable('PTY activity capture is unavailable')),
+              onSome: Effect.succeed,
+            }),
+          ),
+        )
   const names = new Set<string>()
   const activePaths = new Set<string>()
   for (const session of sessions) {
@@ -889,7 +948,10 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
     )
     if (canonical !== undefined) activePaths.add(canonical)
   }
-  const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope, coveredProcesses })
+  const scan =
+    preflight === undefined
+      ? yield* readProcessReferences({ fs, selfPid: process.pid, scope, coveredProcesses })
+      : yield* preflight.scan({ scope, coveredProcesses })
   if (scan._tag === 'unknown') return yield* unavailable(`Process scan is ${scan.reason}`)
   // Whole-worktree retirement postpones only recognized Buck lifetimes to its
   // status/kill + strict-probe phase. Every other process and manifest claim keeps.
@@ -911,13 +973,77 @@ const readOwnerActivity = Effect.fn('store.readOwnerActivity')(function* ({
 })
 
 /**
+ * Report-only host observations shared by one run. Unknown is never an empty
+ * census. Omit this object from EVERY authoritative per-action capture.
+ */
+export interface BudgetActivityPreflight {
+  readonly scan: (options: {
+    readonly scope: ProcessScanScope
+    readonly coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  }) => Effect.Effect<ProcessReferenceScan>
+  readonly nativeActivity: Effect.Effect<WorkspaceActivity | undefined, never, ChildProcessSpawner>
+  readonly ownerSessions: Effect.Effect<
+    Option.Option<typeof PtySessions.Type>,
+    never,
+    ChildProcessSpawner
+  >
+}
+
+const encodeBudgetPreflightKey = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+/** Exact scope/coverage keys preserve the scanner's UID/manifest contract. */
+export const makeBudgetActivityPreflight = Effect.fn('store.makeBudgetActivityPreflight')(
+  function* (
+    fs: FileSystem.FileSystem,
+  ): Effect.fn.Return<BudgetActivityPreflight, never, ChildProcessSpawner> {
+    const scans = new Map<string, ProcessReferenceScan>()
+    const nativeActivity = yield* Effect.cached(readWorkspaceActivity({ fs }))
+    const ownerSessions = yield* Effect.cached(
+      Effect.gen(function* () {
+        const { read: commandJson, census } = yield* makeActivityCommandJson
+        return yield* commandJson({
+          command: process.env['MEGAREPO_GC_PTY_BIN'] ?? 'pty',
+          args: ['list', '--json', '--tags'],
+          schema: PtySessions,
+        }).pipe(
+          Effect.ensuring(
+            Effect.suspend(() => Observability.annotateWorkspaceActivityCapture(census)),
+          ),
+        )
+      }).pipe(Effect.option),
+    )
+    const scan = Effect.fn('store.budgetActivityPreflight.scan')(function* ({
+      scope,
+      coveredProcesses,
+    }: {
+      scope: ProcessScanScope
+      coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+    }) {
+      const key = encodeBudgetPreflightKey([scope, coveredProcesses])
+      const previous = scans.get(key)
+      if (previous !== undefined) return previous
+      const captured = yield* readProcessReferences({
+        fs,
+        selfPid: process.pid,
+        scope,
+        coveredProcesses,
+      })
+      scans.set(key, captured)
+      return captured
+    })
+    return { scan, nativeActivity, ownerSessions }
+  },
+)
+
+/**
  * Read build-output budget liveness. Undefined is unknown evidence and MUST
  * keep every candidate: no admitted source, missing/expired/foreign/incomplete
  * manifest, an epoch that differs from `admittedEpoch`, or any capture failure.
  *
- * Process evidence is always composed with a fresh native capture, including
- * when a trusted all-UID process manifest is supplied. Either source being
- * unknown vetoes the entire capture. Process exclusions never waive native claims.
+ * By default process evidence is composed with a fresh native capture, including
+ * with a trusted all-UID manifest. `preflight` explicitly reuses report-only host
+ * observations; it must be omitted from action checks. Either source being
+ * unknown vetoes the capture. Process exclusions never waive native claims.
  */
 export const readBudgetWorkspaceActivity: (options: {
   readonly fs: FileSystem.FileSystem
@@ -927,9 +1053,18 @@ export const readBudgetWorkspaceActivity: (options: {
   readonly ignoredOwnProcesses?: ReadonlyArray<ProcessIdentity> | undefined
   /** Only wholly attributed native daemon claims may be waived after a live identity re-check. */
   readonly ignoredManifestProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  /** Candidate selection only; omit for every authoritative per-action capture. */
+  readonly preflight?: BudgetActivityPreflight | undefined
 }) => Effect.Effect<BudgetWorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
   'store.readBudgetWorkspaceActivity',
-)(function* ({ fs, config, admittedEpoch, ignoredOwnProcesses, ignoredManifestProcesses }) {
+)(function* ({
+  fs,
+  config,
+  admittedEpoch,
+  ignoredOwnProcesses,
+  ignoredManifestProcesses,
+  preflight,
+}) {
   const builtin = config.builtin ?? true
   if (config.manifestPath === undefined && builtin === false) return undefined
   const read = Effect.gen(function* () {
@@ -949,9 +1084,10 @@ export const readBudgetWorkspaceActivity: (options: {
             scope: 'own-uid',
             coveredProcesses: manifest.processCoverage.processIdentities,
             ignoredOwnProcesses,
+            preflight,
           })
         : builtin === true
-          ? yield* readOwnerActivity({ fs, scope: 'all-uids', ignoredOwnProcesses })
+          ? yield* readOwnerActivity({ fs, scope: 'all-uids', ignoredOwnProcesses, preflight })
           : undefined
     const activity: BudgetWorkspaceActivity | undefined =
       manifest === undefined
@@ -969,7 +1105,10 @@ export const readBudgetWorkspaceActivity: (options: {
               epoch: manifest.epoch,
             }
     if (activity === undefined) return undefined
-    const native = yield* readWorkspaceActivity({ fs })
+    const native =
+      preflight === undefined
+        ? yield* readWorkspaceActivity({ fs })
+        : yield* preflight.nativeActivity
     if (native?.nativeEvidence?.complete !== true) return undefined
     if (
       admittedEpoch !== undefined &&
@@ -1013,10 +1152,13 @@ export const readBudgetWorktreeInUse = ({
   worktreePath,
   activity,
   ignoredProcesses,
+  preflight,
 }: {
   worktreePath: string
   activity: BudgetWorkspaceActivity | undefined
   ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  /** Candidate selection only; a deletion-time caller must omit this. */
+  preflight?: BudgetActivityPreflight | undefined
 }): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const coverage = activity?.processCoverage
@@ -1025,10 +1167,14 @@ export const readBudgetWorktreeInUse = ({
       coverage.roots.some((root) =>
         isInsideWorktree({ candidate: worktreePath, worktreePath: root }),
       )
+    const scope = covered === true ? 'own-uid' : 'all-uids'
+    const coveredProcesses = covered === true ? coverage?.processIdentities : undefined
     return yield* readWorktreeReferencesInUse({
       worktreePath,
-      scope: covered === true ? 'own-uid' : 'all-uids',
-      coveredProcesses: covered === true ? coverage?.processIdentities : undefined,
+      scope,
+      coveredProcesses,
+      preflightScan:
+        preflight === undefined ? undefined : yield* preflight.scan({ scope, coveredProcesses }),
       ignoredProcesses,
     })
   })

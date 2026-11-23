@@ -51,7 +51,7 @@ const makeTestStore = (basePath: AbsoluteDirPath): MegarepoStore => ({
   },
   hasBareRepo: () => Effect.succeed(true),
   hasWorktree: () => Effect.succeed(true),
-  listRepos: Effect.succeed([]),
+  listRepos: Effect.succeed({ repos: [], complete: true, unaccounted: [] }),
   listWorktrees: () => Effect.succeed([]),
 })
 

@@ -10,12 +10,10 @@ import { createTuiApp } from '@overeng/tui-react'
 import { StoreState, StoreAction, storeReducer } from './schema.ts'
 
 /**
- * Initial state for store output (empty ls).
+ * Pre-census state for store output.
  */
 export const createInitialStoreState = (): StoreState => ({
-  _tag: 'Ls',
-  basePath: '',
-  repos: [],
+  _tag: 'Initial',
 })
 
 /**
@@ -28,7 +26,7 @@ export const createInitialStoreState = (): StoreState => ({
  * )
  *
  * // Set ls state
- * tui.dispatch({ _tag: 'SetLs', basePath: '...', repos: [...] })
+ * tui.dispatch({ _tag: 'SetLs', basePath: '...', repos: [...], complete: true, unaccounted: [] })
  *
  * // Or set error state
  * tui.dispatch({ _tag: 'SetError', error: 'not_found', message: '...' })

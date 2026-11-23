@@ -4,6 +4,20 @@ compute_hash() {
   sha256sum | awk '{print $1}'
 }
 
+# Call only inside the pnpm subprocess, leaving the caller's umask unchanged.
+pnpm_install_umask() {
+  local inherited_umask
+  inherited_umask="$(umask)"
+  # pnpm 12's importer copies on a store/source mode mismatch, even in hardlink
+  # mode: desired_mode applies the current umask to the store file's mode.
+  # https://github.com/pnpm/pnpm/blob/v12.17.0/pnpm/crates/deps-restorer/src/link_file/target_mode.rs#L21-L60
+  # https://github.com/pnpm/pnpm/blob/v12.17.0/pnpm/crates/deps-restorer/src/link_file.rs#L589-L616
+  if [ "$((8#$inherited_umask))" -ne "$((8#022))" ]; then
+    printf '[pnpm] Warning: inherited umask %s; using 0022 for pnpm to avoid store copies\n' "$inherited_umask" >&2
+  fi
+  umask 022
+}
+
 ensure_local_pnpm_home_default() {
   local workspace_root="$1"
 
