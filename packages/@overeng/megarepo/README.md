@@ -398,6 +398,8 @@ The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
 Its curated GNU coreutils provider measures apparent logical size, including sparse
 and compressed payloads; allocated disk usage and exclusive reclamation are separate.
+Linux libc identity uses the declared absolute `MR_GETCONF_BIN` provider; neither
+the packaged CLI nor normal source tasks depend on an ambient `getconf`.
 
 ### Process activity snapshot
 

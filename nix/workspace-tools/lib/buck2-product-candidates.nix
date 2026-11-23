@@ -147,6 +147,7 @@ let
       if products.megarepo.sourceImport != null then
         [
           "coreutils"
+          "getconf"
           "git"
           "nix"
           "worktree-lease"
@@ -158,6 +159,14 @@ let
       coreutils = {
         capability = "coreutils";
         pathPackages = [ pkgs.coreutils ];
+      };
+      getconf = {
+        capability = "getconf";
+        environment.MR_GETCONF_BIN =
+          if pkgs.stdenv.hostPlatform.isDarwin then
+            "/usr/bin/getconf"
+          else
+            "${pkgs.glibc.bin}/bin/getconf";
       };
       git = {
         capability = "git";

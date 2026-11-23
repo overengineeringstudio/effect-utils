@@ -1500,7 +1500,7 @@ package_bin_artifact(
     name = "megarepo-candidate-module",
     entrypoint = "bin/mr.ts",
     external = [],
-    external_capabilities = ["coreutils", "git", "nix", "worktree-lease", "worktree-teardown"],
+    external_capabilities = ["coreutils", "getconf", "git", "nix", "worktree-lease", "worktree-teardown"],
     kind = "cli",
     output = "mr.js",
     package_tree = ":product_package_tree",

@@ -7,6 +7,7 @@ import { expect } from 'vitest'
 import { EffectPath } from '@overeng/effect-path'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
+import { runPoolCommand } from './store-pool-install.ts'
 import {
   claimPoolGeneration,
   type PoolSlot,
@@ -32,6 +33,22 @@ const slot: PoolSlot = {
 }
 
 describe('pool authoritative lifecycle', () => {
+  it.effect('runs the declared libc utility without an ambient command search path', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const getconf = process.env.MR_GETCONF_BIN
+      if (getconf === undefined)
+        return yield* Effect.dieMessage('The normal task must declare MR_GETCONF_BIN')
+      const output = yield* runPoolCommand({
+        cwd: yield* fs.makeTempDirectoryScoped(),
+        command: getconf,
+        args: ['LONG_BIT'],
+        env: { PATH: '' },
+      })
+      expect(output.trim()).toMatch(/^(32|64)$/)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect('publishes exactly one atomic claim for a ready generation', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
