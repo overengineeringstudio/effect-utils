@@ -159,9 +159,7 @@ describe('changelog loading', () => {
         ],
         callouts: [{ n: 1, caption: 'This cell' }],
       })
-      const json = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
-        built.bytes,
-      )
+      const json = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(built.bytes)
       expect(contract.decodeManifest(json)).toEqual(built.manifest)
     }).pipe(Effect.provide(NodeServices.layer)),
   )
