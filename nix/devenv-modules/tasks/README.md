@@ -240,6 +240,11 @@ for outer tasks that must complete before the nested devenv process can evaluate
   `WORKTREE_TEARDOWN_EDITOR_RELEASE=1` explicitly permits the checkout's task;
   Nix builds/substitutions are disabled even then. The warm-shell devenv wrapper
   opts in when `buck2:editor:release` is defined, with final retirement enabled.
+  Quick-contract fixtures compile the same teardown/release definitions with the
+  evaluated devenv task type and inherit only their synthetic checkout cwd.
+  Their explicit `WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND` is one absolute
+  executable path (no shell command parsing), so neither level invokes devenv.
+  Without that binding, opted-in release retains the checkout's devenv task.
   The command makes real
   directories owner-writable using NUL-delimited find scans and a sorted streaming
   ownership-prefix filter before batched chmod. It never follows symlinks or

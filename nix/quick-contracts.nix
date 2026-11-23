@@ -6,6 +6,7 @@
   inputs,
   lib,
   pkgs,
+  options,
   ...
 }:
 let
@@ -34,7 +35,7 @@ let
     builtins.sort builtins.lessThan targets.${name}.requires
     == builtins.sort builtins.lessThan (selectedAfter name)
   ) sequence;
-  taskScripts = lib.mapAttrs (
+  compileTaskScripts = tasks: lib.mapAttrs (
     name: task:
     if task.command == null then
       null
@@ -48,7 +49,35 @@ let
         + lib.optionalString (task.cwd != null) "cd ${lib.escapeShellArg task.cwd}\n"
         + "exec ${task.command}\n"
       )
-  ) config.tasks;
+  ) tasks;
+  taskScripts = compileTaskScripts config.tasks;
+  # Use the owning devenv task type/compiler, not a parallel exec interpreter.
+  # Only the fixture's definitions belong here: the real repo's cwd/release task
+  # must never be projected into a destructive synthetic-worktree test.
+  teardownFixture = lib.evalModules {
+    specialArgs = { inherit pkgs; };
+    modules = [
+      { options.tasks = lib.mkOption { type = options.tasks.type; }; }
+      (import ./devenv-modules/tasks/shared/tests/worktree-teardown-fixture.nix {
+        sourceRoot = root;
+      })
+    ];
+  };
+  teardownFixtureScripts = compileTaskScripts teardownFixture.config.tasks;
+  teardownFixtureRunner =
+    assert lib.assertMsg
+      (builtins.all (task: task.cwd == null && task.env == { })
+        (builtins.attrValues teardownFixture.config.tasks))
+      "quick-contracts: teardown fixture must inherit its synthetic cwd and root";
+    pkgs.writeShellScript "quick-contract-teardown-fixture" ''
+      set -euo pipefail
+      [ "$#" -eq 0 ]
+      # Rebind the root after the caller enters its owned synthetic worktree.
+      export DEVENV_ROOT="$PWD" WORKSPACE_ROOT="$PWD"
+      [ "$(${pkgs.git}/bin/git rev-parse --show-toplevel)" = "$PWD" ]
+      export WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND=${teardownFixtureScripts."buck2:editor:release"}
+      exec ${teardownFixtureScripts."worktree:teardown"}
+    '';
   notionCiTaskCommands = pkgs.writeText "quick-contract-notion-ci-task-commands.json" (
     builtins.toJSON (
       lib.mapAttrs (_: script: toString script) (
@@ -182,6 +211,9 @@ let
           ${lib.optionalString (name == "test:notion-integration:ci-skip") ''
             export NOTION_INTEGRATION_TASK_COMMANDS_FILE=${notionCiTaskCommands}
           ''}
+          ${lib.optionalString (name == "worktree:teardown:test") ''
+            export WORKTREE_TEARDOWN_TASK_COMMAND=${teardownFixtureRunner}
+          ''}
           ${taskRuntime} ${taskScripts.${name}}
           mkdir -p -- "$(dirname "$verdict")"
           printf '%s\n' ${
@@ -273,6 +305,9 @@ let
     ${selectionExports}
     ${lib.optionalString (builtins.elem "test:notion-integration:ci-skip" sequence) ''
       export NOTION_INTEGRATION_TASK_COMMANDS_FILE=${notionCiTaskCommands}
+    ''}
+    ${lib.optionalString (builtins.elem "worktree:teardown:test" sequence) ''
+      export WORKTREE_TEARDOWN_TASK_COMMAND=${teardownFixtureRunner}
     ''}
     ${lib.concatMapStrings (name: ''
       printf '%s\n' ${lib.escapeShellArg ("quick-contracts: " + name)}

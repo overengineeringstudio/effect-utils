@@ -5,8 +5,9 @@
 # and never spawned, with jq required only when its service is reachable.
 # HOME locates Buck state; XDG_CACHE_HOME overrides the admission cache location;
 # WATCHMAN_SOCK selects a service. WORKTREE_TEARDOWN_EDITOR_RELEASE=1 explicitly
-# permits the checkout's devenv editor-release task; otherwise no checkout code
-# is executed. Even opted-in release disables Nix builds and substitutions.
+# permits editor release, via WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND when a
+# declared executable is supplied, or the checkout's retained devenv task.
+# Otherwise no checkout code is executed. Release disables builds/substitutions.
 # Exit 0: completed; 2: usage error; 3: editor view present without release opt-in.
 # Other nonzero statuses: failure (including command failures); do not remove.
 set -euo pipefail
@@ -194,15 +195,24 @@ for entry in "$cache/$root_hash-"*; do
   rm -f -- "$entry"
 done
 
-# There is no reliable cached-shell identity available without evaluation.
-# Opt-in is explicit because this task executes code from the retiring checkout.
+# An explicit declared executable avoids shell evaluation at check time. The
+# retained checkout task remains the default; neither route may build a shell.
 if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
-  NIX_CONFIG="${NIX_CONFIG:-}
+  (
+    export NIX_CONFIG="${NIX_CONFIG:-}
 max-jobs = 0
 builders =
-substitute = false" \
-    WORKTREE_TEARDOWN_EDITOR_RETIRE=1 DEVENV_TUI=false DEVENV_ROOT="$root" \
-    devenv tasks run buck2:editor:release --mode single
+substitute = false"
+    export WORKTREE_TEARDOWN_EDITOR_RETIRE=1 DEVENV_TUI=false DEVENV_ROOT="$root"
+    if [ -n "${WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND:-}" ]; then
+      case "$WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND" in
+        /*) "$WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND" ;;
+        *) echo 'worktree-teardown: editor release command must be an absolute executable path' >&2; exit 2 ;;
+      esac
+    else
+      devenv tasks run buck2:editor:release --mode single
+    fi
+  )
 else
   echo "worktree:teardown: editor release skipped (set WORKTREE_TEARDOWN_EDITOR_RELEASE=1 to opt in; Nix builds remain disabled)"
 fi

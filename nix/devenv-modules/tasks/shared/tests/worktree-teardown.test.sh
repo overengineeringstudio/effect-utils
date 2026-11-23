@@ -9,7 +9,12 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
 BUN="${BUN_BIN:-$(command -v bun)}"
 BUCK2="${BUCK2_BIN:-$(command -v buck2)}"
-DEVENV="${DEVENV_BIN:-$(command -v devenv)}"
+# The declared route must not even resolve devenv; the retained route still does.
+DEVENV=""
+if [ -z "${WORKTREE_TEARDOWN_TASK_COMMAND:-}" ]; then
+  DEVENV="${DEVENV_BIN:-$(command -v devenv)}"
+fi
+unset WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND
 FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint tool}"
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
 MV="${MV_BIN:?MV_BIN must name pinned mv}"
@@ -27,6 +32,7 @@ main="$TEMP_ROOT/main"
 worktree="$TEMP_ROOT/retired"
 socket_dir=""
 fake_bin=""
+declared_bin=""
 watchman_started=false
 nested_outer=""
 nested_child=""
@@ -73,6 +79,7 @@ cleanup() {
   fi
   [ -z "$socket_dir" ] || rm -rf "$socket_dir"
   [ -z "$fake_bin" ] || rm -rf "$fake_bin"
+  [ -z "$declared_bin" ] || rm -rf "$declared_bin"
   # The ordinary Git fixture's shared CAS is beside .git and remains readonly
   # after blob collection. Only test-owned directories need unlocking; never
   # chmod shared payload files or follow links outside this temporary root.
@@ -82,6 +89,29 @@ cleanup() {
 }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+run_teardown() {
+  local checkout="$1"
+  (
+    cd "$checkout"
+    if [ -n "${WORKTREE_TEARDOWN_TASK_COMMAND:-}" ]; then
+      PATH="$declared_bin:$PATH" \
+        WORKTREE_TEARDOWN_UNDECLARED_LOG="$TEMP_ROOT/undeclared-runner" \
+        "$WORKTREE_TEARDOWN_TASK_COMMAND"
+    else
+      "$DEVENV" tasks run worktree:teardown --mode single
+    fi
+  )
+}
+if [ -n "${WORKTREE_TEARDOWN_TASK_COMMAND:-}" ]; then
+  declared_bin="$(mktemp -d)"
+  printf '#!%s\n' "$BASH" >"$declared_bin/devenv"
+  cat >>"$declared_bin/devenv" <<'UNDECLARED'
+printf invoked >"$WORKTREE_TEARDOWN_UNDECLARED_LOG"
+echo 'FAIL: declared teardown invoked devenv' >&2
+exit 97
+UNDECLARED
+  chmod +x "$declared_bin/devenv"
+fi
 mkdir -p "$main"
 git -C "$main" init -q
 printf '.devenv/\n.editor-view/\nnode_modules\n.buckconfig.local\nbuck-out/\ninputs/\nreadonly/\nexternal-link\ndevenv.lock\nnested/\ncheckout/\nrepos/\ncomposition/\nmegarepo.json\n' >"$main/.gitignore"
@@ -119,14 +149,11 @@ inputs:
 YAML
 cat >"$main/devenv.nix" <<NIX
 { pkgs, ... }: {
-  imports = [ (import $ROOT/nix/devenv-modules/tasks/shared/setup.nix { runOnEnterShell = false; }) ];
+  imports = [
+    (import $ROOT/nix/devenv-modules/tasks/shared/setup.nix { runOnEnterShell = false; })
+    (import $TESTS_DIR/worktree-teardown-fixture.nix { sourceRoot = $ROOT; })
+  ];
   cachix.enable = false;
-  tasks."buck2:editor:release".exec = ''
-    $BUN $ROOT/packages/@overeng/buck2-tools/src/editor-view.ts release --repo-root "\$DEVENV_ROOT" --package .
-    if [ "''\${WORKTREE_TEARDOWN_EDITOR_RETIRE:-0}" = 1 ]; then
-      $BUN $ROOT/packages/@overeng/buck2-tools/src/editor-view.ts retire --repo-root "\$DEVENV_ROOT" --package .
-    fi
-  '';
 }
 NIX
 git -C "$main" add .
@@ -195,6 +222,31 @@ PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" WORKTREE_TEARDOWN_EDITOR_RELEASE=1
   bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$watch_root"
 [ "$(cat "$TEMP_ROOT/editor-release.log")" = "$watch_root" ] || fail 'editor release ran in wrong root'
 rm -f "$fake_bin/devenv"
+# The literal declared executable gets the same offline/root/retire bindings,
+# without going through devenv, and its real failure status must propagate.
+printf '#!%s\n' "$BASH" >"$fake_bin/editor-release"
+cat >>"$fake_bin/editor-release" <<'RELEASE'
+set -euo pipefail
+[[ "$NIX_CONFIG" == *$'\nmax-jobs = 0\nbuilders =\nsubstitute = false' ]]
+[ "$WORKTREE_TEARDOWN_EDITOR_RETIRE" = 1 ]
+[ "$DEVENV_TUI" = false ]
+[ "$DEVENV_ROOT" = "$PWD" ]
+[ "$#" -eq 0 ]
+printf '%s\n' "$PWD" >"$EDITOR_RELEASE_LOG"
+exit "${EDITOR_RELEASE_STATUS:-0}"
+RELEASE
+chmod +x "$fake_bin/editor-release"
+for expected in 0 23; do
+  release_status=0
+  PATH="$fake_bin" HOME="$TEMP_ROOT/watch-home" WORKTREE_TEARDOWN_EDITOR_RELEASE=1 \
+    WORKTREE_TEARDOWN_EDITOR_RELEASE_COMMAND="$fake_bin/editor-release" \
+    EDITOR_RELEASE_STATUS="$expected" EDITOR_RELEASE_LOG="$TEMP_ROOT/declared-release.log" \
+    bash "$ROOT/nix/devenv-modules/tasks/shared/worktree-teardown.sh" "$watch_root" \
+    >"$TEMP_ROOT/declared-release-output.log" 2>&1 || release_status=$?
+  [ "$release_status" -eq "$expected" ] || fail 'declared editor release status was lost'
+  [ "$(cat "$TEMP_ROOT/declared-release.log")" = "$watch_root" ] || fail 'declared editor release changed root'
+done
+echo 'PASS: retained editor task and declared executable preserve offline release/root/retire semantics and errors'
 # Use the runner's Bash directly: sandboxed hosts need not have /usr/bin/env.
 printf '#!%s\n' "$BASH" >"$fake_bin/watchman"
 cat >>"$fake_bin/watchman" <<'WATCHMAN'
@@ -356,8 +408,8 @@ done
 for pid in "${pids[@]}"; do kill -0 "$pid" || fail 'refused teardown stopped a daemon'; done
 [ -f "${admission_entries[0]}" ] || fail 'refused teardown deleted admission state'
 
-# Execute the inherited task through devenv, including its real nested release.
-(cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
+# Execute the identical fixture task definitions, including real nested release.
+run_teardown "$worktree"
 for pid in "${pids[@]}"; do
   if kill -0 "$pid" 2>/dev/null; then fail "daemon $pid remains live"; fi
 done
@@ -376,9 +428,9 @@ if [ "$watchman_started" = true ]; then
   watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local watch-list | \
     "$JQ" -e --arg root "$worktree" '.roots | index($root) == null' >/dev/null || fail 'watch remains'
 fi
-(cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
+run_teardown "$worktree"
 # Also prove an unreachable Watchman remains a successful no-op.
-(cd "$worktree" && WATCHMAN_SOCK="$TEMP_ROOT/missing.sock" "$DEVENV" tasks run worktree:teardown --mode single)
+WATCHMAN_SOCK="$TEMP_ROOT/missing.sock" run_teardown "$worktree"
 [ "$(pnpm_snapshot_state)" = "$pnpm_before" ] || fail 'teardown changed a pnpm shared payload or snapshot symlink'
 git -C "$main" worktree remove "$worktree"
 [ ! -e "$worktree" ] || fail 'ordinary git worktree remove failed'
@@ -448,7 +500,7 @@ chmod 555 "${protected[@]}"
 # Apply unreadable modes only after notify has registered its fixture watches.
 chmod 000 "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
 for iteration in first second; do
-  (cd "$nested_outer" && "$DEVENV" tasks run worktree:teardown --mode single)
+  run_teardown "$nested_outer"
   if kill -0 "$outer_pid" 2>/dev/null; then fail 'outer daemon remains live'; fi
   [ ! -e "$outer_state/outer" ] || fail 'outer isolation state remains'
   [ -d "$child_state/child" ] || fail 'nested checkout daemon state was removed'
@@ -495,7 +547,7 @@ collision_parent_pid="$(cat "$child_state/buckd.pid")"
 child_pid="$(cat "$child_state/child/buckd.pid")"
 chmod 555 "$nested_child" "$nested_child/readonly"
 for iteration in first second; do
-  if (cd "$nested_outer" && "$DEVENV" tasks run worktree:teardown --mode single) \
+  if run_teardown "$nested_outer" \
     >"$TEMP_ROOT/collision-refusal.log" 2>&1; then
     fail 'teardown accepted an isolation containing descendant checkout state'
   fi
@@ -512,3 +564,7 @@ done
 (cd "$nested_outer" && "$BUCK2" --isolation-dir nested status >/dev/null)
 (cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
 echo 'PASS: colliding parent isolation/nested-checkout state is refused twice with a clear diagnostic; both live daemons and their metadata remain intact'
+if [ -n "${WORKTREE_TEARDOWN_TASK_COMMAND:-}" ]; then
+  [ ! -e "$TEMP_ROOT/undeclared-runner" ] || fail 'a declared teardown branch invoked devenv'
+  echo 'PASS: every declared fixture teardown and real editor release ran without devenv'
+fi
