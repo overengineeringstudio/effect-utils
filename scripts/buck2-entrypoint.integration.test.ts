@@ -335,10 +335,13 @@ exit "$1"`,
   }
 
   it.each([
-    ['SIGHUP', 129],
-    ['SIGINT', 130],
-    ['SIGTERM', 143],
-  ] as const)('joins a %s-cancelled native task before retiring its runtime', async (signal, status) => {
+    ['SIGHUP', 129, false],
+    ['SIGINT', 130, false],
+    ['SIGTERM', 143, false],
+    ['SIGHUP', 129, true],
+    ['SIGINT', 130, true],
+    ['SIGTERM', 143, true],
+  ] as const)('joins %s cancellation (exit %s, pre-registration %s) before retirement', async (signal, status, beforeRegistration) => {
     const { bash, coreutils } = declaredTools()
     const root = fixture()
     const scratch = join(root, 'scratch')
@@ -359,15 +362,30 @@ process.on('${signal}', () => server.close(() => {
 }))
 `)
     const command = `${shellQuote(process.execPath)} ${shellQuote(task)}`
-    const child = spawn(bash, ['-c', ownedInvocation(root, command, coreutils, bash)], {
+    let invocation = ownedInvocation(root, command, coreutils, bash)
+    if (beforeRegistration) {
+      // Gate the real shell between fork and PID registration, without changing
+      // its last asynchronous PID or the native task. A trap acknowledgement
+      // prevents scheduler timing from moving cancellation beyond this window.
+      invocation = invocation
+        .replace('child=$!', 'launch_release=""\nwhile [ "$launch_release" != go ]; do IFS= read -r launch_release || :; done\nchild=$!')
+        .replace('cancel_task() {', 'cancel_task() {\n printf "%s\\n" cancellation-observed >&2')
+    }
+    const child = spawn(bash, ['-c', invocation], {
       cwd: root,
       env: { PATH: `${coreutils}/bin:${dirname(bash)}`, BUCK_SCRATCH_PATH: scratch },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     })
     const closed = Promise.withResolvers<number | null>()
     child.once('close', closed.resolve)
     const ready = Promise.withResolvers<string>()
     let output = ''
+    const cancelled = Promise.withResolvers<void>()
+    let errors = ''
+    child.stderr!.on('data', (chunk) => {
+      errors += chunk.toString()
+      if (errors.includes('cancellation-observed\n')) cancelled.resolve()
+    })
     child.stdout!.on('data', (chunk) => {
       output += chunk.toString()
       if (output.includes('\n')) ready.resolve(output.trim())
@@ -380,10 +398,18 @@ process.on('${signal}', () => server.close(() => {
       expect(observed.runtime.startsWith(realpathSync(root))).toBe(false)
       expect(`${observed.runtime}/mock-daemon.sock`.length).toBeLessThan(104)
       child.kill(signal)
+      if (beforeRegistration) {
+        await Promise.race([
+          cancelled.promise,
+          closed.promise.then(() => { throw new Error('Capability closed before cancellation acknowledgement') }),
+        ])
+        child.stdin!.end('go\n')
+      }
       expect(await closed.promise).toBe(status)
       expect(JSON.parse(readFileSync(receipt, 'utf8'))).toEqual({ exists: true, pid: observed.pid })
       expect(existsSync(observed.runtime)).toBe(false)
     } finally {
+      if (!child.stdin!.writableEnded) child.stdin!.end('go\n')
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
       await closed.promise
     }

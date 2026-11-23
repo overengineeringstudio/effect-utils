@@ -218,12 +218,24 @@ let
   taskRuntimeLifetime = ''
     runtime=""
     child=""
+    starting=1
+    pending_signal=""
+    pending_status=""
     retire_runtime() {
       if [ -n "$runtime" ]; then
         ${pkgs.coreutils}/bin/rm -rf -- "$runtime"
       fi
     }
     cancel_task() {
+      # Allocation and spawn/PID registration are one cancellation boundary.
+      # Defer traps until the owned root and native child are both recorded.
+      if [ "$starting" -eq 1 ]; then
+        if [ -z "$pending_signal" ]; then
+          pending_signal="$1"
+          pending_status="$2"
+        fi
+        return 0
+      fi
       trap "" HUP INT TERM
       if [ -n "$child" ]; then
         kill -s "$1" "$child" 2>/dev/null || :
@@ -244,6 +256,10 @@ let
     # Shell background jobs otherwise inherit ignored INT/QUIT across exec.
     ${pkgs.coreutils}/bin/env --default-signal=INT,QUIT @TASK_RUNTIME@ @TASK_SCRIPT@ &
     child=$!
+    starting=0
+    if [ -n "$pending_signal" ]; then
+      cancel_task "$pending_signal" "$pending_status"
+    fi
     task_status=0
     wait "$child" || task_status=$?
     child=""
