@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7fee80faa4b3a83270216bbe19d98c83a8d1157793ed5138d68050436beffa6e
+# Semantic fingerprint: sha256:97aa30f7664ac4659e7f55b4366e501638735c7ef124246b1ac852c3a63b2c79
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -279,6 +279,7 @@ export_materialization_inputs([
     "src/store/store-path.unit.test.ts",
     "src/store/store-pinned-deletion.integration.test.ts",
     "src/store/store-pinned-deletion.ts",
+    "src/store/store-pool-install.ts",
     "src/store/store-pool-state.integration.test.ts",
     "src/store/store-pool-state.ts",
     "src/store/store-pr-state.ts",
@@ -610,6 +611,7 @@ package_view(
         "src/store/store-path.unit.test.ts": "src/store/store-path.unit.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts": "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-pinned-deletion.ts": "src/store/store-pinned-deletion.ts",
+        "src/store/store-pool-install.ts": "src/store/store-pool-install.ts",
         "src/store/store-pool-state.integration.test.ts": "src/store/store-pool-state.integration.test.ts",
         "src/store/store-pool-state.ts": "src/store/store-pool-state.ts",
         "src/store/store-pr-state.ts": "src/store/store-pr-state.ts",
@@ -943,6 +945,7 @@ package_view(
         "src/store/store-path.unit.test.ts": "src/store/store-path.unit.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts": "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-pinned-deletion.ts": "src/store/store-pinned-deletion.ts",
+        "src/store/store-pool-install.ts": "src/store/store-pool-install.ts",
         "src/store/store-pool-state.integration.test.ts": "src/store/store-pool-state.integration.test.ts",
         "src/store/store-pool-state.ts": "src/store/store-pool-state.ts",
         "src/store/store-pr-state.ts": "src/store/store-pr-state.ts",
@@ -1271,6 +1274,7 @@ package_view(
         "src/store/store-path.unit.test.ts": "src/store/store-path.unit.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts": "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-pinned-deletion.ts": "src/store/store-pinned-deletion.ts",
+        "src/store/store-pool-install.ts": "src/store/store-pool-install.ts",
         "src/store/store-pool-state.integration.test.ts": "src/store/store-pool-state.integration.test.ts",
         "src/store/store-pool-state.ts": "src/store/store-pool-state.ts",
         "src/store/store-pr-state.ts": "src/store/store-pr-state.ts",
@@ -1496,7 +1500,7 @@ package_bin_artifact(
     name = "megarepo-candidate-module",
     entrypoint = "bin/mr.ts",
     external = [],
-    external_capabilities = ["git", "nix", "worktree-lease"],
+    external_capabilities = ["coreutils", "getconf", "git", "nix", "worktree-lease", "worktree-teardown"],
     kind = "cli",
     output = "mr.js",
     package_tree = ":product_package_tree",
