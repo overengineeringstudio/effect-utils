@@ -144,7 +144,8 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
     native({
       path,
       operation: () => {
-        if (targets.length === 0) throw fail({ path, message: 'At least one pinned target is required' })
+        if (targets.length === 0)
+          throw fail({ path, message: 'At least one pinned target is required' })
         const chains: Array<readonly PinnedDirectory[]> = []
         try {
           for (const target of targets) chains.push(pinChain(target))
@@ -188,7 +189,14 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
  * commit therefore never publishes readiness. No quarantine, unlink or rollback is performed.
  * Callers retain responsibility for continuous action leases and fresh Git/owner/all-UID evidence.
  */
-export const withVerifiedDirectoryPins = <A, B, E = never, R = never, ECommit = never, RCommit = never>({
+export const withVerifiedDirectoryPins = <
+  A,
+  B,
+  E = never,
+  R = never,
+  ECommit = never,
+  RCommit = never,
+>({
   targets,
   prepare,
   commit,

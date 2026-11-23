@@ -75,7 +75,8 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
         })
         expect(result).toBe('prepared')
         expect(yield* fs.readFileString(state)).toBe('READY')
-        for (const path of paths) expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
+        for (const path of paths)
+          expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
         for (const view of retained) expect(() => fstatSync(view.pins.at(-1)!.fd)).toThrow()
       },
       Effect.provide(NodeServices.layer),
@@ -262,7 +263,8 @@ await Effect.runPromise(Effect.gen(function* () {
         })
         expect(signal).toBe('SIGKILL')
         expect(yield* fs.readFileString(state)).toBe('HOLD')
-        for (const path of paths) expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
+        for (const path of paths)
+          expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
