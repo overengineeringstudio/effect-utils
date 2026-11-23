@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:262987c887cd55930784a9c60892a24446f987a2cc6ecce2f43df2a821b5403a
+# Semantic fingerprint: sha256:d0b3f33a3c98a3b18a6b8554eb6692e6b36c5119f6cc45b49aed82b22a63e4c3
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -32,6 +32,8 @@ export_materialization_inputs([
     "src/canonical.ts",
     "src/configured-check-selection.integration.test.ts",
     "src/configured-check-selection.unit.test.ts",
+    "src/editor-publication-owner.ts",
+    "src/editor-publication-owner.unit.test.ts",
     "src/editor-view-authority.integration.test.ts",
     "src/editor-view-authority.ts",
     "src/editor-view-budget.integration.test.ts",
@@ -133,6 +135,8 @@ package_view(
         "src/canonical.ts": "src/canonical.ts",
         "src/configured-check-selection.integration.test.ts": "src/configured-check-selection.integration.test.ts",
         "src/configured-check-selection.unit.test.ts": "src/configured-check-selection.unit.test.ts",
+        "src/editor-publication-owner.ts": "src/editor-publication-owner.ts",
+        "src/editor-publication-owner.unit.test.ts": "src/editor-publication-owner.unit.test.ts",
         "src/editor-view-authority.integration.test.ts": "src/editor-view-authority.integration.test.ts",
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
@@ -212,6 +216,8 @@ package_view(
         "src/canonical.ts": "src/canonical.ts",
         "src/configured-check-selection.integration.test.ts": "src/configured-check-selection.integration.test.ts",
         "src/configured-check-selection.unit.test.ts": "src/configured-check-selection.unit.test.ts",
+        "src/editor-publication-owner.ts": "src/editor-publication-owner.ts",
+        "src/editor-publication-owner.unit.test.ts": "src/editor-publication-owner.unit.test.ts",
         "src/editor-view-authority.integration.test.ts": "src/editor-view-authority.integration.test.ts",
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
