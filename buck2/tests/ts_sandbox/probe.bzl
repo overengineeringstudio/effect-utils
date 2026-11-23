@@ -1,14 +1,8 @@
 """Linux containment probes run through the shared production action boundary."""
 
-load("//buck2:hermetic.bzl", "hermetic_bun_command", "hermetic_sandboxed_action", "ts_action", "ts_action_attrs")
+load("//buck2:hermetic.bzl", "TsSandboxProbeInfo", "hermetic_bun_command", "hermetic_sandboxed_action", "ts_action", "ts_action_attrs")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "ts_action_admission_status")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
-
-TsSandboxProbeInfo = provider(fields = {
-    "launcher": provider_field(Artifact),
-    "summary": provider_field(Artifact),
-    "sandbox": provider_field(TsSandboxToolchainInfo),
-})
 
 def _ts_sandbox_probe_impl(ctx):
     if ts_action_admission_status(ctx) != "linux-bwrap":

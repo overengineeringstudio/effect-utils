@@ -6,7 +6,7 @@ load("//buck2/toolchains:configured.bzl", "BuckStoreDirectoryInfo", "BuckSupport
 load("//buck2:static_checks.bzl", "StaticSourceSetInfo")
 load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo", "host_capability_platform")
 load("//buck2/products:defs.bzl", "BuildProductInfo")
-load("//buck2/tests/ts_sandbox:probe.bzl", "TsSandboxProbeInfo")
+load("//buck2:hermetic.bzl", "TsSandboxProbeInfo")
 
 def _contract_slug(task):
     return task.replace(":", "-")

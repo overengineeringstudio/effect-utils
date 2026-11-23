@@ -9,6 +9,13 @@ load("//buck2/platforms:defs.bzl", "root_allow_cache_uploads", "root_remote_cach
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 
+# A production boundary contract, shared by the native probe and its consumers.
+TsSandboxProbeInfo = provider(fields = {
+    "launcher": provider_field(Artifact),
+    "summary": provider_field(Artifact),
+    "sandbox": provider_field(TsSandboxToolchainInfo),
+})
+
 
 def hermetic_attrs():
     return {

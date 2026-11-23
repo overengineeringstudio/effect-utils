@@ -96,6 +96,9 @@ it('acquires the real Linux sandbox probe through outer declared Buck artifacts'
   expect(quickContractInputs.contracts[task]!.native_ts_sandbox).toBe(probe)
   const rule = source('buck2/quick_contracts.bzl')
   expect(rule).toContain('attrs.dep(providers = [TsSandboxProbeInfo])')
+  expect(rule).toContain('load("//buck2:hermetic.bzl", "TsSandboxProbeInfo")')
+  expect(rule).not.toContain('load("//buck2/tests/')
+  expect(source('buck2/hermetic.bzl')).toContain('TsSandboxProbeInfo = provider(')
   expect(rule).toContain(
     'native_ts_sandbox = spec.get("native_ts_sandbox") if host_info().os.is_linux else None',
   )
