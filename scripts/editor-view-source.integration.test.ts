@@ -291,9 +291,9 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
       'spawnSync',
       'execFileSync',
       'fork',
-      ...(runtime === 'bun' ? ['bunSpawn', 'bunSpawnSync'] : []),
+      ...(runtime === 'bun' ? ['bunSpawn', 'bunSpawnSync', 'bunSpawnSyncDefault'] : []),
     ]) {
-      it(`${runtime} ${method} retains the descriptor with custom stdio and replacement env`, () => {
+      it(`${runtime} ${method} retains descriptor and stdio semantics with replacement env`, () => {
         const executable = runtime === 'bun' ? process.execPath : Bun.which('node')
         if (executable === null)
           throw new Error('Node is required for editor-view source inheritance tests')
@@ -306,7 +306,7 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
         writeFileSync(payload, 'admitted-generation')
         writeFileSync(
           child,
-          `${inheritedRead}; process.stdout.write('\\n' + process.env.EDITOR_VIEW_LEASE_LIBRARY)`,
+          `${inheritedRead}; process.stdout.write('\\n' + process.env.EDITOR_VIEW_LEASE_LIBRARY); ${method === 'bunSpawnSyncDefault' ? "process.stderr.write('captured-sync-stderr')" : ''}`,
         )
         const fd = openSync(payload, 'r')
         const program = `
@@ -319,6 +319,7 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
           ${method === 'fork' ? `cp.fork(child, [], options).stdout.pipe(process.stdout)` : ''}
           ${method === 'bunSpawn' ? `const result = Bun.spawn({cmd: [process.execPath, child], stdout: 'pipe', stderr: 'inherit', env: {PATH: process.env.PATH}}); new Response(result.stdout).text().then(value => process.stdout.write(value))` : ''}
           ${method === 'bunSpawnSync' ? `const result = Bun.spawnSync({cmd: [process.execPath, child], stdout: 'pipe', stderr: 'inherit', env: {PATH: process.env.PATH}}); process.stdout.write(result.stdout); process.exitCode = result.exitCode` : ''}
+          ${method === 'bunSpawnSyncDefault' ? `const result = Bun.spawnSync([process.execPath, child], {env: {PATH: process.env.PATH}}); require('node:assert/strict').equal(result.stderr.toString(), 'captured-sync-stderr'); process.stdout.write(result.stdout); process.exitCode = result.exitCode` : ''}
         `
         try {
           const result = spawnSync(
