@@ -45,6 +45,10 @@ import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 // Register the lifecycle suites in the existing devenv test entrypoint.
 void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
 
+const publicationOwnerLibrary = process.env['BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY']
+if (publicationOwnerLibrary === undefined || publicationOwnerLibrary.length === 0)
+  throw new Error('Launcher fixtures require BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
+
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
 const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/cas/'): string => {
@@ -390,6 +394,56 @@ esac
     },
   }
 }
+// A test's guard must include real probe budgets AND process startup/teardown.
+// Race owned stages; expiry joins both the cancelled operation and its child.
+const withChildDeadline = async <T>(
+  child: { readonly pid: number; readonly exited: Promise<number> },
+  deadlineMs: number,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let work: Promise<T> | undefined
+  try {
+    work = operation()
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Child ${child.pid} exceeded ${deadlineMs} ms`)),
+          deadlineMs,
+        )
+      }),
+    ])
+  } catch (error) {
+    let failure = error
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch (killError) {
+      if (!(killError instanceof Error && 'code' in killError && killError.code === 'ESRCH'))
+        failure = new AggregateError([error, killError], 'Child kill failed', { cause: error })
+    }
+    let joinTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        Promise.allSettled([work, child.exited]),
+        new Promise<never>((_, reject) => {
+          joinTimer = setTimeout(
+            () => reject(new Error(`Child ${child.pid} was not reaped; preserving fixtures`)),
+            2000,
+          )
+        }),
+      ])
+    } catch (joinError) {
+      failure = new AggregateError([failure, joinError], 'Child join failed', { cause: error })
+    } finally {
+      clearTimeout(joinTimer)
+    }
+    throw failure
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 type PreparedEntrypoint = {
   readonly child: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
   readonly stdout: Promise<string>
@@ -399,10 +453,12 @@ const prepareEntrypointProcess = async ({
   root,
   env,
   args,
+  startupDeadlineMs,
 }: {
   readonly root: string
   readonly env: Readonly<Record<string, string | undefined>>
   readonly args: readonly string[]
+  readonly startupDeadlineMs?: number
 }) => {
   const preload = join(root, 'prepare-entrypoint.ts')
   if (existsSync(preload) === false) {
@@ -419,7 +475,11 @@ await new Promise<void>((resolve) => process.stdin.once('data', () => resolve())
   }
   const child = Bun.spawn([process.execPath, '--preload', preload, ...args], {
     cwd: root,
-    env: { ...env, BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'] },
+    env: {
+      ...env,
+      BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+      BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
+    },
     detached: true,
     stdin: 'pipe',
     stdout: 'pipe',
@@ -429,13 +489,18 @@ await new Promise<void>((resolve) => process.stdin.once('data', () => resolve())
   const reader = child.stdout.getReader()
   const decoder = new TextDecoder()
   let ready = ''
-  try {
+  const readReady = async () => {
     while (ready.endsWith('\n') === false) {
       const { value, done } = await reader.read()
       if (done === true) throw new Error('entrypoint process exited before startup readiness')
       ready += decoder.decode(value, { stream: true })
     }
     expect(ready).toBe('entrypoint-ready\n')
+  }
+  try {
+    await (startupDeadlineMs === undefined
+      ? readReady()
+      : withChildDeadline(child, startupDeadlineMs, readReady))
   } catch (error) {
     reader.releaseLock()
     throw error
@@ -481,7 +546,7 @@ afterEach(async () => {
     }
     // Descendants are not awaitable children; poll the real OS group condition,
     // not a guessed grace period, before deleting their fixtures.
-    await child.exited
+    await withChildDeadline(child, 2000, () => child.exited)
     const deadline = performance.now() + 2000
     for (;;) {
       try {
@@ -504,13 +569,15 @@ describe('native daemon admission diagnostics', () => {
   const secret = 'authorization: Basic fixture-secret-must-not-escape'
   for (const subcommand of ['status', 'kill', 'audit'] as const) {
     for (const failure of ['exit', 'signal', 'timeout'] as const) {
-      it(`reports ${subcommand} ${failure} without native output`, async () => {
+      // A kill/audit failure may follow two successful status probes. The test
+      // watchdog must cover all three command deadlines and bounded cleanup.
+      const deadlineMs = failure === 'timeout' ? 1000 : 30000
+      const testTimeoutMs = Math.max(5000, 3 * deadlineMs + 2000)
+      const reportFailure = async () => {
         const root = fixture()
         const native = join(root, 'native-buck')
         const calls = join(root, 'native-calls')
-        // The deadline must reach the intended sleeping command, not expire
-        // during shell startup on a loaded macOS runner.
-        const deadlineMs = failure === 'timeout' ? 1000 : 30000
+        // Keep the native command deadline large enough for loaded shell startup.
         const daemon = JSON.stringify({
           project_root: realpathSync(root),
           isolation_dir: 'owned',
@@ -557,7 +624,8 @@ fi
         expect(caught.message).not.toContain('native-stdout-must-not-escape')
         expect(caught.cause).toBeUndefined()
         expect(readFileSync(calls, 'utf8')).toContain(`--isolation-dir owned ${subcommand}`)
-      })
+      }
+      it(`reports ${subcommand} ${failure} without native output`, reportFailure, testTimeoutMs)
     }
   }
 
@@ -608,6 +676,7 @@ exit 42
           HOME: root,
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdin: 'ignore',
         stdout: 'pipe',
@@ -893,6 +962,7 @@ describe('native build ID registry', () => {
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -1016,6 +1086,7 @@ writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).j
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
           CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -1115,6 +1186,7 @@ console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(
           PATH: process.env.PATH,
           HOME: root,
           BUCK2_STDIO_LIBRARY: process.env.BUCK2_STDIO_LIBRARY,
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -1207,6 +1279,7 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ..
             HOME: root,
             XDG_CACHE_HOME: join(root, 'cache'),
             BUCK2_STDIO_LIBRARY: library,
+            BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
           },
           detached: true,
           stdin: 'ignore',
@@ -1326,6 +1399,7 @@ Object.defineProperty(process, 'execve', {
           PATH: process.env['PATH'],
           HOME: root,
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: publicationOwnerLibrary,
         },
         detached: true,
         stdin: 'ignore',
@@ -1753,11 +1827,17 @@ for (let attempt = 0; attempt < 2; attempt++) {
       )
       const child = Bun.spawn([process.execPath, childPath], {
         cwd: root,
+        detached: true,
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      const stderr = await new Response(child.stderr).text()
-      expect(await child.exited).toBe(0)
+      launchProcesses.add(child)
+      // Two real 8s endpoint ceilings plus 10s for startup and I/O.
+      const stderr = await withChildDeadline(child, 26000, async () => {
+        const output = await new Response(child.stderr).text()
+        expect(await child.exited).toBe(0)
+        return output
+      })
       const failures = Array.from(
         stderr.matchAll(
           /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=5000)/gu,
@@ -1782,6 +1862,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
         [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
         {
           cwd: root,
+          detached: true,
           env: {
             ...process.env,
             GITHUB_ACTIONS: githubActions ?? '',
@@ -1799,8 +1880,13 @@ for (let attempt = 0; attempt < 2; attempt++) {
           stderr: 'pipe',
         },
       )
-      const launcherStderr = await new Response(launcher.stderr).text()
-      expect(await launcher.exited).toBe(1)
+      launchProcesses.add(launcher)
+      // Native status allows 30s, REAPI 8s, and startup/I/O another 10s.
+      const launcherStderr = await withChildDeadline(launcher, 48000, async () => {
+        const output = await new Response(launcher.stderr).text()
+        expect(await launcher.exited).toBe(1)
+        return output
+      })
       expect(launcherStderr).toContain('Buck cache writer: REAPI unreachable; refusing to publish')
       expect(
         launcherStderr
@@ -1808,7 +1894,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
           .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::')),
       ).toHaveLength(githubActions === 'true' ? 1 : 0)
       expect(launcherStderr).not.toContain('fixture-secret')
-    })
+    }, 80000)
   }
 
   it('falls back to local execution without uploads only for an optional writer', async () => {
@@ -1865,6 +1951,205 @@ for (let attempt = 0; attempt < 2; attempt++) {
     })
     expect(effective(result)['archive_origin.url_prefix']).toBeUndefined()
     expect(effective(result)['buck2.remote_cache_enabled']).toBe('false')
+  })
+
+  it('uses mapped FILE endpoints for admission and native startup, with route-keyed probe reuse', async () => {
+    const requests = [0, 0]
+    const services = [0, 1].map((index) => {
+      const service = createServer()
+      service.on('stream', (stream: ServerHttp2Stream, headers) => {
+        requests[index] = (requests[index] ?? 0) + 1
+        expect(headers['authorization']).toBeUndefined()
+        expect(headers['x-buck2-reader']).toBe('read-only')
+        stream.on('data', () => {})
+        stream.on('end', () => {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        })
+      })
+      return service
+    })
+    await Promise.all(
+      services.map((service) => {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        service.listen(0, '127.0.0.1', resolve)
+        return promise
+      }),
+    )
+    const targets = services.map((service) => {
+      const bound = service.address()
+      if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+      return `grpc://127.0.0.1:${bound.port}`
+    })
+    try {
+      for (const port of [41045, 41068]) {
+        const source = `grpc://cache.fixture.ts.net:${port}`
+        const root = fixture(source)
+        const local = join(root, '.buckconfig.local')
+        const inherited = '<file:reader-auth.buckconfig>\n'
+        writeFileSync(
+          join(root, 'reader-auth.buckconfig'),
+          '[buck2_re_client]\nhttp_headers = authorization: Basic inherited\n',
+        )
+        writeFileSync(local, inherited)
+        const args = ['run', '//:app', '--', '-c', 'buck2.allow_cache_uploads=true', source]
+        for (const target of targets) {
+          const env = { BUCK2_REAPI_READ_FORWARDERS: JSON.stringify({ [source]: target }) }
+          for (let repeat = 0; repeat < 2; repeat++) {
+            const before = statSync(local)
+            const result = await directBuckArguments({ ...options(root), env, args })
+            const after = statSync(local)
+            const values = effective(result)
+            expect(values['buck2_re_client.action_cache_address']).toBe(target)
+            expect(values['buck2.remote_cache_enabled']).not.toBe('false')
+            expect(values['buck2.allow_cache_uploads']).toBe('false')
+            expect(values['buck2.default_allow_cache_upload']).toBe('false')
+            expect(result.slice(result.indexOf('--'))).toEqual(args.slice(args.indexOf('--')))
+            const file = readFileSync(local, 'utf8')
+            expect(file.startsWith(inherited.trimEnd())).toBe(true)
+            expect(file).toContain(`action_cache_address = ${target}`)
+            expect(file).toContain('http_headers = x-buck2-reader: read-only')
+            expect(file).not.toContain('instance_name =')
+            expect(file).not.toContain('tls =')
+            if (repeat === 1) {
+              expect(after.ino).toBe(before.ino)
+              expect(after.mtimeMs).toBe(before.mtimeMs)
+            }
+          }
+        }
+      }
+      // Healthy repeats share a probe; changing the forwarder address cannot reuse it.
+      expect(requests).toEqual([2, 2])
+    } finally {
+      for (const service of services) service.close()
+    }
+  })
+
+  it('rejects malformed host routing before watcher or root overlay mutation', async () => {
+    const root = fixture('grpc://cache.fixture.ts.net:41045')
+    const tracked = readFileSync(join(root, '.buckconfig'), 'utf8')
+    writeFileSync(join(root, '.buckconfig'), `${tracked}\n[buck2]\nfile_watcher = watchman\n`)
+    const local = '[ui]\ncolor = true\n'
+    writeFileSync(join(root, '.buckconfig.local'), local)
+    await expect(
+      directBuckArguments({
+        ...options(root),
+        args: ['build', '//:app'],
+        env: {
+          BUCK2_REAPI_READ_FORWARDERS:
+            '{"grpc://cache.fixture.ts.net:41045":"grpc://outside.example:41045"}',
+        },
+      }),
+    ).rejects.toThrow('invalid BUCK2_REAPI_READ_FORWARDERS')
+    expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(local)
+    expect(existsSync(join(root, 'probe-cache'))).toBe(false)
+  })
+
+  it('keeps CLI writer policy and removes a stale mapped reader FILE overlay', async () => {
+    const service = createServer()
+    service.on('stream', (stream) => {
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+        stream.end(Buffer.from([0, 0, 0, 0, 0]))
+      })
+    })
+    const { promise, resolve } = Promise.withResolvers<void>()
+    service.listen(0, '127.0.0.1', resolve)
+    await promise
+    const bound = service.address()
+    if (bound === null || typeof bound === 'string') throw new Error('expected TCP listener')
+    try {
+      const root = fixture(`grpc://127.0.0.1:${bound.port}`)
+      const source = 'grpc://cache.fixture.ts.net:41045'
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `${readFileSync(join(root, '.buckconfig'), 'utf8')}\n[buck2_re_client]\ncas_address = ${source}\nengine_address = ${source}\n`,
+      )
+      const writerConfig = join(root, 'writer.buckconfig')
+      writeFileSync(writerConfig, '[buck2]\ndefault_allow_cache_upload = true\n')
+      const env = {
+        BUCK2_REAPI_READ_FORWARDERS: JSON.stringify({ [source]: 'grpc://127.0.0.1:41045' }),
+      }
+      for (const writerArgs of [
+        ['-c', 'buck2.allow_cache_uploads=true'],
+        ['--config=buck2.allow_cache_uploads=true'],
+        ['-c', 'buck2.default_allow_cache_upload=true'],
+        ['--config-file', writerConfig],
+      ]) {
+        await directBuckArguments({ ...options(root), env, args: ['build', '//:app'] })
+        expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toContain(
+          'http_headers = x-buck2-reader: read-only',
+        )
+        const payload = ['--', '-c', 'buck2.allow_cache_uploads=false', '@literal-payload']
+        let admittedValues: Readonly<Record<string, string>> = {}
+        const admitted = await directBuckArguments({
+          ...options(root),
+          env,
+          args: ['run', '//:app', ...writerArgs, ...payload],
+          onCachePosture: (values) => {
+            admittedValues = values
+          },
+        })
+        expect(admitted.slice(admitted.indexOf('--'))).toEqual(payload)
+        expect(admittedValues['buck2.remote_cache_enabled']).not.toBe('false')
+        const key =
+          writerArgs[0] === '--config-file' ||
+          writerArgs.includes('buck2.default_allow_cache_upload=true') === true
+            ? 'buck2.default_allow_cache_upload'
+            : 'buck2.allow_cache_uploads'
+        expect(admittedValues[key]).toBe('true')
+        const local = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+        expect(local).not.toContain('x-buck2-reader')
+        expect(local).not.toContain('cas_address')
+        expect(local).not.toContain('engine_address')
+      }
+    } finally {
+      service.close()
+    }
+  })
+
+  it('includes host reader routing in the shell warm-launch environment identity', () => {
+    const root = fixture('grpc://cache.fixture.ts.net:41045')
+    const bash = Bun.which('bash')
+    const sha256 = Bun.which('sha256sum')
+    if (bash === null || sha256 === null) throw new Error('expected packaged shell and sha256sum')
+    const launcher = join(root, 'capture-launch-cache')
+    writeFileSync(launcher, `#!${bash}\nprintf '%s\\n' "$3"\n`, { mode: 0o700 })
+    const wrapper = join(root, 'buck2-wrapper')
+    writeFileSync(
+      wrapper,
+      readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
+        .replaceAll('@shell@', bash)
+        .replaceAll('@native@', '/unused-native')
+        .replaceAll('@launcher@', launcher)
+        .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
+        .replaceAll('@sha256@', sha256),
+      { mode: 0o700 },
+    )
+    const identities = [
+      '',
+      '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41045"}',
+      '{"grpc://cache.fixture.ts.net:41045":"grpc://127.0.0.1:41068"}',
+      '',
+    ].map((mapping) => {
+      const result = Bun.spawnSync([bash, wrapper, 'build', '//:app'], {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          XDG_CACHE_HOME: join(root, 'cache'),
+          WATCHMAN_SOCK: join(root, 'unused-watcher'),
+          BUCK2_REAPI_READ_FORWARDERS: mapping,
+        },
+      })
+      expect(result.exitCode).toBe(0)
+      const identity = result.stdout.toString().trim()
+      expect(identity).toContain('/buck2-launch-v2/')
+      return identity
+    })
+    expect(new Set(identities.slice(0, 3)).size).toBe(3)
+    expect(identities[0]).toBe(identities[3])
   })
 
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
@@ -2441,6 +2726,7 @@ describe('direct pinned Buck watcher admission', () => {
     const { root, env, calls } = watcherFixture()
     const prepared = await prepareEntrypointProcess({
       root,
+      startupDeadlineMs: 10000,
       env: { ...process.env, ...env },
       args: [
         join(import.meta.dir, 'buck2-entrypoint.ts'),
@@ -2451,11 +2737,13 @@ describe('direct pinned Buck watcher admission', () => {
     })
     prepared.child.stdin.write('\n')
     prepared.child.stdin.end()
-    const [stdout, stderr, exitCode] = await Promise.all([
-      prepared.stdout,
-      new Response(prepared.child.stderr).text(),
-      prepared.child.exited,
-    ])
+    const [stdout, stderr, exitCode] = await withChildDeadline(prepared.child, 12000, () =>
+      Promise.all([
+        prepared.stdout,
+        new Response(prepared.child.stderr).text(),
+        prepared.child.exited,
+      ]),
+    )
     expect(exitCode).toBe(0)
     expect(stdout).toBe('')
     const events = stderr
@@ -2477,7 +2765,7 @@ describe('direct pinned Buck watcher admission', () => {
     expect(events[1].durationMs).toBeGreaterThanOrEqual(0)
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(1)
     expect(watcherLocal(root)).toBe('')
-  })
+  }, 26000)
 
   it('routes installed-wrapper root initialization outside native gate and launch caching', async () => {
     const { root, env, calls } = watcherFixture()
@@ -2498,6 +2786,7 @@ describe('direct pinned Buck watcher admission', () => {
         .replaceAll('@shell@', bash)
         .replaceAll('@native@', join(root, 'native-must-not-run'))
         .replaceAll('@launcher@', launcher)
+        .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
         .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
       { mode: 0o700 },
     )
@@ -2515,18 +2804,21 @@ describe('direct pinned Buck watcher admission', () => {
       stderr: 'pipe',
     })
     launchProcesses.add(child)
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ])
+    // 10s startup + the existing 10s crawl + 2s for I/O; teardown has its own 2s.
+    const [stdout, stderr, exitCode] = await withChildDeadline(child, 22000, () =>
+      Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]),
+    )
     expect(exitCode, stderr).toBe(0)
     expect(stdout).toBe('')
     expect(stderr).toContain('"event":"buck2.watchman.crawl"')
     expect(stderr).toContain('"outcome":"ok"')
     expect(readFileSync(calls, 'utf8').trim().split('\n')).toHaveLength(1)
     expect(watcherLocal(root)).toBe('')
-  })
+  }, 26000)
 
   for (const mode of ['healthy', 'unreachable'] as const) {
     describe(`native Buck launch with ${mode} watcher admission`, () => {
@@ -2834,6 +3126,7 @@ if (args.at(-1) === 'status') {
           .replaceAll('@shell@', bash)
           .replaceAll('@native@', native)
           .replaceAll('@launcher@', launcher)
+          .replaceAll('@publicationOwnerLibrary@', publicationOwnerLibrary)
           .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
         { mode: 0o700 },
       )

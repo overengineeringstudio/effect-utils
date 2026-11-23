@@ -20,7 +20,9 @@
  * ```
  */
 
-import { Context, Effect, Layer, Option } from 'effect'
+import { isAbsolute } from 'node:path'
+
+import { Context, Effect, Layer, Logger, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { type PlatformError } from 'effect/PlatformError'
 
@@ -44,6 +46,23 @@ import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
 /** Store configuration */
 export interface StoreConfig {
   readonly basePath: AbsoluteDirPath
+}
+
+/** A subtree whose repository membership could not be completely enumerated. */
+export const StoreUnaccounted = Schema.Struct({
+  path: Schema.NonEmptyString.check(Schema.makeFilter(isAbsolute)),
+  reason: Schema.Literal('depth-limit'),
+})
+export type StoreUnaccounted = typeof StoreUnaccounted.Type
+
+/** Known repositories plus explicit coverage; incomplete inventory is report-only. */
+export interface StoreRepoCensus {
+  readonly repos: ReadonlyArray<{
+    readonly relativePath: RelativeDirPath
+    readonly fullPath: AbsoluteDirPath
+  }>
+  readonly complete: boolean
+  readonly unaccounted: ReadonlyArray<StoreUnaccounted>
 }
 
 /** Store service interface */
@@ -80,13 +99,7 @@ export interface MegarepoStore {
   }) => Effect.Effect<boolean, PlatformError>
 
   /** List all repos in the store */
-  readonly listRepos: Effect.Effect<
-    ReadonlyArray<{
-      readonly relativePath: RelativeDirPath
-      readonly fullPath: AbsoluteDirPath
-    }>,
-    PlatformError
-  >
+  readonly listRepos: Effect.Effect<StoreRepoCensus, PlatformError>
 
   /** List all worktrees for a repo (includes broken worktrees with missing .git) */
   readonly listWorktrees: (source: MemberSource) => Effect.Effect<
@@ -157,7 +170,7 @@ export const withStoreEnumeration =
         if (Object.values(counts).some((count) => count > 0) === true) {
           yield* Effect.logWarning(
             `store enumeration: skipped entries (non-directory=${counts.nonDirectory}, foreign-namespace=${counts.foreignNamespace}, depth-limited=${counts.depthLimited})`,
-          ).pipe(Effect.annotateLogs(attributes))
+          ).pipe(Effect.annotateLogs(attributes), Effect.provideService(Logger.LogToStderr, true))
         }
       })
       return Effect.gen(() => run(telemetry)).pipe(
@@ -344,29 +357,32 @@ const make = ({
     listRepos: withStoreEnumeration('megarepo/store/list-repos')(function* (telemetry) {
       const exists = yield* fs.exists(basePath)
       if (exists === false) {
-        return []
+        return { repos: [], complete: true, unaccounted: [] }
       }
+      // Candidates and unaccounted boundaries share the resolved store namespace.
+      const censusBasePath = EffectPath.unsafe.absoluteDir(
+        (yield* fs.realPath(basePath)).replace(/\/?$/, '/'),
+      )
 
       const result: Array<{
         relativePath: RelativeDirPath
         fullPath: AbsoluteDirPath
       }> = []
+      const unaccounted: StoreUnaccounted[] = []
 
       const walk = ({
         dir,
         depth,
-        census,
       }: {
         dir: AbsoluteDirPath
         depth: number
-        census: { overflow: AbsoluteDirPath | undefined }
       }): Effect.Effect<void, PlatformError> =>
         Effect.gen(function* () {
           yield* Effect.yieldNow
           const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
           const hasBare = yield* fs.exists(barePath)
           if (hasBare === true) {
-            const relativePath = `${dir.slice(basePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
+            const relativePath = `${dir.slice(censusBasePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
             result.push({
               relativePath: EffectPath.unsafe.relativeDir(relativePath),
               fullPath: dir,
@@ -391,7 +407,7 @@ const make = ({
             fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.state/'))),
             fs.exists(EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.locks/'))),
           ])
-          const isHostNamespace = depth === 1 && dir.slice(basePath.length).includes('.')
+          const isHostNamespace = depth === 1 && dir.slice(censusBasePath.length).includes('.')
           const isNestedStore =
             isHostNamespace === false && (hasNestedState === true || hasNestedLocks === true)
           if (isNestedStore === true) return
@@ -399,7 +415,7 @@ const make = ({
           // Admission already established ownership; incomplete census of a
           // member namespace must fail closed even if no repo was reached yet.
           if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
-            census.overflow ??= dir
+            unaccounted.push({ path: yield* fs.realPath(dir), reason: 'depth-limit' })
             telemetry.depthLimited(dir)
             return
           }
@@ -419,25 +435,25 @@ const make = ({
                 )
                 if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) return
 
-                yield* walk({ dir: entryPath, depth: depth + 1, census })
+                yield* walk({ dir: entryPath, depth: depth + 1 })
               }),
             { concurrency: 32 },
           )
         })
 
-      const namespaces = yield* fs.readDirectory(basePath)
+      const namespaces = yield* fs.readDirectory(censusBasePath)
       yield* Effect.forEach(
         namespaces,
         (entry) =>
           Effect.gen(function* () {
             if (shouldSkipStoreRootEntry(entry) === true) {
               if (RESERVED_STORE_TOOL_ROOTS.has(entry) === true)
-                telemetry.foreignNamespace(`${basePath}${entry}/`)
+                telemetry.foreignNamespace(`${censusBasePath}${entry}/`)
               return
             }
 
             const entryPath = EffectPath.ops.join(
-              basePath,
+              censusBasePath,
               EffectPath.unsafe.relativeDir(`${entry}/`),
             )
             if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) return
@@ -467,20 +483,16 @@ const make = ({
               return
             }
 
-            const census = { overflow: undefined as AbsoluteDirPath | undefined }
-            yield* walk({ dir: entryPath, depth: 1, census })
-            if (census.overflow !== undefined) {
-              return yield* Effect.die(
-                new Error(
-                  `store listRepos census exceeded the supported depth at ${census.overflow}`,
-                ),
-              )
-            }
+            yield* walk({ dir: entryPath, depth: 1 })
           }),
         { concurrency: 32 },
       )
 
-      return result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
+      return {
+        repos: result.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath)),
+        complete: unaccounted.length === 0,
+        unaccounted: unaccounted.toSorted((a, b) => a.path.localeCompare(b.path)),
+      }
     }),
 
     listWorktrees: (source) =>

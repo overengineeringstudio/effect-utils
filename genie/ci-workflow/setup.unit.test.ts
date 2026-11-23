@@ -23,6 +23,7 @@ import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { fleetWorkflowPolicy } from './policy.ts'
 import { publishedRefIf } from './published-ref.ts'
+import { fleetRunnerLabels } from './runners.ts'
 import {
   installNixStep,
   linuxSandboxPrerequisitesStep,
@@ -40,6 +41,7 @@ import {
   ciPnpmStore,
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
+  ciJobConcurrency,
   defaultRefPolicyVerdictStepId,
   linuxSandboxAdmissionStepId,
   withCiAdmissionCleanup,
@@ -55,6 +57,42 @@ import {
   preparationDiagnosticSeconds,
 } from './support-files.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
+
+describe('CI rerun concurrency', () => {
+  it('isolates historical reruns from current code heads and the retired code group', () => {
+    const concurrency = ciWorkflow.data.jobs.quality!.concurrency
+    expect(concurrency).toBeObject()
+    if (typeof concurrency !== 'object' || concurrency === null) {
+      throw new Error('Expected job concurrency object')
+    }
+    expect(concurrency).toMatchObject({
+      'cancel-in-progress':
+        "${{ github.run_attempt == 1 && !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}",
+    })
+    expect(concurrency.group).toContain(
+      "(github.run_attempt > 1 && format('code-rerun-{0}', github.run_id) || 'code-head')",
+    )
+  })
+
+  it.each([
+    {},
+    { labelEvents: false },
+    { measurementBaselineBackfill: true },
+    { measurementBaselineBackfill: true, labelEvents: false },
+  ])('never lets a rerun cancel in-progress work with options %j', (opts) => {
+    const concurrency = ciJobConcurrency({ jobId: 'quality', ...opts })
+    expect(concurrency['cancel-in-progress']).toStartWith('${{ github.run_attempt == 1')
+    expect(concurrency.group).toContain("format('code-rerun-{0}', github.run_id)")
+    expect(concurrency.group).toContain("'code-head'")
+    expect(concurrency.group).toContain("format('manual-run-{0}', github.run_id)")
+    if (opts.measurementBaselineBackfill === true) {
+      expect(concurrency.group).toContain("format('measurement-baseline-{0}'")
+    }
+    if (opts.labelEvents !== false) {
+      expect(concurrency['cancel-in-progress']).toContain("github.event.action != 'labeled'")
+    }
+  })
+})
 
 describe('Resolve devenv hang diagnostics', () => {
   it('streams stderr to the job and a retained repair log', () => {
@@ -918,9 +956,17 @@ describe('Linux Nix sandbox fallback', () => {
     )
   })
 
+  it('keeps the tested-tree pipeline prerequisite on hosted capacity', () => {
+    const job = ciWorkflow.data.jobs['tested-tree']!
+    expect(job['runs-on']).toBe('ubuntu-latest')
+    expect(job.if).toBe(
+      "${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (success()) }}",
+    )
+  })
+
   it('denies pipeline close local-flake execution on forks and failed source admission', () => {
     const job = ciWorkflow.data.jobs['pipeline-attempt-close']!
-    expect(job['runs-on']).toBe('ubuntu-latest')
+    expect(job['runs-on']).toBe(fleetRunnerLabels.linuxX64)
     const close = job.steps.find((step) => step.name === 'Link started job roots')!
     expect(close.if).toContain(namespacePrivilegeTrustedPredicate)
     expect(close.if).toContain("needs.default-ref-policy.result == 'success'")
@@ -1394,7 +1440,7 @@ describe('published consumer ref', () => {
     )
     expect(dependents.map(([id]) => id)).toEqual(['pipeline-attempt-close'])
     expect(dependents[0]![1].if).toBe(
-      "${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}",
+      `\${{ (${sameRepoPullRequestGuard()}) && (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always())) }}`,
     )
     expect(JSON.stringify(dependents[0]![1])).not.toContain('needs.publish-manifest-pr.result')
     expect(JSON.stringify(ciWorkflow.data.jobs['published-status']!)).not.toContain(

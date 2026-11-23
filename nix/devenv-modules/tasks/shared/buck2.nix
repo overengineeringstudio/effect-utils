@@ -39,11 +39,15 @@ let
       elif ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
         spool="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/otel/buck2-events/${taskName}.XXXXXXXX")" || spool=""
       fi
+      pending="''${spool:-$root/.devenv/otel/buck2-events}/pending"
+      if (( pipeline_spool )); then pending="$PIPELINE_SPOOL_DIR/pending"; fi
       buck_args=(${lib.escapeShellArgs argv})
+      command_key="${taskName}-$(${pkgs.coreutils}/bin/date +%s%N)-$$"
+      census_host="$(${pkgs.coreutils}/bin/uname -n)"
       unset BUCK_WRAPPER_UUID BUCK_COMMAND_SPAN_ID BUCK_COMMAND_START_NS \
         BUCK_COMMAND_TRACE_ID BUCK_COMMAND_PARENT_SPAN_ID
       if [ -n "$spool" ]; then
-        command_key="${taskName}-$(${pkgs.coreutils}/bin/date +%s%N)-$$"
+        # Keep the same invocation key even if tracing cannot be prepared.
         event_log="$spool/$command_key.pb.zst"
         sidecar="$spool/$command_key.sidecar"
         buck_args+=(--event-log "$event_log" --write-build-id "$spool/$command_key.buck-trace-id")
@@ -52,11 +56,25 @@ let
         fi
       fi
 
+      # The census is outside the disposable worktree and independent of OTLP.
+      # An unmatched open is unknown coverage, never a successful zero-action run.
+      census_capture=()
+      ${cfg.eventsPackage}/bin/buck2-events census --invocation-id "$command_key" \
+        --phase open --host "$census_host" --spool-dir "$pending" ||
+        { census_capture=(--capture-error); printf '%s: invocation-open capture failed; coverage unknown\n' '${taskName}' >&2; }
       if "$BUCK2_BIN" "''${buck_args[@]}"; then
         buck_exit=0
       else
         buck_exit=$?
       fi
+      census_build=()
+      if [ -n "$spool" ] && [ -s "$spool/$command_key.buck-trace-id" ]; then
+        census_build=(--build-id "$(< "$spool/$command_key.buck-trace-id")")
+      fi
+      ${cfg.eventsPackage}/bin/buck2-events census --invocation-id "$command_key" \
+        --phase terminal --host "$census_host" --spool-dir "$pending" \
+        --exit-code "$buck_exit" "''${census_build[@]}" "''${census_capture[@]}" ||
+        printf '%s: invocation-terminal capture failed; coverage unknown\n' '${taskName}' >&2
       if [ "$buck_exit" -ne 0 ]; then
         if [ -n "$spool" ]; then
           printf '%s: Buck exited with code %s; event log: %s\n' '${taskName}' "$buck_exit" "$event_log" >&2
@@ -82,10 +100,12 @@ let
         OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
           ${pkgs.coreutils}/bin/timeout -k 5 60 \
           ${cfg.eventsPackage}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" \
-            --spool-dir "$spool/pending" || true
+            --spool-dir "$pending" || true
+      fi
+      if (( ! pipeline_spool )); then
         OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
           ${pkgs.coreutils}/bin/timeout -k 5 60 \
-          ${cfg.eventsPackage}/bin/buck2-events export --spool-dir "$spool/pending" || true
+          ${cfg.eventsPackage}/bin/buck2-events export --spool-dir "$pending" || true
       fi
       exit "$buck_exit"
     '';

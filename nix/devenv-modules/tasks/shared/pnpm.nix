@@ -433,7 +433,10 @@ let
       ''}
 
       if [ -z "''${CI:-}" ]; then
-        "$PNPM_NATIVE_BIN" "''${install_args[@]}"
+        (
+          pnpm_install_umask
+          "$PNPM_NATIVE_BIN" "''${install_args[@]}"
+        )
         return
       fi
 
@@ -443,6 +446,8 @@ let
 
       local log_file
       log_file="$diagnostics_dir/pnpm-install.log"
+      # Create the private log with the caller's umask, not pnpm's import policy.
+      : > "$log_file"
 
       echo "[pnpm] Running install; full log: $log_file"
       local rc
@@ -453,7 +458,10 @@ let
         # so teardown pressure does not fail otherwise-complete installs.
         export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
       ''}
-      "$PNPM_NATIVE_BIN" "''${install_args[@]}" > "$log_file" 2>&1
+      (
+        pnpm_install_umask
+        "$PNPM_NATIVE_BIN" "''${install_args[@]}" > "$log_file" 2>&1
+      )
       rc="$?"
       set -e
       if [ "$rc" -eq 0 ]; then
@@ -553,10 +561,13 @@ let
       fi
 
       set +e
-      ${lib.escapeShellArg "${effectivePnpmLockMutatorPkg}/bin/pnpm"} install --fix-lockfile${lockfileOnlyFlag} \
-        ${installFlagsString} "''${pnpm_policy_flags[@]}" \
-        --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
-        --config.store-dir="$npm_config_store_dir"
+      (
+        pnpm_install_umask
+        ${lib.escapeShellArg "${effectivePnpmLockMutatorPkg}/bin/pnpm"} install --fix-lockfile${lockfileOnlyFlag} \
+          ${installFlagsString} "''${pnpm_policy_flags[@]}" \
+          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+          --config.store-dir="$npm_config_store_dir"
+      )
       status=$?
       set -e
 
@@ -814,9 +825,12 @@ let
         ${managedPnpmMutationPrologue}
         ${stageSourceInputs}
         ${stageProductTarballs}
-        pnpm dedupe${lockfileOnlyFlag} ${installFlagsString} "''${pnpm_policy_flags[@]}" \
-          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
-          --config.store-dir="$npm_config_store_dir"
+        (
+          pnpm_install_umask
+          pnpm dedupe${lockfileOnlyFlag} ${installFlagsString} "''${pnpm_policy_flags[@]}" \
+            --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD" \
+            --config.store-dir="$npm_config_store_dir"
+        )
         ${gcSourceInputs}
         echo "Lockfile deduped. Re-run genie:check to verify the catalog duplicate gate; bless any upstream-locked residuals via catalogDuplicateExceptions."
       '';

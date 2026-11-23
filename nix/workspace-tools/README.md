@@ -17,10 +17,18 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
     Mach-O load commands. Diagnostic tool failures are recorded without hiding
     the original failure; successful inspections remain silent.
   - `buck2-product-candidates.nix` — package candidates backed by Buck products.
+    The Notion wrapper checks database help with shell pattern matching, not an
+    early-closing `grep -q` pipeline: long help must not fail under `pipefail`
+    when the producer receives SIGPIPE.
   - `javascript-product-import.nix` — JavaScript module and runtime-tree import;
     dispatches to `javascript-published-import.nix` (eval-time validation of
     the pinned descriptor) or `javascript-source-import.nix` (build-time
     validation for from-source products).
+    Both modes accept `compile = true` for self-contained Bun executables
+    (no runtime closure or external modules). Megarepo uses this mode so its
+    embedded entry starts without Bun enumerating `/nix/store` ancestors.
+    Compilation uses a local build input and disables ambient dotenv/bunfig
+    autoloading; environment and capability PATH wrappers remain unchanged.
   - `mk-cli-packages.nix` — the retained Buck-backed CLI package wrapper.
   - Buck capability, archive, source-identity, and release helpers and tests.
   - `cli-build-stamp.nix` — shared build stamp helper for CLIs.
@@ -28,6 +36,11 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
     handling.
   - `pnpm-source-input-specifiers.cjs` — importer-relative staged source-input
     `file:` specifier algebra.
+
+The artifact contract test selects its real compiler through an explicit
+`git+file://…?shallow=1` flake reference, matching `buck2-bridge.sh`. Managed
+shallow worktrees do not need a history fetch merely to run this check; compiler
+identity and artifact assertions are unchanged.
 
 ## Flake Exports
 

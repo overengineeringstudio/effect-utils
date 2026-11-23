@@ -42,7 +42,13 @@ import {
 import { prReviewsResolvedJob, prReviewsResolvedJobId } from './pr-reviews.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import { releaseWorkflow } from './release.ts'
-import { linuxX64HeavyRunner, linuxX64Runner } from './runners.ts'
+import {
+  linuxX64HeavyRunner,
+  linuxX64Runner,
+  publicNamespaceKvmRunner,
+  publicNamespaceKvmConcurrency,
+  publicNamespaceKvmIf,
+} from './runners.ts'
 import {
   cargoClippyJob,
   cargoFmtJob,
@@ -76,6 +82,87 @@ const job: GitHubWorkflowArgs['jobs'][string] = {
 }
 const jobs = { check: job }
 const rustOptions = { runsOn: [...linuxX64Runner], namespacePrivilege: 'never' as const }
+
+describe('public Namespace nested-KVM admission', () => {
+  const publicJob: GitHubWorkflowArgs['jobs'][string] = {
+    'runs-on': [publicNamespaceKvmRunner],
+    if: publicNamespaceKvmIf,
+    permissions: { contents: 'read' },
+    concurrency: publicNamespaceKvmConcurrency,
+    steps: [{ run: 'test -c /dev/kvm' }],
+  }
+  const violations = (value = publicJob, repository = policy.repository) =>
+    collectWorkflowPolicyViolations({
+      workflow: { on: 'pull_request', jobs: { vm: value } },
+      policy: fleetWorkflowPolicy({ repository, workflow: 'vm.yml' }),
+    })
+
+  it('admits only the bounded public 8x16 KVM profile', () => {
+    expect(violations()).toEqual([])
+    expect(violations(publicJob, 'example/private').map((v) => v.rule)).toContain(
+      'namespace-runner',
+    )
+    expect(
+      violations({ ...publicJob, 'runs-on': 'namespace-profile-linux-x86-64' }).length,
+    ).toBeGreaterThan(0)
+  })
+
+  it.each([
+    { event: 'push', private: false, head: undefined, admitted: true },
+    { event: 'merge_group', private: false, head: undefined, admitted: true },
+    { event: 'pull_request', private: false, head: policy.repository, admitted: true },
+    { event: 'pull_request', private: false, head: 'stranger/fork', admitted: false },
+    { event: 'push', private: true, head: undefined, admitted: false },
+    { event: 'workflow_dispatch', private: false, head: undefined, admitted: false },
+    { event: 'pull_request_target', private: false, head: policy.repository, admitted: false },
+  ])('bounds sponsored compute to trusted public inputs: %j', (fixture) => {
+    const evaluate = new Function('github', `return (${publicNamespaceKvmIf.slice(3, -2)})`)
+    expect(
+      evaluate({
+        repository: policy.repository,
+        event_name: fixture.event,
+        event: {
+          repository: { private: fixture.private },
+          pull_request: { head: { repo: { full_name: fixture.head } } },
+        },
+      }),
+    ).toBe(fixture.admitted)
+  })
+
+  it.each([
+    { if: undefined },
+    { if: '${{ true }}' },
+    { if: '${{ github.event.repository.private == false }}' },
+    { concurrency: undefined },
+    { concurrency: { ...publicNamespaceKvmConcurrency, 'cancel-in-progress': true } },
+    { concurrency: { ...publicNamespaceKvmConcurrency, group: '${{ github.run_id }}' } },
+    { permissions: { contents: 'write' } },
+    { env: { KEY: '${{ secrets.CACHE_WRITE_KEY }}' } },
+    { env: { KEY: '${{\nsecrets.CACHE_WRITE_KEY\n}}' } },
+    { env: { KEY: '${{ toJSON(secrets) }}' } },
+    { env: { CACHE_TOKEN: 'credential' } },
+    { strategy: { matrix: { variant: ['a', 'b'] } } },
+    { 'runs-on': [publicNamespaceKvmRunner, 'nix'] },
+  ])('rejects unsafe public runner overrides: %j', (override) => {
+    expect(violations({ ...publicJob, ...override }).map((v) => v.rule)).toContain(
+      'bounded-public-runner',
+    )
+  })
+
+  it('cannot grandfather a public boundary violation', () => {
+    const workflow: GitHubWorkflowArgs = {
+      on: 'pull_request',
+      jobs: { vm: { ...publicJob, if: '${{ true }}' } },
+    }
+    const ledger = violations(workflow.jobs.vm)
+    expect(() =>
+      validateWorkflowPolicy({
+        workflow,
+        policy: { ...policy, mode: 'report', ledger },
+      }),
+    ).toThrow()
+  })
+})
 const snapshotRelease = prSnapshotReleaseJobs({
   topologyPath: 'release/topology.json',
   attestationPredicateType: 'https://example.com/pr-snapshot/v1',
@@ -390,7 +477,9 @@ describe('shared workflow same-repository PR guards', () => {
   const rule = 'fleet-pr-without-same-repo-guard'
 
   it('requires a same-repository guard for every admitted fleet selector', () => {
-    expect(policy.sameRepoGuardRunnerLabels).toEqual(policy.admittedRunnerLabels)
+    expect(policy.sameRepoGuardRunnerLabels).toEqual(
+      policy.admittedRunnerLabels.filter((label) => label !== publicNamespaceKvmRunner),
+    )
   })
 
   it('rejects an unguarded public PR workflow using only the nix selector', () => {

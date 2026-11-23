@@ -28,11 +28,75 @@ manually. The hermetic `semconv-model` capability includes a `registry-paths.jso
 map by dependency name; check, diff, and live-check resolve each dependency to its
 own local model, including the GenAI registry's transitive core dependency.
 
+## CLI delivery outcomes
+
+`makeOtelCliLayer` keeps export failures separate from the command's domain result.
+Terminal batch failures (after transport retries) and actual shutdown timeouts
+write sanitized warnings to stderr, never stdout. The optional synchronous
+`onDeliveryEvent` callback receives `OtelDeliveryEvent`: batch success, classified
+batch loss, and per-signal shutdown `{ timedOut, disabled }`. HTTP status codes
+are safe metadata; endpoints, headers, bodies, and raw causes are not exposed.
+Observer exceptions cannot replace the command's exit.
+
+Shutdown still awaits the existing exporter's scoped flush up to
+`shutdownTimeout`; the timeout is a ceiling, not a delay. A shutdown without a
+timeout is not proof that earlier batches arrived: a terminal export failure
+clears that batch and temporarily disables the upstream exporter. Observe batch
+outcomes as well as shutdown.
+
+Explicit `resourceAttributes` override ambient `OTEL_RESOURCE_ATTRIBUTES`;
+decoded service identity always wins for `service.name`, `service.namespace`,
+and `service.version`. Callers need not mutate process environment to attach
+run-specific resource metadata.
+
+The lifecycle hook is carried as the version-pinned `effect@4.1.0` patch,
+including source, JavaScript, and declarations. Its source authority is
+[Effect PR 10707](https://github.com/Effect-TS/effect/pull/10707);
+[issue 2567](https://github.com/overengineeringstudio/effect-utils/issues/2567)
+tracks retirement once an upstream release contains the hook. Both workspace
+and downstream patch projections include it.
+
 ## System Stack Assumptions
 
 The devenv module auto-detects a system-level OTEL stack by checking for the `OTEL_STATE_DIR` session variable. When set, the devenv module trusts the system-provided env vars (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_GRAFANA_URL`, etc.) instead of starting its own services.
 
 To run a **local** per-project stack instead (e.g. when no system stack is available), the module starts Collector + Tempo + Grafana on hash-derived ports via `devenv up`.
+
+## Authenticated producer kit
+
+```text
+Effect trace/log layer -> HTTPS + Access OR Fabric loopback dial listener
+Cloudflare native gzip OTLP-JSON -> HTTPS + Access
+                         -> bearer admission registry -> collector
+```
+
+`@overeng/utils/node/otel` exports `producerTelemetryLayer` and
+`declareCloudflareProducer`. Both require an explicit transport origin and
+redacted bearer. HTTPS additionally requires the Access service-token pair.
+Fabric endpoints are HTTP loopback listeners established by the maintained
+Fabric expose/dial/service interface; the kit neither implements Fabric nor
+starts a transport daemon. There is no ambient endpoint fallback.
+
+The Effect layer exports traces and logs as OTLP-JSON, flushes with its enclosing
+scope, and takes `build.machineVersion` from the shared build identity contract.
+It does not enable metrics or register a global OpenTelemetry SDK.
+
+The Alchemy helper accepts named arguments
+`declareCloudflareProducer({ destination, name, config })`, where `destination`
+is the consumer's pinned `Cloudflare.Workers.ObservabilityDestination` constructor.
+It declares independent trace/log account destinations. The lower-level
+`cloudflareDestinationProps({ name, config })` exposes the corresponding props.
+Pass the helper's result as the Worker's `observability` property.
+Cloudflare serializes native exports as gzip OTLP-JSON;
+the helper does not decompress or proxy them. Destination preflights are skipped,
+not acknowledged artificially; real decoded delivery is the acceptance evidence.
+Destination headers are sensitive Alchemy state, never public stack outputs.
+
+Only bearer-to-registry admission chooses canonical tenant, service, namespace,
+site and role. Producer resource identity is a diagnostic claim, never authority.
+The collector plane owns identity overwrite, allowlist/redaction, gzip/JSON/
+protobuf bounds, rate limits and credential rotation. The kit owns none of
+those decisions. A transport success or destination slug is not backend readback.
 
 ## Quick Start
 

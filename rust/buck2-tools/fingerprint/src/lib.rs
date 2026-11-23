@@ -35,6 +35,13 @@ fn fail(message: impl std::fmt::Display) -> io::Error {
     io::Error::other(format!("editor view: {message}"))
 }
 
+fn io_context(operation: &str, operand: &Path, error: io::Error) -> io::Error {
+    io::Error::new(
+        error.kind(),
+        format!("{operation} {}: {error}", operand.display()),
+    )
+}
+
 fn frame(hash: &mut Sha256, value: &[u8]) {
     hash.update((value.len() as u64).to_be_bytes());
     hash.update(value);
@@ -65,9 +72,11 @@ fn inside(root: &Path, path: &Path) -> bool {
 }
 
 fn sorted_names(directory: &Path) -> io::Result<Vec<OsString>> {
-    let mut names = fs::read_dir(directory)?
+    let mut names = fs::read_dir(directory)
+        .map_err(|error| io_context("read_dir", directory, error))?
         .map(|entry| entry.map(|entry| entry.file_name()))
-        .collect::<io::Result<Vec<_>>>()?;
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(|error| io_context("read_dir entry", directory, error))?;
     names.sort_unstable_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
     Ok(names)
 }
@@ -234,12 +243,14 @@ struct Walker {
 
 impl Walker {
     fn visit(&mut self, path: &Path, name: &[u8]) -> io::Result<()> {
-        let before = fs::symlink_metadata(path)?;
+        let before = fs::symlink_metadata(path)
+            .map_err(|error| io_context("symlink_metadata", path, error))?;
         if before.file_type().is_symlink() && self.dereference {
-            let target = fs::read_link(path)?;
+            let target =
+                fs::read_link(path).map_err(|error| io_context("read_link", path, error))?;
             let resolved = fs::canonicalize(path).map_err(|error| {
                 fail(format!(
-                    "tree contains an unresolvable symbolic link: {} ({error})",
+                    "tree contains an unresolvable symbolic link: canonicalize {} ({error})",
                     path.display()
                 ))
             })?;
@@ -253,7 +264,8 @@ impl Walker {
                 )));
             }
             self.visit(&resolved, name)?;
-            let after = fs::symlink_metadata(path)?;
+            let after = fs::symlink_metadata(path)
+                .map_err(|error| io_context("symlink_metadata", path, error))?;
             if !same(&before, &after, false) {
                 let target_after = fs::read_link(path).ok();
                 return Err(tree_changed(
@@ -265,7 +277,8 @@ impl Walker {
                         .map(|after| (target.as_path(), after)),
                 ));
             }
-            let target_after = fs::read_link(path)?;
+            let target_after =
+                fs::read_link(path).map_err(|error| io_context("read_link", path, error))?;
             if target_after != target {
                 return Err(tree_changed(
                     path,
@@ -304,14 +317,16 @@ impl Walker {
             }
             self.ancestors.remove(&id);
         } else if before.file_type().is_symlink() {
-            let target = fs::read_link(path)?;
+            let target =
+                fs::read_link(path).map_err(|error| io_context("read_link", path, error))?;
             let target_bytes = target.as_os_str().as_bytes();
             self.hash.update(b"L");
             frame(&mut self.hash, name);
             frame(&mut self.hash, target_bytes);
             if let Some(hash) = &mut self.resolved {
                 self.links.push((name.to_vec(), target_bytes.to_vec()));
-                let resolved = fs::canonicalize(path)?;
+                let resolved = fs::canonicalize(path)
+                    .map_err(|error| io_context("canonicalize", path, error))?;
                 let owner = self
                     .owners
                     .iter()
@@ -328,7 +343,8 @@ impl Walker {
                 frame(hash, owner.identity.as_bytes());
                 frame(hash, &relative(&owner.source, &resolved));
             }
-            let target_after = fs::read_link(path)?;
+            let target_after =
+                fs::read_link(path).map_err(|error| io_context("read_link", path, error))?;
             if target_after != target {
                 let after = fs::symlink_metadata(path);
                 return Err(tree_changed(
@@ -347,9 +363,11 @@ impl Walker {
                 frame(hash, name);
                 hash.update(before.size().to_be_bytes());
             }
-            let mut file = File::open(path)?;
+            let mut file = File::open(path).map_err(|error| io_context("open", path, error))?;
             loop {
-                let size = file.read(&mut *self.buffer)?;
+                let size = file
+                    .read(&mut *self.buffer)
+                    .map_err(|error| io_context("read", path, error))?;
                 if size == 0 {
                     break;
                 }
@@ -364,7 +382,8 @@ impl Walker {
                 path.display()
             )));
         }
-        let after = fs::symlink_metadata(path)?;
+        let after = fs::symlink_metadata(path)
+            .map_err(|error| io_context("symlink_metadata", path, error))?;
         if !same(&before, &after, before.is_file()) {
             return Err(tree_changed(path, &before, Ok(&after), None));
         }
@@ -373,14 +392,15 @@ impl Walker {
 }
 
 fn real_directory(path: &Path, label: &str) -> io::Result<PathBuf> {
-    let metadata = fs::symlink_metadata(path)?;
+    let metadata =
+        fs::symlink_metadata(path).map_err(|error| io_context("symlink_metadata", path, error))?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
         return Err(fail(format!(
             "{label} must be a real directory: {}",
             path.display()
         )));
     }
-    fs::canonicalize(path)
+    fs::canonicalize(path).map_err(|error| io_context("canonicalize", path, error))
 }
 
 /// `admission_directory` selects an isolated admission domain for tests and
@@ -402,7 +422,8 @@ pub fn fingerprint(
         .iter()
         .map(|owner| {
             Ok(LinkOwner {
-                source: fs::canonicalize(&owner.source)?,
+                source: fs::canonicalize(&owner.source)
+                    .map_err(|error| io_context("canonicalize", &owner.source, error))?,
                 identity: owner.identity.clone(),
             })
         })
@@ -416,7 +437,8 @@ pub fn fingerprint(
         hash.update(SCHEMA);
         Some(hash)
     };
-    let before = fs::symlink_metadata(tree)?;
+    let before =
+        fs::symlink_metadata(tree).map_err(|error| io_context("symlink_metadata", tree, error))?;
     let mut walker = Walker {
         root,
         backing,
@@ -431,7 +453,8 @@ pub fn fingerprint(
     for name in sorted_names(tree)? {
         walker.visit(&tree.join(&name), name.as_bytes())?;
     }
-    let after = fs::symlink_metadata(tree)?;
+    let after =
+        fs::symlink_metadata(tree).map_err(|error| io_context("symlink_metadata", tree, error))?;
     if !same(&before, &after, false) {
         return Err(tree_changed(tree, &before, Ok(&after), None));
     }
@@ -461,9 +484,11 @@ fn frame_input_text(hash: &mut Sha256, value: &str) {
 }
 
 fn sorted_input_names(directory: &Path) -> io::Result<Vec<OsString>> {
-    let mut names = fs::read_dir(directory)?
+    let mut names = fs::read_dir(directory)
+        .map_err(|error| io_context("read_dir", directory, error))?
         .map(|entry| entry.map(|entry| entry.file_name()))
-        .collect::<io::Result<Vec<_>>>()?;
+        .collect::<io::Result<Vec<_>>>()
+        .map_err(|error| io_context("read_dir entry", directory, error))?;
     // `readdir(path).toSorted()` uses JavaScript's UTF-16 code-unit order,
     // unlike the editor-view protocol's UTF-8 byte order.
     names.sort_unstable_by(|a, b| {
@@ -475,7 +500,8 @@ fn sorted_input_names(directory: &Path) -> io::Result<Vec<OsString>> {
 }
 
 fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -> io::Result<()> {
-    let before = fs::symlink_metadata(path)?;
+    let before =
+        fs::symlink_metadata(path).map_err(|error| io_context("symlink_metadata", path, error))?;
     let relative = path.strip_prefix(root).map_err(fail)?;
     let entry = if relative.as_os_str().is_empty() {
         "."
@@ -493,7 +519,7 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
         }
     } else if before.file_type().is_symlink() {
         frame_input_text(hash, "symlink");
-        let target = fs::read_link(path)?;
+        let target = fs::read_link(path).map_err(|error| io_context("read_link", path, error))?;
         frame_input_text(
             hash,
             target
@@ -502,9 +528,11 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
         );
     } else if before.is_file() {
         frame_input_text(hash, "file");
-        let mut file = File::open(path)?;
+        let mut file = File::open(path).map_err(|error| io_context("open", path, error))?;
         loop {
-            let size = file.read(buffer)?;
+            let size = file
+                .read(buffer)
+                .map_err(|error| io_context("read", path, error))?;
             if size == 0 {
                 break;
             }
@@ -534,6 +562,54 @@ mod tests {
     use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
     use std::path::Path;
     use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn filesystem_errors_name_operation_and_actual_operand() {
+        let scratch = tempfile::tempdir().unwrap();
+        let tree = scratch.path().join("tree");
+        fs::create_dir(&tree).unwrap();
+        let descendant = tree.join("dangling-descendant");
+        symlink("absent", &descendant).unwrap();
+        let error = super::fingerprint(
+            &tree,
+            false,
+            &[],
+            &[super::LinkOwner {
+                source: tree.clone(),
+                identity: "tree".into(),
+            }],
+            Some(scratch.path()),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("canonicalize {}", descendant.display())),
+            "{message}"
+        );
+
+        let owner = scratch.path().join("missing-owner");
+        let error = super::fingerprint(
+            &tree,
+            false,
+            &[],
+            &[super::LinkOwner {
+                source: owner.clone(),
+                identity: "owner".into(),
+            }],
+            Some(scratch.path()),
+        )
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains(&format!("canonicalize {}", owner.display())));
+
+        let missing = tree.join("missing");
+        let error = super::fingerprint_input_root(&missing).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains(&format!("symlink_metadata {}", missing.display())));
+    }
 
     fn diagnostic(path: &Path, before: &Metadata, after: &Metadata) -> String {
         let error = tree_changed(path, before, Ok(after), None);

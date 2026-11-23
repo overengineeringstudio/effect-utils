@@ -133,6 +133,7 @@ import {
   StoreLayer,
   withStoreEnumeration,
   type StoreEnumerationTelemetry,
+  type StoreRepoCensus,
 } from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
 import {
@@ -687,6 +688,7 @@ const toStoreGcAction = ({
   done,
   planSha256,
   candidateOutcomes,
+  census,
 }: {
   basePath: string
   results: ReadonlyArray<StoreGcResult>
@@ -701,6 +703,7 @@ const toStoreGcAction = ({
   done: boolean
   planSha256?: string | undefined
   candidateOutcomes?: Extract<StoreAction, { _tag: 'SetGc' }>['candidateOutcomes']
+  census?: StoreRepoCensus | undefined
 }): StoreAction => ({
   _tag: 'SetGc',
   basePath,
@@ -720,7 +723,9 @@ const toStoreGcAction = ({
   activeWorktreeCount,
   statusMessage,
   done,
-  censusStatus: repoCount === undefined ? 'unknown' : 'complete',
+  complete: census?.complete ?? false,
+  unaccounted: census?.unaccounted ?? [],
+  censusStatus: census?.complete === true ? 'complete' : 'unknown',
   ...(planSha256 !== undefined ? { planSha256 } : {}),
   ...(candidateOutcomes === undefined
     ? {}
@@ -2312,7 +2317,8 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
   Effect.flatMap(resolveOutputOption(output), (outputMode) =>
     Effect.gen(function* () {
       const store = yield* Store
-      const repos = yield* store.listRepos
+      const census = yield* store.listRepos
+      const repos = census.repos
 
       yield* runStoreCommand({
         output: outputMode,
@@ -2320,6 +2326,8 @@ const storeLsCommand = Cli.Command.make('ls', { output: outputOption }, ({ outpu
           _tag: 'SetLs',
           basePath: store.basePath,
           repos: repos.map((r) => ({ relativePath: r.relativePath })),
+          complete: census.complete,
+          unaccounted: census.unaccounted,
         },
       })
     }).pipe(
@@ -2353,7 +2361,8 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
       })
 
       // List all repos and analyze worktrees in parallel
-      const repos = yield* store.listRepos
+      const census = yield* store.listRepos
+      const repos = census.repos
 
       const repoResults = yield* Effect.forEach(
         repos,
@@ -2540,6 +2549,8 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
         action: {
           _tag: 'SetStatus',
           basePath: store.basePath,
+          complete: census.complete,
+          unaccounted: census.unaccounted,
           repoCount: repos.length,
           worktreeCount: totalWorktreeCount,
           worktrees: worktreeStatuses,
@@ -2563,7 +2574,8 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
   Effect.flatMap(resolveOutputOption(output), (outputMode) =>
     Effect.gen(function* () {
       const store = yield* Store
-      const repos = yield* store.listRepos
+      const census = yield* store.listRepos
+      const repos = census.repos
       const startTime = Date.now()
 
       // Fetch repos with limited concurrency
@@ -2601,6 +2613,8 @@ const storeFetchCommand = Cli.Command.make('fetch', { output: outputOption }, ({
         action: {
           _tag: 'SetFetch',
           basePath: store.basePath,
+          complete: census.complete,
+          unaccounted: census.unaccounted,
           results: results,
           elapsedMs: elapsed,
         },
@@ -2782,6 +2796,12 @@ const storeGcCommand = Cli.Command.make(
         }
       }
 
+      let gcCensus = yield* store.listRepos
+      if (dryRun === false && gcCensus.complete === false)
+        return yield* new StoreCommandError({
+          message: 'Store census is incomplete; refusing mutating gc',
+        })
+
       if (budgetPolicy !== undefined && Option.isSome(budgets) === true) {
         if (dryRun === false && targetedApply === false) {
           return yield* new StoreCommandError({
@@ -2802,7 +2822,8 @@ const storeGcCommand = Cli.Command.make(
             refreshCurrentWorkspace: false,
             now,
           })
-          const repos = yield* store.listRepos
+          const census = yield* store.listRepos
+          const repos = census.repos
           const repoWorktrees = yield* Effect.forEach(
             repos,
             (repo) =>
@@ -2811,17 +2832,17 @@ const storeGcCommand = Cli.Command.make(
                   repo.fullPath,
                   EffectPath.unsafe.relativeDir('.bare/'),
                 )
-                const census = yield* collectBudgetRepoWorktrees({
+                const worktreeCensus = yield* collectBudgetRepoWorktrees({
                   fs,
                   repoPath: repo.fullPath,
                   bareRepoPath,
                   storeBasePath: store.basePath,
                 })
-                return { repo, bareRepoPath, ...census }
+                return { repo, bareRepoPath, ...worktreeCensus }
               }),
             { concurrency: gcRepoConcurrency() },
           )
-          return { liveSet, repoWorktrees }
+          return { liveSet, repoWorktrees, unaccounted: census.unaccounted }
         })
         const inputs = yield* collectBudgetInputs
         const activity = yield* readBudgetWorkspaceActivity({ fs, config: activityConfig })
@@ -2859,6 +2880,10 @@ const storeGcCommand = Cli.Command.make(
           })
         }
         if (Option.isSome(expectedPlan) === true && Option.isSome(candidatePath) === true) {
+          if (plan.complete === false)
+            return yield* new StoreCommandError({
+              message: 'Store census is incomplete; refusing budget application',
+            })
           const expectedPlanValue = expectedPlan.value
           const candidatePathValue = candidatePath.value
           if (plan.planSha256 !== expectedPlanValue) {
@@ -2897,6 +2922,9 @@ const storeGcCommand = Cli.Command.make(
         if (mode._tag === 'json') {
           yield* Console.log(yield* Schema.encodeEffect(Schema.fromJsonString(BudgetPlan))(plan))
         } else {
+          yield* Console.log(`complete ${plan.complete}`)
+          for (const entry of plan.unaccounted)
+            yield* Console.log(`unaccounted ${entry.path} (${entry.reason})`)
           for (const [name, summary] of Object.entries(plan.classes)) {
             yield* Console.log(
               `${name}: ${summary.status} · ${summary.scanStatus} · ${summary.totalBytes} allocated bytes / ${summary.budgetBytes} budget · ${summary.evictedBytes} eviction bytes · ${summary.projectedBytes} projected bytes`,
@@ -3161,6 +3189,7 @@ const storeGcCommand = Cli.Command.make(
           dispatch(
             toStoreGcAction({
               basePath: store.basePath,
+              census: gcCensus,
               results,
               dryRun,
               warning: gcWarning,
@@ -3244,9 +3273,14 @@ const storeGcCommand = Cli.Command.make(
           if (progressive === true) {
             yield* dispatchGc({ done: false, forceDispatch: true })
           }
-          const repos = yield* store.listRepos.pipe(
+          gcCensus = yield* store.listRepos.pipe(
             Observability.withStoreGcPhaseSpan({ phase: 'list-repos' }),
           )
+          const repos = gcCensus.repos
+          if (dryRun === false && gcCensus.complete === false)
+            return yield* new StoreCommandError({
+              message: 'Store census is incomplete; refusing mutating gc',
+            })
           repoCount = repos.length
           statusMessage = 'checking worktrees'
           if (progressive === true) {
@@ -3352,7 +3386,12 @@ const storeGcCommand = Cli.Command.make(
                 const freshConfig = yield* loadStoreGcConfig({
                   storeBasePath: store.basePath,
                 })
-                const freshRepos = yield* store.listRepos
+                const freshCensus = yield* store.listRepos
+                if (freshCensus.complete === false)
+                  return yield* new StoreCommandError({
+                    message: 'Store census is incomplete; refusing mutating gc',
+                  })
+                const freshRepos = freshCensus.repos
                 const freshRepoWorktrees = yield* Effect.forEach(
                   freshRepos,
                   (repo) =>
@@ -4133,6 +4172,11 @@ const storeGcCommand = Cli.Command.make(
       // Final JSON callers want one stable document, not progress states. Run the
       // GC first and serialize only the final StoreApp state.
       const mode = yield* OutputModeTag.pipe(Effect.provide(outputModeLayer(outputMode)))
+      if (mode._tag !== 'json' && gcCensus.complete === false) {
+        yield* Console.log('complete false')
+        for (const entry of gcCensus.unaccounted)
+          yield* Console.log(`unaccounted ${entry.path} (${entry.reason})`)
+      }
 
       if (mode._tag === 'json' && mode.timing === 'final') {
         yield* runGcTransaction({ progressive: false })
@@ -4140,6 +4184,7 @@ const storeGcCommand = Cli.Command.make(
           output: outputMode,
           action: toStoreGcAction({
             basePath: store.basePath,
+            census: gcCensus,
             results,
             dryRun,
             warning: gcWarning,
@@ -4466,9 +4511,10 @@ const storeFixCommand = Cli.Command.make(
           Option.isSome(member) === true
             ? parseSourceString(config.members[member.value] ?? '')
             : undefined
+        const census = Option.isNone(member) === true ? yield* store.listRepos : undefined
         const repos =
-          Option.isNone(member) === true
-            ? yield* store.listRepos
+          census !== undefined
+            ? census.repos
             : selectedSource !== undefined && isRemoteSource(selectedSource) === true
               ? [
                   {
@@ -4545,6 +4591,8 @@ const storeFixCommand = Cli.Command.make(
                 tui.dispatch({
                   _tag: 'SetFix',
                   basePath: store.basePath,
+                  complete: census?.complete ?? true,
+                  unaccounted: census?.unaccounted ?? [],
                   results: [],
                   dryRun,
                   noIssues: true,
@@ -4565,6 +4613,8 @@ const storeFixCommand = Cli.Command.make(
               tui.dispatch({
                 _tag: 'SetFix',
                 basePath: store.basePath,
+                complete: census?.complete ?? true,
+                unaccounted: census?.unaccounted ?? [],
                 results,
                 dryRun,
                 noIssues: false,

@@ -1,11 +1,15 @@
 import { Effect } from 'effect'
-import type { HttpClient } from 'effect/http/HttpClient'
 import type { ReactNode } from 'react'
 
 import type { NotionApiError } from '@overeng/notion-effect-client'
-import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-effect-client'
 import type { BlockType } from '@overeng/notion-effect-schema'
 
+import {
+  NotionBlocks,
+  NotionPages,
+  NotionRendererClientLive,
+  type NotionRendererClient,
+} from './client.ts'
 import { NotionSyncError } from './errors.ts'
 import { createNotionRoot } from './host-config.ts'
 import type { Op } from './op-buffer.ts'
@@ -260,7 +264,7 @@ export const issueBlockUpdate = (
   blockId: string,
   type: BlockType,
   props: Record<string, unknown>,
-): Effect.Effect<unknown, NotionApiError, NotionConfig | HttpClient> => {
+): Effect.Effect<unknown, NotionApiError, NotionRendererClient> => {
   if (type === 'child_page') {
     const spans = pageTitleSpans(props.title)
     const hasTitle = spans !== undefined
@@ -293,10 +297,10 @@ export const issueBlockUpdate = (
  * Temporary block ids issued by the OpBuffer are mapped to real Notion ids
  * returned by `NotionBlocks.append` so nested inserts resolve correctly.
  */
-export const renderToNotion = (
+export const renderToNotionWithClient = (
   element: ReactNode,
   opts: { readonly pageId: string },
-): Effect.Effect<SyncResult, NotionSyncError, NotionConfig | HttpClient> =>
+): Effect.Effect<SyncResult, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     const buffer = collectOps(element, opts.pageId)
     const idMap = new Map<string, string>()
@@ -314,7 +318,7 @@ export const renderToNotion = (
      */
     const flushOverflow = (
       containerTmpId: string,
-    ): Effect.Effect<void, NotionSyncError, NotionConfig | HttpClient> =>
+    ): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
       Effect.gen(function* () {
         const topKids = childrenIndex.get(containerTmpId) ?? []
         const overflow = topKids.slice(MAX_CHILDREN_PER_APPEND)
@@ -415,3 +419,9 @@ export const renderToNotion = (
 
     return { ...tally(buffer.ops), pages: emptyPageCounts() }
   })
+
+/** Default token route. Inject NotionRendererClient with renderToNotionWithClient instead. */
+export const renderToNotion = (
+  element: ReactNode,
+  opts: Parameters<typeof renderToNotionWithClient>[1],
+) => renderToNotionWithClient(element, opts).pipe(Effect.provide(NotionRendererClientLive))

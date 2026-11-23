@@ -202,97 +202,36 @@ describe('selectRuns', () => {
     expect(selectRuns([evidenceRun(1, { head_branch: 'feature' })])).toEqual(expected)
   })
 
-  it('retains every main writer and caps each sampled lane independently', () => {
-    const runs = Array.from({ length: 30 }, (_, index) => [
+  it('retains every eligible lane without sampling across days', () => {
+    const runs = Array.from({ length: 116 }, (_, index) => [
       evidenceRun(index + 1, { workflow: 'ci.yml' }),
-      evidenceRun(index + 101),
-      evidenceRun(index + 201, { event: 'merge_group' }),
-      evidenceRun(index + 301, { event: 'pull_request', head_branch: 'feature' }),
+      evidenceRun(index + 1001),
+      evidenceRun(index + 2001, { event: 'merge_group' }),
+      evidenceRun(index + 3001, { event: 'pull_request', head_branch: 'feature' }),
     ]).flat()
     const result = selectRuns(runs)
-    expect(result.lanes).toEqual([
-      { lane: 'main-writer', seen: 30, selected: 30 },
-      { lane: 'main-reader', seen: 30, selected: 25 },
-      { lane: 'merge_group', seen: 30, selected: 30 },
-      { lane: 'pr', seen: 30, selected: 25 },
-    ])
-    expect(result.selected).toHaveLength(110)
-    expect(result.selected.filter((run) => classifyRun(run) === 'main-writer')).toEqual(
-      runs.filter((run) => classifyRun(run) === 'main-writer'),
-    )
-    expect(result.selected.filter((run) => classifyRun(run) === 'merge_group')).toEqual(
-      runs.filter((run) => classifyRun(run) === 'merge_group'),
-    )
-  })
-
-  it('samples at most 50 merge writers per UTC day by numeric run ID', () => {
-    const runs = Array.from({ length: 116 }, (_, index) =>
-      evidenceRun(index + 1, {
-        event: 'merge_group',
-        created_at: new Date(Date.UTC(2026, 9, 20, 0, 116 - index)).toISOString(),
-      }),
-    )
-    const result = selectRuns(runs)
-    const expectedIds = Array.from({ length: 50 }, (_, index) => 1 + Math.floor((index * 115) / 49))
-    expect(result.selected.map((run) => run.id).sort((a, b) => a - b)).toEqual(expectedIds)
-    expect(result.lanes.find(({ lane }) => lane === 'merge_group')).toEqual({
-      lane: 'merge_group',
-      seen: 116,
-      selected: 50,
-    })
-    expect(selectRuns([...runs].reverse())).toEqual(result)
+    expect(result.selected).toHaveLength(464)
+    for (const lane of result.lanes) expect(lane.selected).toBe(lane.seen)
+    expect(selectRuns(runs.toReversed())).toEqual(result)
     const nextDay = runs.map((run) => ({
-      ...run,
-      id: run.id + 1000,
+      id: run.id + 10000,
+      event: run.event,
+      head_branch: run.head_branch,
       created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
+      workflow: run.workflow,
     }))
-    expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(100)
+    expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(928)
   })
 
-  it('applies reader limits independently to each UTC day', () => {
-    const runs = Array.from({ length: 30 }, (_, index) => evidenceRun(index + 1))
-    const nextDay = runs.map((run) => ({
-      ...run,
-      id: run.id + 100,
-      created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
-    }))
-    expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(50)
-  })
-
-  it('uses evenly spaced indices including both endpoints', () => {
-    const runs = Array.from({ length: 11 }, (_, index) => evidenceRun(index + 1))
-    expect(selectRuns(runs, 4).selected.map((run) => run.id)).toEqual([1, 4, 7, 11])
-    expect(selectRuns(runs, 1).selected.map((run) => run.id)).toEqual([1])
-    expect(selectRuns(runs, 0).selected).toEqual([])
-    expect(selectRuns(runs, 11).selected).toEqual(runs)
-    expect(selectRuns(runs, 20).selected).toEqual(runs)
-  })
-
-  it('deduplicates run IDs before counting and sampling', () => {
+  it('deduplicates delivery without dropping distinct run IDs', () => {
     const runs = [evidenceRun(1), evidenceRun(2), evidenceRun(3)]
-    const result = selectRuns([...runs, ...runs, runs[0]!], 2)
-    expect(result.selected.map((run) => run.id)).toEqual([1, 3])
+    const result = selectRuns([...runs, ...runs, runs[0]!])
+    expect(result.selected.map((run) => run.id)).toEqual([1, 2, 3])
     expect(result.lanes.find(({ lane }) => lane === 'main-reader')).toEqual({
       lane: 'main-reader',
       seen: 3,
-      selected: 2,
+      selected: 3,
     })
-  })
-
-  it('orders by creation time then numeric ID independently of input order', () => {
-    const timestamp = '2026-10-20T12:00:00.000Z'
-    const runs = [
-      evidenceRun(20, { created_at: timestamp }),
-      evidenceRun(3, { created_at: timestamp }),
-      evidenceRun(10, { created_at: timestamp }),
-      evidenceRun(100, { created_at: '2026-10-20T11:00:00.000Z' }),
-      evidenceRun(1, { created_at: '2026-10-20T13:00:00.000Z' }),
-    ]
-    const expected = selectRuns(runs, 3)
-    expect(expected.selected.map((run) => run.id)).toEqual([100, 10, 1])
-    expect(selectRuns([...runs].reverse(), 3)).toEqual(expected)
-    expect(selectRuns([...runs.slice(2), ...runs.slice(0, 2)], 3)).toEqual(expected)
-    expect(selectRuns(runs, 1).selected.map((run) => run.id)).toEqual([100])
   })
 
   it('chooses duplicate metadata deterministically across permutations', () => {
@@ -301,6 +240,6 @@ describe('selectRuns', () => {
       evidenceRun(1, { workflow: 'ci-test.yml' }),
       evidenceRun(2),
     ]
-    expect(selectRuns(runs)).toEqual(selectRuns([...runs].reverse()))
+    expect(selectRuns(runs)).toEqual(selectRuns(runs.toReversed()))
   })
 })

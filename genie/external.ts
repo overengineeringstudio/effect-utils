@@ -701,6 +701,13 @@ const stylexUnpluginPatch = {
     'packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch',
 } satisfies PatchesRegistry
 
+// Terminal OTLP batch/shutdown outcomes, identical to the hook proposed in
+// https://github.com/Effect-TS/effect/pull/10707 (commit 1b9ffc0079).
+// Retire with an upstream release: https://github.com/overengineeringstudio/effect-utils/issues/2567.
+const effectExporterObserverPatch = {
+  'effect@4.1.0': 'patches/effect@4.1.0.patch',
+} satisfies PatchesRegistry
+
 /** Patches applied in effect-utils, including the shared consumer patches below. */
 export const effectUtilsWorkspacePatches = definePatchedDependencies({
   location: '.',
@@ -715,6 +722,7 @@ export const effectUtilsWorkspacePatches = definePatchedDependencies({
     ...storybookBuilderVitePatch,
     ...stylexBabelPluginPatch,
     ...stylexUnpluginPatch,
+    ...effectExporterObserverPatch,
   },
 })
 
@@ -726,6 +734,7 @@ const patches: PatchesRegistry = {
   ...storybookBuilderVitePatch,
   ...stylexBabelPluginPatch,
   ...stylexUnpluginPatch,
+  ...effectExporterObserverPatch,
 }
 
 /**

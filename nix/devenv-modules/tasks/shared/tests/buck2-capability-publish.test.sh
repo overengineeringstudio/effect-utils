@@ -180,8 +180,12 @@ assert_result() {
     .generation == $gen and .retainedCount == $count and .pruningDeferred == $deferred
   ' "$result" >/dev/null || fail "incorrect publication result for $version"
 }
+gc_root_registered() {
+  grep -Fxq -- "$1 -> $2" "$TEMP_ROOT/gc-roots"
+}
 assert_retained() {
   local root="$1" count="$2" version gen directory root_link target manifest expected
+  local -a targets=()
   [ -d "$root/.buck2/capabilities" ] && [ ! -L "$root/.buck2/capabilities" ] || fail "capability cell is not a stable real directory"
   "$BUN" -e '
     const fs = require("fs");
@@ -197,15 +201,18 @@ assert_retained() {
       process.exit(1);
     }
   ' "$root/.buck2/capabilities" "$count" "$TEMP_ROOT" || fail "generation set does not match selected defs or expected retained count"
+  for version in "${versions[@]}"; do targets+=("$(profile "$version")"); done
+  # Scan machine-wide GC roots once, freshly for this assertion phase.
+  "$NIX_STORE_COMMAND" --query --roots "${targets[@]}" >"$TEMP_ROOT/gc-roots" \
+    || fail "could not query real Nix GC roots"
   for version in "${versions[@]}"; do
     target="$(profile "$version")"
     gen="$(generation "$target")"
     directory="$(published_tool_directory "$root" "$version" archive-tool)"
     root_link="$root/.buck2/capability-roots/$gen"
-    "$NIX_STORE_COMMAND" --query --roots "$target" >"$TEMP_ROOT/gc-roots"
     if [ -f "$root/.buck2/capability-references/$gen.json" ]; then
       [ "$(readlink "$root_link")" = "$target" ] || fail "retained generation $gen lost its profile root"
-      grep -Fq -- "$root_link" "$TEMP_ROOT/gc-roots" || fail "retained generation $gen is not registered with the real Nix GC"
+      gc_root_registered "$root_link" "$target" || fail "retained generation $gen is not registered with the real Nix GC"
       manifest="$directory/manifest.json"
       expected="$(jq -er '.executableStorePath' "$manifest")"
       [ "$(readlink "$directory/executable")" = "$expected" ] || fail "executable link was rewritten through aggregate output"
@@ -232,6 +239,14 @@ for version in "${versions[@]}"; do
   assert_result "$TEMP_ROOT/live-$version.json" "$version" "$count" true
 done
 assert_retained "$live" 5
+one_root="$live/.buck2/capability-roots/$(generation "$(profile one)")"
+two_root="$live/.buck2/capability-roots/$(generation "$(profile two)")"
+# A batched result contains both profiles: root presence alone must not prove
+# that a root belongs to a particular profile, nor may a prefix match succeed.
+gc_root_registered "$one_root" "$(profile one)" || fail "batched roots omitted profile one"
+gc_root_registered "$two_root" "$(profile two)" || fail "batched roots omitted profile two"
+if gc_root_registered "$one_root" "$(profile two)"; then fail "batched roots accepted the wrong profile"; fi
+if gc_root_registered "${one_root%?}" "$(profile one)"; then fail "batched roots accepted a partial root path"; fi
 # Even after a different isolation is incomplete, every generation remains.
 mkdir -p "$(state_root "$live")/incomplete-isolation"
 rm "$(state_root "$live")/alternate-isolation/buckd.pid"

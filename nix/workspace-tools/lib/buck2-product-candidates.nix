@@ -18,6 +18,8 @@
 
 let
   importProduct = import ./javascript-product-import.nix { inherit pkgs; };
+  publicationOwner = import ../../buck2-publication-owner.nix { inherit pkgs; };
+  publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
   opentuiCoreNative = import ../../opentui-core-native.nix { inherit pkgs; };
   opentuiCoreExternalModules = [
     "@opentui/core-darwin-arm64"
@@ -100,6 +102,7 @@ let
     binaryName = "genie";
     environment = genieProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
+      BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
       # Bun caches plugin-linked imports without the invoking workspace's lock.
       BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
     };
@@ -178,8 +181,11 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
+    # Avoid Bun's runtime ancestor enumeration of the shared /nix/store directory.
+    compile = true;
     environment = megarepoProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
+      BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
     };
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
@@ -226,7 +232,9 @@ let
           --run 'if [ "$#" -gt 1 ] && [ "$1" = db ]; then case "$2" in init|pull|push|sync|export|status|conflicts|forget|restore|doctor) shift; exec ${notionDb}/bin/notion-db-runtime "$@";; esac; fi'
         "$out/bin/notion" md --help >/dev/null
         db_output="$($out/bin/notion db sync --help 2>&1 || true)"
-        printf '%s\n' "$db_output" | ${pkgs.gnugrep}/bin/grep -q 'Reconcile an established workspace'
+        # Avoid an early-closing grep pipe: long help output can SIGPIPE printf under pipefail.
+        # https://github.com/overengineeringstudio/effect-utils/issues/2690
+        case "$db_output" in *'Reconcile an established workspace'*) ;; *) exit 1 ;; esac
         mkdir -p "$out/share/fish/vendor_completions.d" "$out/share/bash-completion/completions" "$out/share/zsh/site-functions"
         for shell in fish bash zsh; do
           case "$shell" in

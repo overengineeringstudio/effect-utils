@@ -91,6 +91,7 @@ nix eval --impure --json --expr '
         ) [
           { path = "package.json"; }
           { path = "patches/@myobie__pty@0.10.0.patch"; }
+          { path = "patches/effect@4.1.0.patch"; }
           { path = "${package}/tsconfig.json"; }
           { path = "${package}/BUCK"; }
           { path = "buck2/dependencies/pnpm-lock.sha256.json"; rules = true; }

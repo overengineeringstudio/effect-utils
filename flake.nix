@@ -152,6 +152,7 @@ rec {
         capabilityPackages = {
           inherit buck2 buck2-go buck2-bun-compile-runtime;
           inherit pnpm;
+          # Hermetic actions need the raw runtime, not publication-specific environment.
           bun = pkgs.bun;
           buck2-node = pkgs.writeShellScriptBin "node" ''
             exec ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node "$@"
@@ -311,6 +312,44 @@ rec {
         buckProducts = trackedBuck2Products;
         checks = {
           stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+          publication-owner-identity = import ./nix/buck2-publication-owner.test.nix { inherit pkgs; };
+          worktree-teardown-runtime = pkgs.runCommand "worktree-teardown-runtime" { } ''
+            export HOME="$TMPDIR/home"
+            root="$TMPDIR/retired"
+            mkdir -p "$HOME" "$root"
+            ${pkgs.git}/bin/git -C "$root" init -q
+            touch "$root/.buckroot" "$root/.buckconfig"
+            # A root-owned lifecycle file forces the packaged entrypoint to
+            # resolve and run the real pinned Buck2 client, without a daemon.
+            state="$HOME/.buck/buckd/''${root#/}"
+            ${pkgs.lib.optionalString (builtins.hasAttr system (import ./nix/buck2-release.nix).platforms) ''
+              mkdir -p "$state/runtime-test"
+              touch "$state/runtime-test/buckd.lifecycle"
+            ''}
+            env -i HOME="$HOME" PATH=/nonexistent \
+              ${self.packages.${system}.worktree-teardown}/bin/worktree-teardown "$root"
+            test ! -e "$state"
+            touch "$out"
+          '';
+          worktree-tools-identity =
+            pkgs.runCommand "worktree-tools-identity"
+              {
+                nativeBuildInputs = [
+                  pkgs.git
+                  pkgs.python3
+                ];
+                WORKTREE_TEST_TOOLS = buck2;
+                WORKTREE_TEST_GITIGNORE = ./.gitignore;
+                WORKTREE_TEST_OTEL = "${ciTestShellProducts.otel-span}/bin/otel-span";
+              }
+              ''
+                export HOME="$TMPDIR/home"
+                mkdir -p "$HOME"
+                cp ${./scripts/worktree-env.py} worktree-env.py
+                cp ${./scripts/worktree-env.test.py} worktree-env.test.py
+                ${pkgs.python3}/bin/python3 worktree-env.test.py
+                touch "$out"
+              '';
           editor-view-budget-smoke =
             pkgs.runCommand "editor-view-budget-smoke" { nativeBuildInputs = [ pkgs.jq ]; }
               ''
@@ -347,9 +386,50 @@ rec {
           // buckCompiledProducts
           // capabilityPackages
           // {
-            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs; };
+            worktree-tools = import ./nix/worktree-tools.nix {
+              inherit pkgs buck2;
+              events = capabilityPackages.buck2-events;
+              otelSpan = self.packages.${system}.otel-span;
+              tools = with capabilityPackages; [
+                bun
+                buck2-node
+                buck2-python-bootstrap
+                pnpm
+                effect-tsgo
+                oxfmt
+                oxlint-with-plugins
+                pkgs.coreutils
+                pkgs.git
+                pkgs.nix
+                pkgs.watchman
+              ];
+              environment.BUCK2_BIN = "${buck2}/bin/buck2";
+              prepare = ''
+                set -euo pipefail
+                root="$1"
+                generation="$2"
+                profile="''${WORKTREE_CAPABILITIES_PROFILE:-${buck2Capabilities}}"
+                ${pkgs.nix}/bin/nix-store --realise --add-root "$generation/profile" --indirect "$profile" >&2
+                ${capabilityPackages.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
+                  --root "$root" --profile "$profile" --nix-store ${pkgs.nix}/bin/nix-store \
+                  --buck2 ${buck2}/bin/buck2 >&2
+                if [ -x "$profile/quick-contracts/bin/quick-contracts-prepare" ]; then
+                  (cd "$root" && WORKTREE_CAPABILITIES_PROFILE="$profile" \
+                    "$profile/quick-contracts/bin/quick-contracts-prepare" "$root" "$generation")
+                fi
+              '';
+              preflight = ''
+                set -euo pipefail
+                if ! ${pkgs.diffutils}/bin/cmp "$2/profile/defs.bzl" "$1/.buck2/capabilities/defs.bzl"; then
+                  echo "Worktree capability selection changed; run ${pkgs.python3}/bin/python3 scripts/worktree-env.py prepare" >&2
+                  exit 1
+                fi
+              '';
+            };
+            worktree-teardown = import ./nix/worktree-teardown.nix { inherit pkgs buck2; };
             editor-view-budget = import ./nix/editor-view-budget.nix { inherit pkgs; };
             editor-view-lease = pkgs.callPackage ./nix/editor-view-lease { };
+            editor-view-source = import ./nix/editor-view-lease/consumer.nix { inherit pkgs; };
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
             stylex-next-fixture = stylexNextFixture;
