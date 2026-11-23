@@ -409,6 +409,17 @@ and compressed payloads; allocated disk usage and exclusive reclamation are sepa
 Linux libc identity uses the declared absolute `MR_GETCONF_BIN` provider; neither
 the packaged CLI nor normal source tasks depend on an ambient `getconf`.
 
+`readPoolProvenance({ base })` observes an existing ledger through the same canonical
+decoder and accounting checks, without initialization, repair, locking or writes.
+Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
+errors remain fixed, redacted errors, never an empty or repaired pool. Original
+schema/filesystem errors and their causes are not exported. `PoolProvenanceObservation`
+exports recorded root/id/generation and ready/unclaimed state, not fresh authority.
+Owner labels are not authenticated seats; activity, terminal claim/birth/retarget
+and execution provenance missing from v1 remain explicitly Missing. Tokens and
+nonces are not exported. Every observation is HOLD with `authorizesRemoval: false`;
+Hygiene remains the sole remover, and physical/removal integration stays off.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
