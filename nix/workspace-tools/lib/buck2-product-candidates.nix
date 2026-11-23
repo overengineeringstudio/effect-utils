@@ -183,7 +183,10 @@ let
       worktree-teardown = {
         capability = "worktree-teardown";
         environment.WORKTREE_TEARDOWN_BIN = "${
-          import ../../worktree-teardown.nix { inherit pkgs; }
+          import ../../worktree-teardown.nix {
+            inherit pkgs;
+            buck2 = import ../../buck2.nix { inherit pkgs; };
+          }
         }/bin/worktree-teardown";
       };
     };
