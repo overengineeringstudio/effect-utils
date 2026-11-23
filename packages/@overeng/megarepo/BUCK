@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:97aa30f7664ac4659e7f55b4366e501638735c7ef124246b1ac852c3a63b2c79
+# Semantic fingerprint: sha256:5fbe4abbea52378ec7e4f3a9939bba001b45fbc87f0bfce8e8dfd392ac8a38cd
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -288,6 +288,7 @@ export_materialization_inputs([
     "src/store/store-rehome.integration.test.ts",
     "src/store/store-rehome.ts",
     "src/store/store-symlink.unit.test.ts",
+    "src/store/store-verified-directory-pins.integration.test.ts",
     "src/store/store-workspace-activity.integration.test.ts",
     "src/store/store-workspace-activity.ts",
     "src/store/store-worktree-policy.ts",
@@ -620,6 +621,7 @@ package_view(
         "src/store/store-rehome.integration.test.ts": "src/store/store-rehome.integration.test.ts",
         "src/store/store-rehome.ts": "src/store/store-rehome.ts",
         "src/store/store-symlink.unit.test.ts": "src/store/store-symlink.unit.test.ts",
+        "src/store/store-verified-directory-pins.integration.test.ts": "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts": "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
@@ -954,6 +956,7 @@ package_view(
         "src/store/store-rehome.integration.test.ts": "src/store/store-rehome.integration.test.ts",
         "src/store/store-rehome.ts": "src/store/store-rehome.ts",
         "src/store/store-symlink.unit.test.ts": "src/store/store-symlink.unit.test.ts",
+        "src/store/store-verified-directory-pins.integration.test.ts": "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts": "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
@@ -1283,6 +1286,7 @@ package_view(
         "src/store/store-rehome.integration.test.ts": "src/store/store-rehome.integration.test.ts",
         "src/store/store-rehome.ts": "src/store/store-rehome.ts",
         "src/store/store-symlink.unit.test.ts": "src/store/store-symlink.unit.test.ts",
+        "src/store/store-verified-directory-pins.integration.test.ts": "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts": "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
@@ -1430,6 +1434,7 @@ vitest_test(
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
+        "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-pool-state.integration.test.ts",
         "src/store/store-rehome.basic.integration.test.ts",
         "src/store/store-rehome.integration.test.ts",
@@ -1482,6 +1487,7 @@ vitest_collect(
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
+        "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-pool-state.integration.test.ts",
         "src/store/store-rehome.basic.integration.test.ts",
         "src/store/store-rehome.integration.test.ts",

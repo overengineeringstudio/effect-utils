@@ -97,6 +97,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-liveness.integration.test.ts',
         'src/store/store-lossless.integration.test.ts',
         'src/store/store-pinned-deletion.integration.test.ts',
+        'src/store/store-verified-directory-pins.integration.test.ts',
         'src/store/store-pool-state.integration.test.ts',
         'src/store/store-rehome.basic.integration.test.ts',
         'src/store/store-rehome.integration.test.ts',
