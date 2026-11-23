@@ -44,6 +44,7 @@ import {
 } from './buck2-cache-proof-history.ts'
 import { writeBuck2CacheProofReports } from './buck2-cache-proof-reports.ts'
 import { decodeEvidence, renderWarm99Diagnostics } from './buck2-cache-warm99.ts'
+import { OccurrenceQueryError, queryOccurrences } from './buck2-cache-occurrences.ts'
 
 const limits = {
   runs: 1000,
@@ -117,6 +118,7 @@ const timestamp = ({ value, now }: { value: string; now: number }) => {
 }
 
 const help = `buck2-cache-join --repo owner/name (--since <ISO-8601|24h> [--until <ISO-8601|duration>] | --previous-utc-day) [--format prometheus|json] [--otlp-spool <pending-directory>]
+buck2-cache-join occurrences --records-dir DIR --since ISO-8601 [--until ISO-8601] [--host HOST] [--key FULL_ACTION_DIGEST]
 
 Join strict Buck2 action evidence from selected workflow runs created in the bounded window.
 GITHUB_TOKEN is required (Actions read permission). No GitHub writes are performed.
@@ -187,6 +189,10 @@ const readZip = Effect.fn('buck2-cache-join.read-zip')(function* (
 })
 
 const program = Effect.gen(function* () {
+  if (process.argv[2] === 'occurrences') {
+    process.stdout.write(yield* queryOccurrences(process.argv.slice(3)))
+    return
+  }
   const options = yield* Effect.try({
     try: () =>
       parseArgs({
@@ -756,7 +762,7 @@ const program = Effect.gen(function* () {
   Effect.timeout('15 minutes'),
   // HttpClient errors carry request headers; never print the token in diagnostics.
   Effect.mapError((cause) =>
-    cause instanceof JoinError
+    cause instanceof JoinError || cause instanceof OccurrenceQueryError
       ? cause
       : failure('GitHub request, response decoding, or collection deadline failed'),
   ),
