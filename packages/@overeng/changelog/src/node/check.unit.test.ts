@@ -119,19 +119,13 @@ describe('checkChangelog coverage', () => {
     }),
   )
 
-  it.effect('reports unavailable history only when asked to', () =>
+  it.effect('fails when the base or history is missing', () =>
     Effect.gen(function* () {
       const { config } = makeRepo()
       const missing = checkChangelog({ config, base: 'origin/nowhere' })
       expect((yield* Effect.flip(missing.pipe(Effect.provide(NodeServices.layer))))._tag).toBe(
         'ChangelogGitError',
       )
-      const report = yield* checkChangelog({
-        config,
-        base: 'origin/nowhere',
-        missingHistory: 'report',
-      }).pipe(Effect.provide(NodeServices.layer))
-      expect(report.coverage._tag).toBe('Unavailable')
     }),
   )
 })

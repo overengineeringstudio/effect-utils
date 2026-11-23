@@ -96,7 +96,7 @@ export const collectGitChanges = Effect.fn('changelog.collectGitChanges')(functi
 export interface ChangelogCheckReport {
   readonly entries: number
   readonly screenshots: number
-  readonly coverage: CoverageResult | { readonly _tag: 'Unavailable'; readonly reason: string }
+  readonly coverage: CoverageResult
 }
 
 /**
@@ -104,20 +104,16 @@ export interface ChangelogCheckReport {
  * 1. every entry decodes strictly and scenes pair with screenshot entries;
  * 2. changed source paths ship a new entry or a `changelog: none — <reason>` commit line;
  * 3. every screenshot is rendered and fresh (its recorded hash matches its inputs).
+ *
+ * Coverage needs the merge-base with `base`; a missing base or shallow history fails the check.
  */
 export const checkChangelog = Effect.fn('changelog.check')(function* <Text, Fields>({
   config,
   base,
-  missingHistory = 'fail',
 }: {
   readonly config: ChangelogConfig<Text, Fields>
   /** Git ref the change set is measured against, e.g. `origin/main`. */
   readonly base: string
-  /**
-   * `report` turns a missing base or history (shallow CI checkouts) into an `Unavailable`
-   * coverage result instead of a failure. Entry validation and freshness still apply.
-   */
-  readonly missingHistory?: 'fail' | 'report' | undefined
 }) {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
@@ -155,17 +151,10 @@ export const checkChangelog = Effect.fn('changelog.check')(function* <Text, Fiel
     paths: config.sourcePaths,
     changelogDirectory: config.changelogDirectory ?? DEFAULT_CHANGELOG_DIRECTORY,
   }
-  const coverage = yield* collectGitChanges({ root: config.root, base }).pipe(
-    Effect.map((changes) => checkCoverage({ config: coverageConfig, ...changes })),
-    Effect.catchTag('ChangelogGitError', (error) =>
-      missingHistory === 'report'
-        ? Effect.succeed({
-            _tag: 'Unavailable' as const,
-            reason: `git ${error.args.join(' ')}: ${error.message}`,
-          })
-        : Effect.fail(error),
-    ),
-  )
+  const coverage = checkCoverage({
+    config: coverageConfig,
+    ...(yield* collectGitChanges({ root: config.root, base })),
+  })
   if (coverage._tag === 'Missing') {
     problems.push(describeMissingCoverage({ config: coverageConfig, sources: coverage.sources }))
   }
