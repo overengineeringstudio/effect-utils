@@ -261,7 +261,7 @@ export const probeWatchman = async ({
       ? []
       : [
           '--no-site-spawner',
-          `--statefile=${join(managedDirectory, 'state')}`,
+          '--no-save-state',
           `--pidfile=${join(managedDirectory, 'pid')}`,
           `--logfile=${join(managedDirectory, 'log')}`,
         ]),
@@ -408,6 +408,68 @@ export const probeWatchman = async ({
       fix: `watchman watch ${shellQuote(root)}; then run ${command}`,
     })
   return true
+}
+
+/** Root creation/reuse is a crawl operation, not a short service liveness probe. */
+export class WatchmanCrawlError extends Error {
+  readonly reason = 'crawl'
+
+  constructor({
+    root,
+    deadlineMs,
+    cause,
+  }: {
+    readonly root: string
+    readonly deadlineMs: number
+    readonly cause: unknown
+  }) {
+    super(
+      `Buck2 Watchman initial crawl failed (crawl): ${root}; initialization budget ${deadlineMs} ms.\n${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    )
+    this.name = 'WatchmanCrawlError'
+  }
+}
+
+/** Register an owned root before checks enter their short admission critical path. */
+export const initializeWatchmanRoot = async ({
+  env,
+  repoRoot,
+  deadlineMs,
+  managedDirectory,
+}: {
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly repoRoot: string
+  readonly deadlineMs: number
+  readonly managedDirectory?: string
+}): Promise<void> => {
+  const root = realpathSync(repoRoot)
+  const started = performance.now()
+  const deadline = AbortSignal.timeout(deadlineMs)
+  let outcome = 'error'
+  writeSync(
+    2,
+    `${JSON.stringify({ event: 'buck2.watchman.crawl', phase: 'start', root, deadlineMs })}\n`,
+  )
+  try {
+    await probeWatchman({
+      env,
+      repoRoot: root,
+      deadlineMs,
+      managedDirectory,
+      // The existing timeout retry shares one total crawl deadline. A timed-out
+      // first attempt cannot acquire a second initialization budget.
+      makeDeadlineSignal: () => deadline,
+    })
+    outcome = 'ok'
+  } catch (cause) {
+    throw new WatchmanCrawlError({ root, deadlineMs, cause })
+  } finally {
+    writeSync(
+      2,
+      `${JSON.stringify({ event: 'buck2.watchman.crawl', phase: 'end', root, durationMs: performance.now() - started, outcome })}\n`,
+    )
+  }
 }
 
 /** Stop a legacy/provider-mismatched daemon only in this invocation's registered isolation. */
