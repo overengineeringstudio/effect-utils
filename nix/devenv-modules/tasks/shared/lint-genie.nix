@@ -28,20 +28,24 @@ in
       after = [ "pnpm:install" ];
       exec = trace.exec "lint:check:lockfile" ''
         set -euo pipefail
+        source ${lib.escapeShellArg (builtins.toString ./pnpm-task-helpers.sh)}
         store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-$PWD/.devenv/pnpm-store}}}"
         export PNPM_STORE_DIR="$store_dir"
         export PNPM_CONFIG_STORE_DIR="$store_dir"
         export npm_config_store_dir="$store_dir"
         # Validate without rewriting node_modules while concurrent checks read it.
-        pnpm install \
-          --lockfile-only \
-          --frozen-lockfile \
-          --ignore-scripts \
-          --config.side-effects-cache=false \
-          --config.verify-store-integrity=true \
-          --config.strict-store-pkg-content-check=true \
-          --pm-on-fail=ignore \
-          --config.store-dir="$store_dir"
+        (
+          pnpm_install_umask
+          pnpm install \
+            --lockfile-only \
+            --frozen-lockfile \
+            --ignore-scripts \
+            --config.side-effects-cache=false \
+            --config.verify-store-integrity=true \
+            --config.strict-store-pkg-content-check=true \
+            --pm-on-fail=ignore \
+            --config.store-dir="$store_dir"
+        )
       '';
     };
     "lint:check" = {

@@ -209,6 +209,7 @@ exports[`megarepo wire baselines (cross-major invariant) > captures megarepo sto
     "_tag": "Gc",
     "activeWorktreeCount": 1,
     "basePath": "/store/root",
+    "complete": true,
     "completedRepoCount": 1,
     "discoveredWorktreeCount": 3,
     "done": true,
@@ -239,6 +240,7 @@ exports[`megarepo wire baselines (cross-major invariant) > captures megarepo sto
     ],
     "showForceHint": false,
     "statusMessage": "gc complete",
+    "unaccounted": [],
     "warning": {
       "message": "line one
 line two",
@@ -247,6 +249,8 @@ line two",
   },
   "encoded": "{
   "_tag": "Gc",
+  "complete": true,
+  "unaccounted": [],
   "basePath": "/store/root",
   "results": [
     {
@@ -286,6 +290,8 @@ line two",
 }",
   "reencoded": "{
   "_tag": "Gc",
+  "complete": true,
+  "unaccounted": [],
   "basePath": "/store/root",
   "results": [
     {
@@ -330,7 +336,7 @@ exports[`megarepo wire baselines (cross-major invariant) > captures megarepo sto
 {
   "nullDocument": {
     "_tag": "failed",
-    "error": "SchemaError(Expected { readonly "_tag": "Ls", ... } | { readonly "_tag": "Status", ... } | { readonly "_tag": "Fetch", ... } | { readonly "_tag": "Gc", ... } | { readonly "_tag": "Add", ... } | { readonly "_tag": "WorktreeNew", ... } | { readonly "_tag": "Fix", ... } | { readonly "_tag": "Error", ... } | { readonly "_tag": "Interrupted", ... })",
+    "error": "SchemaError(Expected { readonly "_tag": "Initial", ... } | { readonly "_tag": "Ls", ... } | { readonly "_tag": "Status", ... } | { readonly "_tag": "Fetch", ... } | { readonly "_tag": "Gc", ... } | { readonly "_tag": "Add", ... } | { readonly "_tag": "WorktreeNew", ... } | { readonly "_tag": "Fix", ... } | { readonly "_tag": "Error", ... } | { readonly "_tag": "Interrupted", ... })",
   },
   "nullOptionalMessage": {
     "_tag": "failed",
@@ -339,7 +345,7 @@ exports[`megarepo wire baselines (cross-major invariant) > captures megarepo sto
   },
   "unknownTag": {
     "_tag": "failed",
-    "error": "SchemaError(Expected { readonly "_tag": "Ls", ... } | { readonly "_tag": "Status", ... } | { readonly "_tag": "Fetch", ... } | { readonly "_tag": "Gc", ... } | { readonly "_tag": "Add", ... } | { readonly "_tag": "WorktreeNew", ... } | { readonly "_tag": "Fix", ... } | { readonly "_tag": "Error", ... } | { readonly "_tag": "Interrupted", ... })",
+    "error": "SchemaError(Expected { readonly "_tag": "Initial", ... } | { readonly "_tag": "Ls", ... } | { readonly "_tag": "Status", ... } | { readonly "_tag": "Fetch", ... } | { readonly "_tag": "Gc", ... } | { readonly "_tag": "Add", ... } | { readonly "_tag": "WorktreeNew", ... } | { readonly "_tag": "Fix", ... } | { readonly "_tag": "Error", ... } | { readonly "_tag": "Interrupted", ... })",
   },
 }
 `;

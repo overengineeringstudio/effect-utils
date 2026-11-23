@@ -4,12 +4,16 @@
 # Projection source: rust/effect-rust-fixtures/math-interop/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:82276a125bbf87e7e05801ad58c5ffa9619be2a084ce5e7e4541bbf05aec7316
+# Semantic fingerprint: sha256:4f3769c0791f362e4e8dde489530d8000a8197c081e1af8d6a1e9e33a9b015e0
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/BUCK.genie.ts, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/math-interop/src/**/*.rs, rust/effect-rust-fixtures/math-interop/tests/**/*.rs, rust/effect-rust-fixtures/math-interop/vectors.json, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/Cargo.toml
+# Test projection: disabled (opt in with testPackagePaths).
+# Doctests: unsupported (unit and integration harnesses only).
+# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
 load("//buck2:static_checks.bzl", "static_source_set")
+load("//buck2/rust:defs.bzl", "cargo_resource_inventory")
 static_source_set(
     name = "static_sources",
     prefix = "rust/effect-rust-fixtures/math-interop",
@@ -48,14 +52,28 @@ native.export_file(
     visibility = ["PUBLIC"],
 )
 
+cargo_resource_inventory(
+    name = "cargo-resource-inventory",
+    resources = {
+        "file-0": "vectors.json",
+    },
+    destinations = {
+        "file-0": "rust/effect-rust-fixtures/math-interop/vectors.json",
+    },
+    expected_digests = {
+        "file-0": "6b7b0d5f7fcb0726155a2a49426fd971149231d1e7ca8c502d516f1ba436293f",
+    },
+)
+
 native.rust_library(
     name = "lib",
     crate = "math_interop",
-    crate_root = "src/lib.rs",
+    crate_root = "rust/effect-rust-fixtures/math-interop/src/lib.rs",
     mapped_srcs = {
-        "src/contract.rs": "src/contract.rs",
-        "src/lib.rs": "src/lib.rs",
-        "vectors.json": "vectors.json",
+        "Cargo.toml": "rust/effect-rust-fixtures/math-interop/Cargo.toml",
+        "src/contract.rs": "rust/effect-rust-fixtures/math-interop/src/contract.rs",
+        "src/lib.rs": "rust/effect-rust-fixtures/math-interop/src/lib.rs",
+        "//rust/effect-rust-fixtures/math-interop:cargo-resource-inventory[file-0]": "rust/effect-rust-fixtures/math-interop/vectors.json",
     },
     deps = [
         "//rust/effect-rust-fixtures/math-core:lib",

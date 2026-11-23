@@ -1,19 +1,16 @@
 // Checked JavaScript: Node loads Vite config dependencies from node_modules without TS stripping.
 import { formatRelativeTime } from '../build-identity.js'
 
-/** @typedef {{readonly type: 'local', readonly rev: string, readonly ts: number, readonly commitTs?: number, readonly dirty: boolean}} LocalStamp */
-/** @typedef {{readonly type: 'nix', readonly version: string, readonly rev: string, readonly commitTs: number, readonly buildTs?: number, readonly dirty: boolean}} NixStamp */
-/** @typedef {LocalStamp | NixStamp} CliStamp */
-/**
- * Structured build identity shared by CLIs, UIs, diagnostics, and telemetry.
- * @typedef {{readonly baseVersion: string, readonly displayVersion: string, readonly machineVersion: string, readonly sourceKind: 'package' | 'local' | 'nix', readonly rev?: string, readonly dirty: boolean, readonly commitTs?: number, readonly buildTs?: number}} CliBuildIdentity
- */
-/** @typedef {{readonly baseVersion: string, readonly buildStamp: string, readonly env?: Readonly<Record<string, string | undefined>>, readonly now?: number, readonly runtimeStampEnvVar?: string}} ResolveBuildIdentityOptions */
+// Declarations own the public types; checkJs checks each implementation against its signature.
+/** @typedef {import('./cli-build-identity.d.ts').LocalStamp} LocalStamp */
+/** @typedef {import('./cli-build-identity.d.ts').NixStamp} NixStamp */
+/** @typedef {import('./cli-build-identity.d.ts').CliStamp} CliStamp */
+/** @typedef {import('./cli-build-identity.d.ts').CliBuildIdentity} CliBuildIdentity */
+/** @typedef {import('./cli-build-identity.d.ts').ResolveBuildIdentityOptions} ResolveBuildIdentityOptions */
 
 /**
  * Parse the canonical local/Nix JSON stamp.
- * @param {string} stamp
- * @returns {CliStamp | undefined}
+ * @type {typeof import('./cli-build-identity.d.ts').parseCliBuildStamp}
  */
 export const parseCliBuildStamp = (stamp) => {
   try {
@@ -103,8 +100,7 @@ const nixBuildIdentity = ({ stamp, now }) => ({
 
 /**
  * Resolve the canonical identity. Embedded Nix metadata takes precedence over runtime stamps.
- * @param {ResolveBuildIdentityOptions} options
- * @returns {CliBuildIdentity}
+ * @type {typeof import('./cli-build-identity.d.ts').resolveCliBuildIdentity}
  */
 export const resolveCliBuildIdentity = (options) => {
   const {
@@ -143,8 +139,8 @@ export const resolveCliBuildIdentity = (options) => {
   }
 }
 
-/** @param {ResolveBuildIdentityOptions} options @returns {string} */
+/** @type {typeof import('./cli-build-identity.d.ts').resolveCliMachineVersion} */
 export const resolveCliMachineVersion = (options) => resolveCliBuildIdentity(options).machineVersion
 
-/** @param {{baseVersion: string, buildStamp: string, runtimeStampEnvVar?: string}} options @returns {string} */
+/** @type {typeof import('./cli-build-identity.d.ts').resolveCliVersion} */
 export const resolveCliVersion = (options) => resolveCliBuildIdentity(options).displayVersion

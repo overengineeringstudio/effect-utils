@@ -14,6 +14,9 @@ const waitFor = async (description: string, condition: () => boolean) => {
 }
 
 const teardownFixture = () => {
+  const ownerLibrary = process.env['BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY']
+  if (ownerLibrary === undefined || ownerLibrary.length === 0)
+    throw new Error('Teardown fixture requires BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY')
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-gate-teardown-')))
   const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
   if (packaged === null || packaged === undefined) throw new Error('pinned buck2 wrapper required')
@@ -68,9 +71,11 @@ if (args.at(-1) === 'status') {
       .replaceAll('@shell@', bash)
       .replaceAll('@native@', native)
       .replaceAll('@launcher@', launcher)
+      .replaceAll('@publicationOwnerLibrary@', ownerLibrary)
       .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
     { mode: 0o700 },
   )
+  expect(readFileSync(wrapper, 'utf8')).not.toContain('@publicationOwnerLibrary@')
   const argv = [wrapper, '--isolation-dir', 'owned', 'build', '//:fixture']
   const env = {
     ...process.env,

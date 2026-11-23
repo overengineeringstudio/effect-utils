@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
+source "$ROOT/nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh"
 
 report_failure() {
   local status="$1"
@@ -157,9 +158,38 @@ install_flags=(
   --reporter=append-only
 )
 
-run_pnpm_logged "$tmpdir/root-a" "$tmpdir/root-a.log" "$PNPM" --dir "$tmpdir/root-a" install "${install_flags[@]}"
+(umask 022; run_pnpm_logged "$tmpdir/root-a" "$tmpdir/root-a.log" "$PNPM" --dir "$tmpdir/root-a" install "${install_flags[@]}")
 cp "$tmpdir/root-a/pnpm-lock.yaml" "$tmpdir/root-b/pnpm-lock.yaml"
 run_pnpm_logged "$tmpdir/root-b" "$tmpdir/root-b.log" "$PNPM" --dir "$tmpdir/root-b" install --frozen-lockfile "${install_flags[@]}"
+
+# Seeded entirely from a local tarball: the strict-umask imports must stay
+# offline and share a CAS inode, not silently create private package copies.
+# Force hardlink here so reflink-capable filesystems cannot hide a mode mismatch.
+for install_umask in 077 022; do
+  umask_root="$tmpdir/root-umask-$install_umask"
+  mkdir -p "$umask_root"
+  cp "$tmpdir/root-a/package.json" "$tmpdir/root-a/pnpm-lock.yaml" "$umask_root/"
+  (
+    umask "$install_umask"
+    parent_umask="$(umask)"
+    (
+      pnpm_install_umask
+      "$PNPM" --dir "$umask_root" install --offline --frozen-lockfile \
+        "${install_flags[@]}" --config.package-import-method=hardlink \
+        > "$tmpdir/umask-$install_umask.log" 2>&1
+    ) 2> "$tmpdir/umask-$install_umask.stderr"
+    test "$(umask)" = "$parent_umask"
+  )
+  umask_file="$umask_root/node_modules/hardlink-proof/index.js"
+  test "$(node -e 'process.stdout.write(String(require("node:fs").statSync(process.argv[1]).nlink))' "$umask_file")" -gt 1
+  test -n "$(find "$tmpdir/shared-store" -type f -samefile "$umask_file" -print -quit)"
+  if [ "$install_umask" = 077 ]; then
+    test "$(wc -l < "$tmpdir/umask-$install_umask.stderr" | tr -d ' ')" = 1
+    grep -q 'inherited umask 0077; using 0022' "$tmpdir/umask-$install_umask.stderr"
+  else
+    test ! -s "$tmpdir/umask-$install_umask.stderr"
+  fi
+done
 
 assert_contains \
   "$tmpdir/root-b.log" \
