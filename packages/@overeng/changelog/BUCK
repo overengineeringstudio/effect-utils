@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/changelog/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:2e22bc4a3f9fa95d059a8afcc0fa17c1bb68172c794bf80db834c264bf5d12a5
+# Semantic fingerprint: sha256:e37bb8d01880b16775594f00e55c467dc38acac6420beeee5ad4029491961503
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -29,8 +29,8 @@ export_materialization_inputs([
     "src/enforcement.ts",
     "src/enforcement.unit.test.ts",
     "src/mod.ts",
+    "src/node/check.integration.test.ts",
     "src/node/check.ts",
-    "src/node/check.unit.test.ts",
     "src/node/config.ts",
     "src/node/load.ts",
     "src/node/load.unit.test.ts",
@@ -87,8 +87,8 @@ package_view(
         "src/enforcement.ts": "src/enforcement.ts",
         "src/enforcement.unit.test.ts": "src/enforcement.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
+        "src/node/check.integration.test.ts": "src/node/check.integration.test.ts",
         "src/node/check.ts": "src/node/check.ts",
-        "src/node/check.unit.test.ts": "src/node/check.unit.test.ts",
         "src/node/config.ts": "src/node/config.ts",
         "src/node/load.ts": "src/node/load.ts",
         "src/node/load.unit.test.ts": "src/node/load.unit.test.ts",
@@ -123,8 +123,8 @@ package_view(
         "src/enforcement.ts": "src/enforcement.ts",
         "src/enforcement.unit.test.ts": "src/enforcement.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
+        "src/node/check.integration.test.ts": "src/node/check.integration.test.ts",
         "src/node/check.ts": "src/node/check.ts",
-        "src/node/check.unit.test.ts": "src/node/check.unit.test.ts",
         "src/node/config.ts": "src/node/config.ts",
         "src/node/load.ts": "src/node/load.ts",
         "src/node/load.unit.test.ts": "src/node/load.unit.test.ts",
@@ -159,8 +159,8 @@ package_view(
         "src/enforcement.ts": "src/enforcement.ts",
         "src/enforcement.unit.test.ts": "src/enforcement.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
+        "src/node/check.integration.test.ts": "src/node/check.integration.test.ts",
         "src/node/check.ts": "src/node/check.ts",
-        "src/node/check.unit.test.ts": "src/node/check.unit.test.ts",
         "src/node/config.ts": "src/node/config.ts",
         "src/node/load.ts": "src/node/load.ts",
         "src/node/load.unit.test.ts": "src/node/load.unit.test.ts",
@@ -219,11 +219,17 @@ npm_package_archive(
 vitest_test(
     name = "test",
     package_tree = ":test_package_tree",
+    excludes = [
+        "src/node/check.integration.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )
 
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    excludes = [
+        "src/node/check.integration.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )

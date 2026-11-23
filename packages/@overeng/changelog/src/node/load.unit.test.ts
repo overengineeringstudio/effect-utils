@@ -124,7 +124,13 @@ describe('changelog loading', () => {
         '.changelog/screenshots/2026-11-22-board.json': encodeScreenshotRecord({
           hash: 'sha256:x',
           images: [
-            { viewport: 'phone', scheme: 'light', file: '2026-11-22-board-phone-light.png', width: 390, height: 240 },
+            {
+              viewport: 'phone',
+              scheme: 'light',
+              file: '2026-11-22-board-phone-light.png',
+              width: 390,
+              height: 240,
+            },
           ],
         }),
         '.changelog/screenshots/2026-11-22-board-phone-light.png': png,
@@ -137,14 +143,26 @@ describe('changelog loading', () => {
       ])
       expect(built.assets).toHaveLength(1)
       const [asset] = built.assets
-      expect(asset!.fileName).toMatch(/^changelog\/2026-11-22-board-phone-light\.[0-9a-f]{10}\.png$/)
+      expect(asset!.fileName).toMatch(
+        /^changelog\/2026-11-22-board-phone-light\.[0-9a-f]{10}\.png$/,
+      )
       expect(built.manifest.entries[0]!.screenshot).toEqual({
         alt: 'The board',
-        images: [{ viewport: 'phone', scheme: 'light', src: `./${asset!.fileName}`, width: 390, height: 240 }],
+        images: [
+          {
+            viewport: 'phone',
+            scheme: 'light',
+            src: `./${asset!.fileName}`,
+            width: 390,
+            height: 240,
+          },
+        ],
         callouts: [{ n: 1, caption: 'This cell' }],
       })
       expect(
-        contract.decodeManifest(Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(built.bytes)),
+        contract.decodeManifest(
+          Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(built.bytes),
+        ),
       ).toEqual(built.manifest)
     }).pipe(Effect.provide(NodeServices.layer)),
   )

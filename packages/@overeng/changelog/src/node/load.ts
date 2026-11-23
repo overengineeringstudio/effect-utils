@@ -136,7 +136,7 @@ export const expandInputs = Effect.fn('changelog.expandInputs')(function* ({
         const info = yield* fs.stat(path.join(root, child))
         if (info.type === 'Directory') {
           if (Object.hasOwn(SKIPPED_DIRECTORIES, name) === false) yield* walk(child)
-        } else if (info.type === 'File' && patterns.some((pattern) => pattern.test(child))) {
+        } else if (info.type === 'File' && patterns.some((pattern) => pattern.test(child)) === true) {
           found.push(child)
         }
       }

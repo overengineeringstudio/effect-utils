@@ -26,7 +26,7 @@ export const globToRegExp = (glob: string): RegExp => {
     } else if (char === '?') {
       source += '[^/]'
     } else {
-      source += /[.+^${}()|[\]\\]/u.test(char) ? `\\${char}` : char
+      source += /[.+^${}()|[\]\\]/u.test(char) === true ? `\\${char}` : char
     }
   }
   return new RegExp(`^${source}$`, 'u')

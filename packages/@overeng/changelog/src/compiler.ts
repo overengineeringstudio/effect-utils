@@ -86,7 +86,7 @@ export interface EntryRegistration<Text, Fields> {
 /** Ring numbers run 1…n without gaps so captions read in order. */
 const assertRingNumbers = ({ file, numbers }: { file: string; numbers: ReadonlyArray<number> }) => {
   const sorted = numbers.toSorted((a, b) => a - b)
-  if (sorted.some((n, index) => n !== index + 1)) {
+  if (sorted.some((n, index) => n !== index + 1) === true) {
     throw new ChangelogCompileError({
       message: `ring annotations must be numbered 1…${numbers.length} without gaps or duplicates: ${file}`,
       file,
@@ -108,7 +108,7 @@ export const compileChangelog = <Text, Fields>({
   const entries = registrations
     .map(({ file, source, images }): Entry<Text, Fields> => {
       const identity = identityFromFilename(file)
-      if (seen.has(identity.id)) {
+      if (seen.has(identity.id) === true) {
         throw new ChangelogCompileError({
           message: `duplicate changelog entry id: ${identity.id}`,
           file,
@@ -134,9 +134,7 @@ export const compileChangelog = <Text, Fields>({
         screenshot: {
           alt: screenshot.alt,
           images: [first, ...more],
-          callouts: rings
-            .toSorted((a, b) => a.n - b.n)
-            .map(({ n, caption }) => ({ n, caption })),
+          callouts: rings.toSorted((a, b) => a.n - b.n).map(({ n, caption }) => ({ n, caption })),
         },
       } as Entry<Text, Fields>
     })

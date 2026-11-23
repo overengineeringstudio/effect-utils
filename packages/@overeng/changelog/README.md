@@ -33,7 +33,12 @@ export const entry = {
     alt: { de: 'Gebotsleiste mit Trumpfkarte', en: 'Bid panel with trump card' },
     crop: { target: '[data-testid="wizard-bid-panel"]', padding: 16 },
     annotations: [
-      { kind: 'ring', n: 1, target: '[data-testid="wizard-bid-trump"]', caption: { de: 'Trumpf', en: 'Trump' } },
+      {
+        kind: 'ring',
+        n: 1,
+        target: '[data-testid="wizard-bid-trump"]',
+        caption: { de: 'Trumpf', en: 'Trump' },
+      },
       { kind: 'arrow', target: '[data-testid="wizard-bid-trump"]', from: { dx: -90, dy: 60 } },
     ],
     inputs: ['src/games/wizard/**'],
@@ -56,12 +61,12 @@ Rendered images and their records live in `.changelog/screenshots/` and are comm
 
 ## Annotations
 
-| kind      | draws                                                                     |
-| --------- | ------------------------------------------------------------------------- |
+| kind      | draws                                                                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ring`    | Numbered hand-drawn ring. Its caption is published in the manifest as `callouts`, so the UI renders it as localized text below the picture. |
-| `arrow`   | Hand-drawn arrow ending at the target, starting from an offset to the target's centre. |
-| `mark`    | Freehand `underline`, `highlight` or `scribble` on the target.            |
-| `caption` | A short haloed label burnt into the image beside the target.              |
+| `arrow`   | Hand-drawn arrow ending at the target, starting from an offset to the target's centre.                                                      |
+| `mark`    | Freehand `underline`, `highlight` or `scribble` on the target.                                                                              |
+| `caption` | A short haloed label burnt into the image beside the target.                                                                                |
 
 Drawing is seeded by entry id and viewport, so re-renders are byte-stable for the same page.
 

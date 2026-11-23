@@ -19,7 +19,8 @@ export const NonEmptyTrimmedString = Schema.NonEmptyString.pipe(
 export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/u
 
 /** Authored entry module filename: `YYYY-MM-DD-slug.ts`. Scenes (`*.scene.ts`) never match. */
-export const ENTRY_FILENAME_PATTERN = /^(?<id>(?<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*)\.ts$/u
+export const ENTRY_FILENAME_PATTERN =
+  /^(?<id>(?<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*)\.ts$/u
 
 export const ChangelogEntryId = NonEmptyTrimmedString.pipe(
   Schema.check(Schema.isPattern(ENTRY_ID_PATTERN)),

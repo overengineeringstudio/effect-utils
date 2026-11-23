@@ -44,7 +44,10 @@ const makeRepo = () => {
   }
   git('init', '--quiet', '--initial-branch=main')
   write('app/src/chat.ts', 'v1\n')
-  write('app/.changelog/2026-11-20-chat.ts', `export const entry = { title: 'Chat', summary: 'Talk.', area: 'chat' }\n`)
+  write(
+    'app/.changelog/2026-11-20-chat.ts',
+    `export const entry = { title: 'Chat', summary: 'Talk.', area: 'chat' }\n`,
+  )
   write('README.md', 'repo\n')
   git('add', '.')
   git('commit', '--quiet', '-m', 'init')
@@ -57,8 +60,24 @@ const makeRepo = () => {
       viewports: [],
       schemes: [],
       themes: {
-        light: { ink: '', badgeFill: '', badgeInk: '', captionInk: '', captionHalo: '', highlight: '', fontFamily: '' },
-        dark: { ink: '', badgeFill: '', badgeInk: '', captionInk: '', captionHalo: '', highlight: '', fontFamily: '' },
+        light: {
+          ink: '',
+          badgeFill: '',
+          badgeInk: '',
+          captionInk: '',
+          captionHalo: '',
+          highlight: '',
+          fontFamily: '',
+        },
+        dark: {
+          ink: '',
+          badgeFill: '',
+          badgeInk: '',
+          captionInk: '',
+          captionHalo: '',
+          highlight: '',
+          fontFamily: '',
+        },
       },
       inputs: [],
       renderText: (text) => text,

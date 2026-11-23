@@ -88,7 +88,10 @@ export const collectGitChanges = Effect.fn('changelog.collectGitChanges')(functi
   return {
     mergeBase,
     changedFiles: changedFiles as ReadonlyArray<ChangedFile>,
-    commitMessages: log.split('\x1e').map((message) => message.trim()).filter((m) => m !== ''),
+    commitMessages: log
+      .split('\x1e')
+      .map((message) => message.trim())
+      .filter((m) => m !== ''),
   }
 })
 

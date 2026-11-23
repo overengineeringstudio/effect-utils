@@ -5,7 +5,11 @@ import * as FileSystem from 'effect/FileSystem'
 import * as Path from 'effect/Path'
 
 import { cropRect, drawAnnotations, type Box, type PlacedAnnotation } from '../annotations.ts'
-import { ChangelogCompileError, encodeScreenshotRecord, type ScreenshotRecord } from '../compiler.ts'
+import {
+  ChangelogCompileError,
+  encodeScreenshotRecord,
+  type ScreenshotRecord,
+} from '../compiler.ts'
 import type { ColorScheme } from '../contract.ts'
 import type { ChangelogConfig, RenderViewport } from './config.ts'
 import {
@@ -189,7 +193,10 @@ export const renderScreenshots = Effect.fn('changelog.render')(function* <Text, 
       try: (): Promise<{ readonly scene?: ChangelogScene<Browser> }> =>
         import(pathToFileURL(entry.scenePath).href),
       catch: (cause) =>
-        new ChangelogCompileError({ message: `cannot load scene: ${String(cause)}`, file: entry.file }),
+        new ChangelogCompileError({
+          message: `cannot load scene: ${String(cause)}`,
+          file: entry.file,
+        }),
     })
     const scene = module.scene
     if (typeof scene !== 'function') {
@@ -204,7 +211,13 @@ export const renderScreenshots = Effect.fn('changelog.render')(function* <Text, 
         const image = yield* renderOne({ config, entry, scene, browser, viewport, scheme })
         const file = `${entry.id}-${viewport.name}-${scheme}.png`
         yield* fs.writeFile(path.join(screenshots, file), image.bytes)
-        images.push({ viewport: viewport.name, scheme, file, width: image.width, height: image.height })
+        images.push({
+          viewport: viewport.name,
+          scheme,
+          file,
+          width: image.width,
+          height: image.height,
+        })
       }
     }
     const [first, ...rest] = images

@@ -87,14 +87,23 @@ describe('compileChangelog', () => {
       { kind: 'ring', n: 1, target: '#a', caption: text('Eins') },
     ],
   } as const
-  const image = { viewport: 'phone', scheme: 'light', src: './changelog/a.png', width: 390, height: 200 } as const
+  const image = {
+    viewport: 'phone',
+    scheme: 'light',
+    src: './changelog/a.png',
+    width: 390,
+    height: 200,
+  } as const
 
   it('sorts newest first, stamps the build and publishes callouts in number order', () => {
     const { manifest, bytes } = compileChangelog({
       contract: games,
       machineVersion: '0.1.0+abc',
       registrations: [
-        { file: '2026-11-20-older.ts', source: { title: text('A'), summary: text('a'), games: 'general' } },
+        {
+          file: '2026-11-20-older.ts',
+          source: { title: text('A'), summary: text('a'), games: 'general' },
+        },
         {
           file: '2026-11-22-newer.ts',
           source: { title: text('B'), summary: text('b'), games: ['wizard'], screenshot },
@@ -102,7 +111,10 @@ describe('compileChangelog', () => {
         },
       ],
     })
-    expect(manifest.entries.map((entry) => entry.id)).toEqual(['2026-11-22-newer', '2026-11-20-older'])
+    expect(manifest.entries.map((entry) => entry.id)).toEqual([
+      '2026-11-22-newer',
+      '2026-11-20-older',
+    ])
     expect(manifest.entries[0]?.screenshot).toEqual({
       alt: text('Gebotsleiste'),
       images: [image],

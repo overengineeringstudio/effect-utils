@@ -84,7 +84,12 @@ const escapeXml = (value: string) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
 
-const stroke = ({ d, color, width, opacity = 1 }: {
+const stroke = ({
+  d,
+  color,
+  width,
+  opacity = 1,
+}: {
   d: string
   color: string
   width: number
@@ -122,8 +127,12 @@ const ellipseLoop = ({
     const angle = start + sweep * t
     // The radius drifts outwards over the stroke so the overlap does not retrace the start.
     const drift = 1 + 0.06 * t
-    const jitter = 1 + wobble * (Math.sin(angle * 2 + phaseA) * 0.6 + Math.sin(angle * 3 + phaseB) * 0.4)
-    points.push([cx + Math.cos(angle) * rx * drift * jitter, cy + Math.sin(angle) * ry * drift * jitter])
+    const jitter =
+      1 + wobble * (Math.sin(angle * 2 + phaseA) * 0.6 + Math.sin(angle * 3 + phaseB) * 0.4)
+    points.push([
+      cx + Math.cos(angle) * rx * drift * jitter,
+      cy + Math.sin(angle) * ry * drift * jitter,
+    ])
   }
   return { points, rx, ry }
 }
@@ -293,8 +302,7 @@ export const drawAnnotations = ({
   const body = placed
     .map((item, index) => ({ item, index }))
     .toSorted(
-      (a, b) =>
-        order[a.item.annotation.kind] - order[b.item.annotation.kind] || a.index - b.index,
+      (a, b) => order[a.item.annotation.kind] - order[b.item.annotation.kind] || a.index - b.index,
     )
     .map(({ item: { annotation, box } }) => {
       switch (annotation.kind) {

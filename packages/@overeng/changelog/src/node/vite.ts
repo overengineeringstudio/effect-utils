@@ -1,7 +1,7 @@
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Schema } from 'effect'
-import * as FileSystem from 'effect/FileSystem'
-import * as Path from 'effect/Path'
+import type * as FileSystem from 'effect/FileSystem'
+import type * as Path from 'effect/Path'
 import type { Plugin } from 'vite'
 
 import { CHANGELOG_MANIFEST_FILENAME, NonEmptyTrimmedString } from '../contract.ts'
@@ -69,7 +69,8 @@ export const changelogVitePlugin = <Text, Fields>(
         return
       }
       void (async () => {
-        const origin = server.resolvedUrls?.local[0] ?? `http://localhost:${server.config.server.port}/`
+        const origin =
+          server.resolvedUrls?.local[0] ?? `http://localhost:${server.config.server.port}/`
         const identity = await fetch(new URL('build-identity.json', origin))
         const { machineVersion } = decodeIdentity(await identity.text())
         const built = await run(buildChangelog({ config, machineVersion, unrendered: 'omit' }))
