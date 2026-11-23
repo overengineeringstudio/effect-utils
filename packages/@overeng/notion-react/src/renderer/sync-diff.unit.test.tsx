@@ -553,7 +553,9 @@ describe('sync-diff', () => {
     expect(create).not.toHaveProperty('inlineCandidates')
     const appends = ops.filter((op) => op.kind === 'append')
     expect(appends).toHaveLength(105)
-    expect(appends.every((op) => op.parent === create.tmpPageId && op.scopePageId === create.tmpPageId)).toBe(true)
+    expect(
+      appends.every((op) => op.parent === create.tmpPageId && op.scopePageId === create.tmpPageId),
+    ).toBe(true)
     expect(diff(fakeApply(candidate, ops), buildCandidateTree(element, ROOT))).toEqual([])
   })
 
@@ -571,8 +573,13 @@ describe('sync-diff', () => {
     const ops = diff(empty(), candidate)
     expect(ops.map((op) => op.kind)).toEqual(['append', 'createPage', 'append', 'append'])
     const [host, create, nested, body] = ops
-    if (host?.kind !== 'append' || create?.kind !== 'createPage' ||
-      nested?.kind !== 'append' || body?.kind !== 'append') return
+    if (
+      host?.kind !== 'append' ||
+      create?.kind !== 'createPage' ||
+      nested?.kind !== 'append' ||
+      body?.kind !== 'append'
+    )
+      return
     expect(create.parent.pageId).toBe(host.tmpId)
     expect(nested.parent).toBe(create.tmpPageId)
     expect(body.parent).toBe(nested.tmpId)

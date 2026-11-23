@@ -152,11 +152,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     let failFirstAppend = true
     fake.failOn((request) => {
-      if (
-        failFirstAppend &&
-        request.method === 'PATCH' &&
-        request.path.endsWith('/children')
-      ) {
+      if (failFirstAppend && request.method === 'PATCH' && request.path.endsWith('/children')) {
         failFirstAppend = false
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
@@ -197,11 +193,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     const cache = InMemoryCache.make()
     let failFirstAppend = true
     fake.failOn((request) => {
-      if (
-        failFirstAppend &&
-        request.method === 'PATCH' &&
-        request.path.endsWith('/children')
-      ) {
+      if (failFirstAppend && request.method === 'PATCH' && request.path.endsWith('/children')) {
         failFirstAppend = false
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
@@ -514,7 +506,10 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )!
     const children = fake.childrenOf(outer.id)
     expect(children.map((block) => block.type)).toEqual([
-      'paragraph', 'table', 'paragraph', 'child_page',
+      'paragraph',
+      'table',
+      'paragraph',
+      'child_page',
     ])
     const checkpoint = await Effect.runPromise(cache.load)
     expect(checkpoint?.children[0]?.children.map((node) => node.blockId)).toEqual(
@@ -543,8 +538,12 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     let failRead = true
     fake.failOn((request) => {
       const table = [...fake.blocks.values()].find((block) => block.type === 'table')
-      if (failRead && table !== undefined && request.method === 'GET' &&
-        request.path === `/v1/blocks/${table.id}/children`) {
+      if (
+        failRead &&
+        table !== undefined &&
+        request.method === 'GET' &&
+        request.path === `/v1/blocks/${table.id}/children`
+      ) {
         failRead = false
         return new FakeNotionResponseError(500, 'internal_server_error', 'descendant read failed')
       }
@@ -570,17 +569,19 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     expect(shortRead._tag).toBe('Failure')
     expect(await Effect.runPromise(cache.load)).toEqual(checkpoint)
-    expect(fake.requests.slice(beforeShortRead).filter((request) => request.method !== 'GET')).toEqual([])
+    expect(
+      fake.requests.slice(beforeShortRead).filter((request) => request.method !== 'GET'),
+    ).toEqual([])
     // A type disagreement must also fail closed rather than certify identities.
+    const savedPage = checkpoint!.children[0]!
+    const savedTable = savedPage.children[0]!
+    const wrongTable = {
+      ...savedTable,
+      pendingChildren: [{ ...savedTable.pendingChildren![0]!, type: 'paragraph' }],
+    }
     const wrongType: CacheTree = {
       ...checkpoint!,
-      children: checkpoint!.children.map((page) => ({
-        ...page,
-        children: page.children.map((table) => ({
-          ...table,
-          pendingChildren: table.pendingChildren?.map((intent) => ({ ...intent, type: 'paragraph' })),
-        })),
-      })),
+      children: [{ ...savedPage, children: [wrongTable] }],
     }
     await Effect.runPromise(cache.save(wrongType))
     const beforeTypeRead = fake.requests.length
@@ -589,7 +590,9 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     expect(String(mismatch.cause)).toContain('expected paragraph, observed table_row')
     expect(await Effect.runPromise(cache.load)).toEqual(wrongType)
-    expect(fake.requests.slice(beforeTypeRead).filter((request) => request.method !== 'GET')).toEqual([])
+    expect(
+      fake.requests.slice(beforeTypeRead).filter((request) => request.method !== 'GET'),
+    ).toEqual([])
     await Effect.runPromise(cache.save(checkpoint!))
     expect(fake.pages.get(pageId)?.in_trash).not.toBe(true)
     const before = fake.requests.length
@@ -607,8 +610,12 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       <Page>
         <ChildPage blockKey="outer" title="Outer">
           <ColumnList>
-            <Column><Paragraph>left</Paragraph></Column>
-            <Column><Paragraph>right</Paragraph></Column>
+            <Column>
+              <Paragraph>left</Paragraph>
+            </Column>
+            <Column>
+              <Paragraph>right</Paragraph>
+            </Column>
           </ColumnList>
         </ChildPage>
       </Page>
@@ -616,8 +623,12 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     let failRead = true
     fake.failOn((request) => {
       const column = [...fake.blocks.values()].find((block) => block.type === 'column')
-      if (failRead && column !== undefined && request.method === 'GET' &&
-        request.path === `/v1/blocks/${column.id}/children`) {
+      if (
+        failRead &&
+        column !== undefined &&
+        request.method === 'GET' &&
+        request.path === `/v1/blocks/${column.id}/children`
+      ) {
         failRead = false
         return new FakeNotionResponseError(500, 'internal_server_error', 'column read failed')
       }
@@ -1320,7 +1331,10 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     const outer = [...fake.pages.values()].find(
       (page) => page.properties.title.title[0]?.text.content === 'outer',
     )!
-    expect(fake.childrenOf(outer.id).map((block) => block.type)).toEqual(['child_page', 'paragraph'])
+    expect(fake.childrenOf(outer.id).map((block) => block.type)).toEqual([
+      'child_page',
+      'paragraph',
+    ])
     const r2 = await runSync(fake, tree, cache)
     expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)

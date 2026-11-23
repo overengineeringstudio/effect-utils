@@ -663,10 +663,10 @@ const resolveCreatedChildren = (
 ): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     const live = Array.from(
-      yield* Stream.runCollect(
-        NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
-      ).pipe(
-        Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
+      yield* Stream.runCollect(NotionBlocks.retrieveChildrenStream({ blockId: parentId })).pipe(
+        Effect.mapError(
+          (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
+        ),
       ),
     )
     if (live.length !== expected.length) {
@@ -1528,9 +1528,11 @@ export const syncWithClient = (
       const resolved = yield* resolvePendingChildren(prior.children)
       if (resolved.changed) {
         prior = { ...prior, children: resolved.nodes }
-        yield* opts.cache.save(prior).pipe(
-          Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
-        )
+        yield* opts.cache
+          .save(prior)
+          .pipe(
+            Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
+          )
       }
     }
 

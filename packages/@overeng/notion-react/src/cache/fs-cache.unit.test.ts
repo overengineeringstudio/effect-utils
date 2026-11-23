@@ -53,20 +53,24 @@ describe('FsCache', () => {
     const tree: CacheTree = {
       schemaVersion: CACHE_SCHEMA_VERSION,
       rootId: 'root-atomic',
-      children: [{
-        key: 'table',
-        blockId: 'table-1',
-        type: 'table',
-        hash: 'table-hash',
-        children: [],
-        nodeKind: 'block',
-        pendingChildren: [{
-          key: 'row',
-          type: 'table_row',
-          hash: 'row-hash',
+      children: [
+        {
+          key: 'table',
+          blockId: 'table-1',
+          type: 'table',
+          hash: 'table-hash',
           children: [],
-        }],
-      }],
+          nodeKind: 'block',
+          pendingChildren: [
+            {
+              key: 'row',
+              type: 'table_row',
+              hash: 'row-hash',
+              children: [],
+            },
+          ],
+        },
+      ],
     }
     await Effect.runPromise(cache.save(tree))
     expect(await Effect.runPromise(cache.load)).toEqual(tree)
