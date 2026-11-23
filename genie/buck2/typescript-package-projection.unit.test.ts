@@ -656,7 +656,7 @@ describe('declared-closure package projection', () => {
     const materialization = readFileSync('buck2/materialization.bzl', 'utf8')
     const referenceArguments = materialization
       .split('    if ctx.attrs.strip_project_references:\n')[1]
-      ?.split('    _add_mapped_sources(args, "--file", ctx.attrs.files)\n')[0]
+      ?.split('    _add_mapped_sources(args, "--file", files)\n')[0]
     // Snapshot the actual Starlark command assembly: default authorities execute only
     // the legacy args.add, with every new argument guarded behind the non-default list.
     expect(referenceArguments).toBe(

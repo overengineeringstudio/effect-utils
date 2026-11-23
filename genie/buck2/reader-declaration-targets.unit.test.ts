@@ -50,14 +50,14 @@ describe('reader declaration target union', () => {
     )
   })
 
-  it('unions exactly the current 24 declarations reachable from the 17 distinct reader roots', () => {
+  it('unions exactly the current 25 declarations reachable from the 17 distinct reader roots', () => {
     const admissions = Object.values(buck2TypeScriptAdmissions)
     const separatelyDerived = readerCompositionPackagePaths.flatMap((root) =>
       deriveReaderDeclarationTargets({ admissions, roots: [root] }),
     )
     expect(readerDeclarationTargets).toEqual([...new Set(separatelyDerived)].toSorted())
     expect(readerCompositionPackagePaths).toHaveLength(17)
-    expect(readerDeclarationTargets).toHaveLength(24)
+    expect(readerDeclarationTargets).toHaveLength(25)
   })
 
   it('primes freshness alongside the unchanged reader declaration union', async () => {

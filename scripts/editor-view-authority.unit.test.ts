@@ -38,15 +38,18 @@ try { fstatSync(3); throw new Error('notification descriptor leaked') }
 catch (error) { if (error.code !== 'EBADF') throw error }
 process.stdout.write('closed')
 `
-      const result = spawnSync(process.execPath, ['-e', driver], {
-        env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: '3' },
-        stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
-        encoding: 'utf8',
-      })
+      const result = spawnSync(
+        'bash',
+        ['-c', 'unset EDITOR_VIEW_LEASE_FDS EDITOR_VIEW_LEASE_ACTIVE; exec 3>&1; exec "$@"', 'notification-fixture', process.execPath, '-e', driver],
+        {
+          env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: '3' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          encoding: 'utf8',
+        },
+      )
       expect(result.status).toBe(0)
       expect(result.stderr).toBe('')
-      expect(result.stdout).toBe('closed')
-      expect(result.output[3]).toBe(byte)
+      expect(result.stdout).toBe(`${byte}closed`)
     }
   })
 
@@ -113,7 +116,8 @@ try {
     try {
       await withPublicationCancellation({ run: signal => runManagedEditorPublicationCommand({
         native: ${JSON.stringify(native)}, owner,
-        env: { JOINED: ${JSON.stringify(joined)}, CHILD_PID: ${JSON.stringify(childPid)} },
+        env: { JOINED: ${JSON.stringify(joined)}, CHILD_PID: ${JSON.stringify(childPid)},
+          BUCK2_STDIO_LIBRARY: process.env.BUCK2_STDIO_LIBRARY },
         command: { command: 'buck', cwd: ${JSON.stringify(root)},
           args: ['--isolation-dir', editorPublicationIsolation, 'kill'], signal,
           onStderr: text => { if (text.includes('ready')) process.stdout.write('ready') },

@@ -783,6 +783,9 @@ describe('publication notification through source reader exec', () => {
       String.raw`
 set -euo pipefail
 launcher=$1 bun=$2 root=$3 script=$4
+# The outer leased Bun runtime appends its live mappings even with replacement env.
+# This fresh synthetic workspace must not reinterpret a deliberately overwritten fd.
+unset EDITOR_VIEW_LEASE_FDS EDITOR_VIEW_LEASE_ACTIVE
 : > "$root/unrelated"
 {
   EDITOR_VIEW_ADMISSION_READY_FD=3 "$launcher" "$bun" -e "$script" "$root/unrelated" \
