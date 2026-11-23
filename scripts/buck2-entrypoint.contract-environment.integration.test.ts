@@ -2,9 +2,18 @@ import { expect, it } from 'bun:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const commandDeadlineMs = 60_000
 // One build RPC and teardown each own a bounded child, including daemon startup.
@@ -61,12 +70,22 @@ it(
     let daemonMayExist = false
     try {
       writeFileSync(join(root, '.buckroot'), '')
+      // Cell paths must stay normalized inside this private root. Copy the actual
+      // rules and link only the immutable/tool-only prepared capability cell,
+      // matching the real TypeScript toolchain integration fixture.
+      mkdirSync(join(root, 'effect_utils'), { recursive: true })
+      cpSync(join(repository, 'buck2'), join(root, 'effect_utils', 'buck2'), {
+        recursive: true,
+        verbatimSymlinks: true,
+      })
+      mkdirSync(join(root, '.buck2'), { recursive: true })
+      symlinkSync(capabilities, join(root, '.buck2', 'capabilities'), 'dir')
       writeFileSync(
         join(root, '.buckconfig'),
         `[cells]
 fixture = .
-effect_utils = ${relative(root, repository)}
-capabilities = ${relative(root, capabilities)}
+effect_utils = effect_utils
+capabilities = .buck2/capabilities
 prelude = prelude
 [cell_aliases]
 rules = effect_utils

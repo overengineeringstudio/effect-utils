@@ -98,6 +98,7 @@ describe('per-contract Buck source selectors', () => {
     ['buck2:cache-posture:ci-test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
     ['buck2:cache-posture:ci-test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
     ['buck2:cache-posture:test', '.buckconfig'],
+    ['buck2:cache-posture:test', 'buck2/quick_contracts.bzl'],
     ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-action-evidence-codec.ts'],
     ['buck2:cache-posture:test', 'genie/ci-scripts/buck2-cache-evidence.ts'],
     [
