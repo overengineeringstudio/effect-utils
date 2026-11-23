@@ -12,11 +12,12 @@ import {
   buck2TypeScriptTestCollectionTargets,
   buck2TypeScriptTestTargets,
   deriveBuck2TypeScriptAuthority,
+  editorCliTypeScriptAuthority,
   type Buck2TypeScriptAdmission,
 } from './typescript-admissions.ts'
 
 describe('Buck2 TypeScript authority derivation', () => {
-  it('derives every project only from package-local declarations in registry order', () => {
+  it('derives package authorities in registry order and includes the root-owned CLI project', () => {
     const packageLocalAuthorities = Object.values(buck2TypeScriptAdmissions).flatMap(
       (admission: Buck2TypeScriptAdmission) =>
         (admission.authorities ?? []).map((authority) =>
@@ -28,7 +29,10 @@ describe('Buck2 TypeScript authority derivation', () => {
         ),
     )
 
-    expect(authoritativeBuck2TypeScriptProjects).toEqual(packageLocalAuthorities)
+    expect(authoritativeBuck2TypeScriptProjects).toEqual([
+      ...packageLocalAuthorities,
+      editorCliTypeScriptAuthority,
+    ])
   })
 
   it('gives every root TypeScript project one Buck typecheck target', () => {

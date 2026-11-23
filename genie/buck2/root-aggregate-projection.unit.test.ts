@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import fixtureBuckProjection from '../../rust/effect-rust-fixtures/BUCK.genie.ts'
 import fixtureTsconfig from '../../rust/effect-rust-fixtures/tsconfig.json.genie.ts'
+import editorCliTsconfig from '../../scripts/tsconfig.json.genie.ts'
 import { rootTsconfigProjects } from '../tsconfig-projects.ts'
 import {
   planRootBuckAggregates,
@@ -78,6 +79,31 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('# Projection source: BUCK.genie.ts')
     expect(output).toMatch(/^# Semantic fingerprint: sha256:[a-f0-9]{64}$/m)
     expect(output).toContain('# Regenerate: devenv tasks run genie:run')
+  })
+
+  it('checks both real bootstrap CLIs through a registered strict source project', () => {
+    const output = rootBuckAggregateProjection().stringify({ cwd: '/repo', location: '' })
+    expect(editorCliTsconfig.data.include).toEqual([
+      'editor-view-authority.ts',
+      'buck2-entrypoint.ts',
+    ])
+    expect(editorCliTsconfig.data.compilerOptions).toMatchObject({
+      strict: true,
+      exactOptionalPropertyTypes: true,
+      noUncheckedIndexedAccess: true,
+      noEmit: true,
+      composite: false,
+    })
+    expect(rootTsconfigProjects.find(({ path }) => path === 'scripts')?.buck2Authority).toEqual({
+      _tag: 'Buck2TypeScriptAuthority',
+      typecheckTarget: '//:editor_cli_typecheck',
+    })
+    expect(planRootBuckAggregates().quick).toContain('//:editor_cli_typecheck')
+    expect(output).toContain('name = "editor_cli_typecheck"')
+    expect(output).toContain('project = "scripts/tsconfig.json"')
+    expect(output).toContain(
+      '"packages/@overeng/buck2-tools/src/editor-publication-owner.ts": "//packages/@overeng/buck2-tools:src/editor-publication-owner.ts"',
+    )
   })
 
   it('checks every fixture TypeScript source against the real package declarations', () => {

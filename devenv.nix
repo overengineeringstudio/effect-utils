@@ -1348,6 +1348,8 @@ in
   env.OTEL_SPAN_BIN = lib.mkIf ciUnitTest "${otelSpan}/bin/otel-span";
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+  # The CLI contract regression invokes the declared compiler, never an ambient tsc.
+  env.TSC_BIN = "${pkgs.typescript}/bin/tsc";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
   env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
@@ -2237,6 +2239,16 @@ in
         //buck2/toolchains:cross_cell_provider_identity \
         //buck2/toolchains:cross_cell_product_identity
     '';
+  };
+
+  tasks."buck2:editor:cli:check" = {
+    description = "Typecheck the real editor authority and Buck entrypoint CLI import closure";
+    after = [ "genie:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
+    exec = buck2AggregateExec "buck2:editor:cli:check" [
+      "build"
+      "//:editor_cli_typecheck"
+    ];
   };
 
   tasks."buck2:quick" = {

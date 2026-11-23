@@ -6,8 +6,11 @@ import { buck2SemanticFingerprint } from './mod.ts'
 import {
   authoritativeBuck2TypeScriptDeclarations,
   authoritativeBuck2TypeScriptProjects,
+  buck2TypeScriptAdmissions,
   buck2TypeScriptTestTargets,
+  editorCliTypeScriptAuthority,
 } from './typescript-admissions.ts'
+import { discoverPackageSources } from './typescript-package-projection.ts'
 
 const regenerationCommand = 'devenv tasks run genie:run' as const
 
@@ -97,12 +100,52 @@ const aggregateRootBuckLoad = 'load("//buck2:check_aggregate.bzl", "check_aggreg
 const weaverRootBuckLoad = 'load("//buck2:weaver.bzl", "weaver_checks")'
 const weaverRootBuckTargets =
   'weaver_checks(\n    name = "weaver",\n    registry = {\n        "attributes.yaml": "genie/weaver-registry/attributes.yaml",\n        "manifest.yaml": "genie/weaver-registry/manifest.yaml",\n        "signals.yaml": "genie/weaver-registry/signals.yaml",\n    },\n    flake_nix = "nix/weaver-flake/flake.nix",\n    registry_source = "genie/weaver-registry/registry.ts",\n    visibility = ["PUBLIC"],\n)'
+const editorCliSourceAdmission = buck2TypeScriptAdmissions.buck2Tools
+const editorCliSourceFiles = [
+  'package.json',
+  ...discoverPackageSources(editorCliSourceAdmission),
+]
+
+// Stage the real repository layout: CLI-relative imports must resolve to the same
+// buck2-tools sources as the package check, not declarations or contract replicas.
+const editorCliBuckTargets = `package_view(
+    name = "editor_cli_package_tree",
+    dependency_view = "//packages/@overeng/buck2-tools:package_tree",
+    files = {
+        source: source
+        for source in glob(["scripts/*.ts"]) + [
+            "package.json",
+            "${editorCliTypeScriptAuthority.projectFile}",
+            "genie/packages.ts",
+            "genie/ci-workflow/test-scheduling.json",
+        ]
+    },
+    workspace_dist = {
+${editorCliSourceFiles
+  .map(
+    (source) =>
+      `        "${editorCliSourceAdmission.packagePath}/${source}": "//${editorCliSourceAdmission.packagePath}:${source}",`,
+  )
+  .join('\n')}
+    },
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "${editorCliTypeScriptAuthority.typecheckTargetName}",
+    package_tree = ":editor_cli_package_tree",
+    project = "${editorCliTypeScriptAuthority.projectFile}",
+    visibility = ["PUBLIC"],
+)`
+
 export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan> => {
   const data = planRootBuckAggregates()
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-root-aggregate-projection',
     schemaVersion: 1,
-    semanticData: data,
+    semanticData: { ...data, editorCliAuthority: editorCliTypeScriptAuthority, editorCliBuckTargets },
   })
 
   return createGenieOutput({
@@ -116,6 +159,8 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         `# Regenerate: ${regenerationCommand}`,
         weaverRootBuckLoad,
         aggregateRootBuckLoad,
+        'load("//buck2:materialization.bzl", "package_view")',
+        'load("//buck2:typescript.bzl", "tsgo_typecheck")',
         'load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")',
         'load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")',
         rootBuckBase,
@@ -128,6 +173,8 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         rootValidationSources,
         '',
         weaverRootBuckTargets,
+        '',
+        editorCliBuckTargets,
         '',
         '# Scoped repository checks: admitted packages and non-package TypeScript fixtures.',
         renderAggregate({ name: 'quick', targets: data.quick }),

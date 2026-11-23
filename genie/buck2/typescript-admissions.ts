@@ -182,9 +182,18 @@ export const deriveBuck2TypeScriptAuthority = ({
   }
 }
 
+/** Root-owned bootstrap CLIs use the same Buck checker as package projects, without a package admission. */
+export const editorCliTypeScriptAuthority = {
+  packagePath: '',
+  projectPath: 'scripts',
+  projectFile: 'scripts/tsconfig.json',
+  typecheckTargetName: 'editor_cli_typecheck',
+  typecheckTarget: '//:editor_cli_typecheck',
+} as const satisfies AuthoritativeBuck2TypeScriptProject
+
 /** Registry-ordered root projects whose TypeScript checking is Buck-owned. */
-export const authoritativeBuck2TypeScriptProjects: readonly AuthoritativeBuck2TypeScriptProject[] =
-  Object.values(buck2TypeScriptAdmissions).flatMap(
+export const authoritativeBuck2TypeScriptProjects: readonly AuthoritativeBuck2TypeScriptProject[] = [
+  ...Object.values(buck2TypeScriptAdmissions).flatMap(
     (admission: Buck2TypeScriptAdmission): readonly AuthoritativeBuck2TypeScriptProject[] =>
       admission.authorities.map((authority) =>
         deriveBuck2TypeScriptAuthority({
@@ -192,7 +201,9 @@ export const authoritativeBuck2TypeScriptProjects: readonly AuthoritativeBuck2Ty
           packagePath: admission.packagePath,
         }),
       ),
-  )
+  ),
+  editorCliTypeScriptAuthority,
+]
 
 /** Projects whose authority includes one published declaration surface. */
 export const authoritativeBuck2TypeScriptDeclarations: readonly AuthoritativeBuck2TypeScriptDeclaration[] =
