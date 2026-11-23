@@ -151,7 +151,7 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
           for (const target of targets) chains.push(pinChain(target))
           return chains
         } catch (cause) {
-          for (const chain of chains.reverse()) closeChain(chain)
+          for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
           throw cause
         }
       },

@@ -16,6 +16,9 @@ import {
   type OwnedDeletionPins,
 } from './store-pinned-deletion.ts'
 
+const quote = Schema.encodeSync(Schema.fromJsonString(Schema.String))
+const quotePaths = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)))
+
 const fixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const base = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
@@ -196,8 +199,6 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
       function* () {
         const { fs, rootPath, paths, state } = yield* fixture
         yield* fs.remove(state)
-        const quote = Schema.encodeSync(Schema.fromJsonString(Schema.String))
-        const quotePaths = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)))
         const source = `
 import { Effect } from ${quote(import.meta.resolve('effect'))}
 import * as engine from ${quote(new URL('./store-pinned-deletion.ts', import.meta.url).href)}
@@ -250,7 +251,7 @@ await Effect.runPromise(Effect.gen(function* () {
           child.once('exit', () => reject(new Error(`Child exited before prepare: ${stderr}`)))
           child.stdout!.on('data', (data) => {
             stdout += String(data)
-            if (stdout.includes('\n')) resolve(stdout.trim())
+            if (stdout.includes('\n') === true) resolve(stdout.trim())
           })
           return promise
         }).pipe(Effect.timeout('10 seconds'))
