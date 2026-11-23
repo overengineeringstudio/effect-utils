@@ -61,4 +61,5 @@ export declare const syncProductRevs: (options: {
   readonly products: readonly ProductRevDeclaration[]
 }) => Promise<readonly string[]>
 
+/** Header comment written into every generated product revision projection. */
 export declare const productRevComment: string

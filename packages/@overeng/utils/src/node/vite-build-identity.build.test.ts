@@ -362,7 +362,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     const dirtyMetadata = await (await fetch(probeUrl)).json()
     expect(dirtyMetadata).toEqual({
       ...dirtyIdentity,
-      displayVersion: expect.not.stringMatching(/committed/),
+      displayVersion: expect.not.stringMatching(/\bcommitted\b/),
     })
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
@@ -385,7 +385,7 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     expect((await identity()).commitTs).toBe(Number(git('log', '-1', '--format=%ct', revision)))
     expect(await (await fetch(probeUrl)).json()).toEqual({
       ...(await identity()),
-      displayVersion: expect.not.stringMatching(/committed/),
+      displayVersion: expect.not.stringMatching(/\bcommitted\b/),
     })
   } finally {
     await server?.close()

@@ -241,7 +241,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp, productRev 
    */
   const resolveIdentity = async ({ preserveSnapshot = false, metadata } = {}) => {
     /** @type {import('./cli-build-identity.js').ResolveBuildIdentityOptions} */
-    const options = immutable
+    const options = immutable === true
       ? { baseVersion, buildStamp, env: {} }
       : serving === false && productRev !== undefined
         ? {
