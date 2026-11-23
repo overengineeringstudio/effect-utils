@@ -13,6 +13,8 @@
   environment ? { },
 }:
 let
+  # Mac notify has no delivery barrier; declare the best available watcher.
+  fileWatcher = if pkgs.stdenv.hostPlatform.isDarwin then "watchman" else "notify";
   # Capture the executable file, not its enclosing flake source context.
   publication = builtins.path {
     path = ../scripts/worktree-env.py;
@@ -95,7 +97,7 @@ let
     # A real emitted environment root encloses dispatch, capture and export.
     exec ${otelSpan}/bin/otel-span run effect-utils-env environment.entry \
       --attr span.label=buck --attr "process.working_directory=$PWD" \
-      -- ${bridge} "$@"
+      -- ${bridge} --config buck2.file_watcher=${fileWatcher} "$@"
   '';
 in
 assert pkgs.lib.assertMsg (
@@ -111,6 +113,7 @@ pkgs.symlinkJoin {
   # The guarded/traced launcher is the only bin/buck2 provider in this output.
   paths = tools;
   passthru = {
+    inherit fileWatcher;
     identity-inputs-manifest = identityManifest;
     identity-inputs-digest = identityDigest;
   };

@@ -367,6 +367,50 @@ describe('short persistent Watchman location', () => {
     for (const directory of directories) expect(existsSync(directory)).toBe(false)
   })
 
+  for (const selection of [
+    ['--config', 'buck2.file_watcher=notify'],
+    ['--config=buck2.file_watcher=notify'],
+    ['-c', 'buck2.file_watcher=notify'],
+    ['-cbuck2.file_watcher=notify'],
+  ]) {
+    it(`admits tracked Watchman with native notify selection ${selection.join(' ')}`, async () => {
+      const root = fixture()
+      writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
+      const args = ['targets', '//:', ...selection, '--', '--config', 'buck2.file_watcher=watchman']
+      expect(
+        await directBuckArguments({
+          ...options(root),
+          probeDeadlineSignal: undefined,
+          // No Watchman executable or usable endpoint: notify must not probe either.
+          env: { PATH: '', WATCHMAN_SOCK: join(root, 'absent.sock') },
+          args,
+        }),
+      ).toEqual(args)
+      expect(existsSync(join(root, '.buckconfig.local'))).toBe(false)
+      expect(existsSync(join(root, 'probe-cache'))).toBe(false)
+    })
+  }
+
+  it('uses ordered config-file watcher overrides only before the payload boundary', async () => {
+    const root = fixture()
+    writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
+    writeFileSync(join(root, 'native.config'), '[buck2]\nfile_watcher = notify\n')
+    const args = [
+      'targets', '//:', '--config', 'buck2.file_watcher=watchman',
+      '--config-file', 'native.config', '--', '--config-file=absent.config',
+      '--config=buck2.file_watcher=watchman',
+    ]
+    expect(
+      await directBuckArguments({
+        ...options(root),
+        probeDeadlineSignal: undefined,
+        env: { PATH: '', WATCHMAN_SOCK: join(root, 'absent.sock') },
+        args,
+      }),
+    ).toEqual(args)
+    expect(existsSync(join(root, 'probe-cache'))).toBe(false)
+  })
+
   it.skipIf(Bun.which('watchman') === null)(
     'runs real Watchman without restored state and automatically cancels deleted roots',
     async () => {
@@ -413,10 +457,13 @@ describe('short persistent Watchman location', () => {
         await command(['--no-site-spawner', '--no-local', 'version'])
         const pid = await command(['--no-spawn', '--no-local', 'get-pid'])
         expect(pid.pid).toBe(Number(readFileSync(join(directory, 'pid'), 'utf8').trim()))
-        await Promise.all(
+        // Real service probes use production deadlines, not the scripted-fixture signal.
+        // A timed-out client must not shut down the service while its peer is still probing.
+        const admissions = await Promise.allSettled(
           [0, 1].map((client) =>
             directBuckArguments({
               ...options(root),
+              probeDeadlineSignal: undefined,
               env,
               cacheDirectory: join(root, `client-${client}`),
               watchmanDirectory: directory,
@@ -424,7 +471,40 @@ describe('short persistent Watchman location', () => {
             }),
           ),
         )
+        for (const admission of admissions)
+          if (admission.status === 'rejected') throw admission.reason
         expect((await command(['--no-spawn', '--no-local', 'get-pid'])).pid).toBe(pid.pid)
+        // CLI Watchman must register a tracked-notify root, not silently use notify.
+        const cliRoot = fixture()
+        writeFileSync(join(cliRoot, '.buckconfig'), '[buck2]\nfile_watcher = notify\n')
+        writeFileSync(join(cliRoot, 'watcher.config'), '[buck2]\nfile_watcher = watchman\n')
+        const cliArgs = [
+          'targets', '//:', '--config=buck2.file_watcher=notify',
+          '--config-file=watcher.config', '--', '-cbuck2.file_watcher=notify',
+        ]
+        expect(
+          await directBuckArguments({
+            ...options(cliRoot),
+            probeDeadlineSignal: undefined,
+            env,
+            watchmanDirectory: directory,
+            args: cliArgs,
+          }),
+        ).toEqual(cliArgs)
+        expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toContain(
+          realpathSync(cliRoot),
+        )
+        expect(existsSync(join(cliRoot, '.buckconfig.local'))).toBe(false)
+        // A distinct real, absent socket cannot reuse the healthy service admission.
+        await expect(
+          directBuckArguments({
+            ...options(cliRoot),
+            probeDeadlineSignal: undefined,
+            env: { ...env, WATCHMAN_SOCK: join(directory, 'absent.sock') },
+            args: cliArgs,
+          }),
+        ).rejects.toThrow(WatchmanAdmissionError)
+        expect(existsSync(join(cliRoot, '.buckconfig.local'))).toBe(false)
         expect(prepareWatchmanEnvironment({ HOME: home })).toBe(directory)
         const kept = realpathSync(fixture())
         const deleted = realpathSync(fixture())

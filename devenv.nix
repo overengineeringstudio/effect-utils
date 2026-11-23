@@ -1512,7 +1512,7 @@ in
   };
 
   tasks."buck2:capabilities:test" = {
-    description = "Check capability migration and same-daemon generation publication with notify and Watchman";
+    description = "Check capability migration and same-daemon publication with the declared ${repoPackages.worktree-tools.fileWatcher} watcher";
     exec = trace.exec "buck2:capabilities:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
@@ -1526,7 +1526,8 @@ in
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \
-        nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh
+        nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh \
+        --watcher ${repoPackages.worktree-tools.fileWatcher}
     '';
   };
 

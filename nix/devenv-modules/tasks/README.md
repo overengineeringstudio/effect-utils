@@ -134,6 +134,23 @@ package must compile both roles in that final package environment; this
 server-only artifact does not authenticate an independently packaged client.
 The package exports neither `holderEvidenceClient` nor `processEvidenceCommand`.
 
+## Worktree check watcher policy
+
+The Nix-built worktree PATH explicitly selects `buck2.file_watcher=watchman` on
+macOS and `buck2.file_watcher=notify` on Linux. The capability steady-rotation
+fixture uses the same evaluated `worktree-tools.fileWatcher` selection; the
+retained devenv task and the Buck contract therefore exercise the configured
+provider. Immutable Nix product roots retain their separate `fs_hash_crawler`
+policy.
+
+The [pinned native notify implementation](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_file_watcher/src/notify.rs)
+drains already-delivered events when synchronizing; that is not a macOS FSEvents
+delivery barrier. Watchman's [cookie barrier](https://meta.github.io/watchman/docs/cookies)
+is the best available barrier here, not a formal guarantee: its macOS limitation
+section documents changes arriving after a cookie/flush under load. The fixture
+still requires an observed `defs.bzl` change or an explicit Watchman fresh-instance
+rehash, never silence.
+
 ## Observability
 
 Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
