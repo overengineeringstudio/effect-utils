@@ -1762,14 +1762,11 @@ describe('sync() against in-memory fake Notion', () => {
     }
   })
 
-  it('cold sync checkpoint snapshots include atomic-container descendants', async () => {
-    /* Regression: the last checkpoint written mid-sync (i.e. before the
-     * authoritative final save) must already reflect absorbed descendants
-     * of atomic containers, otherwise a crash or timeout between the last
-     * op and the final save leaves the cache with hollow atomic containers
-     * — and the next warm sync rebuilds them, inflating the persisted
-     * cache. Pixeltrail dogfood v8 tracked this as cache growth +101 in a
-     * single warm sync against a column_list subtree. */
+  it('atomic checkpoints retain pending intent before reads and resolved descendants afterward', async () => {
+    // The append response acknowledges the container before child ids can be
+    // retrieved. That first checkpoint must retain the full child intent;
+    // subsequent checkpoints must carry the resolved subtree, including the
+    // last checkpoint before the final authoritative save.
     const fake = createFakeNotion()
     const spy = spyCache()
     const tree = (
@@ -1788,14 +1785,20 @@ describe('sync() against in-memory fake Notion', () => {
       </>
     )
     await runWith(fake, sync(tree, { pageId: ROOT, cache: spy.cache }))
-    // Every checkpoint that commits the column_list must carry its full
-    // subtree (4 paragraphs under 2 columns) — not a hollowed `children:[]`.
     const withColumnList = spy.snapshots.filter((s) =>
       s.children.some((c) => c.type === 'column_list'),
     )
-    expect(withColumnList.length).toBeGreaterThan(0)
-    for (const snap of withColumnList) {
+    expect(withColumnList.length).toBeGreaterThanOrEqual(3)
+    const acknowledged = withColumnList[0]!.children.find((c) => c.type === 'column_list')!
+    expect(acknowledged.children).toEqual([])
+    expect(acknowledged.pendingChildren).toHaveLength(2)
+    for (const column of acknowledged.pendingChildren!) {
+      expect(column.type).toBe('column')
+      expect(column.children).toHaveLength(2)
+    }
+    for (const snap of withColumnList.slice(1)) {
       const cl = snap.children.find((c) => c.type === 'column_list')!
+      expect(cl.pendingChildren).toBeUndefined()
       // column_list with 2 columns, each with 2 paragraphs = 4 leaves + 2
       // columns + 1 column_list = 7 nodes.
       expect(cl.children).toHaveLength(2)

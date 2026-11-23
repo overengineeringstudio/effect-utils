@@ -81,12 +81,12 @@ See [Cookbook → Sub-page creation → Reordering](./cookbook/sub-page-creation
 The Notion API exposes no idempotency key or client request token. If a
 sync is interrupted mid-flight:
 
-- `pages.create` succeeded but inline-id retrieval or follow-up work fails →
-  the cache retains the server-minted page id plus immutable create-time
-  inline descriptors. The next sync adopts those live block ids before
-  diffing, preserving the page id and avoiding a duplicate body.
-- Any other partial failure → checkpointed cache reflects exactly what
-  landed on the server; the next sync diffs against reality.
+- `pages.create` succeeds and is acknowledged → save its empty page identity
+  before appending children. Each acknowledged child batch saves its returned
+  block ids; later failures preserve the page and those descendants.
+- A write's response is lost → its outcome is unknown. The injected transport
+  must reconcile before retrying non-idempotent writes; a missing response is
+  not proof that nothing landed.
 
 You cannot atomically create "this page plus all its content" — the
 surface is coarsely best-effort, so a durable cache backend is load-bearing
@@ -99,12 +99,12 @@ Page ops (`createPage`, `updatePage`, `archivePage`, `movePage`) are
 always individual requests. Sub-page boundaries cut batch windows. Page
 ops are rare relative to block ops, so this rarely matters in practice.
 
-### Inline children on page create — depth ≤ 2, ≤ 100 blocks (A08)
+### Empty page creation and bounded child appends (A08)
 
-`pages.create` accepts nested `children[]` up to two levels deep.
-Deeper subtrees are landed via follow-up `blocks.children.append` calls
-scoped to the newly created page. This is handled transparently by
-`inlinePackChildren`; you do not need to structure your JSX around it.
+The renderer always creates pages empty, checkpoints the page id, and appends
+their children in batches of at most 100. Child ids come from append responses,
+not positional adoption of an inline page-create payload. Deep ordinary
+subtrees append after their parent ids resolve.
 
 For block appends, `column_list`, `column`, and `table` creation requests
 include their mandatory child shapes. Optional descendants of ordinary
@@ -113,6 +113,12 @@ are appended separately after their parent ids resolve, rather than packing
 an arbitrarily deep tree into one request. `<TableOfContents />` sends
 `color: 'default'` explicitly: Notion otherwise inserts a gray default,
 which would disagree with the renderer's readback claim.
+
+Mandatory atomic descendants do not receive ids in the append response.
+Their container id and authored child descriptors are checkpointed before
+reading descendant ids. A failed or inconsistent read retains that pending
+checkpoint; the next sync uses the same reader before diffing, never recreating
+the acknowledged container just because its child-id lookup failed.
 
 ### Title length cap — 2000 chars per rich_text span (A10)
 
