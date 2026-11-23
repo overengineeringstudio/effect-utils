@@ -180,7 +180,7 @@ let
     scratch="$(${pkgs.coreutils}/bin/realpath -e -- "$BUCK_SCRATCH_PATH")"
     owner="$(${pkgs.coreutils}/bin/stat -c %u -- "$scratch")"
     mode="$(${pkgs.coreutils}/bin/stat -c %a -- "$scratch")"
-    if [ "$owner" != "$(${pkgs.coreutils}/bin/id -u)" ] || (( (8#$mode & 0022) != 0 )); then
+    if [ "$owner" != "$(${pkgs.coreutils}/bin/id -u)" ] || [ "$mode" != "700" ]; then
       echo "quick-contracts: unsafe action scratch $scratch" >&2
       exit 1
     fi

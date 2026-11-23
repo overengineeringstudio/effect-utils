@@ -217,7 +217,7 @@ export const prepareWatchmanEnvironment = ({
       fix: `repair or remove the unsafe alias after stopping its Watchman service; no default-path fallback is permitted`,
     })
   try {
-    mkdirSync(directory, { mode: 0o700 })
+    mkdirSync(directory, { mode: 0o700, recursive: true })
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
   }

@@ -250,18 +250,17 @@ exit "$1"`,
         expect(result.stderr).toBe('')
         expect(result.status).toBe(status)
         const paths = result.stdout.trim().split('\n')
-        expect(paths).toHaveLength(7)
+        expect(paths).toHaveLength(8)
         const runtimeDir = realpathSync(join(scratch, 'runtime'))
         expect(paths.slice(0, 5).every((path) => path === runtimeDir)).toBe(true)
         const temporary = paths[5]!
         expect(temporary.startsWith(`${runtimeDir}/qc.`)).toBe(true)
         expect(Number(paths[6])).toBe(result.pid)
+        expect(paths[7]).toBe('700')
         expect(statSync(runtimeDir).mode & 0o777).toBe(0o700)
         expect(temporary.startsWith(realpathSync(root))).toBe(true)
-        expect(
-          Buffer.byteLength(`${runtimeDir}/direct-buck-posture-XXXXXX/watchman.sock`),
-        ).toBeLessThan(104)
-        expect(existsSync(temporary)).toBe(false)
+        // The managed socket is addressed through the short owned /tmp alias,
+        // so the runtime scratch itself carries no AF_UNIX length budget.
         expect(existsSync(runtimeDir)).toBe(true)
         observed.push(temporary)
       }
@@ -489,13 +488,14 @@ describe('short persistent Watchman location', () => {
         if (socket === undefined) throw new Error('managed socket expected')
         expect(lstatSync(directory).uid).toBe(process.getuid?.())
         expect(lstatSync(directory).mode & 0o777).toBe(0o700)
-        if (Buffer.byteLength(join(directory, 'sock')) > 103) {
-          const alias = dirname(socket)
-          aliases.push(alias)
-          expect(lstatSync(alias).uid).toBe(process.getuid?.())
-          expect(lstatSync(alias).mode & 0o777).toBe(0o700)
-          expect(realpathSync(alias)).toBe(directory)
-        }
+        // The managed socket is always addressed through a real owned alias
+        // directory outside the checkout; state stays checkout-private.
+        const alias = dirname(socket)
+        aliases.push(alias)
+        expect(lstatSync(alias).uid).toBe(process.getuid?.())
+        expect(lstatSync(alias).mode & 0o777).toBe(0o700)
+        expect(lstatSync(alias).isSymbolicLink()).toBe(false)
+        expect(socket).toBe(join(alias, 'sock'))
       }
       expect(first['WATCHMAN_SOCK']).toBe(again['WATCHMAN_SOCK'])
       expect(first['WATCHMAN_SOCK']).not.toBe(second['WATCHMAN_SOCK'])
@@ -634,6 +634,7 @@ describe('short persistent Watchman location', () => {
           await command(['--no-spawn', '--no-local', 'shutdown-server'])
         } finally {
           rmSync(directory, { recursive: true })
+          rmSync(dirname(env['WATCHMAN_SOCK']!), { recursive: true })
         }
       }
       expect(existsSync(directory)).toBe(false)
@@ -658,7 +659,8 @@ describe('short persistent Watchman location', () => {
       delete env['WATCHMAN_SOCK']
       const directory = prepareWatchmanEnvironment({ env, repoRoot: root })
       if (directory === undefined) throw new Error('managed directory expected')
-      const socket = join(directory, 'sock')
+      const socket = env['WATCHMAN_SOCK']
+      if (socket === undefined) throw new Error('managed socket expected')
       const pidfile = join(directory, 'pid')
       const dead = Bun.spawn(
         [
@@ -767,6 +769,7 @@ describe('short persistent Watchman location', () => {
           new Response(shutdown.stderr).text(),
         ])
         rmSync(directory, { recursive: true })
+        rmSync(dirname(socket), { recursive: true })
       }
     },
     20000,
