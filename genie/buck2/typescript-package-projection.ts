@@ -155,7 +155,8 @@ export const discoverCollectableTestModules = ({
 const admitSourceExtension = (relativePath: string): boolean =>
   sourceExtensionSet[path.posix.extname(relativePath)] === true
 
-const discoverPackageSources = ({
+/** Complete source census shared by package views and root-owned CLI checking. */
+export const discoverPackageSources = ({
   packagePath,
   repoRoot,
   sourceRoots,
