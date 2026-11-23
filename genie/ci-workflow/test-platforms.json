@@ -99,6 +99,10 @@
       "rationale": "Deployment and workflow-report API/CLI contracts over local fixture servers and shell stubs; no Darwin-specific filesystem, watcher or process-lifecycle assertions."
     },
     {
+      "task": "test:changelog:unbounded",
+      "rationale": "Changelog coverage runs real git in temporary repositories (merge-base, diff, log); no Darwin-specific filesystem, watcher or process-lifecycle branch."
+    },
+    {
       "task": "test:gh-ci-utils:unbounded",
       "rationale": "Shared GitHub App authentication over a loopback HTTP fixture and scoped temporary key files; no Darwin-specific filesystem, watcher or process-lifecycle branch."
     },
@@ -169,7 +173,7 @@
       },
       {
         "task": "test:changelog",
-        "rationale": "changelog contract decoding, compilation, coverage and annotation geometry assertions over temporary directories; no Darwin-specific host lifecycle regression."
+        "rationale": "changelog contract decoding, compilation, manifest and screenshot loading and annotation geometry assertions over temporary directories; no Darwin-specific host lifecycle regression."
       },
       {
         "task": "test:ci-tools",
