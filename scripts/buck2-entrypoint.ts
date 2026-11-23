@@ -2393,7 +2393,8 @@ const spawnNativeCommand = ({
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((nativeSignal) => () => forward(nativeSignal))
   if (capture === false)
-    for (const [index, nativeSignal] of signals.entries()) process.on(nativeSignal, handlers[index]!)
+    for (const [index, nativeSignal] of signals.entries())
+      process.on(nativeSignal, handlers[index]!)
   const deadline =
     deadlineMs === undefined
       ? undefined
@@ -2444,14 +2445,16 @@ const spawnNativeCommand = ({
   }
   const result = (async (): Promise<NativeCommandResult> => {
     try {
-      const stdoutPromise = capture === true
-        ? collect({ stream: child.stdout, callback: onStdout })
-        : Promise.resolve('')
-      const stderrPromise = capture === true
-        ? collect({ stream: child.stderr, callback: onStderr, diagnostic: true })
-        : child.stderr === null
-          ? Promise.resolve('')
-          : captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const stdoutPromise =
+        capture === true
+          ? collect({ stream: child.stdout, callback: onStdout })
+          : Promise.resolve('')
+      const stderrPromise =
+        capture === true
+          ? collect({ stream: child.stderr, callback: onStderr, diagnostic: true })
+          : child.stderr === null
+            ? Promise.resolve('')
+            : captureNativeStderr({ stream: child.stderr, signal: writes.signal })
       const [stdoutResult, outputResult, exitResult] = await Promise.allSettled([
         stdoutPromise,
         stderrPromise,
@@ -2482,7 +2485,8 @@ const spawnNativeCommand = ({
       clearTimeout(deadline)
       clearTimeout(hardDeadline)
       signal?.removeEventListener('abort', cancel)
-      for (const [index, nativeSignal] of signals.entries()) process.off(nativeSignal, handlers[index]!)
+      for (const [index, nativeSignal] of signals.entries())
+        process.off(nativeSignal, handlers[index]!)
     }
   })()
   return { child, result }
@@ -2840,9 +2844,10 @@ export const runOwnedEditorPublicationCommand = async (
   // Re-entry is object-validated even if an outer shell set WRAPPER_ACTIVE.
   const gated = (options.env['GATE_SLOT_CLASS'] ?? '') !== ''
   const env = gated === true ? { ...options.env, BUCK2_GATE_WRAPPER_ACTIVE: '1' } : options.env
-  const invocation = gated === true
-    ? resolveGateInvocation({ args, cwd: options.cwd, env, includePayload: true })
-    : undefined
+  const invocation =
+    gated === true
+      ? resolveGateInvocation({ args, cwd: options.cwd, env, includePayload: true })
+      : undefined
   const reconcile = (phase: 'start' | 'exit') => {
     if (invocation === undefined) return
     const current = editorPublicationInvocation({ ...options, env, args: invocation.args })

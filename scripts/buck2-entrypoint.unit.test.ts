@@ -52,60 +52,89 @@ it('retains the same real owner across native run and ExistingOnly stop', () =>
       run: async (owner) => {
         released = owner
         const options = {
-          native, cwd, env: {}, owner,
+          native,
+          cwd,
+          env: {},
+          owner,
           args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
         }
         const result = await runOwnedEditorPublicationCommand(options)
         expect(result).toMatchObject({
-          exitCode: 0, signalCode: null,
+          exitCode: 0,
+          signalCode: null,
           stdout: `--isolation-dir\n${editorPublicationIsolation}\nkill\n`,
         })
         expect(stopOwnedEditorPublicationDaemon(options).status).toBe(0)
         expect(requireEditorPublicationInvocationOwner(options)).toBe(owner)
-        await expect(runOwnedEditorPublicationCommand({
-          ...options, args: ['--isolation-dir', 'v2', 'kill'],
-        })).rejects.toThrow('reserved editor-publication')
+        await expect(
+          runOwnedEditorPublicationCommand({
+            ...options,
+            args: ['--isolation-dir', 'v2', 'kill'],
+          }),
+        ).rejects.toThrow('reserved editor-publication')
       },
     })
-    expect(() => stopOwnedEditorPublicationDaemon({
-      native, cwd, env: {}, owner: released!,
-    })).toThrow()
+    expect(() =>
+      stopOwnedEditorPublicationDaemon({
+        native,
+        cwd,
+        env: {},
+        owner: released!,
+      }),
+    ).toThrow()
   }))
 
 it('adapts real owned native streams and census with native failure identity', () =>
   withPublicationRoot(async (cwd) => {
     const native = join(cwd, 'native')
-    writeFileSync(native,
+    writeFileSync(
+      native,
       '#!/bin/sh\nprintf "%s\\n" "$PWD" "$EXPLICIT_CONTEXT" "$@"\nprintf "\\342\\202\\254\\342" >&2\n',
-      { mode: 0o755 })
+      { mode: 0o755 },
+    )
     await withEditorPublicationOwner({
       root: cwd,
       run: async (owner) => {
         const chunks: string[] = []
         const command = {
-          command: 'buck', cwd,
+          command: 'buck',
+          cwd,
           args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
-          onStderr: (chunk: string): void => { chunks.push(chunk) },
+          onStderr: (chunk: string): void => {
+            chunks.push(chunk)
+          },
         }
         const result = await runManagedEditorPublicationCommand({
-          command, native, owner, env: { EXPLICIT_CONTEXT: 'adapter' },
+          command,
+          native,
+          owner,
+          env: { EXPLICIT_CONTEXT: 'adapter' },
         })
         expect(chunks.join('')).toBe('€�')
         expect(result.stderr).toBe('€�')
-        expect(result.stdout).toBe(`${cwd}\nadapter\n--isolation-dir\n${editorPublicationIsolation}\nkill\n`)
+        expect(result.stdout).toBe(
+          `${cwd}\nadapter\n--isolation-dir\n${editorPublicationIsolation}\nkill\n`,
+        )
         const uncaptured = await runManagedEditorPublicationCommand({
-          command: { ...command, captureStderr: false }, native, owner, env: {},
+          command: { ...command, captureStderr: false },
+          native,
+          owner,
+          env: {},
         })
         expect(uncaptured.stderr).toBe('')
         const runner = ownedEditorViewAuthorityCommandRunner({
-          buck2: 'buck', native, owner, env: { EXPLICIT_CONTEXT: 'census' },
+          buck2: 'buck',
+          native,
+          owner,
+          env: { EXPLICIT_CONTEXT: 'census' },
           signal: new AbortController().signal,
         })
         const census = await runner({ command: 'buck', cwd, args: ['uquery', '//...'] })
         expect(Buffer.isBuffer(census.stdout)).toBe(true)
         expect(Buffer.isBuffer(census.stderr)).toBe(true)
         expect(Buffer.from(census.stdout).toString()).toBe(
-          `${cwd}\ncensus\n--isolation-dir\n${editorPublicationIsolation}\nuquery\n//...\n`)
+          `${cwd}\ncensus\n--isolation-dir\n${editorPublicationIsolation}\nuquery\n//...\n`,
+        )
         const ordinary = await runner({ command: '/bin/sh', cwd, args: ['-c', 'printf ordinary'] })
         expect(Buffer.from(ordinary.stdout).toString()).toBe('ordinary')
         expect(requireEditorPublicationInvocationOwner({ ...command, env: {}, owner })).toBe(owner)
@@ -120,21 +149,29 @@ it('preserves managed native status, signal and pre-aborted command causes', () 
       root: cwd,
       run: async (owner) => {
         const command = {
-          command: 'buck', cwd,
+          command: 'buck',
+          cwd,
           args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
         }
         writeFileSync(native, '#!/bin/sh\nexit 23\n', { mode: 0o755 })
-        await expect(runManagedEditorPublicationCommand({ command, native, owner, env: {} }))
-          .rejects.toMatchObject({ exitCode: 23, signal: undefined })
+        await expect(
+          runManagedEditorPublicationCommand({ command, native, owner, env: {} }),
+        ).rejects.toMatchObject({ exitCode: 23, signal: undefined })
         writeFileSync(native, '#!/bin/sh\nkill -TERM $$\n', { mode: 0o755 })
-        await expect(runManagedEditorPublicationCommand({ command, native, owner, env: {} }))
-          .rejects.toMatchObject({ exitCode: undefined, signal: 'SIGTERM' })
+        await expect(
+          runManagedEditorPublicationCommand({ command, native, owner, env: {} }),
+        ).rejects.toMatchObject({ exitCode: undefined, signal: 'SIGTERM' })
         const controller = new AbortController()
         const cause = new Error('cancel before spawn')
         controller.abort(cause)
-        await expect(runManagedEditorPublicationCommand({
-          command: { ...command, signal: controller.signal }, native, owner, env: {},
-        })).rejects.toBe(cause)
+        await expect(
+          runManagedEditorPublicationCommand({
+            command: { ...command, signal: controller.signal },
+            native,
+            owner,
+            env: {},
+          }),
+        ).rejects.toBe(cause)
         expect(requireEditorPublicationInvocationOwner({ ...command, env: {}, owner })).toBe(owner)
       },
     })

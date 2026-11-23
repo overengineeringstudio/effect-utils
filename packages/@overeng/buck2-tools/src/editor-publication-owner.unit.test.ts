@@ -341,19 +341,24 @@ it('does not acquire for an already aborted signal or release an active callback
     expect(canAcquire(root)).toBe(true)
   }))
 
-it('retains the owner until an aborted publisher joins its gated native signal cleanup', () =>
-  withRoot(async (root) => {
-    const ready = Promise.withResolvers<void>()
-    const cleaning = Promise.withResolvers<void>()
-    const controller = new AbortController()
-    let pid: number | undefined
-    let diagnostics = ''
-    let finished = false
-    const outcome = withEditorPublicationOwner({
-      root,
-      run: () => runCommand({
-        command: process.execPath,
-        args: ['--eval', `
+it(
+  'retains the owner until an aborted publisher joins its gated native signal cleanup',
+  () =>
+    withRoot(async (root) => {
+      const ready = Promise.withResolvers<void>()
+      const cleaning = Promise.withResolvers<void>()
+      const controller = new AbortController()
+      let pid: number | undefined
+      let diagnostics = ''
+      let finished = false
+      const outcome = withEditorPublicationOwner({
+        root,
+        run: () =>
+          runCommand({
+            command: process.execPath,
+            args: [
+              '--eval',
+              `
           import { createServer } from 'node:net';
           const live = createServer();
           process.once('SIGTERM', () => {
@@ -365,40 +370,53 @@ it('retains the owner until an aborted publisher joins its gated native signal c
           });
           live.listen(0, '127.0.0.1', () =>
             process.stderr.write('ready:' + process.pid + '\\n'));
-        `],
-        cwd: root,
-        signal: controller.signal,
-        onStderr: (chunk) => {
-          diagnostics += chunk
-          const match = /ready:(\d+)\n/u.exec(diagnostics)
-          if (match !== null) {
-            pid = Number(match[1])
-            ready.resolve()
-          }
-          if (diagnostics.includes('cleanup-start\n')) cleaning.resolve()
+        `,
+            ],
+            cwd: root,
+            signal: controller.signal,
+            onStderr: (chunk) => {
+              diagnostics += chunk
+              const match = /ready:(\d+)\n/u.exec(diagnostics)
+              if (match !== null) {
+                pid = Number(match[1])
+                ready.resolve()
+              }
+              if (diagnostics.includes('cleanup-start\n')) cleaning.resolve()
+            },
+          }),
+      }).then(
+        () => {
+          finished = true
+          return undefined
         },
-      }),
-    }).then(
-      () => { finished = true; return undefined },
-      (error: unknown) => { finished = true; return error },
-    )
-    const prematureClose = outcome.then((cause) => {
-      throw new Error(`publisher closed before cleanup acknowledgement: ${diagnostics}`, { cause })
-    })
-    try {
-      await Promise.race([ready.promise, prematureClose])
-      controller.abort()
-      await Promise.race([cleaning.promise, prematureClose])
-      expect(finished).toBe(false)
-      expect(canAcquire(root)).toBe(false)
-    } finally {
-      if (pid !== undefined) {
-        try { process.kill(pid, 'SIGUSR1') } catch {}
+        (error: unknown) => {
+          finished = true
+          return error
+        },
+      )
+      const prematureClose = outcome.then((cause) => {
+        throw new Error(`publisher closed before cleanup acknowledgement: ${diagnostics}`, {
+          cause,
+        })
+      })
+      try {
+        await Promise.race([ready.promise, prematureClose])
+        controller.abort()
+        await Promise.race([cleaning.promise, prematureClose])
+        expect(finished).toBe(false)
+        expect(canAcquire(root)).toBe(false)
+      } finally {
+        if (pid !== undefined) {
+          try {
+            process.kill(pid, 'SIGUSR1')
+          } catch {}
+        }
+        controller.abort()
+        await outcome
       }
-      controller.abort()
-      await outcome
-    }
-    expect(await outcome).toBeInstanceOf(CommandFailure)
-    expect(await outcome).toMatchObject({ exitCode: undefined, signal: 'SIGTERM' })
-    expect(canAcquire(root)).toBe(true)
-  }), 10000)
+      expect(await outcome).toBeInstanceOf(CommandFailure)
+      expect(await outcome).toMatchObject({ exitCode: undefined, signal: 'SIGTERM' })
+      expect(canAcquire(root)).toBe(true)
+    }),
+  10000,
+)

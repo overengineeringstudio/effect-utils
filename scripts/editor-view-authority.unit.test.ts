@@ -352,16 +352,20 @@ for (const [signal, status] of [
     })
     const native = join(root, 'native')
     const git = join(root, 'git')
-    const tracked = editorViewPackagePaths.map((path) =>
-      path === '.' ? 'package.json' : `${path}/package.json`,
-    ).join('\0') + '\0'
+    const tracked =
+      editorViewPackagePaths
+        .map((path) => (path === '.' ? 'package.json' : `${path}/package.json`))
+        .join('\0') + '\0'
     writeFileSync(join(root, '.buckroot'), '')
     writeFileSync(join(root, '.buckconfig'), '')
-    writeFileSync(git,
+    writeFileSync(
+      git,
       `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(tracked)})\n`,
       { mode: 0o755 },
     )
-    writeFileSync(native, `#!${process.execPath}
+    writeFileSync(
+      native,
+      `#!${process.execPath}
       import { createServer } from 'node:net';
       import { writeFileSync } from 'node:fs';
       const live = createServer();
@@ -371,26 +375,56 @@ for (const [signal, status] of [
       });
       live.listen(0, '127.0.0.1', () =>
         writeFileSync(${JSON.stringify(marker)}, 'ready'));
-    `, { mode: 0o755 })
-    const child = spawn(process.execPath, [
-      script, 'bootstrap',
-      '--repo-root', root, '--workspace-root', root, '--cell', 'effect_utils',
-      '--buck2', native, '--buck2-native', native, '--git', git,
-      '--output', join(root, 'authority.json'),
-      '--publisher', '/unused/publisher.ts', '--cp', '/unused/cp', '--mv', '/unused/mv',
-      '--fingerprint-tool', '/unused/buck2-fingerprint', '--snapshot-retention', '3',
-      '--packages', '["."]',
-    ], {
-      cwd: root,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        HOME: join(root, 'home'),
-        PATH: process.env.PATH,
-        BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY: process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY,
+    `,
+      { mode: 0o755 },
+    )
+    const child = spawn(
+      process.execPath,
+      [
+        script,
+        'bootstrap',
+        '--repo-root',
+        root,
+        '--workspace-root',
+        root,
+        '--cell',
+        'effect_utils',
+        '--buck2',
+        native,
+        '--buck2-native',
+        native,
+        '--git',
+        git,
+        '--output',
+        join(root, 'authority.json'),
+        '--publisher',
+        '/unused/publisher.ts',
+        '--cp',
+        '/unused/cp',
+        '--mv',
+        '/unused/mv',
+        '--fingerprint-tool',
+        '/unused/buck2-fingerprint',
+        '--snapshot-retention',
+        '3',
+        '--packages',
+        '["."]',
+      ],
+      {
+        cwd: root,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          HOME: join(root, 'home'),
+          PATH: process.env.PATH,
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY:
+            process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY,
+        },
       },
-    })
+    )
     let diagnostics = ''
-    child.stderr.setEncoding('utf8').on('data', (chunk: string) => { diagnostics += chunk })
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+      diagnostics += chunk
+    })
     const completion = Promise.withResolvers<{
       code: number | null
       signal: NodeJS.Signals | null
@@ -401,7 +435,9 @@ for (const [signal, status] of [
     try {
       await Promise.race([
         ready.promise,
-        closed.then(() => { throw new Error(`authority exited before native readiness: ${diagnostics}`) }),
+        closed.then(() => {
+          throw new Error(`authority exited before native readiness: ${diagnostics}`)
+        }),
       ])
       child.kill(signal)
       expect(await closed).toEqual({ code: status, signal: null })

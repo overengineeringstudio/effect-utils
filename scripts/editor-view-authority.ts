@@ -58,16 +58,24 @@ export type ManagedEditorPublicationResult = {
 
 /** Stream diagnostics without losing split UTF-8 or native exit/signal causes. */
 export const runManagedEditorPublicationCommand = async ({
-  command, owner, native, env,
+  command,
+  owner,
+  native,
+  env,
 }: ManagedEditorPublicationOptions): Promise<ManagedEditorPublicationResult> => {
   const stderr = new TextDecoder('utf-8', { ignoreBOM: true })
   const result = await runOwnedEditorPublicationCommand({
-    native, args: command.args, cwd: command.cwd, env, owner,
+    native,
+    args: command.args,
+    cwd: command.cwd,
+    env,
+    owner,
     signal: command.signal,
     captureStderr: command.captureStderr,
-    onStderr: command.onStderr === undefined
-      ? undefined
-      : (bytes) => command.onStderr?.(stderr.decode(bytes, { stream: true })),
+    onStderr:
+      command.onStderr === undefined
+        ? undefined
+        : (bytes) => command.onStderr?.(stderr.decode(bytes, { stream: true })),
   })
   command.onStderr?.(stderr.decode())
   if (result.exitCode !== 0 || result.signalCode !== null)
@@ -89,20 +97,28 @@ export type OwnedEditorViewAuthorityOptions = {
 }
 
 /** Keep Git on the ordinary census boundary and Buck on the live owner's native boundary. */
-export const ownedEditorViewAuthorityCommandRunner = ({
-  buck2, native, owner, env, signal,
-}: OwnedEditorViewAuthorityOptions): EditorViewAuthorityCommandRunner => async (command) => {
-  if (command.command !== buck2) return runEditorViewAuthorityCommand(command)
-  const result = await runManagedEditorPublicationCommand({
-    command: {
-      ...command,
-      args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
-      signal,
-    },
-    native, owner, env,
-  })
-  return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
-}
+export const ownedEditorViewAuthorityCommandRunner =
+  ({
+    buck2,
+    native,
+    owner,
+    env,
+    signal,
+  }: OwnedEditorViewAuthorityOptions): EditorViewAuthorityCommandRunner =>
+  async (command) => {
+    if (command.command !== buck2) return runEditorViewAuthorityCommand(command)
+    const result = await runManagedEditorPublicationCommand({
+      command: {
+        ...command,
+        args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+        signal,
+      },
+      native,
+      owner,
+      env,
+    })
+    return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+  }
 
 /** Cancellation work is joined before the callback can release its publication owner. */
 export type PublicationCancellationOptions = {
