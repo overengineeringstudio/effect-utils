@@ -25,6 +25,11 @@ import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
 import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  requireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import {
   buckConfigValues,
   readConfig,
   canonicalCacheAdmissionInvocationId,
@@ -973,6 +978,47 @@ export const resolveManagedInvocation = ({
     )
   return invocation
 }
+
+const editorPublicationInvocation = ({
+  args,
+  cwd,
+  env,
+  owner,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly owner?: EditorPublicationOwner
+}): { readonly root: string; readonly owner: EditorPublicationOwner } | undefined => {
+  const invocation = resolveManagedInvocation({ args, cwd, env })
+  if (invocation.isolation !== editorPublicationIsolation) return undefined
+  const canonicalCwd = realpathSync(cwd)
+  const root = findRoot(canonicalCwd)
+  const home = resolve(env['HOME'] ?? homedir())
+  let current = canonicalCwd
+  let nativeRoot: string | undefined
+  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
+  for (;;) {
+    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
+      if (current === home) break
+      nativeRoot = current
+    }
+    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  if (root === undefined || nativeRoot !== root)
+    throw new Error(
+      `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
+    )
+  return { root, owner: requireEditorPublicationOwner({ root, owner }) }
+}
+
+/** No caller may mutate the publication materializer without its real owner capability. */
+export const requireEditorPublicationInvocationOwner = (
+  options: Parameters<typeof editorPublicationInvocation>[0],
+): EditorPublicationOwner | undefined => editorPublicationInvocation(options)?.owner
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
 export const cacheDaemonPolicyArguments = ({
