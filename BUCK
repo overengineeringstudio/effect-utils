@@ -4,10 +4,12 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:f68eb17bd78debd10d780c75b87a3d9509c8716a9d59ae1a05d25447ce7a6e2f
+# Semantic fingerprint: sha256:e9e49813d4e4b6c3696ff5ce5cb0b5698aa82d27fd167eb8e2cd8112538ac229
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
+load("//buck2:materialization.bzl", "package_view")
+load("//buck2:typescript.bzl", "tsgo_typecheck")
 load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
 load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
@@ -180,6 +182,95 @@ weaver_checks(
     visibility = ["PUBLIC"],
 )
 
+package_view(
+    name = "editor_cli_package_tree",
+    dependency_view = "//packages/@overeng/buck2-tools:package_tree",
+    files = {
+        source: source
+        for source in glob(["scripts/*.ts"]) + [
+            "package.json",
+            "scripts/tsconfig.json",
+            "genie/packages.ts",
+            "genie/ci-workflow/test-scheduling.json",
+        ]
+    },
+    workspace_dist = {
+        "packages/@overeng/buck2-tools/package.json": "//packages/@overeng/buck2-tools:package.json",
+        "packages/@overeng/buck2-tools/src/buck-watch.ts": "//packages/@overeng/buck2-tools:src/buck-watch.ts",
+        "packages/@overeng/buck2-tools/src/buck-watch.unit.test.ts": "//packages/@overeng/buck2-tools:src/buck-watch.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/bun-test-preload.ts": "//packages/@overeng/buck2-tools:src/bun-test-preload.ts",
+        "packages/@overeng/buck2-tools/src/bun-test-runner.integration.test.ts": "//packages/@overeng/buck2-tools:src/bun-test-runner.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/bun-test-runner.ts": "//packages/@overeng/buck2-tools:src/bun-test-runner.ts",
+        "packages/@overeng/buck2-tools/src/bun-test-timeout.ts": "//packages/@overeng/buck2-tools:src/bun-test-timeout.ts",
+        "packages/@overeng/buck2-tools/src/bun-test-timeout.unit.test.ts": "//packages/@overeng/buck2-tools:src/bun-test-timeout.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/canonical.ts": "//packages/@overeng/buck2-tools:src/canonical.ts",
+        "packages/@overeng/buck2-tools/src/configured-check-selection.integration.test.ts": "//packages/@overeng/buck2-tools:src/configured-check-selection.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/configured-check-selection.unit.test.ts": "//packages/@overeng/buck2-tools:src/configured-check-selection.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-publication-owner.ts": "//packages/@overeng/buck2-tools:src/editor-publication-owner.ts",
+        "packages/@overeng/buck2-tools/src/editor-publication-owner.unit.test.ts": "//packages/@overeng/buck2-tools:src/editor-publication-owner.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-authority.integration.test.ts": "//packages/@overeng/buck2-tools:src/editor-view-authority.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-authority.ts": "//packages/@overeng/buck2-tools:src/editor-view-authority.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-budget.integration.test.ts": "//packages/@overeng/buck2-tools:src/editor-view-budget.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-budget.ts": "//packages/@overeng/buck2-tools:src/editor-view-budget.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-leases.integration.test.ts": "//packages/@overeng/buck2-tools:src/editor-view-leases.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-leases.ts": "//packages/@overeng/buck2-tools:src/editor-view-leases.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-lifecycle.integration.test.ts": "//packages/@overeng/buck2-tools:src/editor-view-lifecycle.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-lifecycle.ts": "//packages/@overeng/buck2-tools:src/editor-view-lifecycle.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-reader-directory.ts": "//packages/@overeng/buck2-tools:src/editor-view-reader-directory.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-readers.ts": "//packages/@overeng/buck2-tools:src/editor-view-readers.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-readers.unit.test.ts": "//packages/@overeng/buck2-tools:src/editor-view-readers.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-sharing.integration.test.ts": "//packages/@overeng/buck2-tools:src/editor-view-sharing.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-sharing.ts": "//packages/@overeng/buck2-tools:src/editor-view-sharing.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-test-filesystem.ts": "//packages/@overeng/buck2-tools:src/editor-view-test-filesystem.ts",
+        "packages/@overeng/buck2-tools/src/editor-view-test-processes.ts": "//packages/@overeng/buck2-tools:src/editor-view-test-processes.ts",
+        "packages/@overeng/buck2-tools/src/editor-view.integration.test.ts": "//packages/@overeng/buck2-tools:src/editor-view.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/editor-view.ts": "//packages/@overeng/buck2-tools:src/editor-view.ts",
+        "packages/@overeng/buck2-tools/src/editor-view.unit.test.ts": "//packages/@overeng/buck2-tools:src/editor-view.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/fixtures/bun-timeout.fixture.ts": "//packages/@overeng/buck2-tools:src/fixtures/bun-timeout.fixture.ts",
+        "packages/@overeng/buck2-tools/src/javascript-runner.integration.test.ts": "//packages/@overeng/buck2-tools:src/javascript-runner.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/javascript-runner.ts": "//packages/@overeng/buck2-tools:src/javascript-runner.ts",
+        "packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts": "//packages/@overeng/buck2-tools:src/javascript-runner.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/mod.ts": "//packages/@overeng/buck2-tools:src/mod.ts",
+        "packages/@overeng/buck2-tools/src/otel-span-cli.ts": "//packages/@overeng/buck2-tools:src/otel-span-cli.ts",
+        "packages/@overeng/buck2-tools/src/otel-span-cli.unit.test.ts": "//packages/@overeng/buck2-tools:src/otel-span-cli.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/owned-files.integration.test.ts": "//packages/@overeng/buck2-tools:src/owned-files.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/owned-files.ts": "//packages/@overeng/buck2-tools:src/owned-files.ts",
+        "packages/@overeng/buck2-tools/src/owned-files.unit.test.ts": "//packages/@overeng/buck2-tools:src/owned-files.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/package-command-runner.integration.test.ts": "//packages/@overeng/buck2-tools:src/package-command-runner.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/package-command-runner.ts": "//packages/@overeng/buck2-tools:src/package-command-runner.ts",
+        "packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts": "//packages/@overeng/buck2-tools:src/package-command-runner.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/package-tree.ts": "//packages/@overeng/buck2-tools:src/package-tree.ts",
+        "packages/@overeng/buck2-tools/src/package-tree.unit.test.ts": "//packages/@overeng/buck2-tools:src/package-tree.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/reader-infrastructure.integration.test.ts": "//packages/@overeng/buck2-tools:src/reader-infrastructure.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/reader-infrastructure.ts": "//packages/@overeng/buck2-tools:src/reader-infrastructure.ts",
+        "packages/@overeng/buck2-tools/src/reader-infrastructure.unit.test.ts": "//packages/@overeng/buck2-tools:src/reader-infrastructure.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/real-path.ts": "//packages/@overeng/buck2-tools:src/real-path.ts",
+        "packages/@overeng/buck2-tools/src/repository-policy-runner.ts": "//packages/@overeng/buck2-tools:src/repository-policy-runner.ts",
+        "packages/@overeng/buck2-tools/src/repository-policy-runner.unit.test.ts": "//packages/@overeng/buck2-tools:src/repository-policy-runner.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/repository-validation-runner.ts": "//packages/@overeng/buck2-tools:src/repository-validation-runner.ts",
+        "packages/@overeng/buck2-tools/src/repository-validation-runner.unit.test.ts": "//packages/@overeng/buck2-tools:src/repository-validation-runner.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/static-check-runner.ts": "//packages/@overeng/buck2-tools:src/static-check-runner.ts",
+        "packages/@overeng/buck2-tools/src/test-verdict.ts": "//packages/@overeng/buck2-tools:src/test-verdict.ts",
+        "packages/@overeng/buck2-tools/src/test-verdict.unit.test.ts": "//packages/@overeng/buck2-tools:src/test-verdict.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts": "//packages/@overeng/buck2-tools:src/ts-sandbox.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/typescript-runner.integration.test.ts": "//packages/@overeng/buck2-tools:src/typescript-runner.integration.test.ts",
+        "packages/@overeng/buck2-tools/src/typescript-runner.ts": "//packages/@overeng/buck2-tools:src/typescript-runner.ts",
+        "packages/@overeng/buck2-tools/src/typescript-runner.unit.test.ts": "//packages/@overeng/buck2-tools:src/typescript-runner.unit.test.ts",
+        "packages/@overeng/buck2-tools/src/weaver-check-runner.ts": "//packages/@overeng/buck2-tools:src/weaver-check-runner.ts",
+        "packages/@overeng/buck2-tools/src/weaver-check-runner.unit.test.ts": "//packages/@overeng/buck2-tools:src/weaver-check-runner.unit.test.ts",
+    },
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "editor_cli_typecheck",
+    package_tree = ":editor_cli_package_tree",
+    project = "scripts/tsconfig.json",
+    visibility = ["PUBLIC"],
+)
+
 # Scoped repository checks: admitted packages and non-package TypeScript fixtures.
 check_aggregate(
     name = "quick",
@@ -247,6 +338,7 @@ check_aggregate(
         "//packages/@overeng/utils:typecheck",
         "//packages/@overeng/utils-dev:typecheck",
         "//packages/@overeng/utils-storybook:typecheck",
+        "//:editor_cli_typecheck",
         "//rust/effect-rust-fixtures:typecheck",
         ":weaver_check",
         ":weaver_version_smoke",
