@@ -70,12 +70,11 @@ export const runManagedEditorPublicationCommand = async ({
     cwd: command.cwd,
     env,
     owner,
-    signal: command.signal,
-    captureStderr: command.captureStderr,
-    onStderr:
-      command.onStderr === undefined
-        ? undefined
-        : (bytes) => command.onStderr?.(stderr.decode(bytes, { stream: true })),
+    ...(command.signal === undefined ? {} : { signal: command.signal }),
+    ...(command.captureStderr === undefined ? {} : { captureStderr: command.captureStderr }),
+    ...(command.onStderr === undefined
+      ? {}
+      : { onStderr: (bytes: Uint8Array) => command.onStderr?.(stderr.decode(bytes, { stream: true })) }),
   })
   command.onStderr?.(stderr.decode())
   if (result.exitCode !== 0 || result.signalCode !== null)
@@ -238,7 +237,7 @@ export const decodePublicationPackagePaths = (serialized: string): readonly stri
     )
   }
   if (Array.isArray(decoded) === false || decoded.length === 0)
-    fail('--packages must be a non-empty JSON array of package paths')
+    return fail('--packages must be a non-empty JSON array of package paths')
   const packagePaths = decoded
     .map((entry) =>
       typeof entry === 'string'

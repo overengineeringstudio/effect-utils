@@ -24,6 +24,7 @@ import process from 'node:process'
 import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
+import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   editorPublicationIsolation,
   type EditorPublicationOwner,
@@ -279,7 +280,8 @@ const pinCiJobReapiProbe = async ({
   const previous = decisions[fingerprint]
   if (previous !== undefined) {
     admission.reapiDecision = 'pinned-from-first-probe'
-    diagnostics.failure = previous.failure
+    if (previous.failure === undefined) delete diagnostics.failure
+    else diagnostics.failure = previous.failure
     return previous.available
   }
   const available = await probe(true)
@@ -397,15 +399,16 @@ export const directBuckArguments = async ({
           env,
           repoRoot: root,
           deadlineMs: Number(crawlBudget),
-          managedDirectory: watchmanDirectory,
+          ...(watchmanDirectory === undefined ? {} : { managedDirectory: watchmanDirectory }),
         })
       return probeWatchman({
         env,
         repoRoot: root,
         deadlineMs: deadlineMs ?? 2500,
-        managedDirectory: watchmanDirectory,
-        makeDeadlineSignal:
-          probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
+        ...(watchmanDirectory === undefined ? {} : { managedDirectory: watchmanDirectory }),
+        ...(probeDeadlineSignal === undefined
+          ? {}
+          : { makeDeadlineSignal: () => probeDeadlineSignal('watchman') }),
       })
     }
     const available = await cachedProbe({
@@ -433,7 +436,7 @@ export const directBuckArguments = async ({
     if (available === false) await watchmanProbe()
     reconcileFileWatcher({
       repoRoot: root,
-      provider: explicitWatcher === undefined ? 'watchman' : undefined,
+      ...(explicitWatcher === undefined ? { provider: 'watchman' } : {}),
     })
   } else if (localWithoutWatcher !== currentLocal.trimEnd()) {
     reconcileFileWatcher({ repoRoot: root })
@@ -597,8 +600,9 @@ export const directBuckArguments = async ({
                 retryProbe({
                   endpoint: 'reapi',
                   firstFailurePhase: () => reapiFailurePhase.phase,
-                  probe: ({ attemptIndex, ...budgets }) =>
-                    probeRemoteCacheCapabilities({
+                  probe: ({ attemptIndex, ...budgets }) => {
+                    const deadlineSignal = probeDeadlineSignal?.('reapi')
+                    return probeRemoteCacheCapabilities({
                       address: values['buck2_re_client.action_cache_address'],
                       instanceName: values['buck2_re_client.instance_name'] ?? '',
                       tls: values['buck2_re_client.tls'] !== 'false',
@@ -606,7 +610,7 @@ export const directBuckArguments = async ({
                       env,
                       attemptIndex,
                       ...budgets,
-                      deadlineSignal: probeDeadlineSignal?.('reapi'),
+                      ...(deadlineSignal === undefined ? {} : { deadlineSignal }),
                       onAttempt: (attempt) => {
                         ;(admission.reapiAttempts ??= []).push(attempt)
                         writeSync(2, `Buck2 REAPI admission attempt: ${JSON.stringify(attempt)}\n`)
@@ -629,7 +633,8 @@ export const directBuckArguments = async ({
                           2,
                           `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
                         ),
-                    }),
+                    })
+                  },
                 }),
             }),
         })
@@ -1012,7 +1017,10 @@ const editorPublicationInvocation = ({
     throw new Error(
       `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
     )
-  return { root, owner: requireEditorPublicationOwner({ root, owner }) }
+  return {
+    root,
+    owner: requireEditorPublicationOwner({ root, ...(owner === undefined ? {} : { owner }) }),
+  }
 }
 
 /** No caller may mutate the publication materializer without its real owner capability. */
@@ -1359,7 +1367,11 @@ export const admitCacheDaemonCommand = async ({
     // Only fixed metadata may cross this boundary: native output and error messages
     // can contain RE headers/secrets. Never attach the spawn error as a cause.
     if (result.error !== undefined || result.status !== 0) {
-      const code = result.error?.code
+      const error = result.error
+      const code =
+        error !== undefined && 'code' in error && typeof error.code === 'string'
+          ? error.code
+          : undefined
       const spawnError =
         code === undefined ? 'none' : /^[A-Z0-9_]+$/u.test(code) === true ? code : 'other'
       const subcommand =
@@ -1405,7 +1417,7 @@ export const admitCacheDaemonCommand = async ({
       'daemons' in previous &&
       typeof previous.daemons === 'object' &&
       previous.daemons !== null
-        ? previous
+        ? { ...previous, salt: previous.salt, daemons: previous.daemons }
         : undefined
     const daemons: Record<string, { fingerprint: string; identity: string }> = {}
     if (record !== undefined)
@@ -1799,7 +1811,7 @@ export const runNativeWithEvidence = async ({
       native,
       args: nativeArgs,
       stderr,
-      deadlineMs,
+      ...(deadlineMs === undefined ? {} : { deadlineMs }),
       ...execution,
     })
     reapNative = async () => {
@@ -2288,7 +2300,7 @@ export const captureNativeStderr = async ({
     for await (const chunk of stream) {
       if (writable === true) {
         try {
-          writable = await writeChunk({ chunk, signal })
+          writable = await writeChunk({ chunk, ...(signal === undefined ? {} : { signal }) })
         } catch {
           writable = false
         }
@@ -2352,21 +2364,30 @@ const spawnNativeCommand = ({
 }) => {
   const started = performance.now()
   const child = Bun.spawn([native, ...args], {
-    cwd,
+    ...(cwd === undefined ? {} : { cwd }),
     env,
     stdin,
     stdout: capture === true ? 'pipe' : 'inherit',
     stderr: capture === true ? 'pipe' : stderr,
   })
-  let interrupted = false
-  let timedOut = false
+  // These observations are written by callbacks while the result coroutine awaits.
+  const lifecycle: {
+    interrupted: boolean
+    timedOut: boolean
+    processingFailed: boolean
+    diagnosticComplete: boolean
+  } = {
+    interrupted: false,
+    timedOut: false,
+    processingFailed: false,
+    diagnosticComplete: true,
+  }
   const writes = new AbortController()
   let durationMs = 0
-  let processingFailed = false
   let processingError: unknown
   const retainProcessingError = (error: unknown): void => {
-    if (processingFailed === false) {
-      processingFailed = true
+    if (lifecycle.processingFailed === false) {
+      lifecycle.processingFailed = true
       processingError = error
     }
   }
@@ -2382,7 +2403,7 @@ const spawnNativeCommand = ({
   )
   let hardDeadline: NodeJS.Timeout | undefined
   const forward = (nativeSignal: NodeJS.Signals) => {
-    interrupted = true
+    lifecycle.interrupted = true
     writes.abort()
     child.kill(nativeSignal)
     hardDeadline ??= setTimeout(() => child.kill('SIGKILL'), 5000)
@@ -2399,11 +2420,10 @@ const spawnNativeCommand = ({
     deadlineMs === undefined
       ? undefined
       : setTimeout(() => {
-          timedOut = true
+          lifecycle.timedOut = true
           forward('SIGTERM')
         }, deadlineMs)
   let diagnosticBytes = 0
-  let diagnosticComplete = true
   const collect = async ({
     stream,
     callback,
@@ -2422,7 +2442,7 @@ const spawnNativeCommand = ({
         if (diagnostic === true) {
           diagnosticBytes += chunk.byteLength
           if (diagnosticBytes > 262144) {
-            diagnosticComplete = false
+            lifecycle.diagnosticComplete = false
             text = ''
           } else text += decoder.decode(chunk, { stream: true })
         } else text += decoder.decode(chunk, { stream: true })
@@ -2432,14 +2452,14 @@ const spawnNativeCommand = ({
           } catch (error) {
             retainProcessingError(error)
             forwarding = false
-            if (diagnostic === true) diagnosticComplete = false
+            if (diagnostic === true) lifecycle.diagnosticComplete = false
           }
         }
       }
     } catch (error) {
       // A failed output consumer/stream never short-circuits joining native.
       retainProcessingError(error)
-      if (diagnostic === true) diagnosticComplete = false
+      if (diagnostic === true) lifecycle.diagnosticComplete = false
     }
     return diagnostic === true && diagnosticBytes > 262144 ? '' : text + decoder.decode()
   }
@@ -2447,12 +2467,19 @@ const spawnNativeCommand = ({
     try {
       const stdoutPromise =
         capture === true
-          ? collect({ stream: child.stdout, callback: onStdout })
+          ? collect({
+              stream: child.stdout ?? null,
+              ...(onStdout === undefined ? {} : { callback: onStdout }),
+            })
           : Promise.resolve('')
       const stderrPromise =
         capture === true
-          ? collect({ stream: child.stderr, callback: onStderr, diagnostic: true })
-          : child.stderr === null
+          ? collect({
+              stream: child.stderr ?? null,
+              ...(onStderr === undefined ? {} : { callback: onStderr }),
+              diagnostic: true,
+            })
+          : child.stderr === null || child.stderr === undefined
             ? Promise.resolve('')
             : captureNativeStderr({ stream: child.stderr, signal: writes.signal })
       const [stdoutResult, outputResult, exitResult] = await Promise.allSettled([
@@ -2462,7 +2489,7 @@ const spawnNativeCommand = ({
       ])
       for (const settled of [stdoutResult, outputResult, exitResult])
         if (settled.status === 'rejected') retainProcessingError(settled.reason)
-      if (processingFailed === true) throw processingError
+      if (lifecycle.processingFailed === true) throw processingError
       if (stdoutResult.status === 'rejected') throw stdoutResult.reason
       if (outputResult.status === 'rejected') throw outputResult.reason
       if (exitResult.status === 'rejected') throw exitResult.reason
@@ -2471,11 +2498,11 @@ const spawnNativeCommand = ({
       const exitCode = exitResult.value
       const signalCode = child.signalCode
       return {
-        exitCode: timedOut === true ? 124 : exitCode,
+        exitCode: lifecycle.timedOut === true ? 124 : exitCode,
         signalCode,
         durationMs,
         output:
-          interrupted === true || signalCode !== null || diagnosticComplete === false
+          lifecycle.interrupted === true || signalCode !== null || lifecycle.diagnosticComplete === false
             ? ''
             : (output ?? ''),
         stdout,
@@ -2540,19 +2567,24 @@ const runManagedCommand = async (
   const execution: NativeExecution = {
     cwd,
     env,
-    signal: options.signal,
-    stdin: options.stdin,
-    capture: options.capture,
-    onStdout: options.onStdout,
-    onStderr: options.onStderr,
-    captureStderr: options.captureStderr,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
+    ...(options.capture === undefined ? {} : { capture: options.capture }),
+    ...(options.onStdout === undefined ? {} : { onStdout: options.onStdout }),
+    ...(options.onStderr === undefined ? {} : { onStderr: options.onStderr }),
+    ...(options.captureStderr === undefined ? {} : { captureStderr: options.captureStderr }),
   }
   options.signal?.throwIfAborted()
   if (options.capture === true && owner === undefined)
     throw new Error('Owned native invocation requires a process-local editor publication owner')
   // Snapshot once before admission, including the owner/root decision.
   const requestedArgs = resolveManagedInvocation({ args: options.args, cwd, env }).args
-  const publication = editorPublicationInvocation({ args: requestedArgs, cwd, env, owner })
+  const publication = editorPublicationInvocation({
+    args: requestedArgs,
+    cwd,
+    env,
+    ...(owner === undefined ? {} : { owner }),
+  })
   if (owner !== undefined && publication === undefined)
     throw new Error('Owned native invocation requires the reserved editor-publication isolation')
   const root = publication?.root ?? findRoot(cwd)
@@ -2616,8 +2648,8 @@ const runManagedCommand = async (
         cwd,
         env,
         workflowCommands: env['GITHUB_ACTIONS'] === 'true',
-        watchmanDirectory,
-        beforeCachePosture,
+        ...(watchmanDirectory === undefined ? {} : { watchmanDirectory }),
+        ...(beforeCachePosture === undefined ? {} : { beforeCachePosture }),
         onCachePosture: (values) => {
           fallbackEligible = cacheLocalFallbackEligible({ values, env })
         },
@@ -2697,7 +2729,8 @@ const runManagedCommand = async (
       env,
     })
     options.signal?.throwIfAborted()
-    if (publication !== undefined) requireEditorPublicationOwner({ root: publication.root, owner })
+    if (publication !== undefined)
+      requireEditorPublicationOwner({ root: publication.root, owner: publication.owner })
     let nativeResult: NativeCommandResult | undefined
     if (superviseReader === true) {
       const command = buckSubcommand(args)?.command
@@ -2746,8 +2779,8 @@ const runManagedCommand = async (
                 args: replayArgs,
                 cwd,
                 env: localEnv,
-                beforeCachePosture,
-                watchmanDirectory,
+                ...(beforeCachePosture === undefined ? {} : { beforeCachePosture }),
+                ...(watchmanDirectory === undefined ? {} : { watchmanDirectory }),
               }),
           })
           const localInvocation = nativeBuildIdArguments({
@@ -2944,7 +2977,7 @@ if (import.meta.main === true) {
         args: process.argv.slice(launchCache === undefined ? 3 : 5),
         cwd: process.cwd(),
         env: process.env,
-        launchCache,
+        ...(launchCache === undefined ? {} : { launchCache }),
       })
       if (result !== undefined) {
         process.exitCode = result.exitCode

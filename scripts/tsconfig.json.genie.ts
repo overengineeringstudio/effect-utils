@@ -5,6 +5,9 @@ import { tsconfigJson, type TSConfigArgs } from '../packages/@overeng/genie/src/
 export default tsconfigJson({
   compilerOptions: {
     ...baseTsconfigCompilerOptions,
+    // Bun executes these source CLIs as ES modules, independent of package.json type.
+    module: 'ESNext',
+    moduleResolution: 'bundler',
     rootDir: '..',
     types: ['node', 'bun'],
     composite: false,

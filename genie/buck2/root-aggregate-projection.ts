@@ -113,7 +113,7 @@ const editorCliBuckTargets = `package_view(
     dependency_view = "//packages/@overeng/buck2-tools:package_tree",
     files = {
         source: source
-        for source in glob(["scripts/*.ts"]) + [
+        for source in glob(["scripts/*.ts", "genie/ci-scripts/*.ts"]) + [
             "package.json",
             "${editorCliTypeScriptAuthority.projectFile}",
             "genie/packages.ts",
