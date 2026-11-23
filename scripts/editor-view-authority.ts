@@ -620,5 +620,5 @@ if (import.meta.main === true)
     await withPublicationCancellation(main)
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    process.exitCode = 1
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 1
   }

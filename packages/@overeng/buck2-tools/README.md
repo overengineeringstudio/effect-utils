@@ -168,10 +168,12 @@ Native Buck uses the reserved `editor-publication` isolation. No owner descripto
 is passed to the publisher child. The supervisor observes an admission notification
 only; time waiting for ownership does not consume the publication execution budget.
 
-The reconciliation command runner waits for child close after a stdin write
-failure. A nonzero or signaled child exit takes precedence over a concurrent
-broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
-A successful child exit still fails if its input could not be delivered.
+The reconciliation command runner waits for child close after cancellation,
+spawn errors, or stdin write failure. A nonzero or signaled child exit takes
+precedence over a concurrent abort or broken pipe, preserving native termination
+while the owner remains held through publisher cleanup. A successful child exit
+still fails if cancellation or input delivery failed. After joined cleanup, the
+authority preserves cancellation exit statuses: SIGHUP 129, SIGINT 130, SIGTERM 143.
 
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.
