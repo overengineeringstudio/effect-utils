@@ -27,10 +27,6 @@ import {
   writeEditorViewAuthority,
   type EditorViewAuthorityCommandRunner,
 } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
-import {
-  editorPublicationIsolation,
-  type EditorPublicationOwner,
-} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import { defaultEditorViewName } from '../packages/@overeng/buck2-tools/src/editor-view.ts'
 import { runOwnedEditorPublicationCommand } from './buck2-entrypoint.ts'
 

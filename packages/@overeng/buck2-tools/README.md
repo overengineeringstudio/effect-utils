@@ -232,16 +232,20 @@ Scoped devenv publishers retain their explicit consumer sets; Storybook builds d
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
-The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-with a **5 s kill grace** on interruption or deadline expiry. The execution clock
-starts only after admission: scoped/bootstrap work keeps its 300 s cap and
-Storybook play tests keep their derived 380 s cap, excluding queue time.
+The authority acquires its own process-local opaque owner with an abortable
+nonblocking kernel `flock` loop, without lock theft. The supervisor holds no lock
+descriptor: its only inherited descriptor is a one-byte admission notification pipe.
+`1` starts the execution clock after acquisition, `0` marks a no-publication exit,
+and malformed or missing admission fails closed. Scoped/bootstrap work keeps its
+300 s cap and Storybook play tests keep their derived 380 s cap, excluding queue time.
 Each admitted invocation logs the lock path and admission wait in seconds.
 Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
 treated as termination only after a process census proves no live members remain;
-live-member permission failures still fail closed. The supervisor retains ownership through
-process-group cleanup; process exit releases it automatically. The persistent
+live-member permission failures still fail closed. Cancellation joins native Buck,
+publisher close, and native copy cleanup before the authority releases its owner;
+the supervisor then joins process-group cleanup with a **5 s kill grace**.
+The owner descriptor is CLOEXEC and is never lent to a descendant. The persistent
 flock file must not be unlinked while publishers are active.
 
 Managed invocation selection snapshots supported plain-text argument files before
@@ -653,10 +657,12 @@ Its optional `EDITOR_VIEW_ADMISSION_READY_FD` must name a canonical numeric FD f
 write-only FIFO; malformed values fail before target execution or availability fallback.
 This is notification transport only, never publication ownership.
 
-The publication supervisor intentionally closes descriptors outside its own
-admission protocol. It removes inherited lease mappings and the active marker
-from its child's environment; the child source launcher discovers fresh leases.
-It never adds parent leases to `pass_fds`. A stale mapping reaching the native
+The publication supervisor closes descriptors outside its notification protocol.
+It removes inherited lease mappings, the active marker, and old notification
+values from its child's environment; only the fresh notification pipe is passed.
+The authority consumes and removes that value before spawning descendants.
+The child source launcher discovers fresh leases; the supervisor never adds
+parent leases or an owner descriptor to `pass_fds`. A stale mapping reaching the native
 launcher is diagnosed as unknown, removed, and never re-exported to descendants.
 The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
 The admitted set is explicitly passed to source-reading descendants.

@@ -410,28 +410,6 @@ time.sleep(60)
                 runner = root / "runner.ts"
                 module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
                 publisher = repo / "packages/@overeng/buck2-tools/src/editor-view.ts"
-                # Preserve the native signal as a child transport outcome while
-                # exercising real dispatch, immutable copy and joined cleanup.
-                signal_publisher = root / "signal-publisher.ts"
-                signal_publisher.write_text(f'''
-import {{ readFileSync, writeFileSync }} from 'node:fs'
-import {{ dispatchEditorView }} from {json.dumps(str(publisher))}
-import {{ publicationSignal }} from {json.dumps(str(module))}
-try {{
-  const args = process.argv.slice(2)
-  const result = await dispatchEditorView({{
-    args, batchRequests: JSON.parse(readFileSync(0, 'utf8')),
-    onStdout: text => process.stdout.write(text),
-    onStderr: text => process.stderr.write(text),
-  }})
-  process.exitCode = result.exitCode
-}} catch (error) {{
-  const signal = publicationSignal(error)
-  if (signal === undefined) throw error
-  writeFileSync('publication-native-signal', signal)
-  process.kill(process.pid, signal)
-}}
-''')
                 runner.write_text(f'''
 import {{ existsSync, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
@@ -454,8 +432,7 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     }}] }}, mode: 'publish',
     signal,
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2', editorViewCommand: [process.execPath,
-      process.env.TERMINATION === 'publication-child' ? {json.dumps(str(signal_publisher))} : {json.dumps(str(publisher))}],
+    buck2: './buck2', editorViewCommand: [process.execPath, {json.dumps(str(publisher))}],
     workspaceAuthority: process.cwd() + '/authority.json',
     cp: process.env.TERMINATION?.startsWith('publication') ? process.env.EDITOR_VIEW_SUPERVISOR_CP_BIN! : process.env.CP_BIN!,
     mv: process.env.MV_BIN!, fingerprintTool: process.env.FINGERPRINT_BIN!, snapshotRetention: 3,
