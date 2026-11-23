@@ -35,21 +35,23 @@ let
     builtins.sort builtins.lessThan targets.${name}.requires
     == builtins.sort builtins.lessThan (selectedAfter name)
   ) sequence;
-  compileTaskScripts = tasks: lib.mapAttrs (
-    name: task:
-    if task.command == null then
-      null
-    else
-      pkgs.writeShellScript ("quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name) (
-        "set -e\n"
-        + lib.concatStringsSep "\n" (
-          lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") task.env
+  compileTaskScripts =
+    tasks:
+    lib.mapAttrs (
+      name: task:
+      if task.command == null then
+        null
+      else
+        pkgs.writeShellScript ("quick-contract-" + lib.replaceStrings [ ":" ] [ "-" ] name) (
+          "set -e\n"
+          + lib.concatStringsSep "\n" (
+            lib.mapAttrsToList (key: value: "export ${key}=${lib.escapeShellArg (toString value)}") task.env
+          )
+          + "\n"
+          + lib.optionalString (task.cwd != null) "cd ${lib.escapeShellArg task.cwd}\n"
+          + "exec ${task.command}\n"
         )
-        + "\n"
-        + lib.optionalString (task.cwd != null) "cd ${lib.escapeShellArg task.cwd}\n"
-        + "exec ${task.command}\n"
-      )
-  ) tasks;
+    ) tasks;
   taskScripts = compileTaskScripts config.tasks;
   # Use the owning devenv task type/compiler, not a parallel exec interpreter.
   # Only the fixture's definitions belong here: the real repo's cwd/release task
@@ -65,10 +67,9 @@ let
   };
   teardownFixtureScripts = compileTaskScripts teardownFixture.config.tasks;
   teardownFixtureRunner =
-    assert lib.assertMsg
-      (builtins.all (task: task.cwd == null && task.env == { })
-        (builtins.attrValues teardownFixture.config.tasks))
-      "quick-contracts: teardown fixture must inherit its synthetic cwd and root";
+    assert lib.assertMsg (builtins.all (task: task.cwd == null && task.env == { }) (
+      builtins.attrValues teardownFixture.config.tasks
+    )) "quick-contracts: teardown fixture must inherit its synthetic cwd and root";
     pkgs.writeShellScript "quick-contract-teardown-fixture" ''
       set -euo pipefail
       [ "$#" -eq 0 ]
