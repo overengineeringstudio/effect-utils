@@ -322,6 +322,17 @@ No caller-supplied ignore list or PID-wide exemption is accepted. The view's `ha
 predicate is revoked when the guard completes, fails, is interrupted, or throws; retained
 views do not authorize later actions. This seam is not census or deletion authorization.
 
+`withVerifiedDirectoryPins` uses that same acquisition engine for a non-deleting transaction
+across multiple recorded directory chains (for example, payload and Git administration).
+It acquires every chain before `prepare`, revokes all callback evidence when prepare exits,
+revalidates every chain, then calls `commit` while every fd remains held. Commit receives
+only the prepared value, never native chains. No rename, unlink, rollback or production
+authority is added. Prepare must durably leave intent UNKNOWN/HOLD; only commit may publish
+READY. A crash before verification therefore leaves intent on HOLD. Callers must hold their
+own continuous action lease and perform fresh Git, owner/seat, consumer and all-UID checks;
+open descriptors do not prevent another actor renaming a path. Physical deletion still uses
+the existing private post-verification deletion adapter.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
