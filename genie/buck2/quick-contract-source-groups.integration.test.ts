@@ -87,6 +87,50 @@ it('projects the retained provider audit into the same real configured native gu
   )
 })
 
+it('acquires the real Linux sandbox probe through outer declared Buck artifacts', () => {
+  const source = (file: string): string =>
+    readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')
+  const task = 'buck2:ts-sandbox:test'
+  const probe = targetCatalog[task].native_ts_sandbox
+  expect(probe).toBe('//buck2/tests/ts_sandbox:probe')
+  expect(quickContractInputs.contracts[task]!.native_ts_sandbox).toBe(probe)
+  const rule = source('buck2/quick_contracts.bzl')
+  expect(rule).toContain('attrs.dep(providers = [TsSandboxProbeInfo])')
+  expect(rule).toContain(
+    'native_ts_sandbox = spec.get("native_ts_sandbox") if host_info().os.is_linux else None',
+  )
+  expect(rule).toContain('"QUICK_CONTRACT_NATIVE_INPUTS": "1"')
+  expect(rule).toContain('"TS_SANDBOX_LAUNCHER": cmd_args(probe.launcher)')
+  expect(rule).toContain('"TS_SANDBOX_PROBE_OUTPUT": cmd_args(probe.summary)')
+  expect(rule).toContain('predecessors + native_inputs')
+  for (const [binding, field] of [
+    ['BWRAP_BIN', 'bubblewrap'],
+    ['BUN_BIN', 'bun'],
+    ['BASH_BIN', 'shell'],
+  ])
+    expect(rule).toContain(`"${binding}": probe.sandbox.${field}`)
+  const native = source('buck2/tests/ts_sandbox/probe.bzl')
+  expect(native).toContain('launcher = ts_action(')
+  expect(native).toContain('cacheable = False,')
+  expect(native).toContain(
+    'TsSandboxProbeInfo(launcher = launcher, summary = summary, sandbox = sandbox)',
+  )
+  const retained = source('devenv.nix')
+  const acquisition = retained
+    .split('tsSandboxTestEnvironment =')[1]!
+    .split('\n  \'\';')[0]!
+  const [declared, ordinary] = acquisition.split('\n    else\n')
+  expect(declared).toContain('QUICK_CONTRACT_NATIVE_INPUTS')
+  expect(declared).toContain('TS_SANDBOX_LAUNCHER:?')
+  expect(declared).toContain('TS_SANDBOX_PROBE_OUTPUT:?')
+  expect(declared).not.toContain('"$BUCK2_BIN" build')
+  expect(ordinary).toContain('"$BUCK2_BIN" build')
+  expect(ordinary).toContain('--show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe')
+  const command = retained.split(`tasks."${task}" = {`)[1]!.split('\n  };')[0]!
+  expect(command).toContain('src/bun-test-runner.ts" test')
+  expect(command).toContain('src/ts-sandbox.integration.test.ts')
+})
+
 it('declares and projects per-contract CPU demands into honest local weights', () => {
   const source = (file: string): string =>
     readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')

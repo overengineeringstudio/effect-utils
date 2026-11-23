@@ -104,9 +104,12 @@ def _sandbox_action_launcher(ctx, sandbox, command, inputs, outputs, fingerprint
         command,
         "",
     ], allow_args = True)
-    return cmd_args([
-        sandbox.shell, "--noprofile", "--norc", launcher,
-    ], hidden = inputs + sandbox.inputs + [output.as_output() for output in outputs])
+    return struct(
+        launcher = launcher,
+        command = cmd_args([
+            sandbox.shell, "--noprofile", "--norc", launcher,
+        ], hidden = inputs + sandbox.inputs + [output.as_output() for output in outputs]),
+    )
 
 
 def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs = [], cacheable = True, remote_pilot = False, **kwargs):
@@ -120,7 +123,7 @@ def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs =
         if ts_action_admission_status(ctx) != "linux-bwrap":
             fail("NativeLink pilot requires Linux Bubblewrap containment")
         kwargs["local_only"] = False
-    hermetic_sandboxed_action(
+    return hermetic_sandboxed_action(
         ctx, sandbox, closures, arguments, inputs, outputs,
         remote_pilot = remote_pilot,
         tool_inputs = tool_inputs + sandbox.bun_inputs, cacheable = cacheable, **kwargs
@@ -167,8 +170,8 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
             inputs + tool_inputs,
             outputs,
         )
-        hermetic_action(ctx, command, cacheable = False, inherit_nix_build_environment = inherit_nix_build_environment, env = env, **kwargs)
-        return
+        hermetic_action(ctx, command.command, cacheable = False, inherit_nix_build_environment = inherit_nix_build_environment, env = env, **kwargs)
+        return command.launcher
     if not sandbox.bubblewrap:
         fail("Sandbox: declared Bubblewrap capability missing; unsandboxed execution is forbidden")
     closure = {}
@@ -213,4 +216,5 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
         ctx, sandbox, bind_args, inputs + tool_inputs, outputs,
         fingerprint_locks = not require_cacheable_sandbox,
     )
-    hermetic_action(ctx, command, cacheable = cacheable, env = env, **kwargs)
+    hermetic_action(ctx, command.command, cacheable = cacheable, env = env, **kwargs)
+    return command.launcher

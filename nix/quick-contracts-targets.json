@@ -150,6 +150,7 @@
     ],
     "prefixes": ["buck2/", "packages/@overeng/buck2-tools/src/"],
     "requires": ["buck2:providers:check"],
+    "native_ts_sandbox": "//buck2/tests/ts_sandbox:probe",
     "cache_policy": "local-fixture",
     "cpu_demand": "single-thread"
   },

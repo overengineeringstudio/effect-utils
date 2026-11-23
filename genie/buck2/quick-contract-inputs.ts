@@ -30,6 +30,7 @@ type ContractInputs = SourceSelection & {
   readonly cpu_demand?: string
   readonly membership_mode?: string
   readonly native_providers?: NativeProviders
+  readonly native_ts_sandbox?: string
 }
 type ContractProjection = {
   readonly source_sets: readonly string[]
@@ -39,6 +40,7 @@ type ContractProjection = {
   readonly membership: readonly string[]
   readonly membership_mode: 'tracked' | 'tracked-and-untracked'
   readonly native_providers?: NativeProviders
+  readonly native_ts_sandbox?: string
 }
 const catalog: Readonly<Record<string, ContractInputs>> = targetCatalog
 const repoRoot = repoRootFromModuleUrl(import.meta.url)
@@ -114,6 +116,9 @@ const contracts: Readonly<Record<string, ContractProjection>> = Object.fromEntri
           ...(inputs.native_providers === undefined
             ? {}
             : { native_providers: inputs.native_providers }),
+          ...(inputs.native_ts_sandbox === undefined
+            ? {}
+            : { native_ts_sandbox: inputs.native_ts_sandbox }),
         },
       ]
     }),

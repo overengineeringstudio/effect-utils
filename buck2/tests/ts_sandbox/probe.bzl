@@ -4,6 +4,12 @@ load("//buck2:hermetic.bzl", "hermetic_bun_command", "hermetic_sandboxed_action"
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints", "ts_action_admission_status")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 
+TsSandboxProbeInfo = provider(fields = {
+    "launcher": provider_field(Artifact),
+    "summary": provider_field(Artifact),
+    "sandbox": provider_field(TsSandboxToolchainInfo),
+})
+
 def _ts_sandbox_probe_impl(ctx):
     if ts_action_admission_status(ctx) != "linux-bwrap":
         # Native Darwin actions still run; containment is explicitly unsupported.
@@ -40,7 +46,7 @@ def _ts_sandbox_probe_impl(ctx):
         "--closure", closure,
         "--output", summary,
     ])
-    ts_action(
+    launcher = ts_action(
         ctx,
         args,
         inputs = inputs,
@@ -51,7 +57,10 @@ def _ts_sandbox_probe_impl(ctx):
         identifier = ctx.attrs.name,
         local_only = True,
     )
-    return [DefaultInfo(default_output = summary)]
+    return [
+        DefaultInfo(default_output = summary, other_outputs = [launcher] + sandbox.inputs + sandbox.bun_inputs),
+        TsSandboxProbeInfo(launcher = launcher, summary = summary, sandbox = sandbox),
+    ]
 
 _ts_sandbox_probe = cache_guarded_rule(
     cache_eligible = lambda ctx: False,

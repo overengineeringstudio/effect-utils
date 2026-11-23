@@ -49,18 +49,30 @@ let
   buck2Capabilities = repoFlake.packages.${currentSystem}.buck2-capabilities;
   flakePkgs = import repoFlake.inputs.nixpkgs { system = currentSystem; };
   tsSandboxTestEnvironment = lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
-    ${publishBuckCapabilities}
     cd "$root"
-    export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
-    # Match the immutable launcher artifact's declared runtime, not the test runner.
-    export BUN_BIN=${flakePkgs.bun}/bin/bun
-    export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
-    probe_outputs="$("$BUCK2_BIN" build \
-      --target-platforms effect_utils//buck2/platforms:host_platform \
-      --show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe)"
-    export TS_SANDBOX_PROBE_OUTPUT="$(printf '%s' "$probe_outputs" | \
-      ${pkgs.jq}/bin/jq -er '."effect_utils//buck2/tests/ts_sandbox:probe"')"
-    export TS_SANDBOX_LAUNCHER="''${TS_SANDBOX_PROBE_OUTPUT%/receipt/summary.json}/ts-sandbox.sh"
+    if [ "''${QUICK_CONTRACT_NATIVE_INPUTS:-}" = 1 ]; then
+      # The outer Buck action owns acquisition. Missing declared artifacts fail
+      # here rather than recursively building the active project from its action.
+      : "''${BWRAP_BIN:?declared sandbox Bubblewrap required}"
+      : "''${BUN_BIN:?declared sandbox Bun required}"
+      : "''${BASH_BIN:?declared sandbox Bash required}"
+      : "''${TS_SANDBOX_LAUNCHER:?declared sandbox launcher required}"
+      : "''${TS_SANDBOX_PROBE_OUTPUT:?declared sandbox probe receipt required}"
+      export TS_SANDBOX_LAUNCHER="$(${pkgs.coreutils}/bin/realpath -e "$TS_SANDBOX_LAUNCHER")"
+      export TS_SANDBOX_PROBE_OUTPUT="$(${pkgs.coreutils}/bin/realpath -e "$TS_SANDBOX_PROBE_OUTPUT")"
+    else
+      ${publishBuckCapabilities}
+      export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
+      # Match the immutable launcher artifact's declared runtime, not the test runner.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
+      probe_outputs="$("$BUCK2_BIN" build \
+        --target-platforms effect_utils//buck2/platforms:host_platform \
+        --show-full-json-output effect_utils//buck2/tests/ts_sandbox:probe)"
+      export TS_SANDBOX_PROBE_OUTPUT="$(printf '%s' "$probe_outputs" | \
+        ${pkgs.jq}/bin/jq -er '."effect_utils//buck2/tests/ts_sandbox:probe"')"
+      export TS_SANDBOX_LAUNCHER="''${TS_SANDBOX_PROBE_OUTPUT%/receipt/summary.json}/ts-sandbox.sh"
+    fi
   '';
   # `restate` ships under BSL-1.1; scope allowUnfree to just that package so the
   # rest of the closure stays free-only.
@@ -2253,7 +2265,7 @@ in
       root="''${DEVENV_ROOT:-$PWD}"
       ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
         ${tsSandboxTestEnvironment}
-        exec ${sourceBun}/bin/bun test \
+        exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test \
           ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts
       ''}
       ${lib.optionalString flakePkgs.stdenv.hostPlatform.isDarwin ''

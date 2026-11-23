@@ -668,6 +668,31 @@ native Buck checks never re-enter `devenv shell` just to start tracing.
 Mixed steps keep the separate declared devenv-task prefix in their parent shell;
 only the native prefix runs inside the prepared tool environment.
 
+Each native quick-contract capability owns one unique 0700 `/tmp/qc.XXXXXXXX`
+runtime, resolved to its physical path (including `/private/tmp` on Darwin).
+The task requires canonical, current-user-owned Buck scratch with no group/other
+write permission, then exclusively creates its 0700 `runtime` action marker and
+records the external root in `runtime/external-root`. Reusing that marker fails
+closed. The physical external root must be current-user-owned, exactly 0700,
+outside the checkout, and at most 48 bytes; it is not a symlink back into
+`buck-out`. `TMPDIR`, `TMP`, `TEMP`, `RUNNER_TEMP`, and `XDG_RUNTIME_DIR` all bind
+to that root, without ambient temporary-directory selection or a shared fallback.
+This keeps real temporary fixtures outside repository input authority and leaves
+room for AF_UNIX socket names without weakening either guard.
+
+The task runtime still execs the original command with unchanged argv and
+environment identity. The existing outer capability waits for that native child,
+forwards HUP/INT/TERM on cancellation, and only then removes its owned physical
+root on success, failure, or cancellation. It publishes a successful verdict
+only after retirement; Buck retains ownership of the action marker and scratch.
+
+On Linux, the ts-sandbox quick contract declares the real native probe as an
+outer Buck dependency. Buck supplies its generated production launcher, executed
+probe receipt, and exact immutable Bubblewrap/Bun/Bash tools to the unchanged
+containment fixture. The quick action never rebuilds the active Buck project to
+acquire those artifacts; retained devenv invocations acquire the same probe before
+entering the fixture. Missing declared artifacts fail closed.
+
 `EFFECT_UTILS_CI_TEST=1` selects the existing hermetic cache-posture CI task;
 host quick checks retain the full fleet-gate suite, including real max-hold expiry.
 Host quick also retains the Notion CI-skip before-edge, using the same five

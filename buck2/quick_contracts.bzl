@@ -6,6 +6,7 @@ load("//buck2/toolchains:configured.bzl", "BuckStoreDirectoryInfo", "BuckSupport
 load("//buck2:static_checks.bzl", "StaticSourceSetInfo")
 load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo", "host_capability_platform")
 load("//buck2/products:defs.bzl", "BuildProductInfo")
+load("//buck2/tests/ts_sandbox:probe.bzl", "TsSandboxProbeInfo")
 
 def _contract_slug(task):
     return task.replace(":", "-")
@@ -62,13 +63,25 @@ def _contract_impl(ctx):
         context["ST_AGENT"] = actor
     if ctx.attrs.policy_path:
         context["WORKTREE_POLICY_PATH"] = ctx.attrs.policy_path
+    native_inputs = []
+    if ctx.attrs.native_ts_sandbox != None:
+        probe = ctx.attrs.native_ts_sandbox[TsSandboxProbeInfo]
+        context.update({
+            "QUICK_CONTRACT_NATIVE_INPUTS": "1",
+            "TS_SANDBOX_LAUNCHER": cmd_args(probe.launcher),
+            "TS_SANDBOX_PROBE_OUTPUT": cmd_args(probe.summary),
+            "BWRAP_BIN": probe.sandbox.bubblewrap,
+            "BUN_BIN": probe.sandbox.bun,
+            "BASH_BIN": probe.sandbox.shell,
+        })
+        native_inputs = [probe.launcher, probe.summary] + probe.sandbox.inputs + probe.sandbox.bun_inputs
     # These checkout/fixture proofs are intentionally on the NONREMOTE platform.
     # Same-daemon DICE reuse is allowed; shared/persistent action-cache admission
     # is not implied by local_only or by an isolated fixture's successful result.
     ctx.actions.run(
         cmd_args(
             [tool.store_path, verdict.as_output()],
-            hidden = [sources[path] for path in sorted(sources)] + predecessors + [
+            hidden = [sources[path] for path in sorted(sources)] + predecessors + native_inputs + [
                 membership, tool.executable, tool.manifest,
             ],
         ),
@@ -95,6 +108,7 @@ quick_contract = cache_guarded_rule(
         "cpu_demand": attrs.string(),
         "agent_actor": attrs.string(),
         "policy_path": attrs.string(),
+        "native_ts_sandbox": attrs.option(attrs.dep(providers = [TsSandboxProbeInfo]), default = None),
     },
 )
 
@@ -205,6 +219,7 @@ def quick_contracts(name, quick, runtime, source_sets, contracts, **kwargs):
             cpu_demand = cpu_demand,
             agent_actor = read_root_config("quick_contracts", "agent_actor", ""),
             policy_path = read_root_config("quick_contracts", "policy_path", ""),
+            native_ts_sandbox = spec.get("native_ts_sandbox") if host_info().os.is_linux else None,
             exec_compatible_with = host_execution_constraints(),
             visibility = kwargs.get("visibility", []),
         )
