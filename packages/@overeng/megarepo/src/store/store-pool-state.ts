@@ -41,6 +41,124 @@ export class PoolError extends Schema.TaggedError<PoolError>()('PoolError', {
   message: Schema.String,
 }) {}
 
+const validatePoolState = (state: PoolState): Effect.Effect<PoolState, PoolError> =>
+  Effect.gen(function* () {
+    if (
+      Number.isSafeInteger(state.maxSlots) === false ||
+      state.maxSlots <= 0 ||
+      Number.isSafeInteger(state.maxBytes) === false ||
+      state.maxBytes <= 0
+    )
+      return yield* new PoolError({
+        message: 'Initialize pool with positive max-slots and max-bytes',
+      })
+    if (
+      new Set(state.slots.map((slot) => slot.id)).size !== state.slots.length ||
+      new Set(state.slots.map((slot) => slot.path)).size !== state.slots.length ||
+      state.slots.some(
+        (slot) =>
+          Number.isSafeInteger(slot.charge) === false ||
+          slot.charge <= 0 ||
+          Number.isSafeInteger(slot.generation) === false ||
+          slot.generation < 0,
+      ) === true
+    )
+      return yield* new PoolError({
+        message: 'Invalid authoritative pool ownership/accounting records',
+      })
+    return state
+  })
+
+const decodePoolState = (contents: string) =>
+  Schema.decodeEffect(Schema.fromJsonString(PoolState))(contents).pipe(
+    Effect.flatMap(validatePoolState),
+  )
+
+type PoolMissingEvidence = {
+  readonly _tag: 'Missing'
+  readonly reason: 'not-recorded-in-pool-v1'
+}
+
+/** Recorded metadata only: labels and ready flags are never removal authority. */
+export type PoolProvenanceObservation = {
+  readonly root: string
+  readonly id: string
+  readonly generation: number
+  readonly recordedState: PoolSlot['state']
+  readonly recordedReadyUnclaimed: boolean
+  readonly ownerLabel: string
+  readonly ownerActivity: PoolMissingEvidence
+  readonly seatActivity: PoolMissingEvidence
+  readonly terminalClaim: PoolMissingEvidence
+  readonly terminalBirth: PoolMissingEvidence
+  readonly terminalRetarget: PoolMissingEvidence
+  readonly executionProvenance: PoolMissingEvidence
+  readonly disposition: 'HOLD'
+  readonly authorizesRemoval: false
+}
+
+/** Absence and unavailable activity never authorize cleanup. Read errors remain errors. */
+export type PoolProvenanceSnapshot = {
+  readonly _tag: 'Absent' | 'Observed'
+  readonly observations: ReadonlyArray<PoolProvenanceObservation>
+  readonly disposition: 'HOLD'
+  readonly authorizesRemoval: false
+}
+
+const missingPoolEvidence: PoolMissingEvidence = {
+  _tag: 'Missing',
+  reason: 'not-recorded-in-pool-v1',
+}
+
+/** No initialization, repair, lease acquisition, or filesystem mutation. */
+export const readPoolProvenance = ({
+  base,
+}: {
+  base: AbsoluteDirPath
+}): Effect.Effect<PoolProvenanceSnapshot, PoolError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const contents = yield* fs.readFileString(`${base}/.state/pool/state.json`).pipe(
+      Effect.catchIf(
+        (error) => error.reason._tag === 'NotFound',
+        () => Effect.void,
+      ),
+    )
+    if (typeof contents !== 'string')
+      return {
+        _tag: 'Absent',
+        observations: [],
+        disposition: 'HOLD',
+        authorizesRemoval: false,
+      } satisfies PoolProvenanceSnapshot
+    const state = yield* decodePoolState(contents)
+    return {
+      _tag: 'Observed',
+      observations: state.slots.map((slot): PoolProvenanceObservation => ({
+        root: slot.path,
+        id: slot.id,
+        generation: slot.generation,
+        recordedState: slot.state,
+        recordedReadyUnclaimed: slot.state === 'ready' && slot.token === '' && slot.owner === '',
+        ownerLabel: slot.owner,
+        ownerActivity: missingPoolEvidence,
+        seatActivity: missingPoolEvidence,
+        terminalClaim: missingPoolEvidence,
+        terminalBirth: missingPoolEvidence,
+        terminalRetarget: missingPoolEvidence,
+        executionProvenance: missingPoolEvidence,
+        disposition: 'HOLD',
+        authorizesRemoval: false,
+      })),
+      disposition: 'HOLD',
+      authorizesRemoval: false,
+    } satisfies PoolProvenanceSnapshot
+  }).pipe(
+    Effect.mapError(
+      () => new PoolError({ message: 'Pool provenance unavailable; removal remains HOLD' }),
+    ),
+  )
+
 /** Fsync both contents and rename: readiness/ownership must survive process loss. */
 const persist = ({ path, state }: { path: string; state: PoolState }) =>
   Effect.gen(function* () {
@@ -89,15 +207,13 @@ export const withPoolState = <A, E, R>({
       const exists = yield* fs.exists(path)
       const state =
         exists === true
-          ? yield* fs
-              .readFileString(path)
-              .pipe(Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(PoolState))))
-          : {
-              version: 1 as const,
+          ? yield* fs.readFileString(path).pipe(Effect.flatMap(decodePoolState))
+          : yield* validatePoolState({
+              version: 1,
               maxSlots: limits?.maxSlots ?? 0,
               maxBytes: limits?.maxBytes ?? 0,
               slots: [],
-            }
+            })
       if (
         limits !== undefined &&
         exists === true &&
@@ -105,29 +221,6 @@ export const withPoolState = <A, E, R>({
       )
         return yield* new PoolError({
           message: 'Pool limits are host-wide and immutable while records exist',
-        })
-      if (
-        Number.isSafeInteger(state.maxSlots) === false ||
-        state.maxSlots <= 0 ||
-        Number.isSafeInteger(state.maxBytes) === false ||
-        state.maxBytes <= 0
-      )
-        return yield* new PoolError({
-          message: 'Initialize pool with positive max-slots and max-bytes',
-        })
-      if (
-        new Set(state.slots.map((slot) => slot.id)).size !== state.slots.length ||
-        new Set(state.slots.map((slot) => slot.path)).size !== state.slots.length ||
-        state.slots.some(
-          (slot) =>
-            Number.isSafeInteger(slot.charge) === false ||
-            slot.charge <= 0 ||
-            Number.isSafeInteger(slot.generation) === false ||
-            slot.generation < 0,
-        ) === true
-      )
-        return yield* new PoolError({
-          message: 'Invalid authoritative pool ownership/accounting records',
         })
       return yield* use(state, (next) => persist({ path, state: next }))
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
