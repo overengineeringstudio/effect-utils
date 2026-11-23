@@ -12,6 +12,9 @@ mounted `noexec`. Shell teardown fixtures call the same TypeScript data-root
 selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run in
 the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
 the merge-group test lane.
+The directory-restoration fault fixture runs with both `0077` and `0022` umasks.
+It faults a writable-to-readonly transition, not initial normalization of a
+new readonly directory, so restrictive creation modes do not change its intent.
 
 Source consumers install the bootstrap lease preload as
 `preload-<sha256>.cjs` in a private `editor-view-lease` runtime directory:
@@ -47,6 +50,49 @@ checks remain explicit obligations. Removed required targets are reported, not
 silently considered passed. Package ownership/reverse closure continues to use
 `affectedPackagePaths` and `buildTargetsFor`; file-query decoding continues to
 use `parseBuckOwnershipQuery`, rather than a second package convention.
+
+`bun packages/@overeng/buck2-tools/src/configured-check-selection.mjs manifest.json`
+collects both snapshots and emits a selection plus graph/query provenance. Run
+inside an admitted slot on the query host. The manifest has this shape:
+
+```json
+{
+  "scratch": "/owned/scratch/selection",
+  "base": {
+    "revision": "<full verified evidence-base SHA>",
+    "root": "/owned/worktree/base",
+    "buck2": "/immutable/toolchain/bin/buck2",
+    "buckArgs": [],
+    "queryArgs": ["--target-platforms", "//platforms:linux"],
+    "requiredQuery": "set(//checks:canonical-check)",
+    "universeQuery": "//...",
+    "watchPlan": { "globalPaths": [], "packages": [] }
+  },
+  "candidate": {
+    "revision": "<full candidate merge SHA>",
+    "root": "/owned/worktree/candidate",
+    "buck2": "/immutable/toolchain/bin/buck2",
+    "buckArgs": [],
+    "queryArgs": ["--target-platforms", "//platforms:linux"],
+    "requiredQuery": "set(//checks:canonical-check)",
+    "universeQuery": "//...",
+    "watchPlan": { "globalPaths": [], "packages": [] }
+  }
+}
+```
+
+Queries/inventory are caller policy, not defaults: enumerate every required Buck
+check and supply the existing watch plan for package products. `queryArgs` are
+configured-query options; `buckArgs` apply to all queries and config audit.
+The adapter derives the complete Git delta itself, rejects dirty pinned roots,
+and binds snapshots to the effective all-cell Buck configuration (including
+ignored local overrides), tool version, query arguments and policy. Owners are
+queried for files **and ancestor directories** on both sides; reverse configured
+dependencies and graph changes are unioned. A failed base/graph/owner query
+selects the full candidate inventory; failure to discover that inventory or
+verify the pinned source/configuration exits nonzero instead of emitting an empty
+success. Retain the JSON beside the caller's evidence receipt. No Buck inventory,
+however complete, replaces an unmodeled Nix or other residual check lane.
 
 ## Opt-in NativeLink TypeScript pilot
 
@@ -192,6 +238,38 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
+owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
+The generic Bun capability stays unwrapped so hermetic actions do not acquire
+publication-specific environment or a shell wrapper's `SHLVL`.
+The library has no runtime compiler, profile lookup, or variadic JavaScript FFI.
+Its fixed-arity `buck2_publication_owner_open(path)` opens with
+`O_RDWR | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC`, mode `0600`, returning
+the descriptor or negative errno. `buck2_publication_owner_lock(fd, mode)` uses
+the supplied mode (including `LOCK_NB`) and returns zero or positive errno.
+`buck2_publication_owner_fd_flags(fd)` returns raw `F_GETFD` flags or `-1` for
+the real descriptor-inheritance regression tests. Variadic `open` and `fcntl`
+stay inside C because
+Darwin arm64 passes variadic arguments differently from fixed-arity FFI arguments.
+The Nix build checks atomic CLOEXEC, genuine flag clearing/restoration, and
+independent-descriptor lock contention against the produced shared library.
+Portable compiled payloads remain unchanged; native wrappers own this dependency.
+The C source is projected independently of the repository snapshot. An evaluated
+identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
+
+In `check:quick`, its dedicated standalone-staging publication waits for
+`buck2:quick` to finish: Buck output directories are mutable even after the
+publisher's build returns. The evaluated task-graph guard proves ordering over
+the whole build → fingerprint → copy interval and that standalone lint does
+not select `buck2:quick`. Devenv 2.4's `before`/`after` edges select upstream
+prerequisites, so a separate quick-only publication path reuses the same guard
+payload without adding quick to standalone lint. This avoids retries or a new
+immutable Buck snapshot action. Estimated extra `check:quick` critical-path
+cost is at most `min(quick duration, publication duration)` versus perfect
+overlap (other checks can hide that cost); standalone lint has no added work.
+Arbitrary concurrent Buck commands outside this graph still require caller
+coordination.
+
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
@@ -223,6 +301,15 @@ link spelling. Equivalent path relocations therefore reuse one generation;
 changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
+The copy records its symlink inventory in the first traversal and rewrites only
+those copied links, never discovers links through a second live-source walk.
+Recorded directory metadata detects late entries as `EditorViewInputChangedError`;
+hashing and copying share the same stability predicate, which tolerates inode-only
+directory reassignment on overlayfs while checking type, device, mtime, and ctime.
+The admitted-versus-candidate digest and literal-link comparison remain intact.
+Native filesystem failures report the operation and actual operand, including
+descendant links and declared owners, rather than attributing every failure to
+the command's first root argument.
 
 Root publication also converges the authority manifest's package-local dependency
 topology: real `node_modules` directories identified by a regular `.modules.yaml`
@@ -527,6 +614,13 @@ OverlayFS) are not treated as local and do not gain lease controls or CAS fences
 This launch availability policy does not authorize deletion: retirement remains
 fail closed on unknown evidence and still requires a validated exclusive lease
 under the owning CAS fence.
+
+The existing reader launcher is available as flake package `editor-view-source`.
+Protocol tests use declared Bash/Bun closures and a real anonymous pipe without a full devenv shell.
+Its optional `EDITOR_VIEW_ADMISSION_READY_FD` must name a canonical numeric FD for an open
+write-only FIFO; malformed values fail before target execution or availability fallback.
+This is notification transport only, never publication ownership.
+
 The publication supervisor intentionally closes descriptors outside its own
 admission protocol. It removes inherited lease mappings and the active marker
 from its child's environment; the child source launcher discovers fresh leases.
@@ -717,6 +811,11 @@ per-file digests; its private materializer database is not an admission contract
 
 Each finite generation keeps a private, read-only `editor-view-sources-v1.json`
 manifest mapping payload paths to source stat keys and SHA-256-plus-mode addresses.
+Its exact mode is `0444`, independent of the publisher's umask: creation seals the
+private file through its descriptor, and candidate hardening normalizes private
+manifests without changing shared payload modes. Older wrong-mode manifests require
+the supported editor-root release and republish route after readers exit; shared
+CAS collection does not rewrite private generation metadata.
 Incremental materialization links unchanged content directly from the CAS after
 rechecking its recorded inode identity under the store lock. Only source-stat
 misses are copied and hashed; source Buck inodes are never linked. Stat keys
@@ -997,6 +1096,11 @@ registration, including parameterized tests and modifiers, to scale explicit
 deadlines and record each case's base. Expanded case titles and nested parameterized
 suites retain their own deadlines in JUnit classification. Hooks, assertions,
 callbacks and exit statuses remain native; no tests are retried.
+
+Native admission diagnostic cases allow up to three command deadlines (two status
+probes before kill/audit), plus two seconds for fixture cleanup, never less than
+the original five-second watchdog. This outer test budget does not extend native
+command deadlines or relax diagnostic, secret-redaction, or real-gate assertions.
 
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown

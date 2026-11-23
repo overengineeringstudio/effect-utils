@@ -48,6 +48,7 @@ import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
+  EditorViewInputChangedError,
   editorViewPublicationWorkers,
   pinEditorView,
   publishEditorView as publishEditorViewUnscoped,
@@ -826,6 +827,80 @@ describe('editor view publisher', () => {
       }
     })
   }
+
+  it.each(['root', 'content-address', 'otel-contract', 'genie'])(
+    'publishes and reuses exact-mode private manifests under umask 077 (%s)',
+    async (viewName) => {
+      const fixture = makeFixture({ packageName: viewName })
+      let child: Bun.Subprocess<'ignore', 'pipe', 'pipe'> | undefined
+      try {
+        const rootView = viewName === 'root'
+        if (rootView === true) {
+          writeFileSync(join(fixture.root, 'package.json'), '{"private":true}\n')
+          writeFileSync(
+            fixture.workspaceAuthority,
+            `${JSON.stringify({
+              schema: 'effect-utils/workspace-dependency-authority/v1',
+              requiredPackages: ['.'],
+              ownedPackages: ['.'],
+            })}\n`,
+          )
+        }
+        const options: EditorViewOptions = {
+          ...fixture.options,
+          ...(rootView === true
+            ? { package: '.', cell: 'effect_utils', target: '//:editor_inputs' }
+            : {}),
+          backingRoots: [fixture.editorInputs],
+        }
+        child = Bun.spawn(
+          [
+            requireTool('BUN_BIN'),
+            '--eval',
+            `import { writeFileSync } from 'node:fs';
+import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
+import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
+process.umask(0o077);
+const options = ${JSON.stringify(options)};
+await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}], async () => {
+  const first = await publishEditorView(options);
+  writeFileSync(${JSON.stringify(join(fixture.editorInputs, 'install-descriptor.json'))}, '{"revision":2}\\n');
+  const second = await publishEditorView(options);
+  process.stdout.write(JSON.stringify([first.snapshot, second.snapshot]));
+});`,
+          ],
+          { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true },
+        )
+        editorCliProcesses.add(child)
+        fixtureProcessIds.add(child.pid)
+        const [status, stdout, stderr] = await Promise.all([
+          child.exited,
+          Bun.readableStreamToText(child.stdout),
+          Bun.readableStreamToText(child.stderr),
+        ])
+        expect({ status, stderr }).toMatchObject({ status: 0 })
+        const snapshots = JSON.parse(stdout) as string[]
+        expect(snapshots).toHaveLength(2)
+        expect(snapshots[0]).not.toBe(snapshots[1])
+        const editorRoot =
+          rootView === true ? join(fixture.root, '.editor-view') : fixture.editorRoot
+        for (const snapshot of snapshots) {
+          const manifest = join(editorRoot, snapshot, 'editor-view-sources-v1.json')
+          expect(lstatSync(manifest).mode & 0o777).toBe(0o444)
+          expect(lstatSync(manifest).nlink).toBe(1)
+          expect(readEditorViewSourceManifest(manifest).size).toBeGreaterThan(0)
+        }
+      } finally {
+        if (child !== undefined) {
+          if (child.exitCode === null) child.kill()
+          await child.exited
+          fixtureProcessIds.delete(child.pid)
+          editorCliProcesses.delete(child)
+        }
+        cleanup(fixture)
+      }
+    },
+  )
 
   describe('incremental finite source-stat manifest reuse', () => {
     let fixture: Fixture
@@ -3221,6 +3296,69 @@ describe('editor view publisher', () => {
       }
     },
   )
+
+  it('publishes when a copied source directory only changes its reported inode', async () => {
+    const seed = makeFixture()
+    const fixture = makeFixture()
+    const directory = realpathSync(fixture.nodeModules)
+    let reassigned = false
+    let observations = 0
+    try {
+      await publishEditorView(seed.options)
+      fsMocks.lstatSync.mockImplementation((...args) => {
+        const status = nativeFs.lstatSync(...args)
+        if (status !== undefined && reassigned === true && String(args[0]) === directory) {
+          Object.defineProperty(status, 'ino', {
+            value: typeof status.ino === 'bigint' ? status.ino + 1n : status.ino + 1,
+          })
+          observations++
+        }
+        return status
+      })
+      const record = await publishEditorView({
+        ...fixture.options,
+        contentStore: seed.options.contentStore!,
+        backingRoots: [fixture.nodeModules],
+        afterDirectLink: () => {
+          reassigned = true
+        },
+      })
+      expect(reassigned).toBe(true)
+      expect(observations).toBeGreaterThan(0)
+      expect(ownedSnapshots(fixture)).toEqual([storeName(record.snapshot)])
+    } finally {
+      fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
+      cleanup(fixture)
+      cleanup(seed)
+    }
+  })
+
+  it('rejects a symlink added after the directory copy as typed changed input', async () => {
+    const seed = makeFixture()
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(seed.options)
+      let added = false
+      await expect(
+        publishEditorView({
+          ...fixture.options,
+          contentStore: seed.options.contentStore!,
+          backingRoots: [fixture.nodeModules],
+          afterDirectLink: () => {
+            if (added === true) return
+            added = true
+            symlinkSync('dep', join(fixture.nodeModules, 'late-link'))
+          },
+        }),
+      ).rejects.toBeInstanceOf(EditorViewInputChangedError)
+      expect(added).toBe(true)
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+    } finally {
+      cleanup(fixture)
+      cleanup(seed)
+    }
+  })
 
   it('fails closed when a declared backing root changes while materializing', async () => {
     const fixture = makeFixture()

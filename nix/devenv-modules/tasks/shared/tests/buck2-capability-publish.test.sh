@@ -185,11 +185,7 @@ gc_root_registered() {
 }
 assert_retained() {
   local root="$1" count="$2" version gen directory root_link target manifest expected
-  local -a profiles=()
-  for version in "${versions[@]}"; do profiles+=("$(profile "$version")"); done
-  # Nix discovers every host GC root once per query, not once per argument.
-  # No publication happens during this assertion: share only this checkpoint.
-  "$NIX_STORE_COMMAND" --query --roots "${profiles[@]}" >"$TEMP_ROOT/gc-roots"
+  local -a targets=()
   [ -d "$root/.buck2/capabilities" ] && [ ! -L "$root/.buck2/capabilities" ] || fail "capability cell is not a stable real directory"
   "$BUN" -e '
     const fs = require("fs");
@@ -205,6 +201,10 @@ assert_retained() {
       process.exit(1);
     }
   ' "$root/.buck2/capabilities" "$count" "$TEMP_ROOT" || fail "generation set does not match selected defs or expected retained count"
+  for version in "${versions[@]}"; do targets+=("$(profile "$version")"); done
+  # Scan machine-wide GC roots once, freshly for this assertion phase.
+  "$NIX_STORE_COMMAND" --query --roots "${targets[@]}" >"$TEMP_ROOT/gc-roots" \
+    || fail "could not query real Nix GC roots"
   for version in "${versions[@]}"; do
     target="$(profile "$version")"
     gen="$(generation "$target")"

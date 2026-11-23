@@ -4,8 +4,11 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:5f10fbfade737741a786e1266c5f95681a5c1ce4a8b260e0f026dd32b2efdc25
+# Semantic fingerprint: sha256:3992d61e1dd81f5b5c8061868852a1a548b165b606b12b966c2fa492666a8f76
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/Cargo.toml
+# Test projection: disabled (opt in with testPackagePaths).
+# Doctests: unsupported (unit and integration harnesses only).
+# Runtime manifest paths: std::env::var supported; baked env! paths at runtime unsupported/gated.
 # Regenerate: devenv tasks run genie:run
 
 load("@prelude//:prelude.bzl", "native")
@@ -97,18 +100,19 @@ native.export_file(
 native.rust_library(
     name = "lib",
     crate = "otel_scrape",
-    crate_root = "src/lib.rs",
-    srcs = [
-        "src/adapters/deadnix.rs",
-        "src/adapters/mod.rs",
-        "src/adapters/node_cpuprofile.rs",
-        "src/adapters/oxlint.rs",
-        "src/adapters/vitest.rs",
-        "src/content_address.rs",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/telemetry_registry.gen.rs",
-    ],
+    crate_root = "packages/@overeng/otel-scrape/src/lib.rs",
+    mapped_srcs = {
+        "Cargo.toml": "packages/@overeng/otel-scrape/Cargo.toml",
+        "src/adapters/deadnix.rs": "packages/@overeng/otel-scrape/src/adapters/deadnix.rs",
+        "src/adapters/mod.rs": "packages/@overeng/otel-scrape/src/adapters/mod.rs",
+        "src/adapters/node_cpuprofile.rs": "packages/@overeng/otel-scrape/src/adapters/node_cpuprofile.rs",
+        "src/adapters/oxlint.rs": "packages/@overeng/otel-scrape/src/adapters/oxlint.rs",
+        "src/adapters/vitest.rs": "packages/@overeng/otel-scrape/src/adapters/vitest.rs",
+        "src/content_address.rs": "packages/@overeng/otel-scrape/src/content_address.rs",
+        "src/lib.rs": "packages/@overeng/otel-scrape/src/lib.rs",
+        "src/main.rs": "packages/@overeng/otel-scrape/src/main.rs",
+        "src/telemetry_registry.gen.rs": "packages/@overeng/otel-scrape/src/telemetry_registry.gen.rs",
+    },
     deps = [
         "//rust/third-party:getrandom",
         "//rust/third-party:libc",
@@ -144,18 +148,19 @@ native.rust_library(
 native.rust_binary(
     name = "otel-scrape",
     crate = "otel_scrape",
-    crate_root = "src/main.rs",
-    srcs = [
-        "src/adapters/deadnix.rs",
-        "src/adapters/mod.rs",
-        "src/adapters/node_cpuprofile.rs",
-        "src/adapters/oxlint.rs",
-        "src/adapters/vitest.rs",
-        "src/content_address.rs",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/telemetry_registry.gen.rs",
-    ],
+    crate_root = "packages/@overeng/otel-scrape/src/main.rs",
+    mapped_srcs = {
+        "Cargo.toml": "packages/@overeng/otel-scrape/Cargo.toml",
+        "src/adapters/deadnix.rs": "packages/@overeng/otel-scrape/src/adapters/deadnix.rs",
+        "src/adapters/mod.rs": "packages/@overeng/otel-scrape/src/adapters/mod.rs",
+        "src/adapters/node_cpuprofile.rs": "packages/@overeng/otel-scrape/src/adapters/node_cpuprofile.rs",
+        "src/adapters/oxlint.rs": "packages/@overeng/otel-scrape/src/adapters/oxlint.rs",
+        "src/adapters/vitest.rs": "packages/@overeng/otel-scrape/src/adapters/vitest.rs",
+        "src/content_address.rs": "packages/@overeng/otel-scrape/src/content_address.rs",
+        "src/lib.rs": "packages/@overeng/otel-scrape/src/lib.rs",
+        "src/main.rs": "packages/@overeng/otel-scrape/src/main.rs",
+        "src/telemetry_registry.gen.rs": "packages/@overeng/otel-scrape/src/telemetry_registry.gen.rs",
+    },
     deps = [
         "//rust/third-party:getrandom",
         "//rust/third-party:libc",

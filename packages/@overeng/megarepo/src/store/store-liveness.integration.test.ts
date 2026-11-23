@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Tracer } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -25,6 +25,41 @@ import { makeStoreLayer, Store } from './store.ts'
 
 const normalizePath = (path: string): string => path.replace(/\/+$/, '')
 
+const captureSpans = () => {
+  const spans: Array<Tracer.NativeSpan> = []
+  const tracer = Tracer.make({
+    span: (options) => {
+      const span = new Tracer.NativeSpan(options)
+      spans.push(span)
+      return span
+    },
+  })
+  return { spans, tracer }
+}
+
+const expectReconcileCounts = (
+  spans: ReadonlyArray<Tracer.NativeSpan>,
+  counts: {
+    workspaces: number
+    derived: number
+    unchanged: number
+    rewritten: number
+    failed: number
+    pruned: number
+  },
+) => {
+  const reconciles = spans.filter((span) => span.name === 'megarepo/store/liveness/reconcile')
+  expect(reconciles).toHaveLength(1)
+  const span = reconciles[0]!
+  for (const [key, value] of Object.entries(counts)) {
+    expect(span.attributes.get(`megarepo.store.liveness.reconcile.${key}`)).toBe(value)
+  }
+  expect(
+    span.attributes.get('megarepo.store.liveness.reconcile.duration_ms'),
+  ).toBeGreaterThanOrEqual(0)
+  return span
+}
+
 const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const result = yield* ChildProcessSpawner.use((spawner) =>
@@ -34,6 +69,108 @@ const runGitCommand = (cwd: string, ...args: ReadonlyArray<string>) =>
   })
 
 describe('store-liveness', () => {
+  for (const workspaceCount of [1, 8]) {
+    it.effect(
+      `reconciles ${workspaceCount} unchanged workspaces without writes or per-workspace spans`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([])
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+          const workspaces = []
+          for (let index = 0; index < workspaceCount; index++) {
+            const { workspacePath } = yield* createWorkspaceWithLock({ members: {} })
+            workspaces.push(workspacePath)
+            yield* refreshWorkspaceRegistry({
+              workspaceRoot: workspacePath,
+              store,
+              now: 1_700_000_000_000,
+            })
+          }
+          const registryDir = `${storePath}.state/workspaces/`
+          const entries = yield* fs.readDirectory(registryDir)
+          const before = yield* Effect.forEach(entries, (entry) =>
+            fs.readFileString(`${registryDir}${entry}`),
+          )
+          let writes = 0
+          const countingFs = {
+            ...fs,
+            writeFileString: (...args: Parameters<typeof fs.writeFileString>) => {
+              writes++
+              return fs.writeFileString(...args)
+            },
+          }
+          const { spans, tracer } = captureSpans()
+          const reconcile = collectStoreLiveSet({
+            store,
+            reconcileAllWorkspaces: true,
+            now: 1_700_000_001_000,
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, countingFs),
+            Effect.withTracer(tracer),
+          )
+          const unchanged = yield* reconcile
+          expect(unchanged.workspaceCount).toBe(workspaceCount)
+          expect(writes).toBe(0)
+          expect(spans.map((span) => span.name)).toEqual([
+            'megarepo/store/liveness/collect-store',
+            'megarepo/store/liveness/reconcile',
+          ])
+          expectReconcileCounts(spans, {
+            workspaces: workspaceCount,
+            derived: workspaceCount,
+            unchanged: workspaceCount,
+            rewritten: 0,
+            failed: 0,
+            pruned: 0,
+          })
+          expect(
+            yield* Effect.forEach(entries, (entry) => fs.readFileString(`${registryDir}${entry}`)),
+          ).toEqual(before)
+
+          // Change exactly one derived set; all other records remain untouched.
+          const reposDir = `${workspaces[0]!}repos/`
+          yield* fs.makeDirectory(reposDir, { recursive: true })
+          const target = `${storePath}github.com/test-owner/changed/refs/heads/main`
+          yield* fs.symlink(target, `${reposDir}changed`)
+          spans.length = 0
+          const changed = yield* reconcile
+          expect(changed.paths).toContain(target)
+          expect(writes).toBe(1)
+          expect(
+            spans.filter((span) => span.name === 'megarepo/store/fs/write-atomic'),
+          ).toHaveLength(1)
+          expectReconcileCounts(spans, {
+            workspaces: workspaceCount,
+            derived: workspaceCount,
+            unchanged: workspaceCount - 1,
+            rewritten: 1,
+            failed: 0,
+            pruned: 0,
+          })
+          expect(spans.map((span) => span.name)).toEqual([
+            'megarepo/store/liveness/collect-store',
+            'megarepo/store/liveness/reconcile',
+            'megarepo/store/fs/write-atomic',
+          ])
+          spans.length = 0
+          yield* reconcile
+          expect(writes).toBe(1)
+          expectReconcileCounts(spans, {
+            workspaces: workspaceCount,
+            derived: workspaceCount,
+            unchanged: workspaceCount,
+            rewritten: 0,
+            failed: 0,
+            pruned: 0,
+          })
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
   it.effect(
     'collectWorkspaceLivePaths includes store symlink targets',
     Effect.fnUntraced(
@@ -342,12 +479,35 @@ describe('store-liveness', () => {
 
         // Reconcile-all keeps the last-known live paths (never overwrites a
         // non-empty record with empty) and flags the workspace unclean.
+        const { spans, tracer } = captureSpans()
         const reconciled = yield* collectStoreLiveSet({
           store,
           reconcileAllWorkspaces: true,
           now: 1_700_000_002_000,
-        })
+        }).pipe(Effect.withTracer(tracer))
         yield* fs.chmod(reposDir, 0o755).pipe(Effect.ignore)
+        const span = expectReconcileCounts(spans, {
+          workspaces: 1,
+          derived: 0,
+          unchanged: 0,
+          rewritten: 0,
+          failed: 1,
+          pruned: 0,
+        })
+        expect(span.events).toEqual([
+          [
+            'workspace-derivation-failed',
+            expect.any(BigInt),
+            {
+              workspaceRoot: normalizePath(workspacePath),
+              'error.tag': 'PlatformError',
+            },
+          ],
+        ])
+        expect(spans.map((item) => item.name)).toEqual([
+          'megarepo/store/liveness/collect-store',
+          'megarepo/store/liveness/reconcile',
+        ])
 
         expect(reconciled.paths).toContain(normalizePath(mainWorktreePath))
         expect([...reconciled.uncleanReconcilePaths]).toContain(normalizePath(mainWorktreePath))
@@ -363,6 +523,30 @@ describe('store-liveness', () => {
         )
         const record = decodeJson(content) as { updatedAt: string }
         expect(record.updatedAt).toBe(new Date(1_700_000_000_000).toISOString())
+
+        // Unclean is a per-run marker, not a persisted field. Recovery must
+        // clear it even when the recovered live paths need no registry rewrite.
+        spans.length = 0
+        const recovered = yield* collectStoreLiveSet({
+          store,
+          reconcileAllWorkspaces: true,
+          now: 1_700_000_004_000,
+        }).pipe(Effect.withTracer(tracer))
+        expect(recovered.paths).toContain(normalizePath(mainWorktreePath))
+        expect(recovered.uncleanReconcilePaths.size).toBe(0)
+        expectReconcileCounts(spans, {
+          workspaces: 1,
+          derived: 1,
+          unchanged: 1,
+          rewritten: 0,
+          failed: 0,
+          pruned: 0,
+        })
+        expect(
+          yield* fs.readFileString(
+            EffectPath.ops.join(registryDir, EffectPath.unsafe.relativeFile(entries[0]!)),
+          ),
+        ).toBe(content)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -403,10 +587,27 @@ describe('store-liveness', () => {
         // Workspace dir disappears entirely (not merely unreadable).
         yield* fs.remove(workspacePath, { recursive: true })
 
+        const retained = yield* collectStoreLiveSet({
+          store,
+          reconcileAllWorkspaces: true,
+          pruneStaleRegistry: false,
+          now: 1_700_000_003_000,
+        })
+        expect(retained.workspaceCount).toBe(0)
+        expect(yield* fs.readDirectory(`${storePath}.state/workspaces/`)).toHaveLength(1)
+        const { spans, tracer } = captureSpans()
         const reconciled = yield* collectStoreLiveSet({
           store,
           reconcileAllWorkspaces: true,
           now: 1_700_000_003_000,
+        }).pipe(Effect.withTracer(tracer))
+        expectReconcileCounts(spans, {
+          workspaces: 1,
+          derived: 0,
+          unchanged: 0,
+          rewritten: 0,
+          failed: 0,
+          pruned: 1,
         })
         expect(reconciled.workspaceCount).toBe(0)
         expect(reconciled.paths.has(normalizePath(mainWorktreePath))).toBe(false)

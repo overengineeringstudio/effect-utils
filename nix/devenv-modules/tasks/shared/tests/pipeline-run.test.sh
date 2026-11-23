@@ -40,9 +40,10 @@ for signal in TERM INT; do
 done
 
 # TERM must interrupt the wrapper while its foreground child is still alive,
-# not merely after that child exits. timeout bounds the old deferred-trap bug.
+# not merely after that child exits. Startup has its own readiness deadline;
+# the three-second regression budget measures only signal delivery and exit.
 code=0
-env "${leak_env[@]}" timeout 3 bash -c '
+env "${leak_env[@]}" timeout 40 bash -c '
   span=$1 ready=$2
   "$span" run test live-child -- bash -c '\''
     [[ -f "$OTEL_SPAN_FORWARD_LINK_FILE" ]] || exit 90
@@ -51,11 +52,25 @@ env "${leak_env[@]}" timeout 3 bash -c '
   '\'' bash "$ready" &
   wrapper=$!
   trap '\''kill -KILL "$wrapper" 2>/dev/null || true'\'' EXIT
-  until [[ -s "$ready" ]]; do sleep 0.01; done
+  readiness_started=${EPOCHREALTIME/./}
+  until [[ -s "$ready" ]]; do
+    now=${EPOCHREALTIME/./}
+    if (( now - readiness_started >= 30000000 )); then
+      echo "live-child not ready within 30s" >&2
+      exit 90
+    fi
+    sleep 0.01
+  done
   child=$(< "$ready")
+  term_started=${EPOCHREALTIME/./}
   kill -TERM "$wrapper"
   wait "$wrapper"
   code=$?
+  term_finished=${EPOCHREALTIME/./}
+  if (( term_finished - term_started >= 3000000 )); then
+    echo "live-child TERM did not exit within 3s after signal" >&2
+    exit 92
+  fi
   kill -0 "$child" || exit 91
   exit "$code"
 ' bash "$span" "$tmp/live-child.pid" || code=$?

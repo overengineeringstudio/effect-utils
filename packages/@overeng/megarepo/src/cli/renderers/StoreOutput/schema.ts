@@ -12,6 +12,12 @@ import {
   BuckDaemonStopped,
   BuckDaemonUnreachable,
 } from '../../../store/store-buck-daemons.ts'
+import { StoreUnaccounted } from '../../../store/store.ts'
+
+const CensusFields = {
+  complete: Schema.Boolean,
+  unaccounted: Schema.Array(StoreUnaccounted),
+}
 
 // =============================================================================
 // Common Types
@@ -193,6 +199,7 @@ export type StoreGcWarning = Schema.Schema.Type<typeof StoreGcWarning>
  * Ls state - list repos in store
  */
 export const StoreLsState = Schema.TaggedStruct('Ls', {
+  ...CensusFields,
   basePath: Schema.String,
   repos: Schema.Array(StoreRepo),
 })
@@ -201,6 +208,7 @@ export const StoreLsState = Schema.TaggedStruct('Ls', {
  * Status state - show worktree status
  */
 export const StoreStatusState = Schema.TaggedStruct('Status', {
+  ...CensusFields,
   basePath: Schema.String,
   repoCount: Schema.Finite,
   worktreeCount: Schema.Finite,
@@ -213,6 +221,7 @@ export const StoreStatusState = Schema.TaggedStruct('Status', {
  * Fetch state - fetch updates
  */
 export const StoreFetchState = Schema.TaggedStruct('Fetch', {
+  ...CensusFields,
   basePath: Schema.String,
   results: Schema.Array(StoreFetchResult),
   elapsedMs: Schema.Finite,
@@ -222,6 +231,7 @@ export const StoreFetchState = Schema.TaggedStruct('Fetch', {
  * GC state - garbage collection
  */
 export const StoreGcState = Schema.TaggedStruct('Gc', {
+  ...CensusFields,
   basePath: Schema.String,
   results: Schema.Array(StoreGcResult),
   dryRun: Schema.Boolean,
@@ -267,6 +277,7 @@ export type StoreFixResult = Schema.Schema.Type<typeof StoreFixResult>
  * Fix state - fix store issues
  */
 export const StoreFixState = Schema.TaggedStruct('Fix', {
+  ...CensusFields,
   basePath: Schema.String,
   results: Schema.Array(StoreFixResult),
   dryRun: Schema.Boolean,
@@ -299,10 +310,14 @@ export const StoreErrorState = Schema.TaggedStruct('Error', {
  */
 export const StoreInterruptedState = Schema.TaggedStruct('Interrupted', {})
 
+/** No repository census has been collected yet. */
+export const StoreInitialState = Schema.TaggedStruct('Initial', {})
+
 /**
  * State for all store commands - discriminated by _tag property.
  */
 export const StoreState = Schema.Union([
+  StoreInitialState,
   StoreLsState,
   StoreStatusState,
   StoreFetchState,
@@ -361,10 +376,12 @@ export const isStoreFix = (state: StoreState): state is typeof StoreFixState.Typ
  */
 export const StoreAction = Schema.Union([
   Schema.TaggedStruct('SetLs', {
+    ...CensusFields,
     basePath: Schema.String,
     repos: Schema.Array(StoreRepo),
   }),
   Schema.TaggedStruct('SetStatus', {
+    ...CensusFields,
     basePath: Schema.String,
     repoCount: Schema.Finite,
     worktreeCount: Schema.Finite,
@@ -373,11 +390,13 @@ export const StoreAction = Schema.Union([
     repoIssues: Schema.Array(StoreRepoIssue),
   }),
   Schema.TaggedStruct('SetFetch', {
+    ...CensusFields,
     basePath: Schema.String,
     results: Schema.Array(StoreFetchResult),
     elapsedMs: Schema.Finite,
   }),
   Schema.TaggedStruct('SetGc', {
+    ...CensusFields,
     basePath: Schema.String,
     results: Schema.Array(StoreGcResult),
     dryRun: Schema.Boolean,
@@ -412,6 +431,7 @@ export const StoreAction = Schema.Union([
     branchCreated: Schema.Boolean,
   }),
   Schema.TaggedStruct('SetFix', {
+    ...CensusFields,
     basePath: Schema.String,
     results: Schema.Array(StoreFixResult),
     dryRun: Schema.Boolean,
@@ -442,11 +462,19 @@ export const storeReducer = ({
 }): StoreState => {
   switch (action._tag) {
     case 'SetLs':
-      return { _tag: 'Ls', basePath: action.basePath, repos: action.repos }
+      return {
+        _tag: 'Ls',
+        basePath: action.basePath,
+        repos: action.repos,
+        complete: action.complete,
+        unaccounted: action.unaccounted,
+      }
     case 'SetStatus':
       return {
         _tag: 'Status',
         basePath: action.basePath,
+        complete: action.complete,
+        unaccounted: action.unaccounted,
         repoCount: action.repoCount,
         worktreeCount: action.worktreeCount,
         diskUsage: action.diskUsage,
@@ -457,6 +485,8 @@ export const storeReducer = ({
       return {
         _tag: 'Fetch',
         basePath: action.basePath,
+        complete: action.complete,
+        unaccounted: action.unaccounted,
         results: action.results,
         elapsedMs: action.elapsedMs,
       }
@@ -464,6 +494,8 @@ export const storeReducer = ({
       return {
         _tag: 'Gc',
         basePath: action.basePath,
+        complete: action.complete,
+        unaccounted: action.unaccounted,
         results: action.results,
         dryRun: action.dryRun,
         warning: action.warning,
@@ -507,6 +539,8 @@ export const storeReducer = ({
         results: action.results,
         dryRun: action.dryRun,
         noIssues: action.noIssues,
+        complete: action.complete,
+        unaccounted: action.unaccounted,
       }
     case 'SetError':
       return {

@@ -225,6 +225,11 @@ type CheckContext = {
   readonly currentFingerprint: string
 }
 
+/** An admitted publication input changed before its byte-owned snapshot was complete. */
+export class EditorViewInputChangedError extends Error {
+  readonly _tag = 'EditorViewInputChangedError'
+}
+
 const fail: (message: string) => never = (message) => {
   throw new Error(`editor view: ${message}`)
 }
@@ -340,6 +345,20 @@ const ensureRealDirectory = ({ path, field }: { path: string; field: string }): 
   if (existsSync(path) === false) mkdirSync(path)
   requireDirectory({ path, field })
 }
+
+// Overlayfs may reassign directory inodes without a content or timestamp change.
+const sameFingerprintDirectory = ({
+  left,
+  right,
+}: {
+  left: BigIntStats
+  right: BigIntStats
+}): boolean =>
+  left.isDirectory() === true &&
+  right.isDirectory() === true &&
+  left.dev === right.dev &&
+  left.mtimeNs === right.mtimeNs &&
+  left.ctimeNs === right.ctimeNs
 
 const sameFingerprintFile = ({ left, right }: { left: BigIntStats; right: BigIntStats }): boolean =>
   left.isFile() === true &&
@@ -645,13 +664,7 @@ const canonicalTreeFingerprints = async ({
         ancestors: new Set([...ancestors, identity]),
       })
       const after = lstatSync(absolutePath, { bigint: true })
-      // Overlayfs may reassign directory inodes without a content or timestamp change.
-      if (
-        after.isDirectory() === false ||
-        after.dev !== before.dev ||
-        after.mtimeNs !== before.mtimeNs ||
-        after.ctimeNs !== before.ctimeNs
-      )
+      if (sameFingerprintDirectory({ left: before, right: after }) === false)
         fail(`tree changed while hashing: ${absolutePath}`)
       return
     }
@@ -1480,6 +1493,14 @@ const fingerprintSnapshotPayload = async ({
   }
 }
 
+type CopiedSnapshotLink = {
+  readonly sourcePath: string
+  readonly destinationPath: string
+  readonly root: DeclaredSnapshotRoot
+  readonly before: BigIntStats
+  readonly target: string
+}
+
 /**
  * Relocates every copied link into the candidate and records, per declared
  * root, the literal link texts the copy actually holds before relocation.
@@ -1487,85 +1508,57 @@ const fingerprintSnapshotPayload = async ({
 const rewriteSnapshotLinks = ({
   candidate,
   roots,
+  links,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
+  links: readonly CopiedSnapshotLink[]
 }): Map<string, (readonly [path: string, target: string])[]> => {
   const inventories = new Map<string, (readonly [path: string, target: string])[]>()
   const owners = roots
     .map((root) => ({ ...root, source: canonicalizePath(root.source) }))
     .toSorted((left, right) => right.source.length - left.source.length)
-  const visit = ({
-    source,
-    destination,
-    rootDestination,
-    identity,
-  }: {
-    source: string
-    destination: string
-    rootDestination: string
-    identity: string
-  }): void => {
-    for (const name of readdirSync(source)) {
-      const sourcePath = join(source, name)
-      const destinationPath = join(destination, name)
-      const before = lstatSync(sourcePath, { bigint: true })
-      if (before.isDirectory() === true) {
-        visit({ source: sourcePath, destination: destinationPath, rootDestination, identity })
-        continue
-      }
-      if (before.isSymbolicLink() === false) continue
-      const target = readlinkSync(sourcePath)
-      // The copied link, not the source, is what the snapshot ships: record its
-      // literal text before relocation so the stability proof can compare it.
-      const inventory = inventories.get(identity) ?? []
-      inventory.push([relative(rootDestination, destinationPath), readlinkSync(destinationPath)])
-      inventories.set(identity, inventory)
-      let liveTarget: string
-      try {
-        liveTarget = realpathThroughName(sourcePath)
-      } catch (error) {
-        return fail(
-          `declared backing link is unresolvable: ${sourcePath} (${error instanceof Error ? error.message : String(error)})`,
-        )
-      }
-      const lexicalTarget = canonicalizeParent(resolve(dirname(sourcePath), target))
-      const owner = owners.find((root) => isWithin({ root: root.source, candidate: lexicalTarget }))
-      if (owners.some((root) => isWithin({ root: root.source, candidate: liveTarget })) === false)
-        fail(
-          `declared backing link resolves outside declared roots: ${sourcePath} -> ${liveTarget}`,
-        )
-      if (owner === undefined)
-        fail(`declared backing link escapes all declared roots: ${sourcePath} -> ${liveTarget}`)
-      const relocatedTarget = join(
-        candidate,
-        owner.destination,
-        relative(owner.source, lexicalTarget),
+  for (const { sourcePath, destinationPath, root: copiedRoot, before, target } of links) {
+    const inventory = inventories.get(copiedRoot.identity) ?? []
+    inventory.push([relative(join(candidate, copiedRoot.destination), destinationPath), target])
+    inventories.set(copiedRoot.identity, inventory)
+    let liveTarget: string
+    try {
+      liveTarget = realpathThroughName(sourcePath)
+    } catch (error) {
+      return fail(
+        `declared backing link is unresolvable: ${sourcePath} (${error instanceof Error ? error.message : String(error)})`,
       )
-      const relativeTarget = relative(dirname(destinationPath), relocatedTarget)
-      if (relativeTarget.length === 0 || isAbsolute(relativeTarget) === true)
-        fail(`declared backing link cannot be relocated: ${sourcePath}`)
-      rmSync(destinationPath)
-      symlinkSync(relativeTarget, destinationPath)
-      const after = lstatSync(sourcePath, { bigint: true })
-      if (
-        after.isSymbolicLink() === false ||
-        after.dev !== before.dev ||
-        after.ino !== before.ino ||
-        after.mtimeNs !== before.mtimeNs ||
-        after.ctimeNs !== before.ctimeNs ||
-        readlinkSync(sourcePath) !== target
-      )
-        fail(`declared backing root changed while materializing: ${sourcePath}`)
     }
+    const lexicalTarget = canonicalizeParent(resolve(dirname(sourcePath), target))
+    const owner = owners.find((root) => isWithin({ root: root.source, candidate: lexicalTarget }))
+    if (owners.some((root) => isWithin({ root: root.source, candidate: liveTarget })) === false)
+      fail(`declared backing link resolves outside declared roots: ${sourcePath} -> ${liveTarget}`)
+    if (owner === undefined)
+      fail(`declared backing link escapes all declared roots: ${sourcePath} -> ${liveTarget}`)
+    const relocatedTarget = join(
+      candidate,
+      owner.destination,
+      relative(owner.source, lexicalTarget),
+    )
+    const relativeTarget = relative(dirname(destinationPath), relocatedTarget)
+    if (relativeTarget.length === 0 || isAbsolute(relativeTarget) === true)
+      fail(`declared backing link cannot be relocated: ${sourcePath}`)
+    rmSync(destinationPath)
+    symlinkSync(relativeTarget, destinationPath)
+    const after = lstatSync(sourcePath, { bigint: true })
+    if (
+      after.isSymbolicLink() === false ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.mtimeNs !== before.mtimeNs ||
+      after.ctimeNs !== before.ctimeNs ||
+      readlinkSync(sourcePath) !== target
+    )
+      throw new EditorViewInputChangedError(
+        `editor view: declared backing root changed while materializing: ${sourcePath}`,
+      )
   }
-  for (const root of owners)
-    visit({
-      source: root.source,
-      destination: join(candidate, root.destination),
-      rootDestination: join(candidate, root.destination),
-      identity: root.identity,
-    })
   return inventories
 }
 
@@ -1595,16 +1588,30 @@ const materializeDeclaredRoots = async ({
   const manifest = new Map<string, EditorViewSourceFile>()
   const reusable: { path: string; entry: EditorViewSourceFile }[] = []
   const pending: { source: string; path: string }[] = []
-  const visit = ({ source, destination }: { source: string; destination: string }): void => {
+  const links: CopiedSnapshotLink[] = []
+  const directories: { source: string; before: BigIntStats }[] = []
+  const visit = ({
+    source,
+    destination,
+    root,
+  }: {
+    source: string
+    destination: string
+    root: DeclaredSnapshotRoot
+  }): void => {
+    directories.push({ source, before: lstatSync(source, { bigint: true }) })
     mkdirSync(destination, { recursive: true })
     for (const name of readdirSync(source)) {
       const sourcePath = join(source, name)
       const destinationPath = join(destination, name)
       const status = lstatSync(sourcePath, { bigint: true })
-      if (status.isDirectory() === true) visit({ source: sourcePath, destination: destinationPath })
-      else if (status.isSymbolicLink() === true)
-        symlinkSync(readlinkSync(sourcePath), destinationPath)
-      else if (status.isFile() === true) {
+      if (status.isDirectory() === true)
+        visit({ source: sourcePath, destination: destinationPath, root })
+      else if (status.isSymbolicLink() === true) {
+        const target = readlinkSync(sourcePath)
+        symlinkSync(target, destinationPath)
+        links.push({ sourcePath, destinationPath, root, before: status, target })
+      } else if (status.isFile() === true) {
         const sourceKey = editorViewSourceKey(status)
         sourceFiles.set(destinationPath, { source: sourcePath, sourceKey })
         const previous = previousManifest.get(relative(candidate, destinationPath))
@@ -1619,7 +1626,7 @@ const materializeDeclaredRoots = async ({
     }
   }
   for (const root of roots)
-    visit({ source: root.source, destination: join(candidate, root.destination) })
+    visit({ source: root.source, destination: join(candidate, root.destination), root })
   const reusedFiles = await reuseEditorViewSourceFiles({ contentStore, files: reusable })
   for (const file of reusable) {
     if (reusedFiles.has(file.path) === true) continue
@@ -1642,8 +1649,17 @@ const materializeDeclaredRoots = async ({
       blobKey: editorViewSourceKey(file.status),
     })
   }
+  // Check recorded directory metadata, never discover new links in the live
+  // source after copying. A late entry invalidates the admitted input instead.
+  for (const { source, before } of directories) {
+    const after = lstatSync(source, { bigint: true })
+    if (sameFingerprintDirectory({ left: before, right: after }) === false)
+      throw new EditorViewInputChangedError(
+        `editor view: declared backing root changed while materializing: ${source}`,
+      )
+  }
   return {
-    links: rewriteSnapshotLinks({ candidate, roots }),
+    links: rewriteSnapshotLinks({ candidate, roots, links }),
     sourceFiles,
     manifest,
     reusedFiles,
@@ -1710,6 +1726,8 @@ const hardenSnapshot = (snapshotDir: string): void => {
     chmodSync(directory, mode & ~0o222)
   }
   chmodSync(join(snapshotDir, 'editor-view.json'), 0o444)
+  const sourceManifest = join(snapshotDir, editorViewSourceManifestName)
+  if (pathExists(sourceManifest) === true) chmodSync(sourceManifest, 0o444)
   visit(snapshotDir)
 }
 /**
@@ -3619,8 +3637,8 @@ const publishEditorViewCoordinated = async ({
         // spelling of the same resolution still fails closed.
         const before = declaredRoots.digest
         if (payload.resolvedRootsDigest !== before)
-          fail(
-            `declared backing roots changed while materializing: before=${before} after=${payload.resolvedRootsDigest ?? 'absent'}`,
+          throw new EditorViewInputChangedError(
+            `editor view: declared backing roots changed while materializing: before=${before} after=${payload.resolvedRootsDigest ?? 'absent'}`,
           )
         for (const [index, root] of roots.entries()) {
           const admittedInventory =
@@ -3630,8 +3648,8 @@ const publishEditorViewCoordinated = async ({
             materializedLinks?.get(root.identity) ?? [],
           )
           if (materializedInventory !== admittedInventory)
-            fail(
-              `declared backing roots changed while materializing: before=${admittedInventory} after=${materializedInventory}`,
+            throw new EditorViewInputChangedError(
+              `editor view: declared backing roots changed while materializing: before=${admittedInventory} after=${materializedInventory}`,
             )
         }
       }
@@ -3676,12 +3694,19 @@ const publishEditorViewCoordinated = async ({
         (materializedRoots?.reusedFiles.size ?? 0) - (payloadTimings.filesDirectLinked ?? 0)
       payloadTimings.filesProcessed =
         sharing.linkedFiles + sharing.copiedFiles - payloadTimings.filesReused
-      if (materializedRoots !== undefined)
-        writeFileSync(
-          join(candidate, editorViewSourceManifestName),
-          `${JSON.stringify(Object.fromEntries(materializedRoots.manifest))}\n`,
-          { flag: 'wx', mode: 0o444 },
-        )
+      if (materializedRoots !== undefined) {
+        const manifestFd = openSync(join(candidate, editorViewSourceManifestName), 'wx', 0o444)
+        try {
+          writeFileSync(
+            manifestFd,
+            `${JSON.stringify(Object.fromEntries(materializedRoots.manifest))}\n`,
+          )
+          // Creation modes are filtered by umask; the private manifest has an exact mode contract.
+          fchmodSync(manifestFd, 0o444)
+        } finally {
+          closeSync(manifestFd)
+        }
+      }
       if (sharing.copiedFiles > 0)
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
       const durationMs = performance.now() - payloadStartedAt
@@ -3834,6 +3859,10 @@ const publishEditorViewCoordinated = async ({
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
     if (error instanceof EditorViewCapacityError) throw error
+    if (error instanceof EditorViewInputChangedError) {
+      error.message += `; publication workers=${JSON.stringify(failureStates)}`
+      throw error
+    }
     const contextual = new Error(
       `${error instanceof Error ? error.message : String(error)}; publication workers=${JSON.stringify(failureStates)}`,
       { cause: error },

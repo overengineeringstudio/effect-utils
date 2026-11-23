@@ -35,6 +35,7 @@ const expectedFiles = [
   'buck2/provenance/BUCK',
   'buck2/provenance/defs.bzl',
   'buck2/rust/BUCK',
+  'buck2/rust/cargo-resource-inventory.ts',
   'buck2/rust/content-address-parity.bzl',
   'buck2/rust/crates.bzl',
   'buck2/rust/defs.bzl',
@@ -85,6 +86,7 @@ const expectedFiles = [
   'packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch',
   'packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch',
   'packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch',
+  'patches/effect@4.1.0.patch',
 ] as const
 
 describe('Buck rules product inventory', () => {
@@ -123,11 +125,12 @@ describe('Buck rules product inventory', () => {
     expect(
       buck2RulesInventory.files.filter(
         (path) =>
-          path.startsWith('packages/@overeng/') &&
-          path.startsWith('packages/@overeng/buck2-tools/') === false &&
-          path.startsWith('packages/@overeng/genie/src/runtime/') === false &&
-          path !== 'packages/@overeng/megarepo/src/buck2-manifest.ts' &&
-          path !== 'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts',
+          path.startsWith('patches/') ||
+          (path.startsWith('packages/@overeng/') &&
+            path.startsWith('packages/@overeng/buck2-tools/') === false &&
+            path.startsWith('packages/@overeng/genie/src/runtime/') === false &&
+            path !== 'packages/@overeng/megarepo/src/buck2-manifest.ts' &&
+            path !== 'packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts'),
       ),
     ).toEqual(Object.values(pnpmPatchedDependencies()).toSorted())
   })
@@ -135,6 +138,7 @@ describe('Buck rules product inventory', () => {
   it('publishes the generator closure and a pinned, standalone Effect runtime', () => {
     const rulesCell = readFileSync(new URL('nix/buck2-rules/default.nix', repoRoot), 'utf8')
     expect(rulesCell).toContain('pnpmArchives.passthru.archivesByIdentity."effect@4.1.0"')
+    expect(rulesCell).toContain('patch -p1 -d "$out/buck2/dependencies/runtime/effect"')
     expect(rulesCell).toContain('src = "runtime/effect"')
     expect(rulesCell).toContain('name = "declared_inputs_freshness_runtime"')
     expect(rulesCell).toContain('exportSource path')

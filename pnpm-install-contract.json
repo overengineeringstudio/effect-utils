@@ -170,7 +170,8 @@
       "@myobie/pty@0.10.0": "patches/@myobie__pty@0.10.0.patch",
       "@storybook/builder-vite@10.6.0": "packages/@overeng/utils-storybook/patches/@storybook__builder-vite@10.6.0.patch",
       "@stylexjs/babel-plugin@0.19.0": "packages/@overeng/utils/patches/@stylexjs__babel-plugin@0.19.0.patch",
-      "@stylexjs/unplugin@0.19.0": "packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch"
+      "@stylexjs/unplugin@0.19.0": "packages/@overeng/utils/patches/@stylexjs__unplugin@0.19.0.patch",
+      "effect@4.1.0": "patches/effect@4.1.0.patch"
     }
   }
 }
