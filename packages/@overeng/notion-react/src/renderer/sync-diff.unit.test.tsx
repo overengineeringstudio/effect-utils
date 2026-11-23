@@ -32,6 +32,9 @@ const fakeApply = (candidate: CandidateTree, ops: ReturnType<typeof diff>): Cach
     if (op.kind === 'append' || op.kind === 'insert') {
       counter += 1
       idMap.set(op.tmpId, `blk-${counter}`)
+    } else if (op.kind === 'createPage') {
+      counter += 1
+      idMap.set(op.tmpPageId, `page-${counter}`)
     }
   }
   // Resolve tmpIds in candidate to real ids.
@@ -531,5 +534,55 @@ describe('sync-diff', () => {
       ROOT,
     )
     expect(diff(nestedCache, nestedSwapped)).toEqual([])
+  })
+
+  it('new pages carry no inline payload and append every child in the new page scope', () => {
+    const element = (
+      <ChildPage blockKey="page" title="Page">
+        {Array.from({ length: 105 }, (_, index) => (
+          <Paragraph key={String(index)} blockKey={`p${index}`}>{`body-${index}`}</Paragraph>
+        ))}
+      </ChildPage>
+    )
+    const candidate = buildCandidateTree(element, ROOT)
+    const ops = diff(empty(), candidate)
+    const create = ops[0]
+    expect(create?.kind).toBe('createPage')
+    if (create?.kind !== 'createPage') return
+    expect(create).not.toHaveProperty('inlineChildren')
+    expect(create).not.toHaveProperty('inlineCandidates')
+    const appends = ops.filter((op) => op.kind === 'append')
+    expect(appends).toHaveLength(105)
+    expect(
+      appends.every((op) => op.parent === create.tmpPageId && op.scopePageId === create.tmpPageId),
+    ).toBe(true)
+    expect(diff(fakeApply(candidate, ops), buildCandidateTree(element, ROOT))).toEqual([])
+  })
+
+  it('a page under a new block appends descendants only after its own create', () => {
+    const candidate = buildCandidateTree(
+      <Toggle blockKey="host" title="Host">
+        <ChildPage blockKey="page" title="Page">
+          <Toggle blockKey="nested" title="Nested">
+            <Paragraph blockKey="body">body</Paragraph>
+          </Toggle>
+        </ChildPage>
+      </Toggle>,
+      ROOT,
+    )
+    const ops = diff(empty(), candidate)
+    expect(ops.map((op) => op.kind)).toEqual(['append', 'createPage', 'append', 'append'])
+    const [host, create, nested, body] = ops
+    if (
+      host?.kind !== 'append' ||
+      create?.kind !== 'createPage' ||
+      nested?.kind !== 'append' ||
+      body?.kind !== 'append'
+    )
+      return
+    expect(create.parent.pageId).toBe(host.tmpId)
+    expect(nested.parent).toBe(create.tmpPageId)
+    expect(body.parent).toBe(nested.tmpId)
+    expect(body.scopePageId).toBe(create.tmpPageId)
   })
 })

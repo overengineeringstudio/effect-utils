@@ -614,7 +614,6 @@ const diffChildren = (
         prevRef = moveSource.blockId
       } else {
         const tmpPageId = nextTmp()
-        const { inline, inlineCandidates, tail } = inlinePackChildren(cand.children, tmpPageId)
         ops.push({
           kind: 'createPage',
           tmpPageId,
@@ -623,11 +622,9 @@ const diffChildren = (
           // Phase 4b (#618): `null` sentinel is drop-on-create (see above).
           ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
           ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
-          inlineChildren: inline,
-          inlineCandidates,
         })
         cand.blockId = tmpPageId
-        for (const t of tail) ops.push(t)
+        emitAppendsForNew(tmpPageId, cand.children, ops, { ...ctx, scopePageId: tmpPageId })
         prevRef = tmpPageId
       }
       continue
@@ -743,12 +740,9 @@ const emitAppendsForNew = (
 ): void => {
   for (const cand of children) {
     if (cand.nodeKind === 'page') {
-      // Brand-new page nested under a brand-new block subtree. Phase 3b does
-      // not recurse into existing sub-page children, but a freshly-created
-      // <ChildPage> may legitimately appear here (e.g. under a new toggle)
-      // and should create via the page endpoint, not append as a block.
+      // Pages allocate their identity first; ordinary append responses resolve
+      // every descendant's block id before its checkpoint is saved.
       const tmpPageId = nextTmp()
-      const { inline, inlineCandidates, tail } = inlinePackChildren(cand.children, tmpPageId)
       ops.push({
         kind: 'createPage',
         tmpPageId,
@@ -760,11 +754,9 @@ const emitAppendsForNew = (
         // which the `CreatePageOptions` schema does not permit.
         ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
         ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
-        inlineChildren: inline,
-        inlineCandidates,
       })
       cand.blockId = tmpPageId
-      for (const t of tail) ops.push(t)
+      emitAppendsForNew(tmpPageId, cand.children, ops, { ...ctx, scopePageId: tmpPageId })
       continue
     }
     const tmpId = nextTmp()
@@ -783,147 +775,6 @@ const emitAppendsForNew = (
     if (cand.nodeKind === 'page') continue
     if (cand.children.length > 0) emitAppendsForNew(cand.blockId!, cand.children, ops, ctx)
   }
-}
-
-/**
- * Notion's `pages.create.children` caps subtree depth at 2 and total blocks
- * at 100 per request. Walk candidate children and produce (a) an inline body
- * the sync driver can pass as `children: ...` to `pages.create`, and (b) a
- * tail of block ops for whatever could not fit inline. Scope-ids on tail ops
- * reference the `tmpPageId` of the newly-created page; the sync driver
- * resolves tmp → server id on apply.
- *
- * Depth-2 rule (Notion `children` wire shape):
- *   depth 1 — direct children of the new page (max 100)
- *   depth 2 — grandchildren, shipped under the parent's own `children` array
- *   depth 3+ — rejected at the API. Tail them to follow-up appends.
- *
- * Page-kind descendants are never inlined — phase 3b does not nest page
- * creates in a single request. They get tailed as a follow-up createPage op
- * scoped to the parent's tmpPageId.
- */
-interface PackResult {
-  readonly inline: readonly Record<string, unknown>[]
-  /** Candidate nodes paired 1:1 with `inline`, in the same order. */
-  readonly inlineCandidates: readonly CandidateNode[]
-  readonly tail: DiffOp[]
-}
-
-export const inlinePackChildren = (
-  children: readonly CandidateNode[],
-  scopeTmpPageId: string,
-): PackResult => {
-  const tail: DiffOp[] = []
-  let total = 0
-  const MAX_TOTAL = 100
-
-  const buildBlock = (cand: CandidateNode, depth: number): Record<string, unknown> | undefined => {
-    if (cand.nodeKind === 'page') {
-      // Page inside a page-create inline body is not supported — tail it as
-      // a separate createPage scoped to the containing page's tmp id. The
-      // sync driver resolves scope after the outer create lands.
-      const nestedTmp = nextTmp()
-      const nestedPack = inlinePackChildren(cand.children, nestedTmp)
-      tail.push({
-        kind: 'createPage',
-        tmpPageId: nestedTmp,
-        parent: { pageId: scopeTmpPageId },
-        ...(cand.title !== undefined ? { title: cand.title } : {}),
-        // Phase 4b (#618): `null` sentinel is drop-on-create.
-        ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
-        ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
-        inlineChildren: nestedPack.inline,
-        inlineCandidates: nestedPack.inlineCandidates,
-      })
-      cand.blockId = nestedTmp
-      for (const t of nestedPack.tail) tail.push(t)
-      return undefined
-    }
-    if (total >= MAX_TOTAL) return undefined
-    total += 1
-    // Mint a tmpId so downstream passes can track id resolution. We do NOT
-    // emit an append op for blocks shipped inline — the outer createPage op
-    // carries the nested body, and `resolveInlineChildrenIds` on the sync
-    // side walks the server response to fill in real ids.
-    const tmpId = nextTmp()
-    cand.blockId = tmpId
-    const body: Record<string, unknown> = {
-      object: 'block',
-      type: cand.type,
-      [cand.type]: { ...cand.props },
-    }
-    if (cand.children.length === 0) return body
-    if (depth >= 2) {
-      // Depth-3+ children cannot ride inline — tail them as regular block
-      // appends scoped to this candidate's tmp id.
-      for (const sub of cand.children) {
-        tailBlock(sub, tmpId)
-      }
-      return body
-    }
-    const nestedBodies: Record<string, unknown>[] = []
-    for (const sub of cand.children) {
-      const nested = buildBlock(sub, depth + 1)
-      if (nested !== undefined) nestedBodies.push(nested)
-    }
-    if (nestedBodies.length > 0) {
-      ;(body[cand.type] as Record<string, unknown>).children = nestedBodies
-    }
-    return body
-  }
-
-  const tailBlock = (cand: CandidateNode, parentTmpId: string): void => {
-    if (cand.nodeKind === 'page') {
-      // Nested page under a tailed block: emit as a createPage scoped to the
-      // parent block id. `parentTmpId` resolves to a real server block id once
-      // the enclosing append/insert lands (via `idMap`), and the sync driver
-      // executes this createPage afterwards in the shared pageOps pass.
-      const nestedTmp = nextTmp()
-      const nestedPack = inlinePackChildren(cand.children, nestedTmp)
-      tail.push({
-        kind: 'createPage',
-        tmpPageId: nestedTmp,
-        parent: { pageId: parentTmpId },
-        ...(cand.title !== undefined ? { title: cand.title } : {}),
-        // Phase 4b (#618): `null` sentinel is drop-on-create.
-        ...(cand.icon !== undefined && cand.icon !== null ? { icon: cand.icon } : {}),
-        ...(cand.cover !== undefined && cand.cover !== null ? { cover: cand.cover } : {}),
-        inlineChildren: nestedPack.inline,
-        inlineCandidates: nestedPack.inlineCandidates,
-      })
-      cand.blockId = nestedTmp
-      for (const t of nestedPack.tail) tail.push(t)
-      return
-    }
-    const tmpId = nextTmp()
-    cand.blockId = tmpId
-    tail.push({
-      kind: 'append',
-      parent: parentTmpId,
-      tmpId,
-      type: cand.type,
-      props: cand.props,
-      candidate: cand,
-      scopePageId: scopeTmpPageId,
-    })
-    for (const sub of cand.children) tailBlock(sub, tmpId)
-  }
-
-  const inline: Record<string, unknown>[] = []
-  const inlineCandidates: CandidateNode[] = []
-  for (const cand of children) {
-    if (total >= MAX_TOTAL) {
-      // Overflow at depth 1 — tail as block ops scoped to the new page.
-      tailBlock(cand, scopeTmpPageId)
-      continue
-    }
-    const body = buildBlock(cand, 1)
-    if (body !== undefined) {
-      inline.push(body)
-      inlineCandidates.push(cand)
-    }
-  }
-  return { inline, inlineCandidates, tail }
 }
 
 /**
