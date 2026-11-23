@@ -174,6 +174,10 @@ or the shared export time budget, and reports counters; it never silently sample
 Normal export does not scan 30 days of sources. Transport loss, rejection,
 truncation, incomplete snapshots and conflicts remain unknown until reconciled.
 
+Native replay regressions reconstruct acknowledged snapshots byte-for-byte,
+including their LF/hash envelope identity, and assert source preservation when
+line framing, envelope size, source-byte limits or the replay deadline fail.
+
 ## Producer Metrics
 
 ```text
