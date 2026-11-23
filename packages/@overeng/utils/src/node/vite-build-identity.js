@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 import { parseCliBuildStamp, resolveCliBuildIdentity } from './cli-build-identity.js'
+import { readProductRev, readWorkingClosure } from './product-revs.js'
 
 const virtualId = 'virtual:build-identity'
 const resolvedId = `\0${virtualId}`
@@ -191,13 +192,37 @@ const localStamp = async ({ root, metadata }) => {
 }
 
 /**
+ * Release stamp from the committed closure-revision projection. The selected revision and its
+ * commit time come from the projection; dirty covers tracked closure edits and stale projections.
+ * @param {{root: string, baseVersion: string, productRev: string}} options
+ * @returns {Promise<import('./cli-build-identity.js').ReleaseStamp>}
+ */
+const releaseStamp = async ({ root, baseVersion, productRev }) => {
+  const projection = await readProductRev(resolve(root, productRev))
+  const repository = await readGit({ root, args: ['rev-parse', '--show-toplevel'] })
+  const working = await readWorkingClosure({
+    root: repository,
+    product: projection.product,
+    sourcePaths: projection.sourcePaths,
+  })
+  return {
+    type: 'release',
+    version: baseVersion,
+    rev: projection.rev,
+    commitTs: projection.commitTs,
+    buildTs: Math.floor(Date.now() / 1000),
+    dirty: working.uncommitted === true || working.closureDigest !== projection.closureDigest,
+  }
+}
+
+/**
  * Emit the shared CLI identity as a browser-safe virtual module and JSON asset.
  * A declared deployment injects its closure identity before browser modules execute.
  * Local source identity is read from Vite's root, not a possibly stale shell's stamp.
  * @param {import('./vite-build-identity-types.d.ts').BuildIdentityPluginOptions} options
  * @returns {import('vite').Plugin & import('./vite-build-identity-types.d.ts').BuildIdentityVitePlugin}
  */
-export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
+export const createBuildIdentityPlugin = ({ baseVersion, buildStamp, productRev }) => {
   /** @type {import('./cli-build-identity.js').CliBuildIdentity} */
   let identity
   let serving = false
@@ -205,6 +230,8 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   /** @type {import('./cli-build-identity.js').ResolveBuildIdentityOptions} */
   let browserOptions
   const embedded = parseCliBuildStamp(buildStamp)
+  // Embedded Nix/release stamps are immutable inputs; nothing is re-read from Git.
+  const immutable = embedded?.type === 'nix' || embedded?.type === 'release'
   /** @type {Array<() => Promise<void>>} */
   const cleanup = []
   /** @type {Promise<void> | undefined} */
@@ -213,23 +240,26 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
    * @param {{preserveSnapshot?: boolean, metadata?: ReturnType<typeof readWorktreeGitMetadata>}} [options]
    */
   const resolveIdentity = async ({ preserveSnapshot = false, metadata } = {}) => {
-    const options = {
-      baseVersion,
-      buildStamp,
-      env:
-        embedded?.type === 'nix'
-          ? {}
-          : {
+    /** @type {import('./cli-build-identity.js').ResolveBuildIdentityOptions} */
+    const options = immutable
+      ? { baseVersion, buildStamp, env: {} }
+      : serving === false && productRev !== undefined
+        ? {
+            baseVersion,
+            buildStamp: JSON.stringify(await releaseStamp({ root, baseVersion, productRev })),
+            env: {},
+          }
+        : {
+            baseVersion,
+            buildStamp,
+            env: {
               CLI_BUILD_STAMP: JSON.stringify(
                 await localStamp({ root, metadata: metadata ?? readWorktreeGitMetadata({ root }) }),
               ),
             },
-    }
-    const nextIdentity = resolveCliBuildIdentity({
-      ...options,
-      // Only metadata is frozen to source time; the browser renders relative time at runtime.
-      ...(embedded?.type === 'nix' ? { now: embedded.buildTs ?? embedded.commitTs } : {}),
-    })
+          }
+    // Metadata is timeless; the browser renders relative time from the same stamp at runtime.
+    const nextIdentity = resolveCliBuildIdentity({ ...options, now: null })
     if (
       nextIdentity.rev === undefined ||
       nextIdentity.rev === '' ||
@@ -258,10 +288,10 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       await resolveIdentity()
     },
     async buildStart() {
-      if (serving === false && embedded?.type !== 'nix') await resolveIdentity()
+      if (serving === false && immutable === false) await resolveIdentity()
     },
     shouldTransformCachedModule({ id }) {
-      if (id === resolvedId && embedded?.type !== 'nix') return true
+      if (id === resolvedId && immutable === false) return true
       return undefined
     },
     async configureServer(server) {
@@ -279,7 +309,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         })
         response.end(request.method === 'HEAD' ? undefined : `${JSON.stringify(identity)}\n`)
       })
-      if (embedded?.type === 'nix') return
+      if (immutable === true) return
       let stopped = false
       // Query closure-owned lifecycle state anew after each async boundary.
       const isStopped = () => stopped

@@ -4,12 +4,13 @@ import { formatRelativeTime } from '../build-identity.js'
 // Declarations own the public types; checkJs checks each implementation against its signature.
 /** @typedef {import('./cli-build-identity.d.ts').LocalStamp} LocalStamp */
 /** @typedef {import('./cli-build-identity.d.ts').NixStamp} NixStamp */
+/** @typedef {import('./cli-build-identity.d.ts').ReleaseStamp} ReleaseStamp */
 /** @typedef {import('./cli-build-identity.d.ts').CliStamp} CliStamp */
 /** @typedef {import('./cli-build-identity.d.ts').CliBuildIdentity} CliBuildIdentity */
 /** @typedef {import('./cli-build-identity.d.ts').ResolveBuildIdentityOptions} ResolveBuildIdentityOptions */
 
 /**
- * Parse the canonical local/Nix JSON stamp.
+ * Parse the canonical local/Nix/release JSON stamp.
  * @type {typeof import('./cli-build-identity.d.ts').parseCliBuildStamp}
  */
 export const parseCliBuildStamp = (stamp) => {
@@ -31,7 +32,7 @@ export const parseCliBuildStamp = (stamp) => {
           dirty: parsed.dirty,
         }
       }
-    } else if (parsed.type === 'nix') {
+    } else if (parsed.type === 'nix' || parsed.type === 'release') {
       if (
         typeof parsed.version === 'string' &&
         typeof parsed.rev === 'string' &&
@@ -40,7 +41,7 @@ export const parseCliBuildStamp = (stamp) => {
       ) {
         const buildTs = typeof parsed.buildTs === 'number' ? parsed.buildTs : undefined
         return {
-          type: 'nix',
+          type: parsed.type,
           version: parsed.version,
           rev: parsed.rev,
           commitTs: parsed.commitTs,
@@ -55,43 +56,56 @@ export const parseCliBuildStamp = (stamp) => {
   return undefined
 }
 
-/** @param {{baseVersion: string, stamp: LocalStamp, now: number}} options */
+const dirtyNote = (/** @type {boolean} */ dirty) => (dirty === true ? ', with uncommitted changes' : '')
+
+/** @param {{baseVersion: string, stamp: LocalStamp, now: number | null}} options */
 const renderLocalVersion = ({ baseVersion, stamp, now }) => {
+  if (now === null) {
+    return `${baseVersion} — running from local source (${stamp.rev}${dirtyNote(stamp.dirty)})`
+  }
   const timeAgo =
     stamp.commitTs === undefined
       ? formatRelativeTime({ ts: stamp.ts, now, format: 'long' })
       : `committed ${formatRelativeTime({ ts: stamp.commitTs, now, format: 'long' })}`
-  const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
-  return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote})`
+  return `${baseVersion} — running from local source (${stamp.rev}, ${timeAgo}${dirtyNote(stamp.dirty)})`
 }
 
-/** @param {NixStamp} stamp */
-const nixMachineVersion = (stamp) => {
-  const revAlreadyHasDirty = stamp.rev.endsWith('-dirty')
+/**
+ * Nix stamps carry a short revision; release stamps keep the full revision for provenance.
+ * @param {NixStamp | ReleaseStamp} stamp
+ */
+const committedMachineVersion = (stamp) => {
+  const rev = stamp.type === 'release' ? stamp.rev.slice(0, 7) : stamp.rev
+  const revAlreadyHasDirty = rev.endsWith('-dirty')
   const dirtySuffix = stamp.dirty === true && revAlreadyHasDirty === false ? '-dirty' : ''
-  return `${stamp.version}+${stamp.rev}${dirtySuffix}`
+  return `${stamp.version}+${rev}${dirtySuffix}`
 }
 
 /** @param {{baseVersion: string, stamp: LocalStamp}} options */
 const localMachineVersion = ({ baseVersion, stamp }) =>
   `${baseVersion}+local.${stamp.rev}${stamp.dirty === true ? '.dirty' : ''}`
 
-/** @param {{stamp: NixStamp, now: number}} options */
-const renderNixVersion = ({ stamp, now }) => {
-  const versionStr = nixMachineVersion(stamp)
-  const dirtyNote = stamp.dirty === true ? ', with uncommitted changes' : ''
-  if (stamp.buildTs !== undefined) {
-    return `${versionStr} — built ${formatRelativeTime({ ts: stamp.buildTs, now, format: 'long' })}${dirtyNote}`
+/**
+ * Nix prose keeps its build age. A release build describes its revision's age;
+ * deployment age belongs to the separate `deployed` detail derived from buildTs.
+ * Without a clock (`now: null`), committed metadata is the timeless machine version.
+ * @param {{stamp: NixStamp | ReleaseStamp, now: number | null}} options
+ */
+const renderCommittedVersion = ({ stamp, now }) => {
+  const versionStr = committedMachineVersion(stamp)
+  if (now === null) return versionStr
+  if (stamp.type === 'nix' && stamp.buildTs !== undefined) {
+    return `${versionStr} — built ${formatRelativeTime({ ts: stamp.buildTs, now, format: 'long' })}${dirtyNote(stamp.dirty)}`
   }
-  return `${versionStr} — committed ${formatRelativeTime({ ts: stamp.commitTs, now, format: 'long' })}${dirtyNote}`
+  return `${versionStr} — committed ${formatRelativeTime({ ts: stamp.commitTs, now, format: 'long' })}${dirtyNote(stamp.dirty)}`
 }
 
-/** @param {{stamp: NixStamp, now: number}} options @returns {CliBuildIdentity} */
-const nixBuildIdentity = ({ stamp, now }) => ({
+/** @param {{stamp: NixStamp | ReleaseStamp, now: number | null}} options @returns {CliBuildIdentity} */
+const committedBuildIdentity = ({ stamp, now }) => ({
   baseVersion: stamp.version,
-  displayVersion: renderNixVersion({ stamp, now }),
-  machineVersion: nixMachineVersion(stamp),
-  sourceKind: 'nix',
+  displayVersion: renderCommittedVersion({ stamp, now }),
+  machineVersion: committedMachineVersion(stamp),
+  sourceKind: stamp.type,
   rev: stamp.rev,
   dirty: stamp.dirty,
   commitTs: stamp.commitTs,
@@ -99,7 +113,7 @@ const nixBuildIdentity = ({ stamp, now }) => ({
 })
 
 /**
- * Resolve the canonical identity. Embedded Nix metadata takes precedence over runtime stamps.
+ * Resolve the canonical identity. Embedded Nix/release metadata takes precedence over runtime stamps.
  * @type {typeof import('./cli-build-identity.d.ts').resolveCliBuildIdentity}
  */
 export const resolveCliBuildIdentity = (options) => {
@@ -111,7 +125,8 @@ export const resolveCliBuildIdentity = (options) => {
     runtimeStampEnvVar = 'CLI_BUILD_STAMP',
   } = options
   const buildTimeStamp = parseCliBuildStamp(buildStamp)
-  if (buildTimeStamp?.type === 'nix') return nixBuildIdentity({ stamp: buildTimeStamp, now })
+  if (buildTimeStamp?.type === 'nix' || buildTimeStamp?.type === 'release')
+    return committedBuildIdentity({ stamp: buildTimeStamp, now })
   const runtimeStampRaw = env[runtimeStampEnvVar]?.trim()
   const runtimeStamp =
     runtimeStampRaw === undefined || runtimeStampRaw.length === 0
@@ -129,7 +144,8 @@ export const resolveCliBuildIdentity = (options) => {
       ...(runtimeStamp.commitTs === undefined ? {} : { commitTs: runtimeStamp.commitTs }),
     }
   }
-  if (runtimeStamp?.type === 'nix') return nixBuildIdentity({ stamp: runtimeStamp, now })
+  if (runtimeStamp?.type === 'nix' || runtimeStamp?.type === 'release')
+    return committedBuildIdentity({ stamp: runtimeStamp, now })
   return {
     baseVersion,
     displayVersion: baseVersion,
