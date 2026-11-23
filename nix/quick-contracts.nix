@@ -178,8 +178,8 @@ let
     export EFFECT_UTILS_TEST_PLATFORM=${lib.escapeShellArg (builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM")}
     export BUCK2_REMOTE_CACHE_BASIC_AUTH="''${BUCK2_REMOTE_CACHE_BASIC_AUTH:-}"
   '';
-  # Buck owns and retires action scratch, including this private runtime child.
-  # Socket-owning tools use their supported short-location boundary separately.
+  # Buck scratch holds the exclusive action marker; the outer capability owns
+  # the short physical runtime until its exec-replaced task has been joined.
   taskRuntime = pkgs.writeShellScript "quick-contract-task-runtime" ''
     set -euo pipefail
     : "''${BUCK_SCRATCH_PATH:?quick-contracts: Buck must supply action-owned scratch}"
@@ -190,11 +190,69 @@ let
       echo "quick-contracts: unsafe action scratch $scratch" >&2
       exit 1
     fi
-    runtime="$scratch/runtime"
-    ${pkgs.coreutils}/bin/mkdir -m 0700 -- "$runtime"
+    marker="$scratch/runtime"
+    ${pkgs.coreutils}/bin/mkdir -m 0700 -- "$marker"
+    : "''${QUICK_CONTRACT_RUNTIME_ROOT:?quick-contracts: capability must own the runtime}"
+    runtime="$(${pkgs.coreutils}/bin/realpath -e -- "$QUICK_CONTRACT_RUNTIME_ROOT")"
+    checkout="$(${pkgs.coreutils}/bin/realpath -e -- .)"
+    temporary="$(${pkgs.coreutils}/bin/realpath -e -- /tmp)"
+    if [ "$runtime" != "$QUICK_CONTRACT_RUNTIME_ROOT" ] ||
+      [ "$(${pkgs.coreutils}/bin/stat -c %u -- "$runtime")" != "$(${pkgs.coreutils}/bin/id -u)" ] ||
+      [ "$(${pkgs.coreutils}/bin/stat -c %a -- "$runtime")" != 700 ] ||
+      [ "''${#runtime}" -gt 48 ]; then
+      echo 'quick-contracts: unsafe external action runtime' >&2
+      exit 1
+    fi
+    case "$runtime" in
+      "$checkout"|"$checkout"/*) echo 'quick-contracts: runtime must be outside the checkout' >&2; exit 1 ;;
+    esac
+    case "$runtime" in
+      "$temporary"/qc.*) ;;
+      *) echo 'quick-contracts: runtime must use the private short temporary boundary' >&2; exit 1 ;;
+    esac
+    printf '%s\n' "$runtime" > "$marker/external-root"
     export TMPDIR="$runtime" TMP="$runtime" TEMP="$runtime" RUNNER_TEMP="$runtime"
     export XDG_RUNTIME_DIR="$runtime"
     exec "$@"
+  '';
+  taskRuntimeLifetime = ''
+    runtime=""
+    child=""
+    retire_runtime() {
+      if [ -n "$runtime" ]; then
+        ${pkgs.coreutils}/bin/rm -rf -- "$runtime"
+      fi
+    }
+    cancel_task() {
+      trap "" HUP INT TERM
+      if [ -n "$child" ]; then
+        kill -s "$1" "$child" 2>/dev/null || :
+        wait "$child" || :
+        child=""
+      fi
+      exit "$2"
+    }
+    trap retire_runtime EXIT
+    trap 'cancel_task HUP 129' HUP
+    trap 'cancel_task INT 130' INT
+    trap 'cancel_task TERM 143' TERM
+    # No ambient TMPDIR or shared-directory fallback. mktemp creates a unique
+    # 0700 root; resolve /tmp physically (not a long checkout-local alias).
+    runtime="$(${pkgs.coreutils}/bin/mktemp -d /tmp/qc.XXXXXXXX)"
+    runtime="$(${pkgs.coreutils}/bin/realpath -e -- "$runtime")"
+    export QUICK_CONTRACT_RUNTIME_ROOT="$runtime"
+    # Shell background jobs otherwise inherit ignored INT/QUIT across exec.
+    ${pkgs.coreutils}/bin/env --default-signal=INT,QUIT @TASK_RUNTIME@ @TASK_SCRIPT@ &
+    child=$!
+    task_status=0
+    wait "$child" || task_status=$?
+    child=""
+    retire_runtime
+    runtime=""
+    trap - EXIT HUP INT TERM
+    if [ "$task_status" -ne 0 ]; then
+      exit "$task_status"
+    fi
   '';
   taskCapabilities = builtins.listToAttrs (
     map (
@@ -230,7 +288,11 @@ let
           ${lib.optionalString (name == "worktree:teardown:test") ''
             export WORKTREE_TEARDOWN_TASK_COMMAND=${teardownFixtureRunner}
           ''}
-          ${taskRuntime} ${taskScripts.${name}}
+          ${lib.replaceStrings
+            [ "@TASK_RUNTIME@" "@TASK_SCRIPT@" ]
+            [ (toString taskRuntime) (toString taskScripts.${name}) ]
+            taskRuntimeLifetime
+          }
           mkdir -p -- "$(dirname "$verdict")"
           printf '%s\n' ${
             lib.escapeShellArg (
