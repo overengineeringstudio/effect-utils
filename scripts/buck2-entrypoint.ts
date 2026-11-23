@@ -779,6 +779,7 @@ export const resolveGateInvocation = ({
   cwd,
   strictRunArguments = true,
   includePayload = false,
+  selectionOnly = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -792,6 +793,8 @@ export const resolveGateInvocation = ({
   readonly cwd: string
   readonly strictRunArguments?: boolean
   readonly includePayload?: boolean
+  /** Ownership selection does not impose gate cleanup's conservative run-payload grammar. */
+  readonly selectionOnly?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }):
   | {
@@ -828,6 +831,7 @@ export const resolveGateInvocation = ({
         requested === undefined ||
         requested === '' ||
         requested === '-' ||
+        requested.endsWith('.py') === true ||
         requested.includes('//') === true ||
         requested.includes('#') === true ||
         (requested.startsWith('/') === true && resolve(requested) !== requested)
@@ -907,7 +911,12 @@ export const resolveGateInvocation = ({
         arg.includes('=') === false &&
         ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
       ) {
-        // Unknown option arity cannot establish the start of a run payload.
+        // Unknown arity is harmless only when no later token can select isolation.
+        if (
+          selectionOnly === true &&
+          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false)
+        )
+          break
         return undefined
       }
     }
@@ -934,6 +943,35 @@ export const resolveGateInvocation = ({
       ? { isolation, args: expanded, nativeArgumentCount: buckArgs.length }
       : { isolation, args: buckArgs }
     : undefined
+}
+
+/** Snapshot native arguments once, before admission can change an argfile. */
+export const resolveManagedInvocation = ({
+  args,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): {
+  readonly isolation: string
+  readonly args: readonly string[]
+  readonly nativeArgumentCount?: number
+} => {
+  const invocation = resolveGateInvocation({
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    selectionOnly: true,
+    includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck entrypoint cannot safely resolve publication ownership: use literal argv or plain-text @argfiles, not Python, stdin or config-cell argfiles. For an ambiguous run option followed by an isolation selector, put Buck options before run and delimit executable arguments with --. The package libexec/buck2 is only for unmanaged projects (never editor-publication).',
+    )
+  return invocation
 }
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */

@@ -238,6 +238,10 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+Managed invocation selection snapshots supported plain-text argument files before
+admission. Later rewrites cannot change the executed isolation or literal argv;
+run payload tokens do not participate in the native isolation selection.
+
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
 The generic Bun capability stays unwrapped so hermetic actions do not acquire
