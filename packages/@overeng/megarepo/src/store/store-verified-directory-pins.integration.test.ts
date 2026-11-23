@@ -165,12 +165,12 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
   }
 
   it.effect(
-    'refuses empty or stale target lists before prepare or commit',
+    'refuses empty target lists or a symlink replacement before prepare or commit',
     Effect.fnUntraced(
       function* () {
         const { fs, paths, targets } = yield* fixture
         yield* fs.rename(paths[1]!, `${paths[1]}-detached`)
-        yield* fs.makeDirectory(paths[1]!)
+        yield* fs.symlink(`${paths[1]}-detached`, paths[1]!)
         for (const attempted of [[], targets]) {
           let called = false
           const result = yield* withVerifiedDirectoryPins({
@@ -191,6 +191,35 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
       Effect.provide(NodeServices.layer),
       Effect.scoped,
     ),
+  )
+
+  it.effect(
+    'refuses plan-time directory inode replacement where recorded identities bind inodes',
+    (context) =>
+      Effect.gen(function* () {
+        const { fs, paths, targets } = yield* fixture
+        if (targets[1]!.identity.at(-1)?._tag === 'OverlayDirectory') {
+          return context.skip(
+            'Overlay plan identity binds mountId + path, not a persistent inode; post-pin replacement is tested separately',
+          )
+        }
+        yield* fs.rename(paths[1]!, `${paths[1]}-detached`)
+        yield* fs.makeDirectory(paths[1]!)
+        let called = false
+        const result = yield* withVerifiedDirectoryPins({
+          targets,
+          prepare: () => {
+            called = true
+            return Effect.void
+          },
+          commit: () => {
+            called = true
+            return Effect.void
+          },
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        expect(called).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect(
