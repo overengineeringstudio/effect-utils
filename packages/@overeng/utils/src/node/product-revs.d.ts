@@ -33,7 +33,9 @@ export interface ProductRevDeclaration extends Omit<ProductRevOptions, 'root'> {
 }
 
 /** Compute the projection from full, unshallow history. */
-export declare const computeProductRev: (options: ProductRevOptions) => Promise<ProductRevProjection>
+export declare const computeProductRev: (
+  options: ProductRevOptions,
+) => Promise<ProductRevProjection>
 
 /** Closure digest of the checked-out sources and whether tracked closure files are modified. */
 export declare const readWorkingClosure: (

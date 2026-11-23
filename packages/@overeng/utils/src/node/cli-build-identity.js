@@ -56,7 +56,8 @@ export const parseCliBuildStamp = (stamp) => {
   return undefined
 }
 
-const dirtyNote = (/** @type {boolean} */ dirty) => (dirty === true ? ', with uncommitted changes' : '')
+const dirtyNote = (/** @type {boolean} */ dirty) =>
+  dirty === true ? ', with uncommitted changes' : ''
 
 /** @param {{baseVersion: string, stamp: LocalStamp, now: number | null}} options */
 const renderLocalVersion = ({ baseVersion, stamp, now }) => {

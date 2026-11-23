@@ -89,7 +89,8 @@ const partitionPaths = ({ sourcePaths, membersRoot }) => {
 }
 
 /** @param {readonly string[]} entries */
-const digest = (entries) => `sha256:${createHash('sha256').update(entries.join('\n')).digest('hex')}`
+const digest = (entries) =>
+  `sha256:${createHash('sha256').update(entries.join('\n')).digest('hex')}`
 
 /**
  * Validate a closure declaration and apply megarepo defaults.
@@ -141,9 +142,7 @@ export const computeProductRev = async (options) => {
   if ((await git({ cwd: root, args: ['rev-parse', '--is-shallow-repository'] })) === 'true')
     throw new Error('Product revisions need full Git history: run git fetch --unshallow')
   const { host, members } = partitionPaths({ sourcePaths, membersRoot })
-  const commits = (
-    await git({ cwd: root, args: ['log', '--format=%H %ct %P', snapshot] })
-  )
+  const commits = (await git({ cwd: root, args: ['log', '--format=%H %ct %P', snapshot] }))
     .split('\n')
     .filter((line) => line !== '')
     .map((line) => {
@@ -270,7 +269,10 @@ export const readWorkingClosure = async (options) => {
   for (const [name, paths] of members) {
     const checkout = memberCheckout(name)
     // oxlint-disable-next-line eslint/no-await-in-loop -- one member checkout at a time
-    const objects = await batchObjects({ cwd: checkout, names: paths.map((path) => `HEAD:${path}`) })
+    const objects = await batchObjects({
+      cwd: checkout,
+      names: paths.map((path) => `HEAD:${path}`),
+    })
     paths.forEach((path, i) => memberLines.push(`${membersRoot}/${name}/${path}\t${objects[i]}`))
     // oxlint-disable-next-line eslint/no-await-in-loop -- one member checkout at a time
     memberStatus += await git({
