@@ -497,7 +497,9 @@ const vercelDeployCommand = Command.make(
       Options.withDefault('static' as const),
     ),
     assetManifest: Options.String('asset-manifest').pipe(
-      Options.withDescription('Local JSON array of root-relative asset paths required before alias promotion'),
+      Options.withDescription(
+        'Local JSON array of root-relative asset paths required before alias promotion',
+      ),
       Options.optional,
     ),
     mode: Options.Literals('mode', ['prod', 'pr', 'preview']).pipe(

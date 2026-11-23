@@ -27,12 +27,16 @@ let deploymentCommitShas: Record<string, string> = {}
 let aliasHolder: { readonly deploymentId: string; readonly projectId?: string } | undefined
 let readinessStatus = 200
 let readinessContentType = 'application/javascript'
+let discoverProductionDomains = false
 
 const vercelTokenSentinel = 'ci-tools-vercel-token-sentinel'
 const vercelAuthTokenEnv = 'CI_TOOLS_VERCEL_TOKEN_SENTINEL'
 
 const expectVercelAuthViaEnvironment = (log: string) => {
-  const invocations = log.trim().split('\n').filter((line) => line.startsWith('probe=') === false)
+  const invocations = log
+    .trim()
+    .split('\n')
+    .filter((line) => line.startsWith('probe=') === false)
   expect(invocations).not.toHaveLength(0)
   for (const invocation of invocations) {
     expect(invocation).toContain(`VERCEL_TOKEN=${vercelTokenSentinel}`)
@@ -80,7 +84,9 @@ const runCiTools = async (opts: {
 }) => {
   // Route immutable deployment HTTP probes to the local provider fixture.
   const preloadPath = join(opts.workdir, 'fetch-preload.ts')
-  writeFileSync(preloadPath, `
+  writeFileSync(
+    preloadPath,
+    `
 import { appendFileSync } from 'node:fs'
 const originalFetch = globalThis.fetch
 globalThis.fetch = async (input, init) => {
@@ -91,7 +97,8 @@ globalThis.fetch = async (input, init) => {
   }
   return originalFetch(input, init)
 }
-`)
+`,
+  )
   const child = spawn(
     'bun',
     [
@@ -140,10 +147,33 @@ globalThis.fetch = async (input, init) => {
 beforeAll(async () => {
   server = createServer((request, response) => {
     if (request.url?.startsWith('/readiness') === true) {
-      response.writeHead(request.url === '/readiness/' ? 200 : readinessStatus, {
-        'content-type': readinessContentType,
-        connection: 'close',
-      }).end('vercel static marker')
+      response
+        .writeHead(request.url === '/readiness/' ? 200 : readinessStatus, {
+          'content-type': readinessContentType,
+          connection: 'close',
+        })
+        .end('vercel static marker')
+      return
+    }
+    if (request.url?.startsWith('/v9/projects/fake-project/domains?') === true) {
+      const paginated = request.url.includes('until=123')
+      response.writeHead(200, { 'content-type': 'application/json', connection: 'close' }).end(
+        JSON.stringify({
+          domains:
+            discoverProductionDomains === true
+              ? paginated === true
+                ? [{ name: 'second.example.com', gitBranch: null, customEnvironmentId: null }]
+                : [
+                    { name: 'legacy.example.com' },
+                    { name: 'branch.example.com', gitBranch: 'feature' },
+                    { name: 'staging.example.com', customEnvironmentId: 'env-staging' },
+                  ]
+              : [],
+          pagination: {
+            next: discoverProductionDomains === true && paginated === false ? 123 : null,
+          },
+        }),
+      )
       return
     }
     if (request.url?.startsWith('/v13/deployments/') === true) {
@@ -387,8 +417,16 @@ exit 1
           workdir: workspace.root,
           fakeVercelBin: workspace.fakeVercelBin,
           reportFile: join(workspace.root, 'report.jsonl'),
-          args: ['--target', 'web', '--artifact-dir', workspace.artifactDir,
-            '--mode', 'prod', '--asset-manifest', manifest],
+          args: [
+            '--target',
+            'web',
+            '--artifact-dir',
+            workspace.artifactDir,
+            '--mode',
+            'prod',
+            '--asset-manifest',
+            manifest,
+          ],
         })
         expect(result.status).not.toBe(0)
         expect(existsSync(workspace.logPath)).toBe(false)
@@ -398,54 +436,119 @@ exit 1
     },
   )
 
-  it.each([404, 503])('does not promote when a manifest asset returns HTTP %s', async (status) => {
+  it('preserves project production domains when no explicit domains are configured', async () => {
     apiMode = 'ok'
-    readinessStatus = status
+    discoverProductionDomains = true
     const workspace = makeWorkspace()
-    const manifest = join(workspace.root, 'assets.json')
-    writeFileSync(manifest, JSON.stringify(['/assets/lazy.js']))
     try {
       const result = await runCiTools({
         workdir: workspace.root,
         fakeVercelBin: workspace.fakeVercelBin,
         reportFile: join(workspace.root, 'report.jsonl'),
-        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'prod',
-          '--production-domain', 'web.example.com', '--asset-manifest', manifest],
+        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'prod'],
       })
-      expect(result.status).not.toBe(0)
+      expect(result.status).toBe(0)
       const log = readFileSync(workspace.logPath, 'utf8')
       expect(log).toContain('args=deploy --prebuilt --yes --prod --skip-domain')
-      expect(log).not.toContain('args=alias ')
+      for (const domain of ['legacy.example.com', 'second.example.com']) {
+        expect(log).toContain(`args=alias https://deploy-web.vercel.app ${domain}`)
+      }
+      expect(log).not.toContain('branch.example.com')
+      expect(log).not.toContain('staging.example.com')
+      expect(log.indexOf('probe=')).toBeLessThan(log.indexOf('args=alias '))
     } finally {
-      readinessStatus = 200
+      discoverProductionDomains = false
       rmSync(workspace.root, { recursive: true, force: true })
     }
-  }, 30_000)
+  })
+
+  it.each([404, 503])(
+    'does not promote when a manifest asset returns HTTP %s',
+    async (status) => {
+      apiMode = 'ok'
+      readinessStatus = status
+      const workspace = makeWorkspace()
+      const manifest = join(workspace.root, 'assets.json')
+      writeFileSync(manifest, JSON.stringify(['/assets/lazy.js']))
+      try {
+        const result = await runCiTools({
+          workdir: workspace.root,
+          fakeVercelBin: workspace.fakeVercelBin,
+          reportFile: join(workspace.root, 'report.jsonl'),
+          args: [
+            '--target',
+            'web',
+            '--artifact-dir',
+            workspace.artifactDir,
+            '--mode',
+            'prod',
+            '--production-domain',
+            'web.example.com',
+            '--asset-manifest',
+            manifest,
+          ],
+        })
+        expect(result.status).not.toBe(0)
+        const log = readFileSync(workspace.logPath, 'utf8')
+        expect(log).toContain('args=deploy --prebuilt --yes --prod --skip-domain')
+        expect(log).not.toContain('args=alias ')
+      } finally {
+        readinessStatus = 200
+        rmSync(workspace.root, { recursive: true, force: true })
+      }
+    },
+    30_000,
+  )
 
   it('checks immutable manifest assets before promoting each production hostname once', async () => {
     apiMode = 'ok'
     const workspace = makeWorkspace()
     const manifest = join(workspace.root, 'assets.json')
-    writeFileSync(manifest, JSON.stringify(['/index.html', '/assets/main.js', '/assets/lazy.js', '/assets/engine.wasm']))
+    writeFileSync(
+      manifest,
+      JSON.stringify(['/index.html', '/assets/main.js', '/assets/lazy.js', '/assets/engine.wasm']),
+    )
     try {
       const result = await runCiTools({
         workdir: workspace.root,
         fakeVercelBin: workspace.fakeVercelBin,
         reportFile: join(workspace.root, 'report.jsonl'),
-        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir, '--mode', 'prod',
-          '--production-domain', 'web.vercel.app', '--production-domain', 'web.example.com',
-          '--production-domain', 'web.example.com', '--asset-manifest', manifest],
+        args: [
+          '--target',
+          'web',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--mode',
+          'prod',
+          '--production-domain',
+          'web.vercel.app',
+          '--production-domain',
+          'web.example.com',
+          '--production-domain',
+          'web.example.com',
+          '--asset-manifest',
+          manifest,
+        ],
       })
       expect(result.status).toBe(0)
       const log = readFileSync(workspace.logPath, 'utf8')
       expect(log).toContain('args=deploy --prebuilt --yes --prod --skip-domain')
-      for (const path of ['/index.html', '/assets/main.js', '/assets/lazy.js', '/assets/engine.wasm']) {
+      for (const path of [
+        '/index.html',
+        '/assets/main.js',
+        '/assets/lazy.js',
+        '/assets/engine.wasm',
+      ]) {
         const probe = log.indexOf(`probe=https://deploy-web.vercel.app${path}`)
         expect(probe).toBeGreaterThan(-1)
         expect(probe).toBeLessThan(log.indexOf('args=alias '))
       }
-      expect(log.match(/args=alias https:\/\/deploy-web.vercel.app web.vercel.app/gu)).toHaveLength(1)
-      expect(log.match(/args=alias https:\/\/deploy-web.vercel.app web.example.com/gu)).toHaveLength(1)
+      expect(log.match(/args=alias https:\/\/deploy-web.vercel.app web.vercel.app/gu)).toHaveLength(
+        1,
+      )
+      expect(
+        log.match(/args=alias https:\/\/deploy-web.vercel.app web.example.com/gu),
+      ).toHaveLength(1)
       expect(existsSync(join(workspace.artifactDir, 'assets.json'))).toBe(false)
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
@@ -463,8 +566,16 @@ exit 1
         workdir: workspace.root,
         fakeVercelBin: workspace.fakeVercelBin,
         reportFile: join(workspace.root, 'report.jsonl'),
-        args: ['--target', 'web', '--artifact-dir', workspace.artifactDir,
-          '--mode', 'prod', '--asset-manifest', manifest],
+        args: [
+          '--target',
+          'web',
+          '--artifact-dir',
+          workspace.artifactDir,
+          '--mode',
+          'prod',
+          '--asset-manifest',
+          manifest,
+        ],
       })
       expect(result.status).not.toBe(0)
       expect(readFileSync(workspace.logPath, 'utf8')).not.toContain('args=alias ')

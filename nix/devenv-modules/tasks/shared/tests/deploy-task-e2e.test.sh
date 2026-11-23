@@ -306,6 +306,10 @@ const server = createServer((request, response) => {
     response.end('vercel marker')
     return
   }
+  if (url.pathname === '/v9/projects/fake-project/domains') {
+    response.end(JSON.stringify({ domains: [], pagination: { next: null } }))
+    return
+  }
   if (url.pathname === '/api/v1/sites/fake-site-id') {
     response.end(JSON.stringify({ name: 'fake-site', account_slug: 'fake-account' }))
     return
