@@ -334,6 +334,7 @@ process.stdin.resume()`,
         const casPath = `${base}/cas-artifact`
         const linkedPath = `${path}/nested/deeper/cas-artifact`
         yield* fs.writeFileString(casPath, 'shared CAS content', { mode: 0o444 })
+        yield* fs.chmod(casPath, 0o444)
         yield* fs.link(casPath, linkedPath)
         const original = lstatSync(casPath)
         expect(original.mode & 0o777).toBe(0o444)
