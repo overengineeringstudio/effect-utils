@@ -550,7 +550,8 @@ quick_contracts(
         "cache_policy": "local-fixture",
         "cpu_demand": "single-thread",
         "membership": [],
-        "membership_mode": "tracked"
+        "membership_mode": "tracked",
+        "native_ts_sandbox": "//buck2/tests/ts_sandbox:probe"
     },
     "cargo:proto-bindings:check": {
         "source_sets": [
