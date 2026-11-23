@@ -136,12 +136,26 @@ The package exports neither `holderEvidenceClient` nor `processEvidenceCommand`.
 
 ## Worktree check watcher policy
 
-The Nix-built worktree PATH explicitly selects `buck2.file_watcher=watchman` on
-macOS and `buck2.file_watcher=notify` on Linux. The capability steady-rotation
-fixture uses the same evaluated `worktree-tools.fileWatcher` selection; the
-retained devenv task and the Buck contract therefore exercise the configured
-provider. Immutable Nix product roots retain their separate `fs_hash_crawler`
-policy.
+The Nix-built worktree profile persists `buck2.file_watcher=watchman` on macOS
+and `buck2.file_watcher=notify` on Linux in a distinct profile-owned block in the
+actual root's `.buckconfig.local`, before existing preparation or native
+publication runs. Its declared compiled Buck management verb
+(`buck2 worktree-watcher prepare|check watchman|notify`) writes or validates that
+selection without starting native Buck; preflight checks both the owned block
+and the effective persisted `.buckconfig`/`.buckconfig.local` value. User and
+cache blocks are preserved; ordinary Watchman admission does not remove the
+profile-owned selection.
+
+This is a daemon-startup setting, not a per-command `--config` override:
+[pinned native daemon initialization](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_server/src/daemon/state.rs#L350-L380)
+parses startup configuration with empty CLI arguments, and
+[watcher construction](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_file_watcher/src/file_watcher.rs#L98-L147)
+reads that root configuration. When the persisted provider changes, the managed
+entrypoint explicitly stops the affected root/isolation daemon before restarting
+with the selected provider; it does not kill unrelated daemons. The capability
+steady-rotation fixture uses the same evaluated `worktree-tools.fileWatcher`
+selection and requires daemon-reported provider evidence, not a launcher flag.
+Immutable Nix product roots retain their separate `fs_hash_crawler` policy.
 
 The [pinned native notify implementation](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_file_watcher/src/notify.rs)
 drains already-delivered events when synchronizing; that is not a macOS FSEvents

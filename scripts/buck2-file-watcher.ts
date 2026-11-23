@@ -20,20 +20,30 @@ import { getPriority, homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 
-const managedBegin = '# BEGIN effect-utils file watcher admission'
-const managedEnd = '# END effect-utils file watcher admission'
+import { buckConfigValues, readConfig } from './buck2-cache-posture.ts'
 
-/** Keep explicit local providers and the independently managed cache overlay intact. */
-export const withoutManagedWatcherBlock = (current: string): string => {
+const watcherMarkers = {
+  admission: {
+    begin: '# BEGIN effect-utils file watcher admission',
+    end: '# END effect-utils file watcher admission',
+  },
+  profile: {
+    begin: '# BEGIN effect-utils file watcher profile',
+    end: '# END effect-utils file watcher profile',
+  },
+}
+
+const withoutWatcherBlock = (current: string, scope: keyof typeof watcherMarkers): string => {
+  const { begin, end } = watcherMarkers[scope]
   const output: string[] = []
   let inside = false
   let found = false
   for (const line of current.split(/\r?\n/u)) {
-    if (line === managedBegin) {
+    if (line === begin) {
       if (inside === true || found === true) throw new Error('duplicate managed file watcher block')
       inside = true
       found = true
-    } else if (line === managedEnd) {
+    } else if (line === end) {
       if (inside === false) throw new Error('unmatched managed file watcher block end')
       inside = false
     } else if (inside === false) output.push(line)
@@ -42,23 +52,32 @@ export const withoutManagedWatcherBlock = (current: string): string => {
   return output.join('\n').trimEnd()
 }
 
+/** Keep explicit local providers and the independently managed cache/profile overlays intact. */
+export const withoutManagedWatcherBlock = (current: string): string =>
+  withoutWatcherBlock(current, 'admission')
+
+type ReconcileFileWatcherOptions = { readonly repoRoot: string } & (
+  | { readonly scope: 'profile'; readonly provider: 'watchman' | 'notify' }
+  | { readonly scope?: 'admission'; readonly provider?: 'watchman' }
+)
+
 /** The initial native daemon reads its watcher from this file, not CLI overrides. */
 export const reconcileFileWatcher = ({
   repoRoot,
+  scope = 'admission',
   provider,
-}: {
-  readonly repoRoot: string
-  readonly provider?: 'watchman'
-}): void => {
+}: ReconcileFileWatcherOptions): void => {
   const path = join(repoRoot, '.buckconfig.local')
-  if (existsSync(path) === true && lstatSync(path).isSymbolicLink() === true)
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true)
     throw new Error('Buck file watcher: .buckconfig.local must not be a symbolic link')
   const current = existsSync(path) === true ? readFileSync(path, 'utf8') : ''
-  const unmanaged = withoutManagedWatcherBlock(current)
+  // Validate both owners, and retire the old admission selection before a profile write.
+  withoutWatcherBlock(current, 'profile')
+  const admissionFree = withoutManagedWatcherBlock(current)
+  const unmanaged = withoutWatcherBlock(scope === 'profile' ? admissionFree : current, scope)
+  const { begin, end } = watcherMarkers[scope]
   const block =
-    provider === undefined
-      ? ''
-      : `${managedBegin}\n[buck2]\n  file_watcher = ${provider}\n${managedEnd}\n`
+    provider === undefined ? '' : `${begin}\n[buck2]\n  file_watcher = ${provider}\n${end}\n`
   const next =
     block === ''
       ? unmanaged === ''
@@ -75,6 +94,33 @@ export const reconcileFileWatcher = ({
   } finally {
     rmSync(candidate, { force: true })
   }
+}
+
+/** Check both profile ownership and the actual persisted daemon-startup selection. */
+export const assertProfileFileWatcher = ({
+  repoRoot,
+  provider,
+}: {
+  readonly repoRoot: string
+  readonly provider: 'watchman' | 'notify'
+}): void => {
+  const path = join(repoRoot, '.buckconfig.local')
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() === true)
+    throw new Error('Buck file watcher: .buckconfig.local must not be a symbolic link')
+  const current = existsSync(path) === true ? readFileSync(path, 'utf8') : ''
+  withoutManagedWatcherBlock(current)
+  withoutWatcherBlock(current, 'profile')
+  const { begin, end } = watcherMarkers.profile
+  const lines = current.split(/\r?\n/u)
+  const start = lines.indexOf(begin)
+  const block = start === -1 ? '' : lines.slice(start + 1, lines.indexOf(end, start)).join('\n')
+  const effective = buckConfigValues(
+    `${readConfig({ path: join(repoRoot, '.buckconfig') })}\n${readConfig({ path })}`,
+  )['buck2.file_watcher']
+  if (buckConfigValues(block)['buck2.file_watcher'] !== provider || effective !== provider)
+    throw new Error(
+      `Buck file watcher: expected profile-owned and effective buck2.file_watcher=${provider}; run python3 scripts/worktree-env.py prepare, then restart the affected root/isolation daemon if its provider changed`,
+    )
 }
 
 /** A failed service/root admission never selects an incremental fallback provider. */

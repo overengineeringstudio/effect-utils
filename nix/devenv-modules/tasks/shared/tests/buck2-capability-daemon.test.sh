@@ -42,6 +42,9 @@ retain_failure_evidence() {
   if [ -f "$TEMP_ROOT/w.log" ]; then cp "$TEMP_ROOT/w.log" "$evidence/watchman.log" || return 1; fi
   for fixture in "${daemon_roots[@]}"; do
     cp "$fixture/.buckconfig" "$evidence/${fixture##*/}.buckconfig" || return 1
+    if [ -f "$fixture/.buckconfig.local" ]; then
+      cp "$fixture/.buckconfig.local" "$evidence/${fixture##*/}.buckconfig.local" || return 1
+    fi
     for phase in before after steady; do
       for artifact in events output status stderr trace; do
         if [ -f "$fixture/$phase.$artifact" ]; then
@@ -200,6 +203,9 @@ for watcher in "${watchers[@]}"; do
   cp "$FIXTURES/BUCK.template" "$fixture/BUCK"
   cp "$FIXTURES/configured.bzl" "$FIXTURES/rules.bzl" "$fixture/"
   touch "$fixture/.buckroot"
+  # The tracked control disagrees with the profile selection. Only persisted
+  # profile preparation, not per-command arguments, can select daemon startup.
+  if [ "$watcher" = watchman ]; then control_watcher=notify; else control_watcher=watchman; fi
   cat >"$fixture/.buckconfig" <<CONFIG
 [cells]
   root = .
@@ -217,7 +223,7 @@ for watcher in "${watchers[@]}"; do
 [build]
   execution_platforms = prelude//platforms:default
 [buck2]
-  file_watcher = $watcher
+  file_watcher = $control_watcher
   remote_cache_enabled = false
   allow_cache_uploads = false
   digest_algorithms = SHA256
@@ -226,6 +232,7 @@ for watcher in "${watchers[@]}"; do
 [project]
   ignore = buck-out
 CONFIG
+  (cd "$fixture" && HOME="$TEST_HOME" "$BUCK2" worktree-watcher prepare "$watcher")
   printf '{"ignore_dirs":["buck-out"]}\n' >"$fixture/.watchmanconfig"
   if [ "$watcher" = watchman ]; then
     # Native CLI spawning performs the readiness handshake for this private
@@ -278,6 +285,7 @@ CONFIG
   }
   capture_log() { buck log show --trace-id "$(cat "$fixture/$1.trace")" >"$fixture/$1.events"; }
   assert_native_log() {
+    # Assert the daemon's actual provider enum, not the launcher's arguments.
     local phase="$1" expected_provider
     if [ "$watcher" = watchman ]; then expected_provider=0; else expected_provider=1; fi
     jq -es --argjson provider "$expected_provider" --arg uuid "$daemon_uuid" '

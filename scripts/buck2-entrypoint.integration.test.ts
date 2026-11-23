@@ -36,6 +36,7 @@ import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
 import {
   initializeWatchmanRoot,
   prepareWatchmanEnvironment,
+  reconcileFileWatcher,
   WatchmanAdmissionError,
   WatchmanCrawlError,
 } from './buck2-file-watcher.ts'
@@ -333,6 +334,109 @@ exit "$1"`,
   }
 })
 
+describe('worktree watcher management', () => {
+  const manage = (cwd: string, args: readonly string[]) =>
+    spawnSync(
+      process.execPath,
+      [
+        join(import.meta.dir, 'buck2-entrypoint.ts'),
+        join(cwd, 'native-must-not-run'),
+        'worktree-watcher',
+        ...args,
+      ],
+      {
+        cwd,
+        // No executable discovery, owner library, or admission environment is needed.
+        env: { HOME: cwd, PATH: '' },
+        encoding: 'utf8',
+        timeout: 10000,
+      },
+    )
+
+  it.each(['watchman', 'notify'] as const)(
+    'prepares and checks persisted %s without Native or admission',
+    async (provider) => {
+      const root = fixture()
+      const opposite = provider === 'watchman' ? 'notify' : 'watchman'
+      writeFileSync(join(root, '.buckconfig'), `[buck2]\nfile_watcher = ${opposite}\n`)
+      const userAndCache =
+        '[user]\nvalue = retained\n\n' +
+        '# effect-utils standalone cache posture: begin\n[buck2]\nremote_cache_enabled = false\n' +
+        '# effect-utils standalone cache posture: end\n'
+      writeFileSync(
+        join(root, '.buckconfig.local'),
+        `${userAndCache}\n# BEGIN effect-utils file watcher admission\n[buck2]\n` +
+          'file_watcher = watchman\n# END effect-utils file watcher admission\n',
+      )
+      const nested = join(root, 'nested')
+      mkdirSync(nested)
+      const prepared = manage(nested, ['prepare', provider])
+      expect(prepared.status).toBe(0)
+      expect(prepared.stderr).toBe('')
+      const local = readFileSync(join(root, '.buckconfig.local'), 'utf8')
+      expect(local).toContain(userAndCache.trimEnd())
+      expect(local).toContain('# BEGIN effect-utils file watcher profile')
+      expect(local).toContain(`file_watcher = ${provider}`)
+      expect(local).not.toContain('# BEGIN effect-utils file watcher admission')
+      expect(existsSync(join(nested, '.buckconfig.local'))).toBe(false)
+      expect(manage(nested, ['check', provider]).status).toBe(0)
+      expect(manage(nested, ['check', opposite]).status).toBe(1)
+      expect(manage(nested, ['prepare', provider]).status).toBe(0)
+      expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(local)
+      if (provider === 'notify') {
+        // Tracked Watchman must not trigger admission after profile notify is prepared.
+        expect(
+          await directBuckArguments({
+            ...options(root),
+            env: { PATH: '', WATCHMAN_SOCK: join(root, 'absent.sock') },
+            args: ['targets', '//:'],
+          }),
+        ).toEqual(['targets', '//:'])
+        expect(readFileSync(join(root, '.buckconfig.local'), 'utf8')).toBe(local)
+        expect(existsSync(join(root, 'probe-cache'))).toBe(false)
+      }
+    },
+  )
+
+  it.each([
+    { args: [] },
+    { args: ['prepare'] },
+    { args: ['check'] },
+    { args: ['prepare', 'invalid'] },
+    { args: ['invalid', 'notify'] },
+    { args: ['prepare', 'notify', 'extra'] },
+    { args: ['check', 'watchman', '--'] },
+  ])('rejects malformed management arguments $args before mutation', ({ args }) => {
+    const root = fixture()
+    const result = manage(root, args)
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('usage: buck2 worktree-watcher prepare|check watchman|notify')
+    expect(existsSync(join(root, '.buckconfig.local'))).toBe(false)
+  })
+
+  it('requires the cwd project and rejects absent, shadowed, or symlinked profile policy', () => {
+    const root = fixture()
+    expect(manage(root, ['check', 'notify']).status).toBe(1)
+    expect(manage(root, ['prepare', 'notify']).status).toBe(0)
+    writeFileSync(
+      join(root, '.buckconfig.local'),
+      `${readFileSync(join(root, '.buckconfig.local'), 'utf8')}\n[buck2]\nfile_watcher = watchman\n`,
+    )
+    expect(manage(root, ['check', 'notify']).status).toBe(1)
+    const outside = mkdtempSync(join(tmpdir(), 'watcher-without-root-'))
+    roots.push(outside)
+    expect(manage(outside, ['prepare', 'notify']).stderr).toContain(
+      'worktree-watcher requires a Buck root',
+    )
+    const linked = fixture()
+    const target = join(linked, 'user-config')
+    writeFileSync(target, '[user]\nvalue = retained\n')
+    symlinkSync(target, join(linked, '.buckconfig.local'))
+    expect(manage(linked, ['prepare', 'notify']).status).toBe(1)
+    expect(readFileSync(target, 'utf8')).toBe('[user]\nvalue = retained\n')
+  })
+})
+
 describe('short persistent Watchman location', () => {
   it('reuses one owned location per resolved HOME and separates concurrent job HOMEs', () => {
     const root = fixture()
@@ -365,56 +469,6 @@ describe('short persistent Watchman location', () => {
       for (const directory of new Set(directories)) rmSync(directory, { recursive: true })
     }
     for (const directory of directories) expect(existsSync(directory)).toBe(false)
-  })
-
-  for (const selection of [
-    ['--config', 'buck2.file_watcher=notify'],
-    ['--config=buck2.file_watcher=notify'],
-    ['-c', 'buck2.file_watcher=notify'],
-    ['-cbuck2.file_watcher=notify'],
-  ]) {
-    it(`admits tracked Watchman with native notify selection ${selection.join(' ')}`, async () => {
-      const root = fixture()
-      writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
-      const args = ['targets', '//:', ...selection, '--', '--config', 'buck2.file_watcher=watchman']
-      expect(
-        await directBuckArguments({
-          ...options(root),
-          probeDeadlineSignal: undefined,
-          // No Watchman executable or usable endpoint: notify must not probe either.
-          env: { PATH: '', WATCHMAN_SOCK: join(root, 'absent.sock') },
-          args,
-        }),
-      ).toEqual(args)
-      expect(existsSync(join(root, '.buckconfig.local'))).toBe(false)
-      expect(existsSync(join(root, 'probe-cache'))).toBe(false)
-    })
-  }
-
-  it('uses ordered config-file watcher overrides only before the payload boundary', async () => {
-    const root = fixture()
-    writeFileSync(join(root, '.buckconfig'), '[buck2]\nfile_watcher = watchman\n')
-    writeFileSync(join(root, 'native.config'), '[buck2]\nfile_watcher = notify\n')
-    const args = [
-      'targets',
-      '//:',
-      '--config',
-      'buck2.file_watcher=watchman',
-      '--config-file',
-      'native.config',
-      '--',
-      '--config-file=absent.config',
-      '--config=buck2.file_watcher=watchman',
-    ]
-    expect(
-      await directBuckArguments({
-        ...options(root),
-        probeDeadlineSignal: undefined,
-        env: { PATH: '', WATCHMAN_SOCK: join(root, 'absent.sock') },
-        args,
-      }),
-    ).toEqual(args)
-    expect(existsSync(join(root, 'probe-cache'))).toBe(false)
   })
 
   it.skipIf(Bun.which('watchman') === null)(
@@ -480,41 +534,35 @@ describe('short persistent Watchman location', () => {
         for (const admission of admissions)
           if (admission.status === 'rejected') throw admission.reason
         expect((await command(['--no-spawn', '--no-local', 'get-pid'])).pid).toBe(pid.pid)
-        // CLI Watchman must register a tracked-notify root, not silently use notify.
-        const cliRoot = fixture()
-        writeFileSync(join(cliRoot, '.buckconfig'), '[buck2]\nfile_watcher = notify\n')
-        writeFileSync(join(cliRoot, 'watcher.config'), '[buck2]\nfile_watcher = watchman\n')
-        const cliArgs = [
-          'targets',
-          '//:',
-          '--config=buck2.file_watcher=notify',
-          '--config-file=watcher.config',
-          '--',
-          '-cbuck2.file_watcher=notify',
-        ]
+        // A persisted profile overrides tracked notify and survives ordinary admission.
+        const profileRoot = fixture()
+        writeFileSync(join(profileRoot, '.buckconfig'), '[buck2]\nfile_watcher = notify\n')
+        reconcileFileWatcher({ repoRoot: profileRoot, scope: 'profile', provider: 'watchman' })
+        const profileConfig = readFileSync(join(profileRoot, '.buckconfig.local'), 'utf8')
+        const profileArgs = ['targets', '//:']
         expect(
           await directBuckArguments({
-            ...options(cliRoot),
+            ...options(profileRoot),
             probeDeadlineSignal: undefined,
             env,
             watchmanDirectory: directory,
-            args: cliArgs,
+            args: profileArgs,
           }),
-        ).toEqual(cliArgs)
+        ).toEqual(profileArgs)
         expect((await command(['--no-spawn', '--no-local', 'watch-list'])).roots).toContain(
-          realpathSync(cliRoot),
+          realpathSync(profileRoot),
         )
-        expect(existsSync(join(cliRoot, '.buckconfig.local'))).toBe(false)
+        expect(readFileSync(join(profileRoot, '.buckconfig.local'), 'utf8')).toBe(profileConfig)
         // A distinct real, absent socket cannot reuse the healthy service admission.
         await expect(
           directBuckArguments({
-            ...options(cliRoot),
+            ...options(profileRoot),
             probeDeadlineSignal: undefined,
             env: { ...env, WATCHMAN_SOCK: join(directory, 'absent.sock') },
-            args: cliArgs,
+            args: profileArgs,
           }),
         ).rejects.toThrow(WatchmanAdmissionError)
-        expect(existsSync(join(cliRoot, '.buckconfig.local'))).toBe(false)
+        expect(readFileSync(join(profileRoot, '.buckconfig.local'), 'utf8')).toBe(profileConfig)
         expect(prepareWatchmanEnvironment({ HOME: home })).toBe(directory)
         const kept = realpathSync(fixture())
         const deleted = realpathSync(fixture())

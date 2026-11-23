@@ -46,6 +46,7 @@ import {
 } from './buck2-cache-posture.ts'
 import { profileContractMembershipDigests } from './buck2-contract-membership.ts'
 import {
+  assertProfileFileWatcher,
   initializeWatchmanRoot,
   prepareWatchmanEnvironment,
   probeWatchman,
@@ -369,80 +370,40 @@ const withContractContext = ({
     : [...args.slice(0, sentinel), ...extra, ...args.slice(sentinel)]
 }
 
-/** Native CLI config precedence stops at the payload boundary; REAPI routing stays protected. */
-const buckCliConfigValues = ({
+/** Admit the initial file watcher and cache posture before pinned native startup. */
+export const directBuckArguments = async ({
   args,
   cwd,
+  env,
+  cacheDirectory = join(
+    env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'),
+    'effect-utils',
+    'buck2-posture-v2',
+  ),
+  deadlineMs,
+  probeDeadlineSignal,
+  beforeCachePosture,
+  onCachePosture,
+  onCacheAdmission,
+  workflowCommands = false,
+  watchmanDirectory,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
-}): Record<string, string> => {
-  const sentinel = args.indexOf('--')
-  const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
-  const values: Record<string, string> = {}
-  for (let index = 0; index < configArgs.length; index++) {
-    const arg = configArgs[index] ?? ''
-    const value =
-      arg === '-c' || arg === '--config'
-        ? configArgs[++index]
-        : arg.startsWith('--config=') === true
-          ? arg.slice(9)
-          : arg.startsWith('-c') === true && arg.length > 2
-            ? arg.slice(2)
-            : undefined
-    if (value !== undefined) {
-      const equals = value.indexOf('=')
-      if (equals !== -1 && value.startsWith('buck2_re_client.') === false)
-        values[value.slice(0, equals)] = value.slice(equals + 1)
-    }
-    if (arg === '--config-file' || arg.startsWith('--config-file=') === true) {
-      const path = arg === '--config-file' ? configArgs[++index] : arg.slice(14)
-      if (path !== undefined)
-        for (const [key, configValue] of Object.entries(
-          buckConfigValues(readConfig({ path: resolve(cwd, path) })),
-        ))
-          if (key.startsWith('buck2_re_client.') === false) values[key] = configValue
-    }
-  }
-  return values
-}
-
-const directBuckArgumentsWithConfig = async (
-  {
-    args,
-    cwd,
-    env,
-    cacheDirectory = join(
-      env['XDG_CACHE_HOME'] ?? join(homedir(), '.cache'),
-      'effect-utils',
-      'buck2-posture-v2',
-    ),
-    deadlineMs,
-    probeDeadlineSignal,
-    beforeCachePosture,
-    onCachePosture,
-    onCacheAdmission,
-    workflowCommands = false,
-    watchmanDirectory,
-  }: {
-    readonly args: readonly string[]
-    readonly cwd: string
-    readonly env: Readonly<Record<string, string | undefined>>
-    readonly cacheDirectory?: string
-    readonly deadlineMs?: number
-    /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
-    readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
-    /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
-    readonly beforeCachePosture?: CachePostureCheck
-    /** Observe the effective admitted posture, including CLI policy and probe fallback. */
-    readonly onCachePosture?: CachePostureCheck
-    readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
-    /** Only the executable launcher may emit workflow commands; imported probes are diagnostics only. */
-    readonly workflowCommands?: boolean
-    readonly watchmanDirectory?: string
-  },
-  cliValues: Readonly<Record<string, string>>,
-): Promise<string[]> => {
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly cacheDirectory?: string
+  readonly deadlineMs?: number
+  /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
+  readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
+  /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
+  readonly beforeCachePosture?: CachePostureCheck
+  /** Observe the effective admitted posture, including CLI policy and probe fallback. */
+  readonly onCachePosture?: CachePostureCheck
+  readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
+  /** Only the executable launcher may emit workflow commands; imported probes are diagnostics only. */
+  readonly workflowCommands?: boolean
+  readonly watchmanDirectory?: string
+}): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
   const sentinel = args.indexOf('--')
@@ -466,8 +427,7 @@ const directBuckArgumentsWithConfig = async (
       base: buckConfigValues(`${tracked}\n${withoutManagedBlock(currentLocal).content}`),
     })
   const localWithoutWatcher = withoutManagedWatcherBlock(currentLocal)
-  const explicitWatcher =
-    cliValues['buck2.file_watcher'] ?? buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
+  const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
   if (selectedWatcher === 'watchman') {
     const crawlBudget = env['BUCK2_WATCHMAN_CRAWL_BUDGET_MS']
@@ -533,6 +493,31 @@ const directBuckArgumentsWithConfig = async (
     base['buck2.remote_cache_enabled'] !== 'true'
   )
     return withContractContext({ args, root, env })
+  const cliValues: Record<string, string> = {}
+  for (let index = 0; index < configArgs.length; index++) {
+    const arg = configArgs[index] ?? ''
+    const value =
+      arg === '-c' || arg === '--config'
+        ? configArgs[++index]
+        : arg.startsWith('--config=') === true
+          ? arg.slice(9)
+          : arg.startsWith('-c') === true && arg.length > 2
+            ? arg.slice(2)
+            : undefined
+    if (value !== undefined) {
+      const equals = value.indexOf('=')
+      if (equals !== -1 && value.startsWith('buck2_re_client.') === false)
+        cliValues[value.slice(0, equals)] = value.slice(equals + 1)
+    }
+    if (arg === '--config-file' || arg.startsWith('--config-file=') === true) {
+      const path = arg === '--config-file' ? configArgs[++index] : arg.slice(14)
+      if (path !== undefined)
+        for (const [key, configValue] of Object.entries(
+          buckConfigValues(readConfig({ path: resolve(cwd, path) })),
+        ))
+          if (key.startsWith('buck2_re_client.') === false) cliValues[key] = configValue
+    }
+  }
   // Fixed-source builds use Buck's native no-cache flag.
   const cacheDisabled =
     env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
@@ -770,17 +755,6 @@ const directBuckArgumentsWithConfig = async (
     remoteAvailable === false ? before.filter((arg) => arg !== '--reuse-current-config') : before
   return [...admitted, ...extra, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
-
-/** Admit the initial file watcher and cache posture before pinned native startup. */
-export const directBuckArguments = async (
-  options: Parameters<typeof directBuckArgumentsWithConfig>[0],
-): Promise<string[]> =>
-  directBuckArgumentsWithConfig(
-    options,
-    skipsWatcherAdmission(options.args) === true || findRoot(options.cwd) === undefined
-      ? {}
-      : buckCliConfigValues(options),
-  )
 
 /** Unknown status never grants permission to interrupt a shared daemon. */
 export const gateDaemonStopDecision = ({
@@ -2676,52 +2650,38 @@ const runManagedCommand = async (
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
     }
-    const cliValues: Readonly<Record<string, string>> =
-      root === undefined || skipsWatcherAdmission(requestedArgs) === true
-        ? {}
-        : buckCliConfigValues({ args: requestedArgs, cwd })
     const watchmanDirectory =
       root !== undefined &&
       skipsWatcherAdmission(requestedArgs) === false &&
-      (cliValues['buck2.file_watcher'] ??
-        buckConfigValues(
-          withoutManagedWatcherBlock(readConfig({ path: join(root, '.buckconfig.local') })),
-        )['buck2.file_watcher'] ??
+      (buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))[
+        'buck2.file_watcher'
+      ] ??
         buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))['buck2.file_watcher']) ===
         'watchman'
         ? prepareWatchmanEnvironment(env)
         : undefined
     let fallbackEligible = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
-      const prepared = await directBuckArgumentsWithConfig(
-        {
-          args: requestedArgs,
-          cwd,
-          env,
-          workflowCommands: env['GITHUB_ACTIONS'] === 'true',
-          watchmanDirectory,
-          beforeCachePosture,
-          onCachePosture: (values) => {
-            fallbackEligible = cacheLocalFallbackEligible({ values, env })
-          },
+      const prepared = await directBuckArguments({
+        args: requestedArgs,
+        cwd,
+        env,
+        workflowCommands: env['GITHUB_ACTIONS'] === 'true',
+        watchmanDirectory,
+        beforeCachePosture,
+        onCachePosture: (values) => {
+          fallbackEligible = cacheLocalFallbackEligible({ values, env })
         },
-        cliValues,
-      )
+      })
       const sentinel = prepared.indexOf('--')
       const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
       if (root !== undefined && skipsWatcherAdmission(configArgs) === false) {
         const tracked = buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))
         const local = buckConfigValues(readConfig({ path: join(root, '.buckconfig.local') }))
-        const provider =
-          cliValues['buck2.file_watcher'] ??
-          local['buck2.file_watcher'] ??
-          tracked['buck2.file_watcher']
-        if (
-          provider !== undefined &&
-          (cliValues['buck2.file_watcher'] !== undefined ||
-            provider === 'watchman' ||
-            tracked['buck2.file_watcher'] === 'watchman')
-        )
+        const provider = local['buck2.file_watcher'] ?? tracked['buck2.file_watcher']
+        // Both profile providers are persisted daemon-startup policy. Reconcile either
+        // direction, including notify -> watchman and watchman -> notify.
+        if (provider === 'watchman' || provider === 'notify')
           reconcileWatcherDaemon({
             native,
             repoRoot: root,
@@ -2998,7 +2958,20 @@ if (import.meta.main === true) {
   try {
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
-    if (process.argv[3] === '--initialize-watchman-root') {
+    if (process.argv[3] === 'worktree-watcher') {
+      const operation = process.argv[4]
+      const provider = process.argv[5]
+      if (
+        process.argv.length !== 6 ||
+        (operation !== 'prepare' && operation !== 'check') ||
+        (provider !== 'watchman' && provider !== 'notify')
+      )
+        throw new Error('usage: buck2 worktree-watcher prepare|check watchman|notify')
+      const repoRoot = findRoot(process.cwd())
+      if (repoRoot === undefined) throw new Error('worktree-watcher requires a Buck root')
+      if (operation === 'prepare') reconcileFileWatcher({ repoRoot, scope: 'profile', provider })
+      else assertProfileFileWatcher({ repoRoot, provider })
+    } else if (process.argv[3] === '--initialize-watchman-root') {
       const root = findRoot(process.cwd())
       const budget = process.argv[4]
       if (root === undefined) throw new Error('Watchman crawl requires a Buck root')

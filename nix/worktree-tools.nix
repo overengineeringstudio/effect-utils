@@ -62,7 +62,17 @@ let
       name: value: "export ${name}=${pkgs.lib.escapeShellArg (toString value)}"
     ) environment
   );
-  check = pkgs.writeShellScript "worktree-tools-preflight" preflight;
+  watcherPrepare = pkgs.writeShellScript "worktree-tools-prepare" ''
+    set -euo pipefail
+    # Persist the evaluated selection before caller preparation can start native Buck.
+    (cd "$1" && ${buck2}/bin/buck2 worktree-watcher prepare ${fileWatcher})
+    ${prepare}
+  '';
+  check = pkgs.writeShellScript "worktree-tools-preflight" ''
+    set -euo pipefail
+    (cd "$1" && ${buck2}/bin/buck2 worktree-watcher check ${fileWatcher})
+    ${preflight}
+  '';
   launcher = pkgs.writeShellScript "worktree-buck2" ''
     set -euo pipefail
     git_local_env="$(${pkgs.git}/bin/git rev-parse --local-env-vars)"
@@ -97,7 +107,7 @@ let
     # A real emitted environment root encloses dispatch, capture and export.
     exec ${otelSpan}/bin/otel-span run effect-utils-env environment.entry \
       --attr span.label=buck --attr "process.working_directory=$PWD" \
-      -- ${bridge} --config buck2.file_watcher=${fileWatcher} "$@"
+      -- ${bridge} "$@"
   '';
 in
 assert pkgs.lib.assertMsg (
@@ -122,7 +132,7 @@ pkgs.symlinkJoin {
     mkdir -p "$out/bin" "$out/share/worktree-tools"
     substitute ${launcher} "$out/bin/buck2" --replace-fail @tools@ "$out"
     chmod +x "$out/bin/buck2"
-    ln -s ${pkgs.writeShellScript "worktree-tools-prepare" prepare} "$out/share/worktree-tools/prepare"
+    ln -s ${watcherPrepare} "$out/share/worktree-tools/prepare"
     ln -s ${check} "$out/share/worktree-tools/preflight"
     ln -s ${publication} "$out/share/worktree-tools/worktree-env.py"
     ln -s ${identityManifest} "$out/share/worktree-tools/identity-inputs.json"
