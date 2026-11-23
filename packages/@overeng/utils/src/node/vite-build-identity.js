@@ -241,23 +241,27 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp, productRev 
    */
   const resolveIdentity = async ({ preserveSnapshot = false, metadata } = {}) => {
     /** @type {import('./cli-build-identity.js').ResolveBuildIdentityOptions} */
-    const options = immutable === true
-      ? { baseVersion, buildStamp, env: {} }
-      : serving === false && productRev !== undefined
-        ? {
-            baseVersion,
-            buildStamp: JSON.stringify(await releaseStamp({ root, baseVersion, productRev })),
-            env: {},
-          }
-        : {
-            baseVersion,
-            buildStamp,
-            env: {
-              CLI_BUILD_STAMP: JSON.stringify(
-                await localStamp({ root, metadata: metadata ?? readWorktreeGitMetadata({ root }) }),
-              ),
-            },
-          }
+    const options =
+      immutable === true
+        ? { baseVersion, buildStamp, env: {} }
+        : serving === false && productRev !== undefined
+          ? {
+              baseVersion,
+              buildStamp: JSON.stringify(await releaseStamp({ root, baseVersion, productRev })),
+              env: {},
+            }
+          : {
+              baseVersion,
+              buildStamp,
+              env: {
+                CLI_BUILD_STAMP: JSON.stringify(
+                  await localStamp({
+                    root,
+                    metadata: metadata ?? readWorktreeGitMetadata({ root }),
+                  }),
+                ),
+              },
+            }
     // Metadata is timeless; the browser renders relative time from the same stamp at runtime.
     const nextIdentity = resolveCliBuildIdentity({ ...options, now: null })
     if (
