@@ -39,6 +39,8 @@ let
       elif ${pkgs.coreutils}/bin/mkdir -p "$root/.devenv/otel/buck2-events"; then
         spool="$(${pkgs.coreutils}/bin/mktemp -d "$root/.devenv/otel/buck2-events/${taskName}.XXXXXXXX")" || spool=""
       fi
+      pending="''${spool:-$root/.devenv/otel/buck2-events}/pending"
+      if (( pipeline_spool )); then pending="$PIPELINE_SPOOL_DIR/pending"; fi
       buck_args=(${lib.escapeShellArgs argv})
       command_key="${taskName}-$(${pkgs.coreutils}/bin/date +%s%N)-$$"
       census_host="$(${pkgs.coreutils}/bin/uname -n)"
@@ -58,7 +60,7 @@ let
       # An unmatched open is unknown coverage, never a successful zero-action run.
       census_capture=()
       ${cfg.eventsPackage}/bin/buck2-events census --invocation-id "$command_key" \
-        --phase open --host "$census_host" ||
+        --phase open --host "$census_host" --spool-dir "$pending" ||
         { census_capture=(--capture-error); printf '%s: invocation-open capture failed; coverage unknown\n' '${taskName}' >&2; }
       if "$BUCK2_BIN" "''${buck_args[@]}"; then
         buck_exit=0
@@ -70,7 +72,8 @@ let
         census_build=(--build-id "$(< "$spool/$command_key.buck-trace-id")")
       fi
       ${cfg.eventsPackage}/bin/buck2-events census --invocation-id "$command_key" \
-        --phase terminal --host "$census_host" --exit-code "$buck_exit" "''${census_build[@]}" "''${census_capture[@]}" ||
+        --phase terminal --host "$census_host" --spool-dir "$pending" \
+        --exit-code "$buck_exit" "''${census_build[@]}" "''${census_capture[@]}" ||
         printf '%s: invocation-terminal capture failed; coverage unknown\n' '${taskName}' >&2
       if [ "$buck_exit" -ne 0 ]; then
         if [ -n "$spool" ]; then
@@ -97,10 +100,12 @@ let
         OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
           ${pkgs.coreutils}/bin/timeout -k 5 60 \
           ${cfg.eventsPackage}/bin/buck2-events ingest "$event_log" --sidecar "$sidecar" \
-            --spool-dir "$spool/pending" || true
+            --spool-dir "$pending" || true
+      fi
+      if (( ! pipeline_spool )); then
         OTEL_EXPORTER_OTLP_ENDPOINT="''${OTEL_EXPORTER_OTLP_ENDPOINT:-''${OTELITE_HTTP_ENDPOINT:-}}" \
           ${pkgs.coreutils}/bin/timeout -k 5 60 \
-          ${cfg.eventsPackage}/bin/buck2-events export --spool-dir "$spool/pending" || true
+          ${cfg.eventsPackage}/bin/buck2-events export --spool-dir "$pending" || true
       fi
       exit "$buck_exit"
     '';

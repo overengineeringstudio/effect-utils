@@ -16,6 +16,8 @@
  * completeness (with bounded lsof fallback). Unsupported scans keep the tree.
  */
 
+import { Buffer } from 'node:buffer'
+
 import { Effect, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import type { PlatformError } from 'effect/PlatformError'
@@ -23,6 +25,8 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { type AbsoluteDirPath } from '@overeng/effect-path'
+
+import * as Observability from '../core/observability.ts'
 
 /** The process that holds a worktree, and the in-worktree path proving it. */
 export interface InUseHolder {
@@ -481,82 +485,100 @@ export const parseProcUids = (content: string): ReadonlyArray<number> | undefine
     : undefined
 }
 
+interface ProcessReferenceCensus {
+  processesRead: number
+  failures: number
+  pathsFound: number
+  bytesRead: number
+  firstFailure: string | undefined
+}
+
 /** Missing links can be zombies or closing descriptors; other failures are unreadable. */
-const readProcessReferencePaths = Effect.fn('store.readProcessReferencePaths')(function* ({
+const readProcessReferencePaths = ({
   fs,
   pid,
   retainPartial = false,
+  census,
 }: {
   fs: FileSystem.FileSystem
   pid: number
   retainPartial?: boolean
-}) {
-  const references: Array<ProcessReference> = []
-  let complete = true
-  for (const kind of ['cwd', 'root'] as const) {
-    const link = yield* procRead(fs.readLink(`/proc/${pid}/${kind}`))
-    if (link._tag === 'denied') {
+  census: ProcessReferenceCensus
+}) =>
+  Effect.gen(function* () {
+    const references: Array<ProcessReference> = []
+    let complete = true
+    for (const kind of ['cwd', 'root'] as const) {
+      const link = yield* procRead(fs.readLink(`/proc/${pid}/${kind}`))
+      if (link._tag === 'denied') {
+        if (retainPartial === false) return { references, complete: false }
+        complete = false
+      }
+      if (link._tag === 'value') {
+        references.push({ pid, kind, path: withoutDeletedMarker(link.value) })
+        census.pathsFound += 1
+      }
+    }
+    const fds = yield* procRead(fs.readDirectory(`/proc/${pid}/fd`))
+    if (fds._tag === 'denied') {
       if (retainPartial === false) return { references, complete: false }
       complete = false
     }
-    if (link._tag === 'value') {
-      references.push({ pid, kind, path: withoutDeletedMarker(link.value) })
+    const fdLinks = yield* Effect.forEach(
+      fds._tag === 'value' ? fds.value : [],
+      (fd) => procRead(fs.readLink(`/proc/${pid}/fd/${fd}`)),
+      { concurrency: 32 },
+    )
+    for (const link of fdLinks) {
+      if (link._tag === 'denied') {
+        if (retainPartial === false) return { references, complete: false }
+        complete = false
+      }
+      // Sockets, pipes and anonymous inodes are not filesystem paths.
+      if (link._tag === 'value' && link.value.startsWith('/') === true) {
+        references.push({ pid, kind: 'fd', path: withoutDeletedMarker(link.value) })
+        census.pathsFound += 1
+      }
     }
-  }
-  const fds = yield* procRead(fs.readDirectory(`/proc/${pid}/fd`))
-  if (fds._tag === 'denied') {
-    if (retainPartial === false) return { references, complete: false }
-    complete = false
-  }
-  const fdLinks = yield* Effect.forEach(
-    fds._tag === 'value' ? fds.value : [],
-    (fd) => procRead(fs.readLink(`/proc/${pid}/fd/${fd}`)),
-    { concurrency: 32 },
-  )
-  for (const link of fdLinks) {
-    if (link._tag === 'denied') {
-      if (retainPartial === false) return { references, complete: false }
-      complete = false
+    const maps = yield* procRead(fs.readFileString(`/proc/${pid}/maps`))
+    if (maps._tag === 'denied') complete = false
+    if (maps._tag === 'value') {
+      for (const path of new Set(parseProcMapsPaths(maps.value))) {
+        references.push({ pid, kind: 'map', path })
+        census.pathsFound += 1
+      }
     }
-    // Sockets, pipes and anonymous inodes are not filesystem paths.
-    if (link._tag === 'value' && link.value.startsWith('/') === true) {
-      references.push({ pid, kind: 'fd', path: withoutDeletedMarker(link.value) })
-    }
-  }
-  const maps = yield* procRead(fs.readFileString(`/proc/${pid}/maps`))
-  if (maps._tag === 'denied') complete = false
-  if (maps._tag === 'value') {
-    for (const path of new Set(parseProcMapsPaths(maps.value))) {
-      references.push({ pid, kind: 'map', path })
-    }
-  }
-  return { references, complete }
-})
+    return { references, complete }
+  })
 
 /** Mutable process names only identify an SSH role when its live parent is root-owned SSH. */
-const readSshPrivilegedParent = Effect.fn('store.readSshPrivilegedParent')(function* ({
+const readSshPrivilegedParent = ({
   fs,
   parentPid,
 }: {
   fs: FileSystem.FileSystem
   parentPid: number
-}) {
-  const before = yield* procRead(fs.readFileString(`/proc/${parentPid}/stat`))
-  const status = yield* procRead(fs.readFileString(`/proc/${parentPid}/status`))
-  const after = yield* procRead(fs.readFileString(`/proc/${parentPid}/stat`))
-  if (before._tag !== 'value' || after._tag !== 'value' || status._tag !== 'value') return false
-  const parsed = parseProcStat(before.value)
-  const checked = parseProcStat(after.value)
-  const comm = before.value.slice(before.value.indexOf('(') + 1, before.value.lastIndexOf(')'))
-  const checkedComm = after.value.slice(after.value.indexOf('(') + 1, after.value.lastIndexOf(')'))
-  return (
-    parsed?.kernelThread === false &&
-    checked?.startTime === parsed.startTime &&
-    checkedComm === comm &&
-    (comm === 'sshd' || comm === 'sshd-session') &&
-    parseProcUids(status.value)?.every((uid) => uid === 0) === true
-  )
-})
+}) =>
+  Effect.gen(function* () {
+    const before = yield* procRead(fs.readFileString(`/proc/${parentPid}/stat`))
+    const status = yield* procRead(fs.readFileString(`/proc/${parentPid}/status`))
+    const after = yield* procRead(fs.readFileString(`/proc/${parentPid}/stat`))
+    if (before._tag !== 'value' || after._tag !== 'value' || status._tag !== 'value') return false
+    const parsed = parseProcStat(before.value)
+    const checked = parseProcStat(after.value)
+    const comm = before.value.slice(before.value.indexOf('(') + 1, before.value.lastIndexOf(')'))
+    const checkedComm = after.value.slice(
+      after.value.indexOf('(') + 1,
+      after.value.lastIndexOf(')'),
+    )
+    return (
+      parsed?.kernelThread === false &&
+      checked?.startTime === parsed.startTime &&
+      checkedComm === comm &&
+      (comm === 'sshd' || comm === 'sshd-session') &&
+      parseProcUids(status.value)?.every((uid) => uid === 0) === true
+    )
+  })
 
 const readProcessEntry = ({
   fs,
@@ -564,14 +586,17 @@ const readProcessEntry = ({
   ownUid,
   coveredStartTime,
   gcOwner = false,
+  census,
 }: {
   fs: FileSystem.FileSystem
   pid: number
   ownUid: number | undefined
   coveredStartTime: string | undefined
   gcOwner?: boolean
+  census: ProcessReferenceCensus
 }): Effect.Effect<ProcessEntry> =>
   Effect.gen(function* () {
+    census.processesRead += 1
     const before = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
     if (before._tag === 'gone') return { _tag: 'gone' } as const
     const parsed = before._tag === 'value' ? parseProcStat(before.value) : undefined
@@ -614,7 +639,7 @@ const readProcessEntry = ({
       const paths =
         parsed?.kernelThread === true
           ? { references: [], complete: true }
-          : yield* readProcessReferencePaths({ fs, pid, retainPartial: true })
+          : yield* readProcessReferencePaths({ fs, pid, retainPartial: true, census })
       const after = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
       if (after._tag === 'gone') return { _tag: 'gone' } as const
       const checked = after._tag === 'value' ? parseProcStat(after.value) : undefined
@@ -687,7 +712,7 @@ const readProcessEntry = ({
     }
     // Covered processes are still read fully whenever their evidence is available.
     if (readReferences === true) {
-      const paths = yield* readProcessReferencePaths({ fs, pid })
+      const paths = yield* readProcessReferencePaths({ fs, pid, census })
       references = paths.complete === true ? paths.references : undefined
     }
     const after = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
@@ -786,8 +811,8 @@ const readLsofReferences = Effect.fn('store.readLsofReferences')(function* ({
  * own-UID processes except fixed verified systemd user-manager/PAM and SSH
  * privilege-transition roles. Readable references remain veto evidence.
  */
-export const readProcessReferences = ({
-  fs,
+export const readProcessReferences = Effect.fn('store.readProcessReferences')(function* ({
+  fs: baseFs,
   selfPid,
   scope = 'all-uids',
   coveredProcesses,
@@ -796,8 +821,46 @@ export const readProcessReferences = ({
   selfPid: number
   scope?: ProcessScanScope | undefined
   coveredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
-}): Effect.Effect<ProcessReferenceScan> =>
-  Effect.gen(function* () {
+}): Effect.fn.Return<ProcessReferenceScan> {
+  const census: ProcessReferenceCensus = {
+    processesRead: 0,
+    failures: 0,
+    pathsFound: 0,
+    bytesRead: 0,
+    firstFailure: undefined,
+  }
+  // Each census owns its span, so counts and the first failure describe the same scan.
+  // Paths count observed records, including partial evidence, before lifetime/scope filtering.
+  // Bytes are observed UTF-8 string/link content, not disk IO; directory listings are excluded.
+  // Count native read failures before procRead deliberately classifies them as gone/denied.
+  const countFailure = (error: PlatformError) =>
+    Effect.sync(() => {
+      census.failures += 1
+      census.firstFailure ??= `${error._tag}: ${error.message}`
+    })
+  const fs: FileSystem.FileSystem = {
+    ...baseFs,
+    readDirectory: (...args) => baseFs.readDirectory(...args).pipe(Effect.tapError(countFailure)),
+    readFileString: (...args) =>
+      baseFs.readFileString(...args).pipe(
+        Effect.tap((value) =>
+          Effect.sync(() => {
+            census.bytesRead += Buffer.byteLength(value, 'utf8')
+          }),
+        ),
+        Effect.tapError(countFailure),
+      ),
+    readLink: (path) =>
+      baseFs.readLink(path).pipe(
+        Effect.tap((value) =>
+          Effect.sync(() => {
+            census.bytesRead += Buffer.byteLength(value, 'utf8')
+          }),
+        ),
+        Effect.tapError(countFailure),
+      ),
+  }
+  return yield* Effect.gen(function* () {
     if (process.platform !== 'linux') return { _tag: 'unknown', reason: 'no-proc' } as const
     const ownUid = scope !== 'all-uids' ? process.getuid?.() : undefined
     if (scope !== 'all-uids' && ownUid === undefined) {
@@ -823,6 +886,7 @@ export const readProcessReferences = ({
           ownUid,
           coveredStartTime: coverageByPid?.get(pid),
           gcOwner: scope === 'gc-owner',
+          census,
         }),
       { concurrency: 16 },
     )
@@ -906,6 +970,7 @@ export const readProcessReferences = ({
             )
           : { references: [], complete: false, coveredPids: new Set<number>() }
       references.push(...fallback.references)
+      census.pathsFound += fallback.references.length
       for (const entry of inScope) {
         if (entry.incomplete !== true || entry.foreign === true || entry.exempt !== undefined)
           continue
@@ -942,7 +1007,10 @@ export const readProcessReferences = ({
         entry.identity === undefined ? [] : [entry.identity],
       ),
     } as const
-  })
+  }).pipe(
+    Effect.ensuring(Effect.suspend(() => Observability.annotateProcessReferenceCensus(census))),
+  )
+})
 
 /**
  * Strict deletion-time probe: any process cwd, root, open file or mapped file
@@ -987,7 +1055,8 @@ export const readWorktreeReferencesInUse = ({
         .filter((entry) => ignored.get(entry.pid) === entry.startTime)
         .map((entry) => entry.pid),
     )
-    const holder = (scan.references ?? []).find(
+    const references = scan._tag === 'complete' ? scan.references : (scan.references ?? [])
+    const holder = references.find(
       (reference) =>
         excluded.has(reference.pid) === false &&
         isInsideWorktree({ candidate: reference.path, worktreePath: canonical.value }),

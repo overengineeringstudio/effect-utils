@@ -257,6 +257,14 @@ for outer tasks that must complete before the nested devenv process can evaluate
   check, clean, and worktree-guard imports. For removal, use the installed
   `worktree-teardown <worktree-path>` command from the effect-utils flake's
   `worktree-teardown` package, not the retiring checkout's devenv shell.
+  Its runtime includes the repo-pinned Buck2 client (the same package used for
+  `BUCK2_BIN`) on platforms listed in `nix/buck2-release.nix`; other platforms
+  retain ambient Buck2 lookup. Git, coreutils, findutils, awk and jq are always
+  included. The flake's `worktree-teardown-runtime` check exercises native offline
+  daemon cleanup on supported platforms and editor-free teardown elsewhere,
+  with an otherwise empty PATH. Watchman remains optional; `devenv` is supplied by
+  the caller only for explicit editor-release opt-in, and Bun appears only in
+  the repair diagnostic, not in teardown execution.
   It accepts one absolute/relative path from any cwd, executes no checkout code
   by default. Exit 0 means completed; 2 is invalid usage; 3 means an owned
   `.editor-view` or lease-only root is present without release opt-in: rerun with
@@ -783,6 +791,17 @@ itself shared-state access; ownership of their mutations is what matters:
   startup, migration stop, and cleanup names that private HOME/root/isolation.
   Every Watchman operation names its private socket; startup, state, config,
   log, PID file, and native shutdown are fixture-owned.
+  Steady rotation still requires the same daemon, the new output, and the
+  materialized capability input. Native watcher evidence must report either
+  `capabilities//defs.bzl` in `FileWatcherEnd.stats.events`, or (Watchman only)
+  boolean `FileWatcherEnd.stats.fresh_instance=true`, which triggers rehashing
+  rather than requiring a per-path event. Synthetic predicate cases cover both
+  alternatives and rejection of missing/untyped evidence; they are not native
+  recrawl qualification receipts. On failure, the fixture copies its private
+  Watchman log and captured native events before deleting temporary state into
+  a private `capability-daemon.*` directory under `CAPABILITY_TEST_EVIDENCE_DIR`
+  (default: `$XDG_STATE_HOME/buck2-cache-reports/capability-daemon`, falling back
+  to `$HOME/.local/state`). Only the receipt path is printed; logs remain private.
 - `buck2-capability-publish.test.sh` owns its publication roots, lock files,
   synthetic Buck state, and HOME. The five competing publishers and crash
   victim all use those roots; signals/cleanup address only captured fixture
