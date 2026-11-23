@@ -37,6 +37,11 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
   - `pnpm-source-input-specifiers.cjs` — importer-relative staged source-input
     `file:` specifier algebra.
 
+The artifact contract test selects its real compiler through an explicit
+`git+file://…?shallow=1` flake reference, matching `buck2-bridge.sh`. Managed
+shallow worktrees do not need a history fetch merely to run this check; compiler
+identity and artifact assertions are unchanged.
+
 ## Flake Exports
 
 From `effect-utils/flake.nix`:
