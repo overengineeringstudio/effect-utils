@@ -8,7 +8,15 @@ export const buck2TypeScriptAdmission = {
   projectionSource: 'packages/@overeng/changelog/BUCK.genie.ts',
   sourceRoots: ['src'],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
-  tests: [{ name: 'test', runner: 'vitest' }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+      // The coverage check spawns real git in temporary repositories and stays source-owned and
+      // unbounded (decision 0026).
+      excludes: ['src/node/check.integration.test.ts'],
+    },
+  ],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

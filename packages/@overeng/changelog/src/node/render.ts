@@ -5,7 +5,7 @@ import * as FileSystem from 'effect/FileSystem'
 import * as Path from 'effect/Path'
 
 import { cropRect, drawAnnotations, type Box, type PlacedAnnotation } from '../annotations.ts'
-import { ChangelogCompileError, type ScreenshotRecord } from '../compiler.ts'
+import { ChangelogCompileError, encodeScreenshotRecord, type ScreenshotRecord } from '../compiler.ts'
 import type { ColorScheme } from '../contract.ts'
 import type { ChangelogConfig, RenderViewport } from './config.ts'
 import {
@@ -215,7 +215,7 @@ export const renderScreenshots = Effect.fn('changelog.render')(function* <Text, 
       })
     }
     const record: ScreenshotRecord = { hash, images: [first, ...rest] }
-    yield* fs.writeFileString(recordPath, `${JSON.stringify(record)}\n`)
+    yield* fs.writeFileString(recordPath, `${encodeScreenshotRecord(record)}\n`)
     rendered.push(entry.id)
   }
   return rendered as ReadonlyArray<string>

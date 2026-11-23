@@ -4,6 +4,7 @@ import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Path from 'effect/Path'
 
+import { encodeScreenshotRecord } from '../compiler.ts'
 import { makeChangelogContract, NonEmptyTrimmedString } from '../contract.ts'
 import type { ChangelogConfig } from './config.ts'
 import { buildChangelog, discoverEntries, screenshotHash } from './load.ts'
@@ -120,7 +121,7 @@ describe('changelog loading', () => {
         '.changelog/2026-11-20-chat.ts': plain,
         '.changelog/2026-11-22-board.ts': pictured,
         '.changelog/2026-11-22-board.scene.ts': 'export const scene = async () => {}\n',
-        '.changelog/screenshots/2026-11-22-board.json': JSON.stringify({
+        '.changelog/screenshots/2026-11-22-board.json': encodeScreenshotRecord({
           hash: 'sha256:x',
           images: [
             { viewport: 'phone', scheme: 'light', file: '2026-11-22-board-phone-light.png', width: 390, height: 240 },
@@ -142,7 +143,9 @@ describe('changelog loading', () => {
         images: [{ viewport: 'phone', scheme: 'light', src: `./${asset!.fileName}`, width: 390, height: 240 }],
         callouts: [{ n: 1, caption: 'This cell' }],
       })
-      expect(contract.decodeManifest(JSON.parse(built.bytes))).toEqual(built.manifest)
+      expect(
+        contract.decodeManifest(Schema.decodeUnknownSync(Schema.UnknownFromJsonString)(built.bytes)),
+      ).toEqual(built.manifest)
     }).pipe(Effect.provide(NodeServices.layer)),
   )
 

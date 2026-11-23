@@ -71,6 +71,9 @@ export const decodeScreenshotRecord = Schema.decodeUnknownSync(
   { onExcessProperty: 'error' },
 )
 
+/** Canonical JSON text of a screenshot record. */
+export const encodeScreenshotRecord = Schema.encodeSync(Schema.fromJsonString(ScreenshotRecord))
+
 /** One authored entry ready to compile. */
 export interface EntryRegistration<Text, Fields> {
   /** Entry filename, e.g. `2026-11-22-wizard-trump.ts`. */

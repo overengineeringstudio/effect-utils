@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Path from 'effect/Path'
 import type { PlatformError } from 'effect/PlatformError'
@@ -160,7 +160,14 @@ export const screenshotHash = Effect.fn('changelog.screenshotHash')(function* <T
   const path = yield* Path.Path
   const hash = createHash('sha256')
   const { viewports, schemes, themes, inputs } = config.screenshots
-  hash.update(JSON.stringify({ renderer: RENDERER_VERSION, viewports, schemes, themes }))
+  hash.update(
+    Schema.encodeSync(Schema.UnknownFromJsonString)({
+      renderer: RENDERER_VERSION,
+      viewports,
+      schemes,
+      themes,
+    }),
+  )
   const files = [
     path.relative(config.root, entry.path),
     path.relative(config.root, entry.scenePath),
