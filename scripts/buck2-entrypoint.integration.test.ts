@@ -221,7 +221,7 @@ describe('quick contract task runtime', () => {
       for (let attempt = 0; attempt < 2; attempt++) {
         // Each attempt receives its own action-owned Buck scratch.
         const scratch = join(root, `scratch-${attempt}`)
-        mkdirSync(scratch, { mode: 0o700 })
+        mkdirSync(scratch, { mode: attempt === 0 ? 0o700 : 0o755 })
         const result = spawnSync(
           bash,
           [
@@ -261,6 +261,7 @@ exit "$1"`,
         expect(temporary.startsWith(realpathSync(root))).toBe(true)
         // The managed socket is addressed through the short owned /tmp alias,
         // so the runtime scratch itself carries no AF_UNIX length budget.
+        expect(existsSync(temporary)).toBe(false)
         expect(existsSync(runtimeDir)).toBe(true)
         observed.push(temporary)
       }
@@ -269,7 +270,7 @@ exit "$1"`,
     })
   }
 
-  it('rejects missing, foreign, or group/world-writable scratch', () => {
+  it('rejects missing or group/world-writable scratch', () => {
     const { bash, coreutils } = declaredTools()
     expect(runtime).toBeDefined()
     const root = fixture()
@@ -288,10 +289,12 @@ exit "$1"`,
     expect(missing.stderr).toContain('BUCK_SCRATCH_PATH')
     const absent = invoke(join(root, 'absent-scratch'))
     expect(absent.status).not.toBe(0)
-    const foreign = join(root, 'foreign-scratch')
-    mkdirSync(foreign)
-    chmodSync(foreign, 0o755)
-    expect(invoke(foreign).status).not.toBe(0)
+    const unsafe = join(root, 'unsafe-scratch')
+    mkdirSync(unsafe)
+    for (const mode of [0o720, 0o702, 0o777]) {
+      chmodSync(unsafe, mode)
+      expect(invoke(unsafe).status).not.toBe(0)
+    }
   })
 
   for (const linked of [false, true]) {
@@ -467,6 +470,26 @@ describe('worktree watcher management', () => {
 })
 
 describe('short persistent Watchman location', () => {
+  it('rejects symlinked and group/world-writable state parents before creating state', () => {
+    const linkedRoot = fixture()
+    const target = fixture()
+    symlinkSync(target, join(linkedRoot, '.worktree-tools'))
+    expect(() => prepareWatchmanEnvironment({ env: {}, repoRoot: linkedRoot })).toThrow(
+      WatchmanAdmissionError,
+    )
+    expect(existsSync(join(target, 'watchman'))).toBe(false)
+    for (const mode of [0o775, 0o757]) {
+      const root = fixture()
+      const parent = join(root, '.worktree-tools')
+      mkdirSync(parent)
+      chmodSync(parent, mode)
+      expect(() => prepareWatchmanEnvironment({ env: {}, repoRoot: root })).toThrow(
+        WatchmanAdmissionError,
+      )
+      expect(existsSync(join(parent, 'watchman'))).toBe(false)
+    }
+  })
+
   it('reuses one owned location per checkout and separates concurrent checkouts', () => {
     const firstRoot = fixture()
     const secondRoot = fixture()

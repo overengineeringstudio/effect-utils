@@ -10,7 +10,13 @@
   ...
 }:
 let
-  root = ../.;
+  # Fixture commands interpolate this root into store scripts. Never coerce the
+  # raw checkout: ignored Buck outputs, editor views and runtime sockets are not
+  # source inputs. Keep tracked working edits, excluding all untracked state.
+  root = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.gitTracked ../.;
+  };
   cfg = config.effectUtils.quickContracts;
   # Fixed bounded check cohort, not a dependency resolver. Source preparation
   # runs separately through the retained authority, before Buck is invoked.
@@ -180,7 +186,7 @@ let
     scratch="$(${pkgs.coreutils}/bin/realpath -e -- "$BUCK_SCRATCH_PATH")"
     owner="$(${pkgs.coreutils}/bin/stat -c %u -- "$scratch")"
     mode="$(${pkgs.coreutils}/bin/stat -c %a -- "$scratch")"
-    if [ "$owner" != "$(${pkgs.coreutils}/bin/id -u)" ] || [ "$mode" != "700" ]; then
+    if [ "$owner" != "$(${pkgs.coreutils}/bin/id -u)" ] || (( (8#$mode & 0022) != 0 )); then
       echo "quick-contracts: unsafe action scratch $scratch" >&2
       exit 1
     fi

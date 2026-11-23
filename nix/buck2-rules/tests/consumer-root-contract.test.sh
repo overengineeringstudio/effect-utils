@@ -125,20 +125,20 @@ grep -F 'name = "package_command_runtime"' "$root/.buck2/rules/BUCK" >/dev/null
 grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUCK" >/dev/null
 bash "$repo_root/nix/buck2-rules/tests/declared-inputs-freshness-consumer.test.sh" "$repo_root" "$immutable_root"
 
+# Buck writes buck-out under the project root, so queries run in a writable copy.
+work="$(mktemp -d)"
+runtime_work="$(mktemp -d)"
 watchman_args=(--no-spawn --no-local)
 if ! "$runtime_only"; then
   # Match the launcher without exporting: managed startup must still belong to Buck.
   watchman_socket="$("${BUN_BIN:-bun}" -e '
     const { prepareWatchmanEnvironment } = await import(process.argv[1])
-    prepareWatchmanEnvironment(process.env)
+    prepareWatchmanEnvironment({ env: process.env, repoRoot: process.argv[2] })
     process.stdout.write(process.env.WATCHMAN_SOCK)
-  ' "$repo_root/scripts/buck2-file-watcher.ts")"
+  ' "$repo_root/scripts/buck2-file-watcher.ts" "$work")"
   watchman_args+=("--sockname=$watchman_socket")
 fi
 
-# Buck writes buck-out under the project root, so queries run in a writable copy.
-work="$(mktemp -d)"
-runtime_work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
   (cd "$runtime_work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true

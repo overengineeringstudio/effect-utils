@@ -191,7 +191,26 @@ export const prepareWatchmanEnvironment = ({
   const uid = process.getuid?.()
   if (uid === undefined) throw new Error('Watchman managed state requires a Unix UID')
   const root = realpathSync(repoRoot)
-  const directory = join(root, '.worktree-tools', 'watchman')
+  const parent = join(root, '.worktree-tools')
+  try {
+    mkdirSync(parent, { mode: 0o700 })
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+  }
+  const parentStat = lstatSync(parent)
+  if (
+    parentStat.isDirectory() === false ||
+    parentStat.isSymbolicLink() === true ||
+    parentStat.uid !== uid ||
+    (parentStat.mode & 0o022) !== 0
+  )
+    throw new WatchmanAdmissionError({
+      reason: 'socket',
+      command: 'prepare Watchman state parent',
+      detail: `${parent} must be a current-user-owned non-symlink directory without group/world write permission`,
+      fix: 'repair the checkout state parent before starting its Watchman service',
+    })
+  const directory = join(parent, 'watchman')
   // The service socket is always addressed through a short owned /tmp alias:
   // a socket inside the checkout breaks Nix source copying, which rejects
   // non-regular files regardless of filters. Watchman state stays
@@ -217,7 +236,7 @@ export const prepareWatchmanEnvironment = ({
       fix: `repair or remove the unsafe alias after stopping its Watchman service; no default-path fallback is permitted`,
     })
   try {
-    mkdirSync(directory, { mode: 0o700, recursive: true })
+    mkdirSync(directory, { mode: 0o700 })
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
   }

@@ -102,18 +102,9 @@ def _provider_contract_impl(ctx):
     # Resolving these configured deps runs the original toolchain/product
     # implementations, including their shared-provider and platform guards.
     # This is an analysis verdict, not a recursive `buck2 audit` action.
-    toolchain = ctx.attrs.toolchain[ConfiguredRustToolchainInfo]
-    product = ctx.attrs.product[BuildProductInfo]
     verdict = ctx.actions.write_json("passed.json", {
         "task": ctx.attrs.task,
         "status": "passed",
-        "validation": {
-            "toolchain": str(ctx.attrs.toolchain.label),
-            "toolchain_identity": toolchain.identity,
-            "target_triple": toolchain.target_triple,
-            "product": str(ctx.attrs.product.label),
-            "product_descriptor": product.descriptor.short_path,
-        },
     })
     predecessors = []
     for dependency in ctx.attrs.requires:

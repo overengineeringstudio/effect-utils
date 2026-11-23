@@ -160,7 +160,12 @@ cat >"$main/devenv.nix" <<NIX
 { pkgs, ... }: {
   imports = [
     (import $ROOT/nix/devenv-modules/tasks/shared/setup.nix { runOnEnterShell = false; })
-    (import $TESTS_DIR/worktree-teardown-fixture.nix { sourceRoot = $ROOT; })
+    (import $TESTS_DIR/worktree-teardown-fixture.nix {
+      sourceRoot = pkgs.lib.fileset.toSource {
+        root = $ROOT;
+        fileset = pkgs.lib.fileset.gitTracked $ROOT;
+      };
+    })
   ];
   cachix.enable = false;
 }

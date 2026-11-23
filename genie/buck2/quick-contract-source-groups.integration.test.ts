@@ -13,6 +13,20 @@ import {
   renderContractSourceExclusions,
 } from './quick-contract-source-groups.ts'
 
+it('filters checkout source before frozen teardown commands can capture it', () => {
+  const projection = readFileSync(new URL('../../nix/quick-contracts.nix', import.meta.url), 'utf8')
+  expect(projection).toContain('root = lib.fileset.toSource {')
+  expect(projection).toContain('fileset = lib.fileset.gitTracked ../.;')
+  expect(projection).not.toContain('root = ../.;\n  cfg =')
+  const retained = readFileSync(
+    new URL('../../nix/devenv-modules/tasks/shared/tests/worktree-teardown.test.sh', import.meta.url),
+    'utf8',
+  )
+  expect(retained).toContain('sourceRoot = pkgs.lib.fileset.toSource {')
+  expect(retained).toContain('fileset = pkgs.lib.fileset.gitTracked $ROOT;')
+  expect(retained).not.toContain('{ sourceRoot = $ROOT; }')
+})
+
 it('projects the retained provider audit into the same real configured native guards', () => {
   const source = (file: string): string =>
     readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8')
@@ -35,12 +49,14 @@ it('projects the retained provider audit into the same real configured native gu
   const implementation = rule
     .split('def _provider_contract_impl(ctx):')[1]!
     .split('def _quick_contracts_impl(ctx):')[0]!
-  expect(implementation).toContain('ctx.attrs.toolchain[ConfiguredRustToolchainInfo]')
-  expect(implementation).toContain('ctx.attrs.product[BuildProductInfo]')
   expect(implementation).toContain('attrs.toolchain_dep(providers = [ConfiguredRustToolchainInfo])')
   expect(implementation).toContain('attrs.dep(providers = [BuildProductInfo])')
   expect(implementation).toContain('"status": "passed"')
-  expect(implementation).toContain('toolchain_identity": toolchain.identity')
+  const verdict = implementation.split('ctx.actions.write_json("passed.json", {')[1]!.split('})')[0]!
+  expect([...verdict.matchAll(/"([^"]+)":/g)].map((match) => match[1]).sort()).toEqual([
+    'status',
+    'task',
+  ])
   expect(implementation).toContain('other_outputs = predecessors')
   expect(implementation).not.toContain('ctx.actions.run(')
   expect(rule).toContain('inputs.extend(contract[DefaultInfo].other_outputs)')

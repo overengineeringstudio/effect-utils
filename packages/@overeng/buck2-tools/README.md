@@ -152,6 +152,14 @@ the previous cache endpoints/TLS/instance, then replace the selected daemon agai
 This unregisters the pilot platform and restores the original local TS action path.
 No source-rule edits, materialization changes or cache deletion are needed.
 
+## Frozen quick-contract source
+
+The standalone quick-contract projection snapshots only Git-tracked checkout
+files via `lib.fileset.gitTracked`, including edits to tracked files. Fixture
+commands must reference that filtered source, never interpolate the raw checkout
+directory into a Nix store script. Ignored `buck-out`, editor views, `.devenv`,
+runtime sockets and temporary evidence are not source inputs.
+
 ## Referenced TypeScript workspace checks
 
 `tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`

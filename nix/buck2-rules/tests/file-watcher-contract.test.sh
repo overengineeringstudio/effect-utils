@@ -5,15 +5,15 @@ set -euo pipefail
 export BUCK2_GATE_WRAPPER_ACTIVE=1
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
+work="$(mktemp -d)"
 # Buck's Rust client honors WATCHMAN_SOCK; the standalone CLI needs --sockname.
 # Resolve without exporting: Buck must still recognize and start its managed service.
 watchman_socket="$("${BUN_BIN:-bun}" -e '
   const { prepareWatchmanEnvironment } = await import(process.argv[1])
-  prepareWatchmanEnvironment(process.env)
+  prepareWatchmanEnvironment({ env: process.env, repoRoot: process.argv[2] })
   process.stdout.write(process.env.WATCHMAN_SOCK)
-' "$repo_root/scripts/buck2-file-watcher.ts")"
+' "$repo_root/scripts/buck2-file-watcher.ts" "$work")"
 watchman_args=(--no-spawn --no-local "--sockname=$watchman_socket")
-work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir file-watcher-contract kill >/dev/null 2>&1) || true
   watchman "${watchman_args[@]}" watch-del "$work" >/dev/null 2>&1 || true
