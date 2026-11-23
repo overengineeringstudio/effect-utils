@@ -1,0 +1,59 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/changelog"
+    ]
+  },
+  "name": "@overeng/changelog",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Structured product changelogs: typed entries, versioned build manifests, coverage enforcement and annotated screenshots",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    },
+    "./node": {
+      "types": "./dist/src/node/mod.d.ts",
+      "default": "./src/node/mod.ts"
+    },
+    "./vite": {
+      "types": "./dist/src/vite.d.ts",
+      "default": "./src/vite.ts"
+    }
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.0",
+    "effect": "4.1.0"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.1.0",
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "vite": "^8.3.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      },
+      "./node": {
+        "types": "./dist/src/node/mod.d.ts",
+        "default": "./dist/src/node/mod.js"
+      },
+      "./vite": {
+        "types": "./dist/src/vite.d.ts",
+        "default": "./dist/src/vite.js"
+      }
+    }
+  }
+}

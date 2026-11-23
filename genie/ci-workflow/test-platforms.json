@@ -168,6 +168,10 @@
         "rationale": "Manifest, drift and provider lifecycle assertions with local HTTP endpoints; no host-specific lifecycle behavior. Credentialed live coverage is owned by the source/unbounded complement."
       },
       {
+        "task": "test:changelog",
+        "rationale": "changelog contract decoding, compilation, coverage and annotation geometry assertions over temporary directories; no Darwin-specific host lifecycle regression."
+      },
+      {
         "task": "test:ci-tools",
         "rationale": "ci-tools bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
