@@ -107,7 +107,7 @@ export interface OwnedDeletionPin {
 
 const ownedDeletionPinsBrand = Symbol('OwnedDeletionPins')
 
-/** Valid only during beforeRemove; no process-wide or non-fd exemption is granted. */
+/** Valid only during its engine callback; no process-wide or non-fd exemption is granted. */
 export interface OwnedDeletionPins {
   readonly [ownedDeletionPinsBrand]: true
   readonly pins: ReadonlyArray<OwnedDeletionPin>
@@ -119,6 +119,93 @@ export interface OwnedDeletionPins {
     readonly ino: string
   }) => boolean
 }
+
+interface PinnedDirectoryTarget {
+  readonly rootPath: string
+  readonly path: string
+  readonly identity: DeletionIdentity
+}
+
+/** One acquisition engine; only the private deletion adapter receives native chains. */
+const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
+  targets,
+  prepare,
+  commit,
+}: {
+  readonly targets: ReadonlyArray<PinnedDirectoryTarget>
+  readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
+  readonly commit: (
+    value: A,
+    chains: ReadonlyArray<readonly PinnedDirectory[]>,
+  ) => Effect.Effect<B, ECommit, RCommit>
+}): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> => {
+  const path = targets[0]?.path ?? ''
+  return Effect.acquireUseRelease(
+    native({
+      path,
+      operation: () => {
+        if (targets.length === 0)
+          throw fail({ path, message: 'At least one pinned target is required' })
+        const chains: Array<readonly PinnedDirectory[]> = []
+        try {
+          for (const target of targets) chains.push(pinChain(target))
+          return chains
+        } catch (cause) {
+          for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
+          throw cause
+        }
+      },
+    }),
+    (chains) =>
+      Effect.gen(function* () {
+        const owned = chains.map(ownDeletionPins)
+        const views = Object.freeze(owned.map((entry) => entry.view))
+        const value = yield* Effect.suspend(() => prepare(views)).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              for (const entry of owned) entry.revoke()
+            }),
+          ),
+        )
+        yield* native({
+          path,
+          operation: () => {
+            for (const chain of chains) verifyChain(chain)
+          },
+        })
+        return yield* Effect.suspend(() => commit(value, chains))
+      }),
+    (chains) =>
+      Effect.sync(() => {
+        for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
+      }),
+  )
+}
+
+/**
+ * Prepare with all target chains pinned, verify EVERY chain, then commit while all fds remain held.
+ * Only prepare receives callback-scoped pin evidence, in target order; commit cannot access chains.
+ * Prepare must leave durable intent UNKNOWN/HOLD: publish READY only in commit. A crash before
+ * commit therefore never publishes readiness. No quarantine, unlink or rollback is performed.
+ * Callers retain responsibility for continuous action leases and fresh Git/owner/all-UID evidence.
+ */
+export const withVerifiedDirectoryPins = <
+  A,
+  B,
+  E = never,
+  R = never,
+  ECommit = never,
+  RCommit = never,
+>({
+  targets,
+  prepare,
+  commit,
+}: {
+  readonly targets: ReadonlyArray<PinnedDirectoryTarget>
+  readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
+  readonly commit: (value: A) => Effect.Effect<B, ECommit, RCommit>
+}): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> =>
+  withPinnedDirectoryTransaction({ targets, prepare, commit: (value) => commit(value) })
 
 /**
  * Pin the recorded chain before final authority checks, then quarantine and remove only through fds.
@@ -141,20 +228,15 @@ export const withPinnedDeletion = <TError = never, TRequirements = never>({
   beforeRemove?: (ownedPins: OwnedDeletionPins) => Effect.Effect<void, TError, TRequirements>
   afterQuarantine?: (recoverPath: string) => void
 }): Effect.Effect<void, PinnedDeletionError | TError, TRequirements> =>
-  Effect.acquireUseRelease(
-    native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
-    (chain) =>
-      Effect.gen(function* () {
-        if (beforeRemove !== undefined) {
-          const owned = ownDeletionPins(chain)
-          yield* Effect.suspend(() => beforeRemove(owned.view)).pipe(
-            Effect.ensuring(Effect.sync(owned.revoke)),
-          )
-        }
-        yield* native({ path, operation: () => quarantineAndRemove({ chain, afterQuarantine }) })
+  withPinnedDirectoryTransaction({
+    targets: [{ rootPath, path, identity }],
+    prepare: (pins) => beforeRemove?.(pins[0]!) ?? Effect.void,
+    commit: (_value, chains) =>
+      native({
+        path,
+        operation: () => quarantineAndRemove({ chain: chains[0]!, afterQuarantine }),
       }),
-    (chain) => Effect.sync(() => closeChain(chain)),
-  )
+  })
 
 /** No-follow evidence for one directory, observed through a single held fd. */
 export type DirectoryEvidence = {

@@ -1,16 +1,18 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Cause, Effect, Exit, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
+import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
 import { runPoolCommand } from './store-pool-install.ts'
 import {
   claimPoolGeneration,
   type PoolSlot,
+  readPoolProvenance,
   requirePoolLease,
   reservePoolSlot,
   withPoolState,
@@ -31,6 +33,135 @@ const slot: PoolSlot = {
   reason: '',
   chargeKnown: true,
 }
+
+const withPoolTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer })
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+describe('pool provenance observation', () => {
+  it.effect('keeps an absent ledger absent without initializing directories or leases', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      expect(yield* readPoolProvenance({ base })).toEqual({
+        _tag: 'Absent',
+        observations: [],
+        disposition: 'HOLD',
+        authorizesRemoval: false,
+      })
+      expect(yield* fs.readDirectory(base)).toEqual([])
+    }).pipe(withPoolTestCtx(test)),
+  )
+
+  it.effect('observes every state without rewriting records or exporting capabilities', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const states: PoolSlot['state'][] = [
+        'preparing',
+        'ready',
+        'leased',
+        'completed',
+        'quarantined',
+      ]
+      const slots = states.map((state, index) => ({
+        bare: slot.bare,
+        commit: slot.commit,
+        identity: slot.identity,
+        charge: slot.charge,
+        generation: slot.generation,
+        reason: slot.reason,
+        chargeKnown: slot.chargeKnown,
+        id: String(index),
+        path: `${base}/${index}`,
+        state,
+        owner: state === 'ready' ? '' : 'task-label-not-seat',
+        token: state === 'ready' ? '' : `secret-claim-${index}`,
+        barrierToken: `secret-barrier-${index}`,
+      }))
+      yield* withPoolState({
+        base,
+        limits: { maxSlots: 5, maxBytes: 320 },
+        use: (state, save) => save({ ...state, slots }),
+      })
+      const path = `${base}/.state/pool/state.json`
+      const before = yield* fs.readFileString(path)
+      const info = yield* fs.stat(path)
+      const entries = yield* fs.readDirectory(`${base}/.state/pool`)
+      const snapshot = yield* readPoolProvenance({ base })
+      expect(snapshot._tag).toBe('Observed')
+      expect(snapshot.observations).toHaveLength(5)
+      expect(snapshot.observations[1]?.recordedReadyUnclaimed).toBe(true)
+      for (const observation of snapshot.observations) {
+        expect(observation.disposition).toBe('HOLD')
+        expect(observation.authorizesRemoval).toBe(false)
+        for (const evidence of [
+          observation.ownerActivity,
+          observation.seatActivity,
+          observation.terminalClaim,
+          observation.terminalBirth,
+          observation.terminalRetarget,
+          observation.executionProvenance,
+        ])
+          expect(evidence).toEqual({ _tag: 'Missing', reason: 'not-recorded-in-pool-v1' })
+      }
+      expect(encodeJson(snapshot)).not.toContain('secret-claim-')
+      expect(encodeJson(snapshot)).not.toContain('secret-barrier-')
+      expect(yield* fs.readFileString(path)).toBe(before)
+      const after = yield* fs.stat(path)
+      expect(after.ino).toEqual(info.ino)
+      expect(after.mtime).toEqual(info.mtime)
+      expect(yield* fs.readDirectory(`${base}/.state/pool`)).toEqual(entries)
+    }).pipe(withPoolTestCtx(test)),
+  )
+
+  it.effect('rejects malformed, unsupported and invalid records without repairing them', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      yield* fs.makeDirectory(`${base}/.state/pool`, { recursive: true })
+      const path = `${base}/.state/pool/state.json`
+      const sentinel = 'private-pool-capability-property'
+      for (const contents of [
+        '{',
+        encodeJson({ version: 2, maxSlots: 1, maxBytes: 64, slots: [] }),
+        encodeJson({
+          version: 1,
+          maxSlots: 1,
+          maxBytes: 64,
+          slots: [{ ...slot, generation: -1 }],
+        }),
+        encodeJson({
+          version: 1,
+          maxSlots: 1,
+          maxBytes: 64,
+          slots: [
+            {
+              ...slot,
+              generation: { [sentinel]: sentinel },
+              token: sentinel,
+              barrierToken: sentinel,
+            },
+          ],
+        }),
+      ]) {
+        yield* fs.writeFileString(path, contents)
+        const result = yield* readPoolProvenance({ base }).pipe(Effect.exit)
+        expect(Exit.isFailure(result)).toBe(true)
+        if (Exit.isFailure(result) === true) {
+          const pretty = Cause.pretty(result.cause)
+          const json = encodeJson(result.cause)
+          expect(pretty).toContain('Pool provenance unavailable; removal remains HOLD')
+          expect(pretty).not.toContain(sentinel)
+          expect(json).not.toContain(sentinel)
+          expect(json).toContain('PoolError')
+          expect(json).not.toContain('SchemaError')
+        }
+        expect(yield* fs.readFileString(path)).toBe(contents)
+        expect(yield* fs.readDirectory(`${base}/.state/pool`)).toEqual(['state.json'])
+      }
+    }).pipe(withPoolTestCtx(test)),
+  )
+})
 
 describe('pool authoritative lifecycle', () => {
   it.effect('runs the declared libc utility without an ambient command search path', () =>
