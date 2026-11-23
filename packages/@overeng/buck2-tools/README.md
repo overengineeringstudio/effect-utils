@@ -168,6 +168,11 @@ Native Buck uses the reserved `editor-publication` isolation. No owner descripto
 is passed to the publisher child. The supervisor observes an admission notification
 only; time waiting for ownership does not consume the publication execution budget.
 
+The compiled launcher bundles the same canonical owner module. Its Nix build
+stages that one module at the source-relative import path while compiling, then
+removes the staged sources; the installed launcher retains only the native library
+and compiled entrypoint, not a second ownership implementation.
+
 The reconciliation command runner waits for child close after cancellation,
 spawn errors, or stdin write failure. A nonzero or signaled child exit takes
 precedence over a concurrent abort or broken pipe, preserving native termination
