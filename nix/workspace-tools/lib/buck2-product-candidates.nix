@@ -146,13 +146,25 @@ let
     required =
       if products.megarepo.sourceImport != null then
         [
+          "coreutils"
+          "getconf"
           "git"
           "nix"
           "worktree-lease"
+          "worktree-teardown"
         ]
       else
         (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
     providers = {
+      coreutils = {
+        capability = "coreutils";
+        pathPackages = [ pkgs.coreutils ];
+      };
+      getconf = {
+        capability = "getconf";
+        environment.MR_GETCONF_BIN =
+          if pkgs.stdenv.hostPlatform.isDarwin then "/usr/bin/getconf" else "${pkgs.glibc.bin}/bin/getconf";
+      };
       git = {
         capability = "git";
         pathPackages = [ pkgs.git ];
@@ -164,6 +176,15 @@ let
       worktree-lease = {
         capability = "worktree-lease";
         environment.WORKTREE_LEASE_BIN = "${nativeProducts.worktree-lease}/bin/worktree-lease";
+      };
+      worktree-teardown = {
+        capability = "worktree-teardown";
+        environment.WORKTREE_TEARDOWN_BIN = "${
+          import ../../worktree-teardown.nix {
+            inherit pkgs;
+            buck2 = import ../../buck2.nix { inherit pkgs; };
+          }
+        }/bin/worktree-teardown";
       };
     };
   };

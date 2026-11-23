@@ -780,9 +780,12 @@
       "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/qarv9l0inihlpy48fjsyc871c5rpr9ml/mr.js",
       "descriptor": {
         "externalCapabilities": [
+          "coreutils",
+          "getconf",
           "git",
           "nix",
-          "worktree-lease"
+          "worktree-lease",
+          "worktree-teardown"
         ],
         "externalModules": [],
         "integrity": "sha256-Xxj5yEUw1Osz9G5zhp5ob0kfgPGnnEUENM02IqNfOCI=",
@@ -806,7 +809,7 @@
         "sizeBytes": 3073199,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "d37290bee483c5f6c2ddd849832e2afb83c3f020e8aede5eb33bfe4e21f22e1e",
+      "descriptorSha256": "5e27c9ae73e5535f9021514773dac56844e5900759541a5a41343db9a8ba238e",
       "name": "megarepo",
       "provenance": {
         "producerCommit": "88faa426506b4a71cce8b740b8ed4de992f4094e",
@@ -814,11 +817,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "recipeIdentity": "94ef5e71d064318616c6bc5305264584b505b1d941da2c32c6dbdebe47b23935",
+      "recipeIdentity": "883b17a7054d210b5a6f18f7d4c34ee2ae32879311600c196154ca8716e39923",
       "sha256": "5f18f9c84530d4eb33f46e73869e686f491f80f1a79c450434cd3622a35f3822",
       "size": 3073199,
-      "sourceEvidenceSha256": "2f36050852ed8bcd2cec8852b63dabe0eb7bfa2996b3e4f386ffd746ed0accfe",
-      "sourceEvidenceStorePath": "/nix/store/fb7rf82j54y223sgkc7mrhir7x2z4v2y-megarepo-source-evidence",
+      "sourceEvidenceSha256": "e90a79844bc7efd92d8e08636399404346243b8ec8fc42feee87750669df820a",
+      "sourceEvidenceStorePath": "/nix/store/lz4n40biayl3vn9javsppz30pzs8ap1w-megarepo-source-evidence",
       "storePath": "/nix/store/qarv9l0inihlpy48fjsyc871c5rpr9ml-megarepo-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -1121,11 +1124,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate"
       },
-      "recipeIdentity": "aab13fad69d1412521e4912fec6c42a66d2053a7e7027ca9e5556c698baaa6e8",
+      "recipeIdentity": "6c4d905218594decccce78f370919b3dc01df6eb53b53e19bd026c4324dc7000",
       "sha256": "2a0ebc1e5a30a1b6a9ef01e34fa76236cdc8efa0f0a8b58577a90a17f999c42d",
       "size": 1674507,
-      "sourceEvidenceSha256": "5d2cb3752403149edc83619aae787471cbe06ef96f5e64b6cfd62f2cfba21c29",
-      "sourceEvidenceStorePath": "/nix/store/pg4rmjk4xxgjl6xni31c9vxmp12g7bmb-tui-stories-source-evidence",
+      "sourceEvidenceSha256": "2dd4a1309ce7a315bfa8c5154a360cc7cc1e57367b5e4a29d66c60be6ec1ff4b",
+      "sourceEvidenceStorePath": "/nix/store/8d4bh9h6drh3iy8mf5vyvb0pm5mx3lrj-tui-stories-source-evidence",
       "storePath": "/nix/store/5cjjww1lpaj68kvx342j7cpah9yddsn9-tui-stories-buck2-from-source-0.0.0",
       "version": "0.0.0"
     }
