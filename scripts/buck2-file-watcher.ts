@@ -60,7 +60,7 @@ const withoutWatcherBlock = ({
 
 /** Keep explicit local providers and the independently managed cache/profile overlays intact. */
 export const withoutManagedWatcherBlock = (current: string): string =>
-  withoutWatcherBlock(current, 'admission')
+  withoutWatcherBlock({ current, scope: 'admission' })
 
 type ReconcileFileWatcherOptions = { readonly repoRoot: string } & (
   | { readonly scope: 'profile'; readonly provider: 'watchman' | 'notify' }
