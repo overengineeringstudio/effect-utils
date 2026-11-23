@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/manifest-pr-decide.sh"
 tmp="$(mktemp -d)"
-trap 'rm -r "$tmp"' EXIT
+trap 'rm -rf -- "$tmp"' EXIT
 # Exercise the actual helper in the same depth-one checkout used by both jobs.
 helper="$(realpath "$(dirname "${BASH_SOURCE[0]}")/manifest-pr-decide.sh")"
 repository="$(git -C "$(dirname "$helper")" rev-parse --show-toplevel)"

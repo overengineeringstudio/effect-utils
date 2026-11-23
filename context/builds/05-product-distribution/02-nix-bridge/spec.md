@@ -780,6 +780,10 @@ log/summary reason. The existing app registration's `contents:write` and
 `pull_requests:write` permissions suffice; no separate merge-queue permission
 or app permission change is required.
 
+The manifest-decision shell fixture removes its private clone noninteractively,
+including read-only Git objects, even when the task inherits PTY stdin.
+The publisher integration suite guards the forced cleanup trap.
+
 Rotate the non-expiring private key by generating a new key in App settings,
 replacing its 1Password item and both repositories' Actions secrets, verifying
 token minting from both protected jobs, then revoking the old key. On suspected
