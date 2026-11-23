@@ -258,6 +258,19 @@ The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
 Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked child
 process groups; timeout cleanup joins the group before removing its inputs.
+Incomplete hostless cases retain private VM/import/production/result phases, bounded
+redacted child output and native-argument/result/shard census before and after cleanup.
+Only cases completing every existing assertion remove their fixture. The original
+test deadline and assertions remain authoritative, including late cancellation errors;
+these diagnostics neither identify the underlying stall nor suppress its failure.
+The retained Devenv host-contract cache watches the Bun runner, preload and timeout
+sources plus both gate integration suites and their imported isolation unit suite,
+not only the top-level entrypoint test.
+The task-graph regression removes each input in turn and requires rejection;
+immutable Bun/native tool paths remain bound through the watched task command.
+Real native-admission test registration derives its watchdog from the existing
+command budget: `max(5000, 3 * deadlineMs + 2000)`. The missing-executable errno
+fixture and hostless contracts retain their original 5,000 ms watchdogs.
 
 In `check:quick`, its dedicated standalone-staging publication waits for
 `buck2:quick` to finish: Buck output directories are mutable even after the
