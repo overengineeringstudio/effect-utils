@@ -179,6 +179,17 @@ describe('quick contract task runtime', () => {
   const runtime = source.match(
     /taskRuntime = pkgs\.writeShellScript "quick-contract-task-runtime" ''\n([\s\S]*?)\n  '';/u,
   )?.[1]
+  const lifetime = source.match(/taskRuntimeLifetime = ''\n([\s\S]*?)\n  '';/u)?.[1]
+  const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+  const render = (script: string, coreutils: string) =>
+    script.replaceAll('${pkgs.coreutils}', coreutils).replaceAll("''${", '${')
+  const ownedInvocation = (root: string, command: string, coreutils: string, bash: string) => {
+    const runtimeFile = join(root, 'task-runtime')
+    writeFileSync(runtimeFile, render(runtime!, coreutils))
+    return `set -euo pipefail\n${render(lifetime!, coreutils)
+      .replace('@TASK_RUNTIME@', `${shellQuote(bash)} ${shellQuote(runtimeFile)}`)
+      .replace('@TASK_SCRIPT@', command)}`
+  }
   const declaredTools = () => {
     const cp = Bun.which('cp')
     const bash = Bun.which('bash')
@@ -190,9 +201,10 @@ describe('quick contract task runtime', () => {
     return { cp, bash, coreutils }
   }
 
-  it('declares action-owned private runtime scratch without taking fixture ownership', () => {
+  it('declares an exec runtime and a joined capability-owned external lifetime', () => {
     expect(runtime).toBeDefined()
-    expect(source).toContain('${taskRuntime} ${taskScripts.${name}}')
+    expect(lifetime).toBeDefined()
+    expect(source).toContain('taskRuntimeLifetime\n')
     const shared = source.slice(
       source.indexOf('runtimeEnvironment ='),
       source.indexOf('runtimeExports ='),
@@ -201,12 +213,15 @@ describe('quick contract task runtime', () => {
     expect(shared).not.toContain('TMPDIR')
     expect(runtime).toContain('BUCK_SCRATCH_PATH:?')
     expect(runtime).toContain('realpath -e -- "$BUCK_SCRATCH_PATH"')
-    expect(runtime).toContain('mkdir -m 0700 -- "$runtime"')
+    expect(runtime).toContain('mkdir -m 0700 -- "$marker"')
+    expect(runtime).toContain('> "$marker/external-root"')
     expect(runtime).toContain('export TMPDIR="$runtime" TMP="$runtime" TEMP="$runtime" RUNNER_TEMP="$runtime"')
     expect(runtime).toContain('export XDG_RUNTIME_DIR="$runtime"')
     expect(runtime).toContain('exec "$@"')
     expect(runtime).not.toContain('mktemp')
-    expect(runtime).not.toContain('trap')
+    expect(lifetime).toContain('mktemp -d /tmp/qc.XXXXXXXX')
+    expect(lifetime).toContain('wait "$child"')
+    expect(lifetime).toContain('trap retire_runtime EXIT')
     expect(runtime).not.toContain('wait')
     expect(runtime).not.toContain('shutdown')
     expect(runtime).not.toContain('WATCHMAN_SOCK')
@@ -220,55 +235,260 @@ describe('quick contract task runtime', () => {
       const observed: string[] = []
       for (let attempt = 0; attempt < 2; attempt++) {
         // Each attempt receives its own action-owned Buck scratch.
-        const scratch = join(root, `scratch-${attempt}`)
-        mkdirSync(scratch, { mode: attempt === 0 ? 0o700 : 0o755 })
-        const result = spawnSync(
-          bash,
-          [
-            '-c',
-            runtime!.replaceAll('${pkgs.coreutils}', coreutils).replaceAll("''${", '${'),
-            '--',
+        const scratch = join(
+          root,
+          'buck-out',
+          ...Array<string>(12).fill('deep-checkout-component'),
+          `scratch-${attempt}`,
+        )
+        mkdirSync(scratch, { recursive: true, mode: attempt === 0 ? 0o700 : 0o755 })
+        const external = realpathSync(mkdtempSync('/tmp/qc.'))
+        try {
+          const result = spawnSync(
             bash,
-            '-c',
-            `task_tmp="$(mktemp -d "$TMPDIR/qc.XXXXXXXX")"
+            [
+              '-c',
+              render(runtime!, coreutils),
+              '--',
+              bash,
+              '-c',
+              `task_tmp="$(mktemp -d "$TMPDIR/qc.XXXXXXXX")"
 trap 'rmdir -- "$task_tmp"' EXIT
 printf "%s\\n" "$TMPDIR" "$TMP" "$TEMP" "$RUNNER_TEMP" "$XDG_RUNTIME_DIR" "$task_tmp" "$$"
 stat -c '%a' "$TMPDIR"
+printf "%s\\n" "$2" "$3" "$NATIVE_IDENTITY"
 exit "$1"`,
-            '--',
-            String(status),
-          ],
+              '--',
+              String(status),
+              'argument with spaces',
+              '',
+            ],
+            {
+              cwd: root,
+              env: {
+                PATH: `${coreutils}/bin:${dirname(bash)}`,
+                BUCK_SCRATCH_PATH: scratch,
+                QUICK_CONTRACT_RUNTIME_ROOT: external,
+                NATIVE_IDENTITY: 'exact environment value',
+              },
+              encoding: 'utf8',
+            },
+          )
+          expect(result.stderr).toBe('')
+          expect(result.status).toBe(status)
+          const paths = result.stdout.trim().split('\n')
+          expect(paths).toHaveLength(11)
+          const runtimeDir = realpathSync(external)
+          expect(readFileSync(join(scratch, 'runtime', 'external-root'), 'utf8')).toBe(`${runtimeDir}\n`)
+          expect(statSync(join(scratch, 'runtime')).mode & 0o777).toBe(0o700)
+          expect(paths.slice(0, 5).every((path) => path === runtimeDir)).toBe(true)
+          const temporary = paths[5]!
+          expect(temporary.startsWith(`${runtimeDir}/qc.`)).toBe(true)
+          expect(Number(paths[6])).toBe(result.pid)
+          expect(paths[7]).toBe('700')
+          expect(paths.slice(8)).toEqual(['argument with spaces', '', 'exact environment value'])
+          expect(statSync(runtimeDir).mode & 0o777).toBe(0o700)
+          expect(temporary.startsWith(realpathSync(root))).toBe(false)
+          expect(runtimeDir).toBe(realpathSync(runtimeDir))
+          expect(runtimeDir.length).toBeLessThanOrEqual(48)
+          expect(join(runtimeDir, 'mock-daemon.sock').length).toBeLessThan(104)
+          expect(existsSync(temporary)).toBe(false)
+          expect(existsSync(runtimeDir)).toBe(true)
+          observed.push(temporary)
+          expect(existsSync(scratch)).toBe(true)
+        } finally {
+          rmSync(external, { recursive: true, force: true })
+        }
+      }
+      expect(observed[0]).not.toBe(observed[1])
+    })
+  }
+
+  for (const status of [0, 23]) {
+    it(`retires the physical external runtime only after task close on exit ${status}`, () => {
+      const { bash, coreutils } = declaredTools()
+      const root = fixture()
+      const scratch = join(root, 'scratch')
+      mkdirSync(scratch, { mode: 0o700 })
+      const command = `${shellQuote(bash)} -c ${shellQuote(
+        'printf "%s\\n" "$TMPDIR"; test -d "$TMPDIR"; touch "$TMPDIR/task-owned"; exit "$1"',
+      )} -- ${status}`
+      const result = spawnSync(bash, ['-c', ownedInvocation(root, command, coreutils, bash)], {
+        cwd: root,
+        env: {
+          PATH: `${coreutils}/bin:${dirname(bash)}`,
+          BUCK_SCRATCH_PATH: scratch,
+          TMPDIR: join(root, 'ambient-temporary-directory'),
+          QUICK_CONTRACT_RUNTIME_ROOT: '/tmp/not-owned-by-this-capability',
+        },
+        encoding: 'utf8',
+      })
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(status)
+      const external = result.stdout.trim()
+      expect(external.length).toBeGreaterThan(0)
+      expect(external.length).toBeLessThanOrEqual(48)
+      expect(readFileSync(join(scratch, 'runtime', 'external-root'), 'utf8')).toBe(`${external}\n`)
+      expect(existsSync(external)).toBe(false)
+      expect(existsSync(scratch)).toBe(true)
+    })
+  }
+
+  it.each([
+    ['SIGHUP', 129],
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)('joins a %s-cancelled native task before retiring its runtime', async (signal, status) => {
+    const { bash, coreutils } = declaredTools()
+    const root = fixture()
+    const scratch = join(root, 'scratch')
+    mkdirSync(scratch, { mode: 0o700 })
+    const receipt = join(root, 'closed')
+    const task = join(root, 'native-task.ts')
+    writeFileSync(task, `
+import { writeFileSync, existsSync, realpathSync } from 'node:fs'
+import { createServer } from 'node:net'
+const runtime = process.env.TMPDIR!
+const server = createServer()
+server.listen(runtime + '/mock-daemon.sock', () => {
+  console.log(JSON.stringify({ runtime, physical: realpathSync(runtime), pid: process.pid }))
+})
+process.on('${signal}', () => server.close(() => {
+  writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({ exists: existsSync(runtime), pid: process.pid }))
+  process.exit(0)
+}))
+`)
+    const command = `${shellQuote(process.execPath)} ${shellQuote(task)}`
+    const child = spawn(bash, ['-c', ownedInvocation(root, command, coreutils, bash)], {
+      cwd: root,
+      env: { PATH: `${coreutils}/bin:${dirname(bash)}`, BUCK_SCRATCH_PATH: scratch },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const closed = Promise.withResolvers<number | null>()
+    child.once('close', closed.resolve)
+    const ready = Promise.withResolvers<string>()
+    let output = ''
+    child.stdout!.on('data', (chunk) => {
+      output += chunk.toString()
+      if (output.includes('\n')) ready.resolve(output.trim())
+    })
+    child.once('error', ready.reject)
+    child.once('close', () => ready.reject(new Error('Runtime task closed before socket readiness')))
+    try {
+      const observed = JSON.parse(await ready.promise)
+      expect(observed.runtime).toBe(observed.physical)
+      expect(observed.runtime.startsWith(realpathSync(root))).toBe(false)
+      expect(`${observed.runtime}/mock-daemon.sock`.length).toBeLessThan(104)
+      child.kill(signal)
+      expect(await closed.promise).toBe(status)
+      expect(JSON.parse(readFileSync(receipt, 'utf8'))).toEqual({ exists: true, pid: observed.pid })
+      expect(existsSync(observed.runtime)).toBe(false)
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
+      await closed.promise
+    }
+  })
+
+  it.each(['missing', 'shared', 'symlink', 'permissions', 'checkout'] as const)(
+    'rejects a %s external runtime before executing the task',
+    (mode) => {
+      const { bash, coreutils } = declaredTools()
+      const root = fixture()
+      const scratch = join(root, 'scratch')
+      const executed = join(root, 'executed')
+      mkdirSync(scratch, { mode: 0o700 })
+      const external = realpathSync(mkdtempSync('/tmp/qc.'))
+      try {
+        let selected: string | undefined = external
+        if (mode === 'missing') selected = undefined
+        if (mode === 'shared') selected = realpathSync('/tmp')
+        if (mode === 'permissions') chmodSync(external, 0o750)
+        if (mode === 'symlink') {
+          selected = join(root, 'runtime-alias')
+          symlinkSync(external, selected)
+        }
+        if (mode === 'checkout') {
+          selected = join(root, 'qc.runtime')
+          mkdirSync(selected, { mode: 0o700 })
+        }
+        const result = spawnSync(
+          bash,
+          ['-c', render(runtime!, coreutils), '--', 'touch', executed],
           {
             cwd: root,
             env: {
               PATH: `${coreutils}/bin:${dirname(bash)}`,
               BUCK_SCRATCH_PATH: scratch,
+              ...(selected === undefined ? {} : { QUICK_CONTRACT_RUNTIME_ROOT: selected }),
             },
             encoding: 'utf8',
           },
         )
-        expect(result.stderr).toBe('')
-        expect(result.status).toBe(status)
-        const paths = result.stdout.trim().split('\n')
-        expect(paths).toHaveLength(8)
-        const runtimeDir = realpathSync(join(scratch, 'runtime'))
-        expect(paths.slice(0, 5).every((path) => path === runtimeDir)).toBe(true)
-        const temporary = paths[5]!
-        expect(temporary.startsWith(`${runtimeDir}/qc.`)).toBe(true)
-        expect(Number(paths[6])).toBe(result.pid)
-        expect(paths[7]).toBe('700')
-        expect(statSync(runtimeDir).mode & 0o777).toBe(0o700)
-        expect(temporary.startsWith(realpathSync(root))).toBe(true)
-        // The managed socket is addressed through the short owned /tmp alias,
-        // so the runtime scratch itself carries no AF_UNIX length budget.
-        expect(existsSync(temporary)).toBe(false)
-        expect(existsSync(runtimeDir)).toBe(true)
-        observed.push(temporary)
+        expect(result.status).not.toBe(0)
+        expect(existsSync(executed)).toBe(false)
+        expect(existsSync(join(scratch, 'runtime', 'external-root'))).toBe(false)
+      } finally {
+        rmSync(external, { recursive: true, force: true })
       }
-      expect(observed[0]).not.toBe(observed[1])
-      for (const attempt of [0, 1]) expect(existsSync(join(root, `scratch-${attempt}`))).toBe(true)
-    })
-  }
+    },
+  )
+
+  it('uses canonical scratch and rejects reuse of its exclusive action marker', () => {
+    const { bash, coreutils } = declaredTools()
+    const root = fixture()
+    const scratch = join(root, 'scratch')
+    const alias = join(root, 'scratch-alias')
+    mkdirSync(scratch, { mode: 0o700 })
+    symlinkSync(scratch, alias)
+    const external = realpathSync(mkdtempSync('/tmp/qc.'))
+    try {
+      const invoke = () => spawnSync(bash, ['-c', render(runtime!, coreutils), '--', 'true'], {
+        cwd: root,
+        env: {
+          PATH: `${coreutils}/bin:${dirname(bash)}`,
+          BUCK_SCRATCH_PATH: alias,
+          QUICK_CONTRACT_RUNTIME_ROOT: external,
+        },
+        encoding: 'utf8',
+      })
+      expect(invoke().status).toBe(0)
+      expect(readFileSync(join(scratch, 'runtime', 'external-root'), 'utf8')).toBe(`${external}\n`)
+      const reused = invoke()
+      expect(reused.status).not.toBe(0)
+      expect(reused.stderr).toContain('runtime')
+      expect(statSync(join(scratch, 'runtime')).mode & 0o777).toBe(0o700)
+    } finally {
+      rmSync(external, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves native signal termination through the exec boundary', () => {
+    const { bash, coreutils } = declaredTools()
+    const root = fixture()
+    const scratch = join(root, 'scratch')
+    mkdirSync(scratch, { mode: 0o700 })
+    const external = realpathSync(mkdtempSync('/tmp/qc.'))
+    try {
+      const result = spawnSync(
+        bash,
+        ['-c', render(runtime!, coreutils), '--', bash, '-c', 'kill -TERM "$$"'],
+        {
+          cwd: root,
+          env: {
+            PATH: `${coreutils}/bin:${dirname(bash)}`,
+            BUCK_SCRATCH_PATH: scratch,
+            QUICK_CONTRACT_RUNTIME_ROOT: external,
+          },
+          encoding: 'utf8',
+        },
+      )
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(null)
+      expect(result.signal).toBe('SIGTERM')
+    } finally {
+      rmSync(external, { recursive: true, force: true })
+    }
+  })
 
   it('rejects missing or group/world-writable scratch', () => {
     const { bash, coreutils } = declaredTools()
