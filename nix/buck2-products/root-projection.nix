@@ -47,6 +47,9 @@ pkgs.lib.fileset.toSource {
       "genie/weaver-registry/manifest.yaml"
       "genie/weaver-registry/signals.yaml"
       "genie/weaver-registry/registry.ts"
+      "scripts/tsconfig.json"
+      "genie/packages.ts"
+      "genie/ci-workflow/test-scheduling.json"
       "nix/weaver-flake/flake.nix"
     ])
     ++ map (path: repositoryRoot + "/${path}") patchOwnerPaths

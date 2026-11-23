@@ -644,6 +644,8 @@ the same strict compiler options. Run `devenv tasks run buck2:editor:cli:check`
 for this Buck-owned `//:editor_cli_typecheck` target; `//:quick` also includes it.
 Bootstrap execution is not typechecking: this gate rejects incorrect call shapes
 such as `withPublicationCancellation(main)` without executing the CLI.
+The Nix product root projection retains this project's config and eagerly loaded
+root metadata so unrelated product analysis can still load the shared root BUCK.
 
 Audit cross-cell Buck provider identity separately:
 
