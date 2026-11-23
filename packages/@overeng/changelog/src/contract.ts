@@ -22,10 +22,12 @@ export const ENTRY_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/u
 export const ENTRY_FILENAME_PATTERN =
   /^(?<id>(?<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*)\.ts$/u
 
+/** Entry id: the entry filename without `.ts` (`YYYY-MM-DD-slug`). */
 export const ChangelogEntryId = NonEmptyTrimmedString.pipe(
   Schema.check(Schema.isPattern(ENTRY_ID_PATTERN)),
 ).annotate({ identifier: 'Changelog.EntryId' })
 
+/** Calendar date of an entry, `YYYY-MM-DD`. */
 export const ChangelogDate = NonEmptyTrimmedString.pipe(
   Schema.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u)),
 ).annotate({ identifier: 'Changelog.Date' })
@@ -103,6 +105,7 @@ export interface CaptionAnnotation<Text> {
   readonly text: Text
 }
 
+/** Any screenshot annotation an entry can draw over a scene. */
 export type Annotation<Text> =
   | RingAnnotation<Text>
   | ArrowAnnotation

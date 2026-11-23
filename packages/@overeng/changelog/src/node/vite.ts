@@ -28,15 +28,14 @@ const run = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path
  * In dev the same files are served from source on every request, stamped with the dev server's
  * own `/build-identity.json`.
  */
-export const changelogVitePlugin = <Text, Fields>(
-  config: ChangelogConfig<Text, Fields>,
-  {
-    unrendered = 'fail',
-  }: {
-    /** `omit` while the renderer drives this build: unrendered screenshots are left out. */
-    readonly unrendered?: 'fail' | 'omit' | undefined
-  } = {},
-): Plugin => ({
+export const changelogVitePlugin = <Text, Fields>({
+  config,
+  unrendered = 'fail',
+}: {
+  readonly config: ChangelogConfig<Text, Fields>
+  /** `omit` while the renderer drives this build: unrendered screenshots are left out. */
+  readonly unrendered?: 'fail' | 'omit' | undefined
+}): Plugin => ({
   name: 'overeng:changelog',
   enforce: 'post',
   async buildStart() {
@@ -46,6 +45,7 @@ export const changelogVitePlugin = <Text, Fields>(
   },
   generateBundle: {
     order: 'post',
+    // oxlint-disable-next-line overeng/named-args -- Rollup generateBundle hook shape.
     async handler(_options, bundle) {
       const identity = bundle['build-identity.json']
       if (identity?.type !== 'asset' || typeof identity.source !== 'string') {

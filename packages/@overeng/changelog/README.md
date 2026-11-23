@@ -82,7 +82,7 @@ export const changelogConfig = {
 } satisfies ChangelogConfig<LocalizedText, GamesFields>
 
 // vite.config.ts
-plugins: [createBuildIdentityPlugin(...), changelogVitePlugin(changelogConfig)]
+plugins: [createBuildIdentityPlugin(...), changelogVitePlugin({ config: changelogConfig })]
 ```
 
 - `@overeng/changelog/vite`: `changelogVitePlugin` emits the manifest and content-hashed

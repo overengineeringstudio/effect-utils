@@ -18,8 +18,8 @@ export const globToRegExp = (glob: string): RegExp => {
       if (glob[index + 1] === '*') {
         // `**/` matches zero or more directories; a trailing `**` matches everything below.
         const slash = glob[index + 2] === '/'
-        source += slash ? '(?:.*/)?' : '.*'
-        index += slash ? 2 : 1
+        source += slash === true ? '(?:.*/)?' : '.*'
+        index += slash === true ? 2 : 1
       } else {
         source += '[^/]*'
       }
@@ -48,6 +48,7 @@ export interface CoverageConfig {
   readonly changelogDirectory: string
 }
 
+/** Whether a change needs a changelog entry and, if so, how it is satisfied. */
 export type CoverageResult =
   | { readonly _tag: 'NotRequired' }
   | { readonly _tag: 'CoveredByEntry'; readonly entries: ReadonlyArray<string> }

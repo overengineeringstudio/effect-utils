@@ -241,16 +241,19 @@ const mark = ({
     return stroke({ d: smoothPath(points), color: theme.ink, width: 2.5 })
   }
   const highlight = annotation.style === 'highlight'
-  const y = highlight ? box.y + box.height * 0.55 : box.y + box.height + 5
+  const y = highlight === true ? box.y + box.height * 0.55 : box.y + box.height + 5
   const from = box.x - 4
   const to = box.x + box.width + 4
   const steps = Math.max(3, Math.round((to - from) / 14))
   const points: Point[] = []
   for (let step = 0; step <= steps; step++) {
     const t = step / steps
-    points.push([from + (to - from) * t, y + (random() - 0.5) * (highlight ? 2 : 3) + t * 1.5])
+    points.push([
+      from + (to - from) * t,
+      y + (random() - 0.5) * (highlight === true ? 2 : 3) + t * 1.5,
+    ])
   }
-  return highlight
+  return highlight === true
     ? stroke({
         d: smoothPath(points),
         color: theme.highlight,
