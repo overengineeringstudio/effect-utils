@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import { NotionApiError } from '@overeng/notion-effect-client'
 
-import type { CacheNode, CacheTree, NotionCache, PendingInlineNode } from '../cache/types.ts'
+import type { CacheNode, CacheTree, NotionCache, PendingChild } from '../cache/types.ts'
 import { CACHE_SCHEMA_VERSION } from '../cache/types.ts'
 import {
   NotionBlocks,
@@ -70,22 +70,6 @@ const resolveTreeIds = (tree: CandidateTree, idMap: ReadonlyMap<string, string>)
   for (const c of tree.children) walk(c)
 }
 
-const pendingInlineFromCandidates = (
-  nodes: readonly CandidateNode[],
-): readonly PendingInlineNode[] =>
-  nodes.flatMap((node) =>
-    node.nodeKind === 'page'
-      ? []
-      : [
-          {
-            key: node.key,
-            type: node.type,
-            hash: node.hash,
-            children: pendingInlineFromCandidates(node.children),
-          },
-        ],
-  )
-
 const appendBody = (type: string, props: Record<string, unknown>): Record<string, unknown> => ({
   object: 'block',
   type,
@@ -119,7 +103,7 @@ interface WorkingNode {
   titleHash?: string | undefined
   iconHash?: string | undefined
   coverHash?: string | undefined
-  pendingInlineResolution?: readonly PendingInlineNode[] | undefined
+  pendingChildren?: readonly PendingChild[] | undefined
 }
 
 interface WorkingCache {
@@ -141,9 +125,7 @@ const cacheNodeToWorking = (n: CacheNode): WorkingNode => ({
   ...(n.titleHash !== undefined ? { titleHash: n.titleHash } : {}),
   ...(n.iconHash !== undefined ? { iconHash: n.iconHash } : {}),
   ...(n.coverHash !== undefined ? { coverHash: n.coverHash } : {}),
-  ...(n.pendingInlineResolution !== undefined
-    ? { pendingInlineResolution: n.pendingInlineResolution }
-    : {}),
+  ...(n.pendingChildren !== undefined ? { pendingChildren: n.pendingChildren } : {}),
 })
 
 const workingToCacheNode = (n: WorkingNode): CacheNode => {
@@ -169,9 +151,7 @@ const workingToCacheNode = (n: WorkingNode): CacheNode => {
     ...(n.titleHash !== undefined ? { titleHash: n.titleHash } : {}),
     ...(n.iconHash !== undefined ? { iconHash: n.iconHash } : {}),
     ...(n.coverHash !== undefined ? { coverHash: n.coverHash } : {}),
-    ...(n.pendingInlineResolution !== undefined
-      ? { pendingInlineResolution: n.pendingInlineResolution }
-      : {}),
+    ...(n.pendingChildren !== undefined ? { pendingChildren: n.pendingChildren } : {}),
   }
 }
 
@@ -216,7 +196,14 @@ const workingAppend = (
     workingAppend(w, parentId, node, afterId)
     return
   }
-  if (afterId === '') {
+  // Atomic append acknowledgements are saved before their descendant GETs,
+  // then refreshed with resolved child ids without moving the container.
+  const existing = w.byId.get(node.blockId)
+  const existingIndex = existing === undefined ? -1 : siblings.indexOf(existing)
+  if (existing !== undefined) workingRemove(w, node.blockId)
+  if (existingIndex >= 0) {
+    siblings.splice(existingIndex, 0, node)
+  } else if (afterId === '') {
     // Empty-string afterId is the head-insert marker threaded through from
     // the diff (sync-diff.ts `prevRef = ''`). Must prepend, not tail-append.
     siblings.unshift(node)
@@ -556,14 +543,13 @@ const flushAppendRun = (
  * untouched.
  */
 interface AbsorbedSubtree {
-  /** The atomic container op whose body now carries the nested payload. */
-  readonly containerTmpId: string
   /**
    * Absorbed descendants in the exact order they appear under the container,
    * depth-first, matching the shape of `props.children` shipped to Notion.
    * Used to map nested tmpIds → server ids after the atomic append returns.
    */
-  readonly descendants: readonly { readonly tmpId: string; readonly depth: number }[]
+  readonly descendants: readonly string[]
+  readonly children: readonly PendingChild[]
 }
 
 const foldAtomicContainers = (
@@ -594,7 +580,7 @@ const foldAtomicContainers = (
    */
   const buildNestedBody = (
     op: AppendLike,
-    descendants: { tmpId: string; depth: number }[],
+    descendants: string[],
     depth: number,
     isTopLevelContainer: boolean,
   ): Record<string, unknown> => {
@@ -613,7 +599,7 @@ const foldAtomicContainers = (
         )
       }
       payload.children = kids.slice(0, inlineCount).map((k) => {
-        descendants.push({ tmpId: k.tmpId, depth })
+        descendants.push(k.tmpId)
         absorbedTmpIds.add(k.tmpId)
         return {
           object: 'block',
@@ -628,6 +614,20 @@ const foldAtomicContainers = (
     return payload
   }
 
+  const pendingChildren = (children: readonly CandidateNode[]): readonly PendingChild[] =>
+    children.flatMap((child) =>
+      child.blockId !== undefined && absorbedTmpIds.has(child.blockId)
+        ? [
+            {
+              key: child.key,
+              type: child.type,
+              hash: child.hash,
+              children: pendingChildren(child.children),
+            },
+          ]
+        : [],
+    )
+
   const plan: DiffOp[] = []
   for (const op of ops) {
     if (isAppendLike(op) && absorbedTmpIds.has(op.tmpId)) {
@@ -638,9 +638,9 @@ const foldAtomicContainers = (
       continue
     }
     if (isAppendLike(op) && ATOMIC_CONTAINERS.has(op.type)) {
-      const descendants: { tmpId: string; depth: number }[] = []
+      const descendants: string[] = []
       const foldedProps = buildNestedBody(op, descendants, 1, true)
-      absorbed.set(op.tmpId, { containerTmpId: op.tmpId, descendants })
+      absorbed.set(op.tmpId, { descendants, children: pendingChildren(op.candidate.children) })
       // Replace the op with a version whose `props` carry nested children.
       // The op's `candidate` still references the full subtree — fine: the
       // working-cache checkpoint only records the top-level block, and final
@@ -654,125 +654,80 @@ const foldAtomicContainers = (
 }
 
 /**
- * Resolve tmpIds of an atomic container's absorbed descendants by walking
- * the container's live child tree on Notion. Traversal order mirrors
- * `buildNestedBody`: depth-first, children in submission order. Mutates
- * `idMap` in place.
+ * The one child-id read path for mandatory atomic creation payloads, used
+ * immediately after append and when an interrupted lookup resumes.
  */
-const resolveAbsorbedTmpIds = (
-  containerServerId: string,
-  descendants: readonly { readonly tmpId: string; readonly depth: number }[],
-  idMap: Map<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
+const resolveCreatedChildren = (
+  parentId: string,
+  expected: readonly PendingChild[],
+): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
-    if (descendants.length === 0) return
-    // Retrieve the full subtree by DFS. Order: for each child of a given
-    // parent, consume descendants[cursor] (which corresponds to that child
-    // at the current depth), advance, then recurse into its children.
-    let cursor = 0
-    const walk = (
-      parentId: string,
-      depth: number,
-    ): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
-      Effect.gen(function* () {
-        const live = yield* Stream.runCollect(
-          NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
-        ).pipe(
-          Effect.mapError(
-            (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
-          ),
-        )
-        for (const child of Array.from(live)) {
-          if (cursor >= descendants.length) return
-          const expected = descendants[cursor]!
-          if (expected.depth !== depth) return
-          idMap.set(expected.tmpId, child.id)
-          cursor += 1
-          // Recurse if there's a following descendant at greater depth —
-          // means this node has absorbed grandchildren.
-          const next = descendants[cursor]
-          if (next !== undefined && next.depth > depth) {
-            yield* walk(child.id, depth + 1)
-          }
-        }
+    const live = Array.from(
+      yield* Stream.runCollect(
+        NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
+      ).pipe(
+        Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
+      ),
+    )
+    if (live.length !== expected.length) {
+      return yield* new NotionSyncError({
+        reason: 'notion-retrieve-failed',
+        cause: `Created children under ${parentId}: expected ${expected.length}, observed ${live.length}; keep the pending checkpoint and reconcile.`,
       })
-    yield* walk(containerServerId, 1)
+    }
+    const children: CacheNode[] = []
+    for (let index = 0; index < expected.length; index++) {
+      const intent = expected[index]!
+      const block = live[index]!
+      if (block.type !== intent.type) {
+        return yield* new NotionSyncError({
+          reason: 'notion-retrieve-failed',
+          cause: `Created child ${block.id}: expected ${intent.type}, observed ${block.type}; keep the pending checkpoint and reconcile.`,
+        })
+      }
+      children.push({
+        key: intent.key,
+        blockId: block.id,
+        type: intent.type,
+        hash: intent.hash,
+        children:
+          intent.children.length === 0
+            ? []
+            : yield* resolveCreatedChildren(block.id, intent.children),
+        nodeKind: 'block',
+      })
+    }
+    return children
   })
 
-/**
- * Convert a candidate subtree packed inline into a `pages.create` body into
- * the `children` field payload. For phase 3b every inline body is already
- * pre-shaped by `inlinePackChildren`, so this is effectively a pass-through.
- * Kept as a named helper so the sync driver's read path is easier to trace.
- */
-const toCreateChildren = (inline: readonly unknown[]): readonly Record<string, unknown>[] =>
-  inline as readonly Record<string, unknown>[]
-
-/**
- * After a successful `pages.create` with inline children, walk the server's
- * returned tree to map the placeholder tmpIds we assigned to each inline
- * block body onto the real Notion block ids. Used so that subsequent
- * scope-tagged block ops (tail from `inlinePackChildren`) can resolve their
- * parents through `idMap`.
- */
-const resolveInlineChildrenIds = (
-  createdPageId: string,
-  candidate: PageOp & { readonly kind: 'createPage' },
-  cands: readonly CandidateNode[],
-  idMap: Map<string, string>,
-): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
+const resolvePendingChildren = (
+  cached: readonly CacheNode[],
+): Effect.Effect<
+  { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
+  NotionSyncError,
+  NotionRendererClient
+> =>
   Effect.gen(function* () {
-    // Resolve the newly-created page's tmp id.
-    idMap.set(candidate.tmpPageId, createdPageId)
-    if (cands.length === 0) return
-    // Walk server-side children of the created page depth-first. For each
-    // candidate that was shipped inline (blockId is a `tmp-*` placeholder),
-    // pair it with the corresponding live child and recurse.
-    const walk = (
-      parentId: string,
-      nodes: readonly CandidateNode[],
-    ): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
-      Effect.gen(function* () {
-        const live = yield* Stream.runCollect(
-          NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
-        ).pipe(
-          Effect.mapError(
-            (cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause }),
-          ),
-        )
-        const liveArr = Array.from(live)
-        // `nodes` can mix block candidates (which were inlined into the
-        // pages.create body and therefore appear in `liveArr`) with page
-        // candidates (tailed out as follow-up createPage ops and NOT present
-        // here). Advance the live-child cursor only for block candidates so
-        // alignment doesn't shift when a page sibling appears before an inline
-        // block. See PR #623 review: "Skip page nodes without advancing
-        // live-child alignment".
-        let liveIdx = 0
-        for (let i = 0; i < nodes.length; i++) {
-          const cand = nodes[i]!
-          if (cand.nodeKind === 'page') continue
-          if (liveIdx >= liveArr.length) break
-          const server = liveArr[liveIdx]!
-          liveIdx++
-          if (cand.blockId !== undefined && cand.blockId.startsWith('tmp-')) {
-            idMap.set(cand.blockId, server.id)
-          }
-          // Walk inline children (depth 2 only — deeper children were tailed
-          // as regular block ops and are resolved by the standard flush path).
-          if (cand.children.length > 0) {
-            const hasInline = cand.children.some(
-              (c) => c.nodeKind !== 'page' && c.blockId?.startsWith('tmp-') === true,
-            )
-            if (hasInline) yield* walk(server.id, cand.children)
-          }
-        }
-      })
-    yield* walk(createdPageId, cands)
+    const nodes: CacheNode[] = []
+    let changed = false
+    for (const node of cached) {
+      if (node.pendingChildren !== undefined) {
+        const children = yield* resolveCreatedChildren(node.blockId, node.pendingChildren)
+        nodes.push({ ...node, children, pendingChildren: undefined })
+        changed = true
+      } else if (node.children.length > 0) {
+        const nested = yield* resolvePendingChildren(node.children)
+        nodes.push(nested.changed ? { ...node, children: nested.nodes } : node)
+        changed = changed || nested.changed
+      } else {
+        nodes.push(node)
+      }
+    }
+    return { nodes, changed }
   })
 
 const applyDiff = (
-  rawOps: readonly DiffOp[],
+  ops: readonly DiffOp[],
   idMap: Map<string, string>,
   checkpoint: (
     event:
@@ -789,10 +744,10 @@ const applyDiff = (
   ) => Effect.Effect<void, NotionSyncError>,
   o11y: O11yCtx,
   priorHashById: ReadonlyMap<string, string>,
+  absorbed: ReadonlyMap<string, AbsorbedSubtree>,
 ): Effect.Effect<void, NotionSyncError, NotionRendererClient> =>
   Effect.gen(function* () {
     const resolve = (id: string): string => idMap.get(id) ?? id
-    const { plan: ops, absorbed } = foldAtomicContainers(rawOps)
     let i = 0
     while (i < ops.length) {
       const op = ops[i]!
@@ -833,17 +788,26 @@ const applyDiff = (
           resolve,
           (committed) =>
             Effect.gen(function* () {
-              // Resolve absorbed descendant tmpIds for any atomic containers
-              // in the committed batch. Must run before the checkpoint so the
-              // working cache sees the same idMap the candidate tree is about
-              // to be rewritten with (resolveTreeIds in sync()).
+              // The response already acknowledged these identities. Persist
+              // them before a fallible GET for mandatory inline descendants.
+              yield* checkpoint({ kind: 'appended', committed })
+              let resolvedChildren = false
               for (const c of committed) {
                 const sub = absorbed.get(c.op.tmpId)
-                if (sub !== undefined) {
-                  yield* resolveAbsorbedTmpIds(c.serverId, sub.descendants, idMap)
+                if (sub !== undefined && sub.descendants.length > 0) {
+                  const children = yield* resolveCreatedChildren(c.serverId, sub.children)
+                  let cursor = 0
+                  const bind = (nodes: readonly CacheNode[]): void => {
+                    for (const node of nodes) {
+                      idMap.set(sub.descendants[cursor++]!, node.blockId)
+                      bind(node.children)
+                    }
+                  }
+                  bind(children)
+                  resolvedChildren = true
                 }
               }
-              yield* checkpoint({ kind: 'appended', committed })
+              if (resolvedChildren) yield* checkpoint({ kind: 'appended', committed })
             }),
           o11y,
         )
@@ -1287,144 +1251,6 @@ const withoutDriftGhosts = (nodes: readonly CacheNode[]): readonly CacheNode[] =
   )
 
 /**
- * Adopt the inline descendants of a page that was created with inline
- * `children` but whose block ids were never observed (mid-sync crash between
- * `pages.create` and the id-resolution retrieve). Retrieves the live children
- * under `parentId` and pairs them positionally against the persisted
- * create-time intent. Shared verbatim between `sync()` (which persists the
- * adopted tree) and `plan()` (which adopts in memory only).
- */
-const adoptInlineChildren = (
-  parentId: string,
-  nodes: readonly PendingInlineNode[],
-): Effect.Effect<readonly CacheNode[], NotionSyncError, NotionRendererClient> =>
-  Effect.gen(function* () {
-    const live = yield* Stream.runCollect(
-      NotionBlocks.retrieveChildrenStream({ blockId: parentId }),
-    ).pipe(
-      Effect.mapError((cause) => new NotionSyncError({ reason: 'notion-retrieve-failed', cause })),
-    )
-    const liveBlocks = Array.from(live)
-    const adopted: CacheNode[] = []
-    let liveIdx = 0
-    for (const node of nodes) {
-      const server = liveBlocks[liveIdx]
-      if (server === undefined) break
-      liveIdx += 1
-      if (server.type !== node.type) {
-        return yield* new NotionSyncError({
-          reason: 'notion-retrieve-failed',
-          cause: `pending inline type mismatch: expected ${node.type}, got ${server.type}`,
-        })
-      }
-      const children =
-        node.children.length === 0 ? [] : yield* adoptInlineChildren(server.id, node.children)
-      adopted.push({
-        key: node.key,
-        blockId: server.id,
-        type: node.type,
-        hash: node.hash,
-        children,
-        nodeKind: 'block',
-      })
-    }
-    // Live children beyond the persisted create-time intent mean another
-    // client wrote under the half-created page between the crashed sync
-    // and this retry. Adopting only the prefix would strand those blocks
-    // forever (drift detection is root-shallow), so fail loudly instead —
-    // failing before the cache save keeps the pending marker intact for a
-    // clean retry once the untracked content is removed.
-    if (liveIdx < liveBlocks.length) {
-      return yield* new NotionSyncError({
-        reason: 'notion-retrieve-failed',
-        cause:
-          `pending inline adoption found ${liveBlocks.length - liveIdx} untracked block(s) ` +
-          `under ${parentId} beyond the persisted create-time intent (${nodes.length} expected); ` +
-          `remove them or reset the cache to recover`,
-      })
-    }
-    return adopted
-  })
-
-/** Index every page-kind candidate (at any depth) by blockKey. */
-const indexCandidatePagesByKey = (
-  children: readonly CandidateNode[],
-): Map<string, CandidateNode> => {
-  const out = new Map<string, CandidateNode>()
-  const walk = (nodes: readonly CandidateNode[]): void => {
-    for (const node of nodes) {
-      if (node.nodeKind === 'page') out.set(node.key, node)
-      walk(node.children)
-    }
-  }
-  walk(children)
-  return out
-}
-
-/**
- * Resolve `pendingInlineResolution` markers left by a crashed createPage,
- * adopting the live inline descendants into the cache tree and binding the
- * page identity onto the matching candidate. A checkpointed page may have
- * moved to another parent in the retry JSX, so a sibling-local lookup would
- * miss it — `candidatePageByKey` provides the cross-parent fallback so
- * recovery can adopt the identity before the relocation is diffed.
- */
-const resolvePendingPages = ({
-  cached,
-  candidates,
-  candidatePageByKey,
-}: {
-  readonly cached: readonly CacheNode[]
-  readonly candidates: readonly CandidateNode[]
-  readonly candidatePageByKey: ReadonlyMap<string, CandidateNode>
-}): Effect.Effect<
-  { readonly nodes: readonly CacheNode[]; readonly changed: boolean },
-  NotionSyncError,
-  NotionRendererClient
-> =>
-  Effect.gen(function* () {
-    let changed = false
-    const nodes: CacheNode[] = []
-    for (const cachedNode of cached) {
-      let candidateNode = candidates.find(
-        (node) => node.key === cachedNode.key && node.nodeKind === cachedNode.nodeKind,
-      )
-      if (
-        candidateNode === undefined &&
-        cachedNode.nodeKind === 'page' &&
-        cachedNode.pendingInlineResolution !== undefined
-      ) {
-        // Cross-parent fallback: resolve the pending inline descendants
-        // against the old location so the move diff sees adopted children
-        // instead of duplicating the server-side subtree.
-        candidateNode = candidatePageByKey.get(cachedNode.key)
-      }
-      if (candidateNode === undefined || cachedNode.nodeKind !== 'page') {
-        nodes.push(cachedNode)
-        continue
-      }
-      candidateNode.blockId = cachedNode.blockId
-      if (cachedNode.pendingInlineResolution !== undefined) {
-        const children = yield* adoptInlineChildren(
-          cachedNode.blockId,
-          cachedNode.pendingInlineResolution,
-        )
-        nodes.push({ ...cachedNode, children, pendingInlineResolution: undefined })
-        changed = true
-        continue
-      }
-      const nested = yield* resolvePendingPages({
-        cached: cachedNode.children,
-        candidates: candidateNode.children,
-        candidatePageByKey,
-      })
-      nodes.push(nested.changed ? { ...cachedNode, children: nested.nodes } : cachedNode)
-      changed = changed || nested.changed
-    }
-    return { nodes, changed }
-  })
-
-/**
  * Compare recursive identities. Root and ordinary block children are ordered.
  * Child-page content ignores unstable block/page interleaving while preserving
  * relative order within the block siblings and page siblings.
@@ -1694,27 +1520,17 @@ export const syncWithClient = (
         }),
       )
     }
-
-    const candidatePageByKey = indexCandidatePagesByKey(candidate.children)
-
-    // Pending recovery retrieves against page ids recorded under prior.rootId.
-    // When the cache was written for a different page (page-id drift) those
-    // retrievals can fail on ids that are stale or no longer accessible, so
-    // skip recovery and let the documented cold-start path handle the
-    // mismatch.
-    if (prior !== undefined && prior.rootId === opts.pageId) {
-      const resolvedPending = yield* resolvePendingPages({
-        cached: prior.children,
-        candidates: candidate.children,
-        candidatePageByKey,
-      })
-      if (resolvedPending.changed) {
-        prior = { ...prior, children: resolvedPending.nodes }
-        yield* opts.cache
-          .save(prior)
-          .pipe(
-            Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
-          )
+    if (
+      prior !== undefined &&
+      prior.rootId === opts.pageId &&
+      prior.schemaVersion === CACHE_SCHEMA_VERSION
+    ) {
+      const resolved = yield* resolvePendingChildren(prior.children)
+      if (resolved.changed) {
+        prior = { ...prior, children: resolved.nodes }
+        yield* opts.cache.save(prior).pipe(
+          Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })),
+        )
       }
     }
 
@@ -1830,6 +1646,9 @@ export const syncWithClient = (
         return yield* new NotionSyncError({ reason: 'page-lifecycle-violation', violations })
       }
     }
+    // Mandatory table/column descendants may occur beyond a page boundary in
+    // the BFS plan. Fold them before splitting the execution into block runs.
+    const { plan: executionPlan, absorbed } = foldAtomicContainers(plan)
     // Prior hashes indexed by server block id — for UpdateNoop detection
     // when diff emits an update whose hash already matches the cached one
     // (e.g. post-checkpoint retry, hash-stable reshuffle).
@@ -1916,6 +1735,10 @@ export const syncWithClient = (
         if (event.kind === 'appended') {
           for (const { op, serverId, afterId } of event.committed) {
             const parentId = resolve(op.parent)
+            const atomic = absorbed.get(op.tmpId)
+            const pendingChildren = atomic?.descendants.some((id) => !idMap.has(id))
+              ? atomic.children
+              : undefined
             const children: WorkingNode[] = []
             for (const c of op.candidate.children) {
               const sub = buildSubtreeFromCandidate(c)
@@ -1928,6 +1751,7 @@ export const syncWithClient = (
               hash: op.candidate.hash,
               children,
               nodeKind: op.candidate.nodeKind,
+              ...(pendingChildren !== undefined ? { pendingChildren } : {}),
               ...(op.candidate.titleHash !== undefined
                 ? { titleHash: op.candidate.titleHash }
                 : {}),
@@ -1946,10 +1770,8 @@ export const syncWithClient = (
         yield* flushCheckpoint
       })
 
-    // Phase 3b (#618): partition the plan. Block ops flow through applyDiff;
-    // page ops route to pages.* and are executed in a fixed order so the
-    // block ops we're emitting always target the correct parent page id.
-    const blockPlan: DiffOp[] = []
+    // Metadata updates, archives and explicit reorders are applied after the
+    // candidate-ordered create/move/append pass below.
     const pageOps: PageOp[] = []
     for (const op of plan) {
       if (
@@ -1960,32 +1782,12 @@ export const syncWithClient = (
         op.kind === 'reorderPages'
       ) {
         pageOps.push(op)
-      } else {
-        blockPlan.push(op)
-      }
-    }
-
-    // Partition block ops by scope. Root-scope ops (scopePageId undefined) are
-    // picked up by the candidate-ordered interleaved pass below; tail block
-    // ops scoped to a createPage's tmpPageId run inside `runCreatePage`;
-    // retained-sub-page-scoped ops run in step 2b.
-    const pageScopedBlockPlan = new Map<string, DiffOp[]>()
-    for (const op of blockPlan) {
-      const scope =
-        op.kind === 'append' || op.kind === 'insert' || op.kind === 'update' || op.kind === 'remove'
-          ? op.scopePageId
-          : undefined
-      if (scope !== undefined) {
-        const list = pageScopedBlockPlan.get(scope) ?? []
-        list.push(op)
-        pageScopedBlockPlan.set(scope, list)
       }
     }
 
     // Root-page metadata update (candidate <Page> vs prior cache root hashes).
     // Emits a single `pages.update` when any of title/icon/cover drifted.
     let pageCounts: PageOpCounts = emptyPageCounts()
-    let partialCreateFallback = false
     const rootPage = candidate.rootPage
     const rootUpdateOp = rootPageUpdateOpFor({ candidate, prior, pageId: opts.pageId })
     if (rootUpdateOp !== undefined) {
@@ -2028,20 +1830,6 @@ export const syncWithClient = (
       pageCounts = { ...pageCounts, updates: pageCounts.updates + 1 }
     }
 
-    // Issue #618 follow-up: at the root scope, `pages.create` and block
-    // `append` both tail-append on the server. Running block ops before
-    // createPage (as the pre-fix code did) inverted sibling order on the
-    // server whenever a JSX tree placed a `<ChildPage>` before a sibling
-    // block — the next warm sync would then hit a drift mismatch (cache in
-    // candidate order, server in swapped order) and treat the retained
-    // `<ChildPage>` as unretained, blowing up `candidateToCache` with an
-    // unresolved tmpId for its inner block descendants.
-    //
-    // Fix: walk the root-scope plan in candidate order, interleaving block
-    // ops with `createPage` / `movePage`. Consecutive block ops are still
-    // batched through `applyDiff` so per-parent coalescing (#101) stays
-    // intact. Same-scope `movePage` is also interleaved because Notion
-    // tail-appends the moved page at its new parent.
     const runCreatePage = (op: Extract<PageOp, { kind: 'createPage' }>) =>
       Effect.gen(function* () {
         const opId = o11y.nextOpId()
@@ -2065,9 +1853,6 @@ export const syncWithClient = (
               : { title: { title: [] } },
           ...(op.icon !== undefined ? { icon: op.icon as never } : {}),
           ...(op.cover !== undefined ? { cover: op.cover as never } : {}),
-          ...(op.inlineChildren.length > 0
-            ? { children: toCreateChildren(op.inlineChildren) }
-            : {}),
         }).pipe(
           Effect.mapError(
             (cause) => new NotionSyncError({ reason: 'notion-page-create-failed', cause }),
@@ -2081,7 +1866,6 @@ export const syncWithClient = (
           })
         }
         idMap.set(op.tmpPageId, createdId)
-        const inlineCands = (op.inlineCandidates ?? []) as readonly CandidateNode[]
         const pageCandidate = candidateByPlaceholderId.get(op.tmpPageId)
         if (pageCandidate === undefined) {
           return yield* new NotionSyncError({
@@ -2096,29 +1880,11 @@ export const syncWithClient = (
             cause: `unresolved created page ${op.tmpPageId}`,
           })
         }
-        if (inlineCands.length > 0) {
-          pageNode.pendingInlineResolution = pendingInlineFromCandidates(inlineCands)
-        }
         workingAppend(working, resolvedParentId, pageNode, undefined)
         yield* flushCheckpoint
 
-        // pages.create is an irreversible identity allocation, so the page id
-        // is durable before the retrieval needed to resolve inline block ids.
-        // Once those descendants resolve, replace the identity-only node with
-        // the complete materialized subtree and checkpoint again.
-        if (inlineCands.length > 0) {
-          yield* resolveInlineChildrenIds(createdId, op, inlineCands, idMap)
-          const pageWithInlineChildren = buildSubtreeFromCandidate(pageCandidate)
-          if (pageWithInlineChildren === undefined) {
-            return yield* new NotionSyncError({
-              reason: 'notion-page-create-failed',
-              cause: `unresolved created page ${op.tmpPageId}`,
-            })
-          }
-          workingRemove(working, createdId)
-          workingAppend(working, resolvedParentId, pageWithInlineChildren, undefined)
-          yield* flushCheckpoint
-        }
+        // A later append failure must preserve this irreversible identity and
+        // every acknowledged child checkpoint, never archive the created page.
 
         if (onEvent !== undefined) {
           onEvent(
@@ -2134,22 +1900,6 @@ export const syncWithClient = (
         }
         o11y.opCount.n += 1
         pageCounts = { ...pageCounts, creates: pageCounts.creates + 1 }
-
-        const tail = pageScopedBlockPlan.get(op.tmpPageId) ?? []
-        if (tail.length > 0) {
-          yield* applyDiff(tail, idMap, checkpointAppended, o11y, priorHashById).pipe(
-            Effect.catch((cause) =>
-              Effect.gen(function* () {
-                partialCreateFallback = true
-                yield* NotionPages.update({ pageId: createdId, in_trash: true }).pipe(
-                  Effect.catch(() => Effect.void),
-                )
-                return yield* cause
-              }),
-            ),
-            Effect.asVoid,
-          )
-        }
       })
 
     const runMovePage = (op: Extract<PageOp, { kind: 'movePage' }>) =>
@@ -2201,45 +1951,19 @@ export const syncWithClient = (
         pageCounts = { ...pageCounts, moves: pageCounts.moves + 1 }
       })
 
-    // Build a root-scope op list in candidate order: root block ops (no
-    // scopePageId) plus `createPage`/`movePage` whose parent is the sync root.
-    // `updatePage` and `archivePage` don't affect server sibling order so
-    // they stay in their own steps below.
-    const moveRan = new Set<string>()
-    const createRan = new Set<string>()
-    const rootInterleaved: DiffOp[] = []
-    for (const op of plan) {
-      if (
-        op.kind === 'append' ||
-        op.kind === 'insert' ||
-        op.kind === 'update' ||
-        op.kind === 'remove'
-      ) {
-        if (op.scopePageId === undefined) rootInterleaved.push(op)
-        continue
-      }
-      if (op.kind === 'createPage' && op.parent.pageId === opts.pageId) {
-        rootInterleaved.push(op)
-        continue
-      }
-      if (op.kind === 'movePage' && op.parent.pageId === opts.pageId) {
-        rootInterleaved.push(op)
-        continue
-      }
-    }
-
-    // Walk in order, batching consecutive block ops through applyDiff so
-    // coalescing still holds; flush on each pageOp boundary.
+    // One ordered pass handles every scope, including newly created pages.
+    // Flush ordinary block batches at page boundaries so a mixed sequence of
+    // pages and blocks retains its sibling order and resolves parent tmp ids.
     {
       let blockBuf: DiffOp[] = []
       const flushBlocks = Effect.gen(function* () {
         if (blockBuf.length > 0) {
           const toFlush = blockBuf
           blockBuf = []
-          yield* applyDiff(toFlush, idMap, checkpointAppended, o11y, priorHashById)
+          yield* applyDiff(toFlush, idMap, checkpointAppended, o11y, priorHashById, absorbed)
         }
       })
-      for (const op of rootInterleaved) {
+      for (const op of executionPlan) {
         if (
           op.kind === 'append' ||
           op.kind === 'insert' ||
@@ -2249,104 +1973,12 @@ export const syncWithClient = (
           blockBuf.push(op)
           continue
         }
+        if (op.kind !== 'createPage' && op.kind !== 'movePage') continue
         yield* flushBlocks
-        if (op.kind === 'createPage') {
-          yield* runCreatePage(op)
-          createRan.add(op.tmpPageId)
-        } else if (op.kind === 'movePage') {
-          yield* runMovePage(op)
-          moveRan.add(op.pageId)
-        }
+        if (op.kind === 'createPage') yield* runCreatePage(op)
+        else yield* runMovePage(op)
       }
       yield* flushBlocks
-    }
-
-    // Step 2b (phase 3c): retained-sub-page-scoped ops. These address real
-    // server page ids (not tmpPageIds) — the diff's retained-page branch
-    // recursed into the sub-page's children and tagged every emitted block op
-    // with `scopePageId = priorSubPageBlockId`. For the same reason the root
-    // scope interleaves block ops with createPage/movePage (both tail-append,
-    // so running appends before nested creates inverts candidate order), every
-    // sub-page scope needs the same interleaved walk. Without it, a retained
-    // `<ChildPage>` with mixed `[<ChildPage>, <Paragraph>]` candidates would
-    // materialize as `[Paragraph, child_page]` on the server and drift on the
-    // next warm sync.
-    const createPageTmpIds = new Set(
-      pageOps.flatMap((op) => (op.kind === 'createPage' ? [op.tmpPageId] : [])),
-    )
-    const subPageScopes = new Set<string>()
-    for (const scope of pageScopedBlockPlan.keys()) {
-      if (createPageTmpIds.has(scope)) continue // tail block ops for a root-scope createPage already applied inside runCreatePage
-      subPageScopes.add(scope)
-    }
-    for (const op of pageOps) {
-      if (op.kind === 'createPage' && op.parent.pageId !== opts.pageId) {
-        subPageScopes.add(op.parent.pageId)
-      } else if (op.kind === 'movePage' && op.parent.pageId !== opts.pageId) {
-        subPageScopes.add(op.parent.pageId)
-      }
-    }
-    for (const scope of subPageScopes) {
-      const scopedInterleaved: DiffOp[] = []
-      for (const op of plan) {
-        if (
-          op.kind === 'append' ||
-          op.kind === 'insert' ||
-          op.kind === 'update' ||
-          op.kind === 'remove'
-        ) {
-          if (op.scopePageId === scope) scopedInterleaved.push(op)
-          continue
-        }
-        if (op.kind === 'createPage' && op.parent.pageId === scope) {
-          scopedInterleaved.push(op)
-          continue
-        }
-        if (op.kind === 'movePage' && op.parent.pageId === scope) {
-          scopedInterleaved.push(op)
-          continue
-        }
-      }
-      let scopeBuf: DiffOp[] = []
-      const flushScopeBuf = Effect.gen(function* () {
-        if (scopeBuf.length > 0) {
-          const toFlush = scopeBuf
-          scopeBuf = []
-          yield* applyDiff(toFlush, idMap, checkpointAppended, o11y, priorHashById)
-        }
-      })
-      for (const op of scopedInterleaved) {
-        if (
-          op.kind === 'append' ||
-          op.kind === 'insert' ||
-          op.kind === 'update' ||
-          op.kind === 'remove'
-        ) {
-          scopeBuf.push(op)
-          continue
-        }
-        yield* flushScopeBuf
-        if (op.kind === 'createPage') {
-          yield* runCreatePage(op)
-          createRan.add(op.tmpPageId)
-        } else if (op.kind === 'movePage') {
-          yield* runMovePage(op)
-          moveRan.add(op.pageId)
-        }
-      }
-      yield* flushScopeBuf
-    }
-
-    // Safety net: any createPage not yet executed (e.g. nested under a
-    // createPage that itself runs via this pass — tail block ops handle that,
-    // but a nested page under a nested page isn't covered above). Execute in
-    // plan order so JSX order is preserved (T08: pages.create is sequential
-    // because parallel creates under a common parent yield nondeterministic
-    // child_page ordering).
-    for (const op of pageOps) {
-      if (op.kind !== 'createPage') continue
-      if (createRan.has(op.tmpPageId)) continue
-      yield* runCreatePage(op)
     }
 
     // Step 4: updatePage for retained sub-pages.
@@ -2387,15 +2019,6 @@ export const syncWithClient = (
       }
       o11y.opCount.n += 1
       pageCounts = { ...pageCounts, updates: pageCounts.updates + 1 }
-    }
-
-    // Step 5: movePage for reparented sub-pages not yet executed (those that
-    // weren't at the root scope). Root-scope moves already ran in the
-    // interleaved pass above to preserve sibling ordering on the server.
-    for (const op of pageOps) {
-      if (op.kind !== 'movePage') continue
-      if (moveRan.has(op.pageId)) continue
-      yield* runMovePage(op)
     }
 
     // Step 6: archivePage for sub-pages with no matching candidate.
@@ -2570,9 +2193,6 @@ export const syncWithClient = (
       .pipe(Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-save-failed', cause })))
 
     const counts = tallyDiff(plan)
-    const effectiveFallback: SyncFallbackReason | undefined = partialCreateFallback
-      ? 'partial-page-create'
-      : fallbackReason
     if (onEvent !== undefined) {
       onEvent(
         SyncEvent.SyncEnd({
@@ -2580,7 +2200,7 @@ export const syncWithClient = (
           durationMs: performance.now() - syncStartMs,
           ok: true,
           opCount: o11y.opCount.n,
-          ...(effectiveFallback !== undefined ? { fallbackReason: effectiveFallback } : {}),
+          ...(fallbackReason !== undefined ? { fallbackReason } : {}),
           at: Date.now(),
         }),
       )
@@ -2595,9 +2215,7 @@ export const syncWithClient = (
       removes: counts.removes,
       pages: pageCounts,
     }
-    return effectiveFallback === undefined
-      ? result
-      : { ...result, fallbackReason: effectiveFallback }
+    return fallbackReason === undefined ? result : { ...result, fallbackReason }
   }).pipe(
     Effect.tapError(() =>
       Effect.sync(() => {
@@ -2682,8 +2300,8 @@ export interface SyncPlan {
  * Read-only companion to {@link sync}: compute the plan `sync()` would apply
  * for `element` against the current cache WITHOUT performing any write — no
  * Notion mutation, no cache save. Composed from the same building blocks as
- * `sync()`'s own pre-flight (`resolvePendingPages`, `identityTreeDrifted`,
- * `selectDiffBase`, `diff`, `rootPageUpdateOpFor`), so the two cannot
+ * `sync()`'s own pre-flight (`identityTreeDrifted`, `selectDiffBase`, `diff`,
+ * `rootPageUpdateOpFor`), so the two cannot
  * disagree about what a sync would do for a given observed state.
  *
  * The `empty` flag doubles as a post-publication fixpoint oracle: after a
@@ -2737,15 +2355,14 @@ export const planWithClient = (
       Effect.mapError((cause) => new NotionSyncError({ reason: 'cache-load-failed', cause })),
     )
     const candidate = buildCandidateTree(element, opts.pageId)
-    if (staleness === 'live' && prior !== undefined && prior.rootId === opts.pageId) {
-      const candidatePageByKey = indexCandidatePagesByKey(candidate.children)
-      const resolvedPending = yield* resolvePendingPages({
-        cached: prior.children,
-        candidates: candidate.children,
-        candidatePageByKey,
-      })
-      // Unlike sync(), the adopted tree is NOT saved — plan() never writes.
-      if (resolvedPending.changed) prior = { ...prior, children: resolvedPending.nodes }
+    if (
+      staleness === 'live' &&
+      prior !== undefined &&
+      prior.rootId === opts.pageId &&
+      prior.schemaVersion === CACHE_SCHEMA_VERSION
+    ) {
+      const resolved = yield* resolvePendingChildren(prior.children)
+      if (resolved.changed) prior = { ...prior, children: resolved.nodes }
     }
 
     const schemaMismatch = prior !== undefined && prior.schemaVersion !== CACHE_SCHEMA_VERSION

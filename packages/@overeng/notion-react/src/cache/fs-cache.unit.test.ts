@@ -48,6 +48,30 @@ describe('FsCache', () => {
     expect(loaded).toEqual(tree)
   })
 
+  it('roundtrips acknowledged atomic identities with pending child descriptors', async () => {
+    const cache = FsCache.make(path.join(dir, 'atomic.json'))
+    const tree: CacheTree = {
+      schemaVersion: CACHE_SCHEMA_VERSION,
+      rootId: 'root-atomic',
+      children: [{
+        key: 'table',
+        blockId: 'table-1',
+        type: 'table',
+        hash: 'table-hash',
+        children: [],
+        nodeKind: 'block',
+        pendingChildren: [{
+          key: 'row',
+          type: 'table_row',
+          hash: 'row-hash',
+          children: [],
+        }],
+      }],
+    }
+    await Effect.runPromise(cache.save(tree))
+    expect(await Effect.runPromise(cache.load)).toEqual(tree)
+  })
+
   it('treats a schema-version mismatch as a cold cache', async () => {
     const file = path.join(dir, 'c.json')
     await fs.writeFile(
