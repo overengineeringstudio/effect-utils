@@ -140,6 +140,7 @@ let
     "JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN"
     "BUCK2_STDIO_LIBRARY"
     "BUCK2_MACHINE_VERSION"
+    "TSC_BIN"
   ]) config.env;
   # Shared native/policy bindings, deliberately excluding the aggregate profile
   # and prepared receipt from individual executable closures.

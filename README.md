@@ -94,10 +94,10 @@ anchors, not source-file lists. Regenerate for a new package or deeper hidden
 directory chain. Each package shares one compact exclusion expression across
 its contracts instead of emitting the expanded pattern product per contract.
 
-Each Buck contract task uses canonical `/tmp` as the short external base for
-`TMPDIR`, `TMP`, `TEMP`, and `RUNNER_TEMP`. Fixtures create their own private
-`mktemp`/`mkdtemp` directories and retain their existing lifetime and cleanup;
-the task adapter uses `exec`, not another supervisor or cleanup owner.
+Each Buck contract capability owns a short, private 0700 external runtime for
+`TMPDIR`, `TMP`, `TEMP`, and `RUNNER_TEMP`. Fixtures create their own nested
+`mktemp`/`mkdtemp` directories; the task adapter execs the original command, while
+the outer capability joins it before retiring the runtime.
 Preparation and reporting keep their environments. This keeps fixtures outside
 `buck-out` and leaves Unix-socket path room without weakening repository-discovery
 or input-ownership guards. The cache
@@ -663,6 +663,8 @@ The evaluated quick-contract PATH declares its process tools and C compiler.
 Retained Cargo protocol-bindings checks use the Nix Apple SDK and iconv on Darwin,
 not an ambient `cc` or Xcode installation. The teardown regression declares its
 pinned `DEVENV_BIN`; the Buck runtime never depends on ambient devenv discovery.
+The projected non-secret bindings retain declared `TSC_BIN` when configured, so
+real CLI compiler regressions do not depend on ambient `tsc` discovery.
 CI enters that prepared PATH before its declared `otel-span pipeline-run` prefix;
 native Buck checks never re-enter `devenv shell` just to start tracing.
 Mixed steps keep the separate declared devenv-task prefix in their parent shell;

@@ -201,6 +201,14 @@ describe('quick contract task runtime', () => {
     return { cp, bash, coreutils }
   }
 
+  it('projects the declared compiler binding for real CLI typecheck regressions', () => {
+    const bindings = source.slice(
+      source.indexOf('runtimeEnv ='),
+      source.indexOf('runtimeEnvironment ='),
+    )
+    expect(bindings).toContain('"TSC_BIN"')
+  })
+
   it('declares an exec runtime and a joined capability-owned external lifetime', () => {
     expect(runtime).toBeDefined()
     expect(lifetime).toBeDefined()
