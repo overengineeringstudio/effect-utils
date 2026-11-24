@@ -15,7 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Effect, Result, Schema } from 'effect'
+import { Effect, Result, Schema, Stream } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
@@ -147,6 +147,7 @@ export type VercelDeployCommandOptions = {
   readonly target: string
   readonly artifactDir: string
   readonly artifactKind: 'static' | 'prebuilt-output'
+  readonly assetManifest?: string | undefined
   readonly mode: 'prod' | 'pr' | 'preview'
   readonly displayName?: string | undefined
   readonly pr?: number | undefined
@@ -432,6 +433,67 @@ const resolveVercelProject = Effect.fn('ci-tools.deploy.vercel.resolve-project')
   }
   return decoded.success
 })
+
+const resolveProductionDomains = Effect.fn('ci-tools.deploy.vercel.production-domains')(
+  function* (opts: {
+    readonly target: string
+    readonly projectId: string
+    readonly teamId: string
+    readonly authToken: string
+    readonly apiBaseUrl: string
+  }) {
+    const pageSchema = Schema.fromJsonString(
+      Schema.Struct({
+        domains: Schema.Array(
+          Schema.Struct({
+            name: NonEmptyTrimmedString,
+            gitBranch: Schema.optional(Schema.NullOr(Schema.String)),
+            customEnvironmentId: Schema.optional(Schema.NullOr(Schema.String)),
+          }),
+        ),
+        pagination: Schema.optional(
+          Schema.Struct({
+            next: Schema.optional(Schema.NullOr(Schema.Finite)),
+          }),
+        ),
+      }),
+    )
+    const domains = new Set<string>()
+    let until: number | undefined
+    do {
+      const response = yield* fetchVercelJson({
+        ...opts,
+        path: `/v9/projects/${encodeURIComponent(opts.projectId)}/domains?teamId=${encodeURIComponent(opts.teamId)}&limit=100${until === undefined ? '' : `&until=${until}`}`,
+      })
+      const decoded = Schema.decodeResult(pageSchema)(response.text)
+      if (response.status !== 200 || Result.isFailure(decoded) === true) {
+        return yield* new ProviderProjectLookupFailed({
+          provider: 'vercel',
+          target: opts.target,
+          transient: response.status >= 500,
+          message: 'Could not resolve Vercel production domains before deployment',
+          diagnostics: { apiStatus: String(response.status) },
+        })
+      }
+      for (const domain of decoded.success.domains) {
+        if (domain.gitBranch == null && domain.customEnvironmentId == null) {
+          domains.add(domain.name)
+        }
+      }
+      const next = decoded.success.pagination?.next ?? undefined
+      if (next !== undefined && until !== undefined && next >= until) {
+        return yield* new ProviderProjectLookupFailed({
+          provider: 'vercel',
+          target: opts.target,
+          transient: false,
+          message: 'Vercel project domains pagination did not advance',
+        })
+      }
+      until = next
+    } while (until !== undefined)
+    return [...domains]
+  },
+)
 
 const copyStaticDirectory = Effect.fn('ci-tools.deploy.vercel.copy-static')(function* (opts: {
   readonly artifactDir: string
@@ -953,7 +1015,7 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
   readonly target: string
   readonly finalUrl: URL
   readonly path: string
-  readonly expectedText: string
+  readonly expectedText?: string | undefined
   readonly attempt: number
   readonly protectionBypass: string | undefined
 }) {
@@ -970,7 +1032,22 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
         )
   const response = yield* client.execute(request).pipe(
     Effect.flatMap((result) =>
-      result.text.pipe(Effect.map((text) => ({ status: result.status, text }))),
+      opts.expectedText === undefined
+        ? result.stream.pipe(
+            Stream.runDrain,
+            Effect.as({
+              status: result.status,
+              text: '',
+              contentType: result.headers['content-type'],
+            }),
+          )
+        : result.text.pipe(
+            Effect.map((text) => ({
+              status: result.status,
+              text,
+              contentType: result.headers['content-type'],
+            })),
+          ),
     ),
     Effect.catchTag(
       'HttpClientError',
@@ -986,18 +1063,28 @@ const verifyFinalUrlOnce = Effect.fn('ci-tools.deploy.vercel.verify-once')(funct
     ),
   )
 
-  if (response.status < 200 || response.status >= 300) {
+  if (
+    response.status !== 200 ||
+    (opts.expectedText === undefined &&
+      opts.path.endsWith('.html') === false &&
+      opts.path.endsWith('/') === false &&
+      response.contentType?.includes('text/html') === true)
+  ) {
     return yield* new VerificationFailed({
       provider: 'vercel',
       target: opts.target,
       finalUrl: opts.finalUrl,
       transient: response.status >= 500,
-      message: `Vercel live E2E verification returned HTTP ${response.status}`,
-      diagnostics: { attempt: String(opts.attempt), httpStatus: String(response.status) },
+      message: `Vercel readiness verification returned HTTP ${response.status} (${response.contentType ?? 'unknown content type'})`,
+      diagnostics: {
+        attempt: String(opts.attempt),
+        httpStatus: String(response.status),
+        verifyPath: opts.path,
+      },
     })
   }
 
-  if (response.text.includes(opts.expectedText) === false) {
+  if (opts.expectedText !== undefined && response.text.includes(opts.expectedText) === false) {
     return yield* new VerificationFailed({
       provider: 'vercel',
       target: opts.target,
@@ -1013,7 +1100,8 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.vercel.verify')(function* (opt
   readonly target: string
   readonly finalUrl: URL
   readonly path: string
-  readonly expectedText: string
+  readonly expectedText?: string | undefined
+  readonly assetPaths?: readonly string[] | undefined
   readonly protectionBypass: string | undefined
 }) {
   let lastFailure: VerificationFailed | undefined
@@ -1025,7 +1113,14 @@ const verifyFinalUrl = Effect.fn('ci-tools.deploy.vercel.verify')(function* (opt
         status: 'failure',
         urlHost: opts.finalUrl.host,
       },
-      effect: verifyFinalUrlOnce({ ...opts, attempt }),
+      effect: Effect.forEach(
+        [
+          { path: opts.path, expectedText: opts.expectedText },
+          ...(opts.assetPaths ?? []).map((path) => ({ path, expectedText: undefined })),
+        ],
+        (request) => verifyFinalUrlOnce({ ...opts, ...request, attempt }),
+        { concurrency: 6, discard: true },
+      ),
     }).pipe(
       Effect.catchTag(
         'OtelAttrEncodeError',
@@ -1110,7 +1205,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     pr: options.pr,
     aliasSuffix: options.aliasSuffix,
   })
-  const productionDomains = vercelProductionDomains({
+  const configuredProductionDomains = vercelProductionDomains({
     mode: options.mode,
     domains: options.productionDomains,
   })
@@ -1124,7 +1219,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     mode: options.mode,
     artifactDir: options.artifactDir,
     alias,
-    productionDomains,
+    productionDomains: configuredProductionDomains,
     pr: options.pr,
     workflowReportOutputFile: options.workflowReportOutputFile,
     e2e: {
@@ -1248,6 +1343,16 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
     authToken: authTokenValue,
     apiBaseUrl: options.vercelApiBaseUrl,
   }).pipe(Effect.catch(failWithRecord))
+  const productionDomains =
+    options.mode === 'prod' && configuredProductionDomains.length === 0
+      ? yield* resolveProductionDomains({
+          target: options.target,
+          projectId,
+          teamId: teamId ?? orgId,
+          authToken: authTokenValue,
+          apiBaseUrl: options.vercelApiBaseUrl,
+        }).pipe(Effect.catch(failWithRecord))
+      : configuredProductionDomains
 
   let cleanupLocalVercel = false
   try {
@@ -1284,6 +1389,51 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
       )
     }
 
+    const manifestPath = options.assetManifest
+    const manifestFailure = (cause: unknown) =>
+      new ProviderOperationFailed({
+        provider: 'vercel',
+        target: options.target,
+        operation: 'prepare',
+        transient: false,
+        message: `Cannot read asset manifest: ${String(cause)}`,
+      })
+    const assetPaths =
+      manifestPath === undefined
+        ? []
+        : yield* Effect.try({
+            try: () => readFileSync(manifestPath, 'utf8'),
+            catch: manifestFailure,
+          }).pipe(
+            Effect.flatMap((json) =>
+              Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)))(json).pipe(
+                Effect.mapError(manifestFailure),
+              ),
+            ),
+            Effect.catch(failWithRecord),
+          )
+    if (
+      assetPaths.some(
+        (path) =>
+          path.startsWith('/') === false ||
+          path.startsWith('//') ||
+          path.includes('\\') ||
+          path.includes('?') ||
+          path.includes('#') ||
+          new URL(path, 'https://deployment.invalid').pathname !== path,
+      ) === true
+    ) {
+      return yield* failWithRecord(
+        new ProviderOperationFailed({
+          provider: 'vercel',
+          target: options.target,
+          operation: 'prepare',
+          transient: false,
+          message: 'Asset manifest paths must be root-relative same-origin URLs',
+        }),
+      )
+    }
+
     const preparedOutput = yield* preparePrebuiltOutput({
       artifactDir: options.artifactDir,
       artifactKind: options.artifactKind,
@@ -1305,7 +1455,7 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
             'deploy',
             '--prebuilt',
             '--yes',
-            ...(options.mode === 'prod' ? ['--prod'] : []),
+            ...(options.mode === 'prod' ? ['--prod', '--skip-domain'] : []),
             ...vercelScopeArgs(scope),
           ],
           env: vercelCommandEnv({ authToken: authTokenValue, projectId, orgId, teamId }),
@@ -1341,6 +1491,17 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         )
       }
 
+      // CLI READY proves the build finished, not that its HTML and chunks are
+      // available over HTTP. Gate every alias mutation on the immutable URL.
+      yield* verifyFinalUrl({
+        target: input.target,
+        finalUrl: new URL(rawDeployUrl),
+        path: input.e2e?.verifyContent?.path ?? '/',
+        expectedText: input.e2e?.verifyContent?.expectedText,
+        assetPaths,
+        protectionBypass,
+      }).pipe(Effect.catch(failWithRecord))
+
       let finalUrl = rawDeployUrl
       let attempts = 1
       if (alias !== undefined) {
@@ -1365,7 +1526,9 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         finalUrl = `https://${aliasHost}`
       }
 
-      for (const productionDomain of productionDomains) {
+      for (const productionDomain of new Set(
+        productionDomains.filter((domain) => domain !== `${alias}.vercel.app`),
+      )) {
         const domainResult = yield* DeployProviderOperation.with({
           attributes: {
             provider: 'vercel',
