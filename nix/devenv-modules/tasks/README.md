@@ -116,7 +116,7 @@ qualification. Library or codec success never authorizes deletion.
 non-root `ownerUid`, and optional `managedPolicy` (default `null`, fail closed).
 It builds the actual privileged server and Rust unit runner, but installs no
 socket/service, unprivileged client adapter, or consumer binding. Its executable
-accepts only `--serve-once`; every other mode or additional argument fails closed.
+defaults to only `--serve-once`; every other mode or additional argument fails closed.
 An inherited authenticated fixed-endpoint socket is required for a live request.
 
 The server links the protocol/digest, proc, and mounted-membership libraries.
@@ -134,6 +134,33 @@ package must compile both roles in that final package environment; this
 server-only artifact does not authenticate an independently packaged client.
 The package exports neither `holderEvidenceClient` nor `processEvidenceCommand`.
 
+## Same-binary holder clients (inactive)
+
+`shared/worktree-holder-evidence.nix` uses the same policy parameters and compiles
+the server and its strict clients into one immutable executable. The standalone
+server constructor remains server-only by default; the client constructor enables
+the client source at compile time, not through an environment or runtime override.
+No socket, service, scheduled cleanup or deletion is installed by either package.
+
+`--client-v1` accepts strict worktree JSON and returns validated fresh v1 evidence.
+`--pnpm-client-v1 --pnpm-store-evidence-v1 ...` preserves the fixed seven-field
+store contract. Both authenticate the fixed root-owned socket, same-host boot,
+actual root peer, complete requested scope and suspend-inclusive proof expiry.
+The server independently authenticates the real parent collector and its original
+root/exclusive-maintenance-lease open-file descriptions for store observations.
+The client creates no artificial cwd reference to the candidate.
+
+The final package exports `holderEvidenceClient = { path; producerId; policyId; }`
+and `processEvidenceCommand`, a fixed wrapper for that **same executable**. Its
+producer ID is the final output directory, not a separately compiled client or
+library. Generic worktree callers must veto every current reference, including
+retained-byte records; only the immutable-store adapter may accept complete
+byte-only evidence, and existing native store positives remain vetoes.
+
+Every build reuses the protocol library's unconditional actual-codec fixture
+comparison, then compiles/runs the real server/client unit runner. Deployment
+additionally requires the single final integrated security review, actual root
+service and confined-caller/whole-host qualification, and governed policy rollout.
 ## Observability
 
 Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
@@ -411,6 +438,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
     graph instances. Stores are writable state for trusted same-user consumers;
     verify tools that depend on package realpaths or implicit dependencies
     before opting in.
+  - `pnpm:doctor` validates current install, storage and complete declared projection
+    receipts (including executable wrappers). Its version-1 JSON includes exact
+    install/projection hashes and resolved tools. Set `PNPM_DOCTOR_OUTPUT_FILE` to
+    an absent caller-owned path for an exclusive mode-0600 machine report; consumers
+    must read it only after successful task completion, not parse runner logs.
+    Doctor and install must use the same evaluated module options, including
+    post-install projection hooks; a different configuration is not healthy evidence.
   - Managed installs use pnpm's `auto` import policy and reject cross-device
     Linux storage before materialization.
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized

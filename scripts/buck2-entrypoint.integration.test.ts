@@ -30,7 +30,6 @@ import {
   createPrivateEvidenceSink,
   directBuckArguments,
   nativeBuildIdArguments,
-  runNativeWithEvidence,
 } from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
 import {
@@ -51,6 +50,100 @@ if (publicationOwnerLibrary === undefined || publicationOwnerLibrary.length === 
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
+interface HostlessCaseEvidence {
+  readonly requested: readonly string[]
+  assertionsComplete: boolean
+  readonly stdout: { text: string; bytes: number; eof: boolean }
+  readonly stderr: { text: string; bytes: number; eof: boolean }
+}
+const hostlessCases = new Map<string, HostlessCaseEvidence>()
+const captureHostlessOutput = async (
+  stream: ReadableStream<Uint8Array>,
+  output: HostlessCaseEvidence['stdout'],
+) => {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done === true) break
+      const priorBytes = output.bytes
+      output.bytes += value.byteLength
+      if (priorBytes < 8192)
+        output.text += decoder.decode(value.subarray(0, 8192 - priorBytes), { stream: true })
+    }
+    output.text += decoder.decode()
+    output.eof = true
+  } finally {
+    reader.releaseLock()
+  }
+}
+const preserveHostlessEvidence = (
+  root: string,
+  evidence: HostlessCaseEvidence,
+  stage: 'before-cleanup' | 'after-cleanup',
+) => {
+  // Diagnostics must not replace the original timeout/assertion or cleanup failure.
+  try {
+    const redact = (text: string) => {
+      for (const value of Object.values(process.env))
+        if (value !== undefined && value.length >= 4) text = text.split(value).join('[redacted]')
+      return text
+        .replace(/(?:https?|grpc):\/\/[^\s"']+/gu, '[redacted-url]')
+        .replace(
+          /(?:authorization|cookie|token|secret|password|header)[^\n]*/giu,
+          '[redacted-line]',
+        )
+    }
+    const output = Object.fromEntries(
+      (['stdout', 'stderr'] as const).map((name) => {
+        const stream = evidence[name]
+        // Never publish a truncated fragment that could contain half a secret.
+        const completeText =
+          stream.eof === true && stream.bytes <= 8192
+            ? stream.text
+            : stream.text.slice(0, stream.text.lastIndexOf('\n') + 1)
+        return [
+          name,
+          {
+            bytes: stream.bytes,
+            eof: stream.eof,
+            truncated: stream.bytes > 8192,
+            text: redact(completeText),
+          },
+        ]
+      }),
+    )
+    const phasePath = join(root, 'child-phases.json')
+    const phases =
+      existsSync(phasePath) === true ? readFileSync(phasePath, 'utf8').slice(0, 8192) : undefined
+    const census = [
+      'native-args.json',
+      'native-result.json',
+      'evidence.json.shards/00112233-4455-4677-8899-aabbccddeeff.json',
+    ].map((name) => {
+      const path = join(root, name)
+      return {
+        name,
+        exists: existsSync(path),
+        bytes: existsSync(path) === true ? statSync(path).size : null,
+      }
+    })
+    const receipt = {
+      event: 'hostless-case-incomplete',
+      root,
+      requested: evidence.requested,
+      stage,
+      phases,
+      output,
+      census,
+    }
+    writeFileSync(join(root, `${stage}-diagnostics.json`), JSON.stringify(receipt), { mode: 0o600 })
+    console.error(JSON.stringify(receipt))
+  } catch {
+    console.error(JSON.stringify({ event: 'hostless-case-diagnostics-unavailable', root, stage }))
+  }
+}
 const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/cas/'): string => {
   const root = mkdtempSync(join(tmpdir(), 'direct-buck-posture-'))
   roots.push(root)
@@ -538,6 +631,13 @@ const effective = (args: readonly string[]): Record<string, string> => {
   return values
 }
 afterEach(async () => {
+  const retained = new Set<string>()
+  for (const [root, evidence] of hostlessCases) {
+    if (evidence.assertionsComplete === false) {
+      retained.add(root)
+      preserveHostlessEvidence(root, evidence, 'before-cleanup')
+    }
+  }
   for (const child of launchProcesses) {
     try {
       process.kill(-child.pid, 'SIGKILL')
@@ -561,18 +661,26 @@ afterEach(async () => {
     }
   }
   launchProcesses.clear()
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const [root, evidence] of hostlessCases)
+    if (retained.has(root) === true) preserveHostlessEvidence(root, evidence, 'after-cleanup')
+  hostlessCases.clear()
+  for (const root of roots.splice(0))
+    if (retained.has(root) === false) rmSync(root, { recursive: true, force: true })
 })
 
+const registerAdmissionTest = it
 describe('native daemon admission diagnostics', () => {
   const prefix = 'Buck2 cache posture: native daemon admission command failed'
   const secret = 'authorization: Basic fixture-secret-must-not-escape'
+  // Real native-admission cases inherit the command budget plus bounded cleanup.
+  const it = (name: string, run: () => Promise<void>, deadlineMs = 30000) =>
+    registerAdmissionTest(name, run, Math.max(5000, 3 * deadlineMs + 2000))
   for (const subcommand of ['status', 'kill', 'audit'] as const) {
     for (const failure of ['exit', 'signal', 'timeout'] as const) {
       // A kill/audit failure may follow two successful status probes. The test
       // watchdog must cover all three command deadlines and bounded cleanup.
       const deadlineMs = failure === 'timeout' ? 1000 : 30000
-      const testTimeoutMs = Math.max(5000, 3 * deadlineMs + 2000)
+
       const reportFailure = async () => {
         const root = fixture()
         const native = join(root, 'native-buck')
@@ -625,33 +733,37 @@ fi
         expect(caught.cause).toBeUndefined()
         expect(readFileSync(calls, 'utf8')).toContain(`--isolation-dir owned ${subcommand}`)
       }
-      it(`reports ${subcommand} ${failure} without native output`, reportFailure, testTimeoutMs)
+      it(`reports ${subcommand} ${failure} without native output`, reportFailure, deadlineMs)
     }
   }
 
-  it('reports an allowlisted spawn errno without its message or path', async () => {
-    const root = fixture()
-    const native = join(root, 'secret-looking-missing-native')
-    let caught: unknown
-    try {
-      await admitCacheDaemonCommand({
-        native,
-        root,
-        args: ['--isolation-dir', 'owned', 'build', '//:app'],
-        env: { BUCK2_CI_POSTURE: '1' },
-        admit: async () => [],
-      })
-    } catch (error) {
-      caught = error
-    }
-    expect(caught).toBeInstanceOf(Error)
-    if (!(caught instanceof Error)) throw new Error('expected admission failure')
-    expect(caught.message).toMatch(
-      /^Buck2 cache posture: native daemon admission command failed \(subcommand=status exit=none signal=none timed_out=false spawn_error=ENOENT elapsed_ms=\d+ deadline_ms=30000\)$/u,
-    )
-    expect(caught.message).not.toContain(native)
-    expect(caught.cause).toBeUndefined()
-  })
+  // A missing executable cannot start native work; preserve its ordinary watchdog.
+  registerAdmissionTest(
+    'reports an allowlisted spawn errno without its message or path',
+    async () => {
+      const root = fixture()
+      const native = join(root, 'secret-looking-missing-native')
+      let caught: unknown
+      try {
+        await admitCacheDaemonCommand({
+          native,
+          root,
+          args: ['--isolation-dir', 'owned', 'build', '//:app'],
+          env: { BUCK2_CI_POSTURE: '1' },
+          admit: async () => [],
+        })
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(Error)
+      if (!(caught instanceof Error)) throw new Error('expected admission failure')
+      expect(caught.message).toMatch(
+        /^Buck2 cache posture: native daemon admission command failed \(subcommand=status exit=none signal=none timed_out=false spawn_error=ENOENT elapsed_ms=\d+ deadline_ms=30000\)$/u,
+      )
+      expect(caught.message).not.toContain(native)
+      expect(caught.cause).toBeUndefined()
+    },
+  )
 
   it('surfaces only the safe failure message on launcher stderr', async () => {
     const root = fixture()
@@ -697,7 +809,7 @@ exit 42
     expect(stderr).not.toContain('native-stdout-must-not-escape')
     expect(existsSync(evidence)).toBe(false)
     expect(existsSync(`${evidence}.admission.jsonl`)).toBe(false)
-  })
+  }, 20000)
 })
 
 describe('native build ID registry', () => {
@@ -761,38 +873,73 @@ describe('native build ID registry', () => {
         args: requested.map((arg) => arg.replace('CALLER_SINK', join(root, 'caller.pb.zst'))),
         env,
       })
-      const previous = Object.fromEntries(
-        [...Object.keys(env), 'PATH', 'BUN_BIN'].map((key) => [key, process.env[key]]),
-      )
-      const exitCode = process.exitCode
-      try {
-        Object.assign(process.env, env)
-        process.env.PATH = join(root, 'no-host-utilities')
-        delete process.env.BUN_BIN
-        const result = await runNativeWithEvidence({ native, args, root })
-        expect(result?.exitCode).toBe(0)
-        expect(result?.signalCode).toBeNull()
-        const shard = JSON.parse(
-          readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'),
-        )
-        expect(shard.complete).toBe(true)
-        expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
-        if (requested[0] === 'run') {
-          const observed: string[] = JSON.parse(
-            readFileSync(join(root, 'native-args.json'), 'utf8'),
-          )
-          expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
-          expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
-        }
-        if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
-          expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
-      } finally {
-        process.exitCode = exitCode
-        for (const [key, value] of Object.entries(previous)) {
-          if (value === undefined) delete process.env[key]
-          else process.env[key] = value
-        }
+      const resultPath = join(root, 'native-result.json')
+      const diagnostics: HostlessCaseEvidence = {
+        requested,
+        assertionsComplete: false,
+        stdout: { text: '', bytes: 0, eof: false },
+        stderr: { text: '', bytes: 0, eof: false },
       }
+      hostlessCases.set(root, diagnostics)
+      const phasePath = join(root, 'child-phases.json')
+      const preload = join(root, 'child-phase-preload.ts')
+      writeFileSync(
+        preload,
+        `await Bun.write(${JSON.stringify(phasePath)}, JSON.stringify([{phase:'vm-ready',wall:Date.now(),monotonicMs:performance.now()}]));`,
+        { mode: 0o600 },
+      )
+      // Keep hostile PATH confined to a child tracked by the group-reaping afterEach hook.
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '--preload',
+          preload,
+          '-e',
+          `import { runNativeWithEvidence } from ${JSON.stringify(new URL('./buck2-entrypoint.ts', import.meta.url).href)};
+const phases = JSON.parse(await Bun.file(${JSON.stringify(phasePath)}).text());
+const phase = async (name) => { phases.push({phase:name,wall:Date.now(),monotonicMs:performance.now()}); await Bun.write(${JSON.stringify(phasePath)}, JSON.stringify(phases)); };
+await phase('import-ready');
+await phase('production-before');
+const result = await runNativeWithEvidence(${JSON.stringify({ native, args, root })});
+await phase('production-return');
+await Bun.write(${JSON.stringify(resultPath)}, JSON.stringify(result ?? null));
+await phase('result-written');`,
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            ...env,
+            PATH: join(root, 'no-host-utilities'),
+            BUN_BIN: undefined,
+          },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+          detached: true,
+        },
+      )
+      launchProcesses.add(child)
+      const [exitCode] = await Promise.all([
+        child.exited,
+        captureHostlessOutput(child.stdout, diagnostics.stdout),
+        captureHostlessOutput(child.stderr, diagnostics.stderr),
+      ])
+      expect(exitCode).toBe(0)
+      const result = JSON.parse(readFileSync(resultPath, 'utf8'))
+      expect(result?.exitCode).toBe(0)
+      expect(result?.signalCode).toBeNull()
+      const shard = JSON.parse(readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'))
+      expect(shard.complete).toBe(true)
+      expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
+      if (requested[0] === 'run') {
+        const observed: string[] = JSON.parse(readFileSync(join(root, 'native-args.json'), 'utf8'))
+        expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
+        expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
+      }
+      if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
+        expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
+      diagnostics.assertionsComplete = true
     },
   )
 
@@ -973,7 +1120,7 @@ describe('native build ID registry', () => {
     expect(existsSync(started)).toBe(false)
     expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
     expect(existsSync(`${evidence}.native-build-ids`)).toBe(false)
-  })
+  }, 20000)
 
   it('registers native output paths without claiming native startup or writing the ID', async () => {
     const root = fixture()
@@ -1099,7 +1246,7 @@ writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).j
     const row = JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))
     expect(row.buildId).toBe(buildId)
     expect(readFileSync(row.path, 'utf8').trim()).toBe(buildId)
-  })
+  }, 20000)
 })
 
 describe('direct pinned Buck posture', () => {
@@ -1199,7 +1346,7 @@ console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(
     ])
     expect(exitCode, stderr).toBe(23)
     expect(Number(stdout.trim())).toBe(child.pid)
-  })
+  }, 20000)
 
   for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
     it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {

@@ -440,7 +440,8 @@ printf 'source-v1\n' > "$workspace/repos/source/packages/pkg/value.txt"
 
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-install.exec.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
 extract_task_script "$workspace" "status" "$tmpdir/pnpm-install.status.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";'
-extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages = [ ];' "pnpm:doctor"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor.exec.sh" 'packages = [ ]; postInstallProjection = "touch .post-install-projection-marker";' "pnpm:doctor"
+extract_task_script "$workspace" "exec" "$tmpdir/pnpm-doctor-other-projection.exec.sh" 'packages = [ ];' "pnpm:doctor"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-repair.exec.sh" 'packages = [ ];' "pnpm:repair"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-clean.exec.sh" 'packages = [ "packages/demo" ];' "pnpm:clean"
 extract_task_script "$workspace" "exec" "$tmpdir/pnpm-update.exec.sh" 'packages = [ ];' "pnpm:update"
@@ -769,6 +770,8 @@ echo "Test 7: exec defaults PNPM_HOME to a workspace-local projection"
   test -d "$tmpdir/home/.local/share/pnpm/store-shared-v1/v11/files"
   doctor_decision="$(bash "$tmpdir/pnpm-doctor.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
   assert_eq "healthy" "$doctor_decision" "doctor validates the root-local graph"
+  doctor_other_decision="$(bash "$tmpdir/pnpm-doctor-other-projection.exec.sh" | node -e 'const fs=require("node:fs"); process.stdout.write(JSON.parse(fs.readFileSync(0,"utf8")).decision)')"
+  assert_eq "repair-root" "$doctor_other_decision" "doctor rejects a different post-install projection configuration"
   mkdir -p "$workspace/node_modules/corrupt-edge"
   touch "$workspace/node_modules/corrupt-edge/sentinel"
   : > "$tmpdir/pnpm.log"

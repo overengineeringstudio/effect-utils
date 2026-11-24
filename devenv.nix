@@ -1324,6 +1324,8 @@ in
   # Explicit digest-tool input for the JavaScript product contract test, including
   # its direct `devenv shell -- bash ...` CI invocation.
   env.JAVASCRIPT_PRODUCT_IMPORT_OPENSSL_BIN = "${pkgs.openssl}/bin/openssl";
+  env.MR_GETCONF_BIN =
+    if pkgs.stdenv.hostPlatform.isDarwin then "/usr/bin/getconf" else "${pkgs.glibc.bin}/bin/getconf";
   # restate-server binary path for restate-effect integration tests (test/test-utils.ts
   # reads RESTATE_SERVER_BIN to locate the native server, else falls back to $PATH).
   env.RESTATE_SERVER_BIN = "${restate}/bin/restate-server";
@@ -1372,6 +1374,7 @@ in
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/published-ref.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/manifest-pr-enqueue.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts
+      BUCK2_EVENTS_BIN=${repoPackages.buck2-events}/bin/buck2-events ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-cache-occurrences.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
       ${pkgs.bash}/bin/bash ./genie/ci-workflow/manifest-pr-decide.test.sh
@@ -1404,6 +1407,12 @@ in
       "nix/buck2.nix"
       "nix/buck2-release.nix"
       "scripts/buck2-entrypoint.*"
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
+      "scripts/buck2-gate-isolation.integration.test.ts"
+      "scripts/buck2-gate-isolation.unit.test.ts"
+      "scripts/buck2-gate-teardown.integration.test.ts"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"

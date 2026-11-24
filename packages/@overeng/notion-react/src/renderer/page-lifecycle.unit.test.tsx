@@ -26,7 +26,7 @@ const runWith = <A, E>(
   eff: Effect.Effect<A, E, HttpClient | NotionConfig>,
 ): Promise<A> => Effect.runPromise(eff.pipe(Effect.provide(fake.layer)))
 
-/** Mutating request count — GETs (pre-flight, adoption reads) are allowed. */
+/** Mutating request count — pre-flight GETs are allowed. */
 const writeCount = (fake: FakeNotion): number =>
   fake.requests.filter((r) => r.method !== 'GET').length
 
@@ -195,7 +195,7 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
     expect(res.pages.archives).toBe(1)
   })
 
-  it('#1100 crash recovery stays legal: pending adoption is not a lifecycle op', async () => {
+  it('crash recovery stays legal: the checkpointed empty page only needs child appends', async () => {
     const CRASH_TREE = (
       <Page>
         <ChildPage blockKey="child" title="child">
@@ -207,7 +207,7 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
     const cache = InMemoryCache.make()
     let tripped = false
     fake.failOn((request) => {
-      if (!tripped && request.method === 'GET' && request.path !== `/v1/blocks/${ROOT}/children`) {
+      if (!tripped && request.method === 'PATCH' && request.path.endsWith('/children')) {
         tripped = true
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
@@ -220,19 +220,18 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
     )
     expect(first._tag).toBe('Failure')
     const checkpoint = await Effect.runPromise(cache.load)
-    expect(checkpoint?.children.find((n) => n.pendingInlineResolution !== undefined)).toBeDefined()
-    // Retry with the SAME tree: adoption (read + cache-save) resolves the
-    // pending marker and the sync converges without a page mutation.
+    expect(checkpoint?.children[0]?.children).toEqual([])
+    // Retry with the same tree: the page identity is already durable.
     const retry = await runWith(
       fake,
       sync(CRASH_TREE, { pageId: ROOT, cache, pageLifecycle: 'append-only' }),
     )
     expect(retry.pages).toMatchObject({ creates: 0, archives: 0, moves: 0 })
     const resolved = await Effect.runPromise(cache.load)
-    expect(resolved?.children.find((n) => n.pendingInlineResolution !== undefined)).toBeUndefined()
+    expect(resolved?.children[0]?.children).toHaveLength(1)
   })
 
-  it('#1100 checkpointed page that MOVED in the retry JSX: adopted first, then rejected', async () => {
+  it('checkpointed page moved in retry JSX is rejected before any mutation', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     // Warm state: 'host' exists (so the retry's relocation diffs as a
@@ -252,16 +251,15 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
       if (
         !tripped &&
         fake.pages.size > pagesBeforeCrash &&
-        request.method === 'GET' &&
-        request.path !== `/v1/blocks/${ROOT}/children`
+        request.method === 'PATCH' &&
+        request.path.endsWith('/children')
       ) {
         tripped = true
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
       return undefined
     })
-    // Tail-legal create of 'child' crashes after pages.create checkpointed
-    // its identity but before the inline-descendant retrieval landed.
+    // A legal create checkpoints its empty identity before the child append.
     const first = await Effect.runPromiseExit(
       sync(
         <Page>
@@ -275,9 +273,7 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
     )
     expect(first._tag).toBe('Failure')
     const before = writeCount(fake)
-    // Retry JSX relocated the checkpointed page under the retained host. The
-    // cross-parent adoption binds the created identity (harmless: read +
-    // cache-save), then the post-diff predicate rejects the implied move.
+    // The checkpointed identity implies a move, rejected before any write.
     const err = await failingSync(
       fake,
       <Page>
@@ -291,10 +287,9 @@ describe("pageLifecycle: 'append-only' (#1124)", () => {
     )
     expect(err.reason).toBe('page-lifecycle-violation')
     expect(err.violations?.map((v) => v.kind)).toContain('movePage')
-    // Adoption resolved the pending marker in the cache…
     const resolved = await Effect.runPromise(cache.load)
-    expect(resolved?.children.find((n) => n.pendingInlineResolution !== undefined)).toBeUndefined()
-    // …but no server write happened on the retry.
+    expect(resolved?.children.find((node) => node.key === 'k:child')?.children).toEqual([])
+    // No server write happened on the rejected retry.
     expect(writeCount(fake)).toBe(before)
   })
 })

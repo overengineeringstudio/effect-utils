@@ -44,10 +44,9 @@ const program = sync(<Handbook />, {
 })
 ```
 
-On the first sync the driver calls `pages.create` for the `Onboarding`
-sub-page (inline-packing its nested children up to depth 2 / 100
-blocks, see A08), then follows up with `blocks.children.append` for
-anything deeper or larger.
+On the first sync the driver creates the `Onboarding` sub-page empty and
+checkpoints its page id. It then appends the nested blocks in batches of up to
+100 children, checkpointing the returned block ids before further work.
 
 ## Updating metadata
 
@@ -131,9 +130,9 @@ imperative path when you need:
   tree always has a parent context; there is no way to escape upward.
 - **Custom properties** — anything beyond `title` on the created page
   (select, status, relation, formula, rollup, …).
-- **Precise control over inline packing** — e.g. if you want to
-  `pages.create` with a specific children envelope for deduping or
-  deterministic ids.
+- **Explicit initial child payloads** — the renderer creates pages empty;
+  use the imperative API if you need a particular `pages.create.children`
+  envelope. This does not provide provider idempotency or deterministic ids.
 
 In those cases, create the page imperatively and render `<ChildPage
 blockKey={…} title={…} />` so the JSX tree reflects it. Keep the

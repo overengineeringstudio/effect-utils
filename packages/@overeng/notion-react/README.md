@@ -63,7 +63,9 @@ the Notion API (A10).
 tree creates a new Notion page under the sync parent; removing it
 archives the page; moving it to a different parent `<ChildPage>` reuses
 the same `blockKey`-identified page via `pages.move`. Nested block
-children render under the new page.
+children render under the new page. Pages are created empty; the returned page
+id is checkpointed before ordinary child append batches checkpoint their returned
+block ids. A child append failure preserves the page and acknowledged children.
 
 ```tsx
 <Page>

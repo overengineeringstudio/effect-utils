@@ -164,7 +164,7 @@ assert_gc_roots() {
     gc_root="$root/.buck2/capability-roots/$gen"
     [ -L "$gc_root" ] || fail "missing generation GC root $gen"
     [ "$(readlink "$gc_root")" = "$profile" ] || fail "generation GC root targets wrong profile"
-    grep -Fq -- "$gc_root -> $profile" "$TEMP_ROOT/gc-roots" || fail "Nix did not register indirect generation root $gen"
+    grep -Fxq -- "$gc_root -> $profile" "$TEMP_ROOT/gc-roots" || fail "Nix did not register indirect generation root $gen"
   done
 }
 

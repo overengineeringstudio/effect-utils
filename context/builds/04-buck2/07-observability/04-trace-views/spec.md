@@ -170,6 +170,16 @@ exact-evidence window; daily bounded metric scorecards use existing trend retent
 The CI join does not certify local/other-repository invocation coverage; until an
 independent fleet census is joined, its fleet proof remains unknown.
 
+For individual native records, run
+`bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --records-dir DIR --since ISO-8601 --until ISO-8601`.
+This read-only JSON command reconciles local retained snapshots through
+`reconcileOccurrenceRecords`; no GitHub token or backend access is required.
+Repeat `--host` to filter observed hosts; `--key` matches the full native action
+digest. The half-open time window filters native occurrence completion times. Repeat
+`--expected-host` separately to declare expected inventory, never infer it from
+filters. `evidenceGaps` survive row filtering; absent census stays unknown.
+Reading is bounded to 100,000 entries, 64 MiB per file and 512 MiB total.
+
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
 windowEndMs)`, attributing chronological full-action-digest execution repeats
 globally across repositories, configurations, hosts, roots and CI; hits and explicit coalescing are separate.

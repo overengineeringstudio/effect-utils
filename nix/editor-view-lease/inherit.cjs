@@ -170,7 +170,12 @@ if (leases.length > 0) {
       const original = Bun[method].bind(Bun)
       Bun[method] = (command, options) => {
         const input = Array.isArray(command) ? { ...options, cmd: command } : command
-        const { stdin = 'ignore', stdout = 'pipe', stderr = 'inherit', ...rest } = input
+        const {
+          stdin = 'ignore',
+          stdout = 'pipe',
+          stderr = method === 'spawnSync' ? 'pipe' : 'inherit',
+          ...rest
+        } = input
         const mapped = inherit({ ...rest, stdio: input.stdio ?? [stdin, stdout, stderr] })
         const temporary = []
         try {

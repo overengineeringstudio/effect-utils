@@ -3,19 +3,19 @@ use std::io::{self, BufRead, BufReader, Read, Write};
 use std::time::Instant;
 use super::protocol;
 const MAX_LINE: usize = 4 * 1024 * 1024;
-const MAX_HEADERS: usize = 1024;
-const PREFIX: &[u8] = b"GET /v1/holders?request=";
-const SUFFIX: &[u8] = b" HTTP/1.1\r\n";
-const REQUEST_HEADERS: &[u8] = b"Host: localhost\r\nConnection: close\r\n\r\n";
-#[cfg(test)]
+pub(super) const MAX_HEADERS: usize = 1024;
+pub(super) const PREFIX: &[u8] = b"GET /v1/holders?request=";
+pub(super) const SUFFIX: &[u8] = b" HTTP/1.1\r\n";
+pub(super) const REQUEST_HEADERS: &[u8] = b"Host: localhost\r\nConnection: close\r\n\r\n";
+#[cfg(any(test, holder_evidence_clients))]
 const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-fn invalid() -> io::Error { io::Error::new(io::ErrorKind::InvalidData,"invalid holder-evidence HTTP frame") }
-fn remaining(deadline: Instant) -> io::Result<std::time::Duration> {
+pub(super) fn invalid() -> io::Error { io::Error::new(io::ErrorKind::InvalidData,"invalid holder-evidence HTTP frame") }
+pub(super) fn remaining(deadline: Instant) -> io::Result<std::time::Duration> {
     let duration=deadline.saturating_duration_since(Instant::now());
     if duration.is_zero() { Err(io::Error::new(io::ErrorKind::TimedOut,"holder-evidence transport deadline")) } else { Ok(duration) }
 }
-#[cfg(test)]
-fn base64(input: &[u8]) -> Vec<u8> {
+#[cfg(any(test, holder_evidence_clients))]
+pub(super) fn base64(input: &[u8]) -> Vec<u8> {
     let mut out=Vec::with_capacity(input.len().div_ceil(3)*4);
     for block in input.chunks(3) {
         out.push(ALPHABET[usize::from(block[0]>>2)]);
@@ -38,7 +38,7 @@ fn unbase64(input: &[u8]) -> io::Result<Vec<u8>> {
 }
 // fill_buf avoids read_until allocating past its limit. Every byte, including
 // CRLF, counts toward the bound; no lenient HTTP line-ending or header parser.
-fn line<R: BufRead>(reader: &mut R, limit: usize, deadline: Instant) -> io::Result<Vec<u8>> {
+pub(super) fn line<R: BufRead>(reader: &mut R, limit: usize, deadline: Instant) -> io::Result<Vec<u8>> {
     let mut out=Vec::new();
     loop {
         remaining(deadline)?;
