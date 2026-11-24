@@ -314,6 +314,25 @@ Replacing an ancestor with a symlink cannot redirect removal outside the verifie
 changed identities or unavailable primitives refuse deletion. The same boundary protects
 worktree and merged-worklog teardown.
 
+The native `beforeRemove` guard receives an engine-minted, immutable `OwnedDeletionPins`
+view. Capture all-UID holder evidence **inside** that guard, after pin acquisition. Only
+an `fd` reference matching an actual owned `(pid, fd, dev, ino)` is exempt from self-use;
+another fd from the same process, or any cwd/exe/map/mount reference, still vetoes.
+No caller-supplied ignore list or PID-wide exemption is accepted. The view's `has`
+predicate is revoked when the guard completes, fails, is interrupted, or throws; retained
+views do not authorize later actions. This seam is not census or deletion authorization.
+
+`withVerifiedDirectoryPins` uses that same acquisition engine for a non-deleting transaction
+across multiple recorded directory chains (for example, payload and Git administration).
+It acquires every chain before `prepare`, revokes all callback evidence when prepare exits,
+revalidates every chain, then calls `commit` while every fd remains held. Commit receives
+only the prepared value, never native chains. No rename, unlink, rollback or production
+authority is added. Prepare must durably leave intent UNKNOWN/HOLD; only commit may publish
+READY. A crash before verification therefore leaves intent on HOLD. Callers must hold their
+own continuous action lease and perform fresh Git, owner/seat, consumer and all-UID checks;
+open descriptors do not prevent another actor renaming a path. Physical deletion still uses
+the existing private post-verification deletion adapter.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
@@ -390,6 +409,27 @@ claims, and retain unknown accounting rather than allocating around uncertainty.
 Writable claims invalidate measured accounting until a safe remeasure; new reservations
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
+
+Pool preparation uses the normal root-owned `pnpm:install` and validates its
+machine-readable doctor report, installed shared GVS paths, exact source and
+resolved tool/platform identity. Logical root bytes are charged conservatively.
+The `mr` product supplies its existing teardown helper through the explicit
+`WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
+Its curated GNU coreutils provider measures apparent logical size, including sparse
+and compressed payloads; allocated disk usage and exclusive reclamation are separate.
+Linux libc identity uses the declared absolute `MR_GETCONF_BIN` provider; neither
+the packaged CLI nor normal source tasks depend on an ambient `getconf`.
+
+`readPoolProvenance({ base })` observes an existing ledger through the same canonical
+decoder and accounting checks, without initialization, repair, locking or writes.
+Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
+errors remain fixed, redacted errors, never an empty or repaired pool. Original
+schema/filesystem errors and their causes are not exported. `PoolProvenanceObservation`
+exports recorded root/id/generation and ready/unclaimed state, not fresh authority.
+Owner labels are not authenticated seats; activity, terminal claim/birth/retarget
+and execution provenance missing from v1 remain explicitly Missing. Tokens and
+nonces are not exported. Every observation is HOLD with `authorizesRemoval: false`;
+Hygiene remains the sole remover, and physical/removal integration stays off.
 
 ### Process activity snapshot
 

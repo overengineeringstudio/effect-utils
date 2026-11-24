@@ -97,6 +97,116 @@ export const captureDeletionIdentity = Effect.fn('store.captureDeletionIdentity'
   )
 })
 
+/** Only descriptors minted by this engine, never a caller-provided ignore list. */
+export interface OwnedDeletionPin {
+  readonly pid: number
+  readonly fd: number
+  readonly dev: string
+  readonly ino: string
+}
+
+const ownedDeletionPinsBrand = Symbol('OwnedDeletionPins')
+
+/** Valid only during its engine callback; no process-wide or non-fd exemption is granted. */
+export interface OwnedDeletionPins {
+  readonly [ownedDeletionPinsBrand]: true
+  readonly pins: ReadonlyArray<OwnedDeletionPin>
+  readonly has: (reference: {
+    readonly kind: string
+    readonly pid: number
+    readonly fd: number | null
+    readonly dev: string
+    readonly ino: string
+  }) => boolean
+}
+
+interface PinnedDirectoryTarget {
+  readonly rootPath: string
+  readonly path: string
+  readonly identity: DeletionIdentity
+}
+
+/** One acquisition engine; only the private deletion adapter receives native chains. */
+const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
+  targets,
+  prepare,
+  commit,
+}: {
+  readonly targets: ReadonlyArray<PinnedDirectoryTarget>
+  readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
+  readonly commit: (
+    value: A,
+    chains: ReadonlyArray<readonly PinnedDirectory[]>,
+  ) => Effect.Effect<B, ECommit, RCommit>
+}): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> => {
+  const path = targets[0]?.path ?? ''
+  return Effect.acquireUseRelease(
+    native({
+      path,
+      operation: () => {
+        if (targets.length === 0)
+          throw fail({ path, message: 'At least one pinned target is required' })
+        const chains: Array<readonly PinnedDirectory[]> = []
+        try {
+          for (const target of targets) chains.push(pinChain(target))
+          return chains
+        } catch (cause) {
+          for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
+          throw cause
+        }
+      },
+    }),
+    (chains) =>
+      Effect.gen(function* () {
+        const owned = chains.map(ownDeletionPins)
+        const views = Object.freeze(owned.map((entry) => entry.view))
+        const value = yield* Effect.suspend(() => prepare(views)).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              for (const entry of owned) entry.revoke()
+            }),
+          ),
+        )
+        yield* native({
+          path,
+          operation: () => {
+            for (const chain of chains) verifyChain(chain)
+          },
+        })
+        return yield* Effect.suspend(() => commit(value, chains))
+      }),
+    (chains) =>
+      Effect.sync(() => {
+        for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
+      }),
+  )
+}
+
+/**
+ * Prepare with all target chains pinned, verify EVERY chain, then commit while all fds remain held.
+ * Only prepare receives callback-scoped pin evidence, in target order; commit cannot access chains.
+ * Prepare must leave durable intent UNKNOWN/HOLD: publish READY only in commit. A crash before
+ * commit therefore never publishes readiness. No quarantine, unlink or rollback is performed.
+ * Callers retain responsibility for continuous action leases and fresh Git/owner/all-UID evidence.
+ */
+export const withVerifiedDirectoryPins = <
+  A,
+  B,
+  E = never,
+  R = never,
+  ECommit = never,
+  RCommit = never,
+>({
+  targets,
+  prepare,
+  commit,
+}: {
+  readonly targets: ReadonlyArray<PinnedDirectoryTarget>
+  readonly prepare: (pins: ReadonlyArray<OwnedDeletionPins>) => Effect.Effect<A, E, R>
+  readonly commit: (value: A) => Effect.Effect<B, ECommit, RCommit>
+}): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> =>
+  withPinnedDirectoryTransaction({ targets, prepare, commit: (value) => commit(value) })
+
 /**
  * Pin the recorded chain before final authority checks, then quarantine and remove only through fds.
  * beforeRemove runs with every ancestor pinned, immediately before the final chain check/quarantine;
@@ -115,18 +225,18 @@ export const withPinnedDeletion = <TError = never, TRequirements = never>({
   rootPath: string
   path: string
   identity: DeletionIdentity
-  beforeRemove?: () => Effect.Effect<void, TError, TRequirements>
+  beforeRemove?: (ownedPins: OwnedDeletionPins) => Effect.Effect<void, TError, TRequirements>
   afterQuarantine?: (recoverPath: string) => void
 }): Effect.Effect<void, PinnedDeletionError | TError, TRequirements> =>
-  Effect.acquireUseRelease(
-    native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
-    (chain) =>
-      Effect.gen(function* () {
-        if (beforeRemove !== undefined) yield* beforeRemove()
-        yield* native({ path, operation: () => quarantineAndRemove({ chain, afterQuarantine }) })
+  withPinnedDirectoryTransaction({
+    targets: [{ rootPath, path, identity }],
+    prepare: (pins) => beforeRemove?.(pins[0]!) ?? Effect.void,
+    commit: (_value, chains) =>
+      native({
+        path,
+        operation: () => quarantineAndRemove({ chain: chains[0]!, afterQuarantine }),
       }),
-    (chain) => Effect.sync(() => closeChain(chain)),
-  )
+  })
 
 /** No-follow evidence for one directory, observed through a single held fd. */
 export type DirectoryEvidence = {
@@ -176,6 +286,33 @@ type PinnedDirectory = {
   readonly record: DeletionIdentity[number]
 }
 type PinnedInode = { readonly dev: bigint; readonly ino: bigint }
+
+const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
+  let active = true
+  const pins = Object.freeze(
+    chain.map(({ fd, dev, ino }) =>
+      Object.freeze({ pid: process.pid, fd, dev: dev.toString(), ino: ino.toString() }),
+    ),
+  )
+  const view = Object.freeze<OwnedDeletionPins>({
+    [ownedDeletionPinsBrand]: true,
+    pins,
+    has: (reference: Parameters<OwnedDeletionPins['has']>[0]) => {
+      if (active === false || reference.kind !== 'fd' || reference.pid !== process.pid) return false
+      for (const pin of pins) {
+        if (reference.fd === pin.fd && reference.dev === pin.dev && reference.ino === pin.ino)
+          return true
+      }
+      return false
+    },
+  })
+  return {
+    view,
+    revoke: () => {
+      active = false
+    },
+  }
+}
 const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
 const OVERLAYFS_SUPER_MAGIC = 0x794c7630n
 const fdPath = (fd: number): string => `/proc/self/fd/${fd}`

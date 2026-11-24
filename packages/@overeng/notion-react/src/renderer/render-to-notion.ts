@@ -60,9 +60,6 @@ export const ATOMIC_CONTAINERS: ReadonlySet<BlockType> = new Set<BlockType>([
  * - `page-archived`: a page-scoped reconcile targeted a page that was
  *   archived out-of-band (issue #618 phase 2+). No emitter currently
  *   produces this.
- * - `partial-page-create`: a page-create landed partially (metadata / some
- *   blocks) but the full subtree could not be inlined (issue #618
- *   phase 2+). No emitter currently produces this.
  */
 export type SyncFallbackReason =
   | 'cold-cache'
@@ -71,7 +68,6 @@ export type SyncFallbackReason =
   | 'page-id-drift'
   | 'page-missing'
   | 'page-archived'
-  | 'partial-page-create'
 
 /** Per-page-op counts (issue #618). Zero across the board until phase 2 wires page emission. */
 export interface PageOpCounts {

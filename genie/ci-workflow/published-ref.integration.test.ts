@@ -7,6 +7,11 @@ import { publishedRefSteps } from './published-ref.ts'
 const advanceStep = publishedRefSteps.find((step) => step.id === 'advance-published-ref')!
 const makeTempDirectory = createTestTempDirectoryFactory()
 
+it('manifest fixture cleanup cannot prompt for read-only cloned Git objects', async () => {
+  const fixture = await Bun.file(new URL('./manifest-pr-decide.test.sh', import.meta.url)).text()
+  expect(fixture).toContain('trap \'rm -rf -- "$tmp"\' EXIT')
+})
+
 /** Adapt only GitHub's git-data API to real local Git objects; run the producer unchanged. */
 const runPromotion = (manifestChanged: boolean, script = advanceStep.run) =>
   Bun.spawnSync(

@@ -33,6 +33,47 @@ void readerShadowUnitTests
 
 const createTestTempDirectory = createTestTempDirectoryFactory()
 
+const reapFixtureGroup = async (pid: number, root: string, exited: Promise<number>) => {
+  // Kill descendants before deleting their cwd, even if the intermediate exited.
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
+  }
+  const deadline = performance.now() + 2000
+  const timeout = new AbortController()
+  const notReaped = new Error(
+    `Launch process group ${pid} was not reaped; preserving fixture ${root}`,
+  )
+  try {
+    await Promise.race([
+      exited,
+      waitForConsumer(2000, undefined, { signal: timeout.signal }).then(() => {
+        throw notReaped
+      }),
+    ])
+  } finally {
+    timeout.abort()
+  }
+  // The intermediate child's exit does not prove that its launcher exited.
+  // Preserve the fixture unless the OS confirms the entire group is gone.
+  for (;;) {
+    try {
+      process.kill(-pid, 0)
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
+      if (
+        process.platform !== 'darwin' ||
+        !(error instanceof Error && 'code' in error && error.code === 'EPERM')
+      )
+        throw error
+    }
+    if (performance.now() >= deadline) throw notReaped
+    await waitForConsumer(10)
+  }
+  rmSync(root, { recursive: true, force: true })
+}
+
 const secret = 'planted-writer-credential-never-persist'
 const values = {
   'buck2.allow_cache_uploads': 'true',
@@ -673,9 +714,10 @@ else process.exit(9);
 
   it('records closed REAPI outage diagnostics, including cached admission failures', async () => {
     const root = createTestTempDirectory('buck2-admission-failure-')
+    let child: Bun.Subprocess<'ignore', 'pipe', 'pipe'> | undefined
     try {
       const evidence = join(root, 'evidence.json')
-      const child = Bun.spawn(
+      child = Bun.spawn(
         [
           process.execPath,
           '-e',
@@ -701,16 +743,29 @@ writeFileSync(native,'#!${process.execPath}\\nimport {existsSync,readFileSync,wr
 const launcher=Bun.spawn([process.execPath,${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))},native,'build','//:fixture'],{
  cwd:root,
  env:{...process.env,CI:'1',BUCK2_CI_POSTURE:'1',GITHUB_ACTIONS:'true',BUCK2_PUBLIC_CACHE_READ_ONLY:'1',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PRIVATE_CACHE_WRITE_AUTH:'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',CI_BUCK2_CACHE_EVIDENCE_PATH:evidence,CI_BUCK2_CACHE_EVIDENCE_START:'',XDG_CACHE_HOME:join(root,'probe-cache')},
- stdout:'pipe',stderr:'pipe',
+ // Stay in the intermediate child's process group so the outer finally also
+ // kills this launcher if the intermediate child dies before its own finally.
+ detached:false,stdin:'ignore',stdout:'pipe',stderr:'pipe',
 });
-const launcherStderr=await new Response(launcher.stderr).text();
-process.stderr.write(launcherStderr);
-if(await launcher.exited!==0) throw new Error(launcherStderr);
+try {
+ const [launcherStderr]=await Promise.all([
+  new Response(launcher.stderr).text(),
+  new Response(launcher.stdout).text(),
+ ]);
+ process.stderr.write(launcherStderr);
+ if(await launcher.exited!==0) throw new Error(launcherStderr);
+} finally {
+ launcher.kill('SIGKILL');
+ await launcher.exited;
+}
 `,
         ],
-        { stdout: 'pipe', stderr: 'pipe' },
+        { detached: true, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
       )
-      const stderr = await new Response(child.stderr).text()
+      const [stderr] = await Promise.all([
+        new Response(child.stderr).text(),
+        new Response(child.stdout).text(),
+      ])
       expect(await child.exited, stderr).toBe(0)
       // Imported fixture probes stay plain even with GITHUB_ACTIONS inherited;
       // the real launcher's explicit opt-in still emits a workflow warning.
@@ -738,9 +793,10 @@ if(await launcher.exited!==0) throw new Error(launcherStderr);
       expect(rows[1].reapiFailure).toEqual(rows[0].reapiFailure)
       expect(JSON.stringify(rows)).not.toContain('127.0.0.1')
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      if (child !== undefined) await reapFixtureGroup(child.pid, root, child.exited)
+      else rmSync(root, { recursive: true, force: true })
     }
-  })
+  }, 15000)
 
   it('resolves launcher birth identity without relying on PATH', () => {
     const birth = cacheLauncherBirth(process.pid)

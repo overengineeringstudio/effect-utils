@@ -17,6 +17,10 @@
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
     },
+    "./editor-publication-owner": {
+      "types": "./dist/src/editor-publication-owner.d.ts",
+      "default": "./src/editor-publication-owner.ts"
+    },
     "./editor-view-lifecycle": {
       "types": "./dist/src/editor-view-lifecycle.d.ts",
       "default": "./src/editor-view-lifecycle.ts"
@@ -39,6 +43,10 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
+      },
+      "./editor-publication-owner": {
+        "types": "./dist/src/editor-publication-owner.d.ts",
+        "default": "./dist/src/editor-publication-owner.js"
       },
       "./editor-view-lifecycle": {
         "types": "./dist/src/editor-view-lifecycle.d.ts",

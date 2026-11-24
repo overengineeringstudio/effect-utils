@@ -248,3 +248,52 @@ pub fn fixed_listener_path(socket: &File) -> io::Result<Option<OwnedFd>> {
     let bound = descriptor(c_long::from(unsafe { ioctl(socket.as_raw_fd(), 0x89e0, 0) }))?;
     require_cloexec(bound).map(Some)
 }
+
+#[cfg(holder_evidence_clients)]
+fn pin_evidence_path() -> io::Result<File> {
+    use std::ffi::CString;
+    use std::os::unix::fs::MetadataExt;
+    let mut current = File::open("/")?;
+    for (name, directory) in [
+        ("/", true), ("run", true), ("worktree-holder-evidence", true), ("evidence.sock", false),
+    ] {
+        if name != "/" {
+            let name = CString::new(name).map_err(|_| io::Error::other("invalid compiled socket component"))?;
+            current = File::from(open_path(current.as_raw_fd(), &name,
+                if directory { O_DIRECTORY } else { 0 },
+                RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS)?);
+        }
+        let stat = current.metadata()?;
+        if stat.uid() != 0 || (directory && (!stat.is_dir() || stat.mode() & 0o022 != 0))
+            || (!directory && (!stat.file_type().is_socket() || stat.mode() & 0o777 != 0o660))
+        {
+            return Err(io::Error::other("evidence socket ancestry is not root controlled"));
+        }
+    }
+    Ok(current)
+}
+
+#[cfg(holder_evidence_clients)]
+pub fn connect_evidence(deadline: std::time::Instant) -> io::Result<std::os::unix::net::UnixStream> {
+    use std::os::unix::fs::MetadataExt;
+    let process = pin_process(std::process::id())?;
+    require_process_initial_user_namespace(&process)?;
+    let expected_uid = env!("HOLDER_EVIDENCE_UID").parse::<u32>()
+        .map_err(|_| io::Error::other("invalid compiled evidence owner"))?;
+    let uids = worktree_holder_proc::process::uids(std::process::id())?;
+    if uids[0] != expected_uid || uids[1] != expected_uid {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "evidence client is not the enrolled user"));
+    }
+    let pinned = pin_evidence_path()?;
+    let stream = connect_fixed_path("/run/worktree-holder-evidence/evidence.sock", deadline)?;
+    let peer = socket_peer(&stream)?;
+    let current = pin_evidence_path()?;
+    let before = pinned.metadata()?;
+    let after = current.metadata()?;
+    if peer.uid != 0 || peer.gid != 0 || (before.dev(), before.ino()) != (after.dev(), after.ino())
+        || super::objects::mount_id(&pinned)? != super::objects::mount_id(&current)?
+    {
+        return Err(io::Error::other("evidence endpoint changed or peer is not host root"));
+    }
+    Ok(stream)
+}
