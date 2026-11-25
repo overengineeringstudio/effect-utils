@@ -1,8 +1,15 @@
 /** Canonical package version and embedded stamp supplied by a Vite consumer. */
 export interface BuildIdentityPluginOptions {
   readonly baseVersion: string
-  /** Canonical JSON Nix stamp, or the source placeholder '__CLI_BUILD_STAMP__'. */
+  /** Canonical JSON Nix/release stamp, or the source placeholder '__CLI_BUILD_STAMP__'. */
   readonly buildStamp: string
+  /**
+   * Committed closure-revision projection (`@overeng/utils/node/product-revs`), relative to
+   * Vite's root. Production builds then emit a release stamp with the projected revision and
+   * commit time, the build time as buildTs, and dirty for closure edits or a stale projection.
+   * Source serving keeps the live local identity.
+   */
+  readonly productRev?: string
 }
 
 /** Structural plugin boundary permits consumers on a different Vite major. */
