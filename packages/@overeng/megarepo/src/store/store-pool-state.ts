@@ -8,6 +8,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { withDeletionLease } from './store-deletion-lease.ts'
+import { withVerifiedDirectoryPins, type OwnedDeletionPins } from './store-pinned-deletion.ts'
 
 /** Authoritative records: uncertain generations are never implicitly recovered. */
 export const PoolSlot = Schema.Struct({
@@ -276,3 +277,124 @@ export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolS
     )
   return Effect.succeed({ ...state, slots: [...state.slots, slot] })
 }
+
+/**
+ * Finish a reserved preparation: ROOT lease → pins → short GLOBAL CAS.
+ * Prepare owns fresh Git/GVS/holder proofs; this helper neither resets nor removes roots.
+ * Unpublished preparation intents retain unknown bytes and their nonce.
+ * A publication/durability error may leave verified READY: never infer failure means unpublished
+ * or automatically retry/repair.
+ */
+export const preparePoolGeneration = <E, R>({
+  base,
+  id,
+  generation,
+  targets,
+  prepare,
+}: {
+  base: AbsoluteDirPath
+  id: string
+  generation: number
+  targets: Parameters<typeof withVerifiedDirectoryPins>[0]['targets']
+  prepare: (
+    slot: PoolSlot,
+    pins: ReadonlyArray<OwnedDeletionPins>,
+  ) => Effect.Effect<{ identity: string; charge: number }, E, R>
+}) =>
+  Effect.gen(function* () {
+    const lookup = (state: PoolState): Effect.Effect<PoolSlot, PoolError> => {
+      const slot = state.slots.find((item) => item.id === id)
+      return slot === undefined
+        ? Effect.fail(new PoolError({ message: 'Pool reservation missing' }))
+        : Effect.succeed(slot)
+    }
+    const path = targets[0]?.path
+    if (path === undefined)
+      return yield* new PoolError({ message: 'Pinned reservation root is required' })
+    return yield* Effect.gen(function* () {
+      const intent = yield* withPoolState({
+        base,
+        use: (state, save) =>
+          Effect.gen(function* () {
+            const slot = yield* lookup(state)
+            if (
+              slot.path !== path ||
+              slot.generation !== generation ||
+              Number.isSafeInteger(slot.generation + 1) === false ||
+              slot.state !== 'preparing' ||
+              slot.token !== '' ||
+              slot.owner !== '' ||
+              slot.chargeKnown !== true
+            )
+              return yield* new PoolError({
+                message: 'Preparation requires an untouched reservation',
+              })
+            const next: PoolSlot = {
+              ...slot,
+              generation: slot.generation + 1,
+              token: randomUUID(),
+              chargeKnown: false,
+              reason: 'Preparation pending verified commit; HOLD',
+            }
+            yield* save({
+              ...state,
+              slots: state.slots.map((item) => (item.id === id ? next : item)),
+            })
+            return next
+          }),
+      })
+      return yield* withVerifiedDirectoryPins({
+        targets,
+        prepare: (pins) => prepare(intent, pins),
+        commit: (prepared) =>
+          withPoolState({
+            base,
+            use: (state, save) =>
+              Effect.gen(function* () {
+                const current = yield* lookup(state)
+                if (
+                  current.path !== intent.path ||
+                  current.generation !== intent.generation ||
+                  current.token !== intent.token ||
+                  current.bare !== intent.bare ||
+                  current.commit !== intent.commit ||
+                  current.identity !== intent.identity ||
+                  current.barrierToken !== intent.barrierToken ||
+                  current.owner !== intent.owner ||
+                  current.charge !== intent.charge ||
+                  current.state !== 'preparing' ||
+                  current.chargeKnown !== false
+                )
+                  return yield* new PoolError({ message: 'Preparation generation changed; HOLD' })
+                if (
+                  prepared.identity === '' ||
+                  Number.isSafeInteger(prepared.charge) === false ||
+                  prepared.charge <= 0 ||
+                  state.slots.reduce(
+                    (sum, item) => sum + (item.id === id ? prepared.charge : item.charge),
+                    0,
+                  ) > state.maxBytes
+                )
+                  return yield* new PoolError({
+                    message: 'Prepared identity/charge exceeds reservation limits; HOLD',
+                  })
+                const ready: PoolSlot = {
+                  ...current,
+                  state: 'ready',
+                  token: '',
+                  owner: '',
+                  identity: prepared.identity,
+                  charge: prepared.charge,
+                  chargeKnown: true,
+                  reason: '',
+                }
+                yield* save({
+                  ...state,
+                  slots: state.slots.map((item) => (item.id === id ? ready : item)),
+                })
+                return ready
+              }),
+          }),
+      })
+    }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: path, now: Date.now() }))
+  })

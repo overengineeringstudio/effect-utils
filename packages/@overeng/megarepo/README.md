@@ -431,6 +431,17 @@ and execution provenance missing from v1 remain explicitly Missing. Tokens and
 nonces are not exported. Every observation is HOLD with `authorizesRemoval: false`;
 Hygiene remains the sole remover, and physical/removal integration stays off.
 
+`preparePoolGeneration` holds the reserved root's action lease continuously. It
+persists a new generation/nonce with unknown bytes before acquiring all declared
+directory pins, runs preparation without GLOBAL held, then verifies every chain
+before a short GLOBAL identity/charge CAS publishes READY under the still-held pins.
+Attempts that do not reach verified publication remain HOLD. A publication/durability
+error may leave verified READY; never infer failure means unpublished or automatically
+retry/repair.
+The callback owns fresh Git, GVS and all-UID activity proofs; all required targets
+must be declared. This metadata transaction does not reset, remove or activate roots,
+and READY does not establish disposable origin or permission to discard ignored data.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
