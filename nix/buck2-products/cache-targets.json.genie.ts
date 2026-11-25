@@ -95,6 +95,7 @@ const packageProducts = [
   '@overeng/agent-session-ingest',
   '@overeng/ai-gateway-conformance',
   '@overeng/ai-gateway-edge',
+  '@overeng/changelog',
   '@overeng/content-address',
   '@overeng/data-graph',
   '@overeng/devbar',

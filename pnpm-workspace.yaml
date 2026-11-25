@@ -9,6 +9,7 @@ packages:
   - packages/@overeng/ai-gateway-edge
   - packages/@overeng/alchemy-github
   - packages/@overeng/buck2-tools
+  - packages/@overeng/changelog
   - packages/@overeng/ci-tools
   - packages/@overeng/content-address
   - packages/@overeng/data-graph

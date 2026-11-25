@@ -99,6 +99,33 @@
       "unboundedTaskName": "test:alchemy-github:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/changelog:test_collect",
+      "excludes": ["src/node/check.integration.test.ts"],
+      "packageName": "changelog",
+      "packagePath": "packages/@overeng/changelog",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/annotations.unit.test.ts",
+        "src/contract.unit.test.ts",
+        "src/enforcement.unit.test.ts",
+        "src/node/check.integration.test.ts",
+        "src/node/load.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/changelog:test",
+      "taskName": "test:changelog",
+      "testFiles": [
+        "src/annotations.unit.test.ts",
+        "src/contract.unit.test.ts",
+        "src/enforcement.unit.test.ts",
+        "src/node/check.integration.test.ts",
+        "src/node/load.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": ["src/node/check.integration.test.ts"],
+      "unboundedTaskName": "test:changelog:unbounded"
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",
       "excludes": [
         "src/deploy-cloudflare-workers.e2e.test.ts",

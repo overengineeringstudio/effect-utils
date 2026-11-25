@@ -7,6 +7,7 @@ import aiGatewayConformanceTsconfig from '../packages/@overeng/ai-gateway-confor
 import aiGatewayEdgeTsconfig from '../packages/@overeng/ai-gateway-edge/tsconfig.json.genie.ts'
 import alchemyGitHubTsconfig from '../packages/@overeng/alchemy-github/tsconfig.json.genie.ts'
 import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
+import changelogTsconfig from '../packages/@overeng/changelog/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
 import dataGraphTsconfig from '../packages/@overeng/data-graph/tsconfig.json.genie.ts'
@@ -132,6 +133,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/ai-gateway-edge': { tsconfig: aiGatewayEdgeTsconfig },
     'packages/@overeng/alchemy-github': { tsconfig: alchemyGitHubTsconfig },
     'packages/@overeng/buck2-tools': { tsconfig: buck2ToolsTsconfig },
+    'packages/@overeng/changelog': { tsconfig: changelogTsconfig },
     'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
     'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },
     'packages/@overeng/data-graph': { tsconfig: dataGraphTsconfig },
