@@ -99,6 +99,13 @@ it('keeps the revision across unrelated and projection-only commits and advances
   expect((await project()).rev).toBe(memberChange)
 })
 
+it('reports Git stderr when Git exits without reading stdin', async () => {
+  const missingRoot = join(root, 'missing')
+  await expect(
+    computeProductRev({ root: missingRoot, product: 'apps/game', sourcePaths }),
+  ).rejects.toThrow(/fatal: cannot change to .*missing.*No such file or directory/)
+})
+
 it('selects the original producer after a revert and ignores merges inheriting a parent', async () => {
   const memberA = commit(member, { 'packages/core/index.js': 'a\n' })
   const original = commit(root, {

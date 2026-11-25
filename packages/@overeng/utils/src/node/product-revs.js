@@ -41,6 +41,10 @@ const runGit = ({ cwd, args, input, allowFailure = false }) =>
       }
       resolvePromise(result)
     })
+    child.stdin.on('error', (error) => {
+      // Git may exit before reading its input; preserve its exit status and stderr.
+      if (/** @type {NodeJS.ErrnoException} */ (error).code !== 'EPIPE') reject(error)
+    })
     child.stdin.end(input ?? '')
   })
 
