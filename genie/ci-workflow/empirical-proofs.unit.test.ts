@@ -448,6 +448,34 @@ test('daily cache join has read-only GitHub access and uses the previous-day met
   expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
 })
 
+test('occurrence identity is secretless, main-only and disconnected before the writer', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const reader = steps.find((step) => step.id === 'occurrence-reader')!
+  expect(reader.if).toContain("github.repository == 'overengineeringstudio/effect-utils'")
+  expect(reader.if).toContain("github.ref == 'refs/heads/main'")
+  expect(reader.if).toContain("github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
+  expect(reader.if).toContain("vars.TS_OCCURRENCE_READ_CLIENT_ID != ''")
+  expect(reader.if).toContain("vars.TS_OCCURRENCE_READ_AUDIENCE != ''")
+  expect(reader.with).toMatchObject({
+    'oauth-client-id': '${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}',
+    audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
+    tags: 'tag:ci-buck2-occurrence-read',
+  })
+  const disconnect = steps.findIndex((step) => step.id === 'occurrence-disconnect')
+  const writer = steps.findIndex((step) => step.with?.tags === 'tag:ci-buck2-evidence')
+  expect(disconnect).toBeGreaterThan(steps.indexOf(reader))
+  expect(writer).toBeGreaterThan(disconnect)
+  expect(steps[disconnect]?.run).toBe('sudo tailscale logout')
+  expect(steps[writer]?.if).toContain("steps.occurrence-disconnect.outcome != 'failure'")
+  const read = steps.find((step) => step.name === 'Read previous UTC day occurrences')!
+  expect(read.run).toContain('limit=5000&direction=forward')
+  expect(read.run).toContain('occurrences --loki-response')
+  expect(read.run).toContain('.evidenceGaps | length')
+  expect(read.run).toContain('Coverage: UNKNOWN')
+  expect(steps.find((step) => step.name === 'Notice unconfigured occurrence reader')?.run)
+    .toContain('::notice::Daily occurrence reader skipped')
+})
+
 test('daily warm99 proof writes authoritative history and full observations locally', () => {
   const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
   const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
