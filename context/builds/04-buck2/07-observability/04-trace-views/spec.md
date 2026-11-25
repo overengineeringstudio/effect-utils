@@ -180,6 +180,11 @@ digest. The half-open time window filters native occurrence completion times. Re
 filters. `evidenceGaps` survive row filtering; absent census stays unknown.
 Reading is bounded to 100,000 entries, 64 MiB per file and 512 MiB total.
 
+Alternatively `--loki-response FILE` reads a bounded Loki streams response.
+Native ledger envelopes reconstruct original snapshots by ordinal/count/SHA-256;
+incomplete or corrupt snapshots and responses reaching 5,000 entries fail with
+coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
+
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
 windowEndMs)`, attributing chronological full-action-digest execution repeats
 globally across repositories, configurations, hosts, roots and CI; hits and explicit coalescing are separate.
