@@ -260,17 +260,22 @@ Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked ch
 process groups; timeout cleanup joins the group before removing its inputs.
 Incomplete hostless cases retain private VM/import/production/result phases, bounded
 redacted child output and native-argument/result/shard census before and after cleanup.
-Only cases completing every existing assertion remove their fixture. The original
-test deadline and assertions remain authoritative, including late cancellation errors;
+Only cases completing every existing assertion remove their fixture. The explicit
+per-case test deadline and assertions remain authoritative, including late cancellation errors;
 these diagnostics neither identify the underlying stall nor suppress its failure.
 The retained Devenv host-contract cache watches the Bun runner, preload and timeout
 sources plus both gate integration suites and their imported isolation unit suite,
 not only the top-level entrypoint test.
 The task-graph regression removes each input in turn and requires rejection;
 immutable Bun/native tool paths remain bound through the watched task command.
-Real native-admission test registration derives its watchdog from the existing
-command budget: `max(5000, 3 * deadlineMs + 2000)`. The missing-executable errno
-fixture and hostless contracts retain their original 5,000 ms watchdogs.
+Real native-admission test registration derives its watchdog from the fixture's
+command budget: `max(5000, 3 * deadlineMs + 2000)`. Intentional timeout cases use
+a 5,000 ms command budget: a full Mac quick exhausted the former 1,000 ms during
+a successful preliminary status probe, before its intended kill timeout. Their
+`exec sleep 30` still forces the target-command deadline, with unchanged diagnostic,
+signal, sanitization and cleanup assertions. Production deadlines are unchanged.
+The missing-executable errno fixture retains its original 5,000 ms watchdog;
+hostless contracts use the explicit 20-second base deadline described below.
 
 In `check:quick`, its dedicated standalone-staging publication waits for
 `buck2:quick` to finish: Buck output directories are mutable even after the
