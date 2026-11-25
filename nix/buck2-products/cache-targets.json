@@ -97,6 +97,32 @@
       ],
       "kind": "package",
       "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/changelog",
+      "outputName": "overeng-changelog.tgz",
+      "packagePath": "packages/@overeng/changelog",
+      "packageTreePath": "packages/@overeng/changelog",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/changelog",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
+      "target": "effect_utils//packages/@overeng/changelog:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/content-address",
       "outputName": "overeng-content-address.tgz",
       "packagePath": "packages/@overeng/content-address",
