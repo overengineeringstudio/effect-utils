@@ -110,6 +110,24 @@ The isolated bind/detached-mount fixture additionally requires an isolated mount
 namespace with `CAP_SYS_ADMIN`; a skipped privileged fixture is not live census
 qualification. Library or codec success never authorizes deletion.
 
+The proc library additionally exports inactive Linux 6.18 mount-query primitives:
+`linux::{mount_namespace_id, mount_namespace_info, list_mount_page, stat_mount,
+MountNamespaceInfo, MountBuffer, REQUIRED_MOUNT_FIELDS}`. The syscall boundary is
+extracted from reviewed snapshot `93eaf04e0115d3390f70ebd9aec2baaf2c5e6218`.
+Both queries take a retained namespace `File`; list/stat use the dedicated FD
+selector in the 32-byte `mnt_id_req`, with numeric namespace ID zero, never a
+current-namespace fallback. Pages hold at most 256 IDs; statmount returns only
+the declared 512..=16384-byte record from an aligned, initialized reusable buffer.
+The requested field mask is `0x7b`; interpreting fields, strings and namespace
+binding remains the consumer's responsibility. Static assertions cover ABI
+sizes, field offsets and output alignment; unit regressions cover strict record
+lengths and FD-only request construction without privileged mount queries.
+These std-only exports do not change `NativeView`, privileges, capabilities or
+namespace membership, and do not activate a consumer. Kernel/permission errors
+remain errors, never evidence of absence. Production qualification still requires
+the real Linux 6.18 privileged VM path, including whole-namespace visibility from
+a confined caller without `CAP_SYS_ADMIN`; primitive unit success is not that proof.
+
 ## Privileged holder server (inactive)
 
 `shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,

@@ -232,3 +232,157 @@ pub fn pid_namespace_parent(namespace: &File) -> io::Result<Option<File>> {
     let parent = descriptor(c_long::from(unsafe { ioctl(namespace.as_raw_fd(), 0xb702, 0) }))?;
     require_cloexec(parent).map(|parent| Some(File::from(parent)))
 }
+
+#[repr(C)]
+struct MountRequest {
+    size: u32,
+    namespace_fd: u32,
+    mount_id: u64,
+    param: u64,
+    namespace_id: u64,
+}
+const _: () = {
+    assert!(std::mem::size_of::<MountRequest>() == 32);
+    assert!(std::mem::offset_of!(MountRequest, namespace_fd) == 4);
+    assert!(std::mem::offset_of!(MountRequest, mount_id) == 8);
+    assert!(std::mem::offset_of!(MountRequest, param) == 16);
+    assert!(std::mem::offset_of!(MountRequest, namespace_id) == 24);
+};
+
+fn mount_request(namespace: &File, mount_id: u64, param: u64) -> io::Result<MountRequest> {
+    let fd = u32::try_from(namespace.as_raw_fd())
+        .map_err(|_| io::Error::other("invalid mount namespace descriptor"))?;
+    if fd < 3 { return Err(io::Error::other("mount namespace descriptor is not dedicated")); }
+    Ok(MountRequest { size: 32, namespace_fd: fd, mount_id, param, namespace_id: 0 })
+}
+
+pub fn mount_namespace_id(namespace: &File) -> io::Result<u64> {
+    let mut id = 0u64;
+    // SAFETY: NS_GET_MNTNS_ID writes exactly one live aligned u64. The kernel
+    // validates that this retained nsfs descriptor is a mount namespace.
+    if unsafe { ioctl(namespace.as_raw_fd(), 0x8008_b705, &mut id as *mut u64) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if id == 0 { return Err(io::Error::other("zero mount namespace identity")); }
+    Ok(id)
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MountNamespaceInfo {
+    size: u32,
+    pub mounts: u32,
+    pub namespace_id: u64,
+}
+const _: () = {
+    assert!(std::mem::size_of::<MountNamespaceInfo>() == 16);
+    assert!(std::mem::offset_of!(MountNamespaceInfo, mounts) == 4);
+    assert!(std::mem::offset_of!(MountNamespaceInfo, namespace_id) == 8);
+};
+
+pub fn mount_namespace_info(namespace: &File) -> io::Result<MountNamespaceInfo> {
+    let mut info = MountNamespaceInfo { size: 16, mounts: 0, namespace_id: 0 };
+    // SAFETY: NS_MNT_GET_INFO's published v0 ABI is exactly this initialized,
+    // aligned repr(C) 16-byte buffer. This query neither enters nor changes it.
+    if unsafe { ioctl(namespace.as_raw_fd(), 0x8010_b70a, &mut info as *mut MountNamespaceInfo) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if info.size != 16 || info.namespace_id == 0 {
+        return Err(io::Error::other("incomplete mount namespace information"));
+    }
+    Ok(info)
+}
+
+pub fn list_mount_page(namespace: &File, cursor: u64, ids: &mut [u64; 256]) -> io::Result<usize> {
+    let request = mount_request(namespace, u64::MAX, cursor)?;
+    // SAFETY: listmount=458 on both supported 64-bit Linux architectures. The
+    // fixed request selects only this live namespace FD and LSMT_ROOT; the
+    // exact writable array capacity is supplied, flags=0, no namespace entry.
+    let result = unsafe { syscall(458 as c_long, &request as *const MountRequest, ids.as_mut_ptr(), ids.len(), 0u32) };
+    if result < 0 { return Err(io::Error::last_os_error()); }
+    let count = usize::try_from(result).map_err(|_| io::Error::other("invalid mount page size"))?;
+    if count > ids.len() { return Err(io::Error::other("mount page exceeds buffer")); }
+    Ok(count)
+}
+
+pub const REQUIRED_MOUNT_FIELDS: u64 = 0x7b;
+pub struct MountBuffer([u64; 2048]);
+const _: () = {
+    assert!(std::mem::size_of::<MountBuffer>() == 16384);
+    assert!(std::mem::align_of::<MountBuffer>() == 8);
+};
+
+impl MountBuffer {
+    pub const fn new() -> Self { Self([0; 2048]) }
+
+    fn record(&self) -> io::Result<&[u8]> {
+        // SAFETY: all bytes of this u64 array are initialized, and the immutable
+        // byte view has precisely its allocation's extent and retained lifetime.
+        let bytes = unsafe { std::slice::from_raw_parts(self.0.as_ptr().cast::<u8>(),
+            std::mem::size_of_val(&self.0)) };
+        let size = u32::from_ne_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        if !(512..=bytes.len()).contains(&size) {
+            return Err(io::Error::other("incomplete or oversized statmount record"));
+        }
+        Ok(&bytes[..size])
+    }
+}
+
+pub fn stat_mount<'a>(namespace: &File, mount_id: u64, buffer: &'a mut MountBuffer)
+    -> io::Result<&'a [u8]>
+{
+    let request = mount_request(namespace, mount_id, REQUIRED_MOUNT_FIELDS)?;
+    // SAFETY: statmount=457 on both supported architectures. The fixed 32-byte
+    // request and complete aligned initialized 16-KiB output remain live;
+    // its capacity is passed exactly. No setns or mounting operation occurs.
+    let result = unsafe {
+        syscall(457 as c_long, &request as *const MountRequest, buffer.0.as_mut_ptr(),
+            std::mem::size_of_val(&buffer.0), 0u32)
+    };
+    if result < 0 { return Err(io::Error::last_os_error()); }
+    if result != 0 { return Err(io::Error::other("unexpected statmount result")); }
+    buffer.record()
+}
+
+#[cfg(test)]
+mod mount_syscall_tests {
+    use super::*;
+
+    fn sized_buffer(size: u32) -> MountBuffer {
+        let mut buffer = MountBuffer::new();
+        let mut first = [0; 8];
+        first[..4].copy_from_slice(&size.to_ne_bytes());
+        buffer.0[0] = u64::from_ne_bytes(first);
+        buffer
+    }
+
+    #[test]
+    fn statmount_record_rejects_incomplete_and_oversized_lengths() {
+        for size in [0, 1, 511, 16385, u32::MAX] {
+            assert!(sized_buffer(size).record().is_err(), "size={size}");
+        }
+    }
+
+    #[test]
+    fn statmount_record_returns_only_the_declared_native_endian_bytes() {
+        for size in [512, 513, 16383, 16384] {
+            let mut buffer = sized_buffer(size);
+            buffer.0[1] = REQUIRED_MOUNT_FIELDS;
+            let record = buffer.record().unwrap();
+            assert_eq!(record.len(), size as usize);
+            assert_eq!(&record[..4], &size.to_ne_bytes());
+            assert_eq!(&record[8..16], &REQUIRED_MOUNT_FIELDS.to_ne_bytes());
+        }
+    }
+
+    #[test]
+    fn mount_request_selects_only_the_retained_descriptor() {
+        let namespace = File::open("/proc/self/ns/mnt").unwrap();
+        let request = mount_request(&namespace, u64::MAX, 42).unwrap();
+        assert_eq!(request.size, 32);
+        assert_eq!(request.namespace_fd, namespace.as_raw_fd() as u32);
+        assert_eq!(request.mount_id, u64::MAX);
+        assert_eq!(request.param, 42);
+        assert_eq!(request.namespace_id, 0);
+    }
+}
