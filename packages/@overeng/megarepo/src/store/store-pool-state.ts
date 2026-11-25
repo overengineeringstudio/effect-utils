@@ -281,7 +281,6 @@ export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolS
 /**
  * Finish a reserved preparation: ROOT lease → pins → short GLOBAL CAS.
  * Prepare owns fresh Git/GVS/holder proofs; this helper neither resets nor removes roots.
- * Unpublished preparation intents retain unknown bytes and their nonce.
  * A publication/durability error may leave verified READY: never infer failure means unpublished
  * or automatically retry/repair.
  */

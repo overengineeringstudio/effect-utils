@@ -456,9 +456,10 @@ await Effect.runPromise(Effect.gen(function* () {
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
-    )()
+    )
   for (const producer of ['engine', 'pool'] as const) {
-    it.effect(`SIGKILL ${producer}: durable prepare remains HOLD, never READY`, () =>
+    it.effect(
+      `SIGKILL ${producer}: durable prepare remains HOLD, never READY`,
       killedPreparation(producer),
     )
   }
