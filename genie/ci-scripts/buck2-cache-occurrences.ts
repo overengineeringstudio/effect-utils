@@ -46,8 +46,10 @@ export const queryOccurrences = (
     })
     if (options.help === true) return help
     const directories = options['records-dir'] ?? []
-    if (directories.some((value) => value.length === 0) ||
-      (directories.length === 0 && options['loki-response'] === undefined))
+    if (
+      directories.some((value) => value.length === 0) ||
+      (directories.length === 0 && options['loki-response'] === undefined)
+    )
       return yield* failure('--records-dir or --loki-response is required')
     const now = Date.now()
     const timestamp = (value: string) =>
@@ -55,8 +57,11 @@ export const queryOccurrences = (
     const since = timestamp(options.since ?? '')
     const until = options.until === undefined ? now : timestamp(options.until)
     if (
-      !Number.isSafeInteger(since) || !Number.isSafeInteger(until) ||
-      since >= until || until > now || until - since > 31 * 86400000
+      !Number.isSafeInteger(since) ||
+      !Number.isSafeInteger(until) ||
+      since >= until ||
+      until > now ||
+      until - since > 31 * 86400000
     )
       return yield* failure('Specify a past, increasing ISO-8601 window of at most 31 days')
     if (options.key === '' || options.host?.some((value) => value === '') === true)
@@ -66,11 +71,18 @@ export const queryOccurrences = (
     let entries = 0
     const budget = makeDownloadBudget(512 * 1024 * 1024)
     if (options['loki-response'] !== undefined) {
-      const content = yield* readBoundedBytes(fs.stream(options['loki-response']), 64 * 1024 * 1024, budget)
-      files.push(...(yield* Effect.try({
-        try: () => decodeOccurrenceLoki(new TextDecoder('utf-8', { fatal: true }).decode(content)),
-        catch: () => failure('Invalid or incomplete Loki occurrence response; coverage UNKNOWN'),
-      })))
+      const content = yield* readBoundedBytes(
+        fs.stream(options['loki-response']),
+        64 * 1024 * 1024,
+        budget,
+      )
+      files.push(
+        ...(yield* Effect.try({
+          try: () =>
+            decodeOccurrenceLoki(new TextDecoder('utf-8', { fatal: true }).decode(content)),
+          catch: () => failure('Invalid or incomplete Loki occurrence response; coverage UNKNOWN'),
+        })),
+      )
     }
     for (const directory of directories) {
       const names = yield* fs.readDirectory(directory)
@@ -90,18 +102,28 @@ export const queryOccurrences = (
       }
     }
     const report = yield* Effect.try({
-      try: () => reconcileOccurrenceRecords({
-        files, expectedHosts: options['expected-host'] ?? [],
-        windowStartMs: since, windowEndMs: until,
-      }),
+      try: () =>
+        reconcileOccurrenceRecords({
+          files,
+          expectedHosts: options['expected-host'] ?? [],
+          windowStartMs: since,
+          windowEndMs: until,
+        }),
       catch: () => failure('Invalid retained occurrence evidence'),
     })
     const hosts = new Set(options.host)
     return `${JSON.stringify({
       ...report,
-      records: report.records.filter((record) =>
-        (hosts.size === 0 || hosts.has(record.host)) &&
-        (options.key === undefined || record.digest === options.key)),
+      records: report.records.filter(
+        (record) =>
+          (hosts.size === 0 || hosts.has(record.host)) &&
+          (options.key === undefined || record.digest === options.key),
+      ),
     })}\n`
-  }).pipe(Effect.mapError((cause) =>
-    cause instanceof OccurrenceQueryError ? cause : failure(`Cannot read retained evidence: ${String(cause)}`)))
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof OccurrenceQueryError
+        ? cause
+        : failure(`Cannot read retained evidence: ${String(cause)}`),
+    ),
+  )

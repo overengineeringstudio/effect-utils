@@ -453,7 +453,9 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   const reader = steps.find((step) => step.id === 'occurrence-reader')!
   expect(reader.if).toContain("github.repository == 'overengineeringstudio/effect-utils'")
   expect(reader.if).toContain("github.ref == 'refs/heads/main'")
-  expect(reader.if).toContain("github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
+  expect(reader.if).toContain(
+    "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+  )
   expect(reader.if).toContain("vars.TS_OCCURRENCE_READ_CLIENT_ID != ''")
   expect(reader.if).toContain("vars.TS_OCCURRENCE_READ_AUDIENCE != ''")
   expect(reader.with).toMatchObject({
@@ -472,8 +474,9 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(read.run).toContain('occurrences --loki-response')
   expect(read.run).toContain('.evidenceGaps | length')
   expect(read.run).toContain('Coverage: UNKNOWN')
-  expect(steps.find((step) => step.name === 'Notice unconfigured occurrence reader')?.run)
-    .toContain('::notice::Daily occurrence reader skipped')
+  expect(
+    steps.find((step) => step.name === 'Notice unconfigured occurrence reader')?.run,
+  ).toContain('::notice::Daily occurrence reader skipped')
 })
 
 test('daily warm99 proof writes authoritative history and full observations locally', () => {

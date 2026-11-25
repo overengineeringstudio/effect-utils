@@ -1,5 +1,3 @@
-import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
-
 import {
   cachixCliBuildStep,
   cachixStep,
@@ -20,6 +18,7 @@ import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evid
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
 
 const occurrenceReaderTrusted =
@@ -36,8 +35,15 @@ const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs[
       ...daily,
       steps: [
         ...daily.steps.map((step) =>
-          step.uses?.startsWith('tailscale/github-action@') === true && step.id !== 'occurrence-reader'
-            ? { ...step, if: step.if?.replace('always()', "always() && steps.occurrence-disconnect.outcome != 'failure'") }
+          step.uses?.startsWith('tailscale/github-action@') === true &&
+          step.id !== 'occurrence-reader'
+            ? {
+                ...step,
+                if: step.if?.replace(
+                  'always()',
+                  "always() && steps.occurrence-disconnect.outcome != 'failure'",
+                ),
+              }
             : step,
         ),
         {
@@ -135,27 +141,29 @@ export default ciWorkflow({
                 BUCK2_OCCURRENCE_READ_URL: '${{ vars.BUCK2_OCCURRENCE_READ_URL }}',
                 BUCK2_OCCURRENCE_EXPECTED_HOSTS: '${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}',
               },
-              run: withCiSourceRoot([
-                'set -euo pipefail',
-                ': "${BUCK2_OCCURRENCE_READ_URL:?configure occurrence reader URL}"',
-                ': "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?configure space-separated expected hosts}"',
-                'until=$(date -u +%Y-%m-%dT00:00:00Z)',
-                'end=$(date -u -d "$until" +%s)',
-                'start=$((end - 86400))',
-                'since=$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)',
-                'proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof"',
-                'mkdir -p "$proof"',
-                'curl --fail --silent --show-error --max-time 120 --max-filesize 67108864 "$BUCK2_OCCURRENCE_READ_URL?start=\${start}000000000&end=\${end}000000000&limit=5000&direction=forward" --output "$proof/loki.json"',
-                'export OCCURRENCE_SINCE="$since" OCCURRENCE_UNTIL="$until" OCCURRENCE_PROOF="$proof"',
-                '"${DEVENV_BIN:?}" shell -- bash -euo pipefail -c \'',
-                '  cd "${GITHUB_WORKSPACE:?}"',
-                '  args=()',
-                '  read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"',
-                '  for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done',
-                '  bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-response "$OCCURRENCE_PROOF/loki.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"',
-                "'",
-                'jq -r \'"## Daily occurrence evidence\\nRecords: \\(.records | length)\\nEvidence gaps: \\(.evidenceGaps | length)\\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"\' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"',
-              ].join('\n')),
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  ': "${BUCK2_OCCURRENCE_READ_URL:?configure occurrence reader URL}"',
+                  ': "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?configure space-separated expected hosts}"',
+                  'until=$(date -u +%Y-%m-%dT00:00:00Z)',
+                  'end=$(date -u -d "$until" +%s)',
+                  'start=$((end - 86400))',
+                  'since=$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)',
+                  'proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof"',
+                  'mkdir -p "$proof"',
+                  'curl --fail --silent --show-error --max-time 120 --max-filesize 67108864 "$BUCK2_OCCURRENCE_READ_URL?start=\${start}000000000&end=\${end}000000000&limit=5000&direction=forward" --output "$proof/loki.json"',
+                  'export OCCURRENCE_SINCE="$since" OCCURRENCE_UNTIL="$until" OCCURRENCE_PROOF="$proof"',
+                  '"${DEVENV_BIN:?}" shell -- bash -euo pipefail -c \'',
+                  '  cd "${GITHUB_WORKSPACE:?}"',
+                  '  args=()',
+                  '  read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"',
+                  '  for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done',
+                  '  bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-response "$OCCURRENCE_PROOF/loki.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"',
+                  "'",
+                  'jq -r \'"## Daily occurrence evidence\\nRecords: \\(.records | length)\\nEvidence gaps: \\(.evidenceGaps | length)\\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"\' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"',
+                ].join('\n'),
+              ),
             },
             {
               name: 'Disconnect occurrence reader before evidence writer',
