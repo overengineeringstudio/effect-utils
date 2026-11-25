@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 import { Effect, FileSystem, Schema } from 'effect'
 
 import { makeDownloadBudget, readBoundedBytes } from './buck2-cache-join-download.ts'
+import { decodeOccurrenceLoki } from './buck2-occurrence-loki.ts'
 import type { RetainedOccurrenceFile } from './buck2-occurrence-record-codec.ts'
 import { reconcileOccurrenceRecords } from './buck2-occurrence-records.ts'
 
@@ -12,7 +13,7 @@ export class OccurrenceQueryError extends Schema.TaggedError<OccurrenceQueryErro
   { message: Schema.String },
 ) {}
 const failure = (message: string) => new OccurrenceQueryError({ message })
-const help = `buck2-cache-join occurrences --records-dir DIR --since ISO-8601 [--until ISO-8601]
+const help = `buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE) --since ISO-8601 [--until ISO-8601]
   [--host HOST] [--key FULL_ACTION_DIGEST] [--expected-host HOST]
 
 Read native retained JSONL snapshots, returning JSON records and evidenceGaps.
@@ -32,6 +33,7 @@ export const queryOccurrences = (
           args: [...args],
           options: {
             'records-dir': { type: 'string', multiple: true },
+            'loki-response': { type: 'string' },
             since: { type: 'string' },
             until: { type: 'string' },
             host: { type: 'string', multiple: true },
@@ -44,16 +46,22 @@ export const queryOccurrences = (
     })
     if (options.help === true) return help
     const directories = options['records-dir'] ?? []
-    if (directories.length === 0 || directories.some((value) => value.length === 0))
-      return yield* failure('--records-dir is required')
+    if (
+      directories.some((value) => value.length === 0) ||
+      (directories.length === 0 && options['loki-response'] === undefined)
+    )
+      return yield* failure('--records-dir or --loki-response is required')
     const now = Date.now()
     const timestamp = (value: string) =>
       /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN
     const since = timestamp(options.since ?? '')
     const until = options.until === undefined ? now : timestamp(options.until)
     if (
-      !Number.isSafeInteger(since) || !Number.isSafeInteger(until) ||
-      since >= until || until > now || until - since > 31 * 86400000
+      !Number.isSafeInteger(since) ||
+      !Number.isSafeInteger(until) ||
+      since >= until ||
+      until > now ||
+      until - since > 31 * 86400000
     )
       return yield* failure('Specify a past, increasing ISO-8601 window of at most 31 days')
     if (options.key === '' || options.host?.some((value) => value === '') === true)
@@ -62,6 +70,20 @@ export const queryOccurrences = (
     const files: RetainedOccurrenceFile[] = []
     let entries = 0
     const budget = makeDownloadBudget(512 * 1024 * 1024)
+    if (options['loki-response'] !== undefined) {
+      const content = yield* readBoundedBytes(
+        fs.stream(options['loki-response']),
+        64 * 1024 * 1024,
+        budget,
+      )
+      files.push(
+        ...(yield* Effect.try({
+          try: () =>
+            decodeOccurrenceLoki(new TextDecoder('utf-8', { fatal: true }).decode(content)),
+          catch: () => failure('Invalid or incomplete Loki occurrence response; coverage UNKNOWN'),
+        })),
+      )
+    }
     for (const directory of directories) {
       const names = yield* fs.readDirectory(directory)
       entries += names.length
@@ -80,18 +102,28 @@ export const queryOccurrences = (
       }
     }
     const report = yield* Effect.try({
-      try: () => reconcileOccurrenceRecords({
-        files, expectedHosts: options['expected-host'] ?? [],
-        windowStartMs: since, windowEndMs: until,
-      }),
+      try: () =>
+        reconcileOccurrenceRecords({
+          files,
+          expectedHosts: options['expected-host'] ?? [],
+          windowStartMs: since,
+          windowEndMs: until,
+        }),
       catch: () => failure('Invalid retained occurrence evidence'),
     })
     const hosts = new Set(options.host)
     return `${JSON.stringify({
       ...report,
-      records: report.records.filter((record) =>
-        (hosts.size === 0 || hosts.has(record.host)) &&
-        (options.key === undefined || record.digest === options.key)),
+      records: report.records.filter(
+        (record) =>
+          (hosts.size === 0 || hosts.has(record.host)) &&
+          (options.key === undefined || record.digest === options.key),
+      ),
     })}\n`
-  }).pipe(Effect.mapError((cause) =>
-    cause instanceof OccurrenceQueryError ? cause : failure(`Cannot read retained evidence: ${String(cause)}`)))
+  }).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof OccurrenceQueryError
+        ? cause
+        : failure(`Cannot read retained evidence: ${String(cause)}`),
+    ),
+  )
