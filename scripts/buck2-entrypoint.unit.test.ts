@@ -1,8 +1,12 @@
 import { expect, it } from 'bun:test'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import {
+  editorPublicationIsolation,
+  withEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import type { ReaderReapiUnavailableShadow } from './buck2-cache-posture.ts'
 import {
   ciPostureDeclared,
@@ -14,11 +18,44 @@ import {
   gateScopeIdentity,
   isOnlyReapiUnavailable,
   resolveManagedInvocation,
+  requireEditorPublicationInvocationOwner,
   runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
   writeNativeStderrChunk,
 } from './buck2-entrypoint.ts'
+
+const withPublicationRoot = async (run: (cwd: string) => Promise<void>): Promise<void> => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'buck-publication-owner-')))
+  try {
+    writeFileSync(join(cwd, '.buckroot'), '')
+    writeFileSync(join(cwd, '.buckconfig'), '')
+    await run(cwd)
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+}
+
+it('validates only a live process-local publication owner for reserved invocations', () =>
+  withPublicationRoot(async (cwd) => {
+    const args = ['--isolation-dir', editorPublicationIsolation, 'status']
+    const released: { owner?: Parameters<typeof requireEditorPublicationInvocationOwner>[0]['owner'] } = {}
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        released.owner = owner
+        expect(requireEditorPublicationInvocationOwner({ args, cwd, env: {}, owner })).toBe(owner)
+        expect(requireEditorPublicationInvocationOwner({
+          args: ['--isolation-dir', 'v2', 'status'], cwd, env: {}, owner,
+        })).toBeUndefined()
+        expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env: {} })).toThrow()
+      },
+    })
+    expect(() => requireEditorPublicationInvocationOwner({
+      args, cwd, env: {},
+      ...(released.owner === undefined ? {} : { owner: released.owner }),
+    })).toThrow()
+  }))
 
 const root = '/project/root'
 const isolation = 'owned'
