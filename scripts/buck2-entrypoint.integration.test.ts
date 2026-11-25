@@ -941,6 +941,9 @@ await phase('result-written');`,
         expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
       diagnostics.assertionsComplete = true
     },
+    // Full-DAG macOS: 24/24 <=413ms, but earlier starts hit 5s at load14–17/10CPUs.
+    // Bound real collector/native/decoder startup at 4× that censored budget; #2797 stays open.
+    20_000,
   )
 
   it('does not register a foreign project root or non-default isolation', () => {

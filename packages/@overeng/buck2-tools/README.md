@@ -1124,6 +1124,12 @@ probes before kill/audit), plus two seconds for fixture cleanup, never less than
 the original five-second watchdog. This outer test budget does not extend native
 command deadlines or relax diagnostic, secret-redaction, or real-gate assertions.
 
+Hostless FIFO/collector fixtures use an explicit 20-second outer deadline for their
+real collector/native/decoder subprocesses. A 24-case full-DAG macOS sample peaked
+at 412.33 ms, but earlier full-DAG cases exhausted 5 seconds at load 14–17 on 10 CPUs
+(#2797). This bounded startup allowance preserves every assertion and cleanup;
+the rare native-startup cause remains tracked in #2797, not declared resolved.
+
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown
 awaits the complete in-flight phase (including assertions) before deleting the fixture
