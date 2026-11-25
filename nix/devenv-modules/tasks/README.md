@@ -440,7 +440,14 @@ for outer tasks that must complete before the nested devenv process can evaluate
     before opting in.
   - `pnpm:doctor` validates current install, storage and complete declared projection
     receipts (including executable wrappers). Its version-1 JSON includes exact
-    install/projection hashes and resolved tools. Set `PNPM_DOCTOR_OUTPUT_FILE` to
+    install/projection hashes, resolved tools, and `storeCacheRoot`: the realpath
+    of the configured, **unversioned** Store Cache directory. This is the parent
+    used by the maintenance lease, not `.modules.yaml`'s versioned `storeDir`;
+    consumers must not derive it by slicing that path or parsing `storageState`.
+    An absent cache yields `null` only on a non-healthy report (for example,
+    before a job-local install). A reader must require a successful, healthy
+    report with a string root; other resolution errors fail the task.
+    Set `PNPM_DOCTOR_OUTPUT_FILE` to
     an absent caller-owned path for an exclusive mode-0600 machine report; consumers
     must read it only after successful task completion, not parse runner logs.
     Doctor and install must use the same evaluated module options, including
