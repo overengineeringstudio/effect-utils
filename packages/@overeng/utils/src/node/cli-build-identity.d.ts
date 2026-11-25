@@ -17,15 +17,28 @@ export interface NixStamp {
   readonly dirty: boolean
 }
 
+/**
+ * Canonical release stamp: a non-Nix build from a committed closure-revision projection.
+ * `rev` is the full selected revision; machineVersion abbreviates it to seven characters.
+ */
+export interface ReleaseStamp {
+  readonly type: 'release'
+  readonly version: string
+  readonly rev: string
+  readonly commitTs: number
+  readonly buildTs?: number
+  readonly dirty: boolean
+}
+
 /** Canonical source metadata accepted from embedded or runtime JSON stamps. */
-export type CliStamp = LocalStamp | NixStamp
+export type CliStamp = LocalStamp | NixStamp | ReleaseStamp
 
 /** Structured build identity shared by CLIs, UIs, diagnostics, and telemetry. */
 export interface CliBuildIdentity {
   readonly baseVersion: string
   readonly displayVersion: string
   readonly machineVersion: string
-  readonly sourceKind: 'package' | 'local' | 'nix'
+  readonly sourceKind: 'package' | 'local' | 'nix' | 'release'
   readonly rev?: string
   readonly dirty: boolean
   readonly commitTs?: number
@@ -37,14 +50,15 @@ export interface ResolveBuildIdentityOptions {
   readonly baseVersion: string
   readonly buildStamp: string
   readonly env?: Readonly<Record<string, string | undefined>>
-  readonly now?: number
+  /** Unix seconds; `null` renders timeless metadata without relative ages. */
+  readonly now?: number | null
   readonly runtimeStampEnvVar?: string
 }
 
-/** Parse the canonical local/Nix JSON stamp. */
+/** Parse the canonical local/Nix/release JSON stamp. */
 export declare const parseCliBuildStamp: (stamp: string) => CliStamp | undefined
 
-/** Embedded Nix metadata takes precedence over runtime stamps. */
+/** Embedded Nix/release metadata takes precedence over runtime stamps. */
 export declare const resolveCliBuildIdentity: (
   options: ResolveBuildIdentityOptions,
 ) => CliBuildIdentity
