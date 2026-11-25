@@ -2349,6 +2349,7 @@
         "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
@@ -2383,6 +2384,7 @@
         "src/node/otel.unit.test.ts",
         "src/node/playwright/config/config.unit.test.ts",
         "src/node/playwright/otel.unit.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/media-query.unit.test.ts",
         "src/node/stylex/mod.installed-consumer.test.ts",
@@ -2426,6 +2428,7 @@
         "src/node/otel.unit.test.ts",
         "src/node/playwright/config/config.unit.test.ts",
         "src/node/playwright/otel.unit.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/media-query.unit.test.ts",
         "src/node/stylex/mod.installed-consumer.test.ts",
@@ -2444,6 +2447,7 @@
         "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
