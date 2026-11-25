@@ -128,6 +128,17 @@ remain errors, never evidence of absence. Production qualification still require
 the real Linux 6.18 privileged VM path, including whole-namespace visibility from
 a confined caller without `CAP_SYS_ADMIN`; primitive unit success is not that proof.
 
+The mounted library additionally exports inactive `namespace::{NamespaceMount,
+NamespaceSnapshot}` over those primitives. A snapshot retains its namespace FD,
+binds every complete statmount record to its unique mount and namespace IDs,
+and compares the full mount set with the independent nsfs cardinality before
+and after collection. Recheck compares every retained record and generation;
+partial, changed, inaccessible or unsupported namespaces stay errors, without
+mountinfo fallback. Codec tests reject truncated records, missing fields,
+foreign IDs and malformed paths. `NativeView` still does not use this module:
+actual production-privilege jailed-namespace VM proof and consumer integration
+remain mandatory before any complete-census or activation claim.
+
 ## Privileged holder server (inactive)
 
 `shared/worktree-holder-evidence-server.nix` accepts `pkgs`, `allowedRoots`,
