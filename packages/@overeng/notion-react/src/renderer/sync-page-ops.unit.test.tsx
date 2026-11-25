@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { HttpClient } from 'effect/http/HttpClient'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -7,7 +7,16 @@ import { NotionBlocks, NotionPages, type NotionConfig } from '@overeng/notion-ef
 
 import { InMemoryCache } from '../cache/in-memory-cache.ts'
 import { CACHE_SCHEMA_VERSION, type CacheTree } from '../cache/types.ts'
-import { ChildPage, Page, Paragraph, Table, TableRow, Toggle } from '../components/blocks.ts'
+import {
+  ChildPage,
+  Column,
+  ColumnList,
+  Page,
+  Paragraph,
+  Table,
+  TableRow,
+  Toggle,
+} from '../components/blocks.ts'
 import {
   createFakeNotion,
   FakeNotionResponseError,
@@ -16,13 +25,13 @@ import {
 } from '../test/mock-client.ts'
 import { NotionSyncError } from './errors.ts'
 import { normalizeCover, projectCover } from './icons.ts'
-import { sync } from './sync.ts'
+import { plan, sync } from './sync.ts'
 
 /**
  * Driver-level coverage for the page-scope op plumbing introduced in #618
  * phase 3b. Scenarios mirror the phase-3b prompt acceptance list: create,
- * update-coalesce, archive, move, nodeKind-LCS boundary, partial-failure
- * rollback.
+ * update-coalesce, archive, move, nodeKind-LCS boundary, and checkpointed
+ * recovery after a failed child append.
  */
 const ROOT = '00000000-0000-4000-8000-000000000001'
 
@@ -48,8 +57,8 @@ const CRASH_TREE = (
 )
 
 /**
- * Crash a sync right after `pages.create` but before the inline-descendant
- * retrieval lands, leaving a pending page checkpoint in the cache.
+ * Crash after the empty page identity is checkpointed but before the first
+ * child append lands.
  */
 const crashMidCreate = async (preamble?: ReactNode) => {
   const fake = createFakeNotion()
@@ -61,8 +70,8 @@ const crashMidCreate = async (preamble?: ReactNode) => {
     if (
       !tripped &&
       fake.pages.size > pagesBeforeCrash &&
-      request.method === 'GET' &&
-      request.path !== `/v1/blocks/${ROOT}/children`
+      request.method === 'PATCH' &&
+      request.path.endsWith('/children')
     ) {
       tripped = true
       return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
@@ -74,9 +83,9 @@ const crashMidCreate = async (preamble?: ReactNode) => {
   )
   expect(first._tag).toBe('Failure')
   const checkpoint = await Effect.runPromise(cache.load)
-  const pendingNode = checkpoint?.children.find((n) => n.pendingInlineResolution !== undefined)
-  expect(pendingNode?.pendingInlineResolution).toHaveLength(1)
-  return { fake, cache, createdId: pendingNode!.blockId }
+  const pageNode = checkpoint?.children.find((n) => n.nodeKind === 'page' && n.key === 'k:child')
+  expect(pageNode?.children).toEqual([])
+  return { fake, cache, createdId: pageNode!.blockId }
 }
 
 describe('sync() page ops (issue #618 phase 3b)', () => {
@@ -131,7 +140,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(after.filter((r) => r.method !== 'GET')).toEqual([])
   })
 
-  it('inline retrieval fails after pages.create: retry retains the checkpointed page id', async () => {
+  it('child append fails after empty pages.create: retry retains the checkpointed page id', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const tree = (
@@ -141,14 +150,10 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
         </ChildPage>
       </Page>
     )
-    let failFirstInlineRetrieve = true
+    let failFirstAppend = true
     fake.failOn((request) => {
-      if (
-        failFirstInlineRetrieve &&
-        request.method === 'GET' &&
-        request.path !== `/v1/blocks/${ROOT}/children`
-      ) {
-        failFirstInlineRetrieve = false
+      if (failFirstAppend && request.method === 'PATCH' && request.path.endsWith('/children')) {
+        failFirstAppend = false
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
       return undefined
@@ -172,27 +177,24 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
         children: [],
       },
     ])
-    expect(checkpoint?.children[0]?.pendingInlineResolution).toHaveLength(1)
+    expect(checkpoint?.children[0]?.children).toEqual([])
 
     const retry = await runSync(fake, tree, cache)
     expect(retry.pages).toMatchObject({ creates: 0, updates: 0, archives: 0, moves: 0 })
-    expect(retry.appends + retry.inserts + retry.updates + retry.removes).toBe(0)
+    expect(retry.appends).toBe(1)
+    expect(retry.inserts + retry.updates + retry.removes).toBe(0)
     expect(fake.pages.size).toBe(1)
     expect([...fake.pages.keys()]).toEqual([createdId])
     expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
   })
 
-  it('changed JSX after interrupted create reconciles from the persisted create-time intent', async () => {
+  it('changed JSX after interrupted create appends the current content to the retained empty page', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
-    let failFirstInlineRetrieve = true
+    let failFirstAppend = true
     fake.failOn((request) => {
-      if (
-        failFirstInlineRetrieve &&
-        request.method === 'GET' &&
-        request.path !== `/v1/blocks/${ROOT}/children`
-      ) {
-        failFirstInlineRetrieve = false
+      if (failFirstAppend && request.method === 'PATCH' && request.path.endsWith('/children')) {
+        failFirstAppend = false
         return new FakeNotionResponseError(500, 'internal_server_error', 'simulated process death')
       }
       return undefined
@@ -221,13 +223,13 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       cache,
     )
     expect(retry.pages.creates).toBe(0)
-    expect(retry.updates).toBe(1)
-    expect(retry.appends + retry.inserts + retry.removes).toBe(0)
+    expect(retry.appends).toBe(1)
+    expect(retry.updates + retry.inserts + retry.removes).toBe(0)
     expect([...fake.pages.keys()]).toEqual([createdId])
     expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
   })
 
-  it('retry JSX moving the checkpointed page adopts pending descendants before the move', async () => {
+  it('retry JSX moving the checkpointed empty page retains its identity before appending children', async () => {
     // Wrapper exists before the crash so the retry relocates the checkpointed
     // page under an existing parent.
     const { fake, cache, createdId } = await crashMidCreate(
@@ -248,17 +250,17 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       cache,
     )
 
-    // The checkpointed child page is moved under the wrapper and its
-    // already-created inline paragraph is adopted — not duplicated.
+    // The checkpointed empty page is moved under the wrapper, then its body
+    // is appended once using the same page identity.
     expect(retry.pages).toMatchObject({ creates: 0, moves: 1 })
     expect(fake.pages.size).toBe(2)
     expect(fake.childrenOf(createdId).filter((block) => block.type === 'paragraph')).toHaveLength(1)
   })
 
-  it('untracked live blocks under a checkpointed page abort adoption instead of being stranded', async () => {
+  it('an ambiguous append preserves the page; live drift reconciliation does not duplicate children', async () => {
     const { fake, cache, createdId } = await crashMidCreate()
 
-    // Another client appends a stray block under the half-created page
+    // Model the failed append having landed despite its missing response.
     const strayId = '22222222-2222-4222-8222-000000000009'
     ;(fake.blocks as Map<string, FakeBlock>).set(strayId, {
       id: strayId,
@@ -270,26 +272,26 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     })
     fake.blocks.get(createdId)!.children.push(strayId)
 
-    const error = await Effect.runPromise(
-      sync(CRASH_TREE, { pageId: ROOT, cache }).pipe(Effect.flip, Effect.provide(fake.layer)),
+    const failedAppends = fake.requests.filter(
+      (request) => request.method === 'PATCH' && request.path.endsWith('/children'),
     )
-    expect(error.reason).toBe('notion-retrieve-failed')
-    expect(String(error.cause)).toContain('untracked block(s)')
-
-    // Failing before the cache save keeps the pending marker intact so a
-    // clean retry (after the stray content is removed) can adopt.
-    const checkpoint = await Effect.runPromise(cache.load)
-    expect(checkpoint?.children[0]?.pendingInlineResolution).toHaveLength(1)
+    expect(failedAppends).toHaveLength(1)
+    expect(fake.pages.get(createdId)?.in_trash).not.toBe(true)
+    const retry = await runSync(fake, CRASH_TREE, cache)
+    expect(retry.pages).toMatchObject({ creates: 0, archives: 0 })
+    expect(fake.childrenOf(createdId)).toHaveLength(1)
+    expect(fake.childrenOf(createdId)[0]?.id).not.toBe(strayId)
+    expect(fake.pages.size).toBe(1)
+    expect(fake.pageRequests.filter((request) => request.method === 'PATCH')).toEqual([])
   })
 
-  it('pending recovery is skipped on page-id drift instead of retrieving against the old root', async () => {
+  it('page-id drift never retrieves identities against the old root', async () => {
     const OTHER_ROOT = '99999999-9999-4999-8999-999999999999'
-    // The crash left the pending checkpoint written against ROOT; reusing the
-    // same cache with a different target page must not retrieve stale ids.
+    // The checkpoint belongs to ROOT; another target must take the documented
+    // cold-start path instead of touching the old page.
     const { fake, cache, createdId } = await crashMidCreate()
 
-    // Recovery against the old root would GET the stale checkpointed page's
-    // children; block exactly that so the drift path must be taken instead.
+    // Block stale child-page retrieval so this test pins target isolation.
     fake.failOn((request) =>
       request.method === 'GET' && request.path === `/v1/blocks/${createdId}/children`
         ? new FakeNotionResponseError(404, 'object_not_found', 'stale page')
@@ -297,8 +299,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     )
     const before = fake.requests.length
     const retry = await runWith(fake, sync(CRASH_TREE, { pageId: OTHER_ROOT, cache }))
-    // Documented cold-start path: rebuild under the new root without ever
-    // touching the stale ids from the old root's pending checkpoint.
+    // Rebuild under the new root without touching old checkpointed identities.
     expect(retry.fallbackReason).toBe('page-id-drift')
     expect(retry.pages.creates).toBe(1)
     const staleRetrievals = fake.requests
@@ -435,22 +436,21 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(res.pages).toMatchObject({ creates: 1, updates: 0 })
   })
 
-  it('partial-failure: createPage succeeds but scope-tail block ops fail → new page archived, fallbackReason set', async () => {
+  it('partial failure preserves the created page and all acknowledged append batches', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
-    // Pack >100 direct children so `inlinePackChildren` tails the overflow.
-    // Then fail any children-append — the only such calls after createPage
-    // will be for the tail. Sync must archive the newly-created page.
+    // The first 100 children are acknowledged and checkpointed; the second
+    // batch fails. A retry must append only the remaining five children.
     const manyParagraphs = Array.from({ length: 105 }, (_, i) => (
       <Paragraph key={String(i)} blockKey={`p${i}`}>{`p${i}`}</Paragraph>
     ))
-    // Trigger failure on any PATCH /v1/blocks/{id}/children — that's the
-    // append endpoint the tail ops use.
-    fake.failOn((req) =>
-      req.method === 'PATCH' && /\/v1\/blocks\/[^/]+\/children$/.test(req.path)
-        ? new FakeNotionResponseError(500, 'internal_server_error', 'boom')
-        : undefined,
-    )
+    let appends = 0
+    fake.failOn((request) => {
+      if (request.method === 'PATCH' && request.path.endsWith('/children') && ++appends === 2) {
+        return new FakeNotionResponseError(500, 'internal_server_error', 'boom')
+      }
+      return undefined
+    })
     const result = await Effect.runPromiseExit(
       sync(
         <Page>
@@ -462,12 +462,197 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
         },
       ).pipe(Effect.provide(fake.layer)),
     )
-    // The sync must fail because the tail append errored out.
     expect(result._tag).toBe('Failure')
-    // The new page must have been archived as part of the rollback.
     const createdPages = [...fake.pages.values()]
     expect(createdPages).toHaveLength(1)
-    expect(createdPages[0]!.in_trash).toBe(true)
+    const createdId = createdPages[0]!.id
+    expect(createdPages[0]!.in_trash).not.toBe(true)
+    expect(fake.childrenOf(createdId)).toHaveLength(100)
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children[0]?.children.map((node) => node.blockId)).toEqual(
+      fake.childrenOf(createdId).map((block) => block.id),
+    )
+    const retry = await runSync(
+      fake,
+      <Page>
+        <ChildPage title="big">{manyParagraphs}</ChildPage>
+      </Page>,
+      cache,
+    )
+    expect(retry.pages).toMatchObject({ creates: 0, archives: 0 })
+    expect(retry.appends).toBe(5)
+    expect(fake.childrenOf(createdId)).toHaveLength(105)
+    expect(fake.pageRequests.filter((request) => request.method === 'PATCH')).toEqual([])
+  })
+
+  it('mandatory table rows are folded across a following page boundary without reordering siblings', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage blockKey="outer" title="Outer">
+          <Paragraph blockKey="before">before</Paragraph>
+          <Table blockKey="table" tableWidth={1}>
+            <TableRow cells={['body']} />
+          </Table>
+          <Paragraph blockKey="after">after</Paragraph>
+          <ChildPage blockKey="nested" title="Nested" />
+        </ChildPage>
+      </Page>
+    )
+    await runSync(fake, tree, cache)
+    const outer = [...fake.pages.values()].find(
+      (page) => page.properties.title.title[0]?.text.content === 'Outer',
+    )!
+    const children = fake.childrenOf(outer.id)
+    expect(children.map((block) => block.type)).toEqual([
+      'paragraph',
+      'table',
+      'paragraph',
+      'child_page',
+    ])
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children[0]?.children.map((node) => node.blockId)).toEqual(
+      children.map((block) => block.id),
+    )
+    expect(fake.childrenOf(children[1]!.id)).toHaveLength(1)
+    const before = fake.requests.length
+    const retry = await runSync(fake, tree, cache)
+    expect(retry.appends + retry.inserts + retry.updates + retry.removes).toBe(0)
+    expect(retry.pages).toMatchObject({ creates: 0, archives: 0, moves: 0 })
+    expect(fake.requests.slice(before).filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
+  it('an atomic append identity is durable before fallible descendant reads', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage blockKey="outer" title="Outer">
+          <Table blockKey="table" tableWidth={1}>
+            <TableRow cells={['body']} />
+          </Table>
+        </ChildPage>
+      </Page>
+    )
+    let failRead = true
+    fake.failOn((request) => {
+      const table = [...fake.blocks.values()].find((block) => block.type === 'table')
+      if (
+        failRead &&
+        table !== undefined &&
+        request.method === 'GET' &&
+        request.path === `/v1/blocks/${table.id}/children`
+      ) {
+        failRead = false
+        return new FakeNotionResponseError(500, 'internal_server_error', 'descendant read failed')
+      }
+      return undefined
+    })
+    const first = await Effect.runPromiseExit(
+      sync(tree, { pageId: ROOT, cache }).pipe(Effect.provide(fake.layer)),
+    )
+    expect(first._tag).toBe('Failure')
+    const pageId = [...fake.pages.keys()][0]!
+    const tableId = fake.childrenOf(pageId)[0]!.id
+    const rowId = fake.childrenOf(tableId)[0]!.id
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children[0]?.children).toMatchObject([
+      { blockId: tableId, type: 'table', children: [] },
+    ])
+    expect(checkpoint?.children[0]?.children[0]?.pendingChildren).toHaveLength(1)
+    // A transient short read must preserve the intent and perform no writes.
+    fake.delayChildrenVisibility(tableId, 1)
+    const beforeShortRead = fake.requests.length
+    const shortRead = await Effect.runPromiseExit(
+      sync(tree, { pageId: ROOT, cache }).pipe(Effect.provide(fake.layer)),
+    )
+    expect(shortRead._tag).toBe('Failure')
+    expect(await Effect.runPromise(cache.load)).toEqual(checkpoint)
+    expect(
+      fake.requests.slice(beforeShortRead).filter((request) => request.method !== 'GET'),
+    ).toEqual([])
+    // A type disagreement must also fail closed rather than certify identities.
+    const savedPage = checkpoint!.children[0]!
+    const savedTable = savedPage.children[0]!
+    const wrongTable = {
+      ...savedTable,
+      pendingChildren: [{ ...savedTable.pendingChildren![0]!, type: 'paragraph' }],
+    }
+    const wrongType: CacheTree = {
+      ...checkpoint!,
+      children: [{ ...savedPage, children: [wrongTable] }],
+    }
+    await Effect.runPromise(cache.save(wrongType))
+    const beforeTypeRead = fake.requests.length
+    const mismatch = await Effect.runPromise(
+      sync(tree, { pageId: ROOT, cache }).pipe(Effect.flip, Effect.provide(fake.layer)),
+    )
+    expect(String(mismatch.cause)).toContain('expected paragraph, observed table_row')
+    expect(await Effect.runPromise(cache.load)).toEqual(wrongType)
+    expect(
+      fake.requests.slice(beforeTypeRead).filter((request) => request.method !== 'GET'),
+    ).toEqual([])
+    await Effect.runPromise(cache.save(checkpoint!))
+    expect(fake.pages.get(pageId)?.in_trash).not.toBe(true)
+    const before = fake.requests.length
+    const retry = await runSync(fake, tree, cache)
+    expect(retry.pages).toMatchObject({ creates: 0, archives: 0 })
+    expect(fake.childrenOf(pageId).map((block) => block.id)).toEqual([tableId])
+    expect(fake.childrenOf(tableId).map((block) => block.id)).toEqual([rowId])
+    expect(fake.requests.slice(before).filter((request) => request.method !== 'GET')).toEqual([])
+  })
+
+  it('interrupted column-list lookup resumes the same read path without recreating columns', async () => {
+    const fake = createFakeNotion()
+    const cache = InMemoryCache.make()
+    const tree = (
+      <Page>
+        <ChildPage blockKey="outer" title="Outer">
+          <ColumnList>
+            <Column>
+              <Paragraph>left</Paragraph>
+            </Column>
+            <Column>
+              <Paragraph>right</Paragraph>
+            </Column>
+          </ColumnList>
+        </ChildPage>
+      </Page>
+    )
+    let failRead = true
+    fake.failOn((request) => {
+      const column = [...fake.blocks.values()].find((block) => block.type === 'column')
+      if (
+        failRead &&
+        column !== undefined &&
+        request.method === 'GET' &&
+        request.path === `/v1/blocks/${column.id}/children`
+      ) {
+        failRead = false
+        return new FakeNotionResponseError(500, 'internal_server_error', 'column read failed')
+      }
+      return undefined
+    })
+    const first = await Effect.runPromiseExit(
+      sync(tree, { pageId: ROOT, cache }).pipe(Effect.provide(fake.layer)),
+    )
+    expect(first._tag).toBe('Failure')
+    const checkpoint = await Effect.runPromise(cache.load)
+    const container = checkpoint?.children[0]?.children[0]
+    expect(container?.pendingChildren).toHaveLength(2)
+    const columnIds = fake.childrenOf(container!.blockId).map((block) => block.id)
+    const before = fake.requests.length
+    const preview = await runWith(fake, plan(tree, { pageId: ROOT, cache }))
+    expect(preview.empty).toBe(true)
+    expect(await Effect.runPromise(cache.load)).toEqual(checkpoint)
+    const retry = await runSync(fake, tree, cache)
+    expect(retry.appends + retry.inserts + retry.updates + retry.removes).toBe(0)
+    expect(retry.pages).toMatchObject({ creates: 0, archives: 0 })
+    const resolved = (await Effect.runPromise(cache.load))?.children[0]?.children[0]
+    expect(resolved?.pendingChildren).toBeUndefined()
+    expect(resolved?.children.map((node) => node.blockId)).toEqual(columnIds)
+    expect(fake.requests.slice(before).filter((request) => request.method !== 'GET')).toEqual([])
   })
 
   it('phase 3c: idempotent deep sync (Page → ChildPage → Paragraph → Toggle → Paragraph)', async () => {
@@ -724,7 +909,7 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(res.fallbackReason).toBe('schema-mismatch')
   })
 
-  it('phase 3c: >100 children under a new sub-page land via tail appends scoped to the new page', async () => {
+  it('>100 children under a new sub-page use bounded append batches and checkpoint response ids', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
     const many = Array.from({ length: 105 }, (_, i) => (
@@ -740,11 +925,23 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
       cache,
     )
     expect(res.pages.creates).toBe(1)
-    // The 5 overflow paragraphs came through the tail path; all 105 are
-    // present under the new sub-page.
+    expect(res.appends).toBe(105)
+    const create = fake.pageRequests.find((request) => request.method === 'POST')
+    expect(create?.body).not.toHaveProperty('children')
+    const appends = fake.requests.filter(
+      (request) => request.method === 'PATCH' && request.path.endsWith('/children'),
+    )
+    const decodeAppend = Schema.decodeUnknownSync(
+      Schema.Struct({ children: Schema.Array(Schema.Unknown) }),
+    )
+    expect(appends.map((request) => decodeAppend(request.body).children.length)).toEqual([100, 5])
     const subPage = [...fake.pages.values()][0]!
     const kids = fake.childrenOf(subPage.id)
     expect(kids.filter((k) => k.type === 'paragraph')).toHaveLength(105)
+    const checkpoint = await Effect.runPromise(cache.load)
+    expect(checkpoint?.children[0]?.children.map((node) => node.blockId)).toEqual(
+      kids.map((block) => block.id),
+    )
     // Idempotent warm sync.
     const before = fake.requests.length
     const r2 = await runSync(
@@ -761,13 +958,11 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(fake.requests.slice(before).filter((r) => r.method !== 'GET')).toEqual([])
   })
 
-  it('phase 3c: inline depth 3 under new <ChildPage> — level 3 tails as block.append under inner parent', async () => {
+  it('deep children under a new page append after their parent ids are acknowledged', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
-    // Depth-3 structure: ChildPage → Toggle → Toggle → Paragraph.
-    // `inlinePackChildren` carries depths 1–2 on the pages.create body; the
-    // level-3 paragraph tails as a block.append op under the inner toggle's
-    // tmp id, which resolves on apply.
+    // Depth-3 structure: ChildPage → Toggle → Toggle → Paragraph. Every
+    // append targets the real parent id returned by its preceding append.
     await runSync(
       fake,
       <Page>
@@ -988,14 +1183,6 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
   })
 
   /**
-   * PR #623 review fix: `resolveInlineChildrenIds` used to advance its
-   * live-child cursor even on page candidates, which aren't present in the
-   * server response. A page before an inline block would shift alignment
-   * and drop the block's tmpId from the idMap. The regression pins a
-   * page-before-block candidate order so the cursor advances only for
-   * block candidates.
-   */
-  /**
    * Phase 4b (#618): `icon={null}` / `cover={null}` are clear sentinels.
    * Dropping the prop is still "no claim" (server state preserved); passing
    * `null` explicitly means "clear on server" and emits a `pages.update`
@@ -1127,21 +1314,27 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
     expect(rootChildPages).toEqual(['one', 'two', 'three'])
   })
 
-  it('resolveInlineChildrenIds: page candidate before an inline block does not shift alignment (PR #623 review)', async () => {
+  it('mixed new nested page and block children preserve JSX order and response ids', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
-    // Root pass: a ChildPage sibling before a sibling Paragraph — both at
-    // the same level under <Page>. Root scope already interleaves ops, so
-    // the alignment bug bites at nested scope. Keep this as a belt-and-
-    // suspenders regression: pair candidate order is the load-bearing
-    // invariant either way.
     const tree = (
       <Page>
-        <ChildPage blockKey="cp" title="child-page" />
-        <Paragraph blockKey="p">sibling</Paragraph>
+        <ChildPage blockKey="outer" title="outer">
+          <ChildPage blockKey="cp" title="child-page">
+            <Paragraph blockKey="inside">inside</Paragraph>
+          </ChildPage>
+          <Paragraph blockKey="p">sibling</Paragraph>
+        </ChildPage>
       </Page>
     )
     await runSync(fake, tree, cache)
+    const outer = [...fake.pages.values()].find(
+      (page) => page.properties.title.title[0]?.text.content === 'outer',
+    )!
+    expect(fake.childrenOf(outer.id).map((block) => block.type)).toEqual([
+      'child_page',
+      'paragraph',
+    ])
     const r2 = await runSync(fake, tree, cache)
     expect(r2.pages).toEqual({ creates: 0, updates: 0, archives: 0, moves: 0, reorders: 0 })
     expect(r2.appends + r2.inserts + r2.updates + r2.removes).toBe(0)
@@ -1410,9 +1603,8 @@ describe('sync() page ops (issue #618 phase 3b)', () => {
   it('retained sub-page: mixed [<ChildPage>, <Paragraph>] children land in JSX order on the server', async () => {
     const fake = createFakeNotion()
     const cache = InMemoryCache.make()
-    // First sync: outer empty, so it's retained (not freshly-created) on the
-    // second sync — exercising the sub-page scope path, not the inline
-    // packing path used for brand-new pages.
+    // First sync: outer empty, so this exercises retained-scope ordering
+    // rather than creation of a new outer page.
     await runSync(
       fake,
       <Page>

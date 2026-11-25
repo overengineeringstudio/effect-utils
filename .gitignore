@@ -27,6 +27,9 @@ __pycache__/
 /rust/target/
 /rust/buck2-tools/events/proto/generate/target/
 
+# Watchman sync-barrier files are transient, not source.
+.watchman-cookie-*
+
 # Buck2 daemon and materialized build state
 buck-out/
 /.worktree-tools/

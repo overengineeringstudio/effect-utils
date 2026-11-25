@@ -459,6 +459,9 @@ the Genie TypeScript API child. Parent `SIGKILL` does not release a child's open
 description. A lease is released only by closing its fd, never by `LOCK_UN`;
 this invariant is checked against the native, TypeScript and inherited-fd code.
 Unrelated CAS descriptors remain close-on-exec.
+Lease inheritance preserves each process API's native standard-I/O defaults:
+Bun `spawnSync` captures stdout and stderr, while asynchronous `spawn` inherits
+stderr by default. Explicit caller stream choices remain authoritative.
 
 Active leased Bun processes also preserve their mapped descriptors across
 `process.execve`: the packaged native helper marks all other descriptors above

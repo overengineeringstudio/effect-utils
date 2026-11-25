@@ -256,6 +256,21 @@ independent-descriptor lock contention against the produced shared library.
 Portable compiled payloads remain unchanged; native wrappers own this dependency.
 The C source is projected independently of the repository snapshot. An evaluated
 identity regression ensures unrelated documentation cannot invalidate publication runtime closures.
+Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked child
+process groups; timeout cleanup joins the group before removing its inputs.
+Incomplete hostless cases retain private VM/import/production/result phases, bounded
+redacted child output and native-argument/result/shard census before and after cleanup.
+Only cases completing every existing assertion remove their fixture. The original
+test deadline and assertions remain authoritative, including late cancellation errors;
+these diagnostics neither identify the underlying stall nor suppress its failure.
+The retained Devenv host-contract cache watches the Bun runner, preload and timeout
+sources plus both gate integration suites and their imported isolation unit suite,
+not only the top-level entrypoint test.
+The task-graph regression removes each input in turn and requires rejection;
+immutable Bun/native tool paths remain bound through the watched task command.
+Real native-admission test registration derives its watchdog from the existing
+command budget: `max(5000, 3 * deadlineMs + 2000)`. The missing-executable errno
+fixture and hostless contracts retain their original 5,000 ms watchdogs.
 
 In `check:quick`, its dedicated standalone-staging publication waits for
 `buck2:quick` to finish: Buck output directories are mutable even after the
@@ -269,6 +284,13 @@ cost is at most `min(quick duration, publication duration)` versus perfect
 overlap (other checks can hide that cost); standalone lint has no added work.
 Arbitrary concurrent Buck commands outside this graph still require caller
 coordination.
+
+`withEditorPublicationOwner` holds the root's persistent flock through its callback.
+Its opaque live object validates root and inode without acquiring or upgrading.
+Descriptors stay CLOEXEC and are never lent; numeric/environment claims grant nothing.
+Cancellation wakes queued acquisition, but active subordinate work must join before release.
+`tryAcquireEditorPublicationOwner` defers on contention; release is idempotent.
+This guards accidental misuse, not adversarial same-uid processes using unmanaged native tools.
 
 Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
@@ -614,6 +636,13 @@ OverlayFS) are not treated as local and do not gain lease controls or CAS fences
 This launch availability policy does not authorize deletion: retirement remains
 fail closed on unknown evidence and still requires a validated exclusive lease
 under the owning CAS fence.
+
+The existing reader launcher is available as flake package `editor-view-source`.
+Protocol tests use declared Bash/Bun closures and a real anonymous pipe without a full devenv shell.
+Its optional `EDITOR_VIEW_ADMISSION_READY_FD` must name a canonical numeric FD for an open
+write-only FIFO; malformed values fail before target execution or availability fallback.
+This is notification transport only, never publication ownership.
+
 The publication supervisor intentionally closes descriptors outside its own
 admission protocol. It removes inherited lease mappings and the active marker
 from its child's environment; the child source launcher discovers fresh leases.
@@ -1089,6 +1118,11 @@ registration, including parameterized tests and modifiers, to scale explicit
 deadlines and record each case's base. Expanded case titles and nested parameterized
 suites retain their own deadlines in JUnit classification. Hooks, assertions,
 callbacks and exit statuses remain native; no tests are retried.
+
+Native admission diagnostic cases allow up to three command deadlines (two status
+probes before kill/audit), plus two seconds for fixture cleanup, never less than
+the original five-second watchdog. This outer test budget does not extend native
+command deadlines or relax diagnostic, secret-redaction, or real-gate assertions.
 
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown

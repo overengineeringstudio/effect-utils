@@ -50,6 +50,16 @@ describe('production helper projection', () => {
     )
   })
 
+  it('keeps bundled owner imports outside executable CLI barrels', () => {
+    const entries = applicationHelperEntries(
+      "import { withEditorPublicationOwner } from '@overeng/buck2-tools/editor-publication-owner'",
+    )
+    expect(entries).toEqual([`${helperRoot}/src/editor-publication-owner.ts`])
+    const closure = helperImportClosure(entries)
+    expect(closure).not.toContain(`${helperRoot}/src/mod.ts`)
+    expect(closure).not.toContain(`${helperRoot}/src/typescript-runner.ts`)
+  })
+
   it('follows transitive imports and fails on a missing module', () => {
     mkdirSync('tmp', { recursive: true })
     const directory = mkdtempSync('tmp/production-helper-')
