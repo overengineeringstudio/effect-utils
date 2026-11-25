@@ -180,10 +180,19 @@ digest. The half-open time window filters native occurrence completion times. Re
 filters. `evidenceGaps` survive row filtering; absent census stays unknown.
 Reading is bounded to 100,000 entries, 64 MiB per file and 512 MiB total.
 
-Alternatively `--loki-response FILE` reads a bounded Loki streams response.
-Native ledger envelopes reconstruct original snapshots by ordinal/count/SHA-256;
-incomplete or corrupt snapshots and responses reaching 5,000 entries fail with
+The daily empirical cache join also accepts `--loki-response FILE`: a bounded
+Loki streams response from the fixed occurrence-reader proxy. Producer ledger
+envelopes reconstruct original snapshots by ordinal, count and SHA-256; missing,
+conflicting or corrupt snapshots and responses reaching 5,000 entries fail with
 coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
+The JSON report is retained locally and its record/gap counts enter the job summary.
+Only scheduled or manual runs on this repository's main branch receive the
+dedicated `tag:ci-buck2-occurrence-read` OIDC identity, disconnected before the
+existing evidence writer connects. Configure repository variables
+`TS_OCCURRENCE_READ_CLIENT_ID`, `TS_OCCURRENCE_READ_AUDIENCE`,
+`BUCK2_OCCURRENCE_READ_URL` (proxy query-range endpoint, without a query string),
+and `BUCK2_OCCURRENCE_EXPECTED_HOSTS` (space-separated inventory).
+Absent either identity variable skips reading with a notice; no secret is used.
 
 `aggregateOccurrences` deduplicates native occurrence IDs within `[windowStartMs,
 windowEndMs)`, attributing chronological full-action-digest execution repeats
