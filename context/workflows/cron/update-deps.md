@@ -1,9 +1,9 @@
 # Dependency updates
 
-pnpm releases are covered by the maintainers' weekly dependency-update mission.
-It compares the latest stable [pnpm release](https://github.com/pnpm/pnpm/releases)
-with `nix/pnpm.nix`, opens or adopts one version-specific candidate, and hands
-the qualified PR to the effect-utils Manager. It does not merge automatically.
+Compare the latest stable [pnpm release](https://github.com/pnpm/pnpm/releases)
+with `nix/pnpm.nix`, then open or adopt one version-specific candidate.
+Automatic weekly candidate creation is tracked separately; until it lands,
+follow these manual steps and the normal pull-request merge policy.
 
 The native CLI version in `nix/pnpm.nix` must match
 `DEFAULT_AGGREGATE_PACKAGE_MANAGER` in
