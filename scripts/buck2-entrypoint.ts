@@ -24,6 +24,12 @@ import process from 'node:process'
 import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
+import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  requireEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
   buckConfigValues,
   readConfig,
@@ -274,7 +280,8 @@ const pinCiJobReapiProbe = async ({
   const previous = decisions[fingerprint]
   if (previous !== undefined) {
     admission.reapiDecision = 'pinned-from-first-probe'
-    diagnostics.failure = previous.failure
+    if (previous.failure === undefined) delete diagnostics.failure
+    else diagnostics.failure = previous.failure
     return previous.available
   }
   const available = await probe(true)
@@ -392,15 +399,16 @@ export const directBuckArguments = async ({
           env,
           repoRoot: root,
           deadlineMs: Number(crawlBudget),
-          managedDirectory: watchmanDirectory,
+          ...(watchmanDirectory === undefined ? {} : { managedDirectory: watchmanDirectory }),
         })
       return probeWatchman({
         env,
         repoRoot: root,
         deadlineMs: deadlineMs ?? 2500,
-        managedDirectory: watchmanDirectory,
-        makeDeadlineSignal:
-          probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
+        ...(watchmanDirectory === undefined ? {} : { managedDirectory: watchmanDirectory }),
+        ...(probeDeadlineSignal === undefined
+          ? {}
+          : { makeDeadlineSignal: () => probeDeadlineSignal('watchman') }),
       })
     }
     const available = await cachedProbe({
@@ -428,7 +436,7 @@ export const directBuckArguments = async ({
     if (available === false) await watchmanProbe()
     reconcileFileWatcher({
       repoRoot: root,
-      provider: explicitWatcher === undefined ? 'watchman' : undefined,
+      ...(explicitWatcher === undefined ? { provider: 'watchman' } : {}),
     })
   } else if (localWithoutWatcher !== currentLocal.trimEnd()) {
     reconcileFileWatcher({ repoRoot: root })
@@ -592,8 +600,9 @@ export const directBuckArguments = async ({
                 retryProbe({
                   endpoint: 'reapi',
                   firstFailurePhase: () => reapiFailurePhase.phase,
-                  probe: ({ attemptIndex, ...budgets }) =>
-                    probeRemoteCacheCapabilities({
+                  probe: ({ attemptIndex, ...budgets }) => {
+                    const deadlineSignal = probeDeadlineSignal?.('reapi')
+                    return probeRemoteCacheCapabilities({
                       address: values['buck2_re_client.action_cache_address'],
                       instanceName: values['buck2_re_client.instance_name'] ?? '',
                       tls: values['buck2_re_client.tls'] !== 'false',
@@ -601,7 +610,7 @@ export const directBuckArguments = async ({
                       env,
                       attemptIndex,
                       ...budgets,
-                      deadlineSignal: probeDeadlineSignal?.('reapi'),
+                      ...(deadlineSignal === undefined ? {} : { deadlineSignal }),
                       onAttempt: (attempt) => {
                         ;(admission.reapiAttempts ??= []).push(attempt)
                         writeSync(2, `Buck2 REAPI admission attempt: ${JSON.stringify(attempt)}\n`)
@@ -624,7 +633,8 @@ export const directBuckArguments = async ({
                           2,
                           `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
                         ),
-                    }),
+                    })
+                  },
                 }),
             }),
         })
@@ -779,6 +789,7 @@ export const resolveGateInvocation = ({
   cwd,
   strictRunArguments = true,
   includePayload = false,
+  selectionOnly = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -792,6 +803,8 @@ export const resolveGateInvocation = ({
   readonly cwd: string
   readonly strictRunArguments?: boolean
   readonly includePayload?: boolean
+  /** Ownership selection does not impose gate cleanup's conservative run-payload grammar. */
+  readonly selectionOnly?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }):
   | {
@@ -828,6 +841,7 @@ export const resolveGateInvocation = ({
         requested === undefined ||
         requested === '' ||
         requested === '-' ||
+        requested.endsWith('.py') === true ||
         requested.includes('//') === true ||
         requested.includes('#') === true ||
         (requested.startsWith('/') === true && resolve(requested) !== requested)
@@ -907,7 +921,12 @@ export const resolveGateInvocation = ({
         arg.includes('=') === false &&
         ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
       ) {
-        // Unknown option arity cannot establish the start of a run payload.
+        // Unknown arity is harmless only when no later token can select isolation.
+        if (
+          selectionOnly === true &&
+          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false)
+        )
+          break
         return undefined
       }
     }
@@ -935,6 +954,79 @@ export const resolveGateInvocation = ({
       : { isolation, args: buckArgs }
     : undefined
 }
+
+/** Snapshot native arguments once, before admission can change an argfile. */
+export const resolveManagedInvocation = ({
+  args,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): {
+  readonly isolation: string
+  readonly args: readonly string[]
+  readonly nativeArgumentCount?: number
+} => {
+  const invocation = resolveGateInvocation({
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    selectionOnly: true,
+    includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck entrypoint cannot safely resolve publication ownership: use literal argv or plain-text @argfiles, not Python, stdin or config-cell argfiles. For an ambiguous run option followed by an isolation selector, put Buck options before run and delimit executable arguments with --. The package libexec/buck2 is only for unmanaged projects (never editor-publication).',
+    )
+  return invocation
+}
+
+const editorPublicationInvocation = ({
+  args,
+  cwd,
+  env,
+  owner,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly owner?: EditorPublicationOwner
+}): { readonly root: string; readonly owner: EditorPublicationOwner } | undefined => {
+  const invocation = resolveManagedInvocation({ args, cwd, env })
+  if (invocation.isolation !== editorPublicationIsolation) return undefined
+  const canonicalCwd = realpathSync(cwd)
+  const root = findRoot(canonicalCwd)
+  const home = resolve(env['HOME'] ?? homedir())
+  let current = canonicalCwd
+  let nativeRoot: string | undefined
+  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
+  for (;;) {
+    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
+      if (current === home) break
+      nativeRoot = current
+    }
+    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  if (root === undefined || nativeRoot !== root)
+    throw new Error(
+      `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
+    )
+  return {
+    root,
+    owner: requireEditorPublicationOwner({ root, ...(owner === undefined ? {} : { owner }) }),
+  }
+}
+
+/** No caller may mutate the publication materializer without its real owner capability. */
+export const requireEditorPublicationInvocationOwner = (
+  options: Parameters<typeof editorPublicationInvocation>[0],
+): EditorPublicationOwner | undefined => editorPublicationInvocation(options)?.owner
 
 /** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
 export const cacheDaemonPolicyArguments = ({

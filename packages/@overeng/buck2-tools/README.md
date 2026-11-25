@@ -238,6 +238,11 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+The compiled launcher bundles the same canonical owner module. Its Nix build
+stages that one module at the source-relative import path while compiling, then
+removes the staged sources; the installed launcher retains only the native library
+and compiled entrypoint, not a second ownership implementation.
+
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
 The generic Bun capability stays unwrapped so hermetic actions do not acquire
