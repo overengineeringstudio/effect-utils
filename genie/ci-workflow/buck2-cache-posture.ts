@@ -1,13 +1,6 @@
 import { trustedCacheWriterPredicate } from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-
-/** A job declaration, not authority: only a protected writer step receives credentials. */
-export type Buck2CachePosture =
-  | 'writer'
-  | 'trusted-writer'
-  | 'reader'
-  | 'none'
-  | { readonly posture: 'reader'; readonly disabledWhen: string }
+import type { Buck2CachePosture } from './buck2-cache-proof-policy.ts'
 
 /** Explicit job-local values; a credential cannot override reader or none. */
 export const buck2CachePostureEnv = (declaration: Buck2CachePosture): Record<string, string> => {

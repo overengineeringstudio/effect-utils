@@ -1,4 +1,10 @@
-import type { Buck2CachePosture } from './buck2-cache-posture.ts'
+/** A job declaration, not authority: only a protected writer step receives credentials. */
+export type Buck2CachePosture =
+  | 'writer'
+  | 'trusted-writer'
+  | 'reader'
+  | 'none'
+  | { readonly posture: 'reader'; readonly disabledWhen: string }
 
 /**
  * These jobs deliberately execute no checkout-native Buck actions. Nix product

@@ -109,7 +109,7 @@ export const writeNativeShard = async ({
   const projector = createCacheEvidenceProjector({
     context,
     freshRoot,
-    rootId,
+    ...(rootId === undefined ? {} : { rootId }),
     cacheReadPolicy,
     onAction: (row: ActionRecord) => {
       const size = Buffer.byteLength(JSON.stringify(row)) + 1

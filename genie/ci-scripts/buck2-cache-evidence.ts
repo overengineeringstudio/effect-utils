@@ -481,16 +481,17 @@ const identityFor = (action: unknown): Identity => {
     )
     const name = text(field({ value: label, key: 'name' }))
     if (pkg !== undefined && name !== undefined) {
+      const configuration = text(
+        field({ value: field({ value: value, key: 'configuration' }), key: 'full_name' }),
+      )
       return {
-        category,
+        ...(category === undefined ? {} : { category }),
         target: `${pkg}:${name}`,
-        configuration: text(
-          field({ value: field({ value: value, key: 'configuration' }), key: 'full_name' }),
-        ),
+        ...(configuration === undefined ? {} : { configuration }),
       }
     }
   }
-  return { category }
+  return { ...(category === undefined ? {} : { category }) }
 }
 const digestFor = (action: unknown): string | undefined => {
   const commands = field({ value: action, key: 'commands' })
@@ -1332,11 +1333,12 @@ const run = async (): Promise<void> => {
       events: values['write-shard'],
       buildId: values['shard-build-id'],
       freshRoot: values['fresh-root'],
-      rootId: values['root-id'],
-      context: values.context,
+      ...(values['root-id'] === undefined ? {} : { rootId: values['root-id'] }),
+      ...(values.context === undefined ? {} : { context: values.context }),
       cacheReadPolicy: decodeCacheReadPolicy(values['cache-read-policy'] ?? 'unknown'),
-      exitCode:
-        values['native-exit-code'] === undefined ? undefined : Number(values['native-exit-code']),
+      ...(values['native-exit-code'] === undefined
+        ? {}
+        : { exitCode: Number(values['native-exit-code']) }),
       onReady: () => console.log('ready'),
     })
     return
@@ -1429,12 +1431,12 @@ const run = async (): Promise<void> => {
     let dropped = 0
     const invocations: ActionInvocation[] = []
     const projector = createCacheEvidenceProjector({
-      context: values.context,
+      ...(values.context === undefined ? {} : { context: values.context }),
       cacheReadPolicy: decodeCacheReadPolicy(values['cache-read-policy'] ?? 'unknown'),
       // Native-log candidates resolve by command start time at finalization.
       // Explicit proof contexts own independent wiped roots.
       freshRoot: values['fresh-root'] === true,
-      rootId: values['root-id'],
+      ...(values['root-id'] === undefined ? {} : { rootId: values['root-id'] }),
       onAction: (row) => {
         const size = Buffer.byteLength(JSON.stringify(row)) + 1
         if (rowBytes + size > maxActionArtifactBytes) dropped++

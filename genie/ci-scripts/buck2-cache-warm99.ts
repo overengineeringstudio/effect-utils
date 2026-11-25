@@ -365,7 +365,7 @@ const localActionRepetitions = (artifact: ActionArtifact): Set<ActionRecord> => 
       .map((invocation) => rootScope(invocation.rootId)),
   )
   const configuredKey = (action: ActionRecord): string | undefined => {
-    const invocation = invocations.get(action.buildId)
+    const invocation = action.buildId === null ? undefined : invocations.get(action.buildId)
     return invocation !== undefined &&
       freshRoots.has(rootScope(invocation.rootId)) === true &&
       action.target !== null &&
@@ -745,8 +745,8 @@ if (import.meta.main) {
       strict: true,
       options: { manifest: { type: 'string' } },
     })
-    if (values.manifest === undefined) invalid()
-    const report = await loadAndEvaluate(values.manifest)
+    const manifestPath = values.manifest ?? invalid()
+    const report = await loadAndEvaluate(manifestPath)
     console.log(JSON.stringify(report))
     if (report.accepted !== true) process.exitCode = 1
   } catch {

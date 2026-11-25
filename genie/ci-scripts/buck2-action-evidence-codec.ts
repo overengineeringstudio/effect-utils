@@ -278,6 +278,7 @@ const decodeAction = (value: unknown): ActionRecord => {
   if (host !== undefined) action.host = nullableText({ value: host, grammar: /^[a-zA-Z0-9_.-]+$/ })
   const executionOutcome = field({ value, key: 'executionOutcome' })
   if (executionOutcome !== undefined) {
+    if (typeof executionOutcome !== 'string') return invalid()
     switch (executionOutcome) {
       case 'local-exec':
       case 'cache-hit':

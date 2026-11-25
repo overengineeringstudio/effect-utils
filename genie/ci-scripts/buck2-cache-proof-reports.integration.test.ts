@@ -39,6 +39,16 @@ const put = async (summary: string, actions: string, artifact: ActionArtifact) =
 }
 
 describe('proof report publication', () => {
+  it('publishes an absent source metadata cell as explicit null', async () => {
+    const options = await setup()
+    const artifact = artifactFixture()
+    delete artifact.header.metadata.cell
+    await put(options.summaryPath, options.actionsPath, artifact)
+    await writeBuck2CacheProofReports(options)
+    const proof = await Bun.file(join(options.root, proofManifestName)).json()
+    expect(proof.references[0].metadata).toHaveProperty('cell', null)
+  })
+
   it('keeps absent observations and writers as gaps and publishes checksummed real evidence', async () => {
     const options = await setup()
     await put(options.summaryPath, options.actionsPath, artifactFixture())

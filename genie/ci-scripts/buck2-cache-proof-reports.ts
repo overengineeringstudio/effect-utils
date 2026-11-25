@@ -136,7 +136,11 @@ export const writeBuck2CacheProofReports = async ({
     if (decodedBytes + size > 256 * 1024 * 1024)
       throw new Error('Proof decoded input bound exceeded')
     decodedBytes += size
-    return decodeEvidence({ compressed, summary, expectedLane })
+    return decodeEvidence({
+      compressed,
+      summary,
+      ...(expectedLane === undefined ? {} : { expectedLane }),
+    })
   }
   let current: ActionArtifact | undefined
   try {
@@ -248,7 +252,7 @@ export const writeBuck2CacheProofReports = async ({
         runId: safeToken(metadata.runId),
         runAttempt: safeToken(metadata.runAttempt),
         job: safeToken(metadata.job),
-        cell: safeToken(metadata.cell),
+        cell: safeToken(metadata.cell ?? null),
         headSha:
           metadata.headSha !== null && /^[a-f0-9]{40,64}$/.test(metadata.headSha) === true
             ? metadata.headSha

@@ -1206,6 +1206,8 @@ state. Legacy incomplete writer artifacts cannot seed successful uploads.
 The full action payload retains its 64 MiB ceiling. Sanitized shard storage is
 bounded separately to 64 MiB per job, with a 32 MiB per-shard ceiling and at most
 4096 expected invocations; exceeding any bound invalidates the proof.
+Absent source metadata cells are represented by explicit `null` in proof
+reference metadata, not an omitted property; this never supplies a job identity.
 `buck2-cache-proof-manifest.json` binds expected observations/jobs, source
 artifact checksums, native invocation IDs/root scopes, shard counts/checksums,
 and successful upload-before-reader references to the warm99 report. A per-job

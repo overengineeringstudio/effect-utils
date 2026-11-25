@@ -117,6 +117,9 @@ const editorCliBuckTargets = `package_view(
             "package.json",
             "${editorCliTypeScriptAuthority.projectFile}",
             "genie/packages.ts",
+            "genie/ci.ts",
+            "genie/ci-workflow/runners.ts",
+            "genie/ci-workflow/buck2-cache-proof-policy.ts",
             "genie/ci-workflow/test-scheduling.json",
         ]
     },
