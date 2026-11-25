@@ -80,15 +80,12 @@ jobs:
           cp -R "$scripts_src/." "$scripts_dst/"
           rm -f "$scripts_dst"/*.genie.ts
           chmod +x "$scripts_dst"/*.sh
-      - name: Use pinned devenv from lock
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
-          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
-            exit 1
-          fi
-          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
-          echo "Pinned devenv rev: $DEVENV_REV"
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Isolate pnpm state
         shell: bash

@@ -28,6 +28,10 @@ class UpdatePnpmTests(unittest.TestCase):
                 updater.replace(path, "12.23.0", "12.24.0")
             self.assertEqual(path.read_text(), "unrelated source\n")
 
+    def test_pinned_runtime_is_resolved_before_tasks(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/update-pnpm.yml").read_text()
+        self.assertLess(workflow.index("resolve-devenv.sh"), workflow.index("DEVENV_BIN:?"))
+
 
 if __name__ == "__main__":
     unittest.main()

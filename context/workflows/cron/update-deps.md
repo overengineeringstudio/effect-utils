@@ -1,19 +1,15 @@
 # Dependency updates
 
 The scheduled [Update pnpm workflow](../../../.github/workflows/update-pnpm.yml.genie.ts)
-runs weekly on Monday at 06:23 UTC, or manually from the default branch.
-It compares the latest stable [pnpm release](https://github.com/pnpm/pnpm/releases)
-with `nix/pnpm.nix` and opens a version-specific **draft** PR or adopts an existing
-candidate without changing its readiness. It never checks out candidate code,
-overwrites its history, or merges.
+runs Monday at 06:23 UTC or manually on the default branch. It compares the
+latest stable [pnpm release](https://github.com/pnpm/pnpm/releases) with `nix/pnpm.nix`,
+then opens/adopts version-specific **draft** PRs without candidate checkout,
+history overwrite, readiness changes or merging.
 
-The native CLI version in `nix/pnpm.nix` must match
-`DEFAULT_AGGREGATE_PACKAGE_MANAGER` in
-`packages/@overeng/genie/src/runtime/package-json/mod.ts`, the Buck support-tool
-protocols, lock-mutator allowlist, active install fixtures, and default tests.
-`scripts/update-pnpm.py` measures the wrapper and six native payloads by hashing
-raw registry tarball bytes, updates authored sources, then CI runs exactly one
-`genie:run` to refresh projections. Never edit generated manifests or contracts.
+`nix/pnpm.nix` must match Genie's `DEFAULT_AGGREGATE_PACKAGE_MANAGER`, Buck protocols,
+the lock-mutator allowlist, active fixtures and default tests.
+`scripts/update-pnpm.py` hashes seven raw registry tarballs and updates authored pins;
+CI then runs one `genie:run`. Never hand-edit generated manifests or contracts.
 The existing repository-restricted publisher App token triggers hosted checks;
 GitHub signs its API-created normal commits before a new branch is created.
 Missing App permissions or an unverified signature fail closed; closed PRs are not duplicated.

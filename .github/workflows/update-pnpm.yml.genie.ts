@@ -8,8 +8,8 @@ import {
   linuxX64Runner,
   pnpmStateSetupStep,
   prepareCiScriptsStep,
-  preparePinnedDevenvStep,
   runDevenvTasksBefore,
+  validateNixStoreStep,
 } from '../../genie/ci-workflow.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 
@@ -42,7 +42,7 @@ export default ciWorkflow({
         checkoutStep({ ref: '${{ github.sha }}' }),
         installNixStep(),
         prepareCiScriptsStep,
-        preparePinnedDevenvStep,
+        validateNixStoreStep,
         pnpmStateSetupStep,
         {
           name: 'Test updater input contracts',
