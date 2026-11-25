@@ -1,0 +1,142 @@
+# Generated file - DO NOT EDIT
+# Source: update-pnpm.yml.genie.ts
+
+name: Update pnpm
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: 23 6 * * 1
+  workflow_dispatch: {}
+
+concurrency:
+  group: update-pnpm
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    if: ${{ github.repository == 'overengineeringstudio/effect-utils' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: [sh-linux-x64, nix]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_CI_POSTURE: '1'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - id: buck2-ci-job-instance
+        name: Initialize Buck2 CI job instance
+        shell: bash
+        run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            connect-timeout = 10
+            stalled-download-timeout = 60
+            download-attempts = 3
+            extra-substituters = 
+            extra-trusted-public-keys = 
+            access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
+          summarize: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Isolate pnpm state
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          mkdir -p "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "${{ runner.temp }}/composition-state/pnpm-home" .devenv
+          member_store=.devenv/pnpm-store-pure-v1
+          if [ -L "$member_store" ]; then
+            if [ "$(readlink "$member_store")" != "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" ]; then
+              echo "::error::owned member pnpm store symlink has the wrong target: $member_store" >&2
+              exit 1
+            fi
+          elif [ -e "$member_store" ]; then
+            echo "::error::refusing non-symlink owned member pnpm store path: $member_store" >&2
+            exit 1
+          else
+            ln -s "${{ runner.temp }}/composition-state/pnpm-store-pure-v1" "$member_store"
+          fi
+          echo "PNPM_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.temp }}/composition-state/pnpm-store-pure-v1" >> "$GITHUB_ENV"
+          echo "PNPM_HOME=${{ runner.temp }}/composition-state/pnpm-home" >> "$GITHUB_ENV"
+      - name: Test updater input contracts
+        run: python3 scripts/update-pnpm.test.py
+      - # v3.3.0
+        id: pnpm-token
+        name: Mint repository-restricted updater App token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+          owner: overengineeringstudio
+          repositories: effect-utils
+          permission-contents: write
+          permission-pull-requests: write
+      - id: prepare
+        name: Measure latest stable payloads or adopt existing draft
+        env:
+          GH_TOKEN: ${{ steps.pnpm-token.outputs.token }}
+        run: python3 scripts/update-pnpm.py prepare
+      - if: steps.prepare.outputs.changed == 'true'
+        name: Regenerate canonical projections once
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run genie:run' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:run'
+      - if: steps.prepare.outputs.changed == 'true'
+        name: Publish GitHub-signed normal commit and draft PR
+        env:
+          GH_TOKEN: ${{ steps.pnpm-token.outputs.token }}
+        run: python3 scripts/update-pnpm.py publish
