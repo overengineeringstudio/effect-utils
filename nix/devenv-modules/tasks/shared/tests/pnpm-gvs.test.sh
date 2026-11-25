@@ -106,6 +106,10 @@ for name in first second ci local; do
   if [ "$name" = ci ]; then export CI=1 GITHUB_ACTIONS=true; else unset CI GITHUB_ACTIONS; fi
   # Ambient configuration must not defeat the selected policy.
   export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
+  if [ "$name" = ci ]; then
+    bash "$tmpdir/$mode-exec-doctor.sh" | jq -e \
+      '.decision == "repair-root" and .storeCacheRoot == null' >/dev/null
+  fi
   bash "$tmpdir/$mode-exec-install.sh"
   bash "$tmpdir/$mode-status-install.sh"
   if [ "$name" = first ]; then check_guarded_shell_policy "$root" true; fi
@@ -125,6 +129,18 @@ for name in first second ci local; do
   test "$(printf '%s\n' "$report" | jq -r .version)" = 1
   test -n "$(printf '%s\n' "$report" | jq -r .installHash)"
   test -n "$(printf '%s\n' "$report" | jq -r .projectionHash)"
+  if [ "$name" = ci ]; then
+    expected_cache_root="$(realpath "$root/.devenv/pnpm-store-pure-v1")"
+  else
+    expected_cache_root="$(realpath "$PNPM_SHARED_STORE_DIR")"
+  fi
+  test "$(printf '%s\n' "$report" | jq -r .storeCacheRoot)" = "$expected_cache_root"
+  if [ "$name" = first ]; then
+    ln -s "$PNPM_SHARED_STORE_DIR" "$tmpdir/store-alias"
+    alias_report="$(PNPM_SHARED_STORE_DIR="$tmpdir/store-alias" bash "$tmpdir/$mode-exec-doctor.sh")"
+    test "$(printf '%s\n' "$alias_report" | jq -r .storeCacheRoot)" = "$expected_cache_root"
+    test "$(printf '%s\n' "$alias_report" | jq -r .decision)" = repair-root
+  fi
   # Root-owned realization evidence covers dotentries, not just package links.
   mv "$root/node_modules/.bin" "$tmpdir/saved-bin"
   test "$(bash "$tmpdir/$mode-exec-doctor.sh" | jq -r .decision)" = repair-root
@@ -136,6 +152,7 @@ for name in first second ci local; do
   cache_store="$(jq -r .storeDir "$root/node_modules/.modules.yaml")"
   actual_store="$(cd "$root"; PNPM_CONFIG_STORE_DIR="${cache_store%/v11}" "$pnpm_bin" store path)"
   test "$actual_store" = "$cache_store"
+  test "$expected_cache_root" != "$cache_store"
   if [ "$name" = ci ]; then
     test "$actual_store" = "$root/.devenv/pnpm-store-pure-v1/v11"
   else
