@@ -22,8 +22,162 @@ def load_supervisor():
     return supervisor
 
 
+def owned_authority(lock, body):
+    # The authority opens its own CLOEXEC description; no wrapper lends a lock.
+    return f'''
+import fcntl, json, os, sys, time
+owner_fd = os.open({str(lock)!r}, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+fcntl.flock(owner_fd, fcntl.LOCK_EX)
+metadata = json.dumps({{"pid": os.getpid(), "command": sys.executable,
+                       "started": time.monotonic()}}).encode()
+os.ftruncate(owner_fd, 0)
+os.write(owner_fd, metadata)
+ready_fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
+os.write(ready_fd, b"1")
+os.close(ready_fd)
+''' + body
+
+
+class AdmissionNotificationPreparationTest(unittest.TestCase):
+    def test_real_pipe_outcomes_pending_eof_and_malformed(self):
+        observer = load_supervisor().observe_publication_admission
+        for payload, outcome in ((b"1", "owner-acquired"), (b"0", "no-publication"),
+                                 (b"", None), (b"2", None), (b"\xff", None)):
+            with self.subTest(payload=payload):
+                read_fd, write_fd = os.pipe()
+                try:
+                    os.set_blocking(read_fd, False)
+                    self.assertIsNone(observer(read_fd))
+                    os.write(write_fd, payload)
+                    os.close(write_fd)
+                    write_fd = None
+                    if outcome is None:
+                        with self.assertRaisesRegex(ValueError, "failed to notify owner admission"):
+                            observer(read_fd)
+                    else:
+                        self.assertEqual(observer(read_fd), outcome)
+                finally:
+                    os.close(read_fd)
+                    if write_fd is not None:
+                        os.close(write_fd)
+
+    def test_authority_keeps_owner_private_across_exec_and_child_join(self):
+        observer = load_supervisor().observe_publication_admission
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            child = r'''
+import errno, fcntl, os, sys
+assert "EDITOR_VIEW_ADMISSION_READY_FD" not in os.environ
+try:
+    os.fstat(int(sys.argv[2]))
+except OSError as error:
+    assert error.errno == errno.EBADF
+else:
+    raise AssertionError("owner descriptor crossed exec")
+with open(sys.argv[1], "r+b") as probe:
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise AssertionError("authority owner was released before child joined")
+'''
+            fixture = owned_authority(lock, f'''
+import subprocess
+subprocess.run([sys.executable, "-c", {child!r}, {str(lock)!r}, str(owner_fd)],
+               check=True, close_fds=False)
+probe = os.open({str(lock)!r}, os.O_RDWR | os.O_CLOEXEC)
+try:
+    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    pass
+else:
+    raise AssertionError("owner was released before child cleanup")
+finally:
+    os.close(probe)
+''')
+            read_fd, write_fd = os.pipe()
+            try:
+                env = {**os.environ, "EDITOR_VIEW_ADMISSION_READY_FD": str(write_fd)}
+                with subprocess.Popen([sys.executable, "-c", fixture], env=env,
+                                      pass_fds=(write_fd,), stderr=subprocess.PIPE) as authority:
+                    os.close(write_fd)
+                    write_fd = None
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(read_fd, selectors.EVENT_READ)
+                        self.assertTrue(selector.select(5), "authority did not notify")
+                    self.assertEqual(observer(read_fd), "owner-acquired")
+                    _, stderr = authority.communicate(timeout=5)
+                    self.assertEqual(authority.returncode, 0, stderr.decode())
+                with lock.open("r+b") as probe:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(read_fd)
+                if write_fd is not None:
+                    os.close(write_fd)
+
+
+class NativePublicationCopyFixtureTest(unittest.TestCase):
+    def test_real_copy_fifo_release_and_native_signal(self):
+        tool = os.environ.get("EDITOR_VIEW_SUPERVISOR_CP_BIN")
+        self.assertIsNotNone(tool, "requires the declared immutable publication copy fixture")
+        self.assertTrue(str(Path(tool).resolve()).startswith("/nix/store/"))
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            source = root / "inputs" / "payload"
+            source.parent.mkdir()
+            source.write_text("actual workspace λ and dependency 雪\n")
+            copied = root / "copied"
+            result = subprocess.run([tool, source, copied], env={"PATH": ""}, timeout=5)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(copied.read_bytes(), source.read_bytes())
+
+            (root / "supervisor-termination").write_text("publication\n")
+            release = root / "publication-release"
+            os.mkfifo(release)
+            release_fd = os.open(release, os.O_RDWR | os.O_NONBLOCK)
+            released = root / "released"
+            child = None
+            try:
+                child = subprocess.Popen([tool, source, released], env={"PATH": ""})
+                limit = time.monotonic() + 5
+                while not (root / "ready").exists() and time.monotonic() < limit:
+                    time.sleep(0.01)
+                self.assertTrue((root / "ready").exists())
+                self.assertIsNone(child.poll())
+                self.assertFalse(released.exists())
+                os.write(release_fd, b"release\n")
+                self.assertEqual(child.wait(timeout=5), 0)
+                self.assertEqual(released.read_bytes(), source.read_bytes())
+            finally:
+                os.close(release_fd)
+                if child is not None:
+                    if child.poll() is None:
+                        child.kill()
+                    child.wait(timeout=5)
+
+            (root / "ready").unlink()
+            (root / "supervisor-termination").write_text("publication-child\n")
+            interrupted = root / "interrupted"
+            result = subprocess.run([tool, source, interrupted], env={"PATH": ""}, timeout=5)
+            self.assertEqual(result.returncode, -signal.SIGTERM)
+            self.assertTrue((root / "ready").exists())
+            self.assertFalse(interrupted.exists())
+
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_missing_notification_fails_closed_without_acquiring_owner(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "owner.lock"
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                 "none", "0.01", "--lock", str(lock), sys.executable, "-c", "pass"],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("failed to notify owner admission", result.stderr)
+            self.assertFalse(lock.exists())
+
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
         supervisor = load_supervisor()
         script = str(Path(__file__).with_name("editor-view-supervisor.py"))
@@ -51,12 +205,12 @@ class PublicationSupervisorTest(unittest.TestCase):
                 leases = root / ".editor-view" / ".leases"
                 leases.mkdir(parents=True)
                 (leases / "generation.lock").touch()
-                fixture = r'''
+                fixture = owned_authority(lock, r'''
 import sys
 print("admitted", flush=True)
 if sys.argv[1] == "holder":
     with open(sys.argv[2], "rb", buffering=0) as release: assert release.read(1) == b"1"
-'''
+''')
                 env = {**os.environ, "DEVENV_ROOT": scratch,
                        "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
                        "BUCK_ISOLATION_DIR": str(root / "private-isolation")}
@@ -88,7 +242,7 @@ if sys.argv[1] == "holder":
                     captured = until(waiter.stderr, b"[editor-view-admission-wait] end\n")
                     begin = captured.index(b"[editor-view-admission-wait] begin\n")
                     dump = captured[begin:]
-                    self.assertIn(f"recorded-pid={holder.pid}".encode(), dump)
+                    self.assertIn(f"recorded-pid={json.loads(lock.read_text())['pid']}".encode(), dump)
                     self.assertIn(f"command={Path(sys.executable).name}".encode(), dump)
                     self.assertIn(b"held-seconds=", dump)
                     self.assertIn(b"buck isolation=private-isolation status=unavailable", dump)
@@ -189,9 +343,45 @@ else:
                 root = Path(scratch)
                 ready = root / "ready"
                 os.mkfifo(root / "release")
+                os.mkfifo(root / "publication-release")
+                (root / "supervisor-termination").write_text(termination + "\n")
+                for name in ("CP_BIN", "MV_BIN", "FINGERPRINT_BIN", "EDITOR_VIEW_SUPERVISOR_CP_BIN"):
+                    self.assertTrue(os.environ.get(name), f"{name} is required for the real publication fixture")
+                package = root / "packages/app"
+                package.mkdir(parents=True)
+                (package / "package.json").write_text("{}\n")
+                node_modules = root / "inputs/app/node_modules"
+                package_tree = root / "inputs/app/package_tree"
+                dependency = root / "inputs/store/dep"
+                for directory in (node_modules, package_tree, dependency):
+                    directory.mkdir(parents=True)
+                (package_tree / "index.js").write_text('export const workspace = "λ"\n')
+                (dependency / "index.js").write_text('export const dependency = "雪"\n')
+                (node_modules / "workspace").symlink_to("../package_tree")
+                (node_modules / "dep").symlink_to("../../store/dep")
+                (root / "editor-inputs.json").write_text(json.dumps({
+                    "schema": "effect-utils/editor-view-inputs/v1",
+                    "editorInputs": str(node_modules), "packageTree": str(package_tree),
+                    "readRoots": [str(package_tree), str(dependency)],
+                }))
+                (root / "authority.json").write_text(json.dumps({
+                    "schema": "effect-utils/workspace-dependency-authority/v1",
+                    "requiredPackages": ["packages/app"], "ownedPackages": ["packages/app"],
+                }))
+                (root / ".buckroot").touch()
+                (root / ".buckconfig").touch()
                 fake = root / "buck2"
                 fake.write_text(f"#!{sys.executable}\n" + r'''
-import os, pathlib, signal, sys, time
+import fcntl, os, pathlib, signal, sys, time
+assert "EDITOR_VIEW_ADMISSION_READY_FD" not in os.environ
+assert sys.argv[sys.argv.index("--isolation-dir") + 1] == "editor-publication"
+with open(".devenv/editor-view-publication.lock", "r+b") as probe:
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise AssertionError("native build ran without the real publication owner")
 event = sys.argv[sys.argv.index("--event-log") + 1]
 pathlib.Path(event).touch()
 if os.environ["PAYLOAD"] == "lines":
@@ -208,6 +398,7 @@ else:
 sys.stderr.write("\nBUCK-BLOCKED\n")
 sys.stderr.flush()
 if os.environ["TERMINATION"] in ("publication", "publication-child", "success"):
+    print("//packages/app:editor_view_inputs " + str(pathlib.Path("editor-inputs.json").resolve()))
     sys.exit(0)
 with open("release", "rb", buffering=0) as release:
     assert release.read(1) == b"1"
@@ -218,26 +409,46 @@ time.sleep(60)
                 fake.chmod(0o700)
                 runner = root / "runner.ts"
                 module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
+                publisher = repo / "packages/@overeng/buck2-tools/src/editor-view.ts"
                 runner.write_text(f'''
 import {{ existsSync, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
+import {{ runManagedEditorPublicationCommand, takePublicationAdmissionNotification, withPublicationCancellation }} from {json.dumps(str(repo / "scripts/editor-view-authority.ts"))}
+import {{ editorPublicationIsolation, withEditorPublicationOwner }} from {json.dumps(str(repo / "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"))}
+const notify = takePublicationAdmissionNotification()
 let pending = ''
 let released = false
-await reconcileBuckViews({{
-  request: {{ packagePaths: [], changedPaths: [], buildTargets: ['//:fake'] }},
+await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({{
+  root: process.cwd(), signal, run: owner => {{
+    notify('owner-acquired')
+    return reconcileBuckViews({{
+  request: {{ packagePaths: ['packages/app'], changedPaths: [], buildTargets: ['//packages/app:editor_view_inputs'] }},
   options: {{
-    plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
+    plan: {{ globalPaths: [], packages: [{{
+      packagePath: 'packages/app', sourceRoots: [], workspaceDependencies: [],
+      targets: {{ packageTree: '//packages/app:package_tree' }},
+      editor: {{ cell: 'effect_utils', consumerCache: '.devenv/vite-cache/app',
+        inputsManifestTarget: '//packages/app:editor_view_inputs', target: '//packages/app:editor_inputs', viewName: 'app' }},
+    }}] }}, mode: 'publish',
+    signal,
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2', editorViewCommand: [process.execPath, '-e',
-      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' :
-        'require("node:fs").readFileSync(0); require("node:fs").writeFileSync("ready", ""); setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
-    cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
+    buck2: './buck2', editorViewCommand: [process.execPath, {json.dumps(str(publisher))}],
+    workspaceAuthority: process.cwd() + '/authority.json',
+    cp: process.env.TERMINATION?.startsWith('publication') ? process.env.EDITOR_VIEW_SUPERVISOR_CP_BIN! : process.env.CP_BIN!,
+    mv: process.env.MV_BIN!, fingerprintTool: process.env.FINGERPRINT_BIN!, snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     diagnosticTaskName: 'buck2:editor:bootstrap',
-    run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
+    run: (options) => {{
+      const execute = (command: Parameters<typeof runCommand>[0]) => command.command === './buck2'
+        ? runManagedEditorPublicationCommand({{
+            command: {{ ...command, args: ['--isolation-dir', editorPublicationIsolation, ...command.args] }},
+            owner, native: process.cwd() + '/buck2', env: process.env,
+          }})
+        : runCommand(command)
+      return execute({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
       pending += chunk
-      if (!released && pending.includes('BUCK-BLOCKED') && process.env.TERMINATION !== 'publication') {{
+      if (!released && pending.includes('BUCK-BLOCKED') && !process.env.TERMINATION?.startsWith('publication')) {{
         released = true
         if (['deadline', 'SIGTERM', 'SIGKILL'].includes(process.env.TERMINATION ?? '')) writeFileSync('release', '1')
         writeFileSync('ready', '')
@@ -250,9 +461,15 @@ await reconcileBuckViews({{
         writeFileSync('command-completed-with-event-log', '')
       }}
       return result
-    }}),
+    }})
+    }},
   }},
-}}).catch((error) => {{ console.error(error.message); process.exitCode = 1 }})
+    }})
+  }}
+}}) }}).catch((error) => {{
+  if (process.env.TERMINATION === 'publication-child') writeFileSync('publication-native-signal', String(error.signal))
+  console.error(error.message); process.exitCode = 1
+}})
 ''')
                 # Inject elapsed time only after the ring has consumed the marker:
                 # no startup-speed dependency, real supervisor TERM/KILL escalation.
@@ -261,13 +478,22 @@ import importlib.util, pathlib, sys
 spec = importlib.util.spec_from_file_location("supervisor", {str(repo / "scripts/editor-view-supervisor.py")!r})
 supervisor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(supervisor)
-supervisor.time.monotonic = lambda: 2 if pathlib.Path("ready").exists() else 0
-sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication") else None, 0.2))
+clock = 0
+def elapsed():
+    global clock
+    if pathlib.Path("ready").exists():
+        clock += 2
+    return clock
+supervisor.time.monotonic = elapsed
+sys.exit(supervisor.supervise_locked(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication") else None, 0.2,
+                                   str(pathlib.Path(".devenv/editor-view-publication.lock").resolve())))
 '''
                 result = subprocess.run(
                     [sys.executable, "-c", driver, bun, str(runner)],
                     cwd=root, capture_output=True, text=True, timeout=10,
                     env={**os.environ, "CI": "1", "PAYLOAD": payload,
+                         "EDITOR_VIEW_HOST_BUDGET_STATE": str(root / "budget-state"),
+                         "EDITOR_VIEW_CONTENT_STORE": str(root / "content"),
                          "HOME": str(Path.home()) + "/private-" + "a" * 180,
                          "TMPDIR": str(Path.home()) + "/private-" + "a" * 180 + "/temp-zone",
                          "TERMINATION": termination, "TRACEPARENT": "",
@@ -276,10 +502,28 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                 output = result.stderr
                 if termination == "success":
                     self.assertEqual(result.returncode, 0, output)
-                    self.assertEqual(output, "")
+                    self.assertIn("publication admitted on lock", output)
+                    self.assertNotIn("BUCK-BLOCKED", output)
+                    self.assertEqual([
+                        line for line in output.splitlines()
+                        if not line.startswith((
+                            "Editor-view publication admitted on lock ",
+                            "[editor-view-phase] ", "[editor-view-payload] ",
+                            "[editor-view-budget] ", "[editor-view-timing] ",
+                        ))
+                    ], [])
                     self.assertTrue((root / "command-completed-with-event-log").exists())
+                    self.assertEqual((root / ".editor-view/app/node_modules/workspace/index.js").read_text(),
+                                     'export const workspace = "λ"\n')
+                    self.assertEqual((root / ".editor-view/app/node_modules/dep/index.js").read_text(),
+                                     'export const dependency = "雪"\n')
+                    record = json.loads((root / ".editor-view/app/editor-view.json").read_text())
+                    self.assertEqual(record["package"], "packages/app")
                     self.assertEqual(list(root.glob(".devenv/otel/buck2-events/*.pb.zst")), [])
                     continue
+                self.assertFalse((root / ".editor-view/app/editor-view.json").exists())
+                if termination == "publication-child":
+                    self.assertEqual((root / "publication-native-signal").read_text(), "SIGTERM")
                 self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication") else 1, output)
                 self.assertTrue(ready.exists(), output)
                 self.assertIn("BUCK-BLOCKED\n", output)
@@ -334,7 +578,7 @@ print("fresh-discovery-required")
                 for admission in ([], ["--lock", str(Path(scratch) / "publication.lock")]):
                     result = subprocess.run(
                         [sys.executable, supervisor, "5", "0.1", *admission,
-                         sys.executable, "-c", fixture, str(control),
+                         sys.executable, "-c", owned_authority(Path(admission[1]), fixture) if admission else fixture, str(control),
                          str(holder.fileno()), str(os.fstat(holder.fileno()).st_ino)],
                         env=env, pass_fds=(holder.fileno(),),
                         capture_output=True, text=True, timeout=10,
@@ -349,7 +593,7 @@ print("fresh-discovery-required")
             lock = Path(scratch) / "publication.lock"
             state = Path(scratch) / ".publish.lock"
             supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
-            fixture = (
+            fixture = owned_authority(lock,
                 "import os,pathlib,sys; p=pathlib.Path(sys.argv[1]); p.mkdir(); "
                 "print('publishing',flush=True); sys.stdin.buffer.read(1); p.rmdir()"
             )
@@ -387,7 +631,7 @@ print("fresh-discovery-required")
             entered = Path(scratch) / "entered"
             command = [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
                        "0.3", "0.1", "--lock", str(lock_path), sys.executable, "-c",
-                       "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()", str(entered)]
+                       owned_authority(lock_path, "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()"), str(entered)]
             with lock_path.open("a") as holder:
                 fcntl.flock(holder, fcntl.LOCK_EX)
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -416,7 +660,7 @@ print("fresh-discovery-required")
                 process = subprocess.Popen(
                     [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
                      "1", "0.1", "--lock", str(lock_path), sys.executable, "-c",
-                     "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(60)",
+                     owned_authority(lock_path, "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(60)"),
                      str(entered)],
                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 )
@@ -453,7 +697,8 @@ print("fresh-discovery-required")
                 fcntl.flock(holder, fcntl.LOCK_EX)
                 process = subprocess.Popen(
                     [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
-                     "0.1", "0.1", "--lock", str(lock_path), sys.executable, "-c", "raise SystemExit(0)"],
+                     "0.1", "0.1", "--lock", str(lock_path), sys.executable, "-c",
+                     owned_authority(lock_path, "raise SystemExit(0)")],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 )
                 try:
@@ -474,7 +719,7 @@ print("fresh-discovery-required")
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
                  "0.2", "0.1", "--lock", str(Path(scratch) / "publication.lock"),
-                 sys.executable, "-c", "import time; time.sleep(60)"],
+                 sys.executable, "-c", owned_authority(Path(scratch) / "publication.lock", "import time; time.sleep(60)")],
                 capture_output=True, text=True, timeout=5,
             )
             self.assertEqual(result.returncode, 124, result.stderr)
@@ -488,7 +733,7 @@ print("fresh-discovery-required")
             for code in (7, 0):
                 result = subprocess.run(
                     [sys.executable, supervisor, "2", "0.1", "--lock", str(lock_path),
-                     sys.executable, "-c", f"import os; os._exit({code})"],
+                     sys.executable, "-c", owned_authority(lock_path, f"import os; os._exit({code})")],
                     capture_output=True, text=True, timeout=5,
                 )
                 self.assertEqual(result.returncode, code, result.stderr)
@@ -557,7 +802,8 @@ print("fresh-discovery-required")
             pids = Path(scratch) / "pids"
             # The authority exits on TERM; its child ignores TERM and creates a
             # grandchild after the group's initial TERM. Both require escalation.
-            fixture = r'''
+            lock = Path(scratch) / "publication.lock"
+            fixture = owned_authority(lock, r'''
 import os, signal, subprocess, sys, time
 child = r"""
 import os, signal, subprocess, sys, time
@@ -570,11 +816,11 @@ time.sleep(60)
 """
 subprocess.Popen([sys.executable, '-c', child, sys.argv[1]])
 time.sleep(60)
-'''
+''')
             start = time.monotonic()
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
-                 "0.25", "0.5", sys.executable, "-c", fixture, str(pids)],
+                 "0.25", "0.5", "--lock", str(lock), sys.executable, "-c", fixture, str(pids)],
                 capture_output=True, text=True, timeout=5,
             )
             self.assertEqual(result.returncode, 124, result.stderr)

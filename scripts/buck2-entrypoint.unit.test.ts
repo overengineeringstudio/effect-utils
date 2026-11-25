@@ -1,6 +1,12 @@
 import { expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
+import {
+  editorPublicationIsolation,
+  withEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import type { ReaderReapiUnavailableShadow } from './buck2-cache-posture.ts'
 import {
   ciPostureDeclared,
@@ -11,11 +17,165 @@ import {
   gateDaemonStopDecision,
   gateScopeIdentity,
   isOnlyReapiUnavailable,
+  resolveManagedInvocation,
+  requireEditorPublicationInvocationOwner,
+  runOwnedEditorPublicationCommand,
+  stopOwnedEditorPublicationDaemon,
   runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
   writeNativeStderrChunk,
 } from './buck2-entrypoint.ts'
+import {
+  ownedEditorViewAuthorityCommandRunner,
+  runManagedEditorPublicationCommand,
+} from './editor-view-authority.ts'
+
+const withPublicationRoot = async (run: (cwd: string) => Promise<void>): Promise<void> => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'buck-publication-owner-')))
+  try {
+    writeFileSync(join(cwd, '.buckroot'), '')
+    writeFileSync(join(cwd, '.buckconfig'), '')
+    await run(cwd)
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+}
+
+it('retains the same real owner across native run and ExistingOnly stop', () =>
+  withPublicationRoot(async (cwd) => {
+    const native = join(cwd, 'native')
+    writeFileSync(native, '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 })
+    let released: Parameters<typeof requireEditorPublicationInvocationOwner>[0]['owner']
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        released = owner
+        const options = {
+          native,
+          cwd,
+          env: {},
+          owner,
+          args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
+        }
+        const result = await runOwnedEditorPublicationCommand(options)
+        expect(result).toMatchObject({
+          exitCode: 0,
+          signalCode: null,
+          stdout: `--isolation-dir\n${editorPublicationIsolation}\nkill\n`,
+        })
+        expect(stopOwnedEditorPublicationDaemon(options).status).toBe(0)
+        expect(requireEditorPublicationInvocationOwner(options)).toBe(owner)
+        await expect(
+          runOwnedEditorPublicationCommand({
+            ...options,
+            args: ['--isolation-dir', 'v2', 'kill'],
+          }),
+        ).rejects.toThrow('reserved editor-publication')
+      },
+    })
+    expect(() =>
+      stopOwnedEditorPublicationDaemon({
+        native,
+        cwd,
+        env: {},
+        owner: released!,
+      }),
+    ).toThrow()
+  }))
+
+it('adapts real owned native streams and census with native failure identity', () =>
+  withPublicationRoot(async (cwd) => {
+    const native = join(cwd, 'native')
+    writeFileSync(
+      native,
+      '#!/bin/sh\nprintf "%s\\n" "$PWD" "$EXPLICIT_CONTEXT" "$@"\nprintf "\\342\\202\\254\\342" >&2\n',
+      { mode: 0o755 },
+    )
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        const chunks: string[] = []
+        const command = {
+          command: 'buck',
+          cwd,
+          args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
+          onStderr: (chunk: string): void => {
+            chunks.push(chunk)
+          },
+        }
+        const result = await runManagedEditorPublicationCommand({
+          command,
+          native,
+          owner,
+          env: { EXPLICIT_CONTEXT: 'adapter' },
+        })
+        expect(chunks.join('')).toBe('€�')
+        expect(result.stderr).toBe('€�')
+        expect(result.stdout).toBe(
+          `${cwd}\nadapter\n--isolation-dir\n${editorPublicationIsolation}\nkill\n`,
+        )
+        const uncaptured = await runManagedEditorPublicationCommand({
+          command: { ...command, captureStderr: false },
+          native,
+          owner,
+          env: {},
+        })
+        expect(uncaptured.stderr).toBe('')
+        const runner = ownedEditorViewAuthorityCommandRunner({
+          buck2: 'buck',
+          native,
+          owner,
+          env: { EXPLICIT_CONTEXT: 'census' },
+          signal: new AbortController().signal,
+        })
+        const census = await runner({ command: 'buck', cwd, args: ['uquery', '//...'] })
+        expect(Buffer.isBuffer(census.stdout)).toBe(true)
+        expect(Buffer.isBuffer(census.stderr)).toBe(true)
+        expect(Buffer.from(census.stdout).toString()).toBe(
+          `${cwd}\ncensus\n--isolation-dir\n${editorPublicationIsolation}\nuquery\n//...\n`,
+        )
+        const ordinary = await runner({ command: '/bin/sh', cwd, args: ['-c', 'printf ordinary'] })
+        expect(Buffer.from(ordinary.stdout).toString()).toBe('ordinary')
+        expect(requireEditorPublicationInvocationOwner({ ...command, env: {}, owner })).toBe(owner)
+      },
+    })
+  }))
+
+it('preserves managed native status, signal and pre-aborted command causes', () =>
+  withPublicationRoot(async (cwd) => {
+    const native = join(cwd, 'native')
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        const command = {
+          command: 'buck',
+          cwd,
+          args: ['--isolation-dir', editorPublicationIsolation, 'kill'],
+        }
+        writeFileSync(native, '#!/bin/sh\nexit 23\n', { mode: 0o755 })
+        await expect(
+          runManagedEditorPublicationCommand({ command, native, owner, env: {} }),
+        ).rejects.toMatchObject({ exitCode: 23, signal: undefined })
+        writeFileSync(native, '#!/bin/sh\nkill -TERM $$\n', { mode: 0o755 })
+        await expect(
+          runManagedEditorPublicationCommand({ command, native, owner, env: {} }),
+        ).rejects.toMatchObject({ exitCode: undefined, signal: 'SIGTERM' })
+        const controller = new AbortController()
+        const cause = new Error('cancel before spawn')
+        controller.abort(cause)
+        await expect(
+          runManagedEditorPublicationCommand({
+            command: { ...command, signal: controller.signal },
+            native,
+            owner,
+            env: {},
+          }),
+        ).rejects.toBe(cause)
+        expect(requireEditorPublicationInvocationOwner({ ...command, env: {}, owner })).toBe(owner)
+      },
+    })
+  }))
 
 const root = '/project/root'
 const isolation = 'owned'
@@ -572,4 +732,48 @@ it('pins local replay flags before payload and keeps original native identity si
     ['build', '--remote-only', '//:app'],
   ])
     expect(localCacheReplayArguments({ ...options, args })).toBeUndefined()
+})
+
+it('keeps the executed literal snapshot when a supported argfile is rewritten after admission', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'buck-invocation-snapshot-'))
+  try {
+    const path = join(cwd, 'mutable.args')
+    writeFileSync(path, '--isolation-dir\nv2\nbuild\n//:quick\n')
+    const admitted = resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} })
+    writeFileSync(path, '--isolation-dir\neditor-publication\nclean\n')
+    expect(admitted).toEqual({
+      isolation: 'v2',
+      args: ['--isolation-dir', 'v2', 'build', '//:quick'],
+      nativeArgumentCount: 4,
+    })
+    expect(resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} }).isolation).toBe(
+      'editor-publication',
+    )
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
+it('never lets a trailing run payload override native isolation selection', () => {
+  const args = ['run', '//:tool', 'payload', '--isolation-dir', 'v2']
+  const env = { BUCK_ISOLATION_DIR: 'editor-publication' }
+  expect(resolveManagedInvocation({ args, cwd: root, env })).toEqual({
+    isolation: 'editor-publication',
+    args,
+    nativeArgumentCount: 2,
+  })
+  expect(
+    resolveManagedInvocation({
+      args: ['run', '--unfamiliar-option', '//:tool', 'payload'],
+      cwd: root,
+      env,
+    }).isolation,
+  ).toBe('editor-publication')
+  expect(() =>
+    resolveManagedInvocation({
+      args: ['run', '--unfamiliar-option', '//:tool', '--isolation-dir', 'v2'],
+      cwd: root,
+      env,
+    }),
+  ).toThrow('ambiguous run option')
 })

@@ -296,6 +296,10 @@ export const probeWatchman = async ({
           // refusal, or a niced --no-spawn probe whose silent failure is
           // proven to mean "no service". A leftover managed socket proves
           // nothing; connect without spawning to distinguish it from a live listener.
+          const retryDeadlineSignal = () => {
+            const signal = makeDeadlineSignal?.()
+            return signal === undefined ? {} : { deadlineSignal: signal }
+          }
           let reason: 'timeout' | 'executable' | 'priority' | 'service' = 'service'
           if (error.killed === true || deadlineSignal?.aborted === true) reason = 'timeout'
           else if (error.code === 'ENOENT' || error.code === 'EACCES') reason = 'executable'
@@ -309,12 +313,12 @@ export const probeWatchman = async ({
                 (await managedServiceMissing({
                   socket,
                   deadlineMs,
-                  deadlineSignal: makeDeadlineSignal?.(),
+                  ...retryDeadlineSignal(),
                 }))
               : (await defaultServiceMissing({
                   env,
                   deadlineMs,
-                  deadlineSignal: makeDeadlineSignal?.(),
+                  ...retryDeadlineSignal(),
                 })) === true) === true
           )
             reason = 'priority'
@@ -456,7 +460,7 @@ export const initializeWatchmanRoot = async ({
       env,
       repoRoot: root,
       deadlineMs,
-      managedDirectory,
+      ...(managedDirectory === undefined ? {} : { managedDirectory }),
       // The existing timeout retry shares one total crawl deadline. A timed-out
       // first attempt cannot acquire a second initialization budget.
       makeDeadlineSignal: () => deadline,

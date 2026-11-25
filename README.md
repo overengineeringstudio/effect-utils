@@ -638,6 +638,15 @@ as parameter properties, enums, and runtime namespaces, before merge-group
 consumer tests. Source exports can therefore use Node's strip-only mode without
 TypeScript lowering; unrelated runtime requirements and JSX transforms still apply.
 
+The generated `scripts/tsconfig.json` checks the real `editor-view-authority.ts`
+and `buck2-entrypoint.ts` CLIs, including their transitive source imports, under
+the same strict compiler options. Run `devenv tasks run buck2:editor:cli:check`
+for this Buck-owned `//:editor_cli_typecheck` target; `//:quick` also includes it.
+Bootstrap execution is not typechecking: this gate rejects incorrect call shapes
+such as `withPublicationCancellation(main)` without executing the CLI.
+The Nix product root projection retains this project's config and eagerly loaded
+root metadata so unrelated product analysis can still load the shared root BUCK.
+
 Audit cross-cell Buck provider identity separately:
 
 ```bash

@@ -162,10 +162,23 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
-The reconciliation command runner waits for child close after a stdin write
-failure. A nonzero or signaled child exit takes precedence over a concurrent
-broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
-A successful child exit still fails if its input could not be delivered.
+The publication task entrypoint owns the worktree before its authority census
+and native build, and holds that owner until the genuine publisher CLI closes.
+Native Buck uses the reserved `editor-publication` isolation. No owner descriptor
+is passed to the publisher child. The supervisor observes an admission notification
+only; time waiting for ownership does not consume the publication execution budget.
+
+The compiled launcher bundles the same canonical owner module. Its Nix build
+stages that one module at the source-relative import path while compiling, then
+removes the staged sources; the installed launcher retains only the native library
+and compiled entrypoint, not a second ownership implementation.
+
+The reconciliation command runner waits for child close after cancellation,
+spawn errors, or stdin write failure. A nonzero or signaled child exit takes
+precedence over a concurrent abort or broken pipe, preserving native termination
+while the owner remains held through publisher cleanup. A successful child exit
+still fails if cancellation or input delivery failed. After joined cleanup, the
+authority preserves cancellation exit statuses: SIGHUP 129, SIGINT 130, SIGTERM 143.
 
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.
@@ -226,17 +239,25 @@ Scoped devenv publishers retain their explicit consumer sets; Storybook builds d
 not publish the whole workspace. Different `packages/@overeng/*` consumers still
 share `packages/.editor-view/.publish.lock`, so task invocations queue on the
 per-worktree `.devenv/editor-view-publication.lock` before authority/build/publish.
-The supervisor uses a blocking kernel `flock`, without polling or lock theft,
-with a **5 s kill grace** on interruption or deadline expiry. The execution clock
-starts only after admission: scoped/bootstrap work keeps its 300 s cap and
-Storybook play tests keep their derived 380 s cap, excluding queue time.
+The authority acquires its own process-local opaque owner with an abortable
+nonblocking kernel `flock` loop, without lock theft. The supervisor holds no lock
+descriptor: its only inherited descriptor is a one-byte admission notification pipe.
+`1` starts the execution clock after acquisition, `0` marks a no-publication exit,
+and malformed or missing admission fails closed. Scoped/bootstrap work keeps its
+300 s cap and Storybook play tests keep their derived 380 s cap, excluding queue time.
 Each admitted invocation logs the lock path and admission wait in seconds.
 Signals still cancel queued waiters and identify the lock they were waiting for.
 Uncapped batches have no execution deadline. On Darwin, process-group EPERM is
 treated as termination only after a process census proves no live members remain;
-live-member permission failures still fail closed. The supervisor retains ownership through
-process-group cleanup; process exit releases it automatically. The persistent
+live-member permission failures still fail closed. Cancellation joins native Buck,
+publisher close, and native copy cleanup before the authority releases its owner;
+the supervisor then joins process-group cleanup with a **5 s kill grace**.
+The owner descriptor is CLOEXEC and is never lent to a descendant. The persistent
 flock file must not be unlinked while publishers are active.
+
+Managed invocation selection snapshots supported plain-text argument files before
+admission. Later rewrites cannot change the executed isolation or literal argv;
+run payload tokens do not participate in the native isolation selection.
 
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
@@ -643,10 +664,12 @@ Its optional `EDITOR_VIEW_ADMISSION_READY_FD` must name a canonical numeric FD f
 write-only FIFO; malformed values fail before target execution or availability fallback.
 This is notification transport only, never publication ownership.
 
-The publication supervisor intentionally closes descriptors outside its own
-admission protocol. It removes inherited lease mappings and the active marker
-from its child's environment; the child source launcher discovers fresh leases.
-It never adds parent leases to `pass_fds`. A stale mapping reaching the native
+The publication supervisor closes descriptors outside its notification protocol.
+It removes inherited lease mappings, the active marker, and old notification
+values from its child's environment; only the fresh notification pipe is passed.
+The authority consumes and removes that value before spawning descendants.
+The child source launcher discovers fresh leases; the supervisor never adds
+parent leases or an owner descriptor to `pass_fds`. A stale mapping reaching the native
 launcher is diagnosed as unknown, removed, and never re-exported to descendants.
 The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
 The admitted set is explicitly passed to source-reading descendants.

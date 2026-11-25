@@ -1,18 +1,179 @@
 #!/usr/bin/env -S bun
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { closeSync, readFileSync, writeSync } from 'node:fs'
+import { constants } from 'node:os'
 import { join, posix } from 'node:path'
 import process from 'node:process'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
 import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
-import { reconcileBuckViews } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
+import {
+  CommandFailure,
+  reconcileBuckViews,
+  runCommand,
+} from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
   BuckWatchPlan,
+  RunCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
-import { writeEditorViewAuthority } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+  withEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import {
+  runEditorViewAuthorityCommand,
+  writeEditorViewAuthority,
+  type EditorViewAuthorityCommandRunner,
+} from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
 import { defaultEditorViewName } from '../packages/@overeng/buck2-tools/src/editor-view.ts'
+import { runOwnedEditorPublicationCommand } from './buck2-entrypoint.ts'
+
+/** A managed native command, independent of the reconciler's execution contract. */
+export type ManagedEditorPublicationCommand = {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly signal?: AbortSignal
+  readonly captureStderr?: boolean
+  readonly onStderr?: (chunk: string) => void
+}
+
+/** Explicit native execution context retaining the same live opaque owner. */
+export type ManagedEditorPublicationOptions = {
+  readonly command: ManagedEditorPublicationCommand
+  readonly owner: EditorPublicationOwner
+  readonly native: string
+  readonly env: NodeJS.ProcessEnv
+}
+
+/** Captured managed-native streams and terminal status. */
+export type ManagedEditorPublicationResult = {
+  readonly exitCode: number
+  readonly signalCode: NodeJS.Signals | null
+  readonly stdout: string
+  readonly stderr: string
+}
+
+/** Stream diagnostics without losing split UTF-8 or native exit/signal causes. */
+export const runManagedEditorPublicationCommand = async ({
+  command,
+  owner,
+  native,
+  env,
+}: ManagedEditorPublicationOptions): Promise<ManagedEditorPublicationResult> => {
+  const stderr = new TextDecoder('utf-8', { ignoreBOM: true })
+  const result = await runOwnedEditorPublicationCommand({
+    native,
+    args: command.args,
+    cwd: command.cwd,
+    env,
+    owner,
+    ...(command.signal === undefined ? {} : { signal: command.signal }),
+    ...(command.captureStderr === undefined ? {} : { captureStderr: command.captureStderr }),
+    ...(command.onStderr === undefined
+      ? {}
+      : { onStderr: (bytes: Uint8Array) => command.onStderr?.(stderr.decode(bytes, { stream: true })) }),
+  })
+  command.onStderr?.(stderr.decode())
+  if (result.exitCode !== 0 || result.signalCode !== null)
+    throw new CommandFailure({
+      message: `Buck editor publication command failed: ${result.signalCode ?? result.exitCode}`,
+      exitCode: result.signalCode === null ? result.exitCode : undefined,
+      signal: result.signalCode ?? undefined,
+    })
+  return result
+}
+
+/** Census execution context; only Buck uses reserved native ownership. */
+export type OwnedEditorViewAuthorityOptions = {
+  readonly buck2: string
+  readonly native: string
+  readonly owner: EditorPublicationOwner
+  readonly env: NodeJS.ProcessEnv
+  readonly signal: AbortSignal
+}
+
+/** Keep Git on the ordinary census boundary and Buck on the live owner's native boundary. */
+export const ownedEditorViewAuthorityCommandRunner =
+  ({
+    buck2,
+    native,
+    owner,
+    env,
+    signal,
+  }: OwnedEditorViewAuthorityOptions): EditorViewAuthorityCommandRunner =>
+  async (command) => {
+    if (command.command !== buck2) return runEditorViewAuthorityCommand(command)
+    const result = await runManagedEditorPublicationCommand({
+      command: {
+        ...command,
+        args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+        signal,
+      },
+      native,
+      owner,
+      env,
+    })
+    return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+  }
+
+/** Cancellation work is joined before the callback can release its publication owner. */
+export type PublicationCancellationOptions = {
+  readonly run: (signal: AbortSignal) => Promise<void>
+}
+
+/** Signals cancel and join work before the opaque publication owner can be released. */
+export const withPublicationCancellation = async ({
+  run,
+}: PublicationCancellationOptions): Promise<void> => {
+  const controller = new AbortController()
+  const signals = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
+  const handlers = signals.map((signal) => {
+    const handler = (): void => {
+      process.exitCode = 128 + constants.signals[signal]
+      controller.abort(new Error(`Editor publication interrupted by ${signal}`))
+    }
+    process.on(signal, handler)
+    return { signal, handler }
+  })
+  try {
+    await run(controller.signal)
+    controller.signal.throwIfAborted()
+  } finally {
+    for (const { signal, handler } of handlers) process.removeListener(signal, handler)
+  }
+}
+
+/** One terminal deadline notification, not a transferable publication authority. */
+export type PublicationAdmissionNotification = (
+  outcome: 'owner-acquired' | 'no-publication',
+) => void
+
+/** Take the terminal notifier before authority queries can spawn descendants. */
+export const takePublicationAdmissionNotification = (): PublicationAdmissionNotification => {
+  let ready = process.env.EDITOR_VIEW_ADMISSION_READY_FD
+  delete process.env.EDITOR_VIEW_ADMISSION_READY_FD
+  return (outcome) => {
+    const value = ready
+    ready = undefined
+    if (value === undefined) return
+    if (
+      /^[3-9][0-9]*$|^[1-9][0-9]+$/u.test(value) === false ||
+      Number.isSafeInteger(Number(value)) === false
+    )
+      throw new Error('Invalid editor publication deadline notification descriptor')
+    const fd = Number(value)
+    try {
+      if (writeSync(fd, outcome === 'owner-acquired' ? '1' : '0') !== 1)
+        throw new Error('Incomplete editor publication deadline notification')
+    } finally {
+      closeSync(fd)
+    }
+  }
+}
+
 /** Complete source-authoritative editor consumer registry, including the repository root. */
 export const editorViewPackagePaths = ['.', ...pnpmWorkspaceMemberPaths].toSorted((left, right) =>
   left === right ? 0 : left < right ? -1 : 1,
@@ -76,7 +237,7 @@ export const decodePublicationPackagePaths = (serialized: string): readonly stri
     )
   }
   if (Array.isArray(decoded) === false || decoded.length === 0)
-    fail('--packages must be a non-empty JSON array of package paths')
+    return fail('--packages must be a non-empty JSON array of package paths')
   const packagePaths = decoded
     .map((entry) =>
       typeof entry === 'string'
@@ -272,6 +433,7 @@ const parseCli = (args: readonly string[]) => {
     '--workspace-root',
     '--cell',
     '--buck2',
+    '--buck2-native',
     '--git',
     '--output',
     '--publisher',
@@ -292,6 +454,7 @@ const parseCli = (args: readonly string[]) => {
     workspaceRoot: get('--workspace-root'),
     cell: get('--cell'),
     buck2: get('--buck2'),
+    buck2Native: admitting === true ? get('--buck2-native') : '',
     git: get('--git'),
     output: get('--output'),
     publisher: admitting === true ? get('--publisher') : '',
@@ -304,7 +467,81 @@ const parseCli = (args: readonly string[]) => {
   }
 }
 
-const main = async (): Promise<void> => {
+/** Execute the resolved operation independently of literal CLI argument selection. */
+const executeSelectedEditorViewOperation = async ({
+  options,
+  packageScope,
+  run,
+  authorityCommandRunner,
+  signal,
+}: {
+  readonly options: ReturnType<typeof parseCli>
+  readonly packageScope: ReturnType<typeof resolveEditorViewPackageScope>
+  readonly run: RunCommand
+  readonly authorityCommandRunner: EditorViewAuthorityCommandRunner
+  readonly signal: AbortSignal
+}): Promise<void> => {
+  // Scope only target construction and publication. Every publisher still refreshes and passes
+  // freshly proven whole-workspace authority to each selected package view.
+  const authorityStartedAt = performance.now()
+  const authority = await writeEditorViewAuthority({
+    ...options,
+    requiredPackages: packageScope.authorityPackagePaths,
+    runCommand: authorityCommandRunner,
+  })
+  reportTiming({
+    phase: 'authority',
+    durationMs: performance.now() - authorityStartedAt,
+  })
+  if (options.command === 'authority') {
+    process.stdout.write(
+      `wrote editor dependency authority for ${authority.ownedPackages.length} workspace consumers\n`,
+    )
+    return
+  }
+  const plan = editorViewPlan({
+    cell: options.cell,
+    packagePaths: packageScope.publicationPackagePaths,
+    packageWeights: testScheduling.editorViewSeconds,
+  })
+  await reconcileBuckViews({
+    request: {
+      packagePaths: plan.packages.map(({ packagePath }) => packagePath),
+      changedPaths: [],
+      buildTargets: plan.packages.flatMap(({ editor }) =>
+        editor === undefined ? [] : [editor.inputsManifestTarget],
+      ),
+    },
+    options: {
+      plan,
+      run,
+      signal,
+      mode: options.command === 'check' ? 'check' : 'publish',
+      repoRoot: options.repoRoot,
+      workspaceRoot: options.workspaceRoot,
+      buck2: options.buck2,
+      editorViewCommand: [process.execPath, options.publisher],
+      workspaceAuthority: options.output,
+      cp: options.cp,
+      mv: options.mv,
+      fingerprintTool: options.fingerprintTool,
+      snapshotRetention: options.snapshotRetention,
+      onTiming: reportTiming,
+      diagnosticTaskName: `buck2:editor:${options.command}`,
+      batchPublication: options.command !== 'check',
+    },
+  })
+  const action =
+    options.command === 'bootstrap'
+      ? 'bootstrapped'
+      : options.command === 'publish'
+        ? 'published'
+        : 'checked'
+  process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
+}
+
+const main = async (signal: AbortSignal): Promise<void> => {
+  const notifyPublicationAdmission = takePublicationAdmissionNotification()
   const options = parseCli(process.argv.slice(2))
   if (
     Number.isInteger(options.snapshotRetention) === false ||
@@ -335,6 +572,7 @@ const main = async (): Promise<void> => {
           }),
       })
       if (selected.length === 0) {
+        notifyPublicationAdmission('no-publication')
         process.stdout.write(
           'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
         )
@@ -348,66 +586,54 @@ const main = async (): Promise<void> => {
     authorityPackagePaths,
     serializedPublicationPackages,
   })
-  // Scope only target construction and publication. Every publisher still refreshes and passes
-  // freshly proven whole-workspace authority to each selected package view.
-  const authorityStartedAt = performance.now()
-  const authority = await writeEditorViewAuthority({
-    ...options,
-    requiredPackages: packageScope.authorityPackagePaths,
-  })
-  reportTiming({
-    phase: 'authority',
-    durationMs: performance.now() - authorityStartedAt,
-  })
   if (options.command === 'authority') {
-    process.stdout.write(
-      `wrote editor dependency authority for ${authority.ownedPackages.length} workspace consumers\n`,
-    )
+    await executeSelectedEditorViewOperation({
+      options,
+      packageScope,
+      signal,
+      run: runCommand,
+      authorityCommandRunner: runEditorViewAuthorityCommand,
+    })
+    notifyPublicationAdmission('no-publication')
     return
   }
-  const plan = editorViewPlan({
-    cell: options.cell,
-    packagePaths: packageScope.publicationPackagePaths,
-    packageWeights: testScheduling.editorViewSeconds,
-  })
-  await reconcileBuckViews({
-    request: {
-      packagePaths: plan.packages.map(({ packagePath }) => packagePath),
-      changedPaths: [],
-      buildTargets: plan.packages.flatMap(({ editor }) =>
-        editor === undefined ? [] : [editor.inputsManifestTarget],
-      ),
+  await withEditorPublicationOwner({
+    root: options.workspaceRoot,
+    signal,
+    run: (owner) => {
+      notifyPublicationAdmission('owner-acquired')
+      return executeSelectedEditorViewOperation({
+        options,
+        packageScope,
+        signal,
+        authorityCommandRunner: ownedEditorViewAuthorityCommandRunner({
+          buck2: options.buck2,
+          native: options.buck2Native,
+          owner,
+          env: process.env,
+          signal,
+        }),
+        run: (command) => {
+          if (command.command !== options.buck2) return runCommand(command)
+          return runManagedEditorPublicationCommand({
+            command: {
+              ...command,
+              args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+            },
+            owner,
+            native: options.buck2Native,
+            env: process.env,
+          })
+        },
+      })
     },
-    options: {
-      plan,
-      mode: options.command === 'check' ? 'check' : 'publish',
-      repoRoot: options.repoRoot,
-      workspaceRoot: options.workspaceRoot,
-      buck2: options.buck2,
-      editorViewCommand: [process.execPath, options.publisher],
-      workspaceAuthority: options.output,
-      cp: options.cp,
-      mv: options.mv,
-      fingerprintTool: options.fingerprintTool,
-      snapshotRetention: options.snapshotRetention,
-      onTiming: reportTiming,
-      diagnosticTaskName: `buck2:editor:${options.command}`,
-      batchPublication: options.command !== 'check',
-    },
   })
-  const action =
-    options.command === 'bootstrap'
-      ? 'bootstrapped'
-      : options.command === 'publish'
-        ? 'published'
-        : 'checked'
-  process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
 }
 
 if (import.meta.main === true)
   try {
-    await main()
+    await withPublicationCancellation({ run: main })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    process.exitCode = 1
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 1
   }

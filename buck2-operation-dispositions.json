@@ -123,6 +123,10 @@
   ],
   "developerOperations": [
     {
+      "disposition": "buck-owned",
+      "operation": "buck2:editor:cli:check"
+    },
+    {
       "disposition": "outside-by-policy:authoring-mutation",
       "operation": "buck2:editor:materialize"
     },

@@ -95,6 +95,9 @@ nix eval --impure --json --expr '
           { path = "${package}/tsconfig.json"; }
           { path = "${package}/BUCK"; }
           { path = "buck2/dependencies/pnpm-lock.sha256.json"; rules = true; }
+          { path = "scripts/tsconfig.json"; rules = true; }
+          { path = "genie/packages.ts"; rules = true; }
+          { path = "genie/ci-workflow/test-scheduling.json"; rules = true; }
         ];
         testlessRecipe = (import (repo + "/nix/buck2-products/from-source.nix") {
           inherit pkgs; buck2 = packages.buck2;

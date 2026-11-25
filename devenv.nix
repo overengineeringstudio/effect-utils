@@ -129,6 +129,35 @@ let
   editorViewLease = pkgs.callPackage ./nix/editor-view-lease/default.nix { };
   publicationOwner = import ./nix/buck2-publication-owner.nix { inherit pkgs; };
   publicationOwnerLibrary = "${publicationOwner}/lib/${publicationOwner.libraryName}";
+  # A real immutable copy child for publication cancellation and native-signal fixtures.
+  supervisorCopyTestChild = pkgs.writeShellApplication {
+    name = "cp";
+    text = ''
+      for argument in "$@"; do
+        case "$argument" in /*) directory="$argument" ;; *) continue ;; esac
+        while [ -n "$directory" ] && [ "$directory" != / ]; do
+          if [ -f "$directory/supervisor-termination" ]; then
+            termination="$(<"$directory/supervisor-termination")"
+            case "$termination" in
+              publication)
+                printf 'ready\n' >"$directory/ready"
+                IFS= read -r _ <"$directory/publication-release"
+                ;;
+              publication-child)
+                printf 'ready\n' >"$directory/ready"
+                kill -TERM "$$"
+                exit 1
+                ;;
+              *) printf 'Invalid supervisor copy fixture mode: %s\n' "$termination" >&2; exit 2 ;;
+            esac
+            exec ${pkgs.coreutils}/bin/cp "$@"
+          fi
+          directory="''${directory%/*}"
+        done
+      done
+      exec ${pkgs.coreutils}/bin/cp "$@"
+    '';
+  };
   sourceLease = import ./nix/editor-view-lease/consumer.nix {
     inherit pkgs;
     native = editorViewLease;
@@ -818,6 +847,7 @@ let
         --git ${pkgs.git}/bin/git \
         --output "$root/.devenv/editor-workspace-authority.json" \
         --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
+        --buck2-native ${buck2Machine}/libexec/buck2 \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \
         --fingerprint-tool ${
@@ -1170,6 +1200,7 @@ in
     MV_BIN = "${pkgs.coreutils}/bin/mv";
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+    EDITOR_VIEW_SUPERVISOR_CP_BIN = "${supervisorCopyTestChild}/bin/cp";
   };
   # The source deploy complement evaluates real Nix task launchers against fake
   # providers; pin its evaluator and jq instead of relying on host PATH tools.
@@ -1317,6 +1348,8 @@ in
   env.OTEL_SPAN_BIN = lib.mkIf ciUnitTest "${otelSpan}/bin/otel-span";
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
+  # The CLI contract regression invokes the declared compiler, never an ambient tsc.
+  env.TSC_BIN = "${pkgs.typescript}/bin/tsc";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
   env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
   env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY = publicationOwnerLibrary;
@@ -2206,6 +2239,16 @@ in
         //buck2/toolchains:cross_cell_provider_identity \
         //buck2/toolchains:cross_cell_product_identity
     '';
+  };
+
+  tasks."buck2:editor:cli:check" = {
+    description = "Typecheck the real editor authority and Buck entrypoint CLI import closure";
+    after = [ "genie:check" ];
+    # trace-audit-allow: buck2AggregateExec returns a trace.exec-wrapped command.
+    exec = buck2AggregateExec "buck2:editor:cli:check" [
+      "build"
+      "//:editor_cli_typecheck"
+    ];
   };
 
   tasks."buck2:quick" = {

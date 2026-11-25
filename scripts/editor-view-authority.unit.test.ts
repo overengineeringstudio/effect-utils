@@ -1,4 +1,19 @@
 import { describe, expect, it } from 'bun:test'
+import { spawn } from 'node:child_process'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  watch,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -262,6 +277,8 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
         'workspace_cell',
         '--buck2',
         '/does-not-exist/buck2',
+        '--buck2-native',
+        '/does-not-exist/buck2-native',
         '--git',
         '/does-not-exist/git',
         '--output',
@@ -304,6 +321,8 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
         'workspace_cell',
         '--buck2',
         '/does-not-exist/buck2',
+        '--buck2-native',
+        '/does-not-exist/buck2-native',
         '--git',
         '/does-not-exist/git',
         '--output',
@@ -328,4 +347,217 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
       'editor view authority: --packages is required with bootstrap\n',
     )
   })
+
+  it('typechecks the real CLI project and rejects the former cancellation caller shape', async () => {
+    const tsc = process.env.TSC_BIN
+    if (tsc === undefined) throw new Error('TSC_BIN must name the declared TypeScript compiler')
+    const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+    const compile = async (cwd: string, listFiles = false) => {
+      const child = spawn(
+        tsc,
+        [
+          '--project',
+          'scripts/tsconfig.json',
+          '--noEmit',
+          '--incremental',
+          'false',
+          '--pretty',
+          'false',
+          ...(listFiles === true ? ['--listFiles'] : []),
+        ],
+        {
+          cwd,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 25000,
+          killSignal: 'SIGKILL',
+        },
+      )
+      let stdout = ''
+      let stderr = ''
+      let failure: Error | undefined
+      child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+        stdout += chunk
+      })
+      child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+        stderr += chunk
+      })
+      child.once('error', (error) => {
+        failure = error
+      })
+      const completion = Promise.withResolvers<{
+        code: number | null
+        signal: NodeJS.Signals | null
+      }>()
+      const closed = completion.promise
+      child.once('close', (code, signal) => completion.resolve({ code, signal }))
+      try {
+        const result = await closed
+        if (failure !== undefined) throw failure
+        return { ...result, stdout, stderr }
+      } finally {
+        child.kill('SIGKILL')
+        await closed
+      }
+    }
+
+    const good = await compile(repoRoot, true)
+    expect(good.stderr).toBe('')
+    expect(good.signal).toBeNull()
+    expect(good.code, good.stdout).toBe(0)
+    const coveredFiles = good.stdout.trim().split(/\r?\n/u)
+    for (const script of ['editor-view-authority.ts', 'buck2-entrypoint.ts'])
+      expect(coveredFiles).toContain(join(repoRoot, 'scripts', script))
+
+    const scratch = join(repoRoot, 'tmp')
+    mkdirSync(scratch, { recursive: true })
+    const fixture = mkdtempSync(join(scratch, 'authority-cli-types-'))
+    try {
+      // Keep the real project, source and dependency topology; only the caller differs.
+      for (const entry of readdirSync(repoRoot)) {
+        if (entry === 'scripts' || entry === 'tmp' || entry === '.git') continue
+        symlinkSync(join(repoRoot, entry), join(fixture, entry))
+      }
+      cpSync(join(repoRoot, 'scripts'), join(fixture, 'scripts'), { recursive: true })
+      const cli = join(fixture, 'scripts/editor-view-authority.ts')
+      const source = readFileSync(cli, 'utf8')
+      const invocation = 'withPublicationCancellation({ run: main })'
+      expect(source.split(invocation)).toHaveLength(2)
+      const mutated = source.replace(invocation, 'withPublicationCancellation(main)')
+      writeFileSync(cli, mutated)
+      const argumentOffset =
+        mutated.indexOf('withPublicationCancellation(main)') +
+        'withPublicationCancellation('.length
+      const beforeArgument = mutated.slice(0, argumentOffset).split('\n')
+      const line = beforeArgument.length
+      const column = beforeArgument.at(-1)!.length + 1
+
+      const bad = await compile(fixture)
+      expect(bad.stderr).toBe('')
+      expect(bad.signal).toBeNull()
+      expect(bad.code, bad.stdout).toBe(2)
+      const diagnostics = bad.stdout.trimEnd().split(/\r?\n/u)
+      expect(diagnostics[0]).toBe(
+        `scripts/editor-view-authority.ts(${line},${column}): error TS2345: Argument of type '(signal: AbortSignal) => Promise<void>' is not assignable to parameter of type 'PublicationCancellationOptions'.`,
+      )
+      // A continuation may explain the missing property; no other diagnostic is admitted.
+      for (const continuation of diagnostics.slice(1))
+        expect(continuation.trim()).toBe(
+          "Property 'run' is missing in type '(signal: AbortSignal) => Promise<void>' but required in type 'PublicationCancellationOptions'.",
+        )
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
+  }, 60000)
 })
+
+for (const [signal, status] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+  ['SIGHUP', 129],
+] as const)
+  it(`preserves ${signal}'s cancellation status after the authority joins native cleanup`, async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'authority-cancellation-')))
+    const script = join(dirname(fileURLToPath(import.meta.url)), 'editor-view-authority.ts')
+    const ready = Promise.withResolvers<void>()
+    const marker = join(root, 'native-ready')
+    const watcher = watch(root, () => {
+      if (existsSync(marker)) ready.resolve()
+    })
+    const native = join(root, 'native')
+    const git = join(root, 'git')
+    const tracked =
+      editorViewPackagePaths
+        .map((path) => (path === '.' ? 'package.json' : `${path}/package.json`))
+        .join('\0') + '\0'
+    writeFileSync(join(root, '.buckroot'), '')
+    writeFileSync(join(root, '.buckconfig'), '')
+    writeFileSync(
+      git,
+      `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(tracked)})\n`,
+      { mode: 0o755 },
+    )
+    writeFileSync(
+      native,
+      `#!${process.execPath}
+      import { createServer } from 'node:net';
+      import { writeFileSync } from 'node:fs';
+      const live = createServer();
+      process.once('SIGTERM', () => {
+        live.close();
+        process.kill(process.pid, 'SIGTERM');
+      });
+      live.listen(0, '127.0.0.1', () =>
+        writeFileSync(${JSON.stringify(marker)}, 'ready'));
+    `,
+      { mode: 0o755 },
+    )
+    const child = spawn(
+      process.execPath,
+      [
+        script,
+        'bootstrap',
+        '--repo-root',
+        root,
+        '--workspace-root',
+        root,
+        '--cell',
+        'effect_utils',
+        '--buck2',
+        native,
+        '--buck2-native',
+        native,
+        '--git',
+        git,
+        '--output',
+        join(root, 'authority.json'),
+        '--publisher',
+        '/unused/publisher.ts',
+        '--cp',
+        '/unused/cp',
+        '--mv',
+        '/unused/mv',
+        '--fingerprint-tool',
+        '/unused/buck2-fingerprint',
+        '--snapshot-retention',
+        '3',
+        '--packages',
+        '["."]',
+      ],
+      {
+        cwd: root,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          HOME: join(root, 'home'),
+          PATH: process.env.PATH,
+          BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY:
+            process.env.BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY,
+        },
+      },
+    )
+    let diagnostics = ''
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
+      diagnostics += chunk
+    })
+    const completion = Promise.withResolvers<{
+      code: number | null
+      signal: NodeJS.Signals | null
+    }>()
+    const closed = completion.promise
+    child.once('error', completion.reject)
+    child.once('close', (code, childSignal) => completion.resolve({ code, signal: childSignal }))
+    try {
+      await Promise.race([
+        ready.promise,
+        closed.then(() => {
+          throw new Error(`authority exited before native readiness: ${diagnostics}`)
+        }),
+      ])
+      child.kill(signal)
+      expect(await closed).toEqual({ code: status, signal: null })
+    } finally {
+      child.kill('SIGKILL')
+      await closed
+      watcher.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 10000)

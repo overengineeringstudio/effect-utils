@@ -25,8 +25,10 @@ type CommandResult = {
   readonly stderr: Uint8Array
 }
 
-/** Injectable command boundary for focused authority-census tests. */
-export type EditorViewAuthorityCommandRunner = (invocation: CommandInvocation) => CommandResult
+/** Authority census command boundary supporting synchronous and owned asynchronous execution. */
+export type EditorViewAuthorityCommandRunner = (
+  invocation: CommandInvocation,
+) => CommandResult | Promise<CommandResult>
 
 /** Inputs joining the semantic package registry to Buck's ownership census. */
 export type WriteEditorViewAuthorityOptions = {
@@ -68,7 +70,12 @@ const requirePackagePaths = (value: unknown): readonly string[] => {
   return sorted
 }
 
-const runCommandDefault: EditorViewAuthorityCommandRunner = ({ command, args, cwd }) => {
+/** Run synchronously with bounded output, returning exit status and bytes or throwing on spawn failure. */
+export const runEditorViewAuthorityCommand: EditorViewAuthorityCommandRunner = ({
+  command,
+  args,
+  cwd,
+}) => {
   const result = spawnSync(command, args, { cwd, maxBuffer: 16 * 1024 * 1024 })
   if (result.error !== undefined) fail(`cannot run ${command}: ${result.error.message}`)
   return {
@@ -125,7 +132,7 @@ export const writeEditorViewAuthority = async ({
   buck2,
   git,
   output,
-  runCommand = runCommandDefault,
+  runCommand = runEditorViewAuthorityCommand,
 }: WriteEditorViewAuthorityOptions): Promise<WorkspaceDependencyAuthority> => {
   if (/^[A-Za-z0-9_]+$/.test(cell) === false)
     fail(`cell must be a portable Buck cell name: ${cell}`)
@@ -158,7 +165,7 @@ export const writeEditorViewAuthority = async ({
     pathFromWorkspace === '' ? '' : `${requireRepositoryRelativePath(pathFromWorkspace)}/`
   const requiredPackages = requirePackagePaths(rawRequiredPackages)
 
-  const gitResult = runCommand({
+  const gitResult = await runCommand({
     command: git,
     args: ['ls-files', '--cached', '-z', '--', ':(glob)**/package.json'],
     cwd: canonicalRepoRoot,
@@ -176,7 +183,7 @@ export const writeEditorViewAuthority = async ({
   const argumentFile = join(temporaryDirectory, 'package-manifests')
   try {
     writeFileSync(argumentFile, `${candidates.join('\n')}\n`, { mode: 0o600 })
-    const ownershipResult = runCommand({
+    const ownershipResult = await runCommand({
       command: buck2,
       args: ['uquery', '--output-format', 'json', 'owner(%s)', `@${argumentFile}`],
       cwd: logicalWorkspaceRoot,
