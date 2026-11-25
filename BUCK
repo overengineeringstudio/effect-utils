@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:e9e49813d4e4b6c3696ff5ce5cb0b5698aa82d27fd167eb8e2cd8112538ac229
+# Semantic fingerprint: sha256:7bbfa6945ceb70ee127c1fc1f9863c38ab17d08ad9469024fb45c0f97db39cd4
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -187,7 +187,7 @@ package_view(
     dependency_view = "//packages/@overeng/buck2-tools:package_tree",
     files = {
         source: source
-        for source in glob(["scripts/*.ts"]) + [
+        for source in glob(["scripts/*.ts", "genie/ci-scripts/*.ts"]) + [
             "package.json",
             "scripts/tsconfig.json",
             "genie/packages.ts",
