@@ -1,4 +1,5 @@
 import { expect, it } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
 import { createTestTempDirectoryFactory } from '../../scripts/test-tmp.ts'
@@ -53,4 +54,22 @@ it('queries real native retained records by time, host and full key without clai
   expect((await query('--key', `${keyed.digest}-not-a-full-key`)).records).toEqual([])
   expect((await query('--since', new Date(Math.max(...completions) + 1).toISOString())).records).toEqual([])
   expect((await query('--expected-host', 'not-enrolled')).evidenceGaps).not.toEqual(all.evidenceGaps)
+  const values: string[][] = []
+  for await (const name of new Bun.Glob('*.jsonl').scan(records)) {
+    const body = await Bun.file(join(records, name)).text()
+    const lines = body.trimEnd().split('\n')
+    const snapshotSha256 = createHash('sha256').update(body).digest('hex')
+    for (const [ordinal, line] of lines.entries()) values.push(['123456789', JSON.stringify({
+      type: 'buck2.occurrence.ledger', version: 1, snapshotSha256,
+      ordinal, recordCount: lines.length, line,
+    })])
+  }
+  const response = join(directory, 'loki.json')
+  await Bun.write(response, JSON.stringify({
+    status: 'success', data: { resultType: 'streams', result: [{ values }] },
+  }))
+  expect(JSON.parse(await run([
+    process.execPath, cli, 'occurrences', '--loki-response', response,
+    '--since', since, '--until', until,
+  ]))).toEqual(all)
 }, 30000)
