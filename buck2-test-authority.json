@@ -99,6 +99,33 @@
       "unboundedTaskName": "test:alchemy-github:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/changelog:test_collect",
+      "excludes": ["src/node/check.integration.test.ts"],
+      "packageName": "changelog",
+      "packagePath": "packages/@overeng/changelog",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/annotations.unit.test.ts",
+        "src/contract.unit.test.ts",
+        "src/enforcement.unit.test.ts",
+        "src/node/check.integration.test.ts",
+        "src/node/load.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/changelog:test",
+      "taskName": "test:changelog",
+      "testFiles": [
+        "src/annotations.unit.test.ts",
+        "src/contract.unit.test.ts",
+        "src/enforcement.unit.test.ts",
+        "src/node/check.integration.test.ts",
+        "src/node/load.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": ["src/node/check.integration.test.ts"],
+      "unboundedTaskName": "test:changelog:unbounded"
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",
       "excludes": [
         "src/deploy-cloudflare-workers.e2e.test.ts",
@@ -2349,6 +2376,7 @@
         "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
@@ -2383,6 +2411,7 @@
         "src/node/otel.unit.test.ts",
         "src/node/playwright/config/config.unit.test.ts",
         "src/node/playwright/otel.unit.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/media-query.unit.test.ts",
         "src/node/stylex/mod.installed-consumer.test.ts",
@@ -2426,6 +2455,7 @@
         "src/node/otel.unit.test.ts",
         "src/node/playwright/config/config.unit.test.ts",
         "src/node/playwright/otel.unit.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/stylex/focus-order.unit.test.ts",
         "src/node/stylex/media-query.unit.test.ts",
         "src/node/stylex/mod.installed-consumer.test.ts",
@@ -2444,6 +2474,7 @@
         "src/node/otel-delivery.integration.test.ts",
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/vite-build-identity.build.test.ts",
         "src/node/watch.unit.test.ts"
       ],
