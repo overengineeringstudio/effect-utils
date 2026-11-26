@@ -130,7 +130,8 @@ const withPeer = ({
   state: PeerState | undefined
 }): NetStatus => {
   // A live connection always wins over what a dial loop believes.
-  if (state !== undefined && adapter?.connectedEndpoints.has(endpointId) === true) state = 'connected'
+  if (state !== undefined && adapter?.connectedEndpoints.has(endpointId) === true)
+    state = 'connected'
   if (status.peers.get(endpointId) === state) return status
   const peers = new Map(status.peers)
   if (state !== undefined) peers.set(endpointId, state)

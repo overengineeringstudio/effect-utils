@@ -70,9 +70,10 @@ const withNet = <TResult, TError>({
         if (options.nodeFails?.(build) === true) return yield* new NotLeader()
         return IrohNode.of({
           endpointId: SELF,
-          homeRelay: options.relayFails?.(build) === true
-            ? Effect.fail(new RelayUnreachable())
-            : Effect.succeed('https://relay.test'),
+          homeRelay:
+            options.relayFails?.(build) === true
+              ? Effect.fail(new RelayUnreachable())
+              : Effect.succeed('https://relay.test'),
           incoming: Stream.fromQueue(incoming),
           dial: (peer) =>
             Effect.clockWith((clock) => {

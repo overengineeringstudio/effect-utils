@@ -171,7 +171,8 @@ export class IrohNetworkAdapter extends NetworkAdapter {
       if (deviceIdOfPeer(msg.senderId) !== link.endpointId) return false
       const bound = this.#byPeer.get(msg.senderId)
       // A PeerId stays bound to the endpoint that first claimed it while that link lives.
-      if (bound !== undefined && bound !== link && bound.endpointId !== link.endpointId) return false
+      if (bound !== undefined && bound !== link && bound.endpointId !== link.endpointId)
+        return false
       if (bound !== undefined) this.#drop(bound)
       link.peerId = msg.senderId
       this.#byPeer.set(msg.senderId, link)
