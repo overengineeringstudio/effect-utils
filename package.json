@@ -74,5 +74,5 @@
     "packages/@overeng/utils-storybook",
     "packages/@overeng/work-storage"
   ],
-  "packageManager": "pnpm@12.23.0"
+  "packageManager": "pnpm@12.24.0"
 }
