@@ -11,6 +11,7 @@ let
     "-mounted-lib"
     "-inventory"
     "-mounts"
+    "-namespace"
     "-candidates"
   ];
   roots = pkgs.writeText "holder-evidence-roots.rs" (
