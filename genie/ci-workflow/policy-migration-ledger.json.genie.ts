@@ -27,6 +27,7 @@ const workflows = {
 const workflowData = Object.fromEntries(
   Object.entries(workflows).map(([name, output]) => [name, output.data]),
 )
+const updaterRunner = updatePnpm.data.jobs.candidate?.['runs-on']
 
 validateFleetPolicyExceptionRegistry({
   repository: 'overengineeringstudio/effect-utils',
@@ -38,7 +39,20 @@ const data = {
   violations: collectFleetPolicyMigrationLedger({
     repository: 'overengineeringstudio/effect-utils',
     workflows: workflowData,
-  }),
+  }).map((violation) =>
+    violation.workflow === 'update-pnpm.yml' &&
+    violation.job === 'candidate' &&
+    (violation.rule === 'runner-fallback' || violation.rule === 'dynamic-runner') &&
+    violation.path === 'jobs.candidate.runs-on' &&
+    Array.isArray(updaterRunner) &&
+    updaterRunner.includes(violation.value)
+      ? {
+          ...violation,
+          reason:
+            'No active sh-linux-x64 runner; same Namespace profile as grandfathered trusted consumers.',
+        }
+      : violation,
+  ),
 }
 
 /** Eager imports reject new/security debt; serialization admits content-only
