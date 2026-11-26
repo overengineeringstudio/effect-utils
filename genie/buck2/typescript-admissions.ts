@@ -12,6 +12,7 @@ import { buck2TypeScriptAdmission as dataGraphAdmission } from '../../packages/@
 import { buck2TypeScriptAdmission as devbarAdmission } from '../../packages/@overeng/devbar/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiGatewayAdmission } from '../../packages/@overeng/effect-ai-gateway/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectAutomergeAdmission } from '../../packages/@overeng/effect-automerge/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectIrohAdmission } from '../../packages/@overeng/effect-iroh/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
@@ -114,6 +115,7 @@ export const buck2TypeScriptAdmissions = {
   rpcDevtools: rpcDevtoolsAdmission,
   effectAiClaudeCli: effectAiClaudeCliAdmission,
   effectAiGateway: effectAiGatewayAdmission,
+  effectAutomerge: effectAutomergeAdmission,
   effectDistributedLock: effectDistributedLockAdmission,
   effectIroh: effectIrohAdmission,
   effectPath: effectPathAdmission,

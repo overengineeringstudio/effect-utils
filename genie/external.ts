@@ -326,6 +326,9 @@ export const catalog = defineCatalog({
   '@effect/opentelemetry': '4.1.0',
   '@effect/atom-react': '4.1.0',
 
+  // Preserve the games consumer's Automerge cohort during the bindings extraction.
+  '@automerge/automerge-repo': '2.5.6',
+
   // React ecosystem
   react: '19.2.8',
   'react-dom': '19.2.8',

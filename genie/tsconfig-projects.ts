@@ -14,6 +14,7 @@ import dataGraphTsconfig from '../packages/@overeng/data-graph/tsconfig.json.gen
 import devbarTsconfig from '../packages/@overeng/devbar/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
 import effectAiGatewayTsconfig from '../packages/@overeng/effect-ai-gateway/tsconfig.json.genie.ts'
+import effectAutomergeTsconfig from '../packages/@overeng/effect-automerge/tsconfig.json.genie.ts'
 import effectDistributedLockTsconfig from '../packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts'
 import effectIrohTsconfig from '../packages/@overeng/effect-iroh/tsconfig.json.genie.ts'
 import effectPathTsconfig from '../packages/@overeng/effect-path/tsconfig.json.genie.ts'
@@ -141,6 +142,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/meters': { tsconfig: metersTsconfig },
     'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
     'packages/@overeng/effect-ai-gateway': { tsconfig: effectAiGatewayTsconfig },
+    'packages/@overeng/effect-automerge': { tsconfig: effectAutomergeTsconfig },
     'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
     'packages/@overeng/effect-iroh': { tsconfig: effectIrohTsconfig },
     'packages/@overeng/effect-path': { tsconfig: effectPathTsconfig },

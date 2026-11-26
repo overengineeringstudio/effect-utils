@@ -156,6 +156,10 @@
     ],
     "neutral": [
       {
+        "task": "test:effect-automerge",
+        "rationale": "Portable Automerge document, in-memory storage and Effect scope contracts; no platform-native filesystem or socket lifecycle."
+      },
+      {
         "task": "test:work-storage",
         "rationale": "Portable manifest, schema acceptance and role-resolution contracts; no platform-specific provider implementation."
       },

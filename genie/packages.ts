@@ -20,6 +20,7 @@ export const internalPackages = [
   'devbar',
   'effect-ai-claude-cli',
   'effect-ai-gateway',
+  'effect-automerge',
   'effect-distributed-lock',
   'effect-iroh',
   'effect-path',
