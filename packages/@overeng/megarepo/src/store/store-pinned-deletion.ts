@@ -111,6 +111,8 @@ const ownedDeletionPinsBrand = Symbol('OwnedDeletionPins')
 export interface OwnedDeletionPins {
   readonly [ownedDeletionPinsBrand]: true
   readonly pins: ReadonlyArray<OwnedDeletionPin>
+  /** Exact acquired leaf for this view's requested path, only while the callback is live. */
+  readonly targetPin: (path: string) => OwnedDeletionPin | undefined
   readonly has: (reference: {
     readonly kind: string
     readonly pid: number
@@ -185,6 +187,8 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
 /**
  * Prepare with all target chains pinned, verify EVERY chain, then commit while all fds remain held.
  * Only prepare receives callback-scoped pin evidence, in target order; commit cannot access chains.
+ * Read the exact acquired leaf with targetPin(requestedPath), never by pin order or inode lookup.
+ * That lookup is revoked before verification/commit, even while the underlying fds remain held.
  * Prepare must leave durable intent UNKNOWN/HOLD: publish READY only in commit. A crash before
  * commit therefore never publishes readiness. No quarantine, unlink or rollback is performed.
  * Callers retain responsibility for continuous action leases and fresh Git/owner/all-UID evidence.
@@ -278,6 +282,8 @@ export const readDirectoryEvidence = (path: string): DirectoryEvidence => {
 type PinnedDirectory = {
   readonly fd: number
   readonly path: string
+  /** Captured at acquisition, only on the actual target; never inferred from public pin order. */
+  readonly requestedTargetPath: string | undefined
   readonly mountId: string
   readonly overlay: boolean
   /** Observed through the held fd during this operation, never taken from a recorded plan. */
@@ -289,14 +295,22 @@ type PinnedInode = { readonly dev: bigint; readonly ino: bigint }
 
 const ownDeletionPins = (chain: readonly PinnedDirectory[]) => {
   let active = true
+  let targetPath: string | undefined
+  let targetPin: OwnedDeletionPin | undefined
   const pins = Object.freeze(
-    chain.map(({ fd, dev, ino }) =>
-      Object.freeze({ pid: process.pid, fd, dev: dev.toString(), ino: ino.toString() }),
-    ),
+    chain.map(({ fd, dev, ino, requestedTargetPath }) => {
+      const pin = Object.freeze({ pid: process.pid, fd, dev: dev.toString(), ino: ino.toString() })
+      if (requestedTargetPath !== undefined) {
+        targetPath = requestedTargetPath
+        targetPin = pin
+      }
+      return pin
+    }),
   )
   const view = Object.freeze<OwnedDeletionPins>({
     [ownedDeletionPinsBrand]: true,
     pins,
+    targetPin: (path) => (active && path === targetPath ? targetPin : undefined),
     has: (reference: Parameters<OwnedDeletionPins['has']>[0]) => {
       if (active === false || reference.kind !== 'fd' || reference.pid !== process.pid) return false
       for (const pin of pins) {
@@ -462,6 +476,7 @@ const pinChain = ({
       const pinned: PinnedDirectory = {
         fd,
         path: entryPath,
+        requestedTargetPath: entryPath === target ? path : undefined,
         mountId: evidence.mountId,
         overlay: evidence.overlay,
         dev: evidence.stat.dev,
