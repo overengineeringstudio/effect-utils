@@ -97,47 +97,98 @@ protocol and kernel libraries. It installs no server, client adapter or service.
 An empty enrollment has no eligible candidates; production callers must supply
 the same reviewed native enrollment as their server policy.
 
-`NativeView` pins the task root, complete bounded mount snapshot and actual
-mountpoint objects; changed view or physical mapping invalidates the observation.
+`NativeView` owns a complete `NamespaceSnapshot` over the authenticated task's
+pinned mount-namespace FD, not its chroot-filtered mountinfo. The Linux 6.18
+FD-selector syscall boundary binds NS_GET_MNTNS_ID, namespace cardinality,
+bounded listmount/statmount records and their namespace IDs. It rejects
+malformed, duplicate or incomplete records and rechecks the entire mount set,
+task namespace and root in the same transaction. Unsupported APIs, permission
+errors and changed views remain UNKNOWN; there is no mountinfo fallback.
 `CandidateSet` matches component-scoped physical source membership, including
 mounted roots, not mere textual mount paths or common hardlinks. Store inode
 inventory is deferred until after the caller authenticates its original exclusive
 maintenance lease; worktrees are never recursively inventoried. Ordinary terminal
 devices have no candidate path and do not become protective unknowns.
 
+`CandidateView` inventories every mount at or below each candidate's physical
+aliases, including covering-ancestor devices. `ScopeLedger` unions enrollment
+and every captured task contribution, requires retained ownership and an empty
+task-view cache before freezing, and cannot grow during final object closure.
+The census independently recloses every retained mount contribution, including
+those belonging to a subsequently proven departed task.
+
+An internal-shmem exclusion applies only to a regular, unlinked tmpfs FD or
+mapping whose device and mount ID equal the transaction's freshly retained
+memfd witness and are disjoint from the complete scope-device ledger. Actual
+store-inode membership wins before this exclusion. Detached/unlisted tmpfs
+objects, detached directories and tmpfs mounted inside a candidate stay
+protective; matching only the candidate root's device is insufficient.
+
+The real `internal_memfd_bind_is_einval_and_preserves_frozen_scope` fixture
+asserts exact bind-mount errno EINVAL, rather than skipping an impossible
+construction. Linux 6.18.62 `fs/namespace.c:2984-3018` rejects an unmounted
+internal source through `may_copy_tree`/`__do_loopback`; `fs/mount.h:131-134`
+excludes `MNT_NS_INTERNAL` from mounted roots.
+
+EROFS is native only for exact magic `0xe0f5e1e2` and a nonzero Linux block-device
+major; nodev/fscache/on-demand variants remain protective. Overlay and FUSE
+are never admitted by this rule. Real VM cases cover both an EROFS-held
+candidate file and an unrelated EROFS file, plus an overlay-held veto.
+
+The mounted builder exports `libexec/worktree-holder-mounted-tests`.
+Its optional `ownedVmClassDiagnostics` defaults to false and only enables
+static test-guest failure-stage labels, not foreign path disclosure. The jailed
+namespace regression constructs its mounts as a test oracle, then enumerates
+and compares them at the helper's actual four-capability production profile
+without CAP_SYS_ADMIN or setns. Privileged ignored cases must run in the sole
+joint consumer VM; merely building their runner is not qualification.
+
+Proc anonymous-kernel-object qualification is a closed, exact-name typed
+classifier, not a blanket anon_inodefs exemption. BPF map/program/link, BTF,
+BPF statistics leases, eventfd, timerfd, signalfd, epoll, inotify, pidfd,
+userfaultfd and perf_event are non-path objects in the accidental-breakage
+model; a bpffs pin remains a separate filesystem path. io_uring, fanotify,
+bpf_iter and every unrecognized spelling remain protective UNKNOWN.
+Ordinary PTY/terminal qualification is unchanged.
+
+The classifier and unapproved-emitter inventory regressions are promoted from
+frozen source `93eaf04e0115d3390f70ebd9aec2baaf2c5e6218`. The inventory is a
+reviewed Linux 6.18.62 snapshot, not permission to admit future kernel names.
+The ignored `tests::actual_nonpath_eventfd_and_registered_io_uring_veto`
+fixture uses real eventfd and io_uring descriptors, registers a candidate file
+in the ring, closes its ordinary descriptor, then requires the ring veto.
+The proc builder installs its compiled runner at
+`libexec/worktree-holder-proc-tests`; it does not execute ignored tests.
+The real `tests::actual_loaded_btf_is_nonpath` fixture loads BTF without a
+program; `tests::actual_bpf_stats_lease_is_nonpath` opens a statistics lease.
+Both require disposable root Linux VM qualification, as does the eventfd /
+registered-io_uring fixture. Test-only BPF privileges do not expand the helper's
+production capability set. Unit/build success is not kernel or census proof.
+
+Task departure is non-holding only for a missing nonleader re-proven absent
+from the retained leader's task list, with the original live leader generation
+checked before and after relisting. Missing descendants of a still-listed
+task are not departure. Leader termination never dismisses surviving siblings.
+Retained resources use optional slots only for such proven departures; new
+live tasks, reused task generations and failed closure remain protective.
+Other ENOENT failures discard the entire candidate/store/peer/census graph and
+restart capture once under the original deadline; a second failure is UNKNOWN.
+Permission, unsupported-object and membership errors do not gain a retry.
+
+Each task pins both `/proc/<tgid>/task/<tid>` and top-level `/proc/<tid>`,
+authenticating both generations during closure. Root/cwd/exe/fd/namespaces use
+the nested task scope; mappings use only top-level `map_files`. Linux's nested
+task proc table does not expose `task/<tid>/map_files`; ENOENT there is not
+empty mappings or departure evidence. The ignored
+`tests::actual_departed_thread_churn_preserves_survivor_fd` regression exercises
+real task births/exits, a surviving unshared FD table and file-backed mapping,
+newcomer veto, live FD disappearance and failed leader-generation proof.
+These source-only changes activate no service and add no alias wire authority.
+
 The builder runs the real Rust unit runner against the reused lower libraries.
 The isolated bind/detached-mount fixture additionally requires an isolated mount
 namespace with `CAP_SYS_ADMIN`; a skipped privileged fixture is not live census
 qualification. Library or codec success never authorizes deletion.
-
-The proc library additionally exports inactive Linux 6.18 mount-query primitives:
-`linux::{mount_namespace_id, mount_namespace_info, list_mount_page, stat_mount,
-MountNamespaceInfo, MountBuffer, REQUIRED_MOUNT_FIELDS}`. The syscall boundary is
-extracted from reviewed snapshot `93eaf04e0115d3390f70ebd9aec2baaf2c5e6218`.
-Both queries take a retained namespace `File`; list/stat use the dedicated FD
-selector in the 32-byte `mnt_id_req`, with numeric namespace ID zero, never a
-current-namespace fallback. Pages hold at most 256 IDs; statmount returns only
-the declared 512..=16384-byte record from an aligned, initialized reusable buffer.
-The requested field mask is `0x7b`; interpreting fields, strings and namespace
-binding remains the consumer's responsibility. Static assertions cover ABI
-sizes, field offsets and output alignment; unit regressions cover strict record
-lengths and FD-only request construction without privileged mount queries.
-These std-only exports do not change `NativeView`, privileges, capabilities or
-namespace membership, and do not activate a consumer. Kernel/permission errors
-remain errors, never evidence of absence. Production qualification still requires
-the real Linux 6.18 privileged VM path, including whole-namespace visibility from
-a confined caller without `CAP_SYS_ADMIN`; primitive unit success is not that proof.
-
-The mounted library additionally exports inactive `namespace::{NamespaceMount,
-NamespaceSnapshot}` over those primitives. A snapshot retains its namespace FD,
-binds every complete statmount record to its unique mount and namespace IDs,
-and compares the full mount set with the independent nsfs cardinality before
-and after collection. Recheck compares every retained record and generation;
-partial, changed, inaccessible or unsupported namespaces stay errors, without
-mountinfo fallback. Codec tests reject truncated records, missing fields,
-foreign IDs and malformed paths. `NativeView` still does not use this module:
-actual production-privilege jailed-namespace VM proof and consumer integration
-remain mandatory before any complete-census or activation claim.
 
 ## Privileged holder server (inactive)
 

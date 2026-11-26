@@ -2,6 +2,7 @@
 {
   pkgs,
   allowedRoots ? [ ],
+  ownedVmClassDiagnostics ? false,
 }:
 let
   inherit (pkgs) lib;
@@ -11,8 +12,11 @@ let
     "-mounted-lib"
     "-inventory"
     "-mounts"
-    "-namespace"
     "-candidates"
+    "-scope-devices"
+    "-shmem"
+    "-namespace"
+    "-namespace-fixture"
   ];
   roots = pkgs.writeText "holder-evidence-roots.rs" (
     "const ALLOWED_ROOTS: &[&str] = &["
@@ -21,7 +25,7 @@ let
   );
 in
 assert builtins.isList allowedRoots && builtins.all builtins.isString allowedRoots;
-pkgs.runCommand "holder-evidence-native-membership"
+pkgs.runCommand (if ownedVmClassDiagnostics then "holder-evidence-native-membership-owned-vm-diagnostics" else "holder-evidence-native-membership")
   {
     nativeBuildInputs = [
       pkgs.rustc
@@ -42,10 +46,11 @@ pkgs.runCommand "holder-evidence-native-membership"
       --extern holder_evidence_protocol=${protocol}/lib/libholder_evidence_protocol.rlib
       --extern worktree_holder_proc=${kernel}/lib/libworktree_holder_proc.rlib
     )
-    rustc --edition=2024 -D warnings "''${externs[@]}" --test worktree-holder-evidence-mounted-lib.rs -o mounted-tests
+    rustc --edition=2024 -D warnings --check-cfg 'cfg(test)' --check-cfg 'cfg(holder_owned_vm_class_diagnostics)' ${lib.optionalString ownedVmClassDiagnostics "--cfg holder_owned_vm_class_diagnostics"} "''${externs[@]}" --test worktree-holder-evidence-mounted-lib.rs -o mounted-tests
     ./mounted-tests
-    mkdir -p "$out/lib" "$out/share/holder-evidence-mounted/src"
-    rustc --edition=2024 -D warnings "''${externs[@]}" --crate-name holder_evidence_mounted --crate-type rlib \
+    mkdir -p "$out/lib" "$out/libexec" "$out/share/holder-evidence-mounted/src"
+    rustc --edition=2024 -D warnings --check-cfg 'cfg(test)' --check-cfg 'cfg(holder_owned_vm_class_diagnostics)' ${lib.optionalString ownedVmClassDiagnostics "--cfg holder_owned_vm_class_diagnostics"} "''${externs[@]}" --crate-name holder_evidence_mounted --crate-type rlib \
       worktree-holder-evidence-mounted-lib.rs -o "$out/lib/libholder_evidence_mounted.rlib"
     cp worktree-holder-evidence*.rs "$out/share/holder-evidence-mounted/src/"
+    cp mounted-tests "$out/libexec/worktree-holder-mounted-tests"
   ''

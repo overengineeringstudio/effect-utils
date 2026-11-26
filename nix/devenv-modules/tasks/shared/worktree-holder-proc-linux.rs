@@ -17,6 +17,10 @@ const SYS_OPENAT2: c_long = 437;
 const SYS_KCMP: c_long = 312;
 #[cfg(target_arch = "aarch64")]
 const SYS_KCMP: c_long = 272;
+#[cfg(target_arch = "x86_64")]
+const SYS_MEMFD_CREATE: c_long = 319;
+#[cfg(target_arch = "aarch64")]
+const SYS_MEMFD_CREATE: c_long = 279;
 const O_PATH: u64 = 0x200000;
 const O_CLOEXEC: u64 = 0x80000;
 #[cfg(target_arch = "x86_64")]
@@ -69,6 +73,16 @@ pub fn pin_task(tid: u32) -> io::Result<OwnedFd> {
     // derive this TID from the actual pinned proc task directory.
     // SAFETY: scalar PID/flags; success transfers a fresh pidfd to OwnedFd.
     descriptor(unsafe { syscall(SYS_PIDFD_OPEN, c_long::from(tid), 0x80 as c_int) })
+}
+
+pub fn internal_shmem_witness() -> io::Result<OwnedFd> {
+    // No HUGETLB: the kernel creates this empty file on its internal shmem
+    // mount. MFD_CLOEXEC | MFD_NOEXEC_SEAL = 0x9; no names or flags from callers.
+    // SAFETY: the static name is NUL-terminated, scalar flags use the Linux ABI,
+    // and success transfers this fresh descriptor to exactly one OwnedFd.
+    descriptor(unsafe {
+        syscall(SYS_MEMFD_CREATE, c"holder-evidence-internal-shmem".as_ptr(), 0x9 as c_int)
+    })
 }
 
 pub fn duplicate_process_fd(process: &OwnedFd, fd: i32) -> io::Result<OwnedFd> {

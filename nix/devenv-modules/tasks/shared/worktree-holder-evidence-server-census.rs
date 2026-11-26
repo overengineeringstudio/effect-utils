@@ -23,7 +23,7 @@ pub struct Census<'a> {
 }
 struct ObservedProcess {
     scope: ProcessScope,
-    references: Vec<References>,
+    references: Vec<Option<References>>,
 }
 // Only the source-authenticated bootstrap uses a local resource classification.
 // Its metadata FDs are created by this server; its real root/cwd/exe/stdio and
@@ -116,12 +116,14 @@ impl References {
     fn collect(process: &ProcessScope, index: usize, request: &protocol::Request,
         candidates: &CandidateSet, store_client: Option<&Client>, management: bool,
         runtime: &mut Option<Runtime>, observation: &mut protocol::Observation,
-        reference_count: &mut usize, deadline: Instant) -> io::Result<Self>
+        reference_count: &mut usize, deadline: Instant) -> io::Result<Option<Self>>
     {
+        if process.task_departed(index, deadline)? { return Ok(None); }
         let task = &process.tasks[index];
         let pid = &process.identity;
         let pins = if management {
             let base = scope_path(&task.scope);
+            let mapping_base = scope_path(&task.mapping_scope);
             let root = Some(Held::pin(format!("{base}/root"), deadline)?);
             let cwd = Some(Held::pin(format!("{base}/cwd"), deadline)?);
             let exe = Some(Held::pin(format!("{base}/exe"), deadline)?);
@@ -133,8 +135,8 @@ impl References {
                 descriptors.push((number, Held::pin(format!("{base}/fd/{number}"), deadline)?));
             }
             let mut mappings = Vec::new();
-            for name in mapping_names(&task.scope, deadline)? {
-                let held = Held::pin(format!("{base}/map_files/{name}"), deadline)?;
+            for name in mapping_names(&task.mapping_scope, deadline)? {
+                let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
                 if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
                     return Err(io::Error::other("unqualified mapped kernel object"));
                 }
@@ -142,7 +144,8 @@ impl References {
             }
             Pins::Management(ManagementReferences { root, cwd, exe, descriptors, mappings })
         } else {
-            Pins::Ordinary(process.collect_resources(index, deadline)?)
+            let Some(pins) = process.collect_resources(index, deadline)? else { return Ok(None); };
+            Pins::Ordinary(pins)
         };
         let (root, cwd, exe, descriptors, mappings) =
             (pins.root(), pins.cwd(), pins.exe(), pins.descriptors(), pins.mappings());
@@ -192,7 +195,7 @@ impl References {
                 None, reference_count);
             Some(coverage)
         } else { None };
-        Ok(Self { pins, foreign, memberships, mounted })
+        Ok(Some(Self { pins, foreign, memberships, mounted }))
     }
 
     fn recheck(&self, process: &ProcessScope, index: usize, candidates: &CandidateSet,
@@ -202,6 +205,7 @@ impl References {
         let task = &process.tasks[index];
         let pid = process.identity.pid;
         let base = scope_path(&task.scope);
+        let mapping_base = scope_path(&task.mapping_scope);
         match &self.pins {
             Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline)?,
             Pins::Management(pins) => {
@@ -212,19 +216,18 @@ impl References {
                 for (number, held) in &pins.descriptors {
                     held.recheck(format!("{base}/fd/{number}"), deadline)?;
                 }
-                let names = mapping_names(&task.scope, deadline)?;
+                let names = mapping_names(&task.mapping_scope, deadline)?;
                 if !names.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
                     return Err(io::Error::other("server mapping membership changed"));
                 }
                 for (name, held) in &pins.mappings {
-                    held.recheck(format!("{base}/map_files/{name}"), deadline)?;
+                    held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?;
                 }
             }
         }
         for (number, held) in self.pins.descriptors() {
             exempt_descriptor(store_client, request, pid, task, *number, held)?;
         }
-        if let Some(mounted) = &self.mounted { mounted.recheck(candidates, deadline)?; }
         for (index, (kind, held)) in self.pins.root().iter().map(|held| (ReferenceKind::Root, held))
             .chain(self.pins.cwd().iter().map(|held| (ReferenceKind::Cwd, held)))
             .chain(self.pins.exe().iter().map(|held| (ReferenceKind::Exe, held)))
@@ -233,7 +236,7 @@ impl References {
         {
             qualify_object(held)?;
             // Repeat native namespace/backing proofs, not only inode equality.
-            let actual = candidates.matches(&held.file, &task.scope, kind, deadline)?;
+            let actual = candidates.recheck_matches(&held.file, &task.scope, kind, self.mounted.as_ref(), deadline)?;
             if !same_matches(&self.memberships[index], &actual) {
                 return Err(io::Error::other("task root-relative membership or provenance changed"));
             }
@@ -252,7 +255,7 @@ impl References {
         match &self.pins {
             Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline)?,
             Pins::Management(pins) => {
-                if !mapping_names(&task.scope, deadline)?.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
+                if !mapping_names(&task.mapping_scope, deadline)?.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
                     return Err(io::Error::other("server mappings changed during closure"));
                 }
             }
@@ -270,12 +273,22 @@ impl ObservedProcess {
             return Err(io::Error::other("unobserved task resources"));
         }
         for (index, task) in self.scope.tasks.iter().enumerate() {
-            task.recheck(deadline)?;
-            self.references[index].recheck(&self.scope, index, candidates, runtime, request, store_client, deadline)?;
-            if let Some(runtime) = runtime {
-                runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
+            if self.scope.task_departed(index, deadline)? { continue; }
+            let references = self.references[index].as_ref()
+                .ok_or_else(|| io::Error::other("live task lacks resources"))?;
+            let checked: io::Result<()> = (|| {
+                task.recheck(deadline)?;
+                references.recheck(&self.scope, index, candidates, runtime, request, store_client, deadline)?;
+                if let Some(runtime) = runtime {
+                    runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
+                }
+                task.recheck(deadline)
+            })();
+            match checked {
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && self.scope.task_departed(index, deadline)? => (),
+                result => result?,
             }
-            task.recheck(deadline)?;
         }
         self.scope.recheck(deadline)
     }
@@ -322,10 +335,17 @@ impl<'a> Census<'a> {
             let mut resources = Vec::with_capacity(process.tasks.len());
             for index in 0..process.tasks.len() {
                 // Still inspect any root/cwd held by a proven no-mm task.
-                let references = References::collect(&process, index, request, candidates,
+                let captured = References::collect(&process, index, request, candidates,
                     store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, deadline)?;
-                total_objects += 3 + references.pins.descriptors().len() + references.pins.mappings().len();
+                    &mut reference_count, deadline);
+                let references = match captured {
+                    Err(error) if error.kind() == io::ErrorKind::NotFound
+                        && process.task_departed(index, deadline)? => None,
+                    result => result?,
+                };
+                if let Some(references) = &references {
+                    total_objects += 3 + references.pins.descriptors().len() + references.pins.mappings().len();
+                }
                 if total_objects > OBJECT_LIMIT { return Err(io::Error::other("object census capacity")); }
                 resources.push(references);
             }
@@ -338,6 +358,8 @@ impl<'a> Census<'a> {
             .map_err(|_| io::Error::other("process count overflow"))?;
         census.observation.task_count = u32::try_from(total_tasks)
             .map_err(|_| io::Error::other("task count overflow"))?;
+        // Final reference closure may not grow this transaction's scope devices.
+        candidates.freeze_scope_devices(deadline)?;
         census.recheck(candidates, store_client, deadline)?;
         for root in &mut census.observation.roots {
             if !root.complete || !root.references_complete { root.status = Status::Unknown; }
@@ -360,7 +382,7 @@ impl<'a> Census<'a> {
         }
         for retained in &self.processes {
             let current = ProcessScope::discover(retained.scope.identity.pid, deadline)?;
-            if !retained.scope.same_selection(&current)? {
+            if !retained.scope.same_selection(&current, deadline)? {
                 return Err(io::Error::other("all-task identity credentials or membership changed"));
             }
         }
@@ -383,6 +405,14 @@ impl<'a> Census<'a> {
         for process in &self.processes {
             process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline)?;
         }
+        // Departed-task shortcuts never waive retained mount contributions.
+        for process in &self.processes {
+            for references in process.references.iter().flatten() {
+                if let Some(mounted) = &references.mounted {
+                    mounted.recheck(candidates, deadline)?;
+                }
+            }
+        }
         if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
         self.recheck_selection(deadline)?;
         candidates.recheck(deadline)?;
@@ -398,8 +428,9 @@ mod tests {
     use super::*;
 
     fn task() -> TaskScope {
-        TaskScope { identity: Process { pid: 8, parent: 1, start: 101, state: b'S' },
+        TaskScope { tgid: 7, identity: Process { pid: 8, parent: 1, start: 101, state: b'S' },
             uids: [9, 10, 11, 12], scope: File::open("/proc/self").unwrap(),
+            mapping_scope: File::open("/proc/self").unwrap(),
             namespaces: Vec::new() }
     }
 
