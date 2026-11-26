@@ -1141,6 +1141,16 @@ awaits the complete in-flight phase (including assertions) before deleting the f
 or restoring the host-budget environment; later phases depend on the preceding phase
 settling successfully.
 
+Capability publisher recovery fixtures run the declared real `nix-store` through
+the existing executable injection seam, with a 30-second deadline per operation.
+Their case registrar includes all three setup operations plus the case's
+abort/recovery/idempotence operations, two seconds of startup allowance per
+invocation, and a final two-second cleanup allowance. The daemon-stop CLI has
+its own derived deadline and owned process-group retirement. Before settling,
+the case requires real OS group disappearance within two seconds, not merely a
+successful kill request. Unknown live groups refuse fixture deletion. Teardown
+also joins the entire in-flight case; production deadlines and assertions are unchanged.
+
 The wrapper requests Bun's JUnit reporter and leaves console output untouched.
 After the child exits, it samples host load and Linux memory PSI and emits one
 `test-timeout-under-load` line for each JUnit `TimeoutError`, including the test
