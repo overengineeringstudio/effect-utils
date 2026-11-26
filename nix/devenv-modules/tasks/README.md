@@ -105,6 +105,27 @@ inventory is deferred until after the caller authenticates its original exclusiv
 maintenance lease; worktrees are never recursively inventoried. Ordinary terminal
 devices have no candidate path and do not become protective unknowns.
 
+Proc anonymous-kernel-object qualification is a closed, exact-name typed
+classifier, not a blanket anon_inodefs exemption. BPF map/program/link, BTF,
+BPF statistics leases, eventfd, timerfd, signalfd, epoll, inotify, pidfd,
+userfaultfd and perf_event are non-path objects in the accidental-breakage
+model; a bpffs pin remains a separate filesystem path. io_uring, fanotify,
+bpf_iter and every unrecognized spelling remain protective UNKNOWN.
+Ordinary PTY/terminal qualification is unchanged.
+
+The classifier and unapproved-emitter inventory regressions are promoted from
+frozen source `93eaf04e0115d3390f70ebd9aec2baaf2c5e6218`. The inventory is a
+reviewed Linux 6.18.62 snapshot, not permission to admit future kernel names.
+The ignored `tests::actual_nonpath_eventfd_and_registered_io_uring_veto`
+fixture uses real eventfd and io_uring descriptors, registers a candidate file
+in the ring, closes its ordinary descriptor, then requires the ring veto.
+The existing proc builder compiles this seam but does not execute ignored
+tests or install a test executable. Qualification still requires a disposable
+Linux VM with io_uring enabled, compiling `worktree-holder-proc.rs` with
+`rustc --edition=2024 -D warnings --test`, then running that exact ignored test.
+Unit/build success alone is not kernel or production census proof; this
+publication adds no activation, diagnostics, task-lifecycle or namespace changes.
+
 The native filesystem classifier also admits exact EROFS magic `0xe0f5e1e2`
 only with a nonzero Linux device major from the same held file. Nodev
 file-backed/fscache/on-demand EROFS remains unknown, as do overlay and FUSE.
