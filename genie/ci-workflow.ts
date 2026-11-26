@@ -65,6 +65,14 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
   } satisfies GitHubWorkflowJob
 }
 export {
+  defineHostedPrivateCacheRead,
+  trustedHostedCacheReadCondition,
+  trustedHostedCacheReadGateSucceededPredicate,
+  type HostedPrivateCacheRead,
+  hostedPrivateCacheReadPolicy,
+  trustedHostedCacheReadGate,
+} from './ci-workflow/cache-policy.ts'
+export {
   consumerMigrationLedger,
   consumerMigrationPolicy,
   fleetWorkflowPolicy,

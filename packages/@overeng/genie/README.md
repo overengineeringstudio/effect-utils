@@ -375,6 +375,55 @@ Run `pnpm:install` unconditionally after setup. The standard preparation helper
 retains setup and `pnpmInstallWithDiagnosticsStep()` without consulting a cache
 hit or requiring a restored snapshot. Nix cache helpers are unchanged.
 
+#### Explicit hosted private-cache readers
+
+Private caches remain fleet-only by default. A narrow, explicit exception for
+literal GitHub-hosted Ubuntu/macOS/Windows runner labels names one exact job,
+one complete private Nix-binary cache descriptor and one dedicated `CACHIX_READ_*` secret.
+This does not relax runner admission in the independent fleet workflow policy.
+Consumers must also satisfy their repository's workflow policy.
+
+Import `defineHostedPrivateCacheRead`, `hostedPrivateCacheReadPolicy` and
+`trustedHostedCacheReadGate` from `genie/ci-workflow.ts`. Define a capability
+with `{ job, cache, readSecret, trustedActors }`; spread
+`...hostedPrivateCacheReadPolicy(capability)` onto that exact job and put
+`trustedHostedCacheReadGate(capability)` first in its steps, before checkout.
+Only a later step-local `env.CACHIX_READ_TOKEN` may reference the exact expression
+`'${{ secrets.CACHIX_READ_EXAMPLE }}'` named by the capability.
+That credential-bearing step must set `if: trustedHostedCacheReadCondition`
+(also exported by the root helper). The helper gate owns the fixed step ID
+`trusted_private_cache_reader`; duplicate IDs are rejected.
+Later code/cleanup steps using status functions must include the exported
+`trustedHostedCacheReadGateSucceededPredicate` as a top-level `&&` conjunct.
+For example, `${{ always() && steps.trusted_private_cache_reader.outcome == 'success' }}`
+retains cleanup after a lane failure but never after a rejected actor.
+An outer `||`, bare `always()`, `failure()` or `cancelled()` cannot bypass admission.
+REAPI capabilities are not part of this exception.
+For caller-level rendering, pass the same `job` and
+`hostedPrivateCacheReads: [capability]` to `binaryCachesExtraConfForJob`.
+Rendering is not authorization: the final workflow boundary revalidates the
+actual job, full cache identity, credential placement and literal gate structure.
+Capability metadata registers the descriptor even for raw Nix extra-conf.
+
+The gate checks the same repository and allowlisted PR author, head owner,
+sender and triggering actor. Its inline allowlist cannot be replaced by an
+inherited environment variable. Missing, modified, conditional, non-failing or
+late gates fail validation. Workflow/job-scoped secrets, shell startup hooks,
+containers and services are not admitted for these readers.
+
+**Provisioning contract:** an operator must provision a provider-enforced,
+read-only, cache-scoped credential under the dedicated `CACHIX_READ_*` name.
+Neither the template type nor YAML can prove provider token scope. There is no
+`readOnly: true` escape hatch: writer secret names are rejected, and the final
+validator additionally rejects any dedicated-looking read secret observed in a
+publisher/write context anywhere in the workflow. Never alias a publisher token
+under a read-secret name.
+Repository secrets remain repository-wide: this capability constrains generated
+workflows, not secret-level access from other repository workflows or branches.
+
+Change note: adds opt-in hosted private-cache reads without changing default
+denial for unopted jobs, other cache identities or dynamic/non-hosted runners.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:
