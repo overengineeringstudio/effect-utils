@@ -47,6 +47,20 @@ def version_tuple(version):
     return tuple(map(int, version.split(".")))
 
 
+def latest_stable_version(release_pages):
+    versions = []
+    for page in release_pages:
+        for release in page:
+            if release["draft"] or release["prerelease"]:
+                continue
+            tag = release["tag_name"]
+            if not re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag):
+                continue
+            versions.append(tag[1:])
+    require(versions, "No canonical stable pnpm release found")
+    return max(versions, key=version_tuple)
+
+
 def replace(path, old, new):
     text = path.read_text()
     require(old in text, f"Missing expected version in {path}")
@@ -96,10 +110,9 @@ def main():
     current = re.search(r'  version = "([^"]+)";', text)[1]
     if sys.argv[1] == "prepare":
         require(not run("git", "status", "--porcelain"), "Checkout must be clean")
-        release = json.loads(run("gh", "api", "repos/pnpm/pnpm/releases/latest"))
-        require(not release["draft"] and not release["prerelease"], "Not a stable release")
-        require(release["tag_name"].startswith("v"), "Unexpected release tag")
-        latest = release["tag_name"][1:]
+        releases = json.loads(run("gh", "api", "--paginate", "--slurp",
+                                  "repos/pnpm/pnpm/releases?per_page=100"))
+        latest = latest_stable_version(releases)
         if version_tuple(latest) <= version_tuple(current):
             return
         branch = f"automation/pnpm-{latest}"
