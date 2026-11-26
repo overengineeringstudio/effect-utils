@@ -61,7 +61,8 @@ class WatchSourceEnded extends Data.TaggedError('WatchSourceEnded') {}
 const DEFAULT_WATCH_DEBOUNCE = Duration.millis(250)
 const WATCH_QUEUE_CAPACITY = 4096
 
-interface PendingEntry {
+/** @internal Input to the same window collector used by the native watcher. */
+export interface WatchPendingEntry {
   readonly absolutePath: string
   readonly event: FileSystem.WatchEvent
 }
@@ -72,19 +73,20 @@ interface PendingEntry {
  * everything that accumulated while it was open joins the same batch. Drains
  * with `Queue.poll` — `Queue.takeAll` would block until a further event
  * arrives and stall single-change flushes.
+ * @internal
  */
-const takeWindow = ({
+export const takeWatchWindow = ({
   pending,
   debounce,
 }: {
-  readonly pending: Queue.Queue<PendingEntry>
+  readonly pending: Queue.Queue<WatchPendingEntry>
   readonly debounce: Duration.Duration
 }): Effect.Effect<ReadonlyArray<WatchGroup>> =>
   Effect.gen(function* () {
     const first = yield* Queue.take(pending)
     yield* Effect.sleep(debounce)
 
-    const entries: Array<PendingEntry> = [first]
+    const entries: Array<WatchPendingEntry> = [first]
     let next = yield* Queue.poll(pending)
     while (Option.isSome(next) === true) {
       entries.push(next.value)
@@ -133,7 +135,7 @@ export const watchScoped = (
         const inScope: (absolutePath: string) => boolean =
           typeof scope === 'function' ? scope : (absolutePath) => scope.has(absolutePath)
 
-        const pending = yield* Queue.sliding<PendingEntry>(WATCH_QUEUE_CAPACITY)
+        const pending = yield* Queue.sliding<WatchPendingEntry>(WATCH_QUEUE_CAPACITY)
         // Completed by the watcher fiber: failed with the sentinel when the
         // watchers ended cleanly, with their PlatformError when they errored,
         // died with the original cause on unexpected defects.
@@ -186,7 +188,7 @@ export const watchScoped = (
             readonly [ReadonlyArray<WatchGroup>, undefined] | undefined,
             PlatformError
           > =>
-            Effect.raceFirst(takeWindow({ pending, debounce }), Deferred.await(halted)).pipe(
+            Effect.raceFirst(takeWatchWindow({ pending, debounce }), Deferred.await(halted)).pipe(
               Effect.map((batch) => [batch, undefined] as const),
               Effect.catchTag('WatchSourceEnded', () => Effect.as(Effect.void, undefined)),
             ),
