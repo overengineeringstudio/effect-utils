@@ -55,7 +55,7 @@ describe('AutomergeRepo scoped lifecycle', () => {
 
   it.live('never acknowledges durable saves or flushes without persistent storage', () =>
     Effect.gen(function* () {
-      for (const storage of [undefined, new SafeStorageAdapter(() => undefined)]) {
+      for (const storage of [undefined, new SafeStorageAdapter({ make: () => undefined })]) {
         const context = yield* Layer.build(AutomergeRepo.layer({ network: [], storage }))
         const service = Context.get(context, AutomergeRepo)
         const handle = yield* service.create({ count: 1 })
@@ -79,8 +79,10 @@ describe('AutomergeRepo scoped lifecycle', () => {
       })
       return Effect.gen(function* () {
         const failure = new Error('IndexedDB unavailable')
-        const storage = new SafeStorageAdapter(() => {
-          throw failure
+        const storage = new SafeStorageAdapter({
+          make: () => {
+            throw failure
+          },
         })
         yield* Effect.scoped(
           Effect.gen(function* () {

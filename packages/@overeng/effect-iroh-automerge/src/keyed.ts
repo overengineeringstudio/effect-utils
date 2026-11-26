@@ -5,10 +5,13 @@ import { Effect, FiberMap, Stream } from 'effect'
  * vanished keys interrupt theirs. Everything is interrupted when the stream ends or the
  * effect is interrupted. (Fibers are not restarted if they finish on their own.)
  */
-export const runKeyed = <A, E, R, R2>(
-  desired: Stream.Stream<ReadonlyMap<string, A>, E, R>,
-  run: (key: string, value: A) => Effect.Effect<unknown, never, R2>,
-): Effect.Effect<void, E, R | R2> =>
+export const runKeyed = <TValue, TError, TContext, TRunContext>({
+  desired,
+  run,
+}: {
+  desired: Stream.Stream<ReadonlyMap<string, TValue>, TError, TContext>
+  run: (key: string, value: TValue) => Effect.Effect<unknown, never, TRunContext>
+}): Effect.Effect<void, TError, TContext | TRunContext> =>
   Effect.scoped(
     Effect.gen(function* () {
       const fibers = yield* FiberMap.make<string>()

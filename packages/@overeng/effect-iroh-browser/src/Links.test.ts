@@ -23,8 +23,8 @@ describe('Links', () => {
       const a = yield* Links.make({ selfId: 'aaaa', handler: echo })
       const b = yield* Links.make({ selfId: 'bbbb', handler: echo })
       // Both dial at once: aaaa→bbbb and bbbb→aaaa.
-      const [abAtA, abAtB] = connPair('aaaa', 'bbbb')
-      const [baAtB, baAtA] = connPair('bbbb', 'aaaa')
+      const [abAtA, abAtB] = connPair({ a: 'aaaa', b: 'bbbb' })
+      const [baAtB, baAtA] = connPair({ a: 'bbbb', b: 'aaaa' })
       yield* Effect.forkChild(a.run({ conn: fromFramed(abAtA), outgoing: true }))
       yield* Effect.forkChild(b.run({ conn: fromFramed(baAtB), outgoing: true }))
       yield* tick
@@ -40,8 +40,8 @@ describe('Links', () => {
   it.effect('a newer connection in the same direction replaces a stale one', () =>
     Effect.gen(function* () {
       const links = yield* Links.make({ selfId: 'aaaa', handler: echo })
-      const [old] = connPair('aaaa', 'bbbb')
-      const [fresh] = connPair('aaaa', 'bbbb')
+      const [old] = connPair({ a: 'aaaa', b: 'bbbb' })
+      const [fresh] = connPair({ a: 'aaaa', b: 'bbbb' })
       yield* Effect.forkChild(links.run({ conn: fromFramed(old), outgoing: false }))
       yield* tick
       yield* Effect.forkChild(links.run({ conn: fromFramed(fresh), outgoing: false }))
@@ -55,7 +55,7 @@ describe('Links', () => {
   it.effect('interrupting the handler fiber closes the connection; awaitGone completes', () =>
     Effect.gen(function* () {
       const links = yield* Links.make({ selfId: 'aaaa', handler: echo })
-      const [local] = connPair('aaaa', 'bbbb')
+      const [local] = connPair({ a: 'aaaa', b: 'bbbb' })
       const fiber = yield* Effect.forkChild(links.run({ conn: fromFramed(local), outgoing: true }))
       yield* tick
       expect(links.has('bbbb')).toBe(true)
@@ -71,7 +71,7 @@ describe('Links', () => {
   it.effect('the link ends when the remote closes', () =>
     Effect.gen(function* () {
       const links = yield* Links.make({ selfId: 'aaaa', handler: echo })
-      const [local, remote] = connPair('aaaa', 'bbbb')
+      const [local, remote] = connPair({ a: 'aaaa', b: 'bbbb' })
       const fiber = yield* Effect.forkChild(links.run({ conn: fromFramed(local), outgoing: true }))
       yield* tick
       remote.close()
@@ -87,9 +87,9 @@ describe('Links', () => {
         const releasing = yield* Deferred.make<void>()
         const release = yield* Deferred.make<void>()
         const started = yield* Deferred.make<void>()
-        const [old] = connPair('aaaa', 'bbbb')
-        const [replacement] = connPair('aaaa', 'bbbb')
-        const [fresh] = connPair('aaaa', 'bbbb')
+        const [old] = connPair({ a: 'aaaa', b: 'bbbb' })
+        const [replacement] = connPair({ a: 'aaaa', b: 'bbbb' })
+        const [fresh] = connPair({ a: 'aaaa', b: 'bbbb' })
         const oldConn = fromFramed(old)
         let oldReleased = false
         const links = yield* Links.make({
@@ -146,11 +146,11 @@ describe('Links', () => {
             ? Effect.fail(new Links.LinkError({ cause: 'broken handler' }))
             : Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
       })
-      const [first] = connPair('aaaa', 'bbbb')
+      const [first] = connPair({ a: 'aaaa', b: 'bbbb' })
       yield* links.run({ conn: fromFramed(first), outgoing: true })
       expect(first.closed).toBe(true)
       expect(links.has('bbbb')).toBe(false)
-      const [second] = connPair('aaaa', 'bbbb')
+      const [second] = connPair({ a: 'aaaa', b: 'bbbb' })
       const run = yield* Effect.forkChild(links.run({ conn: fromFramed(second), outgoing: true }))
       yield* Deferred.await(started)
       expect(links.has('bbbb')).toBe(true)

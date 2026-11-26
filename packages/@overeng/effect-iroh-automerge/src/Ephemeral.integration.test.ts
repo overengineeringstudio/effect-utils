@@ -46,10 +46,10 @@ it('forwards repo ephemeral presence across iroh and a local tab without losing 
     network: [tabLocal],
   })
   const remote = new Repo({ peerId: 'bbbb-remote' as PeerId, network: [remoteAdapter] })
-  const [atLeader, atRemote] = connPair('aaaa', 'bbbb')
+  const [atLeader, atRemote] = connPair({ a: 'aaaa', b: 'bbbb' })
   const fibers = [
-    Effect.runFork(leaderAdapter.runConnection(atLeader, true)),
-    Effect.runFork(remoteAdapter.runConnection(atRemote, false)),
+    Effect.runFork(leaderAdapter.runConnection({ conn: atLeader, outgoing: true })),
+    Effect.runFork(remoteAdapter.runConnection({ conn: atRemote, outgoing: false })),
   ]
   try {
     // Lookup after transport discovery, not after a timing-dependent no-peer cutoff.

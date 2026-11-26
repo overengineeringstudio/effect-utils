@@ -36,8 +36,10 @@ export const mesh = <E, R>(
           }),
         ),
       )
-      yield* runKeyed(desired, (_, peer) =>
-        Effect.scoped(net.connect(peer).pipe(Effect.andThen(Effect.never))),
-      )
+      yield* runKeyed({
+        desired,
+        run: (_, peer) =>
+          Effect.scoped(net.connect(peer).pipe(Effect.andThen(Effect.never))),
+      })
     }),
   )

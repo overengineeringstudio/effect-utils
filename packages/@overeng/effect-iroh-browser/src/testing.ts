@@ -45,7 +45,7 @@ export class FakeConn implements FramedConn {
 }
 
 /** A connection between endpoints `a` and `b`: `[a's end, b's end]`. */
-export const connPair = (a: string, b: string): [FakeConn, FakeConn] => {
+export const connPair = ({ a, b }: { a: string; b: string }): [FakeConn, FakeConn] => {
   const atA = new FakeConn(b)
   const atB = new FakeConn(a)
   atA.other = atB

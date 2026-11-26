@@ -82,7 +82,9 @@ export class IrohNetworkAdapter extends NetworkAdapter {
       : new Promise<void>((resolve) => this.#readyWaiters.push(resolve))
   }
 
-  connect(peerId: PeerId, peerMetadata?: PeerMetadata) {
+  /** Retains automerge-repo's positional connection hook. */
+  connect(...args: Parameters<NetworkAdapter['connect']>) {
+    const [peerId, peerMetadata] = args
     this.peerId = peerId
     this.peerMetadata = peerMetadata ?? {}
     this.#ready = true
@@ -161,7 +163,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
   }
 
   /** Handles one decoded frame. Returns false if the connection must be dropped. */
-  #receive(link: Link, msg: unknown): boolean {
+  #receive({ link, msg }: { link: Link; msg: unknown }): boolean {
     if (isHello(msg)) {
       if (link.peerId) return true
       // The peer must speak for the device its encrypted connection proves it is.
@@ -188,7 +190,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
    * Runs the connection until it closes (or loses the tie-break against another connection to
    * the same endpoint). Never fails; interrupting it drops the link and closes the connection.
    */
-  runConnection(conn: FramedConn, outgoing: boolean): Effect.Effect<void> {
+  runConnection({ conn, outgoing }: { conn: FramedConn; outgoing: boolean }): Effect.Effect<void> {
     return this.#registry
       .run({ conn: fromFramed(conn), outgoing })
       .pipe(Effect.ensuring(Effect.sync(() => this.#notify())))
@@ -211,7 +213,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
         yield* conn.frames.pipe(
           Stream.runForEachWhile((data) =>
             Effect.try({
-              try: () => this.#receive(link, cbor.decode(data) as unknown),
+              try: () => this.#receive({ link, msg: cbor.decode(data) as unknown }),
               catch: (cause) => new ConnectionError(cause),
             }),
           ),
@@ -228,7 +230,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
   }
 
   /** Promise flavour of `runConnection`. Resolves when the remote is gone. */
-  addConnection(conn: FramedConn, outgoing: boolean): Promise<void> {
-    return Effect.runPromise(this.runConnection(conn, outgoing))
+  addConnection(options: { conn: FramedConn; outgoing: boolean }): Promise<void> {
+    return Effect.runPromise(this.runConnection(options))
   }
 }

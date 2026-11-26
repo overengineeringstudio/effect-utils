@@ -11,6 +11,7 @@ import {
 } from './errors.ts'
 import { exclusiveLock } from './WebLock.ts'
 
+/** Endpoint identity and relay URL used to dial a peer. */
 export interface PeerAddress {
   readonly endpointId: string
   readonly relay: string
@@ -55,11 +56,13 @@ export interface IrohWasmNode {
   connect(endpointId: string, relayUrl: string): Promise<unknown>
   close(): Promise<unknown>
 }
+/** Lazy wasm-bindgen initialization and endpoint factory. */
 export interface IrohWasmModule {
   default(): Promise<unknown>
   spawnNode(relayUrl?: string | null, secretKey?: Uint8Array | null): Promise<IrohWasmNode>
 }
 
+/** Identity, relay and ownership settings for the browser endpoint. */
 export interface WasmNodeOptions {
   /** Imports the wasm-bindgen module (dynamic import, so the ~5MB wasm loads lazily). */
   readonly load: () => Promise<IrohWasmModule>
@@ -73,6 +76,7 @@ export interface WasmNodeOptions {
   readonly lockName?: string | undefined
 }
 
+/** Failures while acquiring ownership and constructing a wasm endpoint. */
 export type NodeBuildError = NotLeader | NoEd25519 | WasmLoadError | SpawnError
 
 /** The real node over the iroh wasm bindings. Nothing is fetched until the layer is built. */
@@ -129,7 +133,7 @@ export const layerWasm = (options: WasmNodeOptions): Layer.Layer<IrohNode, NodeB
           Effect.acquireRelease(
             Effect.tryPromise({
               try: () => node.connect(peer.endpointId, peer.relay) as Promise<FramedConn>,
-              catch: (cause) => new DialError(peer.endpointId, cause),
+              catch: (cause) => new DialError({ endpointId: peer.endpointId, cause }),
             }),
             (conn) => Effect.sync(() => conn.close()),
           ),

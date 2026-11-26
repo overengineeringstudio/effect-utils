@@ -13,19 +13,21 @@ describe('WebLock', () => {
       let released = Promise.resolve()
       vi.stubGlobal('navigator', {
         locks: {
-          request: (
-            name: string,
-            options: { ifAvailable: boolean },
-            callback: (lock: object) => Promise<void>,
-          ) => {
-            expect(name).toBe('device-identity')
-            expect(options.ifAvailable).toBe(true)
-            held = true
-            released = callback({}).then(() => {
-              held = false
-            })
-            return released
-          },
+          request: vi.fn(
+            (
+              name: string,
+              options: { ifAvailable: boolean },
+              callback: (lock: object) => Promise<void>,
+            ) => {
+              expect(name).toBe('device-identity')
+              expect(options.ifAvailable).toBe(true)
+              held = true
+              released = callback({}).then(() => {
+                held = false
+              })
+              return released
+            },
+          ),
         },
       })
       const scope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
@@ -43,8 +45,10 @@ describe('WebLock', () => {
     Effect.gen(function* () {
       vi.stubGlobal('navigator', {
         locks: {
-          request: async (_name: string, _options: unknown, callback: (lock: null) => void) =>
-            callback(null),
+          request: vi.fn(
+            async (_name: string, _options: unknown, callback: (lock: null) => void) =>
+              callback(null),
+          ),
         },
       })
       const error = yield* Effect.flip(exclusiveLock('device-identity'))
@@ -72,12 +76,12 @@ describe('WebLock', () => {
       const finished = Promise.withResolvers<void>()
       vi.stubGlobal('navigator', {
         locks: {
-          request: (_name: string, options: { ifAvailable: boolean }, grant: Grant) => {
+          request: vi.fn((_name: string, options: { ifAvailable: boolean }, grant: Grant) => {
             // The Web Locks API forbids combining `signal` with `ifAvailable`.
             expect(options).toEqual({ ifAvailable: true })
             requested.resolve(grant)
             return finished.promise
-          },
+          }),
         },
       })
       const pending = yield* Effect.scoped(exclusiveLock('device-identity')).pipe(Effect.forkChild)

@@ -15,6 +15,7 @@ export {
   type RepoOptions,
   type ShareConfig,
 } from './AutomergeRepo.ts'
+/** Streams, current state, changes, and ephemeral messaging for ready document handles. */
 export * as DocHandles from './DocHandles.ts'
 export {
   DocDeleted,

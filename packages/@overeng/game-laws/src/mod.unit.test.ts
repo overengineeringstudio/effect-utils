@@ -25,8 +25,6 @@ const apply = ({ state: current, move }: Input): State | undefined =>
 const moves = (current: State) =>
   [0, 1, 2, 3].filter((move) => current.total + move <= 10)
 const accepted = (result: State | undefined) => result !== undefined
-const legal = (sample: Input, result: State | undefined) =>
-  result !== undefined && moves(sample.state).includes(result.total - sample.state.total)
 
 /** Check both failure detection and fast-check's public seed/path reproduction contract. */
 const expectFailure = <TInput>(property: fc.IProperty<[TInput]>) => {
@@ -89,7 +87,16 @@ describe('caller-owned adapters', () => {
       }),
       parameters,
     )
-    fc.assert(acceptedMovesAreLegal({ arbitrary: input, apply, accepted, legal }), parameters)
+    fc.assert(
+      acceptedMovesAreLegal({
+        arbitrary: input,
+        apply,
+        accepted,
+        legal: (sample, result) =>
+          result !== undefined && moves(sample.state).includes(result.total - sample.state.total),
+      }),
+      parameters,
+    )
   })
 
   it('allows an empty terminal enumeration without asserting nonemptiness', () => {
@@ -162,7 +169,8 @@ describe('invalid adapters produce reproducible counterexamples', () => {
         arbitrary: input,
         apply: (sample) => ({ total: sample.state.total + 4 }),
         accepted,
-        legal,
+        legal: (sample, result) =>
+          result !== undefined && moves(sample.state).includes(result.total - sample.state.total),
       }),
     )
   })

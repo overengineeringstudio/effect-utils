@@ -45,15 +45,18 @@ interface Harness {
  * Runs `test` against a `Net` whose node is fake: dials fail unless `answer` returns a
  * connection, and time is a TestClock.
  */
-const withNet = <A>(
-  test: (h: Harness) => Effect.Effect<A, unknown>,
-  options: {
+const withNet = <TResult>({
+  test,
+  options = {},
+}: {
+  test: (h: Harness) => Effect.Effect<TResult, unknown>
+  options?: {
     answer?: (attempt: number) => FakeConn | undefined
     nodeFails?: (build: number) => boolean
     /** Builds whose endpoint never reaches a relay. */
     relayFails?: (build: number) => boolean
-  } = {},
-) =>
+  }
+}) =>
   Effect.gen(function* () {
     const dials: number[] = []
     const builds = { count: 0 }
@@ -77,7 +80,7 @@ const withNet = <A>(
               const conn = options.answer?.(dials.length)
               return conn
                 ? Effect.succeed(conn)
-                : Effect.fail(new DialError(peer.endpointId, 'offline'))
+                : Effect.fail(new DialError({ endpointId: peer.endpointId, cause: 'offline' }))
             }),
         })
       }),
@@ -142,21 +145,22 @@ describe('Net', () => {
   })
 
   it('starts once and reports the node online', () =>
-    withNet(({ net, builds }) =>
-      Effect.gen(function* () {
-        expect((yield* SubscriptionRef.get(net.status)).phase).toBe('off')
-        const [s1, s2] = yield* Effect.all([net.start, net.start], { concurrency: 'unbounded' })
-        expect(s1).toBe(s2)
-        expect(builds.count).toBe(1)
-        const status = yield* SubscriptionRef.get(net.status)
-        expect(status.phase).toBe('online')
-        expect(status.self).toEqual({ endpointId: SELF, relay: 'https://relay.test' })
-      }),
-    ))
+    withNet({
+      test: ({ net, builds }) =>
+        Effect.gen(function* () {
+          expect((yield* SubscriptionRef.get(net.status)).phase).toBe('off')
+          const [s1, s2] = yield* Effect.all([net.start, net.start], { concurrency: 'unbounded' })
+          expect(s1).toBe(s2)
+          expect(builds.count).toBe(1)
+          const status = yield* SubscriptionRef.get(net.status)
+          expect(status.phase).toBe('online')
+          expect(status.self).toEqual({ endpointId: SELF, relay: 'https://relay.test' })
+        }),
+    }))
 
   it('reports a failed start and retries on the next start', () =>
-    withNet(
-      ({ net, builds }) =>
+    withNet({
+      test: ({ net, builds }) =>
         Effect.gen(function* () {
           const error = yield* Effect.flip(net.start)
           expect(error._tag).toBe('NotLeader')
@@ -167,13 +171,13 @@ describe('Net', () => {
           expect(builds.count).toBe(2)
           expect((yield* SubscriptionRef.get(net.status)).phase).toBe('online')
         }),
-      { nodeFails: (build) => build === 1 },
-    ))
+      options: { nodeFails: (build) => build === 1 },
+    }))
 
   it('keeps a dial loop starting after the relay was out of reach', () => {
     let relayDown = true
-    return withNet(
-      ({ net, builds, dials, wake }) =>
+    return withNet({
+      test: ({ net, builds, dials, wake }) =>
         Effect.gen(function* () {
           yield* Effect.forkChild(Effect.scoped(Effect.andThen(net.connect(PEER), Effect.never)))
           yield* tick
@@ -193,14 +197,14 @@ describe('Net', () => {
           expect((yield* SubscriptionRef.get(net.status)).phase).toBe('online')
           expect(dials).toEqual([1000])
         }),
-      { relayFails: () => relayDown },
-    )
+      options: { relayFails: () => relayDown },
+    })
   })
 
   it('keeps a shared session online without peers after the relay was out of reach', () => {
     let relayDown = true
-    return withNet(
-      ({ net, builds }) =>
+    return withNet({
+      test: ({ net, builds }) =>
         Effect.gen(function* () {
           yield* Effect.forkChild(net.keepOnline)
           yield* tick
@@ -210,14 +214,14 @@ describe('Net', () => {
           expect(builds.count).toBe(2)
           expect((yield* SubscriptionRef.get(net.status)).phase).toBe('online')
         }),
-      { relayFails: () => relayDown },
-    )
+      options: { relayFails: () => relayDown },
+    })
   })
 
   it('stops follower probes with the holder and takes over when the owner leaves', () => {
     let ownerHolds = true
-    return withNet(
-      ({ net, builds, dials }) =>
+    return withNet({
+      test: ({ net, builds, dials }) =>
         Effect.gen(function* () {
           const first = yield* Scope.make()
           yield* net.connect(PEER).pipe(Scope.provide(first))
@@ -238,76 +242,79 @@ describe('Net', () => {
           expect(dials).toEqual([3000])
           yield* Scope.close(second, Exit.void)
         }),
-      { nodeFails: () => ownerHolds },
-    )
+      options: { nodeFails: () => ownerHolds },
+    })
   })
 
   it('redials with exponential backoff and reports unreachable after repeated failures', () =>
-    withNet(({ net, dials }) =>
-      Effect.gen(function* () {
-        const scope = yield* Scope.make()
-        yield* net.connect(PEER).pipe(Scope.provide(scope))
-        yield* tick
-        expect(dials).toEqual([0])
-        expect(yield* peerState(net)).toBe('connecting')
-        yield* advance('1 second')
-        expect(dials).toEqual([0, 1000])
-        expect(yield* peerState(net)).toBe('connecting')
-        yield* advance('2 seconds')
-        expect(dials).toHaveLength(UNREACHABLE_AFTER)
-        expect(yield* peerState(net)).toBe('unreachable')
-        yield* advance('4 seconds')
-        yield* advance('8 seconds')
-        yield* advance('16 seconds')
-        yield* advance('30 seconds')
-        yield* advance('30 seconds')
-        expect(dials).toEqual([0, 1000, 3000, 7000, 15000, 31000, 61000, 91000])
-
-        // Releasing the last holder stops the loop and forgets the peer.
-        yield* Scope.close(scope, Exit.void)
-        yield* tick
-        expect(yield* peerState(net)).toBeUndefined()
-        yield* advance('1 minute')
-        expect(dials).toHaveLength(8)
-      }),
-    ))
+    withNet({
+      test: ({ net, dials }) =>
+        Effect.gen(function* () {
+          const scope = yield* Scope.make()
+          yield* net.connect(PEER).pipe(Scope.provide(scope))
+          yield* tick
+          expect(dials).toEqual([0])
+          expect(yield* peerState(net)).toBe('connecting')
+          yield* advance('1 second')
+          expect(dials).toEqual([0, 1000])
+          expect(yield* peerState(net)).toBe('connecting')
+          yield* advance('2 seconds')
+          expect(dials).toHaveLength(UNREACHABLE_AFTER)
+          expect(yield* peerState(net)).toBe('unreachable')
+          yield* advance('4 seconds')
+          yield* advance('8 seconds')
+          yield* advance('16 seconds')
+          yield* advance('30 seconds')
+          yield* advance('30 seconds')
+          expect(dials).toEqual([0, 1000, 3000, 7000, 15000, 31000, 61000, 91000])
+  
+          // Releasing the last holder stops the loop and forgets the peer.
+          yield* Scope.close(scope, Exit.void)
+          yield* tick
+          expect(yield* peerState(net)).toBeUndefined()
+          yield* advance('1 minute')
+          expect(dials).toHaveLength(8)
+        }),
+    }))
 
   it('redials immediately when the network may be back', () =>
-    withNet(({ net, dials, wake }) =>
-      Effect.gen(function* () {
-        yield* Effect.forkChild(Effect.scoped(Effect.andThen(net.connect(PEER), Effect.never)))
-        yield* tick
-        yield* advance('1 second')
-        yield* advance('2 seconds')
-        expect(dials).toEqual([0, 1000, 3000])
-        yield* wake
-        yield* tick
-        expect(dials).toEqual([0, 1000, 3000, 3000])
-      }),
-    ))
+    withNet({
+      test: ({ net, dials, wake }) =>
+        Effect.gen(function* () {
+          yield* Effect.forkChild(Effect.scoped(Effect.andThen(net.connect(PEER), Effect.never)))
+          yield* tick
+          yield* advance('1 second')
+          yield* advance('2 seconds')
+          expect(dials).toEqual([0, 1000, 3000])
+          yield* wake
+          yield* tick
+          expect(dials).toEqual([0, 1000, 3000, 3000])
+        }),
+    }))
 
   it('shares one dial loop between holders (ref-counted)', () =>
-    withNet(({ net, dials }) =>
-      Effect.gen(function* () {
-        const first = yield* Scope.make()
-        const second = yield* Scope.make()
-        yield* net.connect(PEER).pipe(Scope.provide(first))
-        yield* net.connect(PEER).pipe(Scope.provide(second))
-        yield* tick
-        expect(dials).toEqual([0])
-        yield* Scope.close(first, Exit.void)
-        yield* advance('1 second')
-        expect(dials).toEqual([0, 1000])
-        yield* Scope.close(second, Exit.void)
-        yield* advance('1 minute')
-        expect(dials).toEqual([0, 1000])
-      }),
-    ))
+    withNet({
+      test: ({ net, dials }) =>
+        Effect.gen(function* () {
+          const first = yield* Scope.make()
+          const second = yield* Scope.make()
+          yield* net.connect(PEER).pipe(Scope.provide(first))
+          yield* net.connect(PEER).pipe(Scope.provide(second))
+          yield* tick
+          expect(dials).toEqual([0])
+          yield* Scope.close(first, Exit.void)
+          yield* advance('1 second')
+          expect(dials).toEqual([0, 1000])
+          yield* Scope.close(second, Exit.void)
+          yield* advance('1 minute')
+          expect(dials).toEqual([0, 1000])
+        }),
+    }))
 
   it('restarts the backoff after a successful connection and tracks the live connection', () => {
     let remote: FakeConn | undefined
-    return withNet(
-      ({ net, dials }) =>
+    return withNet({
+      test: ({ net, dials }) =>
         Effect.gen(function* () {
           yield* Effect.forkChild(Effect.scoped(Effect.andThen(net.connect(PEER), Effect.never)))
           yield* tick
@@ -342,25 +349,26 @@ describe('Net', () => {
           yield* advance('2 seconds')
           expect(dials).toHaveLength(5)
         }),
-      {
+      options: {
         answer: (attempt) => {
           if (attempt !== 3) return undefined
-          const [local, other] = connPair(SELF, PEER.endpointId)
+          const [local, other] = connPair({ a: SELF, b: PEER.endpointId })
           remote = other
           return local
         },
       },
-    )
+    })
   })
 
   it('accepts incoming connections', () =>
-    withNet(({ net, incoming }) =>
-      Effect.gen(function* () {
-        const session = yield* net.start
-        const [local] = connPair(SELF, PEER.endpointId)
-        yield* Queue.offer(incoming, local)
-        yield* tick
-        expect(session.adapter.hasLink(PEER.endpointId)).toBe(true)
-      }),
-    ))
+    withNet({
+      test: ({ net, incoming }) =>
+        Effect.gen(function* () {
+          const session = yield* net.start
+          const [local] = connPair({ a: SELF, b: PEER.endpointId })
+          yield* Queue.offer(incoming, local)
+          yield* tick
+          expect(session.adapter.hasLink(PEER.endpointId)).toBe(true)
+        }),
+    }))
 })

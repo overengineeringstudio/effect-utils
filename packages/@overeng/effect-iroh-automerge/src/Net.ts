@@ -33,8 +33,10 @@ import { IrohNetworkAdapter } from './IrohNetworkAdapter.ts'
  *   by `Wakeups` (tab visible again, browser online).
  */
 
+/** Observable progress of a retained peer connection. */
 export type PeerState = 'connecting' | 'connected' | 'unreachable'
 
+/** Current endpoint lifecycle, peer connectivity and startup failure. */
 export interface NetStatus {
   readonly phase: 'off' | 'starting' | 'online' | 'error' | 'other-tab'
   readonly self?: PeerAddress | undefined
@@ -65,6 +67,7 @@ export class Wakeups extends Context.Service<Wakeups, Stream.Stream<void>>()(
   )
 }
 
+/** Live endpoint and adapter owned by one networking session. */
 export interface Session {
   readonly endpointId: string
   readonly relay: string
@@ -72,6 +75,7 @@ export interface Session {
   readonly adapter: IrohNetworkAdapter
 }
 
+/** Lazily started networking with shared, scoped peer dial loops. */
 export class Net extends Context.Service<
   Net,
   {
@@ -114,12 +118,17 @@ class PeerKey implements Equal.Equal {
   }
 }
 
-const withPeer = (
-  status: NetStatus,
-  adapter: IrohNetworkAdapter | undefined,
-  endpointId: string,
-  state: PeerState | undefined,
-): NetStatus => {
+const withPeer = ({
+  status,
+  adapter,
+  endpointId,
+  state,
+}: {
+  status: NetStatus
+  adapter: IrohNetworkAdapter | undefined
+  endpointId: string
+  state: PeerState | undefined
+}): NetStatus => {
   // A live connection always wins over what a dial loop believes.
   if (state && adapter?.connectedEndpoints.has(endpointId)) state = 'connected'
   if (status.peers.get(endpointId) === state) return status
@@ -130,7 +139,7 @@ const withPeer = (
 }
 
 /** Mirrors the adapter's live connections into the peer states. */
-const withConnected = (status: NetStatus, adapter: IrohNetworkAdapter): NetStatus => {
+const withConnected = ({ status, adapter }: { status: NetStatus; adapter: IrohNetworkAdapter }): NetStatus => {
   const connected = adapter.connectedEndpoints
   const peers = new Map(status.peers)
   for (const id of connected) peers.set(id, 'connected')
@@ -151,8 +160,8 @@ export const makeNet = (
       const wakeups = yield* Wakeups
       const status = yield* SubscriptionRef.make<NetStatus>({ phase: 'off', peers: new Map() })
       let adapterRef: IrohNetworkAdapter | undefined
-      const setPeer = (endpointId: string, state: PeerState | undefined) =>
-        SubscriptionRef.update(status, (s) => withPeer(s, adapterRef, endpointId, state))
+      const setPeer = ({ endpointId, state }: { endpointId: string; state: PeerState | undefined }) =>
+        SubscriptionRef.update(status, (s) => withPeer({ status: s, adapter: adapterRef, endpointId, state }))
 
       /** Builds node + adapter + accept loop in `scope`. */
       const openSession = (scope: Scope.Scope) =>
@@ -165,14 +174,14 @@ export const makeNet = (
           const connections = yield* FiberSet.make<void>()
           yield* node.incoming.pipe(
             Stream.runForEach((conn) =>
-              FiberSet.run(connections, adapter.runConnection(conn, false)),
+              FiberSet.run(connections, adapter.runConnection({ conn, outgoing: false })),
             ),
             Effect.forkScoped,
           )
           adapterRef = adapter
           yield* adapter.changes.pipe(
             Stream.runForEach(() =>
-              SubscriptionRef.update(status, (s) => withConnected(s, adapter)),
+              SubscriptionRef.update(status, (s) => withConnected({ status: s, adapter })),
             ),
             Effect.forkScoped,
           )
@@ -266,7 +275,7 @@ export const makeNet = (
           const session = yield* keepOnline
           if (peer.endpointId === session.endpointId) return
           const { node, adapter } = session
-          yield* setPeer(peer.endpointId, 'connecting')
+          yield* setPeer({ endpointId: peer.endpointId, state: 'connecting' })
           let failures = 0
           let backoff = yield* Schedule.toStep(dialBackoff)
           const nextDelay = Effect.clockWith((clock) =>
@@ -285,7 +294,7 @@ export const makeNet = (
                 // Count the dial as a success before the (long-running) connection.
                 Effect.sync(() => {
                   failures = 0
-                }).pipe(Effect.andThen(adapter.runConnection(conn, true))),
+                }).pipe(Effect.andThen(adapter.runConnection({ conn, outgoing: true }))),
               ),
               Effect.scoped,
               Effect.exit,
@@ -294,7 +303,7 @@ export const makeNet = (
               backoff = yield* Schedule.toStep(dialBackoff)
             } else {
               failures++
-              if (failures >= UNREACHABLE_AFTER) yield* setPeer(peer.endpointId, 'unreachable')
+              if (failures >= UNREACHABLE_AFTER) yield* setPeer({ endpointId: peer.endpointId, state: 'unreachable' })
               yield* Effect.logWarning('[iroh] dial failed', dialed.cause)
             }
             const [, delay] = yield* nextDelay.pipe(Effect.orDie)
@@ -303,7 +312,7 @@ export const makeNet = (
         }).pipe(
           // Other startup failures are reported in status and retried by an explicit start.
           Effect.ignore,
-          Effect.ensuring(setPeer(peer.endpointId, undefined)),
+          Effect.ensuring(setPeer({ endpointId: peer.endpointId, state: undefined })),
         )
 
       const loops = yield* RcMap.make({

@@ -26,9 +26,9 @@ describe('IrohNetworkAdapter', () => {
   it('handshakes and stamps messages with the connection-proven peer', async () => {
     const a = adapter(A)
     const b = adapter(B)
-    const [atA, atB] = connPair(A, B)
-    void a.adapter.addConnection(atA, true)
-    void b.adapter.addConnection(atB, false)
+    const [atA, atB] = connPair({ a: A, b: B })
+    void a.adapter.addConnection({ conn: atA, outgoing: true })
+    void b.adapter.addConnection({ conn: atB, outgoing: false })
     await settle()
 
     expect(a.events).toEqual([{ type: 'candidate', peerId: peer(B) }])
@@ -65,13 +65,13 @@ describe('IrohNetworkAdapter', () => {
   it('keeps the connection dialed by the lower endpoint id on both sides', async () => {
     const a = adapter(A) // lower id
     const b = adapter(B)
-    const [aDialed, bAcceptedFromA] = connPair(A, B)
-    const [bDialed, aAcceptedFromB] = connPair(B, A)
+    const [aDialed, bAcceptedFromA] = connPair({ a: A, b: B })
+    const [bDialed, aAcceptedFromB] = connPair({ a: B, b: A })
     // Both sides dial at once; each sees its own outgoing and the other's incoming connection.
-    void a.adapter.addConnection(aDialed, true)
-    void b.adapter.addConnection(bDialed, true)
-    void a.adapter.addConnection(aAcceptedFromB, false)
-    void b.adapter.addConnection(bAcceptedFromA, false)
+    void a.adapter.addConnection({ conn: aDialed, outgoing: true })
+    void b.adapter.addConnection({ conn: bDialed, outgoing: true })
+    void a.adapter.addConnection({ conn: aAcceptedFromB, outgoing: false })
+    void b.adapter.addConnection({ conn: bAcceptedFromA, outgoing: false })
     await settle()
 
     expect(aDialed.closed).toBe(false)
@@ -84,8 +84,8 @@ describe('IrohNetworkAdapter', () => {
 
   it('drops a peer that claims another device', async () => {
     const a = adapter(A)
-    const [atA, atB] = connPair(A, B)
-    void a.adapter.addConnection(atA, true)
+    const [atA, atB] = connPair({ a: A, b: B })
+    void a.adapter.addConnection({ conn: atA, outgoing: true })
     await atB.send(
       cbor.encode({ type: 'games-hello', v: 1, senderId: 'cccc-tab1', peerMetadata: {} }),
     )
@@ -97,8 +97,8 @@ describe('IrohNetworkAdapter', () => {
 
   it('waits for the repo before saying hello', async () => {
     const a = new IrohNetworkAdapter(A)
-    const [atA] = connPair(A, B)
-    void a.addConnection(atA, true)
+    const [atA] = connPair({ a: A, b: B })
+    void a.addConnection({ conn: atA, outgoing: true })
     await settle()
     expect(atA.sent).toHaveLength(0)
     a.connect(peer(A))
@@ -108,8 +108,8 @@ describe('IrohNetworkAdapter', () => {
 
   it('closes the connection when its fiber is interrupted', async () => {
     const a = adapter(A)
-    const [atA] = connPair(A, B)
-    const fiber = Effect.runFork(a.adapter.runConnection(atA, true))
+    const [atA] = connPair({ a: A, b: B })
+    const fiber = Effect.runFork(a.adapter.runConnection({ conn: atA, outgoing: true }))
     await settle()
     expect(a.adapter.hasLink(B)).toBe(true)
     await Effect.runPromise(Fiber.interrupt(fiber))
@@ -120,8 +120,8 @@ describe('IrohNetworkAdapter', () => {
   it('awaitNoLink completes once the link is gone', async () => {
     const a = adapter(A)
     await Effect.runPromise(a.adapter.awaitNoLink(B)) // no link: immediately
-    const [atA] = connPair(A, B)
-    void a.adapter.addConnection(atA, true)
+    const [atA] = connPair({ a: A, b: B })
+    void a.adapter.addConnection({ conn: atA, outgoing: true })
     await settle()
     const waiting = Effect.runPromise(a.adapter.awaitNoLink(B))
     let done = false
@@ -134,8 +134,8 @@ describe('IrohNetworkAdapter', () => {
 
   it('authenticates ephemeral senders without discarding their payload', async () => {
     const a = adapter(A)
-    const [atA, atB] = connPair(A, B)
-    const fiber = Effect.runFork(a.adapter.runConnection(atA, true))
+    const [atA, atB] = connPair({ a: A, b: B })
+    const fiber = Effect.runFork(a.adapter.runConnection({ conn: atA, outgoing: true }))
     try {
       await atB.send(
         cbor.encode({

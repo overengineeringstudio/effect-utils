@@ -59,7 +59,7 @@ export class DialError extends Data.TaggedError('DialError')<{
   readonly endpointId: string
   readonly cause: unknown
 }> {
-  constructor(endpointId: string, cause: unknown) {
+  constructor({ endpointId, cause }: { endpointId: string; cause: unknown }) {
     super({ message: messageOf(cause), endpointId, cause })
   }
 }
