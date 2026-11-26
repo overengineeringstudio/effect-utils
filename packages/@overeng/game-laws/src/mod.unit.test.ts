@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 
 import fc from 'fast-check'
-import { describe, expect, it } from 'vitest'
+import { assert, describe, expect, it } from 'vitest'
 
 import {
   acceptedMovesAreLegal,
@@ -32,6 +32,7 @@ const expectFailure = <TInput>(property: fc.IProperty<[TInput]>) => {
   expect(failure.failed).toBe(true)
   expect(failure.counterexample).not.toBeNull()
   if (!failure.failed) return
+  assert(failure.counterexamplePath !== null)
   const reproduced = fc.check(property, {
     seed: failure.seed,
     path: failure.counterexamplePath,

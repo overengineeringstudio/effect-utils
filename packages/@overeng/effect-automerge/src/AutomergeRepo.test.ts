@@ -56,7 +56,9 @@ describe('AutomergeRepo scoped lifecycle', () => {
   it.live('never acknowledges durable saves or flushes without persistent storage', () =>
     Effect.gen(function* () {
       for (const storage of [undefined, new SafeStorageAdapter({ make: () => undefined })]) {
-        const context = yield* Layer.build(AutomergeRepo.layer({ network: [], storage }))
+        const context = yield* Layer.build(
+          AutomergeRepo.layer({ network: [], ...(storage === undefined ? {} : { storage }) }),
+        )
         const service = Context.get(context, AutomergeRepo)
         const handle = yield* service.create({ count: 1 })
         handle.change((doc) => {

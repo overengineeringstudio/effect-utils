@@ -113,8 +113,9 @@ export const layerWasm = (options: WasmNodeOptions): Layer.Layer<IrohNode, NodeB
           try: () => node.homeRelay() as Promise<string | null>,
           catch: () => new RelayUnreachable(),
         }).pipe(
-          Effect.flatMap((relay) =>
-            relay ? Effect.succeed(relay) : Effect.fail(new RelayUnreachable()),
+          Effect.filterOrFail(
+            (relay): relay is string => !!relay,
+            () => new RelayUnreachable(),
           ),
           Effect.timeoutOrElse({
             duration: options.homeRelayTimeout ?? '25 seconds',

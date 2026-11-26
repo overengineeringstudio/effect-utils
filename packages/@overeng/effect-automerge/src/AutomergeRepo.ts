@@ -175,7 +175,7 @@ export class AutomergeRepo extends Context.Service<AutomergeRepo, AutomergeRepoS
               ),
             ),
         )
-        return make({ repo, storage: config.storage })
+        return make({ repo, ...(config.storage === undefined ? {} : { storage: config.storage }) })
       }),
     )
 
