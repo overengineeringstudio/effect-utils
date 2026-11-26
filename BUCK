@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:ae7a6f9dd205c27402831ae2ee520d47a2cf296eed76d78bd3cb46e253019385
+# Semantic fingerprint: sha256:b746e1aeba9a003d745368b05d587c98b9fadadeef1da4cd35bb81ba78e2e486
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -201,8 +201,12 @@ check_aggregate(
         "//packages/@overeng/rpc-devtools:typecheck",
         "//packages/@overeng/effect-ai-claude-cli:typecheck",
         "//packages/@overeng/effect-ai-gateway:typecheck",
+        "//packages/@overeng/effect-automerge:typecheck",
         "//packages/@overeng/effect-distributed-lock:typecheck",
         "//packages/@overeng/effect-iroh:typecheck",
+        "//packages/@overeng/effect-iroh-automerge:typecheck",
+        "//packages/@overeng/effect-iroh-browser:typecheck",
+        "//packages/@overeng/game-laws:typecheck",
         "//packages/@overeng/effect-path:typecheck",
         "//packages/@overeng/effect-react:typecheck",
         "//packages/@overeng/effect-rpc-explorer:typecheck",
@@ -276,8 +280,12 @@ check_aggregate(
         "//packages/@overeng/rpc-devtools:dist",
         "//packages/@overeng/effect-ai-claude-cli:dist",
         "//packages/@overeng/effect-ai-gateway:dist",
+        "//packages/@overeng/effect-automerge:dist",
         "//packages/@overeng/effect-distributed-lock:dist",
         "//packages/@overeng/effect-iroh:dist",
+        "//packages/@overeng/effect-iroh-automerge:dist",
+        "//packages/@overeng/effect-iroh-browser:dist",
+        "//packages/@overeng/game-laws:dist",
         "//packages/@overeng/effect-path:dist",
         "//packages/@overeng/effect-react:dist",
         "//packages/@overeng/effect-rpc-explorer:dist",
@@ -332,7 +340,10 @@ check_aggregate(
         "effect_utils//packages/@overeng/devbar:test",
         "effect_utils//packages/@overeng/effect-ai-claude-cli:test",
         "effect_utils//packages/@overeng/effect-ai-gateway:test",
+        "effect_utils//packages/@overeng/effect-automerge:test",
         "effect_utils//packages/@overeng/effect-distributed-lock:test",
+        "effect_utils//packages/@overeng/effect-iroh-automerge:test",
+        "effect_utils//packages/@overeng/effect-iroh-browser:test",
         "effect_utils//packages/@overeng/effect-iroh:test",
         "effect_utils//packages/@overeng/effect-path:test",
         "effect_utils//packages/@overeng/effect-react:test",
@@ -343,6 +354,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/effect-rust:test",
         "effect_utils//packages/@overeng/effect-schema-form-aria:test",
         "effect_utils//packages/@overeng/effect-schema-form:test",
+        "effect_utils//packages/@overeng/game-laws:test",
         "effect_utils//packages/@overeng/genie-fractal:test",
         "effect_utils//packages/@overeng/genie-smalltalk:test",
         "effect_utils//packages/@overeng/genie:test",
