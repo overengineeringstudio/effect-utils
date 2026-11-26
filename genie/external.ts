@@ -330,6 +330,9 @@ export const catalog = defineCatalog({
   '@automerge/automerge-repo': '2.5.6',
   '@automerge/automerge-repo-network-broadcastchannel': '2.5.6',
 
+  // Keep property shrinking compatible with the existing game suites.
+  'fast-check': '4.10.3',
+
   // React ecosystem
   react: '19.2.8',
   'react-dom': '19.2.8',

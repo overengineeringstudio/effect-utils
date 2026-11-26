@@ -168,6 +168,10 @@
         "rationale": "In-memory Automerge adapters, framed transport fixtures, mesh ownership and BroadcastChannel integration; no Darwin-specific native transport."
       },
       {
+        "task": "test:game-laws",
+        "rationale": "Pure fast-check property builders with deterministic positive and counterexample-replay fixtures; no platform-specific I/O."
+      },
+      {
         "task": "test:work-storage",
         "rationale": "Portable manifest, schema acceptance and role-resolution contracts; no platform-specific provider implementation."
       },

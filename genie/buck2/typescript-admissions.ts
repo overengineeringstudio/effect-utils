@@ -17,6 +17,7 @@ import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../.
 import { buck2TypeScriptAdmission as effectIrohAdmission } from '../../packages/@overeng/effect-iroh/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectIrohAutomergeAdmission } from '../../packages/@overeng/effect-iroh-automerge/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectIrohBrowserAdmission } from '../../packages/@overeng/effect-iroh-browser/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as gameLawsAdmission } from '../../packages/@overeng/game-laws/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../../packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts'
@@ -122,6 +123,7 @@ export const buck2TypeScriptAdmissions = {
   effectIroh: effectIrohAdmission,
   effectIrohAutomerge: effectIrohAutomergeAdmission,
   effectIrohBrowser: effectIrohBrowserAdmission,
+  gameLaws: gameLawsAdmission,
   effectPath: effectPathAdmission,
   effectReact: effectReactAdmission,
   effectRpcExplorer: effectRpcExplorerAdmission,

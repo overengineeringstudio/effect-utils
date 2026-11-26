@@ -25,6 +25,7 @@ export const internalPackages = [
   'effect-iroh',
   'effect-iroh-automerge',
   'effect-iroh-browser',
+  'game-laws',
   'effect-path',
   'effect-react',
   'effect-rpc-explorer',
