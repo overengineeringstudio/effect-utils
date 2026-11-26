@@ -98,12 +98,11 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
               expect(Object.isFrozen(view)).toBe(true)
               expect(Object.isFrozen(view.pins)).toBe(true)
               const target = lstatSync(path, { bigint: true })
-              const pin = view.pins.find(
-                (entry) =>
-                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
-              )
+              const pin = view.targetPin(path)
               expect(pin).toBeDefined()
               if (pin === undefined) throw new Error('Engine did not hold its target fd')
+              expect(pin.dev).toBe(target.dev.toString())
+              expect(pin.ino).toBe(target.ino.toString())
               const actual = fstatSync(pin.fd, { bigint: true })
               const reference = {
                 kind: 'fd',
@@ -123,6 +122,7 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
             }),
         })
         expect(observed?.view.has(observed.reference)).toBe(false)
+        expect(observed?.view.targetPin(path)).toBeUndefined()
         expect(yield* fs.exists(path)).toBe(false)
       },
       Effect.provide(NodeServices.layer),
@@ -187,11 +187,10 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
           beforeRemove: (view) =>
             Effect.gen(function* () {
               const target = lstatSync(path, { bigint: true })
-              const pin = view.pins.find(
-                (entry) =>
-                  entry.dev === target.dev.toString() && entry.ino === target.ino.toString(),
-              )
+              const pin = view.targetPin(path)
               if (pin === undefined) return yield* Effect.die('Missing held target fd')
+              expect(pin.dev).toBe(target.dev.toString())
+              expect(pin.ino).toBe(target.ino.toString())
               const child = yield* spawner.spawn(
                 ChildProcess.make(
                   process.execPath,

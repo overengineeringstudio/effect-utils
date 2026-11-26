@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { fstatSync } from 'node:fs'
+import { fstatSync, lstatSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -102,23 +102,41 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
               retained = views
               expect(Object.isFrozen(views)).toBe(true)
               expect(views).toHaveLength(2)
-              for (const view of views) {
-                const pin = view.pins.at(-1)!
+              for (const [index, view] of views.entries()) {
+                const path = paths[index]!
+                const pin = view.targetPin(path)
+                expect(pin).toBeDefined()
+                if (pin === undefined) throw new Error('Engine did not expose its acquired target')
+                const target = lstatSync(path, { bigint: true })
+                const held = fstatSync(pin.fd, { bigint: true })
+                expect(held.dev).toBe(target.dev)
+                expect(held.ino).toBe(target.ino)
+                expect(readFileSync(`/proc/${pin.pid}/fd/${pin.fd}/sentinel`, 'utf8')).toBe(
+                  'original',
+                )
+                expect(view.targetPin(path)).toBe(pin)
+                expect(view.pins.includes(pin)).toBe(true)
+                expect(view.targetPin(dirname(path))).toBeUndefined()
+                expect(view.targetPin(paths[1 - index]!)).toBeUndefined()
                 expect(view.has({ kind: 'fd', ...pin })).toBe(true)
                 expect(view.has({ kind: 'cwd', ...pin })).toBe(false)
               }
-              expect(views[0]!.pins.at(-1)!.fd).not.toBe(views[1]!.pins.at(-1)!.fd)
+              expect(views[0]!.targetPin(paths[0]!)!.fd).not.toBe(
+                views[1]!.targetPin(paths[1]!)!.fd,
+              )
               return 'prepared'
             }),
           commit: (...args: [string]) =>
             Effect.gen(function* () {
               expect(args).toEqual(['prepared'])
-              for (const view of retained) {
-                const pin = view.pins.at(-1)!
-                expect(view.has({ kind: 'fd', ...pin })).toBe(false)
-                const actual = fstatSync(pin.fd, { bigint: true })
-                expect(actual.dev.toString()).toBe(pin.dev)
-                expect(actual.ino.toString()).toBe(pin.ino)
+              for (const [index, view] of retained.entries()) {
+                expect(view.targetPin(paths[index]!)).toBeUndefined()
+                for (const pin of view.pins) {
+                  expect(view.has({ kind: 'fd', ...pin })).toBe(false)
+                  const actual = fstatSync(pin.fd, { bigint: true })
+                  expect(actual.dev.toString()).toBe(pin.dev)
+                  expect(actual.ino.toString()).toBe(pin.ino)
+                }
               }
               expect(yield* fs.readFileString(state)).toBe('HOLD')
               yield* fs.writeFileString(state, 'READY')
@@ -129,7 +147,80 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
         expect(yield* fs.readFileString(state)).toBe('READY')
         for (const path of paths)
           expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
-        for (const view of retained) expect(() => fstatSync(view.pins.at(-1)!.fd)).toThrow()
+        for (const [index, view] of retained.entries()) {
+          expect(view.targetPin(paths[index]!)).toBeUndefined()
+          for (const pin of view.pins) expect(() => fstatSync(pin.fd)).toThrow()
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'binds the original requested target at acquisition without retargeting on caller mutation',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, rootPath, paths, targets } = yield* fixture
+        const requested = `${rootPath}//payload/`
+        const target = { ...targets[0]!, path: requested }
+        let retained: OwnedDeletionPins | undefined
+        let copied: OwnedDeletionPins | undefined
+        yield* withVerifiedDirectoryPins({
+          targets: [target],
+          prepare: (views) =>
+            Effect.sync(() => {
+              const view = views[0]!
+              retained = view
+              copied = { ...view }
+              const pin = view.targetPin(requested)
+              expect(pin).toBeDefined()
+              if (pin === undefined) throw new Error('Requested target has no acquired leaf')
+              target.path = paths[1]!
+              expect(view.targetPin(requested)).toBe(pin)
+              expect(view.targetPin(paths[0]!)).toBeUndefined()
+              expect(view.targetPin(target.path)).toBeUndefined()
+              expect(copied.targetPin(requested)).toBe(pin)
+              expect(readFileSync(`/proc/${pin.pid}/fd/${pin.fd}/sentinel`, 'utf8')).toBe(
+                'original',
+              )
+            }),
+          commit: () =>
+            Effect.sync(() => {
+              expect(retained?.targetPin(requested)).toBeUndefined()
+              expect(copied?.targetPin(requested)).toBeUndefined()
+            }),
+        })
+        for (const path of paths)
+          expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('original')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'exposes each scope’s exact leaf even when separate acquisitions have identical inode evidence',
+    Effect.fnUntraced(
+      function* () {
+        const { paths, targets } = yield* fixture
+        yield* withVerifiedDirectoryPins({
+          targets: [targets[0]!, targets[0]!],
+          prepare: (views) =>
+            Effect.sync(() => {
+              const left = views[0]!.targetPin(paths[0]!)
+              const right = views[1]!.targetPin(paths[0]!)
+              expect(left).toBeDefined()
+              expect(right).toBeDefined()
+              if (left === undefined || right === undefined)
+                throw new Error('Acquired leaf missing')
+              expect([left.dev, left.ino]).toEqual([right.dev, right.ino])
+              expect(left.fd).not.toBe(right.fd)
+              expect(views[0]!.has({ kind: 'fd', ...right })).toBe(false)
+              expect(views[1]!.has({ kind: 'fd', ...left })).toBe(false)
+            }),
+          commit: () => Effect.void,
+        })
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -166,10 +257,12 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
           expect(yield* fs.readFileString(state)).toBe('HOLD')
           expect(yield* fs.readFileString(`${path}-detached/sentinel`)).toBe('original')
           expect(yield* fs.readFileString(`${path}/sentinel`)).toBe('replacement')
-          for (const view of retained) {
-            const pin = view.pins.at(-1)!
-            expect(view.has({ kind: 'fd', ...pin })).toBe(false)
-            expect(() => fstatSync(pin.fd)).toThrow()
+          for (const [index, view] of retained.entries()) {
+            expect(view.targetPin(paths[index]!)).toBeUndefined()
+            for (const pin of view.pins) {
+              expect(view.has({ kind: 'fd', ...pin })).toBe(false)
+              expect(() => fstatSync(pin.fd)).toThrow()
+            }
           }
         },
         Effect.provide(NodeServices.layer),
@@ -183,7 +276,7 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
       `revokes views and closes both chains when ${failDuring} throws`,
       Effect.fnUntraced(
         function* () {
-          const { fs, targets, state } = yield* fixture
+          const { fs, paths, targets, state } = yield* fixture
           let retained: ReadonlyArray<OwnedDeletionPins> = []
           let committed = false
           const result = yield* withVerifiedDirectoryPins({
@@ -201,10 +294,12 @@ describe.skipIf(process.platform !== 'linux')('verified directory pin transactio
           expect(result._tag).toBe('Failure')
           expect(committed).toBe(failDuring === 'commit')
           expect(yield* fs.readFileString(state)).toBe('HOLD')
-          for (const view of retained) {
-            const pin = view.pins.at(-1)!
-            expect(view.has({ kind: 'fd', ...pin })).toBe(false)
-            expect(() => fstatSync(pin.fd)).toThrow()
+          for (const [index, view] of retained.entries()) {
+            expect(view.targetPin(paths[index]!)).toBeUndefined()
+            for (const pin of view.pins) {
+              expect(view.has({ kind: 'fd', ...pin })).toBe(false)
+              expect(() => fstatSync(pin.fd)).toThrow()
+            }
           }
         },
         Effect.provide(NodeServices.layer),
