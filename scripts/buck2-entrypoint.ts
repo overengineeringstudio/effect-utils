@@ -924,7 +924,8 @@ export const resolveGateInvocation = ({
         // Unknown arity is harmless only when no later token can select isolation.
         if (
           selectionOnly === true &&
-          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false)
+          buckArgs.slice(index + 1).every((value) => value.includes('--isolation') === false) ===
+            true
         )
           break
         return undefined

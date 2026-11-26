@@ -39,22 +39,33 @@ const withPublicationRoot = async (run: (cwd: string) => Promise<void>): Promise
 it('validates only a live process-local publication owner for reserved invocations', () =>
   withPublicationRoot(async (cwd) => {
     const args = ['--isolation-dir', editorPublicationIsolation, 'status']
-    const released: { owner?: Parameters<typeof requireEditorPublicationInvocationOwner>[0]['owner'] } = {}
+    const released: {
+      owner?: Parameters<typeof requireEditorPublicationInvocationOwner>[0]['owner']
+    } = {}
     await withEditorPublicationOwner({
       root: cwd,
       run: async (owner) => {
         released.owner = owner
         expect(requireEditorPublicationInvocationOwner({ args, cwd, env: {}, owner })).toBe(owner)
-        expect(requireEditorPublicationInvocationOwner({
-          args: ['--isolation-dir', 'v2', 'status'], cwd, env: {}, owner,
-        })).toBeUndefined()
+        expect(
+          requireEditorPublicationInvocationOwner({
+            args: ['--isolation-dir', 'v2', 'status'],
+            cwd,
+            env: {},
+            owner,
+          }),
+        ).toBeUndefined()
         expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env: {} })).toThrow()
       },
     })
-    expect(() => requireEditorPublicationInvocationOwner({
-      args, cwd, env: {},
-      ...(released.owner === undefined ? {} : { owner: released.owner }),
-    })).toThrow()
+    expect(() =>
+      requireEditorPublicationInvocationOwner({
+        args,
+        cwd,
+        env: {},
+        ...(released.owner === undefined ? {} : { owner: released.owner }),
+      }),
+    ).toThrow()
   }))
 
 const root = '/project/root'

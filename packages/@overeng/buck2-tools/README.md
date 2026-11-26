@@ -1140,11 +1140,31 @@ at 412.33 ms, but earlier full-DAG cases exhausted 5 seconds at load 14–17 on 
 (#2797). This bounded startup allowance preserves every assertion and cleanup;
 the rare native-startup cause remains tracked in #2797, not declared resolved.
 
+The remaining direct-posture process cases (four evidence exit/signal combinations,
+the TLS probe subprocess and shell warm-launch identity) use the same 20-second
+outer budget. Full Linux quicks exhausted the former 5-second base (6.77 seconds
+with load scaling). A CPU-load approximation on 20 CPUs ran each case 20 times:
+120/120 passed, with a maximum of 8,830.19 ms at one-minute load 21.96–31.23.
+The 20-second allowance is 2.26× that observed maximum, keeping failures bounded.
+The empirical 20-sample p99 is only the sample maximum, not a confidence bound;
+CPU load does not reproduce all full-DAG filesystem/I/O work or resolve #2797.
+Assertions, cleanup and production connect/response/command deadlines are unchanged.
+
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown
 awaits the complete in-flight phase (including assertions) before deleting the fixture
 or restoring the host-budget environment; later phases depend on the preceding phase
 settling successfully.
+
+Capability publisher recovery fixtures run the declared real `nix-store` through
+the existing executable injection seam, with a 30-second deadline per operation.
+Their case registrar includes all three setup operations plus the case's
+abort/recovery/idempotence operations, two seconds of startup allowance per
+invocation, and a final two-second cleanup allowance. The daemon-stop CLI has
+its own derived deadline and owned process-group retirement. Before settling,
+the case requires real OS group disappearance within two seconds, not merely a
+successful kill request. Unknown live groups refuse fixture deletion. Teardown
+also joins the entire in-flight case; production deadlines and assertions are unchanged.
 
 The wrapper requests Bun's JUnit reporter and leaves console output untouched.
 After the child exits, it samples host load and Linux memory PSI and emits one

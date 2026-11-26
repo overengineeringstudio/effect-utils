@@ -153,8 +153,11 @@ describe('gate wrapper native-only death and real gate-slot expiry', () => {
       try {
         child.stdin.write('fixture stdin\n')
         await waitFor('native client readiness', () => existsSync(fixture.ready))
-        const { pid } = JSON.parse(readFileSync(fixture.ready, 'utf8'))
+        const { pid, cgroup } = JSON.parse(readFileSync(fixture.ready, 'utf8'))
         expect(pid).not.toBe(child.pid)
+        if (process.platform === 'linux') {
+          expect(cgroup).toBe(readFileSync('/proc/self/cgroup', 'utf8'))
+        }
         // Deliberately target neither the wrapper nor its process group.
         process.kill(pid, signal)
         expect(await child.exited, await stderr).toBe(signal === 'SIGTERM' ? 0 : 137)

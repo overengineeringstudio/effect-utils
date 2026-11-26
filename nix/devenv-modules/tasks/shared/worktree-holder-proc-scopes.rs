@@ -13,6 +13,135 @@ use super::process::Process;
 const TASK_LIMIT: usize = 262144;
 const OBJECT_LIMIT: usize = 1048576;
 
+/// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnonymousKernelObject {
+    BpfMap, BpfProgram, BpfLink, Btf, BpfStats, EventFd, TimerFd, SignalFd, Epoll, Inotify,
+    PidFd, UserfaultFd, PerfEvent, IoUring, Fanotify, Unrecognized,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KernelObjectPathClass { NonPathKernelObject, PathBearingOrUnknown }
+
+impl AnonymousKernelObject {
+    fn path_class(self) -> KernelObjectPathClass {
+        match self {
+            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::Btf | Self::BpfStats | Self::EventFd
+            | Self::TimerFd | Self::SignalFd | Self::Epoll | Self::Inotify
+            | Self::PidFd | Self::UserfaultFd | Self::PerfEvent =>
+                KernelObjectPathClass::NonPathKernelObject,
+            Self::IoUring | Self::Fanotify | Self::Unrecognized =>
+                KernelObjectPathClass::PathBearingOrUnknown,
+        }
+    }
+}
+
+fn anonymous_kernel_object(name: &Path) -> AnonymousKernelObject {
+    match name.to_str() {
+        Some("anon_inode:bpf-map") => AnonymousKernelObject::BpfMap,
+        Some("anon_inode:bpf-prog") => AnonymousKernelObject::BpfProgram,
+        Some("anon_inode:bpf-link" | "anon_inode:bpf_link") => AnonymousKernelObject::BpfLink,
+        Some("anon_inode:btf") => AnonymousKernelObject::Btf,
+        Some("anon_inode:bpf-stats") => AnonymousKernelObject::BpfStats,
+        Some("anon_inode:[eventfd]") => AnonymousKernelObject::EventFd,
+        Some("anon_inode:[timerfd]") => AnonymousKernelObject::TimerFd,
+        Some("anon_inode:[signalfd]") => AnonymousKernelObject::SignalFd,
+        Some("anon_inode:[eventpoll]") => AnonymousKernelObject::Epoll,
+        Some("anon_inode:inotify") => AnonymousKernelObject::Inotify,
+        Some("anon_inode:[pidfd]" | "anon_inode:pidfd") => AnonymousKernelObject::PidFd,
+        Some("anon_inode:[userfaultfd]" | "anon_inode:userfaultfd") => AnonymousKernelObject::UserfaultFd,
+        Some("anon_inode:[perf_event]") => AnonymousKernelObject::PerfEvent,
+        Some("anon_inode:[io_uring]") => AnonymousKernelObject::IoUring,
+        Some("anon_inode:[fanotify]" | "anon_inode:fanotify") => AnonymousKernelObject::Fanotify,
+        _ => AnonymousKernelObject::Unrecognized,
+    }
+}
+
+#[cfg(test)]
+mod anonymous_object_tests {
+    #[test]
+    fn anonymous_kind_is_closed_and_typed() {
+        use super::{AnonymousKernelObject as Object, KernelObjectPathClass as Class};
+        for (name, object) in [
+            ("anon_inode:bpf-map", Object::BpfMap),
+            ("anon_inode:bpf-prog", Object::BpfProgram),
+            ("anon_inode:bpf-link", Object::BpfLink),
+            ("anon_inode:bpf_link", Object::BpfLink),
+            ("anon_inode:btf", Object::Btf),
+            ("anon_inode:bpf-stats", Object::BpfStats),
+            ("anon_inode:[eventfd]", Object::EventFd),
+            ("anon_inode:[timerfd]", Object::TimerFd),
+            ("anon_inode:[signalfd]", Object::SignalFd),
+            ("anon_inode:[eventpoll]", Object::Epoll),
+            ("anon_inode:inotify", Object::Inotify),
+            ("anon_inode:[pidfd]", Object::PidFd),
+            ("anon_inode:pidfd", Object::PidFd),
+            ("anon_inode:[userfaultfd]", Object::UserfaultFd),
+            ("anon_inode:userfaultfd", Object::UserfaultFd),
+            ("anon_inode:[perf_event]", Object::PerfEvent),
+        ] {
+            let actual = super::anonymous_kernel_object(std::path::Path::new(name));
+            assert_eq!(actual, object);
+            assert_eq!(actual.path_class(), Class::NonPathKernelObject);
+        }
+        for name in [
+            "anon_inode:[io_uring]", "anon_inode:[fanotify]", "anon_inode:fanotify",
+            "anon_inode:bpf-map-unknown", "anon_inode:bpf-prog/child",
+            "anon_inode:[btf]", "anon_inode:btf-unknown", "anon_inode:btf/child",
+            "anon_inode:[bpf_link]", "anon_inode:bpf_link-unknown", "anon_inode:bpf_link/child",
+            "anon_inode:[bpf-stats]", "anon_inode:bpf-stats-unknown", "anon_inode:bpf-stats/child",
+            "/untrusted/proc-link-target",
+        ] {
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(name)).path_class(),
+                Class::PathBearingOrUnknown);
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let non_utf8 = std::ffi::OsStr::from_bytes(b"anon_inode:bpf-map\xff");
+        assert_eq!(super::anonymous_kernel_object(std::path::Path::new(non_utf8)), Object::Unrecognized);
+    }
+
+    #[test]
+    fn linux_6_18_62_unapproved_emitter_inventory_stays_unknown() {
+        // Reviewed inventory, not an anonymous-filesystem admission rule.
+        use super::KernelObjectPathClass::PathBearingOrUnknown;
+        for suffix in [
+            "kvm-htab", "kvm-spapr-tce", "[papr-hvpipe]", "[papr-platform-dump]",
+            "[papr-indices]", "[papr-physical-attestation]", "[papr-vpd]",
+            "binder_alloc_kunit", "[vtpms]", "sync_file", "gpio-linehandle",
+            "gpio-line", "gpio-event", "drm", "syncobj_file", "kfd_smi_ev",
+            "[i915_perf]", "i915.gem", "[xe_eu_stall]", "[xe_oa]",
+            "mshv_vp", "mshv_partition", "iio:buffer", "iio:event",
+            "[infinibandevent]", "[devx_async_cmd]", "[devx_async_event]",
+            "[iommufd-pgfault]", "[iommufd-viommu-event]", "[iommufd_test_staccess]",
+            "request", "ntsync", "tee_shm", "[vduse-domain]", "[vfio-device]",
+            "hisi_acc_vf_mig", "mlx5vf_mig", "pds_vfio_lm", "qat_vf_mig",
+            "virtiovf_mig", "ne-vm", "[fscontext]", "[cachefiles]", "[fanotify]",
+            "[io_uring]", "[io_uring_mock]", "seccomp notify", "bpf_iter",
+            "mtty_mig", "[landlock-ruleset]", "[kvm-gmem]", "kvm-vm-stats", "kvm-vm",
+            "kvm-vfio", "kvm-arm-vgic-its", "kvm-arm-vgic-v2", "kvm-arm-vgic-v3",
+            "kvm-loongarch-eiointc", "kvm-loongarch-ipi", "kvm-loongarch-pch-pic",
+            "kvm-xics", "kvm-xive", "kvm-xive-native", "kvm-mpic", "kvm-riscv-aia",
+            "kvm-flic", "future-unknown",
+        ] {
+            let name = format!("anon_inode:{suffix}");
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                PathBearingOrUnknown, "{suffix}");
+        }
+        for id in 0..128 {
+            let name = format!("anon_inode:snd-utimer{id}");
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                PathBearingOrUnknown);
+        }
+        for id in [0, 1, 127, i32::MAX] {
+            for prefix in ["kvm-vcpu:", "kvm-vcpu-stats:"] {
+                let name = format!("anon_inode:{prefix}{id}");
+                assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                    PathBearingOrUnknown);
+            }
+        }
+    }
+}
+
 pub struct ProcessScope {
     pub identity: Process,
     pidfd: OwnedFd,
@@ -21,9 +150,12 @@ pub struct ProcessScope {
 }
 
 pub struct TaskScope {
+    pub tgid: u32,
     pub identity: Process,
     pub uids: [u32; 4],
     pub scope: File,
+    /// Top-level /proc/<tid>; nested task directories do not expose map_files.
+    pub mapping_scope: File,
     pub namespaces: Vec<File>,
 }
 
@@ -169,8 +301,8 @@ impl Held {
         Ok(())
     }
 }
-/// These are event/byte objects, not a blanket pseudo-filesystem exemption.
-/// In particular io_uring, pidfds, fanotify and BPF remain unqualified.
+/// Exact non-path object classes do not grant access to a candidate payload.
+/// io_uring, fanotify and unrecognized anonymous objects remain unqualified.
 pub fn qualify_object(held: &Held) -> io::Result<()> {
     let metadata = held.file.metadata()?;
     let filesystem = linux::filesystem_type(&held.file)?;
@@ -182,9 +314,9 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     }
     if filesystem == 0x09041934 {
         let name = fs::read_link(scope_path(&held.file))?;
-        if !matches!(name.to_str(), Some("anon_inode:[eventfd]" | "anon_inode:[eventpoll]"
-            | "anon_inode:inotify" | "anon_inode:[timerfd]" | "anon_inode:[signalfd]"))
-        { return Err(io::Error::other("unsupported path-bearing kernel object")); }
+        if anonymous_kernel_object(&name).path_class() == KernelObjectPathClass::PathBearingOrUnknown {
+            return Err(io::Error::other("unsupported path-bearing kernel object"));
+        }
         return Ok(());
     }
     if metadata.file_type().is_char_device()
@@ -210,6 +342,7 @@ impl ProcessScope {
         for tid in &tids {
             let identity = process::process(*tid)?;
             let task_scope = objects::pin_magic(format!("{base}/task/{tid}"))?;
+            let mapping_scope = objects::pin_magic(format!("/proc/{tid}"))?;
             let uids = process::uids(*tid)?;
             let mut namespaces = Vec::with_capacity(4);
             for name in ["user", "pid", "mnt", "net"] {
@@ -218,7 +351,7 @@ impl ProcessScope {
             if !process::process(*tid)?.same_identity(&identity) {
                 return Err(io::Error::other("task changed during pin"));
             }
-            tasks.push(TaskScope { identity, uids, scope: task_scope, namespaces });
+            tasks.push(TaskScope { tgid: pid, identity, uids, scope: task_scope, mapping_scope, namespaces });
         }
         if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid)
             || numbers(format!("{base}/task"), deadline)? != tids
@@ -236,6 +369,8 @@ impl ProcessScope {
         for (before, after) in self.tasks.iter().zip(&other.tasks) {
             if !before.identity.same_identity(&after.identity) || before.uids != after.uids
                 || objects::identity(&before.scope)? != objects::identity(&after.scope)?
+                || before.tgid != after.tgid
+                || objects::identity(&before.mapping_scope)? != objects::identity(&after.mapping_scope)?
                 || before.namespaces.len() != after.namespaces.len()
             { return Ok(false); }
             for (a, b) in before.namespaces.iter().zip(&after.namespaces) {
@@ -306,13 +441,23 @@ impl TaskScope {
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
             || process::uids(self.identity.pid)? != self.uids
         { return Err(io::Error::other("task identity or credentials changed")); }
-        recheck_namespaces(self)
+        let task_scope = objects::pin_magic(format!("/proc/{}/task/{}", self.tgid, self.identity.pid))?;
+        let mapping_scope = objects::pin_magic(format!("/proc/{}", self.identity.pid))?;
+        if objects::identity(&task_scope)? != objects::identity(&self.scope)?
+            || objects::identity(&mapping_scope)? != objects::identity(&self.mapping_scope)?
+        { return Err(io::Error::other("task proc directory generation changed")); }
+        recheck_namespaces(self)?;
+        if !process::process(self.identity.pid)?.same_identity(&self.identity)
+            || process::uids(self.identity.pid)? != self.uids
+        { return Err(io::Error::other("task generation or credentials did not close")); }
+        Ok(())
     }
 }
 
 impl References {
     fn collect(task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<Self> {
         let base = scope_path(&task.scope);
+        let mapping_base = scope_path(&task.mapping_scope);
         let no_mm = no_mm_role(task, all_terminal, deadline)?;
         let root = pin_optional(format!("{base}/root"), no_mm, deadline)?;
         let cwd = pin_optional(format!("{base}/cwd"), no_mm, deadline)?;
@@ -327,8 +472,8 @@ impl References {
             descriptors.push((number, held));
         }
         let mut mappings = Vec::new();
-        for name in mapping_names(&task.scope, deadline)? {
-            let held = Held::pin(format!("{base}/map_files/{name}"), deadline)?;
+        for name in mapping_names(&task.mapping_scope, deadline)? {
+            let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
             if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
                 return Err(io::Error::other("unqualified mapped kernel object"));
             }
@@ -344,6 +489,7 @@ impl References {
     fn recheck_task(&self, task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<()> {
         task.recheck(deadline)?;
         let base = scope_path(&task.scope);
+        let mapping_base = scope_path(&task.mapping_scope);
         if no_mm_role(task, all_terminal, deadline)? != self.no_mm {
             return Err(io::Error::other("task mm resource role changed"));
         }
@@ -363,13 +509,13 @@ impl References {
             held.recheck(format!("{base}/fd/{number}"), deadline)?;
             qualify_object(held)?;
         }
-        let names = mapping_names(&task.scope, deadline)?;
+        let names = mapping_names(&task.mapping_scope, deadline)?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
             return Err(io::Error::other("task mapping membership changed"));
         }
-        for (name, held) in &self.mappings { held.recheck(format!("{base}/map_files/{name}"), deadline)?; }
+        for (name, held) in &self.mappings { held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?; }
         if numbers(format!("{base}/fd"), deadline)? != expected
-            || mapping_names(&task.scope, deadline)? != names
+            || mapping_names(&task.mapping_scope, deadline)? != names
             || no_mm_role(task, all_terminal, deadline)? != self.no_mm
         { return Err(io::Error::other("task resources changed during recheck")); }
         task.recheck(deadline)
