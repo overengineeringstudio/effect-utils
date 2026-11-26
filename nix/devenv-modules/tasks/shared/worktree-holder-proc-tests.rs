@@ -115,3 +115,89 @@ fn actual_nonpath_eventfd_and_registered_io_uring_veto() {
     assert_eq!(error.kind(), std::io::ErrorKind::Other);
     assert_eq!(error.to_string(), "unsupported path-bearing kernel object");
 }
+
+
+#[test]
+#[ignore = "requires root BPF privilege inside the isolated Linux VM"]
+fn actual_loaded_btf_is_nonpath() {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::raw::{c_int, c_long};
+    use std::time::{Duration, Instant};
+    unsafe extern "C" { fn syscall(number: c_long, ...) -> c_long; }
+    #[cfg(target_arch = "x86_64")]
+    const BPF_SYSCALL: c_long = 321;
+    #[cfg(target_arch = "aarch64")]
+    const BPF_SYSCALL: c_long = 280;
+
+    // Native-endian BTF v1 header, one signed 32-bit integer, then its name table.
+    // All offsets are relative to the end of the 24-byte header.
+    let mut btf = Vec::with_capacity(45);
+    btf.extend_from_slice(&0xeb9fu16.to_ne_bytes());
+    btf.extend_from_slice(&[1, 0]);
+    for word in [24u32, 0, 16, 16, 5, 1, 1 << 24, 4, (1 << 24) | 32] {
+        btf.extend_from_slice(&word.to_ne_bytes());
+    }
+    btf.extend_from_slice(b"\0int\0");
+    assert_eq!(btf.len(), 45);
+    // BPF_BTF_LOAD's first 28 bytes: btf pointer, null verifier-log pointer,
+    // byte length, zero log length and level; trailing padding is initialized.
+    #[repr(C)]
+    struct Load {
+        btf: u64,
+        log: u64,
+        size: u32,
+        log_size: u32,
+        log_level: u32,
+        padding: u32,
+    }
+    let attr = Load {
+        btf: btf.as_ptr() as u64, log: 0, size: btf.len() as u32,
+        log_size: 0, log_level: 0, padding: 0,
+    };
+    // SAFETY: supported architectures' bpf syscall, BPF_BTF_LOAD(18), full
+    // initialized aligned attr and live read-only BTF bytes; no program loaded.
+    let raw = unsafe { syscall(BPF_SYSCALL, 18u32, &attr, std::mem::size_of::<Load>()) };
+    assert!(raw >= 0, "BPF_BTF_LOAD: {}", std::io::Error::last_os_error());
+    // SAFETY: successful load transfers exactly this fresh descriptor once.
+    let btf_fd = unsafe { OwnedFd::from_raw_fd(c_int::try_from(raw).unwrap()) };
+    let held = scopes::Held::pin(
+        format!("/proc/self/fd/{}", btf_fd.as_raw_fd()),
+        Instant::now() + Duration::from_secs(10),
+    ).unwrap();
+    assert_eq!(linux::filesystem_type(&held.file).unwrap(), 0x09041934);
+    assert_eq!(std::fs::read_link(scopes::scope_path(&held.file)).unwrap(),
+        std::path::Path::new("anon_inode:btf"));
+    scopes::qualify_object(&held).unwrap();
+}
+
+#[test]
+#[ignore = "requires root CAP_SYS_ADMIN inside the isolated Linux VM"]
+fn actual_bpf_stats_lease_is_nonpath() {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::raw::{c_int, c_long};
+    use std::time::{Duration, Instant};
+    unsafe extern "C" { fn syscall(number: c_long, ...) -> c_long; }
+    #[cfg(target_arch = "x86_64")]
+    const BPF_SYSCALL: c_long = 321;
+    #[cfg(target_arch = "aarch64")]
+    const BPF_SYSCALL: c_long = 280;
+    // BPF_ENABLE_STATS(32) reads only the initialized u32 runtime type(0).
+    // A successful descriptor enables the guest-wide statistics static key
+    // until close; it does not load a program or target a filesystem object.
+    let runtime_type = 0u32;
+    // SAFETY: supported architecture's bpf syscall receives a live aligned
+    // four-byte attribute with exactly its initialized UAPI size.
+    let raw = unsafe { syscall(BPF_SYSCALL, 32u32, &runtime_type, 4usize) };
+    assert!(raw >= 0, "BPF_ENABLE_STATS: {}", std::io::Error::last_os_error());
+    // SAFETY: successful enable transfers this fresh descriptor exactly once.
+    let stats = unsafe { OwnedFd::from_raw_fd(c_int::try_from(raw).unwrap()) };
+    let held = scopes::Held::pin(
+        format!("/proc/self/fd/{}", stats.as_raw_fd()),
+        Instant::now() + Duration::from_secs(10),
+    ).unwrap();
+    assert_eq!(linux::filesystem_type(&held.file).unwrap(), 0x09041934);
+    assert_eq!(std::fs::read_link(scopes::scope_path(&held.file)).unwrap(),
+        std::path::Path::new("anon_inode:bpf-stats"));
+    scopes::qualify_object(&held).unwrap();
+}
+
