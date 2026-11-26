@@ -119,12 +119,13 @@ reviewed Linux 6.18.62 snapshot, not permission to admit future kernel names.
 The ignored `tests::actual_nonpath_eventfd_and_registered_io_uring_veto`
 fixture uses real eventfd and io_uring descriptors, registers a candidate file
 in the ring, closes its ordinary descriptor, then requires the ring veto.
-The existing proc builder compiles this seam but does not execute ignored
-tests or install a test executable. Qualification still requires a disposable
-Linux VM with io_uring enabled, compiling `worktree-holder-proc.rs` with
-`rustc --edition=2024 -D warnings --test`, then running that exact ignored test.
-Unit/build success alone is not kernel or production census proof; this
-publication adds no activation, diagnostics, task-lifecycle or namespace changes.
+The proc builder installs its compiled runner at
+`libexec/worktree-holder-proc-tests`; it does not execute ignored tests.
+The real `tests::actual_loaded_btf_is_nonpath` fixture loads BTF without a
+program; `tests::actual_bpf_stats_lease_is_nonpath` opens a statistics lease.
+Both require disposable root Linux VM qualification, as does the eventfd /
+registered-io_uring fixture. Test-only BPF privileges do not expand the helper's
+production capability set. Unit/build success is not kernel or census proof.
 
 The native filesystem classifier also admits exact EROFS magic `0xe0f5e1e2`
 only with a nonzero Linux device major from the same held file. Nodev
