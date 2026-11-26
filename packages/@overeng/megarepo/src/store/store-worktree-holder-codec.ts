@@ -15,7 +15,8 @@ const Path = Schema.String.check(
   Schema.makeFilter(
     (s) =>
       Buffer.byteLength(s) <= 4096 &&
-      !/[\u0000\r\n]/u.test(s) &&
+      !s.includes('\0') &&
+      !/[\r\n]/u.test(s) &&
       s.startsWith('/') &&
       s
         .slice(1)
@@ -28,7 +29,8 @@ const RelativePath = Schema.String.check(
     (s) =>
       s === '.' ||
       (Buffer.byteLength(s) <= 4096 &&
-        !/[\u0000\r\n]/u.test(s) &&
+        !s.includes('\0') &&
+        !/[\r\n]/u.test(s) &&
         s.split('/').every((c) => c !== '' && c !== '.' && c !== '..')),
   ),
 )
