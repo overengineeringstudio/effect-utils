@@ -72,7 +72,9 @@ describe('caller-owned adapters', () => {
   })
 
   it('round-trips complete states through JSON', () => {
-    fc.assert(jsonRoundTrip({ arbitrary: state, equal: isDeepStrictEqual }), parameters)
+    // JSON objects have Object.prototype; fc.record also generates null-prototype records.
+    const jsonState = fc.integer({ min: 0, max: 10 }).map((total) => ({ total }))
+    fc.assert(jsonRoundTrip({ arbitrary: jsonState, equal: isDeepStrictEqual }), parameters)
   })
 
   it('checks both directions of legal move acceptance', () => {
@@ -153,6 +155,15 @@ describe('invalid adapters produce reproducible counterexamples', () => {
     )
     for (const value of [undefined, Number.NaN, Infinity, -0, 1n])
       expectFailure(jsonRoundTrip({ arbitrary: fc.constant(value), equal: isDeepStrictEqual }))
+  })
+
+  it('detects prototype loss when the caller includes prototypes in equality', () => {
+    expectFailure(
+      jsonRoundTrip({
+        arbitrary: fc.constant({ __proto__: null, total: 0 }),
+        equal: isDeepStrictEqual,
+      }),
+    )
   })
 
   it('detects rejection of an enumerated legal move', () => {
