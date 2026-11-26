@@ -76,7 +76,7 @@ export const decodePublicationPackagePaths = (serialized: string): readonly stri
     )
   }
   if (Array.isArray(decoded) === false || decoded.length === 0)
-    fail('--packages must be a non-empty JSON array of package paths')
+    return fail('--packages must be a non-empty JSON array of package paths')
   const packagePaths = decoded
     .map((entry) =>
       typeof entry === 'string'
