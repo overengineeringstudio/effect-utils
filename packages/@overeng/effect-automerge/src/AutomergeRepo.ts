@@ -22,10 +22,12 @@ import { SafeStorageAdapter } from './SafeStorageAdapter.ts'
 /** Share policy of the repo; may close over the repo itself (e.g. to inspect a doc). */
 export type ShareConfig = NonNullable<RepoConfig['shareConfig']>
 
+/** Repository configuration with an optional repository-aware share policy factory. */
 export interface RepoOptions extends Omit<RepoConfig, 'shareConfig' | 'sharePolicy'> {
   readonly shareConfig?: ShareConfig | ((repo: Repo) => ShareConfig)
 }
 
+/** Effect operations and explicit interop for an Automerge repository. */
 export interface AutomergeRepoService {
   /** Explicit boundary for third-party interop and debugging. */
   readonly interop: { readonly repo: Repo }
@@ -35,10 +37,10 @@ export interface AutomergeRepoService {
    * Like `find`, but keeps retrying while the document is unavailable (e.g. while the peer
    * that has it is still connecting). Default: 500ms, 1s, 1.5s … capped at 3s, forever.
    */
-  readonly findWithRetry: <T>(
-    documentId: string,
-    schedule?: Schedule.Schedule<unknown, FindError>,
-  ) => Effect.Effect<DocHandle<T>, InvalidDocumentId | DocDeleted | DocUnavailable>
+  readonly findWithRetry: <T>(options: {
+    readonly documentId: string
+    readonly schedule?: Schedule.Schedule<unknown, FindError>
+  }) => Effect.Effect<DocHandle<T>, InvalidDocumentId | DocDeleted | DocUnavailable>
   /** Immediately observable in memory; call save before acknowledging durability. */
   readonly create: <T>(initialValue: T) => Effect.Effect<DocHandle<T>>
   /** Adds a network adapter for the lifetime of the scope. */
@@ -58,17 +60,14 @@ export const findRetrySchedule: Schedule.Schedule<number> = Schedule.forever.pip
   ),
 )
 
-const classify = (
-  documentId: string,
-  handle: DocHandle<unknown> | undefined,
-  cause: unknown,
-): FindError => {
-  if (handle?.isDeleted() || (cause instanceof Error && /was deleted/.test(cause.message)))
-    return new DocDeleted(documentId)
-  return new DocUnavailable(documentId)
-}
-
-export const make = (repo: Repo, storage?: StorageAdapterInterface): AutomergeRepoService => {
+/** Wraps a repository with typed lookup and tracked persistence operations. */
+export const make = ({
+  repo,
+  storage,
+}: {
+  readonly repo: Repo
+  readonly storage?: StorageAdapterInterface
+}): AutomergeRepoService => {
   const requireStorage = () => {
     if (!storage || (storage instanceof SafeStorageAdapter && !storage.persistent))
       throw new RepoPersistenceError({
@@ -100,16 +99,19 @@ export const make = (repo: Repo, storage?: StorageAdapterInterface): AutomergeRe
         : documentId
       return Effect.tryPromise({
         try: (signal) => repo.find<T>(documentId, { signal }),
-        catch: (cause) => classify(documentId, repo.handles[id], cause),
+        catch: (cause) => classify({ documentId, handle: repo.handles[id], cause }),
       })
     })
   return {
     interop: { repo },
     find,
-    findWithRetry: <T>(
-      documentId: string,
-      schedule: Schedule.Schedule<unknown, FindError> = findRetrySchedule,
-    ) =>
+    findWithRetry: <T>({
+      documentId,
+      schedule = findRetrySchedule,
+    }: {
+      readonly documentId: string
+      readonly schedule?: Schedule.Schedule<unknown, FindError>
+    }) =>
       find<T>(documentId).pipe(
         Effect.retry({ schedule, while: (e) => e._tag === 'DocUnavailable' }),
       ),
@@ -173,13 +175,27 @@ export class AutomergeRepo extends Context.Service<AutomergeRepo, AutomergeRepoS
               ),
             ),
         )
-        return make(repo, config.storage)
+        return make({ repo, storage: config.storage })
       }),
     )
 
   /** Wraps an existing repo (not shut down by the layer). */
-  static readonly fromRepo = (
-    repo: Repo,
-    storage?: StorageAdapterInterface,
-  ): Layer.Layer<AutomergeRepo> => Layer.succeed(AutomergeRepo, make(repo, storage))
+  static readonly fromRepo = (options: {
+    readonly repo: Repo
+    readonly storage?: StorageAdapterInterface
+  }): Layer.Layer<AutomergeRepo> => Layer.succeed(AutomergeRepo, make(options))
+}
+
+const classify = ({
+  documentId,
+  handle,
+  cause,
+}: {
+  readonly documentId: string
+  readonly handle: DocHandle<unknown> | undefined
+  readonly cause: unknown
+}): FindError => {
+  if (handle?.isDeleted() || (cause instanceof Error && /was deleted/.test(cause.message)))
+    return new DocDeleted(documentId)
+  return new DocUnavailable(documentId)
 }

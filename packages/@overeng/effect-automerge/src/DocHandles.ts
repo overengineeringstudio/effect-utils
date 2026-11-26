@@ -48,8 +48,13 @@ export const current = <T>(handle: DocHandle<T>): Effect.Effect<Doc<T>> =>
   Effect.sync(() => handle.doc())
 
 /** Applies an immediately observable local change; use AutomergeRepo.save for durable acknowledgement. */
-export const change = <T>(handle: DocHandle<T>, fn: ChangeFn<T>): Effect.Effect<void> =>
-  Effect.sync(() => handle.change(fn))
+export const change = <T>({
+  handle,
+  fn,
+}: {
+  readonly handle: DocHandle<T>
+  readonly fn: ChangeFn<T>
+}): Effect.Effect<void> => Effect.sync(() => handle.change(fn))
 
 /** An ephemeral (never persisted) message from another peer of a document. */
 export interface EphemeralMessage {

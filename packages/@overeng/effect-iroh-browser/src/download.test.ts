@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { fetchWithProgress } from './download.ts'
 
-const streamed = (chunks: ReadonlyArray<Uint8Array>, init?: ResponseInit) =>
+const streamed = ({ chunks, init }: { chunks: ReadonlyArray<Uint8Array>; init?: ResponseInit }) =>
   (async () =>
     new Response(
       new ReadableStream({
@@ -21,7 +21,7 @@ describe('fetchWithProgress', () => {
       url: '/iroh.wasm',
       totalBytes: 5,
       onProgress: ({ receivedBytes, totalBytes }) => seen.push([receivedBytes, totalBytes]),
-      fetchImpl: streamed([Uint8Array.of(1, 2), Uint8Array.of(3, 4, 5)]),
+      fetchImpl: streamed({ chunks: [Uint8Array.of(1, 2), Uint8Array.of(3, 4, 5)] }),
     })
     expect([...bytes]).toEqual([1, 2, 3, 4, 5])
     expect(seen).toEqual([
@@ -37,7 +37,7 @@ describe('fetchWithProgress', () => {
       url: '/iroh.wasm',
       totalBytes: 2,
       onProgress: ({ receivedBytes, totalBytes }) => seen.push([receivedBytes, totalBytes]),
-      fetchImpl: streamed([Uint8Array.of(1, 2, 3)]),
+      fetchImpl: streamed({ chunks: [Uint8Array.of(1, 2, 3)] }),
     })
     expect(seen.at(-1)).toEqual([3, 3])
   })
@@ -48,7 +48,7 @@ describe('fetchWithProgress', () => {
         url: '/iroh.wasm',
         totalBytes: 5,
         onProgress: () => {},
-        fetchImpl: streamed([], { status: 404 }),
+        fetchImpl: streamed({ chunks: [], init: { status: 404 } }),
       }),
     ).rejects.toThrow('HTTP 404')
   })

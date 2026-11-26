@@ -19,10 +19,10 @@ describe('SafeStorageAdapter', () => {
       loadRange: fail,
       removeRange: fail,
     }
-    const storage = new SafeStorageAdapter(
-      () => backend,
-      (error) => reported.push(error),
-    )
+    const storage = new SafeStorageAdapter({
+      make: () => backend,
+      onDisable: (error) => reported.push(error),
+    })
     expect(storage.persistent).toBe(true)
     expect(await storage.load(['document'])).toBeUndefined()
     expect(storage.persistent).toBe(false)
@@ -37,12 +37,12 @@ describe('SafeStorageAdapter', () => {
   it('surfaces construction failure without preventing memory-only play', async () => {
     const failure = new Error('IndexedDB unavailable')
     const reported: unknown[] = []
-    const storage = new SafeStorageAdapter(
-      () => {
+    const storage = new SafeStorageAdapter({
+      make: () => {
         throw failure
       },
-      (error) => reported.push(error),
-    )
+      onDisable: (error) => reported.push(error),
+    })
     expect(storage.persistent).toBe(false)
     expect(await storage.loadRange([])).toEqual([])
     expect(reported).toEqual([failure])

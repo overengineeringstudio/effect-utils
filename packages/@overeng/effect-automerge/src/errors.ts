@@ -33,6 +33,7 @@ export class DocDeleted extends Data.TaggedError('DocDeleted')<{
   }
 }
 
+/** Typed failures from document lookup. */
 export type FindError = InvalidDocumentId | DocUnavailable | DocDeleted
 
 /** A save cannot be acknowledged, or Repo lifecycle persistence failed. */

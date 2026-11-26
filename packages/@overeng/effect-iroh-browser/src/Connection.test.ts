@@ -8,7 +8,7 @@ import { connPair } from './testing.ts'
 describe('Connection', () => {
   it.effect('preserves the authenticated remote and framed payload until remote close', () =>
     Effect.gen(function* () {
-      const [local, remote] = connPair('aaaa', 'bbbb')
+      const [local, remote] = connPair({ a: 'aaaa', b: 'bbbb' })
       const conn = fromFramed(local)
       expect(conn.remoteId).toBe('bbbb')
       const payload = new Uint8Array([1, 2, 3])
@@ -23,7 +23,7 @@ describe('Connection', () => {
 
   it.effect('reports failed sends as ConnectionError', () =>
     Effect.gen(function* () {
-      const [local] = connPair('aaaa', 'bbbb')
+      const [local] = connPair({ a: 'aaaa', b: 'bbbb' })
       const conn = fromFramed(local)
       yield* conn.close
       expect(yield* Effect.flip(conn.send(new Uint8Array()))).toBeInstanceOf(ConnectionError)

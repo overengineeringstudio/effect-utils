@@ -4,7 +4,13 @@ import { TestClock } from 'effect/testing'
 
 import { IrohNode, layerWasm, N0_RELAYS, type IrohWasmModule } from './IrohNode.ts'
 
-const fakeWasm = (homeRelay: () => Promise<unknown>, close: () => void): IrohWasmModule => ({
+const fakeWasm = ({
+  homeRelay,
+  close,
+}: {
+  homeRelay: () => Promise<unknown>
+  close: () => void
+}): IrohWasmModule => ({
   default: async () => undefined,
   spawnNode: async (relays) => {
     expect(relays).toBe(N0_RELAYS.join(','))
@@ -27,14 +33,14 @@ describe('wasm node lifecycle', () => {
     const layer = layerWasm({
       secretKey: new Uint8Array(32),
       load: async () =>
-        fakeWasm(
-          async () => {
+        fakeWasm({
+          homeRelay: async () => {
             throw new Error('relay down')
           },
-          () => {
+          close: () => {
             closed++
           },
-        ),
+        }),
     })
     return Effect.gen(function* () {
       const failure = yield* IrohNode.use((node) => node.homeRelay).pipe(
@@ -52,12 +58,12 @@ describe('wasm node lifecycle', () => {
       secretKey: new Uint8Array(32),
       homeRelayTimeout: '1 second',
       load: async () =>
-        fakeWasm(
-          () => new Promise(() => {}),
-          () => {
+        fakeWasm({
+          homeRelay: () => new Promise(() => {}),
+          close: () => {
             closed++
           },
-        ),
+        }),
     })
     return Effect.gen(function* () {
       const lookup = yield* IrohNode.use((node) => node.homeRelay).pipe(
