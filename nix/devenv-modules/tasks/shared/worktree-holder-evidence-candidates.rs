@@ -619,6 +619,7 @@ mod tests {
             assert_eq!(matches[0].relative_path, relative);
         }
         let detached = objects::pin_magic(alias.join("payload")).unwrap();
+        let surviving_directory = objects::pin_magic(&alias).unwrap();
         let _surviving_mounts = set.capture_mounts(&task, deadline()).unwrap();
         let (ready, receive) = std::sync::mpsc::sync_channel(0);
         let (release, wait) = std::sync::mpsc::channel::<()>();
@@ -641,11 +642,16 @@ mod tests {
         assert!(departed_mounts.recheck(&set, deadline()).is_err());
         departed_mounts.recheck_retained(&set, deadline()).unwrap();
         assert!(process.task_departed(index, deadline()).unwrap());
-        // A surviving task's held candidate FD remains a real positive.
-        let MatchOutcome::Native(matches) = set.matches(&detached, &task,
-            ReferenceKind::Fd, deadline()).unwrap() else { panic!("survivor FD became proxy") };
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].effect, ReferenceEffect::InUse);
+        // Preserve both typed effects for FDs held by the surviving task.
+        for (held, effect) in [
+            (&detached, ReferenceEffect::RetainedBytes),
+            (&surviving_directory, ReferenceEffect::InUse),
+        ] {
+            let MatchOutcome::Native(matches) = set.matches(held, &task,
+                ReferenceKind::Fd, deadline()).unwrap() else { panic!("survivor FD became proxy") };
+            assert_eq!(matches.len(), 1);
+            assert_eq!(matches[0].effect, effect);
+        }
         assert!(std::process::Command::new("umount").arg("-l").arg(&alias)
             .status().unwrap().success());
         assert!(mounted.recheck(&set, deadline()).is_err());

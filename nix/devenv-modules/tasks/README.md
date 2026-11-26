@@ -120,6 +120,9 @@ close through their pinned namespace, root and mount objects without reopening
 the exited task's proc entries; surviving tasks still require live root and
 namespace binding checks. The caller re-proves departure around this retained
 closure, and any namespace, location or mounted-reference change still vetoes.
+The departure regression retains both a regular-file FD (`RetainedBytes`) and a
+directory FD (`InUse`) in the surviving task, and checks both typed effects before
+proving that a subsequent detached-mount change vetoes retained closure.
 
 An internal-shmem exclusion applies only to a regular, unlinked tmpfs FD or
 mapping whose device and mount ID equal the transaction's freshly retained
