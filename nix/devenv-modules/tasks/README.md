@@ -105,6 +105,13 @@ inventory is deferred until after the caller authenticates its original exclusiv
 maintenance lease; worktrees are never recursively inventoried. Ordinary terminal
 devices have no candidate path and do not become protective unknowns.
 
+The native filesystem classifier also admits exact EROFS magic `0xe0f5e1e2`
+only with a nonzero Linux device major from the same held file. Nodev
+file-backed/fscache/on-demand EROFS remains unknown, as do overlay and FUSE.
+This adds no mount-membership exemption: an EROFS-held candidate file remains
+a current reference. Unit classification is not a substitute for the separate
+real mounted-file VM qualification or permission to activate a collector.
+
 The builder runs the real Rust unit runner against the reused lower libraries.
 The isolated bind/detached-mount fixture additionally requires an isolated mount
 namespace with `CAP_SYS_ADMIN`; a skipped privileged fixture is not live census

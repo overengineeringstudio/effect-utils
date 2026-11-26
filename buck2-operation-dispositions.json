@@ -135,6 +135,10 @@
       "operation": "buck2:editor:publish:all"
     },
     {
+      "disposition": "outside-by-policy:filesystem-integration",
+      "operation": "buck2:gate-teardown:test"
+    },
+    {
       "disposition": "outside-by-policy:host-local-maintenance",
       "operation": "buck2:maintain"
     },
