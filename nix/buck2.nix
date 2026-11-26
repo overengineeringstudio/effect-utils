@@ -69,6 +69,11 @@ pkgs.runCommand native.name
     cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
     cp ${launcherSource}/buck2-cache-posture.ts "$out/libexec/buck2-cache-posture.ts"
     cp ${launcherSource}/buck2-file-watcher.ts "$out/libexec/buck2-file-watcher.ts"
+    # The owned execution path imports the canonical process-local owner module.
+    # Preserve its source-relative path only while compiling the launcher.
+    mkdir -p "$out/packages/@overeng/buck2-tools/src"
+    cp ${../. + "/packages/@overeng/buck2-tools/src/editor-publication-owner.ts"} \
+      "$out/packages/@overeng/buck2-tools/src/editor-publication-owner.ts"
     ${pkgs.stdenv.cc}/bin/cc ${
       if pkgs.stdenv.hostPlatform.isDarwin then "-dynamiclib" else "-shared -fPIC"
     } \
@@ -85,6 +90,9 @@ pkgs.runCommand native.name
         --outfile "$out/libexec/buck2-entrypoint"
     )
     rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"
+    rm "$out/packages/@overeng/buck2-tools/src/editor-publication-owner.ts"
+    rmdir "$out/packages/@overeng/buck2-tools/src" "$out/packages/@overeng/buck2-tools" \
+      "$out/packages/@overeng" "$out/packages"
     substitute ${launcherSource}/buck2-entrypoint.sh "$out/bin/buck2" \
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \

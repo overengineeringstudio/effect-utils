@@ -1,6 +1,12 @@
 import { expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
+import {
+  editorPublicationIsolation,
+  withEditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import type { ReaderReapiUnavailableShadow } from './buck2-cache-posture.ts'
 import {
   ciPostureDeclared,
@@ -11,11 +17,56 @@ import {
   gateDaemonStopDecision,
   gateScopeIdentity,
   isOnlyReapiUnavailable,
+  resolveManagedInvocation,
+  requireEditorPublicationInvocationOwner,
   runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
   writeNativeStderrChunk,
 } from './buck2-entrypoint.ts'
+
+const withPublicationRoot = async (run: (cwd: string) => Promise<void>): Promise<void> => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'buck-publication-owner-')))
+  try {
+    writeFileSync(join(cwd, '.buckroot'), '')
+    writeFileSync(join(cwd, '.buckconfig'), '')
+    await run(cwd)
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+}
+
+it('validates only a live process-local publication owner for reserved invocations', () =>
+  withPublicationRoot(async (cwd) => {
+    const args = ['--isolation-dir', editorPublicationIsolation, 'status']
+    const released: {
+      owner?: Parameters<typeof requireEditorPublicationInvocationOwner>[0]['owner']
+    } = {}
+    await withEditorPublicationOwner({
+      root: cwd,
+      run: async (owner) => {
+        released.owner = owner
+        expect(requireEditorPublicationInvocationOwner({ args, cwd, env: {}, owner })).toBe(owner)
+        expect(
+          requireEditorPublicationInvocationOwner({
+            args: ['--isolation-dir', 'v2', 'status'],
+            cwd,
+            env: {},
+            owner,
+          }),
+        ).toBeUndefined()
+        expect(() => requireEditorPublicationInvocationOwner({ args, cwd, env: {} })).toThrow()
+      },
+    })
+    expect(() =>
+      requireEditorPublicationInvocationOwner({
+        args,
+        cwd,
+        env: {},
+        ...(released.owner === undefined ? {} : { owner: released.owner }),
+      }),
+    ).toThrow()
+  }))
 
 const root = '/project/root'
 const isolation = 'owned'
@@ -572,4 +623,48 @@ it('pins local replay flags before payload and keeps original native identity si
     ['build', '--remote-only', '//:app'],
   ])
     expect(localCacheReplayArguments({ ...options, args })).toBeUndefined()
+})
+
+it('keeps the executed literal snapshot when a supported argfile is rewritten after admission', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'buck-invocation-snapshot-'))
+  try {
+    const path = join(cwd, 'mutable.args')
+    writeFileSync(path, '--isolation-dir\nv2\nbuild\n//:quick\n')
+    const admitted = resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} })
+    writeFileSync(path, '--isolation-dir\neditor-publication\nclean\n')
+    expect(admitted).toEqual({
+      isolation: 'v2',
+      args: ['--isolation-dir', 'v2', 'build', '//:quick'],
+      nativeArgumentCount: 4,
+    })
+    expect(resolveManagedInvocation({ args: ['@mutable.args'], cwd, env: {} }).isolation).toBe(
+      'editor-publication',
+    )
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
+it('never lets a trailing run payload override native isolation selection', () => {
+  const args = ['run', '//:tool', 'payload', '--isolation-dir', 'v2']
+  const env = { BUCK_ISOLATION_DIR: 'editor-publication' }
+  expect(resolveManagedInvocation({ args, cwd: root, env })).toEqual({
+    isolation: 'editor-publication',
+    args,
+    nativeArgumentCount: 2,
+  })
+  expect(
+    resolveManagedInvocation({
+      args: ['run', '--unfamiliar-option', '//:tool', 'payload'],
+      cwd: root,
+      env,
+    }).isolation,
+  ).toBe('editor-publication')
+  expect(() =>
+    resolveManagedInvocation({
+      args: ['run', '--unfamiliar-option', '//:tool', '--isolation-dir', 'v2'],
+      cwd: root,
+      env,
+    }),
+  ).toThrow('ambiguous run option')
 })

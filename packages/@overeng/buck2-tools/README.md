@@ -135,8 +135,10 @@ Use the actual endpoint/instance and `aarch64` for an aarch64 Linux client.
 and provisioned by the worker, **not** a hostname or arbitrary pool tag. Configure
 NativeLink Exact matching for `OSFamily=linux`, `cpu_arch`, and `nix_store`;
 Command.platform carries these properties at the pinned Buck revision.
-Missing endpoint/property settings or a mismatched client architecture fail
-analysis; an unavailable/mismatched worker cannot fall back to local execution.
+The platform macro reads and validates root configuration during BUCK evaluation,
+then passes typed attributes to rule analysis; analysis never reads root config.
+Missing endpoint/property settings or a mismatched client architecture fail before
+execution; an unavailable/mismatched worker cannot fall back to local execution.
 For non-loopback deployments, configure transport/auth at the deployment boundary;
 the example is not authorization to expose an unauthenticated listener.
 
@@ -146,6 +148,10 @@ or the flag: stop this worktree's selected isolation with
 same isolation and the new configuration already installed. Do not kill unrelated
 worktrees' daemons. Keep a bounded worker and independent pilot cache endpoint;
 do not redirect ordinary clients or change host admission.
+Exercise the opt-in path with a real build of
+`//packages/@overeng/kdl:dist //packages/@overeng/utils-dev:dist` and inspect
+`buck2 log what-ran` for remote execution. A default-off/local-only build alone
+does not qualify pilot platform analysis or worker execution.
 
 Rollback: set `nativelink_pilot.enabled=false` (or remove the section), restore
 the previous cache endpoints/TLS/instance, then replace the selected daemon again.
@@ -237,6 +243,11 @@ treated as termination only after a process census proves no live members remain
 live-member permission failures still fail closed. The supervisor retains ownership through
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
+
+The compiled launcher bundles the same canonical owner module. Its Nix build
+stages that one module at the source-relative import path while compiling, then
+removes the staged sources; the installed launcher retains only the native library
+and compiled entrypoint, not a second ownership implementation.
 
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
@@ -1134,6 +1145,16 @@ real collector/native/decoder subprocesses. A 24-case full-DAG macOS sample peak
 at 412.33 ms, but earlier full-DAG cases exhausted 5 seconds at load 14–17 on 10 CPUs
 (#2797). This bounded startup allowance preserves every assertion and cleanup;
 the rare native-startup cause remains tracked in #2797, not declared resolved.
+
+The remaining direct-posture process cases (four evidence exit/signal combinations,
+the TLS probe subprocess and shell warm-launch identity) use the same 20-second
+outer budget. Full Linux quicks exhausted the former 5-second base (6.77 seconds
+with load scaling). A CPU-load approximation on 20 CPUs ran each case 20 times:
+120/120 passed, with a maximum of 8,830.19 ms at one-minute load 21.96–31.23.
+The 20-second allowance is 2.26× that observed maximum, keeping failures bounded.
+The empirical 20-sample p99 is only the sample maximum, not a confidence bound;
+CPU load does not reproduce all full-DAG filesystem/I/O work or resolve #2797.
+Assertions, cleanup and production connect/response/command deadlines are unchanged.
 
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown
