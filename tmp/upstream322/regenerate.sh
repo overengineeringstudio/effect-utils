@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+test "$(df -B1 --output=avail / | tail -1)" -ge 120000000000 || exit 94
 # Required owner generation only; no unit or browser test tasks.
 mr apply --worktree-mode commit
 nix run .#genie -- --defer-validation --phase bootstrap
