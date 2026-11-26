@@ -408,6 +408,16 @@ This unbound schema is not an arbitrary JSON authenticator, request-bound decode
 or live census. Schema validation grants neither freshness, absence nor removal
 authority; callers must separately bind the nonce, ordered roots, producer and policy.
 
+The request-bound `decodeWorktreeHolderEvidence` accepts only bounded stdout from
+the fixed trusted Rust client. It validates the complete wire schema and exact
+nonce, producer, policy, ordered unique roots and domain-separated path digest;
+oversized, malformed or mismatched evidence fails with a fixed redacted
+`HolderEvidenceError`, never the original decoder cause or input.
+`HolderEvidenceClientConfig` names the provider path, producer and policy binding.
+Successful decoding still does not establish live completeness, pinned identity,
+boot freshness or permission to mutate/remove a root; callers must prove these
+through the canonical native holder and pin owners.
+
 ### Durable pool ownership primitives
 
 Persistent pool ownership uses version-2 store deletion barriers, which do not expire

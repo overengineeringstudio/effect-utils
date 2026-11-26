@@ -834,11 +834,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "recipeIdentity": "33f10e40d4d0e343572e77ddf20497d41acf09c3fd2f81d20a2c1cd9be70aaa8",
+      "recipeIdentity": "548d9a855c0cf2ece51aaf6dc54aef73cd6667f65b2126a883eeafce806a655f",
       "sha256": "8c844bc181e6c578b6c3ecfee1c7abacb8ba321459c771c9170837021c6a635c",
       "size": 3074661,
-      "sourceEvidenceSha256": "9b64520c6d707432171355e05f553902bb0268d195b56b668d1ff5f09d21467b",
-      "sourceEvidenceStorePath": "/nix/store/y8d87h7xd8rw0jsg65blbbddfdnqyd47-megarepo-source-evidence",
+      "sourceEvidenceSha256": "6693d6f92cfab5a77bdf009f77be44760d90023baacaec5860fb6910e990746a",
+      "sourceEvidenceStorePath": "/nix/store/pa6kg8pfn9iyr995hp916axmnyvgxrjs-megarepo-source-evidence",
       "storePath": "/nix/store/m2jn09mkr7pqd4gr476x16cizmc1ydqr-megarepo-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -1141,11 +1141,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/tui-stories:tui-stories-candidate"
       },
-      "recipeIdentity": "09d5ab03221194dc2d4d2bc0d28f4d5ac765c1b5e82cce48e59c72b0b207c067",
+      "recipeIdentity": "550bd16ff1c8205d937dd2e35e58f5a0a622b6b7170319b87029ff10ba9b1191",
       "sha256": "9bbf843481bc824749d75e49bf3d61217124ded2687b43372825afb9c38c2127",
       "size": 1674887,
-      "sourceEvidenceSha256": "349acdc56abb826d410844630de1251edcdc6c8fa06aaed931712a4bef2b0ee4",
-      "sourceEvidenceStorePath": "/nix/store/clb9nk6fsfs3zpl7g6kzi8bm1bw2266b-tui-stories-source-evidence",
+      "sourceEvidenceSha256": "76f53e395fd5fb3c4d8c3d3a319f544aec9001a30e6a695a52c87eaa41da29fa",
+      "sourceEvidenceStorePath": "/nix/store/0dklccs6kncci3gxywka8vblh50q9wms-tui-stories-source-evidence",
       "storePath": "/nix/store/g16fciaf5k0x70adip944z5xkzw1rgyi-tui-stories-buck2-from-source-0.0.0",
       "version": "0.0.0"
     }
