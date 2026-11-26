@@ -234,10 +234,10 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   production target (per T05).
 - **R21a Page-op scenario suite:** Page-level mutations (root metadata
   change, sub-page create, sub-page rename, sub-page icon/cover change,
-  sub-page archive, sub-page reparent via `move`, interrupted-create adoption
+  sub-page archive, sub-page reparent via `move`, interrupted-create recovery
   &amp; resync) must each be covered by an e2e test that asserts API
   op-counts meet R24–R28. Cache v2→v3 migration, >100 children under a
-  newly created sub-page, and inline-depth-3 subtree splitting must also
+  newly created sub-page, and bounded deep child append batching must also
   be covered.
 
 ### Must reconcile page-level metadata and sub-pages
@@ -265,13 +265,12 @@ host-config, or cache are implemented (see [spec.md](./spec.md) for that).
   through a holding parent. Default stays off — unretained
   same-parent-reshuffle siblings still flow through `movePage` and the
   API rejection is swallowed, matching the pre-phase-4d contract.
-- **R28 Interrupted-create identity recovery:** After `pages.create`
-  succeeds, the driver must durably save the returned page id and immutable
-  create-time inline descriptors before any operation that can fail. A retry
-  with the same keyed `<ChildPage>` must adopt that page and its inline
+- **R28 Interrupted-create identity recovery:** Create pages empty and durably
+  save the returned page id before appending children. Each acknowledged append
+  must checkpoint its returned block ids before further work can fail. A retry
+  with the same keyed `<ChildPage>` must retain that page and acknowledged
   descendants without another page create or duplicated body. If current JSX
-  changed after interruption, the retry must first adopt the create-time live
-  state and then reconcile the current candidate normally.
+  changed after interruption, reconcile it against the acknowledged checkpoint.
 - **R29 SyncResult exposes page op counts:** `SyncResult` must carry
   `pages: { creates, updates, archives, moves }` alongside existing block
   counts. `SyncEvent` gains `PageOpIssued` / `PageOpApplied` variants.

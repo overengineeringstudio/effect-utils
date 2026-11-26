@@ -265,12 +265,16 @@ additionally carry `titleHash`, `iconHash`, `coverHash` (djb2 of
 response-normalized projections per A07) and recurse into their own
 `children` with their own key namespace.
 
-A newly created page may temporarily carry `pendingInlineResolution`: an
-immutable tree of create-time inline `(key, type, hash, children)` descriptors.
-The page id is already authoritative at that point; the marker records that
-the inline block ids auto-created by `pages.create` must still be observed and
-adopted before normal diffing. It is removed only after adoption and another
-successful cache save (R28).
+A newly created page is checkpointed with its real page id and no children.
+Each successful child append adds the acknowledged block ids to that checkpoint.
+There is no inline page-create payload or page identity-adoption phase (R28).
+
+Mandatory atomic containers (`table`, `column_list`) may carry `pendingChildren`
+after their append is acknowledged but before descendant ids are read. These
+descriptors retain the authored keys, types, hashes and nested shape. The same
+child-id reader resolves them both immediately and on retry, checking exact
+counts and types before clearing the marker. Pending lookups settle before
+normal diffing; read-only plans resolve them in memory without saving.
 
 `FsCache` treats missing files, malformed payloads, and schema mismatches as
 cache misses by returning `undefined` from `load`. The sync driver then runs a
@@ -375,7 +379,6 @@ type PageOp =
       title?: NotionTitleRichText
       icon?: NotionIcon
       cover?: NotionCover
-      inlineChildren: CreateChildren /* ≤ depth 2, ≤ 100 per A08 */
     }
   | {
       kind: 'updatePage'
@@ -415,33 +418,26 @@ Retention rules per candidate page:
 sync(element, { pageId, cache }):
   1. load cache; verify pageId exists via blocks.retrieve
      (on 404 / archived → fallback `page-missing` or `page-archived`)
-  2. build candidate tree for THIS page only (stops at <ChildPage>)
-  3. diff(cache.thisPage, candidate) → { blockOps, pageOps }
+  2. build the candidate tree, including nested page scopes
+  3. diff(cache, candidate) → ordered block and page operations
   4. apply root-metadata updatePage (if any) first
-  5. apply block ops under the root page id (existing driver)
-  6. for each <ChildPage> candidate in order:
-       - createPage / movePage / archivePage as dictated by diffOp
-       - if createPage: insert a page CacheNode carrying the real id and
-         create-time inline descriptors, then save the cache before retrieval
-       - retrieve the page's live inline descendants, validate their types,
-         adopt their ids, clear the pending marker, and save again
-       - recurse: sync(childElement, { pageId: real, cache: cache.pages[real] })
-  7. on any error mid-recursion:
+  5. walk operations in order, batching consecutive block operations:
+       - createPage: create empty, bind the returned id, and save the cache
+       - append: resolve the parent id, append, then checkpoint returned ids
+       - movePage: retain the page identity at its new parent
+  6. apply retained-page metadata updates, archives, and explicit reorders
+  7. on any error:
        - preserve the most recent successful checkpoint; never discard a
-         created page id or archive-and-recreate merely because resolution or
-         later child work failed (T06/R28)
-       - propagate NotionSyncError with fallbackReason when applicable
-  8. checkpoint cache after every successful page-level step
-  9. SyncResult includes pages: { creates, updates, archives, moves }
+         created page id or archive it because child work failed (T06/R28)
+       - propagate NotionSyncError without blindly retrying an unknown write
+  8. SyncResult includes pages: { creates, updates, archives, moves }
 ```
 
 Ordering invariants:
 
 - `createPage` must complete before any block op scoped to its id.
-- The returned page id and pending inline descriptors must be saved before the
-  first post-create retrieval. On retry, pending inline resolution runs before
-  candidate diffing. Type disagreement between a descriptor and the live block
-  fails closed; it never guesses an id mapping.
+- The returned page id must be saved before the first child append. Every
+  acknowledged append checkpoints its block ids before further work.
 - `archivePage` (emitted for removed `<ChildPage>`) is applied after block
   ops that touch its parent (so the parent's child_page block disappears
   from the parent's children list in the same sync pass).
@@ -451,14 +447,12 @@ Ordering invariants:
   `child_page` order matches JSX order, so no post-create re-fetch is
   needed.
 
-### Inline-child packing on create
+### Empty creation and child append batches
 
-`inlinePackChildren(candidateChildren)` splits a page's candidate children
-into `(inline, tail)` where `inline` fits `pages.create` (depth ≤ 2, ≤ 100
-blocks) and `tail` is emitted as follow-up `NotionBlocks.append` batches
-scoped to the new page id. A candidate whose subtree is deeper than
-inline can carry is moved entirely to tail to keep the inline set
-structurally uniform.
+Every new page is created without `children`. The planner emits its descendants
+as ordinary append operations, scoped to the new page's temporary id. The driver
+resolves that id after create acknowledgement and uses append response ids for
+subsequent descendants. Append batches remain bounded to 100 direct children.
 
 ### Icon / cover normalization (A07)
 

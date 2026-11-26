@@ -9,7 +9,12 @@ export * from './net.ts'
 export * as FileSystemBacking from './file-system-backing.ts'
 
 /** Scoped recursive file-system watching with coalesced batches */
-export * from './watch.ts'
+export {
+  watchCauseMessage,
+  watchScoped,
+  type WatchGroup,
+  type WatchScopedOptions,
+} from './watch.ts'
 
 /** Workspace helpers and command runner utilities */
 export * from './workspace.ts'

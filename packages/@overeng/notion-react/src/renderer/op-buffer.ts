@@ -88,11 +88,7 @@ export class OpBuffer {
  * layers on top of the existing block reconciler: create/update/archive/move
  * a Notion (sub)page independent of the block tree under it.
  *
- * No emitter currently produces these; this is forward-compat type plumbing
- * for phases 2+ of the #618 epic. Once the sync driver starts emitting
- * PageOps the {@link DiffOp} union is already prepared to carry them.
- *
- * Payload fields (`title`, `icon`, `cover`, `inlineChildren`) are typed as
+ * Payload fields (`title`, `icon`, `cover`) are typed as
  * `unknown` pending the schema decisions in phase 2 — they will tighten to
  * the concrete `PageProperty` / `PageIcon` / `PageCover` shapes from
  * `@overeng/notion-effect-schema` once those wire through the renderer.
@@ -105,15 +101,6 @@ export type PageOp =
       readonly title?: unknown
       readonly icon?: unknown
       readonly cover?: unknown
-      /** Pre-shaped block bodies shipped inline as `children` on pages.create. */
-      readonly inlineChildren: readonly unknown[]
-      /**
-       * Candidate nodes corresponding to `inlineChildren` in submission order.
-       * Internal field — used by the sync driver to resolve inline-block tmpIds
-       * against the server response after `pages.create` returns. Not part of
-       * the public PageOp contract; pre-phase-3b consumers should ignore it.
-       */
-      readonly inlineCandidates?: readonly unknown[]
     }
   | {
       readonly kind: 'updatePage'

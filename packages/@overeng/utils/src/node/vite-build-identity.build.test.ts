@@ -19,6 +19,7 @@ import { runInNewContext } from 'node:vm'
 import { build, createServer, type ViteDevServer } from 'vite'
 import { expect, it, vi } from 'vitest'
 
+import { syncProductRevs } from './product-revs.js'
 import { createBuildIdentityPlugin, readWorktreeGitMetadata } from './vite-build-identity.js'
 
 const waitForWatchUpdate = (assertion: () => void | Promise<void>) =>
@@ -49,7 +50,7 @@ it('loads installed Node config, preserving immutable Nix metadata and runtime c
         exports: { './node/vite-build-identity': './src/node/vite-build-identity.js' },
       }),
     )
-    for (const name of ['cli-build-identity.js', 'vite-build-identity.js']) {
+    for (const name of ['cli-build-identity.js', 'product-revs.js', 'vite-build-identity.js']) {
       copyFileSync(join(source, name), join(installed, 'src/node', name))
     }
     copyFileSync(join(source, '../build-identity.js'), join(installed, 'src/build-identity.js'))
@@ -357,13 +358,19 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     )
     expect((await identity()).dirty).toBe(true)
     const dirtyIdentity = await identity()
+    // Served metadata is timeless; the module renders relative time at evaluation.
+    const dirtyMetadata = await (await fetch(probeUrl)).json()
+    expect(dirtyMetadata).toEqual({
+      ...dirtyIdentity,
+      displayVersion: expect.not.stringMatching(/\bcommitted\b/),
+    })
     const now = Date.now
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 60_000)
     try {
       await afterSourceUpdate('change', join(root, 'entry.js'), () =>
         writeFileSync(join(root, 'entry.js'), 'export const value = 3\n'),
       )
-      expect(await (await fetch(probeUrl)).json()).toEqual(dirtyIdentity)
+      expect(await (await fetch(probeUrl)).json()).toEqual(dirtyMetadata)
       expect(await identity()).toEqual(dirtyIdentity)
     } finally {
       clock.mockRestore()
@@ -376,7 +383,10 @@ it('refreshes served identity after creating, deleting, and committing worktree 
     expect((await identity()).rev).toBe(revision)
     expect((await identity()).dirty).toBe(false)
     expect((await identity()).commitTs).toBe(Number(git('log', '-1', '--format=%ct', revision)))
-    expect(await (await fetch(probeUrl)).json()).toEqual(await identity())
+    expect(await (await fetch(probeUrl)).json()).toEqual({
+      ...(await identity()),
+      displayVersion: expect.not.stringMatching(/\bcommitted\b/),
+    })
   } finally {
     await server?.close()
     rmSync(root, { recursive: true, force: true })
@@ -524,6 +534,117 @@ it('refreshes local metadata and browser identity on production watch rebuilds',
     })
   } finally {
     await closeWatcher?.()
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 60000)
+
+it('stamps production builds from the committed product revision and serves local identity', async () => {
+  const root = fixtureRoot('build-identity-release-')
+  let server: ViteDevServer | undefined
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
+  const commit = (message: string) => {
+    git('add', '-A')
+    git(
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '--quiet',
+      '-m',
+      message,
+    )
+    return git('rev-parse', 'HEAD')
+  }
+  const releaseBuild = async () => {
+    await build({
+      configFile: false,
+      root: join(root, 'app'),
+      logLevel: 'silent',
+      plugins: [
+        createBuildIdentityPlugin({
+          baseVersion: '1.2.3',
+          buildStamp: '__CLI_BUILD_STAMP__',
+          productRev: '../product-revs/app.json',
+        }),
+      ],
+      build: {
+        minify: false,
+        rollupOptions: { input: join(root, 'app/entry.js'), output: { entryFileNames: 'id.js' } },
+      },
+    })
+    const browser: { identity?: Record<string, unknown> } = {}
+    runInNewContext(readFileSync(join(root, 'app/dist/id.js'), 'utf8'), browser)
+    return {
+      metadata: JSON.parse(readFileSync(join(root, 'app/dist/build-identity.json'), 'utf8')),
+      browser: browser.identity,
+    }
+  }
+  try {
+    git('init', '--quiet')
+    mkdirSync(join(root, 'app'))
+    writeFileSync(join(root, '.gitignore'), 'dist/\nnode_modules/\n')
+    writeFileSync(
+      join(root, 'app/entry.js'),
+      "import {buildIdentity} from 'virtual:build-identity'; globalThis.identity=buildIdentity;\n",
+    )
+    const producer = commit('app source')
+    const commitTs = Number(git('log', '-1', '--format=%ct', producer))
+    const products = [{ product: 'app', sourcePaths: ['app'], output: 'product-revs/app.json' }]
+    await syncProductRevs({ root, mode: 'refresh', products })
+    commit('refresh product revs')
+    writeFileSync(join(root, 'notes.md'), 'unrelated\n')
+    commit('unrelated')
+
+    const clean = await releaseBuild()
+    expect(clean.metadata).toMatchObject({
+      baseVersion: '1.2.3',
+      displayVersion: `1.2.3+${producer.slice(0, 7)}`,
+      machineVersion: `1.2.3+${producer.slice(0, 7)}`,
+      sourceKind: 'release',
+      rev: producer,
+      commitTs,
+      dirty: false,
+      buildTs: expect.any(Number),
+    })
+    expect(clean.browser).toMatchObject({
+      machineVersion: `1.2.3+${producer.slice(0, 7)}`,
+      sourceKind: 'release',
+      displayVersion: expect.stringMatching(/^1\.2\.3\+[0-9a-f]{7} — committed /),
+    })
+
+    // A committed closure change without a refreshed projection is never a clean release.
+    writeFileSync(join(root, 'app/extra.js'), 'export const extra = 1\n')
+    commit('app change without refresh')
+    expect((await releaseBuild()).metadata).toMatchObject({
+      machineVersion: `1.2.3+${producer.slice(0, 7)}-dirty`,
+      dirty: true,
+    })
+
+    server = await createServer({
+      configFile: false,
+      root: join(root, 'app'),
+      logLevel: 'silent',
+      optimizeDeps: { noDiscovery: true },
+      plugins: [
+        createBuildIdentityPlugin({
+          baseVersion: '1.2.3',
+          buildStamp: '__CLI_BUILD_STAMP__',
+          productRev: '../product-revs/app.json',
+        }),
+      ],
+      server: { middlewareMode: true },
+    })
+    const served = await server.ssrLoadModule('virtual:build-identity')
+    expect(served.buildIdentity).toMatchObject({
+      sourceKind: 'local',
+      rev: git('rev-parse', 'HEAD'),
+    })
+  } finally {
+    await server?.close()
     rmSync(root, { recursive: true, force: true })
   }
 }, 60000)

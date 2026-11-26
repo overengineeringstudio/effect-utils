@@ -5,20 +5,21 @@ import type { CacheError } from '../renderer/errors.ts'
 /** Current on-disk schema version. Bumping invalidates all cached trees. */
 export const CACHE_SCHEMA_VERSION = 3 as const
 
-export interface PendingInlineNode {
+/** Authored children created with an atomic container, awaiting server ids. */
+export interface PendingChild {
   readonly key: string
   readonly type: string
   readonly hash: string
-  readonly children: readonly PendingInlineNode[]
+  readonly children: readonly PendingChild[]
 }
 
-export const PendingInlineNode: Schema.Codec<PendingInlineNode, PendingInlineNode> = Schema.suspend(
-  (): Schema.Codec<PendingInlineNode, PendingInlineNode> =>
+export const PendingChild: Schema.Codec<PendingChild, PendingChild> = Schema.suspend(
+  (): Schema.Codec<PendingChild, PendingChild> =>
     Schema.Struct({
       key: Schema.String,
       type: Schema.String,
       hash: Schema.String,
-      children: Schema.Array(PendingInlineNode),
+      children: Schema.Array(PendingChild),
     }),
 )
 
@@ -33,6 +34,8 @@ export interface CacheNode {
   readonly type: string
   readonly hash: string
   readonly children: readonly CacheNode[]
+  /** Only mandatory atomic-container children can lack acknowledged ids. */
+  readonly pendingChildren?: readonly PendingChild[] | undefined
   /**
    * Whether this cache entry describes a block or a (sub)page. Forward-compat
    * field for the page-ops work (issue #618): existing v2 caches were written
@@ -56,11 +59,6 @@ export interface CacheNode {
    * Hash of the page's `cover` property. See {@link CacheNode.titleHash}.
    */
   readonly coverHash?: string | undefined
-  /**
-   * The page identity is durable, but block ids created inline with the page
-   * still need to be observed and adopted before normal diffing can resume.
-   */
-  readonly pendingInlineResolution?: readonly PendingInlineNode[] | undefined
 }
 
 /**
@@ -78,7 +76,7 @@ interface CacheNodeEncoded {
   readonly titleHash?: string | undefined
   readonly iconHash?: string | undefined
   readonly coverHash?: string | undefined
-  readonly pendingInlineResolution?: readonly PendingInlineNode[] | undefined
+  readonly pendingChildren?: readonly PendingChild[] | undefined
 }
 
 export const CacheNode = Schema.suspend((): Schema.Codec<CacheNode, CacheNodeEncoded> =>
@@ -97,7 +95,7 @@ export const CacheNode = Schema.suspend((): Schema.Codec<CacheNode, CacheNodeEnc
     titleHash: Schema.optional(Schema.String),
     iconHash: Schema.optional(Schema.String),
     coverHash: Schema.optional(Schema.String),
-    pendingInlineResolution: Schema.optional(Schema.Array(PendingInlineNode)),
+    pendingChildren: Schema.optional(Schema.Array(PendingChild)),
   }),
 )
 
