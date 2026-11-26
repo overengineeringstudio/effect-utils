@@ -1,3 +1,4 @@
+// @genie-bootstrap
 import { buck2TestLanes } from './genie/buck2/typescript-admissions.ts'
 import {
   projectionArtifact,

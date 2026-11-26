@@ -2,5 +2,5 @@
 set -euo pipefail
 # Required owner generation only; no unit or browser test tasks.
 mr apply --worktree-mode commit
-nix run .#genie -- --defer-validation
+nix run .#genie -- --defer-validation --phase bootstrap
 devenv tasks run pnpm:update
