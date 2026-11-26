@@ -1145,10 +1145,13 @@ in
   # Genie product, which is also what downstream consumers set here.
   effectUtils.genie.package = genieCli;
 
-  # Source-side generator freshness needs the root dependency view on cold
-  # checkouts, so genie:check bootstraps only the committed generator closure.
+  # Source-side generation and freshness need the root dependency view on cold
+  # checkouts, so both bootstrap only the committed generator closure.
   # The static closure checker is self-contained; neither runs whole-workspace publication.
-  tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:run".after = [
+    "genie:editor-view-closure:check"
+    "buck2:editor:bootstrap"
+  ];
   tasks."genie:check".after = lib.mkForce [
     "genie:prepare"
     "genie:editor-view-closure:check"
