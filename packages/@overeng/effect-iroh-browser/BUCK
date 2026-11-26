@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-iroh-browser/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f4dfac0e8ec3b3a788fcf431b3e439759b35f1c7b38b348bf44cfc0d88e01f7c
+# Semantic fingerprint: sha256:34467fbaef29dd83fefc55a28a7edcd42af0082cd9474ca1f9750b971840d988
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -93,11 +93,8 @@ package_view(
         "src/testing.ts": "src/testing.ts",
         "tsconfig.json": "tsconfig.json",
         "wasm/games_iroh_wasm.d.ts": "wasm/games_iroh_wasm.d.ts",
-        "wasm/games_iroh_wasm.d.ts": "wasm/games_iroh_wasm.d.ts",
-        "wasm/games_iroh_wasm.js": "wasm/games_iroh_wasm.js",
         "wasm/games_iroh_wasm.js": "wasm/games_iroh_wasm.js",
         "wasm/games_iroh_wasm_bg.wasm": "wasm/games_iroh_wasm_bg.wasm",
-        "wasm/games_iroh_wasm_bg.wasm.d.ts": "wasm/games_iroh_wasm_bg.wasm.d.ts",
         "wasm/games_iroh_wasm_bg.wasm.d.ts": "wasm/games_iroh_wasm_bg.wasm.d.ts",
     },
     workspace_dist = {
@@ -132,11 +129,8 @@ package_view(
         "src/testing.ts": "src/testing.ts",
         "tsconfig.json": "tsconfig.json",
         "wasm/games_iroh_wasm.d.ts": "wasm/games_iroh_wasm.d.ts",
-        "wasm/games_iroh_wasm.d.ts": "wasm/games_iroh_wasm.d.ts",
-        "wasm/games_iroh_wasm.js": "wasm/games_iroh_wasm.js",
         "wasm/games_iroh_wasm.js": "wasm/games_iroh_wasm.js",
         "wasm/games_iroh_wasm_bg.wasm": "wasm/games_iroh_wasm_bg.wasm",
-        "wasm/games_iroh_wasm_bg.wasm.d.ts": "wasm/games_iroh_wasm_bg.wasm.d.ts",
         "wasm/games_iroh_wasm_bg.wasm.d.ts": "wasm/games_iroh_wasm_bg.wasm.d.ts",
     },
     workspace_dist = {
