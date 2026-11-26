@@ -1,4 +1,21 @@
-import { Schema } from 'effect'
+import { createHash } from 'node:crypto'
+
+import { Effect, Schema } from 'effect'
+
+export type HolderEvidenceClientConfig = {
+  readonly path: string
+  readonly producerId: string
+  readonly policyId: string
+}
+
+export class HolderEvidenceError extends Schema.TaggedError<HolderEvidenceError>()(
+  'HolderEvidenceError',
+  {},
+) {
+  override get message(): string {
+    return 'Worktree holder evidence unavailable'
+  }
+}
 
 const U64 = Schema.String.check(
   Schema.makeFilter((s) => /^(0|[1-9][0-9]{0,19})$/u.test(s) && BigInt(s) <= 18446744073709551615n),
@@ -131,3 +148,38 @@ export const HolderEvidenceResponse = Schema.Struct({
   }),
 )
 export type HolderEvidenceResponse = typeof HolderEvidenceResponse.Type
+
+/** Only call on bounded stdout of the fixed, trusted Rust holder client. The
+ * caller must separately check completeness, pinned identities and boot freshness. */
+export const decodeWorktreeHolderEvidence = (input: {
+  readonly stdout: string
+  readonly nonce: string
+  readonly paths: ReadonlyArray<string>
+  readonly producerId: string
+  readonly policyId: string
+}): Effect.Effect<HolderEvidenceResponse, HolderEvidenceError> =>
+  Effect.gen(function* () {
+    if (
+      input.stdout.length > 16 * 1024 * 1024 ||
+      Buffer.byteLength(input.stdout) > 16 * 1024 * 1024
+    ) {
+      return yield* new HolderEvidenceError({})
+    }
+    const response = yield* Schema.decodeEffect(Schema.fromJsonString(HolderEvidenceResponse), {
+      onExcessProperty: 'error',
+    })(input.stdout).pipe(Effect.mapError(() => new HolderEvidenceError({})))
+    const digest = createHash('sha256').update('holder-evidence-paths-v1\0worktree\0')
+    for (const path of input.paths) digest.update(path).update('\0')
+    if (
+      response.nonce !== input.nonce ||
+      response.producerId !== input.producerId ||
+      response.policyId !== input.policyId ||
+      new Set(input.paths).size !== input.paths.length ||
+      response.roots.length !== input.paths.length ||
+      response.roots.some((root, index) => root.path !== input.paths[index]) ||
+      response.scope.requestedPathsDigest !== digest.digest('hex')
+    ) {
+      return yield* new HolderEvidenceError({})
+    }
+    return response
+  })
