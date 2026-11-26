@@ -150,9 +150,12 @@ pub struct ProcessScope {
 }
 
 pub struct TaskScope {
+    pub tgid: u32,
     pub identity: Process,
     pub uids: [u32; 4],
     pub scope: File,
+    /// Top-level /proc/<tid>; nested task directories do not expose map_files.
+    pub mapping_scope: File,
     pub namespaces: Vec<File>,
 }
 
@@ -339,6 +342,7 @@ impl ProcessScope {
         for tid in &tids {
             let identity = process::process(*tid)?;
             let task_scope = objects::pin_magic(format!("{base}/task/{tid}"))?;
+            let mapping_scope = objects::pin_magic(format!("/proc/{tid}"))?;
             let uids = process::uids(*tid)?;
             let mut namespaces = Vec::with_capacity(4);
             for name in ["user", "pid", "mnt", "net"] {
@@ -347,7 +351,7 @@ impl ProcessScope {
             if !process::process(*tid)?.same_identity(&identity) {
                 return Err(io::Error::other("task changed during pin"));
             }
-            tasks.push(TaskScope { identity, uids, scope: task_scope, namespaces });
+            tasks.push(TaskScope { tgid: pid, identity, uids, scope: task_scope, mapping_scope, namespaces });
         }
         if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid)
             || numbers(format!("{base}/task"), deadline)? != tids
@@ -365,6 +369,8 @@ impl ProcessScope {
         for (before, after) in self.tasks.iter().zip(&other.tasks) {
             if !before.identity.same_identity(&after.identity) || before.uids != after.uids
                 || objects::identity(&before.scope)? != objects::identity(&after.scope)?
+                || before.tgid != after.tgid
+                || objects::identity(&before.mapping_scope)? != objects::identity(&after.mapping_scope)?
                 || before.namespaces.len() != after.namespaces.len()
             { return Ok(false); }
             for (a, b) in before.namespaces.iter().zip(&after.namespaces) {
@@ -435,13 +441,23 @@ impl TaskScope {
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
             || process::uids(self.identity.pid)? != self.uids
         { return Err(io::Error::other("task identity or credentials changed")); }
-        recheck_namespaces(self)
+        let task_scope = objects::pin_magic(format!("/proc/{}/task/{}", self.tgid, self.identity.pid))?;
+        let mapping_scope = objects::pin_magic(format!("/proc/{}", self.identity.pid))?;
+        if objects::identity(&task_scope)? != objects::identity(&self.scope)?
+            || objects::identity(&mapping_scope)? != objects::identity(&self.mapping_scope)?
+        { return Err(io::Error::other("task proc directory generation changed")); }
+        recheck_namespaces(self)?;
+        if !process::process(self.identity.pid)?.same_identity(&self.identity)
+            || process::uids(self.identity.pid)? != self.uids
+        { return Err(io::Error::other("task generation or credentials did not close")); }
+        Ok(())
     }
 }
 
 impl References {
     fn collect(task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<Self> {
         let base = scope_path(&task.scope);
+        let mapping_base = scope_path(&task.mapping_scope);
         let no_mm = no_mm_role(task, all_terminal, deadline)?;
         let root = pin_optional(format!("{base}/root"), no_mm, deadline)?;
         let cwd = pin_optional(format!("{base}/cwd"), no_mm, deadline)?;
@@ -456,8 +472,8 @@ impl References {
             descriptors.push((number, held));
         }
         let mut mappings = Vec::new();
-        for name in mapping_names(&task.scope, deadline)? {
-            let held = Held::pin(format!("{base}/map_files/{name}"), deadline)?;
+        for name in mapping_names(&task.mapping_scope, deadline)? {
+            let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
             if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
                 return Err(io::Error::other("unqualified mapped kernel object"));
             }
@@ -473,6 +489,7 @@ impl References {
     fn recheck_task(&self, task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<()> {
         task.recheck(deadline)?;
         let base = scope_path(&task.scope);
+        let mapping_base = scope_path(&task.mapping_scope);
         if no_mm_role(task, all_terminal, deadline)? != self.no_mm {
             return Err(io::Error::other("task mm resource role changed"));
         }
@@ -492,13 +509,13 @@ impl References {
             held.recheck(format!("{base}/fd/{number}"), deadline)?;
             qualify_object(held)?;
         }
-        let names = mapping_names(&task.scope, deadline)?;
+        let names = mapping_names(&task.mapping_scope, deadline)?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
             return Err(io::Error::other("task mapping membership changed"));
         }
-        for (name, held) in &self.mappings { held.recheck(format!("{base}/map_files/{name}"), deadline)?; }
+        for (name, held) in &self.mappings { held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?; }
         if numbers(format!("{base}/fd"), deadline)? != expected
-            || mapping_names(&task.scope, deadline)? != names
+            || mapping_names(&task.mapping_scope, deadline)? != names
             || no_mm_role(task, all_terminal, deadline)? != self.no_mm
         { return Err(io::Error::other("task resources changed during recheck")); }
         task.recheck(deadline)
