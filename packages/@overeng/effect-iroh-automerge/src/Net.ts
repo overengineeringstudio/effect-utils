@@ -254,7 +254,10 @@ export const makeNet = (
 
       /** Sleeps for `delay`, or less if the network may be back. */
       const sleepOrWake = (delay: Duration.Duration) =>
-        Effect.raceFirst(Effect.sleep(delay), Stream.runHead(wakeups))
+        Stream.runHead(wakeups).pipe(
+          Effect.asVoid,
+          Effect.timeoutOrElse({ duration: delay, orElse: () => Effect.void }),
+        )
 
       /**
        * `start` that outlives start failures that clear up by themselves:
@@ -273,7 +276,7 @@ export const makeNet = (
               schedule: Schedule.spaced('1 second'),
               while: (error) => error._tag === 'NotLeader',
             }),
-            Effect.catchTag('RelayUnreachable', () => Effect.succeed(undefined)),
+            Effect.catchTag('RelayUnreachable', () => Effect.void),
           )
           if (session) return session
           const [, delay] = yield* Effect.clockWith((clock) =>

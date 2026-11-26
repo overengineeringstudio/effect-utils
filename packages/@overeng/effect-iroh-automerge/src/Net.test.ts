@@ -45,11 +45,11 @@ interface Harness {
  * Runs `test` against a `Net` whose node is fake: dials fail unless `answer` returns a
  * connection, and time is a TestClock.
  */
-const withNet = <TResult>({
+const withNet = <TResult, TError>({
   test,
   options = {},
 }: {
-  test: (h: Harness) => Effect.Effect<TResult, unknown>
+  test: (h: Harness) => Effect.Effect<TResult, TError>
   options?: {
     answer?: (attempt: number) => FakeConn | undefined
     nodeFails?: (build: number) => boolean
