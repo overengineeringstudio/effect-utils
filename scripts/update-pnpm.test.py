@@ -19,6 +19,29 @@ class UpdatePnpmTests(unittest.TestCase):
             with self.subTest(version=version), self.assertRaises(RuntimeError):
                 updater.version_tuple(version)
 
+    def test_latest_stable_version_ignores_order_and_latest_label(self):
+        pages = [
+            [{"tag_name": tag, "draft": False, "prerelease": False}
+             for tag in ("v11.29.0", "v12.23.0", "v12.9.0")],
+            [{"tag_name": "v12.24.0", "draft": False, "prerelease": False}],
+        ]
+        self.assertEqual(updater.latest_stable_version(pages), "12.24.0")
+
+    def test_latest_stable_version_excludes_drafts_prereleases_and_other_tags(self):
+        releases = [
+            {"tag_name": "v99.0.0", "draft": True, "prerelease": False},
+            {"tag_name": "v98.0.0", "draft": False, "prerelease": True},
+        ] + [
+            {"tag_name": tag, "draft": False, "prerelease": False}
+            for tag in ("pnpr@99.0.0", "v97.0.0-rc.1", "v096.0.0", "v95.0.0+build", "v94.0.0\n")
+        ] + [{"tag_name": "v12.24.0", "draft": False, "prerelease": False}]
+        self.assertEqual(updater.latest_stable_version([releases]), "12.24.0")
+
+    def test_no_canonical_stable_release_fails_closed(self):
+        for pages in ([], [[]], [[{"tag_name": "pnpr@1.0.0", "draft": False, "prerelease": False}]]):
+            with self.subTest(pages=pages), self.assertRaises(RuntimeError):
+                updater.latest_stable_version(pages)
+
     def test_missing_source_pin_fails_without_writing(self):
         task_tmp = Path(__file__).resolve().parents[1] / "tmp"
         task_tmp.mkdir(exist_ok=True)
