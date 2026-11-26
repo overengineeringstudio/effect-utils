@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 
 /** Compare complete observable values, not object identity. Assertions may throw. */
 export type Equal<TValue> = (left: TValue, right: TValue) => boolean
