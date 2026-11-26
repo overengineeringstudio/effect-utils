@@ -230,6 +230,68 @@ Vitest.describe('resolveCliBuildIdentity', () => {
       buildTs: fiveMinutesAgo,
     })
   })
+
+  Vitest.it('resolves release stamps with revision age and an abbreviated machine version', () => {
+    const rev = 'a7647bb0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6'
+    const releaseStamp = JSON.stringify({
+      type: 'release',
+      version: '0.1.0',
+      rev,
+      commitTs: threeDaysAgo,
+      buildTs: fiveMinutesAgo,
+      dirty: false,
+    })
+    expect(parseCliBuildStamp(releaseStamp)).toEqual(JSON.parse(releaseStamp))
+    const identity = resolveCliBuildIdentity({
+      baseVersion: 'ignored',
+      buildStamp: releaseStamp,
+      env: { CLI_BUILD_STAMP: localStamp },
+      now,
+    })
+    expect(identity).toEqual({
+      baseVersion: '0.1.0',
+      displayVersion: '0.1.0+a7647bb — committed 3 days ago',
+      machineVersion: '0.1.0+a7647bb',
+      sourceKind: 'release',
+      rev,
+      dirty: false,
+      commitTs: threeDaysAgo,
+      buildTs: fiveMinutesAgo,
+    })
+    const dirty = JSON.stringify({ ...JSON.parse(releaseStamp), dirty: true })
+    expect(
+      resolveCliBuildIdentity({ baseVersion: '0.1.0', buildStamp: dirty, env: {}, now }),
+    ).toMatchObject({
+      machineVersion: '0.1.0+a7647bb-dirty',
+      displayVersion: '0.1.0+a7647bb-dirty — committed 3 days ago, with uncommitted changes',
+    })
+  })
+
+  Vitest.it('renders timeless metadata without relative ages when no clock is supplied', () => {
+    const release = JSON.stringify({
+      type: 'release',
+      version: '0.1.0',
+      rev: 'a7647bb0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6',
+      commitTs: threeDaysAgo,
+      dirty: false,
+    })
+    expect(
+      resolveCliBuildIdentity({ baseVersion: '0.1.0', buildStamp: release, env: {}, now: null })
+        .displayVersion,
+    ).toBe('0.1.0+a7647bb')
+    expect(
+      resolveCliBuildIdentity({ baseVersion: '0.1.0', buildStamp: nixStamp, env: {}, now: null })
+        .displayVersion,
+    ).toBe('0.1.0+def456')
+    expect(
+      resolveCliBuildIdentity({
+        baseVersion: '0.1.0',
+        buildStamp: placeholder,
+        env: { CLI_BUILD_STAMP: localStamp },
+        now: null,
+      }).displayVersion,
+    ).toBe('0.1.0 — running from local source (abc123, with uncommitted changes)')
+  })
 })
 
 Vitest.describe('argvRequestsJsonStdout', () => {

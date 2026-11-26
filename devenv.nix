@@ -1145,10 +1145,13 @@ in
   # Genie product, which is also what downstream consumers set here.
   effectUtils.genie.package = genieCli;
 
-  # Source-side generator freshness needs the root dependency view on cold
-  # checkouts, so genie:check bootstraps only the committed generator closure.
+  # Source-side generation and freshness need the root dependency view on cold
+  # checkouts, so both bootstrap only the committed generator closure.
   # The static closure checker is self-contained; neither runs whole-workspace publication.
-  tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:run".after = [
+    "genie:editor-view-closure:check"
+    "buck2:editor:bootstrap"
+  ];
   tasks."genie:check".after = lib.mkForce [
     "genie:prepare"
     "genie:editor-view-closure:check"
@@ -1374,6 +1377,7 @@ in
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/published-ref.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/manifest-pr-enqueue.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-occurrence-loki.unit.test.ts
       BUCK2_EVENTS_BIN=${repoPackages.buck2-events}/bin/buck2-events ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-cache-occurrences.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
@@ -1385,6 +1389,7 @@ in
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
       "genie/ci-scripts/buck2-cache-*.ts"
+      "genie/ci-scripts/buck2-occurrence*.ts"
       "genie/ci-scripts/buck2-reapi-classification*.ts"
       "genie/ci.ts"
       ".github/workflows/ci.yml.genie.ts"
