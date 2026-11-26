@@ -160,6 +160,10 @@
         "rationale": "Portable Automerge document, in-memory storage and Effect scope contracts; no platform-native filesystem or socket lifecycle."
       },
       {
+        "task": "test:effect-iroh-browser",
+        "rationale": "Portable framed connections, link ownership, Web Lock adapters and download progress contracts; real browser relay coverage belongs to the consuming application."
+      },
+      {
         "task": "test:work-storage",
         "rationale": "Portable manifest, schema acceptance and role-resolution contracts; no platform-specific provider implementation."
       },
