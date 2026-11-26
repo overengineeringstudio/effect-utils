@@ -14,6 +14,7 @@ export const internalPackages = [
   'ai-gateway-edge',
   'alchemy-github',
   'buck2-tools',
+  'changelog',
   'content-address',
   'data-graph',
   'devbar',
