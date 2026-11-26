@@ -311,5 +311,89 @@ for rule in "${compiler_family_rules[@]}"; do
     "fixture really violates react/$rule when the rule is enabled"
 done
 
+# ---------------------------------------------------------------------------
+# 4. shared StyleX preset: exact vendor support, with negative policy controls
+# ---------------------------------------------------------------------------
+# Serialize the actual factory, not a handwritten copy of its options. Keep this
+# in the real-binary harness: package-local Vitest trees intentionally exclude
+# repo-owned Genie sources.
+(
+  cd "$ROOT"
+  bun -e '
+    import { stylexOxlintRules } from "./genie/oxlint-base.ts"
+    console.log(JSON.stringify({
+      jsPlugins: [
+        `${process.cwd()}/packages/@overeng/oxc-config/src/mod.ts`,
+        `${process.cwd()}/packages/@overeng/oxc-config/src/stylex-upstream-plugin.ts`,
+      ],
+      rules: stylexOxlintRules(),
+    }))
+  '
+) > "$workspace/stylex.json"
+
+stylex_fixture="$workspace/vendor-styles.ts"
+for declarations in \
+  "WebkitUserSelect: 'none', userSelect: 'none'" \
+  "WebkitBackdropFilter: 'blur(12px)', backdropFilter: 'blur(12px)'" \
+  "WebkitBackdropFilter: 'none'" \
+  "WebkitTouchCallout: 'default'" \
+  "WebkitTouchCallout: 'none'" \
+  "WebkitUserSelect: 'auto'" \
+  "WebkitUserSelect: 'text'" \
+  "WebkitUserSelect: 'contain'" \
+  "WebkitUserSelect: 'all'"; do
+  printf "import * as stylex from '@stylexjs/stylex'\nexport const styles = stylex.create({ box: { %s } })\n" \
+    "$declarations" > "$stylex_fixture"
+  status=0
+  out="$("$oxlint_bin" --format=agent --config "$workspace/stylex.json" "$stylex_fixture" 2>&1)" || status=$?
+  [ "$status" = 0 ] || fail "supported vendor declaration: $declarations" "$out"
+done
+
+for property in WebkitUserSelect WebkitTouchCallout WebkitBackdropFilter; do
+  for value in null "'initial'" "'inherit'" "'unset'" "'revert'"; do
+    printf "import * as stylex from '@stylexjs/stylex'\nexport const styles = stylex.create({ box: { %s: %s } })\n" \
+      "$property" "$value" > "$stylex_fixture"
+    status=0
+    out="$("$oxlint_bin" --format=agent --config "$workspace/stylex.json" "$stylex_fixture" 2>&1)" || status=$?
+    [ "$status" = 0 ] || fail "vendor CSS-wide value: $property: $value" "$out"
+  done
+done
+
+for declarations in \
+  "WebkitBogusProperty: 'none'" \
+  "bogusProperty: 'none'" \
+  "WebkitUserSelect: 'bogus'" \
+  "WebkitTouchCallout: 'auto'" \
+  "WebkitUserSelect: 1" \
+  "WebkitTouchCallout: 1" \
+  "WebkitBackdropFilter: 1" \
+  "WebkitTouchCallout: 'none', color: '#fff'"; do
+  printf "import * as stylex from '@stylexjs/stylex'\nexport const styles = stylex.create({ box: { %s } })\n" \
+    "$declarations" > "$stylex_fixture"
+  status=0
+  out="$("$oxlint_bin" --format=agent --config "$workspace/stylex.json" "$stylex_fixture" 2>&1)" || status=$?
+  [ "$status" = 1 ] || fail "invalid styles fail lint: $declarations" "$out"
+  assert_contains "error @stylexjs(valid-styles)" "$out" \
+    "upstream validation remains enforced: $declarations"
+done
+
+cat > "$stylex_fixture" <<'EOF'
+import * as stylex from '@stylexjs/stylex'
+export const styles = stylex.create({
+  box: {
+    WebkitUserSelect: 'none',
+    boxShadow: '0 0 4px red',
+    outlineOffset: { default: 0, ':hover': 2 },
+    opacity: { default: 1, [stylex.when.descendant(':hover')]: 0.5 },
+  },
+})
+EOF
+status=0
+out="$("$oxlint_bin" --format=agent --config "$workspace/stylex.json" "$stylex_fixture" 2>&1)" || status=$?
+[ "$status" = 1 ] || fail "color, focus and lookahead violations fail lint" "$out"
+assert_contains "error overeng(stylex-no-raw-color)" "$out" "raw composite colors remain forbidden"
+assert_contains "error overeng(stylex-outline-focus-visible-only)" "$out" "focus ownership remains enforced"
+assert_contains "error @stylexjs(no-lookahead-selectors)" "$out" "lookahead selectors remain forbidden"
+
 echo ""
 echo "All oxlint rule policy tests passed."

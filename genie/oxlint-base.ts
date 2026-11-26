@@ -154,20 +154,30 @@ export const stylexOxlintRules = ({
     '@stylexjs/valid-styles': [
       severity,
       {
-        propLimits: Object.fromEntries(
-          stylexColorProperties.map((property) => [
-            property,
-            {
-              // Unioned by upstream with the CSS-wide keywords and `null`, so
-              // unsetting a colour still works. Everything else — including a
-              // hand-written `var()` — must come through a token reference.
-              limit: ['transparent', 'currentColor', 'currentcolor'],
-              // Currently dropped from the diagnostic for array limits; kept so
-              // it appears if upstream starts rendering it.
-              reason: 'Read colours from a semantic token exported by a `*.stylex.ts` module.',
-            },
-          ]),
-        ),
+        propLimits: {
+          // valid-styles 0.19 omits these names, but the compiler emits their
+          // distinct -webkit-* declarations (it does not auto-prefix the
+          // standard properties). Keep iOS behavior without admitting Webkit*.
+          // Match upstream userSelect's keywords and backdropFilter's strings;
+          // upstream also unions every limit with CSS-wide keywords and null.
+          WebkitUserSelect: { limit: ['auto', 'text', 'none', 'contain', 'all'] },
+          WebkitTouchCallout: { limit: ['default', 'none'] },
+          WebkitBackdropFilter: { limit: 'string' },
+          ...Object.fromEntries(
+            stylexColorProperties.map((property) => [
+              property,
+              {
+                // Unioned by upstream with the CSS-wide keywords and `null`, so
+                // unsetting a colour still works. Everything else — including a
+                // hand-written `var()` — must come through a token reference.
+                limit: ['transparent', 'currentColor', 'currentcolor'],
+                // Currently dropped from the diagnostic for array limits; kept so
+                // it appears if upstream starts rendering it.
+                reason: 'Read colours from a semantic token exported by a `*.stylex.ts` module.',
+              },
+            ]),
+          ),
+        },
       },
     ] as const,
     '@stylexjs/valid-shorthands': severity,
