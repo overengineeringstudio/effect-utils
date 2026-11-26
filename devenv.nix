@@ -1145,10 +1145,13 @@ in
   # Genie product, which is also what downstream consumers set here.
   effectUtils.genie.package = genieCli;
 
-  # Source-side generator freshness needs the root dependency view on cold
-  # checkouts, so genie:check bootstraps only the committed generator closure.
+  # Source-side generation and freshness need the root dependency view on cold
+  # checkouts, so both bootstrap only the committed generator closure.
   # The static closure checker is self-contained; neither runs whole-workspace publication.
-  tasks."genie:run".after = [ "genie:editor-view-closure:check" ];
+  tasks."genie:run".after = [
+    "genie:editor-view-closure:check"
+    "buck2:editor:bootstrap"
+  ];
   tasks."genie:check".after = lib.mkForce [
     "genie:prepare"
     "genie:editor-view-closure:check"
@@ -1374,6 +1377,7 @@ in
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/published-ref.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/manifest-pr-enqueue.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-occurrence-loki.unit.test.ts
       BUCK2_EVENTS_BIN=${repoPackages.buck2-events}/bin/buck2-events ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-scripts/buck2-cache-occurrences.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
@@ -1385,6 +1389,7 @@ in
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
       "genie/ci-scripts/buck2-cache-*.ts"
+      "genie/ci-scripts/buck2-occurrence*.ts"
       "genie/ci-scripts/buck2-reapi-classification*.ts"
       "genie/ci.ts"
       ".github/workflows/ci.yml.genie.ts"
@@ -1412,13 +1417,33 @@ in
       "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
       "scripts/buck2-gate-isolation.integration.test.ts"
       "scripts/buck2-gate-isolation.unit.test.ts"
-      "scripts/buck2-gate-teardown.integration.test.ts"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"
       "scripts/buck2-remote-cache-proof.sh"
       "genie/ci-scripts/buck2-action-evidence.ts"
       "scripts/buck2-file-watcher.*"
+    ];
+  };
+  # Real expiry needs its own enclosing admission, not check:quick's parallel build envelope.
+  tasks."buck2:gate-teardown:test" = {
+    description = "Exercise real native-only death, gate expiry and exactly-once cleanup under standalone admission";
+    exec = trace.exec "buck2:gate-teardown:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+        ./scripts/buck2-gate-teardown.integration.test.ts
+    '';
+    execIfModified = [
+      "nix/buck2.nix"
+      "scripts/buck2-entrypoint.*"
+      "scripts/buck2-cache-posture.*"
+      "scripts/buck2-file-watcher.*"
+      "scripts/buck2-stdio.*"
+      "scripts/buck2-gate-teardown.integration.test.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
     ];
   };
 
@@ -2288,6 +2313,7 @@ in
     "check:buck2-producer-overlap"
     "cargo:check"
     "dependency-materialization:evidence:check"
+    "buck2:gate-teardown:test"
   ];
 
   # `test:run` is the aggregate: one Buck invocation for the selected bounded lanes, plus the

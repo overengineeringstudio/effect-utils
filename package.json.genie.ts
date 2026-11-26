@@ -7,6 +7,7 @@ import aiGatewayConformancePkg from './packages/@overeng/ai-gateway-conformance/
 import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.genie.ts'
 import alchemyGitHubPkg from './packages/@overeng/alchemy-github/package.json.genie.ts'
 import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts'
+import changelogPkg from './packages/@overeng/changelog/package.json.genie.ts'
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
 import dataGraphPkg from './packages/@overeng/data-graph/package.json.genie.ts'
@@ -70,6 +71,7 @@ export const rootWorkspacePackages = [
   aiGatewayEdgePkg,
   alchemyGitHubPkg,
   buck2ToolsPkg,
+  changelogPkg,
   contentAddressPkg,
   dataGraphPkg,
   devbarPkg,
