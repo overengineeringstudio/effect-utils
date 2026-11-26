@@ -238,6 +238,10 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+Managed invocation selection snapshots supported plain-text argument files before
+admission. Later rewrites cannot change the executed isolation or literal argv;
+run payload tokens do not participate in the native isolation selection.
+
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
