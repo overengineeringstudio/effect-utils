@@ -211,6 +211,11 @@
       "description": "@overeng/effect-ai-gateway package · Set: manual"
     },
     {
+      "name": "system:effect-automerge",
+      "color": "a371f7",
+      "description": "@overeng/effect-automerge package · Set: manual"
+    },
+    {
       "name": "system:effect-distributed-lock",
       "color": "a371f7",
       "description": "@overeng/effect-distributed-lock package · Set: manual"
@@ -219,6 +224,16 @@
       "name": "system:effect-iroh",
       "color": "a371f7",
       "description": "@overeng/effect-iroh package · Set: manual"
+    },
+    {
+      "name": "system:effect-iroh-automerge",
+      "color": "a371f7",
+      "description": "@overeng/effect-iroh-automerge package · Set: manual"
+    },
+    {
+      "name": "system:effect-iroh-browser",
+      "color": "a371f7",
+      "description": "@overeng/effect-iroh-browser package · Set: manual"
     },
     {
       "name": "system:effect-path",
@@ -269,6 +284,11 @@
       "name": "system:effect-schema-form-aria",
       "color": "a371f7",
       "description": "@overeng/effect-schema-form-aria package · Set: manual"
+    },
+    {
+      "name": "system:game-laws",
+      "color": "a371f7",
+      "description": "@overeng/game-laws package · Set: manual"
     },
     {
       "name": "system:genie",

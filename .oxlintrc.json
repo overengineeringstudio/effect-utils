@@ -28,6 +28,7 @@
     "**/patches/**",
     "**/.cache/**",
     "**/.turbo/**",
+    "packages/@overeng/effect-iroh-browser/wasm/**",
     "genie/weaver-registry/**"
   ],
   "categories": {

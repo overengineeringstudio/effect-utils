@@ -16,8 +16,11 @@ packages:
   - packages/@overeng/devbar
   - packages/@overeng/effect-ai-claude-cli
   - packages/@overeng/effect-ai-gateway
+  - packages/@overeng/effect-automerge
   - packages/@overeng/effect-distributed-lock
   - packages/@overeng/effect-iroh
+  - packages/@overeng/effect-iroh-automerge
+  - packages/@overeng/effect-iroh-browser
   - packages/@overeng/effect-path
   - packages/@overeng/effect-react
   - packages/@overeng/effect-rpc-explorer
@@ -29,6 +32,7 @@ packages:
   - packages/@overeng/effect-rust-fixture-consumer
   - packages/@overeng/effect-schema-form
   - packages/@overeng/effect-schema-form-aria
+  - packages/@overeng/game-laws
   - packages/@overeng/genie
   - packages/@overeng/genie-fractal
   - packages/@overeng/genie-smalltalk
