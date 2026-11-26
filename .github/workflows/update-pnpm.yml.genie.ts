@@ -5,7 +5,8 @@ import {
   type CiWorkflowArgs,
   githubAppInstallationTokenStep,
   installNixStep,
-  linuxX64Runner,
+  linuxSandboxPrerequisitesStep,
+  namespaceRunner,
   pnpmStateSetupStep,
   prepareCiScriptsStep,
   runDevenvTasksBefore,
@@ -34,13 +35,18 @@ export default ciWorkflow({
   jobs: {
     candidate: {
       if: "${{ github.repository == 'overengineeringstudio/effect-utils' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}",
-      'runs-on': linuxX64Runner,
+      'runs-on': namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+        privileged: 'trusted',
+      }),
       'timeout-minutes': 45,
       defaults: bashShellDefaults,
       env: { DEFAULT_BRANCH: '${{ github.event.repository.default_branch }}' },
       steps: [
         checkoutStep({ ref: '${{ github.sha }}' }),
         installNixStep(),
+        linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
         prepareCiScriptsStep,
         validateNixStoreStep,
         pnpmStateSetupStep,

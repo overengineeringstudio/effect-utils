@@ -14,8 +14,10 @@ import dataGraphPkg from './packages/@overeng/data-graph/package.json.genie.ts'
 import devbarPkg from './packages/@overeng/devbar/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectAiGatewayPkg from './packages/@overeng/effect-ai-gateway/package.json.genie.ts'
+import effectAutomergePkg from './packages/@overeng/effect-automerge/package.json.genie.ts'
 import effectDistributedLockPkg from './packages/@overeng/effect-distributed-lock/package.json.genie.ts'
 import effectIrohPkg from './packages/@overeng/effect-iroh/package.json.genie.ts'
+import effectIrohBrowserPkg from './packages/@overeng/effect-iroh-browser/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
 import effectRpcExplorerReactPkg from './packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts'
@@ -79,8 +81,10 @@ export const rootWorkspacePackages = [
   effectSocketPkg,
   effectAiClaudeCliPkg,
   effectAiGatewayPkg,
+  effectAutomergePkg,
   effectDistributedLockPkg,
   effectIrohPkg,
+  effectIrohBrowserPkg,
   effectPathPkg,
   effectReactPkg,
   effectRpcExplorerPkg,

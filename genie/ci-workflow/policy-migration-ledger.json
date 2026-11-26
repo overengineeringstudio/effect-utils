@@ -936,6 +936,24 @@
       "rule": "banned-action",
       "path": "jobs.publish-preview-comment.steps[name:\"Download rendered preview comment\"|action:\"actions/download-artifact\"|content:{\"with\":[[\"name\",\"netlify-preview-comment\"],[\"path\",\"${{ runner.temp }}/workflow-reports/netlify-preview\"]]}].uses",
       "value": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+    },
+    {
+      "repository": "overengineeringstudio/effect-utils",
+      "workflow": "update-pnpm.yml",
+      "job": "candidate",
+      "rule": "runner-fallback",
+      "path": "jobs.candidate.runs-on",
+      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }}",
+      "reason": "No active sh-linux-x64 runner; same Namespace profile as grandfathered trusted consumers."
+    },
+    {
+      "repository": "overengineeringstudio/effect-utils",
+      "workflow": "update-pnpm.yml",
+      "job": "candidate",
+      "rule": "dynamic-runner",
+      "path": "jobs.candidate.runs-on",
+      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }}",
+      "reason": "No active sh-linux-x64 runner; same Namespace profile as grandfathered trusted consumers."
     }
   ]
 }
