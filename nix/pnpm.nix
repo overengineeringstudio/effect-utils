@@ -28,7 +28,7 @@
 # matching executable in the wrapper's own optional-dependency locations.
 let
   lib = pkgs.lib;
-  version = "12.23.0";
+  version = "12.24.0";
 
   platform = pkgs.stdenv.hostPlatform;
 
@@ -46,17 +46,17 @@ let
       unsupportedPlatform;
 
   exeHashes = {
-    "linux-x64" = "sha256-iuta0rfnH8P4H1cvsxB0SfwO+Km+TkzfUdnUmSkhu1E=";
-    "linux-arm64" = "sha256-mGgH47qvYxC3cPO9RW6/bclfRp1CxhDA30qaPX+E1Jg=";
-    "linux-x64-musl" = "sha256-HBYyqTkP2MUrkvBRDysU3aOMibpQccdcrRBxtt+4GnU=";
-    "linux-arm64-musl" = "sha256-T2MPEkqjjhoUEsZ9ih5l/QfwcIR4juE9+833Pugc0XU=";
-    "darwin-x64" = "sha256-svI8RnQw2A1QIqwAeiscj3the7gHElwJ8m3fuvJl2iI=";
-    "darwin-arm64" = "sha256-y4SnwcBYtd4FDXB3Bnb5I/mKxXJqtKBhHybmFogZtaA=";
+    "linux-x64" = "sha256-pKcxrZqQbDZ2Qoelek+IkfE7d1d4lqYSD8e/9NHkbT4=";
+    "linux-arm64" = "sha256-WY6VTH9pN2pg+XNb18rfC+2Cd5cjvAKKU3AXnGB7DfM=";
+    "linux-x64-musl" = "sha256-v8w4Ld/i8B7B9wVi0Jg5fiQ51P1c/oQ7YG62zz1hpEE=";
+    "linux-arm64-musl" = "sha256-tzloHTnIuPyFgOE+tGgQLPgXAO8MPAJDMpJJoMhT1J8=";
+    "darwin-x64" = "sha256-NmkJjQ8ROzg6NhlE7Ju6sMpqkpnrReoVekXlPivK8lI=";
+    "darwin-arm64" = "sha256-fCbR42oBukq7zTdcUNPl+UNwadnDxkFYyz5i4JRpcKw=";
   };
 
   wrapperSrc = pkgs.fetchurl {
     url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
-    hash = "sha256-ZQGol9z+By6N8pV8lMRvJ/cZAbKPLgKhZ/keCseQWFk=";
+    hash = "sha256-klAAEMxgb4MVEOi3NMFsuZ/TKO/zO3Bj6npPLw7ijB0=";
   };
 
   exeSrc = pkgs.fetchurl {
