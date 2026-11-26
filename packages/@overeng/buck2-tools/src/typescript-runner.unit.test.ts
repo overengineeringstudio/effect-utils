@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import {
   chmodSync,
@@ -231,12 +232,32 @@ describe('TypeScript emit declaration command', () => {
 
     const tool = process.env['FINGERPRINT_BIN'] ?? ''
     if (tool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+    const expected = createHash('sha256')
+    for (const input of [first, second, tool].toSorted()) {
+      const output = await runFingerprintTool({ tool, args: [input, '--input-roots'] })
+      const digest = /^digest ([a-f0-9]{64})\n$/u.exec(output)?.[1]
+      if (digest === undefined) throw new Error(`invalid single-root digest: ${output}`)
+      for (const text of [input, digest]) {
+        const bytes = Buffer.from(text)
+        const length = Buffer.allocUnsafe(4)
+        length.writeUInt32BE(bytes.byteLength)
+        expected.update(length)
+        expected.update(bytes)
+      }
+    }
     const before = await hashDeclaredInputRoots({
-      roots: [second, first, second],
+      roots: [second, first, second, tool],
       fingerprintTool: tool,
     })
+    expect(before).toBe(expected.digest('hex'))
+    expect(await hashDeclaredInputRoots({ roots: [], fingerprintTool: tool })).toBe(
+      createHash('sha256').digest('hex'),
+    )
     writeFileSync(join(second, 'dependency.d.ts'), 'export declare const dependency: 2\n')
-    const after = await hashDeclaredInputRoots({ roots: [first, second], fingerprintTool: tool })
+    const after = await hashDeclaredInputRoots({
+      roots: [first, second, tool],
+      fingerprintTool: tool,
+    })
 
     expect(after).not.toBe(before)
     const file = join(first, 'source.ts')

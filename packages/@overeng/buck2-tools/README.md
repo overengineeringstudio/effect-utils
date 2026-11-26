@@ -1075,6 +1075,14 @@ executable and fingerprints its declared read roots before and after the child
 process to reject source mutation. TypeScript emit and typecheck retain the same
 real fingerprint requirement. There is no ambient-tool lookup or no-op fallback.
 
+Mutable input roots share one `buck2-fingerprint --batch --input-roots --tree ROOT ...`
+process and one native admission per snapshot. Each ordered output record is
+`INDEX DIGEST - -`. The per-root digest and outer path framing are unchanged,
+including file bytes, modes, directory entries, and literal symlink targets.
+The CLI emits no records until every root succeeds. Immutable Nix roots retain
+their per-root memoization. This removes process and admission overhead without
+replacing content checks with metadata or weakening the before/after guard.
+
 The generated native, compiled, and cache product inventories carry
 `buildCapabilities` and `linuxBuildCapabilities`, derived by
 `genie/buck2/product-capabilities.ts` from their rule kinds. The cache publisher

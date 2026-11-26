@@ -549,9 +549,24 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
 
 pub fn fingerprint_input_root(root: &Path) -> io::Result<String> {
     let _permit = crate::fingerprint_admission::acquire(None)?;
-    let mut hash = Sha256::new();
     let mut buffer = Box::new([0u8; 131072]);
-    visit_input(root, root, &mut hash, &mut *buffer)?;
+    hash_input_root(root, &mut *buffer)
+}
+
+/// Hash independent roots under one admission, reusing the file-read buffer.
+/// Each result is byte-for-byte identical to `fingerprint_input_root`.
+pub fn fingerprint_input_roots(roots: &[PathBuf]) -> io::Result<Vec<String>> {
+    let _permit = crate::fingerprint_admission::acquire(None)?;
+    let mut buffer = Box::new([0u8; 131072]);
+    roots
+        .iter()
+        .map(|root| hash_input_root(root, &mut *buffer))
+        .collect()
+}
+
+fn hash_input_root(root: &Path, buffer: &mut [u8]) -> io::Result<String> {
+    let mut hash = Sha256::new();
+    visit_input(root, root, &mut hash, buffer)?;
     Ok(hex(hash))
 }
 
