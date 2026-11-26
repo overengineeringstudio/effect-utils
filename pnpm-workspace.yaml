@@ -101,6 +101,7 @@ allowBuilds:
   node-pty: false
   sharp: false
   unix-dgram: false
+  cbor-extract: false
 
 minimumReleaseAgeExclude: ['@types/node']
 

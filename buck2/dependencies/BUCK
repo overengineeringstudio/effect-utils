@@ -31,12 +31,7 @@ pnpm_platform_gated_packages(
         "@opentui/core": "opentui-core-native",
     },
     families = {
-        "@cbor-extract/cbor-extract-darwin-arm64": ["@cbor-extract/cbor-extract-darwin-arm64"],
-        "@cbor-extract/cbor-extract-darwin-x64": ["@cbor-extract/cbor-extract-darwin-x64"],
-        "@cbor-extract/cbor-extract-linux-arm": ["@cbor-extract/cbor-extract-linux-arm"],
-        "@cbor-extract/cbor-extract-linux-arm64": ["@cbor-extract/cbor-extract-linux-arm64"],
-        "@cbor-extract/cbor-extract-linux-x64": ["@cbor-extract/cbor-extract-linux-x64"],
-        "@cbor-extract/cbor-extract-win32-x64": ["@cbor-extract/cbor-extract-win32-x64"],
+        "@cbor-extract": ["@cbor-extract/cbor-extract-darwin-arm64", "@cbor-extract/cbor-extract-darwin-x64", "@cbor-extract/cbor-extract-linux-arm", "@cbor-extract/cbor-extract-linux-arm64", "@cbor-extract/cbor-extract-linux-x64", "@cbor-extract/cbor-extract-win32-x64"],
         "@esbuild": ["@esbuild/aix-ppc64", "@esbuild/android-arm", "@esbuild/android-arm64", "@esbuild/android-x64", "@esbuild/darwin-arm64", "@esbuild/darwin-x64", "@esbuild/freebsd-arm64", "@esbuild/freebsd-x64", "@esbuild/linux-arm", "@esbuild/linux-arm64", "@esbuild/linux-ia32", "@esbuild/linux-loong64", "@esbuild/linux-mips64el", "@esbuild/linux-ppc64", "@esbuild/linux-riscv64", "@esbuild/linux-s390x", "@esbuild/linux-x64", "@esbuild/netbsd-arm64", "@esbuild/netbsd-x64", "@esbuild/openbsd-arm64", "@esbuild/openbsd-x64", "@esbuild/openharmony-arm64", "@esbuild/sunos-x64", "@esbuild/win32-arm64", "@esbuild/win32-ia32", "@esbuild/win32-x64"],
         "@img/sharp": ["@img/sharp-darwin-arm64", "@img/sharp-darwin-x64", "@img/sharp-libvips-darwin-arm64", "@img/sharp-libvips-darwin-x64", "@img/sharp-libvips-linux-arm", "@img/sharp-libvips-linux-arm64", "@img/sharp-libvips-linux-ppc64", "@img/sharp-libvips-linux-riscv64", "@img/sharp-libvips-linux-s390x", "@img/sharp-libvips-linux-x64", "@img/sharp-libvips-linuxmusl-arm64", "@img/sharp-libvips-linuxmusl-x64", "@img/sharp-linux-arm", "@img/sharp-linux-arm64", "@img/sharp-linux-ppc64", "@img/sharp-linux-riscv64", "@img/sharp-linux-s390x", "@img/sharp-linux-x64", "@img/sharp-linuxmusl-arm64", "@img/sharp-linuxmusl-x64", "@img/sharp-wasm32", "@img/sharp-win32-arm64", "@img/sharp-win32-ia32", "@img/sharp-win32-x64"],
         "@next/swc": ["@next/swc-darwin-arm64", "@next/swc-darwin-x64", "@next/swc-linux-arm64-gnu", "@next/swc-linux-arm64-musl", "@next/swc-linux-x64-gnu", "@next/swc-linux-x64-musl", "@next/swc-win32-arm64-msvc", "@next/swc-win32-x64-msvc"],

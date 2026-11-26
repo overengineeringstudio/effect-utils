@@ -3,6 +3,7 @@
   "dependencyGraphContract": {
     "allowBuilds": {
       "@myobie/pty": false,
+      "cbor-extract": false,
       "esbuild": false,
       "fsevents": false,
       "msgpackr-extract": false,
