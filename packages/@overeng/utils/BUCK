@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c1eba4497d7cf202155a269149710dc7a9b17605cf5fad27f6e8fb25ada7ba0f
+# Semantic fingerprint: sha256:c1bd5ee193e694ef9b61365b8c58c52d82a9e20d4edd7975375402bd96fc724c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -128,6 +128,10 @@ export_materialization_inputs([
     "src/node/playwright/tags.ts",
     "src/node/playwright/test.ts",
     "src/node/playwright/wait.ts",
+    "src/node/product-revs-cli.js",
+    "src/node/product-revs.build.test.ts",
+    "src/node/product-revs.d.ts",
+    "src/node/product-revs.js",
     "src/node/semaphore.contract.ts",
     "src/node/stylex/focus-order.ts",
     "src/node/stylex/focus-order.unit.test.ts",
@@ -284,6 +288,10 @@ package_view(
         "src/node/playwright/tags.ts": "src/node/playwright/tags.ts",
         "src/node/playwright/test.ts": "src/node/playwright/test.ts",
         "src/node/playwright/wait.ts": "src/node/playwright/wait.ts",
+        "src/node/product-revs-cli.js": "src/node/product-revs-cli.js",
+        "src/node/product-revs.build.test.ts": "src/node/product-revs.build.test.ts",
+        "src/node/product-revs.d.ts": "src/node/product-revs.d.ts",
+        "src/node/product-revs.js": "src/node/product-revs.js",
         "src/node/semaphore.contract.ts": "src/node/semaphore.contract.ts",
         "src/node/stylex/focus-order.ts": "src/node/stylex/focus-order.ts",
         "src/node/stylex/focus-order.unit.test.ts": "src/node/stylex/focus-order.unit.test.ts",
@@ -427,6 +435,10 @@ package_view(
         "src/node/playwright/tags.ts": "src/node/playwright/tags.ts",
         "src/node/playwright/test.ts": "src/node/playwright/test.ts",
         "src/node/playwright/wait.ts": "src/node/playwright/wait.ts",
+        "src/node/product-revs-cli.js": "src/node/product-revs-cli.js",
+        "src/node/product-revs.build.test.ts": "src/node/product-revs.build.test.ts",
+        "src/node/product-revs.d.ts": "src/node/product-revs.d.ts",
+        "src/node/product-revs.js": "src/node/product-revs.js",
         "src/node/semaphore.contract.ts": "src/node/semaphore.contract.ts",
         "src/node/stylex/focus-order.ts": "src/node/stylex/focus-order.ts",
         "src/node/stylex/focus-order.unit.test.ts": "src/node/stylex/focus-order.unit.test.ts",
@@ -569,6 +581,10 @@ package_view(
         "src/node/playwright/tags.ts": "src/node/playwright/tags.ts",
         "src/node/playwright/test.ts": "src/node/playwright/test.ts",
         "src/node/playwright/wait.ts": "src/node/playwright/wait.ts",
+        "src/node/product-revs-cli.js": "src/node/product-revs-cli.js",
+        "src/node/product-revs.build.test.ts": "src/node/product-revs.build.test.ts",
+        "src/node/product-revs.d.ts": "src/node/product-revs.d.ts",
+        "src/node/product-revs.js": "src/node/product-revs.js",
         "src/node/semaphore.contract.ts": "src/node/semaphore.contract.ts",
         "src/node/stylex/focus-order.ts": "src/node/stylex/focus-order.ts",
         "src/node/stylex/focus-order.unit.test.ts": "src/node/stylex/focus-order.unit.test.ts",
@@ -632,6 +648,7 @@ tsgo_emit(
     declaration_sources = {
         "src/build-identity-types.d.ts": "src/build-identity-types.d.ts",
         "src/node/cli-build-identity.d.ts": "src/node/cli-build-identity.d.ts",
+        "src/node/product-revs.d.ts": "src/node/product-revs.d.ts",
         "src/node/stylex/mod-types.d.ts": "src/node/stylex/mod-types.d.ts",
         "src/node/stylex/next-types.d.ts": "src/node/stylex/next-types.d.ts",
         "src/node/vite-build-identity-types.d.ts": "src/node/vite-build-identity-types.d.ts",
@@ -670,6 +687,7 @@ vitest_test(
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/vite-build-identity.build.test.ts",
     ],
     tools = {
@@ -695,6 +713,7 @@ vitest_collect(
         "src/node/otel-identity.test.ts",
         "src/node/otel-telemetry.test.ts",
         "src/node/watch.unit.test.ts",
+        "src/node/product-revs.build.test.ts",
         "src/node/vite-build-identity.build.test.ts",
     ],
     tools = {

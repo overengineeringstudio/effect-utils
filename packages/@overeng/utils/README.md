@@ -156,9 +156,47 @@ export default {
 The plugin exposes `{ buildIdentity, deploymentId }` through
 `virtual:build-identity` and emits the same canonical `CliBuildIdentity` in
 `build-identity.json`. Version formatting is shared with `node/cli-version`;
-the browser renders relative display time at runtime, while Nix metadata uses
-reproducible source time. Use `machineVersion` for `service.version` and structured
-diagnostics, not `displayVersion`.
+the browser renders relative display time at runtime, while the emitted
+metadata is timeless (no relative age is frozen at build time). Use
+`machineVersion` for `service.version` and structured diagnostics, not
+`displayVersion`.
+
+### Release builds from a committed product revision
+
+Non-Nix production builds (for example a static deployment built from a
+checkout) pass `productRev`, the committed closure-revision projection relative
+to Vite's root:
+
+```ts
+createBuildIdentityPlugin({
+  baseVersion: manifest.version,
+  buildStamp: '__CLI_BUILD_STAMP__',
+  productRev: '../../product-revs/my-app.json',
+})
+```
+
+`vite build` then embeds a `release` stamp: the projection's full revision and
+commit time, the build time as `buildTs`, and `dirty` when tracked closure
+files are modified or the checkout's closure content no longer matches the
+projection. `machineVersion` is `<version>+<rev7>` (`-dirty`). `vite serve`
+keeps the live local identity.
+
+Generate and gate the projection with the CLI (full Git history required):
+
+```sh
+node node_modules/@overeng/utils/src/node/product-revs-cli.js refresh \
+  --product my-app --manifest apps/my-app/package.json \
+  --output product-revs/my-app.json
+node node_modules/@overeng/utils/src/node/product-revs-cli.js check …same flags
+```
+
+The closure is the manifest's generated `$genie.workspaceClosureDirs` plus any
+`--input PATH`. `repos/<member>/…` paths resolve through each commit's
+`megarepo.lock`, so unrelated member repins keep the revision. The selected
+revision is the earliest reachable commit producing the current closure content;
+commit the refreshed projection separately as `refresh product revs`, outside
+every closure. See the
+[identity spec](../../../context/builds/01-identity/spec.md#shared-c-tooling).
 
 Nix builders replace the complete quoted stamp placeholder with a JSON string
 literal before Vite runs. `effect-utils.lib.cliBuildStamp { inherit pkgs; }`

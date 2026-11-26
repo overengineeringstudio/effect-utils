@@ -5725,6 +5725,50 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+      - name: Notice unconfigured occurrence reader
+        if: ${{ (github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && !(vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != '') }}
+        run: 'echo "::notice::Daily occurrence reader skipped: configure TS_OCCURRENCE_READ_CLIENT_ID and TS_OCCURRENCE_READ_AUDIENCE repository variables."'
+      - # v4.4.0
+        name: Connect dedicated occurrence reader
+        id: occurrence-reader
+        if: ${{ (github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) && (vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != '') }}
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
+        with:
+          oauth-client-id: ${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}
+          audience: ${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}
+          tags: 'tag:ci-buck2-occurrence-read'
+          args: --accept-dns=true
+      - name: Read previous UTC day occurrences
+        if: ${{ steps.occurrence-reader.outcome == 'success' }}
+        shell: bash
+        env:
+          BUCK2_OCCURRENCE_READ_URL: ${{ vars.BUCK2_OCCURRENCE_READ_URL }}
+          BUCK2_OCCURRENCE_EXPECTED_HOSTS: ${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          : "${BUCK2_OCCURRENCE_READ_URL:?configure occurrence reader URL}"
+          : "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?configure space-separated expected hosts}"
+          until=$(date -u +%Y-%m-%dT00:00:00Z)
+          end=$(date -u -d "$until" +%s)
+          start=$((end - 86400))
+          since=$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)
+          proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof"
+          mkdir -p "$proof"
+          curl --fail --silent --show-error --max-time 120 --max-filesize 67108864 "$BUCK2_OCCURRENCE_READ_URL?start=${start}000000000&end=${end}000000000&limit=5000&direction=forward" --output "$proof/loki.json"
+          export OCCURRENCE_SINCE="$since" OCCURRENCE_UNTIL="$until" OCCURRENCE_PROOF="$proof"
+          "${DEVENV_BIN:?}" shell -- bash -euo pipefail -c '
+            cd "${GITHUB_WORKSPACE:?}"
+            args=()
+            read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"
+            for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done
+            bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-response "$OCCURRENCE_PROOF/loki.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"
+          '
+          jq -r '"## Daily occurrence evidence\nRecords: \(.records | length)\nEvidence gaps: \(.evidenceGaps | length)\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"
+      - name: Disconnect occurrence reader before evidence writer
+        id: occurrence-disconnect
+        if: ${{ (always() && steps.occurrence-reader.outcome != 'skipped') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: sudo tailscale logout
       - name: Join previous UTC day cache evidence
         shell: bash
         env:
@@ -5742,7 +5786,7 @@ jobs:
             bun genie/ci-scripts/buck2-cache-join-cli.ts --repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending" --proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof"
           '
       - # v4.4.0
-        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always() && steps.occurrence-disconnect.outcome != 'failure' && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:

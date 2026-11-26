@@ -679,7 +679,9 @@ describe('native daemon admission diagnostics', () => {
     for (const failure of ['exit', 'signal', 'timeout'] as const) {
       // A kill/audit failure may follow two successful status probes. The test
       // watchdog must cover all three command deadlines and bounded cleanup.
-      const deadlineMs = failure === 'timeout' ? 1000 : 30000
+      // A full Mac quick exhausted 1s on a successful status probe before kill.
+      // Leave startup room while exec sleep 30 still forces the intended timeout.
+      const deadlineMs = failure === 'timeout' ? 5000 : 30000
 
       const reportFailure = async () => {
         const root = fixture()
@@ -941,6 +943,9 @@ await phase('result-written');`,
         expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
       diagnostics.assertionsComplete = true
     },
+    // Full-DAG macOS: 24/24 <=413ms, but earlier starts hit 5s at load14–17/10CPUs.
+    // Bound real collector/native/decoder startup at 4× that censored budget; #2797 stays open.
+    20_000,
   )
 
   it('does not register a foreign project root or non-default isolation', () => {
