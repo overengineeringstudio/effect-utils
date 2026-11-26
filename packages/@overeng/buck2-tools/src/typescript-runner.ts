@@ -350,8 +350,9 @@ export const runFingerprintTool = ({
 }
 
 /**
- * Hashes each declared root using the pinned Rust CLI. The outer framing preserves the
- * absolute root identity, while the CLI commits to entry types, modes, links and file bytes.
+ * Hashes declared roots with one Rust process and admission for the mutable batch.
+ * Immutable Nix roots retain their per-root memoization. The outer framing preserves
+ * absolute root identity and the CLI commits to entry types, modes, links and file bytes.
  */
 export const hashDeclaredInputRoots = async ({
   roots,
@@ -362,19 +363,43 @@ export const hashDeclaredInputRoots = async ({
 }): Promise<string> => {
   const executable = requireFingerprintTool(fingerprintTool)
   const orderedRoots = canonicalRoots(roots)
-  const digests = await Promise.all(
-    orderedRoots.map(async (root) => {
-      const result = await runFingerprintTool({ tool: executable, args: [root, '--input-roots'] })
-      return (
-        /^digest ([a-f0-9]{64})\n$/u.exec(result)?.[1] ??
-        fail(`invalid fingerprint tool output for ${root}: ${result}`)
-      )
-    }),
+  const mutableRoots = orderedRoots.filter(
+    (root) => /^\/nix\/store\/[^/]+(?:\/|$)/u.test(root) === false,
   )
+  const digests = new Map<string, string>()
+  const hashMutableRoots = async () => {
+    if (mutableRoots.length === 0) return
+    const result = await runFingerprintTool({
+      tool: executable,
+      args: ['--batch', '--input-roots', ...mutableRoots.flatMap((root) => ['--tree', root])],
+    })
+    const lines = result.split('\n')
+    if (lines.pop() !== '' || lines.length !== mutableRoots.length)
+      fail(`invalid fingerprint batch output: ${result}`)
+    mutableRoots.forEach((root, index) => {
+      const match = /^(\d+) ([a-f0-9]{64}) - -$/u.exec(lines[index] ?? '')
+      if (match?.[1] !== String(index))
+        fail(`invalid fingerprint tool output for ${root}: ${result}`)
+      const digest = match?.[2] ?? fail(`missing fingerprint digest for ${root}`)
+      digests.set(root, digest)
+    })
+  }
+  await Promise.all([
+    ...orderedRoots
+      .filter((root) => /^\/nix\/store\/[^/]+(?:\/|$)/u.test(root))
+      .map(async (root) => {
+        const result = await runFingerprintTool({ tool: executable, args: [root, '--input-roots'] })
+        const digest =
+          /^digest ([a-f0-9]{64})\n$/u.exec(result)?.[1] ??
+          fail(`invalid fingerprint tool output for ${root}: ${result}`)
+        digests.set(root, digest)
+      }),
+    hashMutableRoots(),
+  ])
   const hash = createHash('sha256')
-  orderedRoots.forEach((root, index) => {
+  orderedRoots.forEach((root) => {
     updateFramedText({ hash, value: root })
-    updateFramedText({ hash, value: digests[index] ?? fail(`missing digest for ${root}`) })
+    updateFramedText({ hash, value: digests.get(root) ?? fail(`missing digest for ${root}`) })
   })
   return hash.digest('hex')
 }

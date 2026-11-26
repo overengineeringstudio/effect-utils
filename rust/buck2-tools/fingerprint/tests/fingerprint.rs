@@ -95,6 +95,57 @@ fn canonical_tree_digest_remains_mode_independent() {
 }
 
 #[test]
+fn cli_batches_input_roots_without_changing_their_digests() {
+    let scratch = tempfile::tempdir().unwrap();
+    let tree = scratch.path().join("tree");
+    let file = scratch.path().join("file");
+    fs::create_dir(&tree).unwrap();
+    fs::write(&file, b"original").unwrap();
+    symlink("../file", tree.join("link")).unwrap();
+    let roots = [&file, &tree, &file];
+    let expected: String = roots
+        .iter()
+        .enumerate()
+        .map(|(index, root)| format!("{index} {} - -\n", fingerprint_input_root(root).unwrap()))
+        .collect();
+    let run = || {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buck2-fingerprint"));
+        command.args(["--batch", "--input-roots"]);
+        for root in roots {
+            command.arg("--tree").arg(root);
+        }
+        command.output().unwrap()
+    };
+    let output = run();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+
+    fs::write(&file, b"modified").unwrap();
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o755)).unwrap();
+    let changed = run();
+    assert!(changed.status.success(), "{changed:?}");
+    assert_ne!(String::from_utf8(changed.stdout).unwrap(), expected);
+}
+
+#[test]
+fn cli_batch_rejects_empty_and_missing_roots_without_partial_output() {
+    let scratch = tempfile::tempdir().unwrap();
+    for roots in [
+        vec![],
+        vec![scratch.path().to_path_buf(), scratch.path().join("missing")],
+    ] {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_buck2-fingerprint"));
+        command.args(["--batch", "--input-roots"]);
+        for root in roots {
+            command.arg("--tree").arg(root);
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
 fn cli_isolated_admission_preserves_the_tree_digest() {
     let scratch = tempfile::tempdir().unwrap();
     let tree = scratch.path().join("tree");

@@ -1,9 +1,12 @@
-use buck2_fingerprint::{fingerprint, fingerprint_input_root, LinkOwner};
+use buck2_fingerprint::{fingerprint, fingerprint_input_root, fingerprint_input_roots, LinkOwner};
 use std::path::PathBuf;
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
-    let tree = PathBuf::from(args.next().ok_or("usage: buck2-fingerprint TREE [--dereference] [--backing-root PATH] [--link-owner SOURCE=IDENTITY] [--admission-directory PATH (isolated fixtures only)]" )?);
+    let first = args.next().ok_or("usage: buck2-fingerprint TREE [--input-roots | --dereference] [--backing-root PATH] [--link-owner SOURCE=IDENTITY] [--admission-directory PATH (isolated fixtures only)] | --batch --input-roots --tree ROOT [--tree ROOT ...]")?;
+    let batch = first == "--batch";
+    let tree = PathBuf::from(first);
+    let mut trees = Vec::new();
     let mut dereference = false;
     let mut input_roots = false;
     let mut backing = Vec::new();
@@ -11,6 +14,9 @@ fn run() -> Result<(), String> {
     let mut admission_directory = None;
     while let Some(flag) = args.next() {
         match flag.as_str() {
+            "--tree" if batch => {
+                trees.push(PathBuf::from(args.next().ok_or("missing --tree value")?));
+            }
             "--dereference" => dereference = true,
             "--input-roots" => input_roots = true,
             "--admission-directory" => {
@@ -40,6 +46,12 @@ fn run() -> Result<(), String> {
             _ => return Err(format!("unexpected fingerprint argument: {flag}")),
         }
     }
+    if batch && trees.is_empty() {
+        return Err("--batch requires at least one --tree ROOT".into());
+    }
+    if batch && !input_roots {
+        return Err("--batch requires --input-roots".into());
+    }
     if input_roots {
         if dereference || !backing.is_empty() || !owners.is_empty() || admission_directory.is_some()
         {
@@ -48,10 +60,20 @@ fn run() -> Result<(), String> {
                     .into(),
             );
         }
-        println!(
-            "digest {}",
-            fingerprint_input_root(&tree).map_err(|e| e.to_string())?
-        );
+        if batch {
+            for (index, digest) in fingerprint_input_roots(&trees)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .enumerate()
+            {
+                println!("{index} {digest} - -");
+            }
+        } else {
+            println!(
+                "digest {}",
+                fingerprint_input_root(&tree).map_err(|e| e.to_string())?
+            );
+        }
         return Ok(());
     }
     let result = fingerprint(
