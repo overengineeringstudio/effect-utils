@@ -1135,6 +1135,16 @@ at 412.33 ms, but earlier full-DAG cases exhausted 5 seconds at load 14–17 on 
 (#2797). This bounded startup allowance preserves every assertion and cleanup;
 the rare native-startup cause remains tracked in #2797, not declared resolved.
 
+The remaining direct-posture process cases (four evidence exit/signal combinations,
+the TLS probe subprocess and shell warm-launch identity) use the same 20-second
+outer budget. Full Linux quicks exhausted the former 5-second base (6.77 seconds
+with load scaling). A CPU-load approximation on 20 CPUs ran each case 20 times:
+120/120 passed, with a maximum of 8,830.19 ms at one-minute load 21.96–31.23.
+The 20-second allowance is 2.26× that observed maximum, keeping failures bounded.
+The empirical 20-sample p99 is only the sample maximum, not a confidence bound;
+CPU load does not reproduce all full-DAG filesystem/I/O work or resolve #2797.
+Assertions, cleanup and production connect/response/command deadlines are unchanged.
+
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown
 awaits the complete in-flight phase (including assertions) before deleting the fixture
