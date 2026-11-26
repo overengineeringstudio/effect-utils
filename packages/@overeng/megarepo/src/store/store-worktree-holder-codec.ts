@@ -2,12 +2,15 @@ import { createHash } from 'node:crypto'
 
 import { Effect, Schema } from 'effect'
 
+/** Names the caller-qualified immutable Rust client path and expected producer/policy.
+ * This type neither validates the executable nor grants authentication or freshness. */
 export type HolderEvidenceClientConfig = {
   readonly path: string
   readonly producerId: string
   readonly policyId: string
 }
 
+/** Fixed public failure for unavailable, malformed or request-mismatched holder evidence. */
 export class HolderEvidenceError extends Schema.TaggedError<HolderEvidenceError>()(
   'HolderEvidenceError',
   {},
@@ -176,7 +179,7 @@ export const decodeWorktreeHolderEvidence = (input: {
       response.policyId !== input.policyId ||
       new Set(input.paths).size !== input.paths.length ||
       response.roots.length !== input.paths.length ||
-      response.roots.some((root, index) => root.path !== input.paths[index]) ||
+      response.roots.some((root, index) => root.path !== input.paths[index]) === true ||
       response.scope.requestedPathsDigest !== digest.digest('hex')
     ) {
       return yield* new HolderEvidenceError({})
