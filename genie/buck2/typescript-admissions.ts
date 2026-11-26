@@ -5,6 +5,7 @@ import { buck2TypeScriptAdmission as aiGatewayConformanceAdmission } from '../..
 import { buck2TypeScriptAdmission as aiGatewayEdgeAdmission } from '../../packages/@overeng/ai-gateway-edge/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as alchemyGitHubAdmission } from '../../packages/@overeng/alchemy-github/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as changelogAdmission } from '../../packages/@overeng/changelog/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as dataGraphAdmission } from '../../packages/@overeng/data-graph/BUCK.genie.ts'
@@ -103,6 +104,7 @@ export const buck2TypeScriptAdmissions = {
   aiGatewayEdge: aiGatewayEdgeAdmission,
   alchemyGitHub: alchemyGitHubAdmission,
   buck2Tools: buck2ToolsAdmission,
+  changelog: changelogAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
   dataGraph: dataGraphAdmission,
