@@ -399,6 +399,15 @@ agent activations wrap their builds in `mr store lease --owner-path <worktree>`,
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
 
+### Native holder evidence wire contract
+
+`store-worktree-holder-codec.ts` exports the native Rust client's complete typed
+version-1 wire schema. Integer identities and boot times stay lossless decimal
+strings; unknown/incomplete evidence and retained-byte references remain explicit.
+This unbound schema is not an arbitrary JSON authenticator, request-bound decoder
+or live census. Schema validation grants neither freshness, absence nor removal
+authority; callers must separately bind the nonce, ordered roots, producer and policy.
+
 ### Durable pool ownership primitives
 
 Persistent pool ownership uses version-2 store deletion barriers, which do not expire

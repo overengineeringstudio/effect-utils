@@ -102,6 +102,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-rehome.basic.integration.test.ts',
         'src/store/store-rehome.integration.test.ts',
         'src/store/store-workspace-activity.integration.test.ts',
+        'src/store/store-worktree-holder-codec.integration.test.ts',
         'src/store/store-worktree-remove.integration.test.ts',
         'src/test-utils/setup.integration.test.ts',
         'src/test-utils/store-setup.integration.test.ts',
