@@ -46,3 +46,72 @@ fn actual_self_generation_and_read_only_pins() {
     assert!(linux::boot_time_ns().unwrap() >= clock);
     assert!(process::process(pid).unwrap().same_identity(&before));
 }
+
+#[test]
+#[ignore = "requires the isolated Linux VM with io_uring enabled"]
+fn actual_nonpath_eventfd_and_registered_io_uring_veto() {
+    use std::io::Write;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::raw::{c_int, c_long};
+    use std::time::{Duration, Instant};
+
+    unsafe extern "C" {
+        fn eventfd(initial: u32, flags: c_int) -> c_int;
+        fn syscall(number: c_long, ...) -> c_long;
+    }
+
+    // SAFETY: eventfd takes scalar arguments and transfers a fresh descriptor.
+    let raw_event = unsafe { eventfd(0, 0x80000) };
+    assert!(raw_event >= 0, "eventfd: {}", std::io::Error::last_os_error());
+    // SAFETY: the successful syscall transferred this descriptor exactly once.
+    let event = unsafe { OwnedFd::from_raw_fd(raw_event) };
+    let event_pin = scopes::Held::pin(
+        format!("/proc/self/fd/{}", event.as_raw_fd()), Instant::now() + Duration::from_secs(10),
+    ).unwrap();
+    assert_eq!(linux::filesystem_type(&event_pin.file).unwrap(), 0x09041934);
+    assert_eq!(std::fs::read_link(scopes::scope_path(&event_pin.file)).unwrap(),
+        std::path::Path::new("anon_inode:[eventfd]"));
+    scopes::qualify_object(&event_pin).unwrap();
+
+    struct Candidate(std::path::PathBuf);
+    impl Drop for Candidate {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0.join("candidate"));
+            let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+    let root = std::env::temp_dir().join(format!("holder-kernel-object-{}-{}",
+        std::process::id(), linux::boot_time_ns().unwrap()));
+    std::fs::create_dir(&root).unwrap();
+    let fixture = Candidate(root);
+    let mut candidate = std::fs::OpenOptions::new().read(true).write(true).create_new(true)
+        .open(fixture.0.join("candidate")).unwrap();
+    candidate.write_all(b"registered candidate payload\n").unwrap();
+
+    // The stable Linux io_uring_params UAPI is 120 zero-initialized bytes;
+    // only the kernel reads/writes it, and no submission/completion rings are mapped.
+    let mut parameters = [0u64; 15];
+    // SAFETY: both supported architectures use syscall425; the writable buffer
+    // is the full aligned UAPI size and remains live for this synchronous call.
+    let raw_ring = unsafe { syscall(425, 2u32, parameters.as_mut_ptr()) };
+    assert!(raw_ring >= 0, "io_uring_setup: {}", std::io::Error::last_os_error());
+    // SAFETY: the successful setup transferred this fresh descriptor once.
+    let ring = unsafe { OwnedFd::from_raw_fd(c_int::try_from(raw_ring).unwrap()) };
+    let registered = [candidate.as_raw_fd()];
+    // SAFETY: syscall427/IORING_REGISTER_FILES(2) receives this live ring,
+    // one live regular candidate FD, and the matching one-element array length.
+    let registration = unsafe { syscall(427, ring.as_raw_fd(), 2u32, registered.as_ptr(), 1u32) };
+    assert_eq!(registration, 0, "io_uring_register: {}", std::io::Error::last_os_error());
+    // Only the ring now retains the candidate's file reference; the veto must
+    // not depend on finding that candidate as an ordinary process descriptor.
+    drop(candidate);
+    let ring_pin = scopes::Held::pin(
+        format!("/proc/self/fd/{}", ring.as_raw_fd()), Instant::now() + Duration::from_secs(10),
+    ).unwrap();
+    assert_eq!(linux::filesystem_type(&ring_pin.file).unwrap(), 0x09041934);
+    assert_eq!(std::fs::read_link(scopes::scope_path(&ring_pin.file)).unwrap(),
+        std::path::Path::new("anon_inode:[io_uring]"));
+    let error = scopes::qualify_object(&ring_pin).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Other);
+    assert_eq!(error.to_string(), "unsupported path-bearing kernel object");
+}

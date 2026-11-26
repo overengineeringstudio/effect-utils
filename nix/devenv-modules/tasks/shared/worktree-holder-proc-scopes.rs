@@ -13,6 +13,135 @@ use super::process::Process;
 const TASK_LIMIT: usize = 262144;
 const OBJECT_LIMIT: usize = 1048576;
 
+/// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnonymousKernelObject {
+    BpfMap, BpfProgram, BpfLink, Btf, BpfStats, EventFd, TimerFd, SignalFd, Epoll, Inotify,
+    PidFd, UserfaultFd, PerfEvent, IoUring, Fanotify, Unrecognized,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum KernelObjectPathClass { NonPathKernelObject, PathBearingOrUnknown }
+
+impl AnonymousKernelObject {
+    fn path_class(self) -> KernelObjectPathClass {
+        match self {
+            Self::BpfMap | Self::BpfProgram | Self::BpfLink | Self::Btf | Self::BpfStats | Self::EventFd
+            | Self::TimerFd | Self::SignalFd | Self::Epoll | Self::Inotify
+            | Self::PidFd | Self::UserfaultFd | Self::PerfEvent =>
+                KernelObjectPathClass::NonPathKernelObject,
+            Self::IoUring | Self::Fanotify | Self::Unrecognized =>
+                KernelObjectPathClass::PathBearingOrUnknown,
+        }
+    }
+}
+
+fn anonymous_kernel_object(name: &Path) -> AnonymousKernelObject {
+    match name.to_str() {
+        Some("anon_inode:bpf-map") => AnonymousKernelObject::BpfMap,
+        Some("anon_inode:bpf-prog") => AnonymousKernelObject::BpfProgram,
+        Some("anon_inode:bpf-link" | "anon_inode:bpf_link") => AnonymousKernelObject::BpfLink,
+        Some("anon_inode:btf") => AnonymousKernelObject::Btf,
+        Some("anon_inode:bpf-stats") => AnonymousKernelObject::BpfStats,
+        Some("anon_inode:[eventfd]") => AnonymousKernelObject::EventFd,
+        Some("anon_inode:[timerfd]") => AnonymousKernelObject::TimerFd,
+        Some("anon_inode:[signalfd]") => AnonymousKernelObject::SignalFd,
+        Some("anon_inode:[eventpoll]") => AnonymousKernelObject::Epoll,
+        Some("anon_inode:inotify") => AnonymousKernelObject::Inotify,
+        Some("anon_inode:[pidfd]" | "anon_inode:pidfd") => AnonymousKernelObject::PidFd,
+        Some("anon_inode:[userfaultfd]" | "anon_inode:userfaultfd") => AnonymousKernelObject::UserfaultFd,
+        Some("anon_inode:[perf_event]") => AnonymousKernelObject::PerfEvent,
+        Some("anon_inode:[io_uring]") => AnonymousKernelObject::IoUring,
+        Some("anon_inode:[fanotify]" | "anon_inode:fanotify") => AnonymousKernelObject::Fanotify,
+        _ => AnonymousKernelObject::Unrecognized,
+    }
+}
+
+#[cfg(test)]
+mod anonymous_object_tests {
+    #[test]
+    fn anonymous_kind_is_closed_and_typed() {
+        use super::{AnonymousKernelObject as Object, KernelObjectPathClass as Class};
+        for (name, object) in [
+            ("anon_inode:bpf-map", Object::BpfMap),
+            ("anon_inode:bpf-prog", Object::BpfProgram),
+            ("anon_inode:bpf-link", Object::BpfLink),
+            ("anon_inode:bpf_link", Object::BpfLink),
+            ("anon_inode:btf", Object::Btf),
+            ("anon_inode:bpf-stats", Object::BpfStats),
+            ("anon_inode:[eventfd]", Object::EventFd),
+            ("anon_inode:[timerfd]", Object::TimerFd),
+            ("anon_inode:[signalfd]", Object::SignalFd),
+            ("anon_inode:[eventpoll]", Object::Epoll),
+            ("anon_inode:inotify", Object::Inotify),
+            ("anon_inode:[pidfd]", Object::PidFd),
+            ("anon_inode:pidfd", Object::PidFd),
+            ("anon_inode:[userfaultfd]", Object::UserfaultFd),
+            ("anon_inode:userfaultfd", Object::UserfaultFd),
+            ("anon_inode:[perf_event]", Object::PerfEvent),
+        ] {
+            let actual = super::anonymous_kernel_object(std::path::Path::new(name));
+            assert_eq!(actual, object);
+            assert_eq!(actual.path_class(), Class::NonPathKernelObject);
+        }
+        for name in [
+            "anon_inode:[io_uring]", "anon_inode:[fanotify]", "anon_inode:fanotify",
+            "anon_inode:bpf-map-unknown", "anon_inode:bpf-prog/child",
+            "anon_inode:[btf]", "anon_inode:btf-unknown", "anon_inode:btf/child",
+            "anon_inode:[bpf_link]", "anon_inode:bpf_link-unknown", "anon_inode:bpf_link/child",
+            "anon_inode:[bpf-stats]", "anon_inode:bpf-stats-unknown", "anon_inode:bpf-stats/child",
+            "/untrusted/proc-link-target",
+        ] {
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(name)).path_class(),
+                Class::PathBearingOrUnknown);
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let non_utf8 = std::ffi::OsStr::from_bytes(b"anon_inode:bpf-map\xff");
+        assert_eq!(super::anonymous_kernel_object(std::path::Path::new(non_utf8)), Object::Unrecognized);
+    }
+
+    #[test]
+    fn linux_6_18_62_unapproved_emitter_inventory_stays_unknown() {
+        // Reviewed inventory, not an anonymous-filesystem admission rule.
+        use super::KernelObjectPathClass::PathBearingOrUnknown;
+        for suffix in [
+            "kvm-htab", "kvm-spapr-tce", "[papr-hvpipe]", "[papr-platform-dump]",
+            "[papr-indices]", "[papr-physical-attestation]", "[papr-vpd]",
+            "binder_alloc_kunit", "[vtpms]", "sync_file", "gpio-linehandle",
+            "gpio-line", "gpio-event", "drm", "syncobj_file", "kfd_smi_ev",
+            "[i915_perf]", "i915.gem", "[xe_eu_stall]", "[xe_oa]",
+            "mshv_vp", "mshv_partition", "iio:buffer", "iio:event",
+            "[infinibandevent]", "[devx_async_cmd]", "[devx_async_event]",
+            "[iommufd-pgfault]", "[iommufd-viommu-event]", "[iommufd_test_staccess]",
+            "request", "ntsync", "tee_shm", "[vduse-domain]", "[vfio-device]",
+            "hisi_acc_vf_mig", "mlx5vf_mig", "pds_vfio_lm", "qat_vf_mig",
+            "virtiovf_mig", "ne-vm", "[fscontext]", "[cachefiles]", "[fanotify]",
+            "[io_uring]", "[io_uring_mock]", "seccomp notify", "bpf_iter",
+            "mtty_mig", "[landlock-ruleset]", "[kvm-gmem]", "kvm-vm-stats", "kvm-vm",
+            "kvm-vfio", "kvm-arm-vgic-its", "kvm-arm-vgic-v2", "kvm-arm-vgic-v3",
+            "kvm-loongarch-eiointc", "kvm-loongarch-ipi", "kvm-loongarch-pch-pic",
+            "kvm-xics", "kvm-xive", "kvm-xive-native", "kvm-mpic", "kvm-riscv-aia",
+            "kvm-flic", "future-unknown",
+        ] {
+            let name = format!("anon_inode:{suffix}");
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                PathBearingOrUnknown, "{suffix}");
+        }
+        for id in 0..128 {
+            let name = format!("anon_inode:snd-utimer{id}");
+            assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                PathBearingOrUnknown);
+        }
+        for id in [0, 1, 127, i32::MAX] {
+            for prefix in ["kvm-vcpu:", "kvm-vcpu-stats:"] {
+                let name = format!("anon_inode:{prefix}{id}");
+                assert_eq!(super::anonymous_kernel_object(std::path::Path::new(&name)).path_class(),
+                    PathBearingOrUnknown);
+            }
+        }
+    }
+}
+
 pub struct ProcessScope {
     pub identity: Process,
     pidfd: OwnedFd,
@@ -169,8 +298,8 @@ impl Held {
         Ok(())
     }
 }
-/// These are event/byte objects, not a blanket pseudo-filesystem exemption.
-/// In particular io_uring, pidfds, fanotify and BPF remain unqualified.
+/// Exact non-path object classes do not grant access to a candidate payload.
+/// io_uring, fanotify and unrecognized anonymous objects remain unqualified.
 pub fn qualify_object(held: &Held) -> io::Result<()> {
     let metadata = held.file.metadata()?;
     let filesystem = linux::filesystem_type(&held.file)?;
@@ -182,9 +311,9 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     }
     if filesystem == 0x09041934 {
         let name = fs::read_link(scope_path(&held.file))?;
-        if !matches!(name.to_str(), Some("anon_inode:[eventfd]" | "anon_inode:[eventpoll]"
-            | "anon_inode:inotify" | "anon_inode:[timerfd]" | "anon_inode:[signalfd]"))
-        { return Err(io::Error::other("unsupported path-bearing kernel object")); }
+        if anonymous_kernel_object(&name).path_class() == KernelObjectPathClass::PathBearingOrUnknown {
+            return Err(io::Error::other("unsupported path-bearing kernel object"));
+        }
         return Ok(());
     }
     if metadata.file_type().is_char_device()
