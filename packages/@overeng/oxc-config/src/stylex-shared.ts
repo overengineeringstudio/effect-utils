@@ -36,12 +36,15 @@ export type StylexImports = {
   readonly namespaces: Set<string>
   /** Locals bound to `create` directly, e.g. `import { create } from '@stylexjs/stylex'`. */
   readonly creates: Set<string>
+  /** Locals bound to `when` directly, e.g. `import { when as observed } from '@stylexjs/stylex'`. */
+  readonly whens: Set<string>
 }
 
 /** Fresh, empty import record for one linted file. */
 export const createStylexImports = (): StylexImports => ({
   namespaces: new Set<string>(),
   creates: new Set<string>(),
+  whens: new Set<string>(),
 })
 
 /**
@@ -61,6 +64,7 @@ export const trackStylexImport = ({
 }): void => {
   const source = node.source.value
   if (source !== '@stylexjs/stylex' && source !== 'stylex') return
+  if (node.importKind === 'type') return
 
   for (const specifier of node.specifiers) {
     if (
@@ -75,6 +79,14 @@ export const trackStylexImport = ({
       specifier.imported.name === 'create'
     ) {
       imports.creates.add(specifier.local.name)
+    }
+    if (
+      specifier.type === 'ImportSpecifier' &&
+      specifier.importKind !== 'type' &&
+      specifier.imported.type === 'Identifier' &&
+      specifier.imported.name === 'when'
+    ) {
+      imports.whens.add(specifier.local.name)
     }
   }
 }

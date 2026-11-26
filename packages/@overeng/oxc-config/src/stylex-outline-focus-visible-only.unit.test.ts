@@ -102,7 +102,7 @@ ruleTester.run('stylex-outline-focus-visible-only: competing states are defects'
       code: `${IMPORT}const styles = stylex.create({ button: { outline: { default: 'none', '@media (hover: hover)': { ':hover': '2px solid' } } } })`,
       errors: [{ messageId: 'outlineOutsideFocusVisible' }],
     },
-    // An observed `when.*` condition is a state and never focus-visible.
+    // An observed non-focus state still competes with the focus ring.
     {
       code: `${IMPORT}const styles = stylex.create({ button: { outline: { default: 'none', [stylex.when.ancestor(':hover')]: '2px solid' } } })`,
       errors: [{ messageId: 'outlineOutsideFocusVisible' }],
@@ -110,6 +110,138 @@ ruleTester.run('stylex-outline-focus-visible-only: competing states are defects'
     // Dynamic styles are not an escape hatch.
     {
       code: `${IMPORT}const styles = stylex.create({ button: (w) => ({ outline: { default: 'none', '[data-selected]': w } }) })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    },
+  ],
+})
+
+ruleTester.run('stylex-outline-focus-visible-only: observed sibling focus requires proof', rule, {
+  valid: [
+    // The hidden input's focus-visible state draws the ring on its following label.
+    {
+      code: `${IMPORT}const styles = stylex.create({
+        label: {
+          outline: 'none',
+          outlineColor: { default: null, [stylex.when.siblingBefore(':focus-visible')]: 'blue' },
+          outlineOffset: { default: 0, [stylex.when.siblingBefore(':focus-visible')]: 2 },
+        },
+      })`,
+    },
+    // Both nesting orders preserve the focus-visible classification.
+    {
+      code: `${IMPORT}const styles = stylex.create({
+        label: { [stylex.when.siblingBefore(':focus-visible')]: { outline: '2px solid' } },
+      })`,
+    },
+    // Namespace and named imports use the same import tracker as create.
+    {
+      code: `import * as sx from '@stylexjs/stylex'
+        const styles = sx.create({ label: {
+          [sx.when.siblingBefore(':focus-visible')]: { outlineOffset: 2 },
+        } })`,
+    },
+    {
+      code: `import sx from '@stylexjs/stylex'
+        const styles = sx.create({ label: {
+          [sx.when.siblingBefore(':focus-visible')]: { outlineColor: 'blue' },
+        } })`,
+    },
+    {
+      code: `import { create as makeStyles, when as observed } from '@stylexjs/stylex'
+        const styles = makeStyles({ label: {
+          outlineOffset: { [observed.siblingBefore(':focus-visible')]: 2 },
+        } })`,
+    },
+    {
+      code: `import { create, when } from 'stylex'
+        const styles = create({ label: {
+          [when.siblingBefore(':focus-visible')]: { outlineColor: 'blue' },
+        } })`,
+    },
+    // Existing default, media and pseudo-element exemptions remain available.
+    {
+      code: `${IMPORT}const styles = stylex.create({ label: {
+        outlineColor: { default: null, '@media (forced-colors: active)': {
+          [stylex.when.siblingBefore(':focus-visible')]: 'Highlight',
+        } },
+        '::before': { outline: '1px solid' },
+      } })`,
+    },
+  ],
+  invalid: [
+    // Exact literal matching proves positive focus; it must not infer focus
+    // from substrings, negation, mixed selector lists or unresolved expressions.
+    ...[
+      "stylex.when.siblingBefore(':checked')",
+      "stylex.when.siblingBefore(':hover')",
+      "stylex.when.siblingBefore(':focus')",
+      "stylex.when.siblingBefore(':not(:focus-visible)')",
+      "stylex.when.siblingBefore(':focus-visible, :hover')",
+      "stylex.when.siblingBefore(':is(:focus-visible, :checked)')",
+      "stylex.when.siblingBefore('[data-not-focus-visible]')",
+      'stylex.when.siblingBefore(predicate)',
+      'stylex.when.siblingBefore(`:focus-visible`)',
+      "stylex.when.siblingBefore(':focus-visible', extra)",
+      'stylex.when.siblingBefore(...predicates)',
+      "stylex.when[method](':focus-visible')",
+      "stylex[api].siblingBefore(':focus-visible')",
+      "stylex.when.unknown(':focus-visible')",
+      "stylex.when.siblingAfter(':focus-visible')",
+      "stylex.when.ancestor(':focus-visible')",
+      "other.when.siblingBefore(':focus-visible')",
+      "observed.siblingBefore(':focus-visible')",
+      "unknown(':focus-visible')",
+      "stylex.when.siblingBefore?.(':focus-visible')",
+    ].map((condition) => ({
+      code: `${IMPORT}const styles = stylex.create({ label: {
+        outlineColor: { [${condition}]: 'blue' },
+      } })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    })),
+    // The conventional bare stylex.create fallback is not proof of an imported when API.
+    {
+      code: `const styles = stylex.create({ label: {
+        [stylex.when.siblingBefore(':focus-visible')]: { outlineOffset: 2 },
+      } })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    },
+    // Token modules do not provide the runtime observed-state API.
+    {
+      code: `import * as tokens from './tokens.stylex'
+        ${IMPORT}const styles = stylex.create({ label: {
+          [tokens.when.siblingBefore(':focus-visible')]: { outlineOffset: 2 },
+        } })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    },
+    {
+      code: `import { when as observed } from './other'
+        ${IMPORT}const styles = stylex.create({ label: {
+          [observed.siblingBefore(':focus-visible')]: { outlineOffset: 2 },
+        } })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    },
+    // Genuine observed focus must not erase competing states in either nesting order.
+    {
+      code: `${IMPORT}const styles = stylex.create({ label: {
+        '[data-selected]': {
+          [stylex.when.siblingBefore(':focus-visible')]: { outlineColor: 'blue' },
+        },
+      } })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    },
+    {
+      code: `${IMPORT}const styles = stylex.create({ label: {
+        [stylex.when.siblingBefore(':focus-visible')]: {
+          '[data-selected]': { outlineOffset: 2 },
+        },
+      } })`,
+      errors: [{ messageId: 'outlineOutsideFocusVisible' }],
+    },
+    // Observed non-focus states remain defects in condition-outside-property order too.
+    {
+      code: `${IMPORT}const styles = stylex.create({ label: {
+        [stylex.when.siblingBefore(':checked')]: { outlineOffset: 2 },
+      } })`,
       errors: [{ messageId: 'outlineOutsideFocusVisible' }],
     },
   ],
