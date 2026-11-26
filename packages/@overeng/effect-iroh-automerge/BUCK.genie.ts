@@ -12,7 +12,6 @@ export const buck2TypeScriptAdmission = {
       packageName: '@overeng/effect-iroh-browser',
       packagePath: 'packages/@overeng/effect-iroh-browser',
       distTarget: '//packages/@overeng/effect-iroh-browser:dist',
-      sourceRoots: ['src', 'wasm'],
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
