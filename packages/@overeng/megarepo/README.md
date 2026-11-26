@@ -399,6 +399,15 @@ agent activations wrap their builds in `mr store lease --owner-path <worktree>`,
 protected only by the process veto; lease wrapping of activations is tracked in
 [the activation integration follow-up](https://github.com/overengineeringstudio/effect-utils/issues/1755).
 
+### Native holder evidence wire contract
+
+`store-worktree-holder-codec.ts` exports the native Rust client's complete typed
+version-1 wire schema. Integer identities and boot times stay lossless decimal
+strings; unknown/incomplete evidence and retained-byte references remain explicit.
+This unbound schema is not an arbitrary JSON authenticator, request-bound decoder
+or live census. Schema validation grants neither freshness, absence nor removal
+authority; callers must separately bind the nonce, ordered roots, producer and policy.
+
 ### Durable pool ownership primitives
 
 Persistent pool ownership uses version-2 store deletion barriers, which do not expire
@@ -409,6 +418,21 @@ claims, and retain unknown accounting rather than allocating around uncertainty.
 Writable claims invalidate measured accounting until a safe remeasure; new reservations
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
+
+`preparePoolGeneration` holds the reserved root's action lease continuously. It
+persists a new generation/nonce with unknown bytes before acquiring all declared
+directory pins, runs preparation without GLOBAL held, then verifies every chain
+before a short GLOBAL identity/charge CAS publishes READY under the still-held pins.
+Unpublished preparation intents retain unknown bytes and their nonce.
+Attempts that do not reach verified publication remain HOLD. A publication/durability
+error may leave verified READY; never infer failure means unpublished or automatically
+retry/repair.
+The callback owns fresh Git, GVS and all-UID activity proofs; all required targets
+must be declared. This metadata transaction does not reset, remove or activate roots,
+and READY does not establish disposable origin or permission to discard ignored data.
+
+This entry point uses an ordinary temporary root lease for an untouched reservation;
+it does not adopt an existing persistent version-2 barrier.
 
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
