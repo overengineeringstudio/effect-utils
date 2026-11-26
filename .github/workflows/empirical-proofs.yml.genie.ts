@@ -18,7 +18,13 @@ import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evid
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
+
+const occurrenceReaderTrusted =
+  "github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"
+const occurrenceReaderConfigured =
+  "vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != ''"
 
 /** Keep export failures visible on the nonblocking daily job, without changing other jobs. */
 const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs['jobs'] => {
@@ -28,7 +34,18 @@ const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs[
     'buck2-cache-join': {
       ...daily,
       steps: [
-        ...daily.steps,
+        ...daily.steps.map((step) =>
+          step.uses?.startsWith('tailscale/github-action@') === true &&
+          step.id !== 'occurrence-reader'
+            ? {
+                ...step,
+                if: step.if?.replace(
+                  'always()',
+                  "always() && steps.occurrence-disconnect.outcome != 'failure'",
+                ),
+              }
+            : step,
+        ),
         {
           name: 'Require daily cache metrics export',
           shell: 'bash',
@@ -98,6 +115,62 @@ export default ciWorkflow({
               name: 'Prepare source script dependencies',
               env: { GITHUB_TOKEN: '${{ github.token }}' },
               run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+            },
+            {
+              name: 'Notice unconfigured occurrence reader',
+              if: `\${{ (${occurrenceReaderTrusted}) && !(${occurrenceReaderConfigured}) }}`,
+              run: 'echo "::notice::Daily occurrence reader skipped: configure TS_OCCURRENCE_READ_CLIENT_ID and TS_OCCURRENCE_READ_AUDIENCE repository variables."',
+            },
+            {
+              name: 'Connect dedicated occurrence reader',
+              id: 'occurrence-reader',
+              if: `\${{ (${occurrenceReaderTrusted}) && (${occurrenceReaderConfigured}) }}`,
+              ...pinnedAction({ name: 'tailscale' }),
+              with: {
+                'oauth-client-id': '${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}',
+                audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
+                tags: 'tag:ci-buck2-occurrence-read',
+                args: '--accept-dns=true',
+              },
+            },
+            {
+              name: 'Read previous UTC day occurrences',
+              if: "${{ steps.occurrence-reader.outcome == 'success' }}",
+              shell: 'bash',
+              env: {
+                BUCK2_OCCURRENCE_READ_URL: '${{ vars.BUCK2_OCCURRENCE_READ_URL }}',
+                BUCK2_OCCURRENCE_EXPECTED_HOSTS: '${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}',
+              },
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  ': "${BUCK2_OCCURRENCE_READ_URL:?configure occurrence reader URL}"',
+                  ': "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?configure space-separated expected hosts}"',
+                  'until=$(date -u +%Y-%m-%dT00:00:00Z)',
+                  'end=$(date -u -d "$until" +%s)',
+                  'start=$((end - 86400))',
+                  'since=$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)',
+                  'proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof"',
+                  'mkdir -p "$proof"',
+                  'curl --fail --silent --show-error --max-time 120 --max-filesize 67108864 "$BUCK2_OCCURRENCE_READ_URL?start=\${start}000000000&end=\${end}000000000&limit=5000&direction=forward" --output "$proof/loki.json"',
+                  'export OCCURRENCE_SINCE="$since" OCCURRENCE_UNTIL="$until" OCCURRENCE_PROOF="$proof"',
+                  '"${DEVENV_BIN:?}" shell -- bash -euo pipefail -c \'',
+                  '  cd "${GITHUB_WORKSPACE:?}"',
+                  '  args=()',
+                  '  read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"',
+                  '  for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done',
+                  '  bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-response "$OCCURRENCE_PROOF/loki.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"',
+                  "'",
+                  'jq -r \'"## Daily occurrence evidence\\nRecords: \\(.records | length)\\nEvidence gaps: \\(.evidenceGaps | length)\\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"\' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"',
+                ].join('\n'),
+              ),
+            },
+            {
+              name: 'Disconnect occurrence reader before evidence writer',
+              id: 'occurrence-disconnect',
+              if: "${{ always() && steps.occurrence-reader.outcome != 'skipped' }}",
+              shell: 'bash',
+              run: 'sudo tailscale logout',
             },
             {
               name: 'Join previous UTC day cache evidence',
