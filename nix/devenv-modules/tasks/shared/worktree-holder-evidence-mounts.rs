@@ -172,6 +172,11 @@ impl NativeView {
         Ok(())
     }
 
+    /// Reclose the pinned namespace, without reopening a departed task's proc entries.
+    pub fn recheck_retained(&self, deadline: std::time::Instant) -> std::io::Result<()> {
+        self.namespace.recheck(deadline)
+    }
+
     pub fn mounts(&self) -> impl Iterator<Item = &super::namespace::NamespaceMount> {
         self.namespace.records().values()
     }

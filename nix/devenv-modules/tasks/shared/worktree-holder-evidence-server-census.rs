@@ -292,6 +292,26 @@ impl ObservedProcess {
         }
         self.scope.recheck(deadline)
     }
+
+    fn recheck_mounts(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
+        for (index, references) in self.references.iter().enumerate() {
+            let Some(mounted) = references.as_ref().and_then(|references| references.mounted.as_ref())
+                else { continue; };
+            if !self.scope.task_departed(index, deadline)? {
+                match mounted.recheck(candidates, deadline) {
+                    Ok(()) => continue,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound
+                        && self.scope.task_departed(index, deadline)? => (),
+                    Err(error) => return Err(error),
+                }
+            }
+            mounted.recheck_retained(candidates, deadline)?;
+            if !self.scope.task_departed(index, deadline)? {
+                return Err(io::Error::other("departed task identity changed during mount closure"));
+            }
+        }
+        Ok(())
+    }
 }
 impl<'a> Census<'a> {
     pub fn collect(request: &'a protocol::Request, candidates: &CandidateSet,
@@ -407,11 +427,7 @@ impl<'a> Census<'a> {
         }
         // Departed-task shortcuts never waive retained mount contributions.
         for process in &self.processes {
-            for references in process.references.iter().flatten() {
-                if let Some(mounted) = &references.mounted {
-                    mounted.recheck(candidates, deadline)?;
-                }
-            }
+            process.recheck_mounts(candidates, deadline)?;
         }
         if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
         self.recheck_selection(deadline)?;

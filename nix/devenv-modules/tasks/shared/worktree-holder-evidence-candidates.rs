@@ -55,6 +55,19 @@ impl MountCoverage {
 
     pub fn recheck(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
         self.view.recheck(deadline)?;
+        self.recheck_membership(candidates, deadline)?;
+        self.view.recheck(deadline)
+    }
+
+    /// Requires the caller to prove task departure under its retained live leader.
+    /// Mount/root objects and complete namespace coverage remain mandatory.
+    pub fn recheck_retained(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
+        self.view.recheck_retained(deadline)?;
+        self.recheck_membership(candidates, deadline)?;
+        self.view.recheck_retained(deadline)
+    }
+
+    fn recheck_membership(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
         let mut offset = 0;
         for location in &self.locations {
             let current = self.view.view.location(location.object(), deadline)?;
@@ -72,7 +85,7 @@ impl MountCoverage {
         if offset != self.references.len() {
             return Err(io::Error::other("mounted root reference membership changed"));
         }
-        self.view.recheck(deadline)
+        Ok(())
     }
 }
 
@@ -606,9 +619,37 @@ mod tests {
             assert_eq!(matches[0].relative_path, relative);
         }
         let detached = objects::pin_magic(alias.join("payload")).unwrap();
+        let _surviving_mounts = set.capture_mounts(&task, deadline()).unwrap();
+        let (ready, receive) = std::sync::mpsc::sync_channel(0);
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            ready.send(objects::pin_magic("/proc/thread-self").unwrap()).unwrap();
+            let _ = wait.recv();
+        });
+        let worker_task = receive.recv().unwrap();
+        let process = worktree_holder_proc::scopes::ProcessScope::discover(
+            std::process::id(), deadline()).unwrap();
+        let worker_identity = objects::identity(&worker_task).unwrap();
+        let index = process.tasks.iter().position(|task|
+            objects::identity(&task.scope).unwrap() == worker_identity).unwrap();
+        assert_ne!(process.tasks[index].identity.pid, process.identity.pid);
+        let departed_mounts = set.capture_mounts(&worker_task, deadline()).unwrap();
+        assert_eq!(departed_mounts.references().len(), 1);
+        drop(release);
+        worker.join().unwrap();
+        assert!(process.task_departed(index, deadline()).unwrap());
+        assert!(departed_mounts.recheck(&set, deadline()).is_err());
+        departed_mounts.recheck_retained(&set, deadline()).unwrap();
+        assert!(process.task_departed(index, deadline()).unwrap());
+        // A surviving task's held candidate FD remains a real positive.
+        let MatchOutcome::Native(matches) = set.matches(&detached, &task,
+            ReferenceKind::Fd, deadline()).unwrap() else { panic!("survivor FD became proxy") };
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].effect, ReferenceEffect::InUse);
         assert!(std::process::Command::new("umount").arg("-l").arg(&alias)
             .status().unwrap().success());
         assert!(mounted.recheck(&set, deadline()).is_err());
+        assert!(departed_mounts.recheck_retained(&set, deadline()).is_err());
         assert!(set.matches(&detached, &task, ReferenceKind::Fd, deadline()).is_err());
     }
 

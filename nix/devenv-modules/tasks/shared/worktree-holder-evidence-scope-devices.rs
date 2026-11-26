@@ -71,6 +71,17 @@ impl CandidateView {
 
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
         self.view.recheck(deadline)?;
+        self.recheck_locations(deadline)?;
+        self.view.recheck(deadline)
+    }
+
+    pub fn recheck_retained(&self, deadline: Instant) -> io::Result<()> {
+        self.view.recheck_retained(deadline)?;
+        self.recheck_locations(deadline)?;
+        self.view.recheck_retained(deadline)
+    }
+
+    fn recheck_locations(&self, deadline: Instant) -> io::Result<()> {
         for location in &self.locations {
             bound(deadline)?;
             let current = self.view.location(location.object(), deadline)?;
@@ -80,7 +91,7 @@ impl CandidateView {
                 return Err(io::Error::other("candidate scope mount mapping changed"));
             }
         }
-        self.view.recheck(deadline)
+        Ok(())
     }
 }
 

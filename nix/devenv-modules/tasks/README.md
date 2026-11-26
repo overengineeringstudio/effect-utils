@@ -115,7 +115,11 @@ aliases, including covering-ancestor devices. `ScopeLedger` unions enrollment
 and every captured task contribution, requires retained ownership and an empty
 task-view cache before freezing, and cannot grow during final object closure.
 The census independently recloses every retained mount contribution, including
-those belonging to a subsequently proven departed task.
+those belonging to a subsequently proven departed task. Departed contributions
+close through their pinned namespace, root and mount objects without reopening
+the exited task's proc entries; surviving tasks still require live root and
+namespace binding checks. The caller re-proves departure around this retained
+closure, and any namespace, location or mounted-reference change still vetoes.
 
 An internal-shmem exclusion applies only to a regular, unlinked tmpfs FD or
 mapping whose device and mount ID equal the transaction's freshly retained
