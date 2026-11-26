@@ -244,6 +244,13 @@ library. Generic worktree callers must veto every current reference, including
 retained-byte records; only the immutable-store adapter may accept complete
 byte-only evidence, and existing native store positives remain vetoes.
 
+`tests/pnpm-store-gc-holder-vm.py` is a controlled joint-VM fixture for UID1000
+without capabilities, using actual bound and portable production collectors.
+It requires opaque regular-file byte evidence to pass only through the fixed
+adapter, opaque cwd references to veto, real shared/exclusive lease exclusion,
+and immediate apply to preserve the original observation and payload during the
+24-hour floor. It never edits clocks or observations or enables a test collector.
+
 Every build reuses the protocol library's unconditional actual-codec fixture
 comparison, then compiles/runs the real server/client unit runner. Deployment
 additionally requires the single final integrated security review, actual root
