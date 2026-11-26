@@ -29,6 +29,7 @@
     "**/package.json",
     "**/tsconfig.json",
     "**/tsconfig.*.json",
+    "packages/@overeng/effect-iroh-browser/wasm/**",
     "packages/@overeng/otelite/tests/conformance/**"
   ]
 }
