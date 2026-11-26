@@ -127,6 +127,16 @@ Both require disposable root Linux VM qualification, as does the eventfd /
 registered-io_uring fixture. Test-only BPF privileges do not expand the helper's
 production capability set. Unit/build success is not kernel or census proof.
 
+Other ENOENT failures discard the entire candidate/store/peer/census graph and
+restart capture once under the original deadline; a second failure is UNKNOWN.
+Permission, unsupported-object and membership errors do not gain a retry.
+
+Each task pins both `/proc/<tgid>/task/<tid>` and top-level `/proc/<tid>`,
+authenticating both generations during closure. Root/cwd/exe/fd/namespaces use
+the nested task scope; mappings use only top-level `map_files`. Linux's nested
+task proc table does not expose `task/<tid>/map_files`; ENOENT there is not
+empty mappings or departure evidence.
+
 The native filesystem classifier also admits exact EROFS magic `0xe0f5e1e2`
 only with a nonzero Linux device major from the same held file. Nodev
 file-backed/fscache/on-demand EROFS remains unknown, as do overlay and FUSE.

@@ -59,7 +59,21 @@ fn host_identity(deadline: Instant) -> io::Result<(String,String)> {
 fn unknown(request: &Request, cause: UnknownReason) -> Observation {
     Observation {complete:false,process_count:0,task_count:0,receipt:b"incomplete-holder-observation-v1\0".to_vec(),roots:request.paths.iter().map(|path|RootEvidence {path:path.clone(),identity:None,complete:false,status:Status::Unknown,references_complete:false,references:Vec::new(),unknown_reasons:vec![cause]}).collect()}
 }
+fn retry_missing_once<T>(mut capture: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    match capture() {
+        Err(error) if error.kind()==io::ErrorKind::NotFound => capture(),
+        result=>result,
+    }
+}
 fn collect(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots)> {
+    // Drop the entire failed graph; retry ENOENT once under the original deadline.
+    retry_missing_once(|| {
+        role.recheck(deadline)?;
+        peer.recheck(deadline)?;
+        collect_once(request,peer,role,deadline)
+    })
+}
+fn collect_once(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots)> {
     let candidates=candidates::CandidateSet::pin(request,peer.uid,deadline)?;
     let peer_roots=client::PeerRoots::pin(peer,&candidates,deadline)?;
     // Store pinning opens roots only. Inventory starts ONLY after the original
@@ -146,5 +160,36 @@ fn main() -> ExitCode {
     match run() {
         Ok(())=>ExitCode::SUCCESS,
         Err(error)=>{eprintln!("worktree-holder-evidence: unknown ({:?})",error.kind());ExitCode::from(1)},
+    }
+}
+
+#[cfg(test)]
+mod capture_retry_tests {
+    use std::io;
+
+    #[test]
+    fn missing_capture_restarts_only_once_and_other_errors_never_retry() {
+        let mut attempts = 0;
+        let value = super::retry_missing_once(|| {
+            attempts += 1;
+            if attempts == 1 { Err(io::Error::from_raw_os_error(2)) } else { Ok(37) }
+        }).unwrap();
+        assert_eq!((attempts, value), (2, 37));
+        for errno in [2, 13, 110] {
+            let mut attempts = 0;
+            let error = super::retry_missing_once::<()>(|| {
+                attempts += 1;
+                Err(io::Error::from_raw_os_error(errno))
+            }).unwrap_err();
+            assert_eq!(attempts, if errno == 2 { 2 } else { 1 });
+            assert_eq!(error.raw_os_error(), Some(errno));
+        }
+        let mut attempts = 0;
+        let error = super::retry_missing_once::<()>(|| {
+            attempts += 1;
+            Err(io::Error::other("protective membership failure"))
+        }).unwrap_err();
+        assert_eq!(attempts, 1);
+        assert_eq!(error.kind(), io::ErrorKind::Other);
     }
 }
