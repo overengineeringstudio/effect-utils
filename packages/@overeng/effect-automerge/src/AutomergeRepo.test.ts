@@ -11,7 +11,7 @@ describe('AutomergeRepo scoped lifecycle', () => {
     const errors: RepoPersistenceError[] = []
     const logger = Logger.make<unknown, void>((options) => {
       for (const reason of options.cause.reasons)
-        if (Cause.isFailReason(reason) && reason.error instanceof RepoPersistenceError)
+        if (Cause.isFailReason(reason) === true && reason.error instanceof RepoPersistenceError)
           errors.push(reason.error)
     })
     return Effect.gen(function* () {
@@ -77,7 +77,7 @@ describe('AutomergeRepo scoped lifecycle', () => {
       const failures: unknown[] = []
       const logger = Logger.make<unknown, void>((options) => {
         for (const reason of options.cause.reasons)
-          if (Cause.isFailReason(reason)) failures.push(reason.error)
+          if (Cause.isFailReason(reason) === true) failures.push(reason.error)
       })
       return Effect.gen(function* () {
         const failure = new Error('IndexedDB unavailable')

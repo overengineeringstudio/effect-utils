@@ -19,11 +19,8 @@ const parameters = { seed: 322, numRuns: 100 }
 const state = fc.record({ total: fc.integer({ min: 0, max: 10 }) })
 const input = fc.record({ state, move: fc.integer({ min: -2, max: 4 }) })
 const apply = ({ state: current, move }: Input): State | undefined =>
-  move >= 0 && move <= 3 && current.total + move <= 10
-    ? { total: current.total + move }
-    : undefined
-const moves = (current: State) =>
-  [0, 1, 2, 3].filter((move) => current.total + move <= 10)
+  move >= 0 && move <= 3 && current.total + move <= 10 ? { total: current.total + move } : undefined
+const moves = (current: State) => [0, 1, 2, 3].filter((move) => current.total + move <= 10)
 const accepted = (result: State | undefined) => result !== undefined
 
 /** Check both failure detection and fast-check's public seed/path reproduction contract. */
@@ -159,9 +156,7 @@ describe('invalid adapters produce reproducible counterexamples', () => {
   })
 
   it('detects rejection of an enumerated legal move', () => {
-    expectFailure(
-      legalMoves({ arbitrary: state, moves, apply: () => undefined, accepted }),
-    )
+    expectFailure(legalMoves({ arbitrary: state, moves, apply: () => undefined, accepted }))
   })
 
   it('detects accepted illegal moves using the resulting canonical move', () => {

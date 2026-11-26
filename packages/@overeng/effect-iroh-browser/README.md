@@ -30,8 +30,8 @@ Explicit exports:
 Bundlers can own the binary URL independently of the binding module. With Vite:
 
 ```ts
-import wasmUrl from '@overeng/effect-iroh-browser/wasm/iroh.wasm?url'
 import { layerWasm } from '@overeng/effect-iroh-browser'
+import wasmUrl from '@overeng/effect-iroh-browser/wasm/iroh.wasm?url'
 
 const transport = layerWasm({
   secretKey,

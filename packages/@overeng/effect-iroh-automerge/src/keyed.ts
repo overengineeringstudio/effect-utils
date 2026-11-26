@@ -20,12 +20,12 @@ export const runKeyed = <TValue, TError, TContext, TRunContext>({
         Stream.runForEach((next) =>
           Effect.gen(function* () {
             for (const key of [...running])
-              if (!next.has(key)) {
+              if (next.has(key) === false) {
                 running.delete(key)
                 yield* FiberMap.remove(fibers, key)
               }
             for (const [key, value] of next)
-              if (!running.has(key)) {
+              if (running.has(key) === false) {
                 running.add(key)
                 yield* FiberMap.run(fibers, key, run(key, value))
               }

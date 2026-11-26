@@ -40,16 +40,14 @@ export class SafeStorageAdapter implements StorageAdapterInterface {
   }
 
   /** Loads a value, returning no value if persistence is unavailable. */
-  load = (key: StorageKey) =>
-    this.#run({ fn: (s) => s.load(key), fallback: undefined })
+  load = (key: StorageKey) => this.#run({ fn: (s) => s.load(key), fallback: undefined })
 
   /** Saves using the positional signature required by automerge-repo's storage interface. */
   save = (...[key, data]: Parameters<StorageAdapterInterface['save']>) =>
     this.#run({ fn: (s) => s.save(key, data), fallback: undefined })
 
   /** Removes a value while allowing memory-only operation after a backend failure. */
-  remove = (key: StorageKey) =>
-    this.#run({ fn: (s) => s.remove(key), fallback: undefined })
+  remove = (key: StorageKey) => this.#run({ fn: (s) => s.remove(key), fallback: undefined })
 
   /** Loads matching chunks, returning none if persistence is unavailable. */
   loadRange = (prefix: StorageKey) =>

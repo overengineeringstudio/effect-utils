@@ -2,7 +2,8 @@ import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-a
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
 
 export const buck2TypeScriptAdmission = {
-  dependencyImporter: '//buck2/dependencies:importer_packages_overeng_effect_iroh_automerge_26e1da274aee',
+  dependencyImporter:
+    '//buck2/dependencies:importer_packages_overeng_effect_iroh_automerge_26e1da274aee',
   packageName: '@overeng/effect-iroh-automerge',
   packagePath: 'packages/@overeng/effect-iroh-automerge',
   projectionSource: 'packages/@overeng/effect-iroh-automerge/BUCK.genie.ts',

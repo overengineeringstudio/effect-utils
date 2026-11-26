@@ -17,7 +17,14 @@ const workspaceDeps = catalog.compose({
     external: catalog.pick('@automerge/automerge-repo'),
   },
   devDependencies: {
-    external: catalog.pick('effect', '@effect/vitest', '@types/node', 'typescript', 'vitest', '@automerge/automerge-repo-network-broadcastchannel'),
+    external: catalog.pick(
+      'effect',
+      '@effect/vitest',
+      '@types/node',
+      'typescript',
+      'vitest',
+      '@automerge/automerge-repo-network-broadcastchannel',
+    ),
   },
   peerDependencies: { external: catalog.pick('effect') },
 })

@@ -139,12 +139,18 @@ const withPeer = ({
 }
 
 /** Mirrors the adapter's live connections into the peer states. */
-const withConnected = ({ status, adapter }: { status: NetStatus; adapter: IrohNetworkAdapter }): NetStatus => {
+const withConnected = ({
+  status,
+  adapter,
+}: {
+  status: NetStatus
+  adapter: IrohNetworkAdapter
+}): NetStatus => {
   const connected = adapter.connectedEndpoints
   const peers = new Map(status.peers)
   for (const id of connected) peers.set(id, 'connected')
   for (const [id, state] of peers)
-    if (state === 'connected' && !connected.has(id)) peers.set(id, 'connecting')
+    if (state === 'connected' && connected.has(id) === false) peers.set(id, 'connecting')
   return { ...status, peers }
 }
 
@@ -160,8 +166,16 @@ export const makeNet = (
       const wakeups = yield* Wakeups
       const status = yield* SubscriptionRef.make<NetStatus>({ phase: 'off', peers: new Map() })
       let adapterRef: IrohNetworkAdapter | undefined
-      const setPeer = ({ endpointId, state }: { endpointId: string; state: PeerState | undefined }) =>
-        SubscriptionRef.update(status, (s) => withPeer({ status: s, adapter: adapterRef, endpointId, state }))
+      const setPeer = ({
+        endpointId,
+        state,
+      }: {
+        endpointId: string
+        state: PeerState | undefined
+      }) =>
+        SubscriptionRef.update(status, (s) =>
+          withPeer({ status: s, adapter: adapterRef, endpointId, state }),
+        )
 
       /** Builds node + adapter + accept loop in `scope`. */
       const openSession = (scope: Scope.Scope) =>
@@ -196,7 +210,7 @@ export const makeNet = (
         )
         const scope = yield* Scope.fork(netScope)
         const exit = yield* Effect.exit(openSession(scope))
-        if (Exit.isFailure(exit)) {
+        if (Exit.isFailure(exit) === true) {
           adapterRef = undefined
           yield* Scope.close(scope, exit)
           return yield* exit
@@ -282,7 +296,7 @@ export const makeNet = (
             backoff(clock.currentTimeMillisUnsafe(), undefined),
           )
           for (;;) {
-            if (adapter.hasLink(peer.endpointId)) {
+            if (adapter.hasLink(peer.endpointId) === true) {
               // Already connected (possibly they dialed us). Wait until that link is gone.
               yield* adapter.awaitNoLink(peer.endpointId)
               failures = 0
@@ -299,11 +313,12 @@ export const makeNet = (
               Effect.scoped,
               Effect.exit,
             )
-            if (Exit.isSuccess(dialed)) {
+            if (Exit.isSuccess(dialed) === true) {
               backoff = yield* Schedule.toStep(dialBackoff)
             } else {
               failures++
-              if (failures >= UNREACHABLE_AFTER) yield* setPeer({ endpointId: peer.endpointId, state: 'unreachable' })
+              if (failures >= UNREACHABLE_AFTER)
+                yield* setPeer({ endpointId: peer.endpointId, state: 'unreachable' })
               yield* Effect.logWarning('[iroh] dial failed', dialed.cause)
             }
             const [, delay] = yield* nextDelay.pipe(Effect.orDie)

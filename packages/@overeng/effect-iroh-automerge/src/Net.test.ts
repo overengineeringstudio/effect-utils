@@ -267,7 +267,7 @@ describe('Net', () => {
           yield* advance('30 seconds')
           yield* advance('30 seconds')
           expect(dials).toEqual([0, 1000, 3000, 7000, 15000, 31000, 61000, 91000])
-  
+
           // Releasing the last holder stops the loop and forgets the peer.
           yield* Scope.close(scope, Exit.void)
           yield* tick

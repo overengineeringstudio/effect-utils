@@ -15,14 +15,14 @@ Every builder takes one options object containing `arbitrary` and returns
 examples, equality, and assertions. Callback exceptions fail the property; they
 are never caught, normalized, or treated as discarded samples.
 
-| Builder | Other callbacks | Assertion |
-| --- | --- | --- |
-| `determinism` | `run`, `equal` | Two runs on the same input are equal. |
-| `replay` | `expected`, `replay`, `equal` | Independently reconstructed and expected states are equal. |
-| `immutability` | `run`, `snapshot`, `equal` | Detached snapshots before and after execution are equal. |
-| `jsonRoundTrip` | `equal(original, decoded)` | Complete value survives JSON stringify/parse. `decoded` is `unknown`. |
-| `legalMoves` | `moves`, `apply(input, move)`, `accepted` | Every enumerated move is accepted. |
-| `acceptedMovesAreLegal` | `apply`, `accepted`, `legal(input, result)` | Every accepted result satisfies caller legality. |
+| Builder                 | Other callbacks                             | Assertion                                                             |
+| ----------------------- | ------------------------------------------- | --------------------------------------------------------------------- |
+| `determinism`           | `run`, `equal`                              | Two runs on the same input are equal.                                 |
+| `replay`                | `expected`, `replay`, `equal`               | Independently reconstructed and expected states are equal.            |
+| `immutability`          | `run`, `snapshot`, `equal`                  | Detached snapshots before and after execution are equal.              |
+| `jsonRoundTrip`         | `equal(original, decoded)`                  | Complete value survives JSON stringify/parse. `decoded` is `unknown`. |
+| `legalMoves`            | `moves`, `apply(input, move)`, `accepted`   | Every enumerated move is accepted.                                    |
+| `acceptedMovesAreLegal` | `apply`, `accepted`, `legal(input, result)` | Every accepted result satisfies caller legality.                      |
 
 `Equal<TValue>` is `(left: TValue, right: TValue) => boolean`. Use complete
 structural equality, not reference identity or a lossy projection. Assertions
@@ -75,15 +75,18 @@ const playouts = fc.tuple(fc.integer(), fc.boolean()).map(([seed, timed]) => {
   const config = timed ? blitz : untimed
   return { config, ...randomPlayout({ seed, plies: 120, config }) }
 })
-fc.assert(Laws.replay({
-  arbitrary: playouts,
-  expected: ({ state }) => {
-    expect(JSON.parse(JSON.stringify(state))).toEqual(state)
-    return state
-  },
-  replay: ({ config, moves }) => replay({ config, moves }),
-  equal,
-}), { numRuns: 10 })
+fc.assert(
+  Laws.replay({
+    arbitrary: playouts,
+    expected: ({ state }) => {
+      expect(JSON.parse(JSON.stringify(state))).toEqual(state)
+      return state
+    },
+    replay: ({ config, moves }) => replay({ config, moves }),
+    equal,
+  }),
+  { numRuns: 10 },
+)
 ```
 
 Keep all PGN field-specific assertions, malformed-input properties, clocks and
@@ -96,24 +99,28 @@ Replace only the existing seeded-deal property's wrapper. Keep card uniqueness,
 deterministic initial state, the original seed/player ranges, and 40 runs:
 
 ```ts
-const deals = fc.tuple(
-  fc.integer({ min: 0, max: 0xffffffff }),
-  fc.integer({ min: 3, max: 6 }),
-).map(([seed, players]) => {
-  const cfg = { ...config, seed, players }
-  return { cfg, state: initialState(cfg) }
-})
-fc.assert(Laws.immutability({
-  arbitrary: deals,
-  snapshot: ({ state }) => JSON.stringify(state),
-  run: ({ cfg, state }) => {
-    expect(initialState(cfg)).toEqual(state)
-    expect(new Set([...Object.values(state.hands).flat(), state.trumpCard!]
-      .map((card) => card.id)).size).toBe(cfg.players + 1)
-    finishRound({ original: state, cfg })
-  },
-  equal: (before, after) => before === after,
-}), { numRuns: 40 })
+const deals = fc
+  .tuple(fc.integer({ min: 0, max: 0xffffffff }), fc.integer({ min: 3, max: 6 }))
+  .map(([seed, players]) => {
+    const cfg = { ...config, seed, players }
+    return { cfg, state: initialState(cfg) }
+  })
+fc.assert(
+  Laws.immutability({
+    arbitrary: deals,
+    snapshot: ({ state }) => JSON.stringify(state),
+    run: ({ cfg, state }) => {
+      expect(initialState(cfg)).toEqual(state)
+      expect(
+        new Set([...Object.values(state.hands).flat(), state.trumpCard!].map((card) => card.id))
+          .size,
+      ).toBe(cfg.players + 1)
+      finishRound({ original: state, cfg })
+    },
+    equal: (before, after) => before === after,
+  }),
+  { numRuns: 40 },
+)
 ```
 
 `finishRound` retains its existing acceptance assertions and iteration bound.
@@ -128,18 +135,20 @@ Each constant property runs once, examining every enumerated move:
 for (const state of states) {
   deepFreeze(state)
   const seat = actors(state)[0]!
-  fc.assert(Laws.legalMoves({
-    arbitrary: fc.constant(state),
-    moves: (state) => legalMoves({ state, seat }),
-    apply: (state, move) => {
-      const next = tryApply(state, seat, move)
-      for (const other of ['p1', 'p2', 'p3', 'p4']
-        .filter((x) => !actors(state).includes(x)))
-        expect(tryApply(state, other, move)).toBeUndefined()
-      return next
-    },
-    accepted: (next) => next !== undefined,
-  }), { numRuns: 1 })
+  fc.assert(
+    Laws.legalMoves({
+      arbitrary: fc.constant(state),
+      moves: (state) => legalMoves({ state, seat }),
+      apply: (state, move) => {
+        const next = tryApply(state, seat, move)
+        for (const other of ['p1', 'p2', 'p3', 'p4'].filter((x) => !actors(state).includes(x)))
+          expect(tryApply(state, other, move)).toBeUndefined()
+        return next
+      },
+      accepted: (next) => next !== undefined,
+    }),
+    { numRuns: 1 },
+  )
 }
 ```
 

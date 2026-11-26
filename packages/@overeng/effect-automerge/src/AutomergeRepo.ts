@@ -92,9 +92,9 @@ export const make = ({
     })
   const find = <T>(documentId: string): Effect.Effect<DocHandle<T>, FindError> =>
     Effect.suspend(() => {
-      if (!isValidDocumentId(documentId) && !isValidAutomergeUrl(documentId))
+      if (isValidDocumentId(documentId) === false && isValidAutomergeUrl(documentId) === false)
         return Effect.fail(new InvalidDocumentId(documentId))
-      const id = isValidAutomergeUrl(documentId)
+      const id = isValidAutomergeUrl(documentId) === true
         ? parseAutomergeUrl(documentId).documentId
         : documentId
       return Effect.tryPromise({
@@ -140,7 +140,7 @@ export class AutomergeRepo extends Context.Service<AutomergeRepo, AutomergeRepoS
     Layer.effect(
       AutomergeRepo,
       Effect.gen(function* () {
-        const { shareConfig, ...config } = Effect.isEffect(options) ? yield* options : options
+        const { shareConfig, ...config } = Effect.isEffect(options) === true ? yield* options : options
         const repo = yield* Effect.acquireRelease(
           Effect.sync(() => {
             const repo = new Repo(config)
@@ -195,7 +195,7 @@ const classify = ({
   readonly handle: DocHandle<unknown> | undefined
   readonly cause: unknown
 }): FindError => {
-  if (handle?.isDeleted() || (cause instanceof Error && /was deleted/.test(cause.message)))
+  if (handle?.isDeleted() || (cause instanceof Error && /was deleted/.test(cause.message) === true))
     return new DocDeleted(documentId)
   return new DocUnavailable(documentId)
 }

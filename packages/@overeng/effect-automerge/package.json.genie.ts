@@ -21,10 +21,10 @@ export default packageJson(
     name: '@overeng/effect-automerge',
     ...privatePackageDefaults,
     exports: {
-      '.': exportEntry(
-        { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
-        [{ environment: 'browser' }, { environment: 'node' }],
-      ),
+      '.': exportEntry({ types: './dist/src/mod.d.ts', default: './src/mod.ts' }, [
+        { environment: 'browser' },
+        { environment: 'node' },
+      ]),
     },
     publishConfig: {
       access: 'public',

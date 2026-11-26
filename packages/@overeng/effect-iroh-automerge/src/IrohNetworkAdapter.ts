@@ -164,7 +164,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
 
   /** Handles one decoded frame. Returns false if the connection must be dropped. */
   #receive({ link, msg }: { link: Link; msg: unknown }): boolean {
-    if (isHello(msg)) {
+    if (isHello(msg) === true) {
       if (link.peerId) return true
       // The peer must speak for the device its encrypted connection proves it is.
       if (deviceIdOfPeer(msg.senderId) !== link.endpointId) return false
@@ -220,7 +220,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
         )
       }).pipe(
         Effect.tapCause((cause) =>
-          Cause.hasInterruptsOnly(cause)
+          Cause.hasInterruptsOnly(cause) === true
             ? Effect.void
             : Effect.logWarning('[iroh] connection error', Cause.squash(cause)),
         ),

@@ -45,9 +45,8 @@ describe('WebLock', () => {
     Effect.gen(function* () {
       vi.stubGlobal('navigator', {
         locks: {
-          request: vi.fn(
-            async (_name: string, _options: unknown, callback: (lock: null) => void) =>
-              callback(null),
+          request: vi.fn(async (_name: string, _options: unknown, callback: (lock: null) => void) =>
+            callback(null),
           ),
         },
       })

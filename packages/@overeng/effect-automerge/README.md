@@ -10,6 +10,7 @@ Effect 4 bindings for [`@automerge/automerge-repo`](https://automerge.org/docs/r
 
 ```ts
 import { Effect } from 'effect'
+
 import { AutomergeRepo, DocHandles } from '@overeng/effect-automerge'
 
 const program = Effect.gen(function* () {

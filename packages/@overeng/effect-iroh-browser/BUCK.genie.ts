@@ -3,7 +3,8 @@ import type { Buck2TypeScriptAdmission } from '../../../genie/buck2/typescript-a
 import { buck2TypeScriptPackageProjection } from '../../../genie/buck2/typescript-package-projection.ts'
 
 export const buck2TypeScriptAdmission = {
-  dependencyImporter: '//buck2/dependencies:importer_packages_overeng_effect_iroh_browser_518949656975',
+  dependencyImporter:
+    '//buck2/dependencies:importer_packages_overeng_effect_iroh_browser_518949656975',
   packageName: '@overeng/effect-iroh-browser',
   packagePath: 'packages/@overeng/effect-iroh-browser',
   projectionSource: 'packages/@overeng/effect-iroh-browser/BUCK.genie.ts',
