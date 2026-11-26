@@ -40,7 +40,7 @@ Every implementation should model the same underlying fields, even if the transp
 | `baseVersion` | Product/package version, usually from `package.json`, Cargo metadata, or equivalent manifest |
 | `rev`         | Short VCS revision identifying the selected source closure; the policy below defines C       |
 | `dirty`       | Whether uncommitted changes were present in the built or running source                      |
-| `sourceKind`  | How the process is running, currently `local` or `nix`                                       |
+| `sourceKind`  | How the process is running: `local`, `nix` or `release`                                      |
 | `commitTs`    | Commit timestamp of the selected revision, when available                                    |
 | `buildTs`     | Optional wall-clock build or local run-start timestamp                                       |
 
@@ -48,6 +48,9 @@ The current TypeScript/Nix implementation represents these as:
 
 - `LocalStamp`: `type`, `rev`, `ts`, `dirty`, optional `commitTs`
 - `NixStamp`: `type`, `version`, `rev`, `commitTs`, `dirty`, optional `buildTs`
+- `ReleaseStamp`: the `NixStamp` fields with `type: "release"`; a non-Nix build
+  (for example a Vite production build deployed to a static host) from a
+  committed C projection. `rev` is the full selected revision.
 
 Field names may vary slightly between implementations, but the semantics should stay aligned.
 
@@ -56,6 +59,11 @@ For local stamps, `ts` is the run-start Unix timestamp and resolves to `buildTs`
 `git log -1 --format=%ct` against the same captured HEAD revision used for `rev`.
 If that Git lookup fails, omit `commitTs`; never substitute the run-start time.
 Readers continue to accept older local stamps without `commitTs`.
+
+Release stamps take `rev` and `commitTs` from the committed product-rev
+projection, never from HEAD or the build clock; `buildTs` is the build time.
+`dirty` is true when tracked closure files are modified or the checked-out
+closure content differs from the projection (a stale projection).
 
 ## Derived Outputs
 
@@ -68,6 +76,9 @@ Examples:
 - `0.1.0`
 - `0.1.0+7d5211e`
 - `0.1.0+7d5211e-dirty`
+
+Release `machineVersion` uses the first seven characters of the full release
+revision, so it has the Nix shape: `0.1.0+7d5211e`.
 
 Rules:
 
@@ -94,6 +105,13 @@ Rules:
   the displayed age describes the revision rather than process uptime. Without
   it, retain the legacy local run-age prose. Neither timestamp changes
   `machineVersion`.
+- Release prose always describes the revision (`committed X ago`); deployment
+  age is the separate `deployed` detail derived from `buildTs`.
+- Generated metadata (for example `build-identity.json`) has no clock: it
+  renders `displayVersion` timelessly (`0.1.0+7d5211e`, or
+  `0.1.0 — running from local source (7d5211e)`), and interactive surfaces
+  render ages from the same stamp at runtime. No relative time is frozen at
+  build time.
 
 ### Human short and details forms
 
@@ -177,6 +195,8 @@ Shared ownership and stamp transport (BUILD.ID-R01–R03):
 | ----------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | TypeScript / JavaScript | `@overeng/utils`: `packages/@overeng/utils/src/node/cli-build-identity.js` and `cli-version.ts` | Parse and resolve canonical identity; share CLI version and error-suffix integration   |
 | Nix                     | `effect-utils.lib.cliBuildStamp` in `nix/workspace-tools/lib/cli-build-stamp.nix`               | Produce local source stamps and canonical Nix stamps through `mkNixStamp`              |
+| Closure revisions (C)   | `@overeng/utils/node/product-revs` (`product-revs-cli.js`)                                      | Compute, refresh and freshness-check committed product-rev projections                 |
+| Vite release builds     | `@overeng/utils/node/vite-build-identity` `productRev` option                                   | Stamp production builds from the committed projection as `release`                     |
 | Buck CLI packaging      | `nix/workspace-tools/lib/mk-cli-packages.nix` and `buck2-product-candidates.nix`                | Select and wrap Buck products; supply runtime stamps through `CLI_BUILD_STAMP`         |
 | Buck native products    | `nix/buck2-products/from-source.nix`                                                            | Inject the product stamp through Buck's `build_identity.cli_build_stamp` configuration |
 | Rust                    | Shared Rust crate                                                                               | Required owner for reusable identity parsing and formatting across Rust binaries       |
@@ -303,6 +323,31 @@ stamped commit is forbidden unless stamps are regenerated and freshness proved
 against the final preserved ancestry before landing. CI owns the concrete merge
 policy; the identity contract owns this invariant. The private profile selects
 C, rather than requiring every external consumer to select it.
+
+### Shared C Tooling
+
+`@overeng/utils/node/product-revs` is the reusable projection owner for
+repositories whose products are not built through the Buck/Nix bridge. A
+product declares its closure through its generated package manifest
+(`$genie.workspaceClosureDirs`) plus explicit non-workspace inputs. Paths under
+`repos/<member>/` are megarepo member paths: at each commit they resolve to the
+member commit pinned by that commit's `megarepo.lock`, so a member repin that
+leaves the declared member paths unchanged is unrelated. The selected revision
+is the earliest reachable **producer** of the current closure content (as the
+private consumer profile refines C): a producer's closure differs from all of
+its parents, a root commit qualifies, merges inheriting a parent's closure and
+reverts to earlier content do not create new revisions. Member objects are
+read only for commits whose host closure already matches and are fetched by
+pinned commit when absent.
+
+Each projection is one committed JSON file outside every closure, binding
+`product`, sorted `sourcePaths`, full `rev`, `commitTs` and a `closureDigest`.
+`product-revs-cli.js refresh` regenerates it; `check` is the freshness gate and
+fails on missing or stale projections and on shallow history. A pull-request
+gate evaluated on the prepared merge commit fails whenever the base branch
+changed the closure, so the branch must merge the base and refresh before
+landing. The Vite plugin's `productRev` option compares the checked-out closure
+against `closureDigest` to compute `dirty`.
 
 Decisions: axe records `nz2ibq` and `75iddd`. Stamp consumption is specified in
 [the Nix bridge](../05-product-distribution/02-nix-bridge/spec.md#consumer-from-source-identity).

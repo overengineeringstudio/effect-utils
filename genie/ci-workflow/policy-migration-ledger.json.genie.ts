@@ -5,6 +5,7 @@ import empiricalProofs from '../../.github/workflows/empirical-proofs.yml.genie.
 import storybookPlays from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import storybookPreviewBuild from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import storybookPreviewDeploy from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
+import updatePnpm from '../../.github/workflows/update-pnpm.yml.genie.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { validateWorkflowPolicy } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import {
@@ -20,11 +21,13 @@ const workflows = {
   'storybook-plays.yml': storybookPlays,
   'storybook-preview-build.yml': storybookPreviewBuild,
   'storybook-preview-deploy.yml': storybookPreviewDeploy,
+  'update-pnpm.yml': updatePnpm,
 }
 
 const workflowData = Object.fromEntries(
   Object.entries(workflows).map(([name, output]) => [name, output.data]),
 )
+const updaterRunner = updatePnpm.data.jobs.candidate?.['runs-on']
 
 validateFleetPolicyExceptionRegistry({
   repository: 'overengineeringstudio/effect-utils',
@@ -36,7 +39,20 @@ const data = {
   violations: collectFleetPolicyMigrationLedger({
     repository: 'overengineeringstudio/effect-utils',
     workflows: workflowData,
-  }),
+  }).map((violation) =>
+    violation.workflow === 'update-pnpm.yml' &&
+    violation.job === 'candidate' &&
+    (violation.rule === 'runner-fallback' || violation.rule === 'dynamic-runner') &&
+    violation.path === 'jobs.candidate.runs-on' &&
+    Array.isArray(updaterRunner) &&
+    updaterRunner.includes(violation.value)
+      ? {
+          ...violation,
+          reason:
+            'No active sh-linux-x64 runner; same Namespace profile as grandfathered trusted consumers.',
+        }
+      : violation,
+  ),
 }
 
 /** Eager imports reject new/security debt; serialization admits content-only

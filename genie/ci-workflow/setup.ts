@@ -113,8 +113,16 @@ export const namespaceRunner = ({
 // Step Atoms
 // =============================================================================
 
-/** Checkout repository via the pinned actions/checkout release. */
-export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: string }) => ({
+/**
+ * Checkout repository via the pinned actions/checkout release. `fetch-depth: 0` fetches full
+ * history and all branches, for jobs that diff against a base (e.g. changelog coverage).
+ */
+export const checkoutStep = (opts?: {
+  repository?: string
+  ref?: string
+  path?: string
+  'fetch-depth'?: number
+}) => ({
   ...pinnedAction({ name: 'checkout' }),
   with: { 'persist-credentials': false, ...opts },
 })

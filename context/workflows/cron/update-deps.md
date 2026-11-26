@@ -1,17 +1,20 @@
 # Dependency updates
 
-Compare the latest stable [pnpm release](https://github.com/pnpm/pnpm/releases)
-with `nix/pnpm.nix`, then open or adopt one version-specific candidate.
-Automatic weekly candidate creation is tracked separately; until it lands,
-follow these manual steps and the normal pull-request merge policy.
+The scheduled [Update pnpm workflow](../../../.github/workflows/update-pnpm.yml.genie.ts)
+runs Monday at 06:23 UTC or manually on the default branch. It compares the
+latest stable [pnpm release](https://github.com/pnpm/pnpm/releases) with `nix/pnpm.nix`,
+then opens/adopts version-specific **draft** PRs without candidate checkout,
+history overwrite, readiness changes or merging.
 
-The native CLI version in `nix/pnpm.nix` must match
-`DEFAULT_AGGREGATE_PACKAGE_MANAGER` in
-`packages/@overeng/genie/src/runtime/package-json/mod.ts`, the Buck support-tool
-protocols, lock-mutator allowlist, and active install fixtures. Update all
-platform tarball hashes with `nix store prefetch-file --json`, then regenerate
-committed projections once with `devenv tasks run genie:run`; do not edit
-generated manifests or install contracts directly.
+`nix/pnpm.nix` must match Genie's `DEFAULT_AGGREGATE_PACKAGE_MANAGER`, Buck protocols,
+the lock-mutator allowlist, active fixtures and default tests.
+`scripts/update-pnpm.py` hashes seven raw registry tarballs and updates authored pins;
+CI then runs one `genie:run`. Never hand-edit generated manifests or contracts.
+The existing repository-restricted publisher App token triggers hosted checks;
+GitHub signs its API-created normal commits before a new branch is created.
+Missing App permissions or an unverified signature fail closed; closed PRs are not duplicated.
+Generation uses the existing per-run Namespace Linux x86-64 profile with trusted
+Nix sandbox admission, without depending on generic self-hosted runner labels.
 
 Read intervening release notes before bumping. Check store and lockfile
 compatibility separately from the CLI version. In particular,

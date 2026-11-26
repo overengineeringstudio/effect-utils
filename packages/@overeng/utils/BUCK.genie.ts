@@ -53,6 +53,7 @@ export const buck2TypeScriptAdmission = {
         'src/node/otel-telemetry.test.ts',
         'src/node/watch.unit.test.ts',
         // Installed Node/Vite config and real Git worktree fixtures use the source-side complement.
+        'src/node/product-revs.build.test.ts',
         'src/node/vite-build-identity.build.test.ts',
       ],
       sourceOwners: {
