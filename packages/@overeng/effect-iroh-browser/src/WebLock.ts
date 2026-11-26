@@ -16,8 +16,8 @@ export const exclusiveLock = (name: string): Effect.Effect<void, NotLeader, Scop
       void navigator.locks
         .request(name, { ifAvailable: true }, (lock) => {
           // A browser callback can already be queued when acquisition is interrupted.
-          if (cancelled) return undefined
-          if (!lock) {
+          if (cancelled === true) return undefined
+          if (lock === null) {
             resume(Effect.succeed('busy'))
             return undefined
           }

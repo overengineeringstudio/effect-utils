@@ -69,7 +69,7 @@ export const make = ({
   readonly storage?: StorageAdapterInterface
 }): AutomergeRepoService => {
   const requireStorage = () => {
-    if (!storage || (storage instanceof SafeStorageAdapter && !storage.persistent))
+    if (storage === undefined || (storage instanceof SafeStorageAdapter && storage.persistent === false))
       throw new RepoPersistenceError({
         operation: 'save',
         cause:
@@ -143,16 +143,16 @@ export class AutomergeRepo extends Context.Service<AutomergeRepo, AutomergeRepoS
         const { shareConfig, ...config } = Effect.isEffect(options) === true ? yield* options : options
         const repo = yield* Effect.acquireRelease(
           Effect.sync(() => {
-            const repo = new Repo(config)
-            if (shareConfig)
-              repo.shareConfig = typeof shareConfig === 'function' ? shareConfig(repo) : shareConfig
-            return repo
+            const createdRepo = new Repo(config)
+            if (shareConfig !== undefined)
+              createdRepo.shareConfig = typeof shareConfig === 'function' ? shareConfig(createdRepo) : shareConfig
+            return createdRepo
           }),
-          (repo) =>
+          (acquiredRepo) =>
             Effect.tryPromise({
               try: async () => {
-                await repo.flush()
-                if (config.storage instanceof SafeStorageAdapter && !config.storage.persistent)
+                await acquiredRepo.flush()
+                if (config.storage instanceof SafeStorageAdapter && config.storage.persistent === false)
                   throw new RepoPersistenceError({
                     operation: 'flush',
                     cause: config.storage.failure,
@@ -165,7 +165,7 @@ export class AutomergeRepo extends Context.Service<AutomergeRepo, AutomergeRepoS
               ),
               Effect.ensuring(
                 Effect.tryPromise({
-                  try: () => repo.shutdown(),
+                  try: () => acquiredRepo.shutdown(),
                   catch: (cause) => new RepoPersistenceError({ operation: 'shutdown', cause }),
                 }).pipe(
                   Effect.catchCause((cause) =>
@@ -195,7 +195,7 @@ const classify = ({
   readonly handle: DocHandle<unknown> | undefined
   readonly cause: unknown
 }): FindError => {
-  if (handle?.isDeleted() || (cause instanceof Error && /was deleted/.test(cause.message) === true))
+  if (handle?.isDeleted() === true || (cause instanceof Error && /was deleted/.test(cause.message) === true))
     return new DocDeleted(documentId)
   return new DocUnavailable(documentId)
 }

@@ -67,10 +67,10 @@ const withNet = <TResult, TError>({
       Effect.gen(function* () {
         builds.count++
         const build = builds.count
-        if (options.nodeFails?.(build)) return yield* new NotLeader()
+        if (options.nodeFails?.(build) === true) return yield* new NotLeader()
         return IrohNode.of({
           endpointId: SELF,
-          homeRelay: options.relayFails?.(build)
+          homeRelay: options.relayFails?.(build) === true
             ? Effect.fail(new RelayUnreachable())
             : Effect.succeed('https://relay.test'),
           incoming: Stream.fromQueue(incoming),
@@ -78,7 +78,7 @@ const withNet = <TResult, TError>({
             Effect.clockWith((clock) => {
               dials.push(clock.currentTimeMillisUnsafe())
               const conn = options.answer?.(dials.length)
-              return conn
+              return conn !== undefined
                 ? Effect.succeed(conn)
                 : Effect.fail(new DialError({ endpointId: peer.endpointId, cause: 'offline' }))
             }),

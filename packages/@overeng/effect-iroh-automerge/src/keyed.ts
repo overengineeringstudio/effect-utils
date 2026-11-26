@@ -19,7 +19,7 @@ export const runKeyed = <TValue, TError, TContext, TRunContext>({
       yield* desired.pipe(
         Stream.runForEach((next) =>
           Effect.gen(function* () {
-            for (const key of [...running])
+            for (const key of running)
               if (next.has(key) === false) {
                 running.delete(key)
                 yield* FiberMap.remove(fibers, key)

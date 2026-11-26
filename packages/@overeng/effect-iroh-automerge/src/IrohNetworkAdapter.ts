@@ -77,7 +77,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
   }
 
   whenReady() {
-    return this.#ready
+    return this.#ready === true
       ? Promise.resolve()
       : new Promise<void>((resolve) => this.#readyWaiters.push(resolve))
   }
@@ -93,7 +93,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
 
   send(message: Message) {
     const link = this.#byPeer.get(message.targetId)
-    if (!link) return
+    if (link === undefined) return
     Effect.runPromise(link.conn.send(cbor.encode(message))).catch((error) => {
       console.warn('[iroh] send failed', error)
       // Repo has already marked this sync message in flight. Keeping a read-open,
@@ -103,7 +103,8 @@ export class IrohNetworkAdapter extends NetworkAdapter {
   }
 
   disconnect() {
-    for (const link of [...this.#links.values()]) this.#drop(link)
+    // Drop callbacks notify subscribers, which may mutate the live registry.
+    for (const link of Array.from(this.#links.values())) this.#drop(link)
   }
 
   /** Endpoint ids with a live, handshaken connection. */
@@ -153,7 +154,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
 
   #drop(link: Link) {
     if (this.#links.get(link.endpointId) === link) this.#links.delete(link.endpointId)
-    if (link.peerId && this.#byPeer.get(link.peerId) === link) {
+    if (link.peerId !== undefined && link.peerId !== '' && this.#byPeer.get(link.peerId) === link) {
       this.#byPeer.delete(link.peerId)
       remotePeers.delete(link.peerId)
       this.emit('peer-disconnected', { peerId: link.peerId })
@@ -165,13 +166,13 @@ export class IrohNetworkAdapter extends NetworkAdapter {
   /** Handles one decoded frame. Returns false if the connection must be dropped. */
   #receive({ link, msg }: { link: Link; msg: unknown }): boolean {
     if (isHello(msg) === true) {
-      if (link.peerId) return true
+      if (link.peerId !== undefined && link.peerId !== '') return true
       // The peer must speak for the device its encrypted connection proves it is.
       if (deviceIdOfPeer(msg.senderId) !== link.endpointId) return false
       const bound = this.#byPeer.get(msg.senderId)
       // A PeerId stays bound to the endpoint that first claimed it while that link lives.
-      if (bound && bound !== link && bound.endpointId !== link.endpointId) return false
-      if (bound) this.#drop(bound)
+      if (bound !== undefined && bound !== link && bound.endpointId !== link.endpointId) return false
+      if (bound !== undefined) this.#drop(bound)
       link.peerId = msg.senderId
       this.#byPeer.set(msg.senderId, link)
       remotePeers.add(msg.senderId)
@@ -179,7 +180,7 @@ export class IrohNetworkAdapter extends NetworkAdapter {
       this.#notify()
       return true
     }
-    if (!link.peerId) return true
+    if (link.peerId === undefined || link.peerId === '') return true
     const repoMsg = msg as Message
     if (repoMsg.targetId !== this.peerId) return true
     this.emit('message', { ...repoMsg, senderId: link.peerId })

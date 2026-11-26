@@ -130,10 +130,10 @@ const withPeer = ({
   state: PeerState | undefined
 }): NetStatus => {
   // A live connection always wins over what a dial loop believes.
-  if (state && adapter?.connectedEndpoints.has(endpointId)) state = 'connected'
+  if (state !== undefined && adapter?.connectedEndpoints.has(endpointId) === true) state = 'connected'
   if (status.peers.get(endpointId) === state) return status
   const peers = new Map(status.peers)
-  if (state) peers.set(endpointId, state)
+  if (state !== undefined) peers.set(endpointId, state)
   else peers.delete(endpointId)
   return { ...status, peers }
 }
@@ -242,13 +242,13 @@ export const makeNet = (
       const start: Effect.Effect<Session, StartError> = SynchronizedRef.modifyEffect(
         current,
         (fiber) =>
-          fiber
+          fiber !== undefined
             ? Effect.succeed([fiber, fiber] as const)
             : startOnce.pipe(
                 // Forget a failed start so the next caller retries.
                 Effect.tapError(() => SynchronizedRef.set(current, undefined)),
                 Effect.forkIn(netScope),
-                Effect.map((fiber) => [fiber, fiber] as const),
+                Effect.map((startedFiber) => [startedFiber, startedFiber] as const),
               ),
       ).pipe(Effect.flatMap(Fiber.join))
 
@@ -278,7 +278,7 @@ export const makeNet = (
             }),
             Effect.catchTag('RelayUnreachable', () => Effect.void),
           )
-          if (session) return session
+          if (session !== undefined) return session
           const [, delay] = yield* Effect.clockWith((clock) =>
             backoff(clock.currentTimeMillisUnsafe(), undefined),
           ).pipe(Effect.orDie)

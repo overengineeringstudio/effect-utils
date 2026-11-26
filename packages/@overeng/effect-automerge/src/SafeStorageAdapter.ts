@@ -64,7 +64,7 @@ export class SafeStorageAdapter implements StorageAdapterInterface {
     readonly fn: (s: StorageAdapterInterface) => Promise<T>
     readonly fallback: T
   }): Promise<T> => {
-    if (!this.#inner) return fallback
+    if (this.#inner === undefined) return fallback
     try {
       return await fn(this.#inner)
     } catch (error) {

@@ -85,9 +85,10 @@ export const layerWasm = (options: WasmNodeOptions): Layer.Layer<IrohNode, NodeB
     IrohNode,
     Effect.gen(function* () {
       // Only one tab per key can be this endpoint on the network.
-      if (options.lockName) yield* exclusiveLock(options.lockName)
+      if (options.lockName !== undefined && options.lockName !== '')
+        yield* exclusiveLock(options.lockName)
       const secretKey = options.secretKey
-      if (!secretKey) return yield* new NoEd25519()
+      if (secretKey === undefined) return yield* new NoEd25519()
       const wasm = yield* Effect.tryPromise({
         try: async () => {
           const module = await options.load()
@@ -101,7 +102,7 @@ export const layerWasm = (options: WasmNodeOptions): Layer.Layer<IrohNode, NodeB
           try: () => wasm.spawnNode((options.relays ?? N0_RELAYS).join(','), secretKey),
           catch: (cause) => new SpawnError(cause),
         }),
-        (node) => Effect.promise(() => node.close().catch(() => {})),
+        (acquiredNode) => Effect.promise(() => acquiredNode.close().catch(() => {})),
       )
       const endpointId = node.endpointId()
 
@@ -114,7 +115,7 @@ export const layerWasm = (options: WasmNodeOptions): Layer.Layer<IrohNode, NodeB
           catch: () => new RelayUnreachable(),
         }).pipe(
           Effect.filterOrFail(
-            (relay): relay is string => !!relay,
+            (relay): relay is string => relay !== null && relay !== '',
             () => new RelayUnreachable(),
           ),
           Effect.timeoutOrElse({

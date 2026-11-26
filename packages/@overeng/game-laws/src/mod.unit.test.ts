@@ -28,7 +28,7 @@ const expectFailure = <TInput>(property: fc.IProperty<[TInput]>) => {
   const failure = fc.check(property, parameters)
   expect(failure.failed).toBe(true)
   expect(failure.counterexample).not.toBeNull()
-  if (!failure.failed) return
+  if (failure.failed === false) return
   assert(failure.counterexamplePath !== null)
   const reproduced = fc.check(property, {
     seed: failure.seed,

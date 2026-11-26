@@ -26,7 +26,7 @@ export const mesh = <E, R>(
         Stream.mapEffect((set) =>
           Effect.gen(function* () {
             if (set === undefined) return new Map<string, PeerAddress>()
-            if (!started) {
+            if (started === false) {
               started = true
               // Stays reachable even if no relay answered at first; other failures are
               // reported in `Net.status`.

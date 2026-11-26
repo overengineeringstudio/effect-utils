@@ -18,7 +18,7 @@ export class FakeConn implements FramedConn {
   }
 
   async send(data: Uint8Array) {
-    if (this.closed) throw new Error('closed')
+    if (this.closed === true) throw new Error('closed')
     this.sent.push(data)
     this.other.#deliver(data)
   }
@@ -26,12 +26,12 @@ export class FakeConn implements FramedConn {
   recv(): Promise<Uint8Array | null> {
     const next = this.#inbox.shift()
     if (next !== undefined) return Promise.resolve(next)
-    if (this.closed) return Promise.resolve(null)
+    if (this.closed === true) return Promise.resolve(null)
     return new Promise((resolve) => this.#waiters.push(resolve))
   }
 
   close() {
-    if (this.closed) return
+    if (this.closed === true) return
     this.closed = true
     this.#deliver(null)
     this.other.#deliver(null)
@@ -39,7 +39,7 @@ export class FakeConn implements FramedConn {
 
   #deliver(data: Uint8Array | null) {
     const waiter = this.#waiters.shift()
-    if (waiter) waiter(data)
+    if (waiter !== undefined) waiter(data)
     else this.#inbox.push(data)
   }
 }

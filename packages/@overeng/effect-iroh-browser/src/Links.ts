@@ -73,7 +73,10 @@ export const make = ({
         Effect.gen(function* () {
           const remote = conn.remoteId
           const existing = links.get(remote)
-          if (existing && keepsExisting({ existing: existing, outgoing: outgoing, remote: remote }))
+          if (
+            existing !== undefined &&
+            keepsExisting({ existing: existing, outgoing: outgoing, remote: remote }) === true
+          )
             return yield* conn.close
           const link: Link = {
             outgoing,
@@ -82,7 +85,7 @@ export const make = ({
           }
           links.set(remote, link)
           yield* Effect.gen(function* () {
-            if (existing) {
+            if (existing !== undefined) {
               yield* Deferred.succeed(existing.superseded, undefined)
               // Handover must finish even if this replacement is interrupted. Otherwise the next
               // replacement could start while the original handler is still releasing resources.
@@ -118,7 +121,7 @@ export const make = ({
       has: (endpointId) => links.has(endpointId),
       awaitGone: (endpointId) =>
         SubscriptionRef.changes(connected).pipe(
-          Stream.filter((set) => !set.has(endpointId) && !links.has(endpointId)),
+          Stream.filter((set) => set.has(endpointId) === false && links.has(endpointId) === false),
           Stream.runHead,
           Effect.asVoid,
         ),
