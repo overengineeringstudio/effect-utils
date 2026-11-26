@@ -2,7 +2,9 @@
 
 The scheduled [Update pnpm workflow](../../../.github/workflows/update-pnpm.yml.genie.ts)
 runs Monday at 06:23 UTC or manually on the default branch. It compares the
-latest stable [pnpm release](https://github.com/pnpm/pnpm/releases) with `nix/pnpm.nix`,
+numerically greatest stable `vMAJOR.MINOR.PATCH` [pnpm release](https://github.com/pnpm/pnpm/releases)
+across all release pages with `nix/pnpm.nix`, ignoring drafts, prereleases and unrelated tags.
+GitHub's “Latest” label and publication order do not select the version. It
 then opens/adopts version-specific **draft** PRs without candidate checkout,
 history overwrite, readiness changes or merging.
 

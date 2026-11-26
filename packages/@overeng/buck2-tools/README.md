@@ -135,8 +135,10 @@ Use the actual endpoint/instance and `aarch64` for an aarch64 Linux client.
 and provisioned by the worker, **not** a hostname or arbitrary pool tag. Configure
 NativeLink Exact matching for `OSFamily=linux`, `cpu_arch`, and `nix_store`;
 Command.platform carries these properties at the pinned Buck revision.
-Missing endpoint/property settings or a mismatched client architecture fail
-analysis; an unavailable/mismatched worker cannot fall back to local execution.
+The platform macro reads and validates root configuration during BUCK evaluation,
+then passes typed attributes to rule analysis; analysis never reads root config.
+Missing endpoint/property settings or a mismatched client architecture fail before
+execution; an unavailable/mismatched worker cannot fall back to local execution.
 For non-loopback deployments, configure transport/auth at the deployment boundary;
 the example is not authorization to expose an unauthenticated listener.
 
@@ -146,6 +148,10 @@ or the flag: stop this worktree's selected isolation with
 same isolation and the new configuration already installed. Do not kill unrelated
 worktrees' daemons. Keep a bounded worker and independent pilot cache endpoint;
 do not redirect ordinary clients or change host admission.
+Exercise the opt-in path with a real build of
+`//packages/@overeng/kdl:dist //packages/@overeng/utils-dev:dist` and inspect
+`buck2 log what-ran` for remote execution. A default-off/local-only build alone
+does not qualify pilot platform analysis or worker execution.
 
 Rollback: set `nativelink_pilot.enabled=false` (or remove the section), restore
 the previous cache endpoints/TLS/instance, then replace the selected daemon again.

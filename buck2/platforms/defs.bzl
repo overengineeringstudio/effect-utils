@@ -253,19 +253,17 @@ def _native_execution_platform_impl(ctx):
         constraints[value.setting.label] = value
     configuration = ConfigurationInfo(constraints = constraints, values = {})
     pilot = ctx.attrs.nativelink_pilot
-    if pilot and (not nativelink_pilot_enabled() or not host_info().os.is_linux):
-        fail("NativeLink pilot platform requires explicit Linux opt-in")
     platform = ExecutionPlatformInfo(
         label = ctx.label.raw_target(),
         configuration = configuration,
         executor_config = CommandExecutorConfig(
             local_enabled = not pilot,
             remote_enabled = pilot,
-            remote_cache_enabled = ctx.attrs.cache_hermetic and root_remote_cache_enabled(),
-            allow_cache_uploads = ctx.attrs.cache_hermetic and root_allow_cache_uploads(),
+            remote_cache_enabled = ctx.attrs.cache_hermetic and ctx.attrs.remote_cache_enabled,
+            allow_cache_uploads = ctx.attrs.cache_hermetic and ctx.attrs.allow_cache_uploads,
             use_windows_path_separators = False,
             **({
-                "remote_execution_properties": _nativelink_pilot_properties(),
+                "remote_execution_properties": ctx.attrs.pilot_properties,
                 "remote_execution_use_case": "buck2-default",
                 "remote_output_paths": "output_paths",
             } if pilot else {})
@@ -282,16 +280,33 @@ def _native_execution_platform_impl(ctx):
         ),
     ]
 
-native_execution_platform = rule(
+_native_execution_platform = rule(
     impl = _native_execution_platform_impl,
     attrs = {
         "constraint_values": attrs.list(attrs.dep(providers = [ConstraintValueInfo])),
         "cache_hermetic": attrs.bool(default = False),
         "nativelink_pilot": attrs.bool(default = False),
+        "remote_cache_enabled": attrs.bool(),
+        "allow_cache_uploads": attrs.bool(),
+        "pilot_properties": attrs.dict(key = attrs.string(), value = attrs.string()),
         "pilot_platform": attrs.option(attrs.dep(providers = [ExecutionPlatformInfo]), default = None),
         "hermetic_platform": attrs.option(attrs.dep(providers = [ExecutionPlatformInfo]), default = None),
     },
 )
+
+def native_execution_platform(name, nativelink_pilot = False, **kwargs):
+    # Config reads belong to BUCK evaluation, not rule analysis. Pass the
+    # validated values through attributes even when analysis shares no load cache.
+    if nativelink_pilot and (not nativelink_pilot_enabled() or not host_info().os.is_linux):
+        fail("NativeLink pilot platform requires explicit Linux opt-in")
+    _native_execution_platform(
+        name = name,
+        nativelink_pilot = nativelink_pilot,
+        remote_cache_enabled = root_remote_cache_enabled(),
+        allow_cache_uploads = root_allow_cache_uploads(),
+        pilot_properties = _nativelink_pilot_properties() if nativelink_pilot else {},
+        **kwargs
+    )
 
 def nativelink_pilot_platform(name):
     if not nativelink_pilot_enabled() or not host_info().os.is_linux:
