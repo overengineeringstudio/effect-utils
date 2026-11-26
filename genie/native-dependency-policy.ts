@@ -52,6 +52,8 @@ export const nativeDependencyPolicy = {
   'node-pty': { _tag: 'nix-grafted', graft: 'link', via: 'nix/node-pty-native.nix' },
   sharp: { _tag: 'denied-lifecycle-build', defensive: true },
   'unix-dgram': { _tag: 'denied-lifecycle-build', defensive: true },
+  // Automerge's cbor-x acceleration is optional; never run its node-gyp installer.
+  'cbor-extract': { _tag: 'denied-lifecycle-build' },
 
   // Nix-grafted prebuilt native package (not lifecycle-built, so not denied).
   '@opentui/core': { _tag: 'nix-grafted', graft: 'fetch-only', via: 'nix/opentui-core-native.nix' },
@@ -64,6 +66,7 @@ export const nativeDependencyPolicy = {
   '@esbuild': { _tag: 'pure-package-artifact' },
   '@typescript/typescript': { _tag: 'pure-package-artifact' },
   '@msgpackr-extract': { _tag: 'pure-package-artifact' },
+  '@cbor-extract': { _tag: 'pure-package-artifact' },
   lightningcss: { _tag: 'pure-package-artifact' },
   '@oxc-parser/binding': { _tag: 'pure-package-artifact' },
   '@oxc-resolver/binding': { _tag: 'pure-package-artifact' },
