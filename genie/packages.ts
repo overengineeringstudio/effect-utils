@@ -23,6 +23,7 @@ export const internalPackages = [
   'effect-automerge',
   'effect-distributed-lock',
   'effect-iroh',
+  'effect-iroh-automerge',
   'effect-iroh-browser',
   'effect-path',
   'effect-react',

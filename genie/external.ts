@@ -328,6 +328,7 @@ export const catalog = defineCatalog({
 
   // Preserve the games consumer's Automerge cohort during the bindings extraction.
   '@automerge/automerge-repo': '2.5.6',
+  '@automerge/automerge-repo-network-broadcastchannel': '2.5.6',
 
   // React ecosystem
   react: '19.2.8',
