@@ -16,6 +16,13 @@ export default pnpmWorkspaceYaml.root({
       issue: '#1952',
     },
     {
+      package: '@noble/hashes',
+      versions: ['2.4.0', '1.8.0'],
+      reason:
+        '@automerge/automerge-repo@2.5.6 uses bs58check@3.0.1, which requires @noble/hashes ^1.2.0; preserve its supported cryptographic API instead of forcing the catalog 2.x major',
+      issue: '#2811',
+    },
+    {
       package: 'typescript',
       // Two cohorts, both intentional and both present in the lock at this
       // commit: production compiles with the catalog's TypeScript 7, and

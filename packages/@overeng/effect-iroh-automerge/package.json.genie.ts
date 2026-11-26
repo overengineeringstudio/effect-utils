@@ -29,7 +29,7 @@ export default packageJson(
     exports: {
       '.': exportEntry(
         { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
-        { environment: 'isomorphic-es2024' },
+        { environment: 'browser' },
       ),
     },
     publishConfig: {
