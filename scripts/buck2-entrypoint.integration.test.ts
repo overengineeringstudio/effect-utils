@@ -39,10 +39,9 @@ import {
   WatchmanCrawlError,
 } from './buck2-file-watcher.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
-import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 
 // Register the lifecycle suites in the existing devenv test entrypoint.
-void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
+void [gateUnitTests, gateIsolationTests, daemonPostureTests]
 
 const publicationOwnerLibrary = process.env['BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY']
 if (publicationOwnerLibrary === undefined || publicationOwnerLibrary.length === 0)

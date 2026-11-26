@@ -1417,13 +1417,33 @@ in
       "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
       "scripts/buck2-gate-isolation.integration.test.ts"
       "scripts/buck2-gate-isolation.unit.test.ts"
-      "scripts/buck2-gate-teardown.integration.test.ts"
       "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"
       "scripts/buck2-remote-cache-proof.sh"
       "genie/ci-scripts/buck2-action-evidence.ts"
       "scripts/buck2-file-watcher.*"
+    ];
+  };
+  # Real expiry needs its own enclosing admission, not check:quick's parallel build envelope.
+  tasks."buck2:gate-teardown:test" = {
+    description = "Exercise real native-only death, gate expiry and exactly-once cleanup under standalone admission";
+    exec = trace.exec "buck2:gate-teardown:test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+        ./scripts/buck2-gate-teardown.integration.test.ts
+    '';
+    execIfModified = [
+      "nix/buck2.nix"
+      "scripts/buck2-entrypoint.*"
+      "scripts/buck2-cache-posture.*"
+      "scripts/buck2-file-watcher.*"
+      "scripts/buck2-stdio.*"
+      "scripts/buck2-gate-teardown.integration.test.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-runner.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-preload.ts"
+      "packages/@overeng/buck2-tools/src/bun-test-timeout.ts"
     ];
   };
 
@@ -2293,6 +2313,7 @@ in
     "check:buck2-producer-overlap"
     "cargo:check"
     "dependency-materialization:evidence:check"
+    "buck2:gate-teardown:test"
   ];
 
   # `test:run` is the aggregate: one Buck invocation for the selected bounded lanes, plus the
