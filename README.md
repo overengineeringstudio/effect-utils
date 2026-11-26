@@ -931,6 +931,14 @@ invocation, and retaining a busy daemon at exit may keep its original job scope
 alive. Independent idle-daemon maintenance remains the backstop for this
 conservative concurrent-client case.
 
+Real native-only termination and gate max-hold expiry have their own declared task,
+`buck2:gate-teardown:test`, also included in `check:all`. For a native gate change,
+run `gate-slot --class heavy -- devenv tasks run buck2:gate-teardown:test` separately
+before `check:quick`, retaining both receipts. The real expiry suite is not imported
+into quick's concurrent cache-posture suite: its private fresh timer retains the
+enclosing cgroup, disk floor, real admission and exactly-once cleanup checks.
+It does not disable host budgets or declare an unsupported memory profile.
+
 The existing explicit local `[buck2] file_watcher = notify` choice is retained
 for deliberate non-agent use, but is unsafe for agent builds: completed source
 writes can race notify's unsynchronized callback buffer and produce stale
