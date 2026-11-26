@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -31,6 +32,22 @@ class UpdatePnpmTests(unittest.TestCase):
     def test_pinned_runtime_is_resolved_before_tasks(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/update-pnpm.yml").read_text()
         self.assertLess(workflow.index("resolve-devenv.sh"), workflow.index("DEVENV_BIN:?"))
+
+    def test_namespace_runner_admits_nix_before_resolving_tools(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/update-pnpm.yml").read_text()
+        self.assertIn("namespace-profile-linux-x86-64;github.run-id=", workflow)
+        self.assertIn("container.privileged=true", workflow)
+        self.assertNotIn("runs-on: [sh-linux-x64", workflow)
+        self.assertLess(workflow.index("id: linux-sandbox-admission"), workflow.index("resolve-devenv.sh"))
+        ledger = json.loads((Path(__file__).resolve().parents[1] / "genie/ci-workflow/policy-migration-ledger.json").read_text())
+        rows = [row for row in ledger["violations"] if row["workflow"] == "update-pnpm.yml"]
+        self.assertEqual({row["rule"] for row in rows}, {"runner-fallback", "dynamic-runner"})
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(row["job"], "candidate")
+            self.assertEqual(row["path"], "jobs.candidate.runs-on")
+            self.assertTrue(row["value"].startswith("namespace-profile-linux-x86-64;github.run-id="))
+            self.assertEqual(row["reason"], "No active sh-linux-x64 runner; same Namespace profile as grandfathered trusted consumers.")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ CI then runs one `genie:run`. Never hand-edit generated manifests or contracts.
 The existing repository-restricted publisher App token triggers hosted checks;
 GitHub signs its API-created normal commits before a new branch is created.
 Missing App permissions or an unverified signature fail closed; closed PRs are not duplicated.
+Generation uses the existing per-run Namespace Linux x86-64 profile with trusted
+Nix sandbox admission, without depending on generic self-hosted runner labels.
 
 Read intervening release notes before bumping. Check store and lockfile
 compatibility separately from the CLI version. In particular,
