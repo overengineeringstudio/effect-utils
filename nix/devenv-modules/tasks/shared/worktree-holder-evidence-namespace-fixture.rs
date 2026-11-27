@@ -66,12 +66,12 @@ fn probe() {
         let reference = oracle.get(&actual.id).expect("kernel unique/legacy IDs must match oracle explicitly");
         assert_eq!(actual.parent, reference.parent);
         assert_eq!((actual.device_major, actual.device_minor), (reference.device_major, reference.device_minor));
-        assert_eq!(actual.root, reference.root);
+        assert_eq!(actual.root.path().unwrap(), &reference.root);
         assert_eq!(actual.point, reference.point);
         assert_eq!(actual.kind, reference.kind);
         if actual.point == outside {
             assert_eq!((actual.device_major, actual.device_minor), expected_device);
-            assert_eq!(actual.root, candidates.scopes[0].location.path);
+            assert_eq!(actual.root.path().unwrap(), &candidates.scopes[0].location.path);
             outside_id = Some(actual.id);
         }
     }
