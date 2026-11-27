@@ -4,8 +4,13 @@ import { createHash } from 'node:crypto'
 import { Effect, type Result } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 
-import { fetchOccurrenceLoki, OccurrenceLokiQueryError } from './buck2-occurrence-loki-query.ts'
-import type { RetainedOccurrenceFile } from './buck2-occurrence-record-codec.ts'
+import {
+  consumeOccurrenceLokiPages,
+  type OccurrenceLokiPage,
+  type OccurrenceLokiPageSummary,
+  OccurrenceLokiQueryError,
+} from './buck2-occurrence-loki-query.ts'
+import { reconstructOccurrenceLokiSnapshots } from './buck2-occurrence-loki.ts'
 
 const hourMs = 3_600_000
 const hourNs = BigInt(hourMs) * 1_000_000n
@@ -58,24 +63,29 @@ const withReader = async (
     await server.stop(true)
   }
 }
-const query = (
+const query = <TError = never>(
   url: string,
   options: {
     windowStartMs?: number
     windowEndMs?: number
     host?: string
+    wallTimeMs?: number
   } = {},
+  consumePage: (page: OccurrenceLokiPage) => Effect.Effect<void, TError> = () => Effect.void,
 ) =>
   Effect.runPromise(
-    fetchOccurrenceLoki({
-      url,
-      windowStartMs: 0,
-      windowEndMs: hourMs,
-      ...options,
-    }).pipe(Effect.provide(FetchHttpClient.layer), Effect.result),
+    consumeOccurrenceLokiPages(
+      {
+        url,
+        windowStartMs: 0,
+        windowEndMs: hourMs,
+        ...options,
+      },
+      consumePage,
+    ).pipe(Effect.provide(FetchHttpClient.layer), Effect.result),
   )
 const expectFailure = (
-  result: Result.Result<RetainedOccurrenceFile[], OccurrenceLokiQueryError>,
+  result: Result.Result<OccurrenceLokiPageSummary, OccurrenceLokiQueryError>,
   reason: string,
 ) => {
   expect(result._tag).toBe('Failure')
@@ -86,15 +96,21 @@ const expectFailure = (
   }
 }
 
-test('exhausts every hourly half-open window and reconstructs snapshots spanning hours', async () => {
+test('exhausts every hourly half-open window and delivers snapshots spanning hours', async () => {
   await withReader(
     (_request, index) =>
       new Response(
         response(index < 2 ? [[[(BigInt(index) * hourNs).toString(), sample.rows[index]!]]] : [[]]),
       ),
     async (url, requests) => {
-      const result = await query(url, { windowEndMs: 2 * hourMs + 123, host: 'runner-1' })
-      expect(result).toMatchObject({ _tag: 'Success', success: [sample.file] })
+      const lines: string[] = []
+      const result = await query(url, { windowEndMs: 2 * hourMs + 123, host: 'runner-1' }, (page) =>
+        Effect.sync(() => {
+          lines.push(...page.lines)
+        }),
+      )
+      expect(result).toMatchObject({ _tag: 'Success', success: { pages: 3, rows: 2 } })
+      expect(reconstructOccurrenceLokiSnapshots(lines)).toEqual([sample.file])
       expect(requests.map((request) => new URL(request.url).search)).toEqual([
         `?start=0&end=${hourNs - 1n}&limit=5000&direction=forward&host=runner-1`,
         `?start=${hourNs}&end=${2n * hourNs - 1n}&limit=5000&direction=forward&host=runner-1`,
@@ -128,10 +144,15 @@ test('continues full pages inclusively, retaining unseen tied rows and split sna
         ),
       ),
     async (url, requests) => {
-      expect(await query(url)).toMatchObject({
-        _tag: 'Success',
-        success: [large.file, sample.file],
-      })
+      const lines: string[] = []
+      expect(
+        await query(url, {}, (page) =>
+          Effect.sync(() => {
+            lines.push(...page.lines)
+          }),
+        ),
+      ).toMatchObject({ _tag: 'Success', success: { pages: 2, rows: 5003 } })
+      expect(reconstructOccurrenceLokiSnapshots(lines)).toEqual([large.file, sample.file])
       expect(requests).toHaveLength(2)
       expect(new URL(requests[1]!.url).searchParams.get('start')).toBe('5000')
     },
@@ -166,8 +187,6 @@ test('rejects malformed, out-of-window, over-limit and unordered pages without r
       'nonmonotonic',
     ],
     [response([Array.from({ length: 5001 }, () => ['1', sample.rows[0]!] as const)]), 'page limit'],
-    [response([[['1', 'not-envelope']]]), 'snapshots'],
-    [response([[['1', sample.rows[0]!]]]), 'snapshots'],
   ]
   for (const [body, reason] of cases) {
     await withReader(
@@ -218,7 +237,15 @@ test('does not require global ordering between individually forward streams', as
   await withReader(
     () => new Response(response([[['10', sample.rows[0]!]], [['1', sample.rows[1]!]]])),
     async (url) => {
-      expect(await query(url)).toMatchObject({ _tag: 'Success', success: [sample.file] })
+      const lines: string[] = []
+      expect(
+        await query(url, {}, (page) =>
+          Effect.sync(() => {
+            lines.push(...page.lines)
+          }),
+        ),
+      ).toMatchObject({ _tag: 'Success', success: { pages: 1, rows: 2 } })
+      expect(reconstructOccurrenceLokiSnapshots(lines)).toEqual([sample.file])
     },
   )
 })
@@ -254,6 +281,8 @@ test('validates the fixed URL, host and window before issuing a request', async 
       expectFailure(await query(url, { windowStartMs: 1, windowEndMs: 1 }), 'window')
       expectFailure(await query(url, { windowStartMs: 0.5 }), 'window')
       expectFailure(await query(url, { windowEndMs: 25 * hourMs }), 'at most 24 hours')
+      for (const wallTimeMs of [0, -1, 0.5, 600_001, Number.NaN, Number.POSITIVE_INFINITY])
+        expectFailure(await query(url, { wallTimeMs }), 'wall-time budget must')
       expect(requests).toHaveLength(0)
     },
   )
@@ -279,18 +308,111 @@ test('enforces the real streamed 64 MiB per-page byte cap', async () => {
   await withReader(
     () => paddedResponse(65),
     async (url, requests) => {
-      expectFailure(await query(url), 'Response byte cap exceeded')
+      let consumedPages = 0
+      expectFailure(
+        await query(url, {}, () =>
+          Effect.sync(() => {
+            consumedPages++
+          }),
+        ),
+        'Response byte cap exceeded',
+      )
+      expect(consumedPages).toBe(0)
       expect(requests).toHaveLength(1)
     },
   )
 }, 30_000)
 
-test('shares the 512 MiB download budget across hourly responses', async () => {
+test('consumes more than 512 MiB across real HTTP pages without retaining them', async () => {
+  let consumedPages = 0
+  let consumedBytes = 0
   await withReader(
     () => paddedResponse(60),
     async (url, requests) => {
-      expectFailure(await query(url, { windowEndMs: 9 * hourMs }), 'Total downloaded byte cap hit')
+      const result = await query(url, { windowEndMs: 9 * hourMs }, (page) =>
+        Effect.sync(() => {
+          expect(page.lines).toEqual([])
+          consumedPages++
+          consumedBytes += page.downloadedBytes
+        }),
+      )
+      expect(result._tag).toBe('Success')
+      if (result._tag === 'Success')
+        expect(result.success).toEqual({ pages: 9, rows: 0, downloadedBytes: consumedBytes })
+      expect(consumedPages).toBe(9)
+      expect(consumedBytes).toBeGreaterThan(512 * 1024 * 1024)
       expect(requests).toHaveLength(9)
     },
   )
 }, 60_000)
+
+test('includes page consumption in the wall-time deadline', async () => {
+  await withReader(
+    () => new Response(response([])),
+    async (url, requests) => {
+      let entered = false
+      const result = await query(url, { wallTimeMs: 250 }, () =>
+        Effect.sync(() => {
+          entered = true
+        }).pipe(Effect.andThen(Effect.never)),
+      )
+      expect(entered).toBe(true)
+      expectFailure(result, 'wall-time budget exceeded')
+      expect(requests).toHaveLength(1)
+    },
+  )
+})
+
+test('bounds a stalled real HTTP response body by the wall-time deadline', async () => {
+  await withReader(
+    () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"status":'))
+          },
+        }),
+      ),
+    async (url, requests) => {
+      expectFailure(await query(url, { wallTimeMs: 250 }), 'wall-time budget exceeded')
+      expect(requests).toHaveLength(1)
+    },
+  )
+})
+
+test('preserves typed callback errors and never requests the next window', async () => {
+  const callbackError = { _tag: 'ConsumerError', message: 'disk failed' } as const
+  await withReader(
+    () => new Response(response([])),
+    async (url, requests) => {
+      const result = await query(url, { windowEndMs: 2 * hourMs }, () => Effect.fail(callbackError))
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') expect(result.failure).toBe(callbackError)
+      expect(requests).toHaveLength(1)
+    },
+  )
+})
+
+test('hands off raw repeated evidence and waits for each callback before continuing', async () => {
+  let consumedPages = 0
+  await withReader(
+    (_request, index) => {
+      expect(index).toBe(consumedPages)
+      return new Response(response([[[(BigInt(index) * hourNs).toString(), 'raw-evidence']]]))
+    },
+    async (url) => {
+      const result = await query(url, { windowEndMs: 2 * hourMs }, (page) =>
+        Effect.yieldNow.pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              expect(page.lines).toEqual(['raw-evidence'])
+              consumedPages++
+            }),
+          ),
+        ),
+      )
+      expect(result).toMatchObject({ _tag: 'Success', success: { pages: 2, rows: 2 } })
+      expect(consumedPages).toBe(2)
+    },
+  )
+})

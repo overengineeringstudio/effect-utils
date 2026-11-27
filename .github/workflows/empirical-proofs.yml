@@ -5802,9 +5802,9 @@ jobs:
             if [ -n "$OCCURRENCE_QUERY_HOST" ]; then args+=(--query-host "$OCCURRENCE_QUERY_HOST"); fi
             read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"
             for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done
-            bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-url "$BUCK2_OCCURRENCE_READ_URL" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"
+            bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-url "$BUCK2_OCCURRENCE_READ_URL" --output "$OCCURRENCE_PROOF/occurrences.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/summary.json"
           '
-          jq -r '"## Daily occurrence evidence\nRecords: \(.records | length)\nEvidence gaps: \(.evidenceGaps | length)\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '"## Daily occurrence evidence\nRecords: \(.recordCount)\nEvidence gaps: \(.evidenceGapCount)\nPages: \(.pages)\nDownloaded bytes: \(.downloadedBytes)\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"' "$proof/summary.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Disconnect occurrence reader before evidence writer
         id: occurrence-disconnect
         if: ${{ (always() && steps.occurrence-reader.outcome != 'skipped') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
@@ -5816,7 +5816,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof/occurrences.json"
-          jq . "$proof"
+          cat "$proof"
           bytes=$(wc -c < "$proof")
           if (( bytes < 900000 )); then
             jq -r '"### Per-occurrence JSON\n\n```json\n" + tojson + "\n```"' "$proof" >> "$GITHUB_STEP_SUMMARY"

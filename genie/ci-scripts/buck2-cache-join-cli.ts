@@ -118,7 +118,7 @@ const timestamp = ({ value, now }: { value: string; now: number }) => {
 }
 
 const help = `buck2-cache-join --repo owner/name (--since <ISO-8601|24h> [--until <ISO-8601|duration>] | --previous-utc-day) [--format prometheus|json] [--otlp-spool <pending-directory>]
-buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE | --loki-url URL) --since ISO-8601 [--until ISO-8601] [--query-host HOST] [--host HOST] [--key FULL_ACTION_DIGEST]
+buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE | --loki-url URL --output FILE) --since ISO-8601 [--until ISO-8601] [--query-host HOST] [--host HOST] [--key FULL_ACTION_DIGEST]
 
 Join strict Buck2 action evidence from selected workflow runs created in the bounded window.
 GITHUB_TOKEN is required (Actions read permission). No GitHub writes are performed.
