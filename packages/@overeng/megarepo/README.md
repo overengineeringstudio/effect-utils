@@ -553,6 +553,20 @@ continuous ROOT/claim/pin and source/history/all-UID authority, with child compl
 inside the scope. Raw native `pnpm store prune` and direct `rm` bypass this cooperative
 contract. This scope does not enable default adapters or authorize reset/removal.
 
+Pool source identity also binds the raw native HEAD reflog digest and byte length
+(`PoolHeadHistory`), not just current HEAD and a clean working tree. Before first
+READY, `inspectFreshPoolHeadHistory` admits only zero/source-to-source transitions.
+Before any reset, the complete current install identity must equal its recorded
+value; old/missing history is HOLD, never adopted or silently rebaselined.
+An owned checkout may advance history only with the exact retained prefix and
+expected old-to-new transitions. Preparation must preserve that captured result
+through final verification and READY publication. These helpers never reset,
+enable logging, expire history, or create another authoritative ledger.
+The durable fresh-origin/authored bit, source/lease/holder guards and physical pins
+remain mandatory. This is not a scanner for shared bare refs, arbitrary plumbing
+or out-of-contract logging disablement; reset never removes shared bare objects or
+refs. Physical integration and default adapters remain off.
+
 `readPoolProvenance({ base })` observes an existing ledger through the same canonical
 decoder and accounting checks, without initialization, repair, locking or writes.
 Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
