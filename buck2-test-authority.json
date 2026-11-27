@@ -349,6 +349,20 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-automerge:test_collect",
+      "excludes": [],
+      "packageName": "effect-automerge",
+      "packagePath": "packages/@overeng/effect-automerge",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/AutomergeRepo.test.ts", "src/SafeStorageAdapter.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-automerge:test",
+      "taskName": "test:effect-automerge",
+      "testFiles": ["src/AutomergeRepo.test.ts", "src/SafeStorageAdapter.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-distributed-lock:test_collect",
       "excludes": [],
       "packageName": "effect-distributed-lock",
@@ -359,6 +373,56 @@
       "target": "effect_utils//packages/@overeng/effect-distributed-lock:test",
       "taskName": "test:effect-distributed-lock",
       "testFiles": ["src/distributed-semaphore.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-iroh-automerge:test_collect",
+      "excludes": [],
+      "packageName": "effect-iroh-automerge",
+      "packagePath": "packages/@overeng/effect-iroh-automerge",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/Ephemeral.integration.test.ts",
+        "src/IrohNetworkAdapter.test.ts",
+        "src/Net.test.ts",
+        "src/mesh.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-iroh-automerge:test",
+      "taskName": "test:effect-iroh-automerge",
+      "testFiles": [
+        "src/Ephemeral.integration.test.ts",
+        "src/IrohNetworkAdapter.test.ts",
+        "src/Net.test.ts",
+        "src/mesh.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-iroh-browser:test_collect",
+      "excludes": [],
+      "packageName": "effect-iroh-browser",
+      "packagePath": "packages/@overeng/effect-iroh-browser",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/Connection.test.ts",
+        "src/IrohNode.test.ts",
+        "src/Links.test.ts",
+        "src/WebLock.test.ts",
+        "src/download.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-iroh-browser:test",
+      "taskName": "test:effect-iroh-browser",
+      "testFiles": [
+        "src/Connection.test.ts",
+        "src/IrohNode.test.ts",
+        "src/Links.test.ts",
+        "src/WebLock.test.ts",
+        "src/download.test.ts"
+      ],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -557,6 +621,20 @@
       "target": "effect_utils//packages/@overeng/effect-schema-form:test",
       "taskName": "test:effect-schema-form",
       "testFiles": ["src/mod.unit.test.tsx"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/game-laws:test_collect",
+      "excludes": [],
+      "packageName": "game-laws",
+      "packagePath": "packages/@overeng/game-laws",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/game-laws:test",
+      "taskName": "test:game-laws",
+      "testFiles": ["src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },

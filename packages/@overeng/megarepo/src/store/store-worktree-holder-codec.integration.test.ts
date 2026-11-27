@@ -6,9 +6,18 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { HolderEvidenceResponse } from './store-worktree-holder-codec.ts'
+import {
+  decodeWorktreeHolderEvidence,
+  HolderEvidenceResponse,
+} from './store-worktree-holder-codec.ts'
 
 const withTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer })
+const context = {
+  nonce: '0123456789abcdef0123456789abcdef',
+  producerId: '/nix/store/00000000000000000000000000000000-holder-evidence-codec-fixture',
+  policyId: 'a'.repeat(64),
+  paths: ['/srv/worktrees/fixture'],
+}
 const fixtures = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const text = yield* fs.readFileString(
@@ -17,6 +26,7 @@ const fixtures = Effect.gen(function* () {
   return text.trimEnd().split('\n')
 })
 const untypedJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 const decode = Schema.decodeEffect(Schema.fromJsonString(HolderEvidenceResponse), {
   onExcessProperty: 'error',
 })
@@ -92,6 +102,114 @@ describe('unbound worktree holder wire schema', () => {
             .replace('"effect":"in-use"', '"effect":"retained-bytes"'),
         ])
           yield* Effect.flip(decode(invalid))
+      }).pipe(withTestCtx(test)),
+  )
+})
+
+describe('trusted worktree holder codec', () => {
+  it.effect('preserves every field of all nine canonical Rust fixtures', (test) =>
+    Effect.gen(function* () {
+      const lines = yield* fixtures
+      expect(lines).toHaveLength(9)
+      for (const stdout of lines) {
+        const expected = yield* Schema.decodeEffect(Schema.fromJsonString(HolderEvidenceResponse))(
+          stdout,
+        )
+        const actual = yield* decodeWorktreeHolderEvidence({
+          ...context,
+          stdout,
+          paths: expected.roots.map((root) => root.path),
+        })
+        expect(actual).toEqual(untypedJson(stdout))
+      }
+    }).pipe(withTestCtx(test)),
+  )
+
+  it.effect('binds nonce, producer, policy, exact roots and ordered path digest', (test) =>
+    Effect.gen(function* () {
+      const lines = yield* fixtures
+      const stdout = lines[5]!
+      const paths = ['/srv/worktrees/fixture', '/srv/worktrees/uncovered']
+      for (const binding of [
+        { ...context, paths, nonce: 'f'.repeat(32) },
+        { ...context, paths, producerId: '/nix/store/other' },
+        { ...context, paths, policyId: 'f'.repeat(64) },
+        { ...context, paths: paths.toReversed() },
+        { ...context, paths: [paths[0]!] },
+        { ...context, paths: [paths[0]!, paths[0]!] },
+      ]) {
+        expect(
+          (yield* Effect.flip(decodeWorktreeHolderEvidence({ ...binding, stdout })))._tag,
+        ).toBe('HolderEvidenceError')
+      }
+      const wrongDigest = lines[0]!.replace(
+        /"requestedPathsDigest":"[a-f0-9]+"/u,
+        `"requestedPathsDigest":"${'f'.repeat(64)}"`,
+      )
+      yield* Effect.flip(decodeWorktreeHolderEvidence({ ...context, stdout: wrongDigest }))
+    }).pipe(withTestCtx(test)),
+  )
+
+  it.effect('rejects malformed, oversized, version, capture and scope inconsistencies', (test) =>
+    Effect.gen(function* () {
+      const clear = (yield* fixtures)[0]!
+      for (const stdout of [
+        '',
+        '{secret',
+        ' '.repeat(16 * 1024 * 1024 + 1),
+        clear + clear,
+        clear.replace('"version":1', '"version":2'),
+        clear.replace('"kind":"worktree"', '"kind":"store"'),
+        clear.replace('"allUids":true', '"allUids":false'),
+        clear.replace('"allTasks":true', '"allTasks":false'),
+        clear.replace('"processCount":1', '"processCount":3'),
+        clear.replace('"startedBootNs":"1000000000"', '"startedBootNs":"3000000000"'),
+        clear.replace('"finishedBootNs":"2000000000"', '"finishedBootNs":"27000000000"'),
+        clear.replace('"expiresBootNs":"31000000000"', '"expiresBootNs":"32000000000"'),
+        clear.replace('"ino":"9"', '"ino":"0"'),
+        clear.replace('"complete":true', '"complete":false'),
+        clear.replace('"referencesComplete":true', '"referencesComplete":false'),
+        clear.replace('"status":"no-current-reference"', '"status":"in-use"'),
+        clear.replace('"version":1', '"secret":"private-capability","version":1'),
+      ]) {
+        const error = yield* Effect.flip(decodeWorktreeHolderEvidence({ ...context, stdout }))
+        expect(error.message).toBe('Worktree holder evidence unavailable')
+        expect(String(error) + encodeJson(error)).not.toContain('secret')
+        expect('cause' in error).toBe(false)
+      }
+    }).pipe(withTestCtx(test)),
+  )
+
+  it.effect(
+    'retains lossless u64 strings and rejects overflow, numeric and noncanonical values',
+    (test) =>
+      Effect.gen(function* () {
+        const stdout = (yield* fixtures)[2]!
+        const lossless = stdout.replaceAll('"dev":"8"', '"dev":"18446744073709551615"')
+        const decoded = yield* decodeWorktreeHolderEvidence({ ...context, stdout: lossless })
+        expect(decoded.roots[0]!.identity?.dev).toBe('18446744073709551615')
+        expect(decoded.roots[0]!.references[0]!.identity.dev).toBe('18446744073709551615')
+        for (const value of ['"18446744073709551616"', '"08"', '8', '"-1"', '""']) {
+          yield* Effect.flip(
+            decodeWorktreeHolderEvidence({
+              ...context,
+              stdout: stdout.replace('"dev":"8"', `"dev":${value}`),
+            }),
+          )
+        }
+        for (const invalid of [
+          stdout.replace('"fd":7', '"fd":null'),
+          stdout.replace('"tgid":41', '"tgid":0'),
+          stdout.replace('"relativePath":"."', '"relativePath":"../escape"'),
+          stdout.replace('"leaderStart":"100"', '"leaderStart":"0"'),
+          stdout.replace('"uid":[1000,1000,1000,1000]', '"uid":[1000]'),
+          stdout.replace('"reference":"fd"', '"reference":"cwd"'),
+          stdout
+            .replace('"reference":"fd"', '"reference":"cwd"')
+            .replace('"fd":7', '"fd":null')
+            .replace('"effect":"in-use"', '"effect":"retained-bytes"'),
+        ])
+          yield* Effect.flip(decodeWorktreeHolderEvidence({ ...context, stdout: invalid }))
       }).pipe(withTestCtx(test)),
   )
 })
