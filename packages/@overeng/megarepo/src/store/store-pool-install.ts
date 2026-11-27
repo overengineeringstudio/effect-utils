@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 
 import { Effect, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -8,6 +8,7 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import { inspectPoolHeadHistory, type PoolHeadHistory } from './store-pool-head-history.ts'
 import { PoolError } from './store-pool-state.ts'
 
 /** Run a declared tool with its real exit status and captured stdout. */
@@ -38,11 +39,11 @@ export const runPoolCommand = ({
     }),
   )
 
-/** Prepare through the root-owned install task with inherited task output. */
-export const preparePoolInstall = (path: string) =>
+/** Execute root-owned tasks without buffering build output or overriding activation. */
+export const runPoolTasks = (path: string, tasks: ReadonlyArray<string>) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const child = yield* ChildProcess.make('devenv', ['tasks', 'run', 'pnpm:install'], {
+      const child = yield* ChildProcess.make('devenv', ['tasks', 'run', ...tasks], {
         cwd: path,
         stdin: 'ignore',
         stdout: 'inherit',
@@ -50,14 +51,26 @@ export const preparePoolInstall = (path: string) =>
       })
       const code = yield* child.exitCode
       if (code !== 0)
-        return yield* new PoolError({ message: `Canonical pnpm:install exited ${code}` })
+        return yield* new PoolError({ message: `Canonical tasks exited ${code}` })
     }),
   )
+
+/** Preparation always uses the root's normal install task. */
+export const preparePoolInstall = (path: string) => runPoolTasks(path, ['pnpm:install'])
+
+/** Actual normal-doctor binding, not provider qualification or live-use authority. */
+export interface PoolInstallBinding {
+  readonly identity: string
+  readonly backingPaths: ReadonlyArray<string>
+  readonly storeCacheRoot: string
+  readonly pnpmProvider: string
+  readonly sourceHistory: PoolHeadHistory
+}
 
 /** The root-owned pnpm doctor validates the complete projection and install receipts.
  * Pool code adds source/platform and actual GVS path binding, not a second graph validator.
  */
-export const poolInstallIdentity = ({
+export const inspectPoolInstall = ({
   path,
   commit,
   base,
@@ -90,24 +103,28 @@ export const poolInstallIdentity = ({
             phase: Schema.Literal('doctor'),
             version: Schema.Literal(1),
             root: Schema.String,
-            decision: Schema.String,
+            decision: Schema.Literal('healthy'),
             installHash: Schema.String,
             projectionHash: Schema.String,
             storageState: Schema.String,
+            storeCacheRoot: Schema.String,
             pnpm: Schema.String,
             node: Schema.String,
           }),
         ),
       )(yield* fs.readFileString(report))
       if (
-        proof.decision !== 'healthy' ||
         proof.installHash === '' ||
         proof.projectionHash === '' ||
+        isAbsolute(proof.storeCacheRoot) === false ||
+        (yield* fs.realPath(proof.storeCacheRoot)) !== proof.storeCacheRoot ||
         (yield* fs.realPath(proof.root)) !== (yield* fs.realPath(path))
       )
         return yield* new PoolError({
           message: 'Root-owned pnpm readiness evidence is stale or unhealthy',
         })
+      const storeCacheRoot = proof.storeCacheRoot
+      const pnpmProvider = yield* fs.realPath(proof.pnpm)
       const hash = createHash('sha256')
       hash.update(
         yield* Schema.encodeEffect(
@@ -123,7 +140,7 @@ export const poolInstallIdentity = ({
           ),
         )(proof),
       )
-      hash.update(yield* fs.realPath(proof.pnpm))
+      hash.update(pnpmProvider)
       hash.update(yield* fs.realPath(proof.node))
       for (const name of [
         'pnpm-lock.yaml',
@@ -162,8 +179,9 @@ export const poolInstallIdentity = ({
       const realStore = yield* fs.realPath(modules.storeDir)
       const realVirtual = yield* fs.realPath(resolve(path, 'node_modules', modules.virtualStoreDir))
       const realModules = yield* fs.realPath(`${path}/node_modules`)
-      if (realVirtual !== `${realStore}/links` || realStore.startsWith(`${path}/`) === true)
-        return yield* new PoolError({ message: 'Installed root is not a shared GVS projection' })
+      if (realVirtual !== `${realStore}/links` || realStore.startsWith(`${path}/`) === true ||
+        realStore === storeCacheRoot || !realStore.startsWith(join(storeCacheRoot, '/')))
+        return yield* new PoolError({ message: 'Installed root is not bound to its configured shared GVS' })
       hash.update(
         yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)))([
           realStore,
@@ -188,20 +206,35 @@ export const poolInstallIdentity = ({
           yield* runPoolCommand({ cwd: path, command: getconf, args: ['GNU_LIBC_VERSION'] }),
         )
       }
-      return hash.digest('hex')
+      const sourceHistory = yield* inspectPoolHeadHistory({
+        path, admin: yield* Git.getAbsoluteGitDir(path), commit,
+      })
+      hash.update('pool-head-history-v1\0')
+      hash.update(yield* Schema.encodeEffect(Schema.fromJsonString(
+        Schema.Tuple([Schema.String, Schema.String, Schema.Finite]),
+      ))([sourceHistory.commit, sourceHistory.digest, sourceHistory.byteLength]))
+      const binding: PoolInstallBinding = {
+        identity: hash.digest('hex'),
+        backingPaths: [realStore, realVirtual, realModules],
+        storeCacheRoot,
+        pnpmProvider,
+        sourceHistory,
+      }
+      return binding
     }),
   )
 
-/** Logical bytes are charged conservatively; no claim of physical/exclusive reclamation. */
-export const poolBytes = (path: string) =>
+/** GNU-du logical or allocated bytes; neither measures exclusive physical reclamation. */
+export const poolBytes = ({ path, kind }: { path: string; kind: 'logical' | 'allocated' }) =>
   Effect.gen(function* () {
     const output = yield* runPoolCommand({
       cwd: path,
       command: 'du',
-      args: ['--apparent-size', '-sk', '.'],
+      args: ['--block-size=1', '--summarize', ...(kind === 'logical' ? ['--apparent-size'] : []), '--', '.'],
     })
-    const kib = Number(output.split(/\s+/u)[0])
-    if (Number.isSafeInteger(kib) === false || kib < 0)
+    const match = /^([0-9]+)\s/u.exec(output)
+    const bytes = match === null ? Number.NaN : Number(match[1])
+    if (!Number.isSafeInteger(bytes) || bytes < 0)
       return yield* new PoolError({ message: 'Cannot account pool bytes' })
-    return kib * 1024
+    return bytes
   })

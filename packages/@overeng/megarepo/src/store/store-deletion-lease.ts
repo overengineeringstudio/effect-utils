@@ -148,7 +148,7 @@ const readLeaseRecord = ({
   })
 
 /** Linux stat's comm may contain spaces and ')'; fields after its last ')' are unambiguous. */
-const readProcessIdentity = ({ fs, pid }: { fs: FileSystem.FileSystem; pid: number }) =>
+export const readProcessIdentity = ({ fs, pid }: { fs: FileSystem.FileSystem; pid: number }) =>
   Effect.gen(function* () {
     if (process.platform !== 'linux' || Number.isSafeInteger(pid) === false || pid <= 0)
       return undefined
