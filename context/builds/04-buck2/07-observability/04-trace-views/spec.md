@@ -180,11 +180,20 @@ digest. The half-open time window filters native occurrence completion times. Re
 filters. `evidenceGaps` survive row filtering; absent census stays unknown.
 Reading is bounded to 100,000 entries, 64 MiB per file and 512 MiB total.
 
-The daily empirical cache join also accepts `--loki-response FILE`: a bounded
-Loki streams response from the fixed occurrence-reader proxy. Producer ledger
-envelopes reconstruct original snapshots by ordinal, count and SHA-256; missing,
-conflicting or corrupt snapshots and responses reaching 5,000 entries fail with
-coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
+The offline command also accepts `--loki-response FILE`: a bounded Loki streams
+response from the fixed occurrence-reader proxy. A raw response reaching
+5,000 entries cannot prove exhaustion and fails with coverage UNKNOWN.
+The daily empirical cache join instead uses `--loki-url URL`, splitting its
+at-most-24-hour live window into half-open hour windows. Each HTTP page is bounded
+to 5,000 entries and 64 MiB, with a 512 MiB total download budget.
+A full page continues at its greatest timestamp inclusively, preserving tied
+boundary entries; only a short page proves that hour exhausted. A full page
+whose cursor cannot advance fails loudly instead of skipping tied entries.
+Malformed/out-of-window/nonmonotonic data, HTTP errors, redirects and exhausted
+byte budgets likewise fail. Only after all hours are exhausted do producer
+ledger envelopes reconstruct original snapshots by ordinal, count and SHA-256;
+snapshots may span pages and hours. Missing, conflicting or corrupt snapshots
+fail with coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
 Scheduled reads cover the previous UTC day; manual dispatches cover the rolling
 24 hours ending at query time, allowing a newly deployed producer to be measured
 without waiting for midnight. Manual dispatch may instead supply paired
@@ -192,10 +201,13 @@ without waiting for midnight. Manual dispatch may instead supply paired
 `occurrence_host` from the configured inventory for a specific receipt.
 Exact windows must be positive and at most 24 hours; a scoped host becomes the
 only expected host for that read. Both default windows remain bounded and half-open.
-After reader disconnect, the full per-occurrence JSON report enters the job
-summary and log output, alongside the record/gap counts. Operational acceptance
-retains the queried JSON with its execution receipt. This uses no new upload action;
-artifact transport requires the separately provisioned ci-storage broker.
+After reader disconnect, the full per-occurrence JSON report enters multiline
+step output, alongside the record/gap summary. Reports below the bounded
+job-summary size also enter the summary; larger reports explicitly point to the
+complete step output rather than truncating JSON or failing the summary limit.
+Operational acceptance retains the queried JSON with its execution receipt.
+This uses no new upload action; artifact transport requires the separately
+provisioned ci-storage broker.
 Only scheduled or manual runs on this repository's main branch receive the
 dedicated `tag:ci-buck2-occurrence-read` OIDC identity, disconnected before the
 existing evidence writer connects. Configure repository variables
