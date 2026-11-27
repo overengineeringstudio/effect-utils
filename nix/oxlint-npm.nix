@@ -2,7 +2,7 @@
 #
 # The Nix-native oxlint binary (pkgs.oxlint) is compiled from Rust and cannot
 # execute JS plugins. The npm version uses NAPI bindings to run Rust code from
-# a JS runtime (Bun), enabling jsPlugins support.
+# a JS runtime (Node.js), enabling jsPlugins support.
 #
 # The two @overeng/oxc-config plugin entry points are imported from the tracked
 # immutable Buck product manifest and exposed as stable passthru paths. Nix
@@ -12,7 +12,7 @@
 #   pnpmArchives = import ./buck2-products/pnpm-archives.nix { inherit pkgs; };
 #   products = repoFlake.buckProducts.${pkgs.stdenv.hostPlatform.system}.products;
 #   oxlintNpm = import ./oxlint-npm.nix {
-#     inherit pkgs bun pnpmArchives products;
+#     inherit pkgs pnpmArchives products;
 #   };
 #   # => oxlintNpm.pluginPath is the overeng plugin module
 #   # => oxlintNpm.stylexUpstreamPluginPath is the @stylexjs plugin module
@@ -24,7 +24,6 @@
 # =============================================================================
 {
   pkgs,
-  bun,
   pnpmArchives,
   products,
 }:
@@ -130,8 +129,9 @@ pkgs.stdenv.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
-    # Create wrapper script that sets up NODE_PATH (Bun uses NODE_PATH for module resolution)
-    makeWrapper ${bun}/bin/bun $out/bin/oxlint \
+    # Bun's resolver enumerates /nix/store while resolving package ancestors.
+    # Use the pinned Node.js runtime so CLI startup does not scale with store size.
+    makeWrapper ${pkgs.nodejs}/bin/node $out/bin/oxlint \
       --add-flags "$out/lib/node_modules/oxlint/bin/oxlint" \
       --set NODE_PATH "$out/lib/node_modules"
 
