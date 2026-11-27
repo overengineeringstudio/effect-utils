@@ -420,6 +420,26 @@ and compressed payloads; allocated disk usage and exclusive reclamation are sepa
 Linux libc identity uses the declared absolute `MR_GETCONF_BIN` provider; neither
 the packaged CLI nor normal source tasks depend on an ambient `getconf`.
 
+`warmPoolRoot` is the source-only fresh detached birth owner, not a CLI or recovery
+path. It reserves bounded capacity, holds the continuous native ROOT mutex, persists
+unknown accounting and a fresh v2 barrier before creation, and records actual root/admin
+inode birth plus the authenticated current leader generation. It runs root-owned install
+and declared prewarm tasks with inherited output. `inspectPoolInstall` returns the same
+doctor-bound identity and backing paths; final root/admin/GVS chains stay pinned together
+through verification and the full-snapshot READY save. Shared GVS roots need valid backing
+and doctor evidence, not global idleness; root/admin retained or nonowned references veto.
+Only the final read-only boot/clock freshness validation may run inside short GLOBAL;
+native acquisition, Git, holder queries and install remain outside it.
+
+Failures retain the persistent barrier and unknown/HOLD state without reset, deletion,
+rollback or implicit retry (a durability error can already have published READY).
+The initial one-byte logical reservation is a counter, not measured physical usage.
+Normally qualified activation roots and the authenticated shared producer remain
+operational prerequisites. The current normal holder wire has no generation-bound
+KCMP_FILES/KCMP_FILE nonleader witness, so nonleader references fail closed.
+The colocated admission/native Git regression definitions do not qualify a full warm;
+real shared-GVS/producer integration and production claim/reset/rollout remain pending.
+
 `readPoolProvenance({ base })` observes an existing ledger through the same canonical
 decoder and accounting checks, without initialization, repair, locking or writes.
 Absence returns an empty HOLD snapshot; malformed records and non-NotFound read

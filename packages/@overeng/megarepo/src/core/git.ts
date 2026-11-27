@@ -613,6 +613,10 @@ export const getCurrentBranch = (repoPath: string) =>
 export const getCurrentCommit = (repoPath: string) =>
   runGitCommand({ args: ['rev-parse', 'HEAD'], cwd: repoPath })
 
+/** Absolute linked-worktree administration directory, using the canonical Git runner. */
+export const getAbsoluteGitDir = (repoPath: string) =>
+  runGitCommand({ args: ['rev-parse', '--absolute-git-dir'], cwd: repoPath })
+
 /**
  * Get the remote URL (origin by default)
  */
