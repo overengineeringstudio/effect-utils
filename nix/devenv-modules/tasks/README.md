@@ -127,6 +127,12 @@ Both require disposable root Linux VM qualification, as does the eventfd /
 registered-io_uring fixture. Test-only BPF privileges do not expand the helper's
 production capability set. Unit/build success is not kernel or census proof.
 
+Task departure is non-holding only for a missing nonleader re-proven absent
+from the retained leader's task list, with the original live leader generation
+checked before and after relisting. Missing descendants of a still-listed
+task are not departure. Leader termination never dismisses surviving siblings.
+Retained resources use optional slots only for such proven departures; new
+live tasks, reused task generations and failed closure remain protective.
 Other ENOENT failures discard the entire candidate/store/peer/census graph and
 restart capture once under the original deadline; a second failure is UNKNOWN.
 Permission, unsupported-object and membership errors do not gain a retry.

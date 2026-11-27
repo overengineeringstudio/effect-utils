@@ -327,6 +327,23 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     Err(io::Error::other("unqualified held object"))
 }
 
+/// A missing nonleader is non-holding only within the original live generation.
+/// In particular, a missing descriptor of a still-listed task is not departure.
+fn proven_task_departure(leader: &Process, pidfd: &OwnedFd, scope: &File,
+    tid: u32, deadline: Instant) -> io::Result<bool>
+{
+    deadline_check(deadline)?;
+    if tid == leader.pid { return Ok(false); }
+    if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
+        return Err(io::Error::other("departure proof leader generation changed"));
+    }
+    let absent = numbers(format!("{}/task", scope_path(scope)), deadline)?.binary_search(&tid).is_err();
+    if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
+        return Err(io::Error::other("departure proof leader did not close"));
+    }
+    Ok(absent)
+}
+
 impl ProcessScope {
     pub fn discover(pid: u32, deadline: Instant) -> io::Result<Self> {
         deadline_check(deadline)?;
@@ -340,33 +357,46 @@ impl ProcessScope {
         let tids = numbers(format!("{base}/task"), deadline)?;
         let mut tasks = Vec::new();
         for tid in &tids {
-            let identity = process::process(*tid)?;
-            let task_scope = objects::pin_magic(format!("{base}/task/{tid}"))?;
-            let mapping_scope = objects::pin_magic(format!("/proc/{tid}"))?;
-            let uids = process::uids(*tid)?;
-            let mut namespaces = Vec::with_capacity(4);
-            for name in ["user", "pid", "mnt", "net"] {
-                namespaces.push(objects::pin_magic(format!("{}/ns/{name}", scope_path(&task_scope)))?);
+            let captured: io::Result<TaskScope> = (|| {
+                let identity = process::process(*tid)?;
+                let task_scope = objects::pin_magic(format!("{base}/task/{tid}"))?;
+                let mapping_scope = objects::pin_magic(format!("/proc/{tid}"))?;
+                let uids = process::uids(*tid)?;
+                let mut namespaces = Vec::with_capacity(4);
+                for name in ["user", "pid", "mnt", "net"] {
+                    namespaces.push(objects::pin_magic(format!("{}/ns/{name}", scope_path(&task_scope)))?);
+                }
+                if !process::process(*tid)?.same_identity(&identity) {
+                    return Err(io::Error::other("task changed during pin"));
+                }
+                Ok(TaskScope { tgid: pid, identity, uids, scope: task_scope, mapping_scope, namespaces })
+            })();
+            match captured {
+                Ok(task) => tasks.push(task),
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && proven_task_departure(&identity, &pidfd, &scope, *tid, deadline)? => (),
+                Err(error) => return Err(error),
             }
-            if !process::process(*tid)?.same_identity(&identity) {
-                return Err(io::Error::other("task changed during pin"));
-            }
-            tasks.push(TaskScope { tgid: pid, identity, uids, scope: task_scope, mapping_scope, namespaces });
         }
-        if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid)
-            || numbers(format!("{base}/task"), deadline)? != tids
-        {
+        if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid) {
             return Err(io::Error::other("process task discovery did not close"));
         }
-        Ok(Self { identity, pidfd, scope, tasks })
+        let captured = Self { identity, pidfd, scope, tasks };
+        captured.recheck(deadline)?;
+        Ok(captured)
     }
 
-    pub fn same_selection(&self, other: &Self) -> io::Result<bool> {
+    /// `self` is the retained before set; `other` is its later recapture.
+    pub fn same_selection(&self, other: &Self, deadline: Instant) -> io::Result<bool> {
+        self.recheck(deadline)?;
+        other.recheck(deadline)?;
         if !self.identity.same_identity(&other.identity)
             || objects::identity(&self.scope)? != objects::identity(&other.scope)?
-            || self.tasks.len() != other.tasks.len()
         { return Ok(false); }
-        for (before, after) in self.tasks.iter().zip(&other.tasks) {
+        for after in &other.tasks {
+            let Ok(index) = self.tasks.binary_search_by_key(&after.identity.pid, |task| task.identity.pid)
+                else { return Ok(false); };
+            let before = &self.tasks[index];
             if !before.identity.same_identity(&after.identity) || before.uids != after.uids
                 || objects::identity(&before.scope)? != objects::identity(&after.scope)?
                 || before.tgid != after.tgid
@@ -377,7 +407,42 @@ impl ProcessScope {
                 if objects::identity(a)? != objects::identity(b)? { return Ok(false); }
             }
         }
+        for before in &self.tasks {
+            if other.tasks.binary_search_by_key(&before.identity.pid, |task| task.identity.pid).is_err()
+                && !self.task_departed_by_id(before.identity.pid, deadline)?
+            { return Ok(false); }
+        }
+        self.recheck(deadline)?;
         Ok(true)
+    }
+
+    fn task_departed_by_id(&self, tid: u32, deadline: Instant) -> io::Result<bool> {
+        proven_task_departure(&self.identity, &self.pidfd, &self.scope, tid, deadline)
+    }
+
+    pub fn task_departed(&self, index: usize, deadline: Instant) -> io::Result<bool> {
+        let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+        self.task_departed_by_id(task.identity.pid, deadline)
+    }
+
+    fn recheck_membership(&self, deadline: Instant) -> io::Result<()> {
+        let current = numbers(format!("{}/task", scope_path(&self.scope)), deadline)?;
+        for tid in current {
+            if self.tasks.binary_search_by_key(&tid, |task| task.identity.pid).is_err()
+                && !self.task_departed_by_id(tid, deadline)?
+            {
+                return Err(io::Error::other("new live task not captured"));
+            }
+        }
+        for task in &self.tasks {
+            match task.recheck(deadline) {
+                Ok(()) => (),
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && self.task_departed_by_id(task.identity.pid, deadline)? => (),
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
     }
 
     /// Reclose task membership, generations, all UID fields and namespaces.
@@ -388,17 +453,11 @@ impl ProcessScope {
         if !process::process(pid)?.same_identity(&self.identity) {
             return Err(io::Error::other("process identity changed"));
         }
-        let tids: Vec<_> = self.tasks.iter().map(|task| task.identity.pid).collect();
-        let base = scope_path(&self.scope);
-        if numbers(format!("{base}/task"), deadline)? != tids {
-            return Err(io::Error::other("process task membership changed"));
+        self.recheck_membership(deadline)?;
+        self.recheck_membership(deadline)?;
+        if !process::process(pid)?.same_identity(&self.identity) {
+            return Err(io::Error::other("process changed during closure"));
         }
-        for task in &self.tasks {
-            task.recheck(deadline)?;
-        }
-        if numbers(format!("{base}/task"), deadline)? != tids
-            || !process::process(pid)?.same_identity(&self.identity)
-        { return Err(io::Error::other("process changed during closure")); }
         Ok(())
     }
 
@@ -411,29 +470,49 @@ impl ProcessScope {
     fn terminal_group(&self, deadline: Instant) -> io::Result<bool> {
         self.recheck(deadline)?;
         let mut terminal = !self.tasks.is_empty();
-        for task in &self.tasks {
+        for (index, task) in self.tasks.iter().enumerate() {
+            if self.task_departed(index, deadline)? { continue; }
             terminal &= matches!(process::process(task.identity.pid)?.state, b'Z' | b'X');
         }
         Ok(terminal)
     }
 
-    pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<References> {
-        let all_terminal = self.terminal_group(deadline)?;
-        let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-        let references = References::collect(task, all_terminal, deadline)?;
-        references.recheck_task(task, all_terminal, deadline)?;
-        self.recheck(deadline)?;
-        Ok(references)
+    /// None denotes a re-proven departed nonleader, never a generic read error.
+    pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<Option<References>> {
+        if self.task_departed(index, deadline)? { return Ok(None); }
+        let captured: io::Result<References> = (|| {
+            let all_terminal = self.terminal_group(deadline)?;
+            let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+            let references = References::collect(task, all_terminal, deadline)?;
+            references.recheck_task(task, all_terminal, deadline)?;
+            self.recheck(deadline)?;
+            Ok(references)
+        })();
+        match captured {
+            Ok(references) => Ok(Some(references)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && self.task_departed(index, deadline)? => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn recheck_resources(&self, index: usize, references: &References,
         deadline: Instant) -> io::Result<()> {
-        let all_terminal = self.terminal_group(deadline)?;
-        let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-        references.recheck_task(task, all_terminal, deadline)?;
-        self.recheck(deadline)
+        if self.task_departed(index, deadline)? { return Ok(()); }
+        let checked: io::Result<()> = (|| {
+            let all_terminal = self.terminal_group(deadline)?;
+            let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+            references.recheck_task(task, all_terminal, deadline)?;
+            self.recheck(deadline)
+        })();
+        match checked {
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && self.task_departed(index, deadline)? => Ok(()),
+            result => result,
+        }
     }
 }
+
 
 impl TaskScope {
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {

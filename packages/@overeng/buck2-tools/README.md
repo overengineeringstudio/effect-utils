@@ -251,7 +251,6 @@ run payload tokens do not participate in the native isolation selection.
 Owned native execution and ExistingOnly cleanup require the same live
 process-local publication capability. Cleanup never starts a daemon;
 legacy production callers remain unchanged.
-
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
