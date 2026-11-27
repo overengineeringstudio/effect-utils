@@ -356,6 +356,86 @@ export const markPoolRootAuthored = ({
       }),
   })
 
+const lookupPoolSlot = (state: PoolState, id: string): Effect.Effect<PoolSlot, PoolError> => {
+  const slot = state.slots.find((item) => item.id === id)
+  return slot === undefined
+    ? Effect.fail(new PoolError({ message: 'Pool reservation missing' }))
+    : Effect.succeed(slot)
+}
+
+/** Pure intent candidate. Save under ROOT → short GLOBAL before any physical preparation. */
+export const beginPoolPreparation = ({
+  state, id, generation, path,
+}: { state: PoolState; id: string; generation: number; path: string }): Effect.Effect<PoolSlot, PoolError> =>
+  Effect.gen(function* () {
+    const slot = yield* lookupPoolSlot(state, id)
+    if (
+      slot.path !== path ||
+      slot.generation !== generation ||
+      Number.isSafeInteger(slot.generation + 1) === false ||
+      slot.state !== 'preparing' ||
+      slot.token !== '' ||
+      slot.owner !== '' ||
+      slot.chargeKnown !== true
+    )
+      return yield* new PoolError({ message: 'Preparation requires an untouched reservation' })
+    const next: PoolSlot = {
+      ...slot,
+      generation: slot.generation + 1,
+      token: randomUUID(),
+      chargeKnown: false,
+      reason: 'Preparation pending verified commit; HOLD',
+    }
+    return next
+  })
+
+/** Pure READY candidate, not physical proof: save only after verification, under still-held pins. */
+export const finishPoolPreparation = ({
+  state, intent, prepared,
+}: {
+  state: PoolState
+  intent: PoolSlot
+  prepared: { identity: string; charge: number }
+}): Effect.Effect<PoolSlot, PoolError> => Effect.gen(function* () {
+  const current = yield* lookupPoolSlot(state, intent.id)
+  if (
+    current.path !== intent.path ||
+    current.generation !== intent.generation ||
+    current.token !== intent.token ||
+    current.bare !== intent.bare ||
+    current.commit !== intent.commit ||
+    current.identity !== intent.identity ||
+    current.barrierToken !== intent.barrierToken ||
+    current.owner !== intent.owner ||
+    current.charge !== intent.charge ||
+    current.state !== 'preparing' ||
+    current.chargeKnown !== false
+  )
+    return yield* new PoolError({ message: 'Preparation generation changed; HOLD' })
+  if (
+    prepared.identity === '' ||
+    Number.isSafeInteger(prepared.charge) === false ||
+    prepared.charge <= 0 ||
+    state.slots.reduce(
+      (sum, item) => sum + (item.id === intent.id ? prepared.charge : item.charge),
+      0,
+    ) > state.maxBytes
+  )
+    return yield* new PoolError({
+      message: 'Prepared identity/charge exceeds reservation limits; HOLD',
+    })
+  const ready: PoolSlot = {
+    ...current,
+    state: 'ready',
+    token: '',
+    owner: '',
+    identity: prepared.identity,
+    charge: prepared.charge,
+    chargeKnown: true,
+    reason: '',
+  }
+  return ready
+})
 /**
  * Finish a reserved preparation: ROOT lease → pins → short GLOBAL CAS.
  * Prepare owns fresh Git/GVS/holder proofs; this helper neither resets nor removes roots.
@@ -379,12 +459,6 @@ export const preparePoolGeneration = <E, R>({
   ) => Effect.Effect<{ identity: string; charge: number }, E, R>
 }) =>
   Effect.gen(function* () {
-    const lookup = (state: PoolState): Effect.Effect<PoolSlot, PoolError> => {
-      const slot = state.slots.find((item) => item.id === id)
-      return slot === undefined
-        ? Effect.fail(new PoolError({ message: 'Pool reservation missing' }))
-        : Effect.succeed(slot)
-    }
     const path = targets[0]?.path
     if (path === undefined)
       return yield* new PoolError({ message: 'Pinned reservation root is required' })
@@ -393,26 +467,7 @@ export const preparePoolGeneration = <E, R>({
         base,
         use: (state, save) =>
           Effect.gen(function* () {
-            const slot = yield* lookup(state)
-            if (
-              slot.path !== path ||
-              slot.generation !== generation ||
-              Number.isSafeInteger(slot.generation + 1) === false ||
-              slot.state !== 'preparing' ||
-              slot.token !== '' ||
-              slot.owner !== '' ||
-              slot.chargeKnown !== true
-            )
-              return yield* new PoolError({
-                message: 'Preparation requires an untouched reservation',
-              })
-            const next: PoolSlot = {
-              ...slot,
-              generation: slot.generation + 1,
-              token: randomUUID(),
-              chargeKnown: false,
-              reason: 'Preparation pending verified commit; HOLD',
-            }
+            const next = yield* beginPoolPreparation({ state, id, generation, path })
             yield* save({
               ...state,
               slots: state.slots.map((item) => (item.id === id ? next : item)),
@@ -428,43 +483,7 @@ export const preparePoolGeneration = <E, R>({
             base,
             use: (state, save) =>
               Effect.gen(function* () {
-                const current = yield* lookup(state)
-                if (
-                  current.path !== intent.path ||
-                  current.generation !== intent.generation ||
-                  current.token !== intent.token ||
-                  current.bare !== intent.bare ||
-                  current.commit !== intent.commit ||
-                  current.identity !== intent.identity ||
-                  current.barrierToken !== intent.barrierToken ||
-                  current.owner !== intent.owner ||
-                  current.charge !== intent.charge ||
-                  current.state !== 'preparing' ||
-                  current.chargeKnown !== false
-                )
-                  return yield* new PoolError({ message: 'Preparation generation changed; HOLD' })
-                if (
-                  prepared.identity === '' ||
-                  Number.isSafeInteger(prepared.charge) === false ||
-                  prepared.charge <= 0 ||
-                  state.slots.reduce(
-                    (sum, item) => sum + (item.id === id ? prepared.charge : item.charge),
-                    0,
-                  ) > state.maxBytes
-                )
-                  return yield* new PoolError({
-                    message: 'Prepared identity/charge exceeds reservation limits; HOLD',
-                  })
-                const ready: PoolSlot = {
-                  ...current,
-                  state: 'ready',
-                  token: '',
-                  owner: '',
-                  identity: prepared.identity,
-                  charge: prepared.charge,
-                  chargeKnown: true,
-                  reason: '',
-                }
+                const ready = yield* finishPoolPreparation({ state, intent, prepared })
                 yield* save({
                   ...state,
                   slots: state.slots.map((item) => (item.id === id ? ready : item)),

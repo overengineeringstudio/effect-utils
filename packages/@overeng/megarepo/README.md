@@ -464,6 +464,13 @@ lock, pin and root-lease acquisition/adoption refuse inside it, as does another 
 Acquire physical resources before entering the callback; keep it to ledger reads/CAS
 and persistence. Unrelated fibers remain free to work, and failure/interruption does
 not turn the marker into a process-wide fence. These guards are not an IO sandbox.
+`beginPoolPreparation` and `finishPoolPreparation` build state transitions only; the existing
+`preparePoolGeneration` uses both. Begin can be saved before a physical root exists, without
+replacing a persistent ownership barrier. Hold the continuous ROOT action lock and save the
+unknown intent under short GLOBAL before creating or changing that root. Finish is not a
+physical proof: obtain fresh Git/GVS/holder evidence and verify every chain before saving
+its READY candidate under GLOBAL inside the still-held pins. Neither builder acquires locks,
+writes the ledger, creates a worktree, or grants reset, execution, or removal authority.
 
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and

@@ -10,6 +10,8 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
 import { runPoolCommand } from './store-pool-install.ts'
 import {
+  beginPoolPreparation,
+  finishPoolPreparation,
   claimPoolGeneration,
   markPoolRootAuthored,
   reserveFreshPoolRoot,
@@ -221,6 +223,54 @@ describe('pool authoritative lifecycle', () => {
         env: { PATH: '' },
       })
       expect(output.trim()).toMatch(/^(32|64)$/)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('persists unknown intent before a root exists without replacing its persistent barrier', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const root = `${base}not-created`
+      const lease = yield* acquireDeletionLease({
+        storeBasePath: base,
+        ownerPath: root,
+        now: Date.now(),
+        persistent: true,
+      })
+      const barrier = yield* fs.readFileString(lease.leasePath)
+      yield* withPoolState({
+        base,
+        limits: { maxSlots: 2, maxBytes: 128 },
+        use: (state, save) => save({
+          ...state,
+          slots: [{
+            ...slot, path: root, identity: '', token: '', owner: '',
+            state: 'preparing', barrierToken: lease.token,
+          }],
+        }),
+      })
+      const intent = yield* withPoolState({
+        base,
+        use: (state, save) => beginPoolPreparation({
+          state, id: slot.id, generation: slot.generation, path: root,
+        }).pipe(Effect.tap((next) => save({ ...state, slots: [next] }))),
+      })
+      expect(yield* fs.exists(root)).toBe(false)
+      expect(yield* fs.readFileString(lease.leasePath)).toBe(barrier)
+      expect(intent.generation).toBe(slot.generation + 1)
+      expect(intent.token).not.toBe('')
+      expect(intent.chargeKnown).toBe(false)
+      const loaded = yield* withPoolState({ base, use: (state) => Effect.succeed(state) })
+      expect(loaded.slots).toEqual([intent])
+      expect((yield* reservePoolSlot({
+        state: loaded, slot: { ...slot, id: 'other' },
+      }).pipe(Effect.flip)).message).toContain('unknown')
+      expect((yield* finishPoolPreparation({
+        state: loaded, intent, prepared: { identity: 'candidate', charge: 0 },
+      }).pipe(Effect.flip)).message).toContain('limits')
+      expect((yield* withPoolState({
+        base, use: (state) => Effect.succeed(state.slots),
+      }))).toEqual([intent])
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
