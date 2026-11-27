@@ -201,3 +201,162 @@ fn actual_bpf_stats_lease_is_nonpath() {
     scopes::qualify_object(&held).unwrap();
 }
 
+#[test]
+#[ignore = "requires isolated Linux root with task-resource visibility"]
+fn actual_departed_thread_churn_preserves_survivor_fd() {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::MetadataExt;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    unsafe extern "C" {
+        fn gettid() -> std::os::raw::c_int;
+        fn unshare(flags: std::os::raw::c_int) -> std::os::raw::c_int;
+        fn mmap(address: *mut std::ffi::c_void, length: usize, protection: i32,
+            flags: i32, fd: i32, offset: i64) -> *mut std::ffi::c_void;
+        fn munmap(address: *mut std::ffi::c_void, length: usize) -> i32;
+    }
+    struct Root(std::path::PathBuf);
+    impl Drop for Root {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0.join("candidate"));
+            let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+    struct Mapping(*mut std::ffi::c_void);
+    impl Drop for Mapping {
+        fn drop(&mut self) {
+            // SAFETY: this owns the successful fixed-length mapping once.
+            let _ = unsafe { munmap(self.0, 4096) };
+        }
+    }
+    struct Worker {
+        commands: Option<mpsc::Sender<u8>>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+    impl Drop for Worker {
+        fn drop(&mut self) {
+            self.commands.take();
+            if let Some(thread) = self.thread.take() { let _ = thread.join(); }
+        }
+    }
+    let root = Root(std::env::temp_dir().join(format!("holder-task-churn-{}-{}",
+        std::process::id(), linux::boot_time_ns().unwrap())));
+    std::fs::create_dir(&root.0).unwrap();
+    let candidate_path = root.0.join("candidate");
+    let (commands, receive) = mpsc::channel();
+    let (report, reports) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        // SAFETY: unshare(CLONE_FILES) gives this surviving worker its own
+        // descriptor table; collector-created pins cannot perturb that table.
+        assert_eq!(unsafe { unshare(0x00000400) }, 0);
+        let candidate = std::fs::OpenOptions::new().read(true).write(true)
+            .create_new(true).open(candidate_path).unwrap();
+        candidate.set_len(4096).unwrap();
+        // SAFETY: live readable owned file, aligned zero offset, one page,
+        // PROT_READ/MAP_PRIVATE; no payload dereference or shared write.
+        let mapped = unsafe { mmap(std::ptr::null_mut(), 4096, 1, 2, candidate.as_raw_fd(), 0) };
+        assert_ne!(mapped as isize, -1, "mmap: {}", std::io::Error::last_os_error());
+        let _mapping = Mapping(mapped);
+        let identity = candidate.metadata().unwrap();
+        // SAFETY: gettid is an argument-free current-task identity query.
+        let tid = u32::try_from(unsafe { gettid() }).unwrap();
+        let mut candidate = Some(candidate);
+        report.send((tid, candidate.as_ref().unwrap().as_raw_fd() as u32,
+            (identity.dev(), identity.ino()))).unwrap();
+        while let Ok(command) = receive.recv() {
+            assert_eq!(command, 1);
+            candidate.take();
+            report.send((tid, 0, (0, 0))).unwrap();
+        }
+    });
+    let worker = Worker { commands: Some(commands), thread: Some(thread) };
+    let (survivor, descriptor, identity) = reports.recv().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let pid = std::process::id();
+    let wait_departures = |tids: &[u32]| {
+        loop {
+            let current = scopes::numbers(format!("/proc/{pid}/task"), deadline).unwrap();
+            let remaining = tids.iter().filter(|tid| current.binary_search(tid).is_ok()).count();
+            if remaining == 0 { break; }
+            assert!(Instant::now() < deadline,
+                "joined fixture tasks still listed at deadline: count={remaining}");
+            std::thread::yield_now();
+        }
+    };
+    for _ in 0..16 {
+        let (stop, stopped) = mpsc::channel();
+        let (ready, entered) = mpsc::channel();
+        let transient = std::thread::spawn(move || {
+            // SAFETY: argument-free current-task query.
+            ready.send(u32::try_from(unsafe { gettid() }).unwrap()).unwrap();
+            let _ = stopped.recv();
+        });
+        let transient = Worker { commands: Some(stop), thread: Some(transient) };
+        let departed = entered.recv().unwrap();
+        let scope = scopes::ProcessScope::discover(pid, deadline).unwrap();
+        let departed_index = scope.tasks.iter().position(|task| task.identity.pid == departed).unwrap();
+        drop(transient);
+        // pthread join observes clear_child_tid, which precedes exit_notify /
+        // release_task in Linux6.18.62. Require actual task-list disappearance,
+        // not a userspace completion signal, before testing departed closure.
+        wait_departures(&[departed]);
+        // Real births and exits occur after discovery and before resource
+        // closure, while the original surviving candidate FD remains live.
+        let mut born = Vec::with_capacity(16);
+        for _ in 0..16 {
+            let (ready, entered) = mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                // SAFETY: argument-free current-task identity query.
+                ready.send(u32::try_from(unsafe { gettid() }).unwrap()).unwrap();
+            });
+            born.push(entered.recv().unwrap());
+            thread.join().unwrap();
+        }
+        wait_departures(&born);
+        scope.recheck(deadline).unwrap();
+        assert!(scope.task_departed(departed_index, deadline).unwrap());
+        assert!(scope.collect_resources(departed_index, deadline).unwrap().is_none());
+        let index = scope.tasks.iter().position(|task| task.identity.pid == survivor).unwrap();
+        let task = &scope.tasks[index];
+        let nested = std::fs::read_dir(format!("{}/map_files", scopes::scope_path(&task.scope)))
+            .err().expect("the nested per-task proc table must not expose map_files");
+        assert_eq!(nested.kind(), std::io::ErrorKind::NotFound);
+        assert!(!scopes::mapping_names(&task.mapping_scope, deadline).unwrap().is_empty(),
+            "the same actual TID's top-level mapping scope must expose real mappings");
+        let references = scope.collect_resources(index, deadline).unwrap()
+            .expect("a surviving task must not become an empty departed slot");
+        assert!(references.descriptors.iter().any(|(fd, held)| *fd == descriptor && held.identity == identity));
+        assert!(references.mappings.iter().any(|(_, held)| held.identity == identity),
+            "the actual file-backed candidate mapping must remain observed");
+        scope.recheck_resources(index, &references, deadline).unwrap();
+        let current = scopes::ProcessScope::discover(pid, deadline).unwrap();
+        assert!(scope.same_selection(&current, deadline).unwrap());
+    }
+    let scope = scopes::ProcessScope::discover(pid, deadline).unwrap();
+    let (stop, stopped) = mpsc::channel();
+    let (ready, entered) = mpsc::channel();
+    let newcomer = std::thread::spawn(move || {
+        // SAFETY: argument-free current-task identity query.
+        ready.send(u32::try_from(unsafe { gettid() }).unwrap()).unwrap();
+        let _ = stopped.recv();
+    });
+    let newcomer = Worker { commands: Some(stop), thread: Some(newcomer) };
+    let newcomer_tid = entered.recv().unwrap();
+    assert!(scope.recheck(deadline).is_err(), "new live task must not be omitted");
+    drop(newcomer);
+    wait_departures(&[newcomer_tid]);
+    let mut scope = scopes::ProcessScope::discover(pid, deadline).unwrap();
+    let index = scope.tasks.iter().position(|task| task.identity.pid == survivor).unwrap();
+    let references = scope.collect_resources(index, deadline).unwrap().unwrap();
+    worker.commands.as_ref().unwrap().send(1).unwrap();
+    reports.recv().unwrap();
+    assert!(!scope.task_departed(index, deadline).unwrap());
+    assert!(scope.recheck_resources(index, &references, deadline).is_err(),
+        "live-task descriptor disappearance must not become non-holding");
+    let leader = scope.tasks.iter().position(|task| task.identity.pid == pid).unwrap();
+    assert!(!scope.task_departed(leader, deadline).unwrap());
+    scope.identity.start += 1;
+    assert!(scope.task_departed(index, deadline).is_err(),
+        "failed leader-generation proof must remain protective");
+    drop(worker);
+}
