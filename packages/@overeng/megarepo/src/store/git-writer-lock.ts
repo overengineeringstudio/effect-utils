@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
 import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 import { NodeStream } from '@effect/platform-node'
 import { Clock, Context, Effect, Layer, Option, Schedule, Schema, Stream } from 'effect'
@@ -113,11 +113,13 @@ const withGitLock =
     path,
     create = false,
     containerMode,
+    controlName,
     onContention = Effect.void,
   }: {
     readonly path: string
     readonly create?: boolean
     readonly containerMode?: 'shared' | 'exclusive'
+    readonly controlName?: string
     readonly onContention?: Effect.Effect<void>
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -133,7 +135,9 @@ const withGitLock =
               }
             })
           : yield* resolveGitCommonDir(path)
-      const lockPath = `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
+      const lockPath = controlName === undefined
+        ? `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
+        : resolve(common, controlName)
       const native = yield* io(lockPath)(() => (flockLibrary ??= loadFlock()))
       return yield* Effect.scoped(
         Effect.gen(function* () {
@@ -209,6 +213,24 @@ const withGitLock =
 /** Exclusive Git-writer admission, retained by spawned writer descendants. */
 export const withGitWriterLock = ({ path, create = false }: { path: string; create?: boolean }) =>
   withGitLock({ path, create })
+
+/** Cooperative Store Cache reader admission, scoped to the complete use effect. */
+export const withPnpmStoreCacheReadLease =
+  ({ storeCacheRoot }: { readonly storeCacheRoot: string }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.suspend(() =>
+      isAbsolute(storeCacheRoot) === false
+        ? Effect.fail(new GitWriterLockError({
+            path: storeCacheRoot,
+            cause: 'Expected the canonical absolute Store Cache root',
+          }))
+        : withGitLock({
+            path: storeCacheRoot,
+            create: true,
+            controlName: '.effect-utils-pnpm-store-cache-maintenance.lock',
+            containerMode: 'shared',
+          })(effect),
+    )
 
 /** Per-commit-tree preparation admission, independent of repository Git writers. */
 export const withCommitTreePreparationLock =
