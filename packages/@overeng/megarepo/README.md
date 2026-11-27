@@ -333,6 +333,14 @@ own continuous action lease and perform fresh Git, owner/seat, consumer and all-
 open descriptors do not prevent another actor renaming a path. Physical deletion still uses
 the existing private post-verification deletion adapter.
 
+`assertWorktreeHolderEvidenceFresh(response)` rereads the actual Linux boot and boottime
+and validates the fixed evidence lifetime and completeness metadata. In-use and retained-byte
+references remain intact. It neither authenticates evidence nor proves absence, exclusion,
+or mutation authority. Callers must independently authenticate evidence and maintain continuous
+action custody, then recheck immediately before the final action.
+Centisecond uncertainty is conservative: captures must finish at or before the sample's lower
+bound, and evidence must remain unexpired beyond its upper bound.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one

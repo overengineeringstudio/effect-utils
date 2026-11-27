@@ -24,7 +24,7 @@ export const renderGenieOutput = <TContext>({
     sourceFile: path.basename(genieFilePath),
   })
 
-/** Assemble already-formatted content and the generated header, preserving shebangs. */
+/** Assemble generated provenance without displacing shebangs or Markdown frontmatter. */
 export const renderGeneratedContent = ({
   content,
   targetFilePath,
@@ -33,8 +33,19 @@ export const renderGeneratedContent = ({
   content: string
   targetFilePath: string
   sourceFile: string
-}): string =>
-  addHeaderComment({ content, header: getHeaderComment({ targetFilePath, sourceFile }) })
+}): string => {
+  const header = getHeaderComment({ targetFilePath, sourceFile })
+  if (path.extname(targetFilePath) === '.md') {
+    // Skill discovery requires YAML to remain at byte zero. Only a complete
+    // leading YAML block is frontmatter; an unterminated block stays untouched.
+    const frontmatter = content.match(/^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)/)?.[0]
+    if (frontmatter !== undefined) {
+      const newline = frontmatter.endsWith('\n') === true ? '' : '\n'
+      return `${frontmatter}${newline}${header}${content.slice(frontmatter.length)}`
+    }
+  }
+  return addHeaderComment({ content, header })
+}
 
 /**
  * Get the appropriate header comment for a generated file based on its extension.
@@ -70,6 +81,10 @@ export const getHeaderComment = ({
   // Strict JSON formats rely on read-only permissions + .gitattributes, not comments.
   if (ext === '.json' || basename === '.watchmanconfig') {
     return ''
+  }
+
+  if (ext === '.md') {
+    return `<!-- Generated file - DO NOT EDIT\nSource: ${sourceFile}\n-->\n\n`
   }
 
   if (ext === '.yml' || ext === '.yaml') {

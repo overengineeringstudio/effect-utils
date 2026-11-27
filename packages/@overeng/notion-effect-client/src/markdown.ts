@@ -8,6 +8,7 @@ import { Effect } from 'effect'
 
 import {
   type Block,
+  compactNotionUuid,
   notionObjectUrl,
   type RichTextArray,
   RichTextUtils,
@@ -278,14 +279,64 @@ export const getEquationExpression = (block: BlockWithData): string => {
 // Default Block Transformers
 // -----------------------------------------------------------------------------
 
-/** Convert rich text to markdown */
-const richTextToMd = (richText: RichTextArray): string => RichTextUtils.toMarkdown(richText)
+/** Escape enhanced-Markdown attributes without changing their decoded value. */
+const escapeAttribute = (text: string): string =>
+  text
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+
+const colorAttribute = (color: unknown): string =>
+  typeof color === 'string' && color !== 'default'
+    ? ` color="${escapeAttribute(color.replace(/_background$/, '_bg'))}"`
+    : ''
+
+/** Preserve mention identities rather than projecting them to display text. */
+const richTextToMd = (richText: RichTextArray): string =>
+  richText
+    .map((item) => {
+      if (item.type !== 'mention') return RichTextUtils.toMarkdown([item])
+      const mention = item.mention
+      let text: string
+      switch (mention.type) {
+        case 'user':
+        case 'page':
+        case 'database': {
+          const id =
+            mention.type === 'user'
+              ? mention.user.id
+              : mention.type === 'page'
+                ? mention.page.id
+                : mention.database.id
+          const url = item.href ?? (mention.type === 'user' ? id : notionObjectUrl(id))
+          const label = item.plain_text.replaceAll(/([\\`*_[\]<>~])/g, '\\$1')
+          text = `<mention-${mention.type} url="${escapeAttribute(url)}">${label}</mention-${mention.type}>`
+          break
+        }
+        case 'date': {
+          const date = mention.date
+          text = `<mention-date start="${escapeAttribute(date.start)}"${date.end == null ? '' : ` end="${escapeAttribute(date.end)}"`}${date.time_zone == null ? '' : ` timeZone="${escapeAttribute(date.time_zone)}"`}/>`
+          break
+        }
+        default:
+          return RichTextUtils.toMarkdown([item])
+      }
+      if (item.annotations.bold === true) text = `**${text}**`
+      if (item.annotations.italic === true) text = `*${text}*`
+      if (item.annotations.strikethrough === true) text = `~~${text}~~`
+      if (item.annotations.underline === true) text = `<span underline="true">${text}</span>`
+      if (item.annotations.color !== 'default')
+        text = `<span${colorAttribute(item.annotations.color)}>${text}</span>`
+      return text
+    })
+    .join('')
 
 /** Indent each line of text */
 const indentLines = ({ text, indent = '  ' }: { text: string; indent?: string }): string =>
   text
     .split('\n')
-    .map((line) => `${indent}${line}`)
+    .map((line) => (line === '' ? '' : `${indent}${line}`))
     .join('\n')
 
 /** Quote each line of text */
@@ -300,8 +351,14 @@ const renderHeading = (opts: {
   readonly block: BlockWithData
   readonly children: string
 }): string => {
-  const text = `${'#'.repeat(opts.level)} ${richTextToMd(getBlockRichText(opts.block))}`
-  return opts.children !== '' ? `${text}\n\n${opts.children}` : text
+  const data = opts.block[opts.block.type] as
+    | { is_toggleable?: boolean; color?: string }
+    | undefined
+  const attrs = `${data?.is_toggleable === true ? ' toggle="true"' : ''}${colorAttribute(data?.color)}`
+  const text = `${'#'.repeat(opts.level)} ${richTextToMd(getBlockRichText(opts.block))}${attrs === '' ? '' : ` {${attrs.trim()}}`}`
+  return opts.children !== ''
+    ? `${text}\n${indentLines({ text: opts.children, indent: '\t' })}`
+    : text
 }
 
 /** Default transformers for all block types */
@@ -337,9 +394,8 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   toggle: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
-    return children !== ''
-      ? `<details>\n<summary>${text}</summary>\n\n${children}\n</details>`
-      : `<details>\n<summary>${text}</summary>\n</details>`
+    const data = block[block.type] as { color?: string } | undefined
+    return `<details${colorAttribute(data?.color)}>\n<summary>${text}</summary>\n${children === '' ? '' : `${indentLines({ text: children, indent: '\t' })}\n`}</details>`
   },
 
   quote: (block, children) => {
@@ -350,9 +406,9 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
   callout: (block, children) => {
     const text = richTextToMd(getBlockRichText(block))
     const icon = getCalloutIcon(block)
-    const prefix = icon !== undefined ? `${icon} ` : ''
-    const quotedText = `> ${prefix}${text}`
-    return children !== '' ? `${quotedText}\n${quoteLines(children)}` : quotedText
+    const data = block[block.type] as { color?: string } | undefined
+    const body = [text, children].filter((part) => part !== '').join('\n\n')
+    return `<callout${icon === '' ? '' : ` icon="${escapeAttribute(icon)}"`}${colorAttribute(data?.color)}>\n${indentLines({ text: body, indent: '\t' })}\n</callout>`
   },
 
   code: (block) => {
@@ -373,28 +429,28 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
     const url = getBlockUrl(block)
     if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption !== '' ? `[${caption}](${url})` : `[Video](${url})`
+    return `<video src="${escapeAttribute(url)}">${caption}</video>`
   },
 
   audio: (block) => {
     const url = getBlockUrl(block)
     if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption !== '' ? `[${caption}](${url})` : `[Audio](${url})`
+    return `<audio src="${escapeAttribute(url)}">${caption}</audio>`
   },
 
   file: (block) => {
     const url = getBlockUrl(block)
     if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption !== '' ? `[${caption}](${url})` : `[File](${url})`
+    return `<file src="${escapeAttribute(url)}">${caption}</file>`
   },
 
   pdf: (block) => {
     const url = getBlockUrl(block)
     if (url === undefined) return ''
     const caption = richTextToMd(getBlockCaption(block))
-    return caption !== '' ? `[${caption}](${url})` : `[PDF](${url})`
+    return `<pdf src="${escapeAttribute(url)}">${caption}</pdf>`
   },
 
   bookmark: (block) => {
@@ -418,20 +474,27 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
 
   equation: (block) => `$$\n${getEquationExpression(block)}\n$$`,
 
-  table_of_contents: () => '[TOC]',
+  table_of_contents: () => '<table_of_contents/>',
   breadcrumb: () => '',
 
-  column_list: (_, children) => children,
-  column: (_, children) => children,
-  synced_block: (_, children) => children,
-  table: (_, children) => children,
+  column_list: (_, children) =>
+    `<columns>\n${indentLines({ text: children, indent: '\t' })}\n</columns>`,
+  column: (_, children) => `<column>\n${indentLines({ text: children, indent: '\t' })}\n</column>`,
+  synced_block: (block, children) =>
+    `<synced_block url="${escapeAttribute(notionObjectUrl(block.id))}">\n${indentLines({ text: children, indent: '\t' })}\n</synced_block>`,
+  table: (block, children) => {
+    const data = block.table as { has_column_header?: boolean; has_row_header?: boolean }
+    const attrs = `${data.has_column_header === true ? ' header-row="true"' : ''}${data.has_row_header === true ? ' header-column="true"' : ''}`
+    return `<table${attrs}>\n${indentLines({ text: children, indent: '\t' })}\n</table>`
+  },
 
-  child_page: (block) => `[${getChildPageTitle(block)}]()`,
+  child_page: (block) =>
+    `<page url="https://app.notion.com/p/${compactNotionUuid(block.id)}">${escapeAttribute(getChildPageTitle(block))}</page>`,
   child_database: (block) => `[${getChildDatabaseTitle(block)}]()`,
 
   table_row: (block) => {
     const cells = getTableRowCells(block)
-    return `| ${cells.map((cell) => richTextToMd(cell)).join(' | ')} |`
+    return `<tr>\n${cells.map((cell) => `\t<td>${richTextToMd(cell).replaceAll('\n', '<br>')}</td>`).join('\n')}\n</tr>`
   },
 
   template: (block, children) => {
@@ -688,4 +751,11 @@ export const NotionMarkdown = {
   treeToMarkdown,
   blocksToMarkdown,
   markdownToBlocks,
+  supportsBlockType: (type: string): boolean =>
+    Object.hasOwn(DEFAULT_TRANSFORMERS, type) &&
+    type !== 'unsupported' &&
+    type !== 'breadcrumb' &&
+    type !== 'tab' &&
+    type !== 'meeting_notes' &&
+    type !== 'template',
 } as const
