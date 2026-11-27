@@ -15,9 +15,11 @@ describe('physical pool request envelope', () => {
     { operation: 'reset', id: 'owned-slot', mode: 'warm' },
     { operation: 'reset', id: 'owned-slot', mode: 'wiped' },
   ]) {
-    it.effect(`decodes explicit ${request.operation} metadata`, () => Effect.gen(function* () {
-      expect(yield* decode(request)).toEqual(request)
-    }))
+    it.effect(`decodes explicit ${request.operation} metadata`, () =>
+      Effect.gen(function* () {
+        expect(yield* decode(request)).toEqual(request)
+      }),
+    )
   }
   for (const request of [
     { operation: 'adopt', id: 'old-root' },
@@ -30,9 +32,11 @@ describe('physical pool request envelope', () => {
     { operation: 'reset', id: 'owned-slot', mode: 'warm', commit: 'other' },
     { operation: 'warm', qualified: true },
   ]) {
-    it.effect(`rejects unsupported request ${JSON.stringify(request)}`, () => Effect.gen(function* () {
-      const failure = yield* decode(request).pipe(Effect.flip)
-      expect(failure).toBeDefined()
-    }))
+    it.effect(`rejects unsupported request ${JSON.stringify(request)}`, () =>
+      Effect.gen(function* () {
+        const failure = yield* decode(request).pipe(Effect.flip)
+        expect(failure).toBeDefined()
+      }),
+    )
   }
 })

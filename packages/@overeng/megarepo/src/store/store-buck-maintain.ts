@@ -36,8 +36,8 @@ import {
 } from './store-deletion-lease.ts'
 import { loadStoreGcConfig } from './store-gc-config.ts'
 import { isInsideWorktree, parseProcStat, readProcessReferences } from './store-inuse.ts'
-import { PoolError, type PoolSlot, requireDisposablePoolRoot } from './store-pool-state.ts'
 import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
+import { PoolError, type PoolSlot, requireDisposablePoolRoot } from './store-pool-state.ts'
 import {
   isWorkspaceActive,
   makeBudgetActivityPreflight,
@@ -138,38 +138,55 @@ const nativeBinary = Effect.fn('store.buckMaintain.nativeBinary')(function* (
 
 /** Native cleanup mechanism only. Caller owns continuous ROOT/barrier and fresh
  * Git, all-UID and pinned physical proofs; this grants no retirement authority. */
-export const cleanPoolBuckOutput = Effect.fn('store.cleanPoolBuckOutput')(function* (
-  { slot }: { slot: PoolSlot },
-) {
-  yield* requireOutsidePoolGlobal(() => new PoolError({ message: 'Pool Buck cleanup inside GLOBAL; HOLD' }))
+export const cleanPoolBuckOutput = Effect.fn('store.cleanPoolBuckOutput')(function* ({
+  slot,
+}: {
+  slot: PoolSlot
+}) {
+  yield* requireOutsidePoolGlobal(
+    () => new PoolError({ message: 'Pool Buck cleanup inside GLOBAL; HOLD' }),
+  )
   yield* requireDisposablePoolRoot(slot)
   const fs = yield* FileSystem.FileSystem
   if ((yield* fs.realPath(slot.path)) !== slot.path)
     return yield* new PoolError({ message: 'Noncanonical pool Buck root; HOLD' })
   const binary = yield* nativeBinary([])
-  if (Option.isNone(binary))
-    return yield* new PoolError({ message: 'Canonical native Buck cleanup provider unavailable; HOLD' })
+  if (Option.isNone(binary) === true)
+    return yield* new PoolError({
+      message: 'Canonical native Buck cleanup provider unavailable; HOLD',
+    })
   const output = join(slot.path, 'buck-out')
-  const info = yield* fs.lstat(output).pipe(Effect.catch((error) =>
-    error.reason._tag === 'NotFound' ? Effect.succeed(undefined) : Effect.fail(error),
-  ))
+  const info = yield* fs.lstat(output).pipe(
+    Effect.catchIf(
+      (error) => error.reason._tag === 'NotFound',
+      () => Effect.void,
+    ),
+  )
   if (info === undefined) return
-  if (process.getuid === undefined || info.type !== 'Directory' ||
-    Option.getOrUndefined(info.uid) !== process.getuid() || (yield* fs.realPath(output)) !== output)
+  if (
+    process.getuid === undefined ||
+    info.type !== 'Directory' ||
+    Option.getOrUndefined(info.uid) !== process.getuid() ||
+    (yield* fs.realPath(output)) !== output
+  )
     return yield* new PoolError({ message: 'Aliased pool Buck output; HOLD' })
   const isolations = yield* fs.readDirectory(output)
   for (const isolation of isolations) {
     const path = join(output, isolation)
     const child = yield* fs.lstat(path)
-    if (child.type !== 'Directory' || Option.getOrUndefined(child.uid) !== process.getuid?.() ||
-      (yield* fs.realPath(path)) !== path || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(isolation))
+    if (
+      child.type !== 'Directory' ||
+      Option.getOrUndefined(child.uid) !== process.getuid?.() ||
+      (yield* fs.realPath(path)) !== path ||
+      /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(isolation) === false
+    )
       return yield* new PoolError({ message: 'Unknown pool Buck isolation; HOLD' })
   }
   // Match the existing maintenance owner: exact discovered isolations, v2 only
   // when none exist. Never enter a different worktree or use an ambient launcher.
   for (const isolation of isolations.length === 0 ? ['v2'] : isolations) {
     const result = yield* command(binary.value, ['--isolation-dir', isolation, 'clean'], slot.path)
-    if (Option.isNone(result) || result.value.exitCode !== 0)
+    if (Option.isNone(result) === true || result.value.exitCode !== 0)
       return yield* new PoolError({ message: 'Native pool Buck cleanup failed; HOLD' })
   }
 })

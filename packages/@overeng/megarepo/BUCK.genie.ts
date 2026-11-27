@@ -56,10 +56,10 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
-      // The CLI contract suite spawns the pinned Bun. The store-hygiene unit suite,
-      // every `*.integration.test.ts` suite, and the PTY prompt suite drive real git,
-      // nix, coreutils, or `script`, so they stay unbounded (decision 0026) under the
-      // devenv `test:megarepo` and `test:megarepo-cold-gc` tasks.
+      // CLI and holder-client wire contracts use only the pinned Bun. Native
+      // Git, Nix, coreutils, flock and PTY fixtures stay in the complete source
+      // complement (decision 0026), retained by `test:megarepo` and the explicit
+      // `test:megarepo-cold-gc` owner rather than given ambient host tools.
       tools: { BUN_BIN: '//buck2/toolchains:tool_bun' },
       excludes: [
         'src/cli/cli.integration.test.ts',
@@ -83,6 +83,7 @@ export const buck2TypeScriptAdmission = {
         'src/core/nix-lock/mod.integration.test.ts',
         'src/core/nix-lock/standalone.integration.test.ts',
         'src/store/git-writer-lock.integration.test.ts',
+        'src/store/pnpm-store-cache-lease.integration.test.ts',
         'src/store/store-archive.integration.test.ts',
         'src/store/store-branch-worktree.integration.test.ts',
         'src/store/store-buck-maintain-evidence.integration.test.ts',
@@ -98,7 +99,12 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-lossless.integration.test.ts',
         'src/store/store-pinned-deletion.integration.test.ts',
         'src/store/store-verified-directory-pins.integration.test.ts',
+        'src/store/store-pool-buck.integration.test.ts',
+        'src/store/store-pool-head-history.integration.test.ts',
+        'src/store/store-pool-lock-order.integration.test.ts',
+        'src/store/store-pool-roots.integration.test.ts',
         'src/store/store-pool-state.integration.test.ts',
+        'src/store/store-pool-warm-epoch.integration.test.ts',
         'src/store/store-rehome.basic.integration.test.ts',
         'src/store/store-rehome.integration.test.ts',
         'src/store/store-workspace-activity.integration.test.ts',

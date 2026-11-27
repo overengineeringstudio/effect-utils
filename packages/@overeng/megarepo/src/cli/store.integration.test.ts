@@ -301,9 +301,10 @@ if (process.platform === 'linux' && process.env['MEGAREPO_STORE_TEST_NAMESPACE']
           const base = EffectPath.unsafe.absoluteDir(`${parent}/store/`)
           const directory = `${base}.state/pool`
           const path = `${directory}/state.json`
-          const contents = fixture === 'malformed'
-            ? 'SECRET malformed ledger'
-            : encodeJson({ version: 1, maxSlots: 0, maxBytes: 100, slots: [] })
+          const contents =
+            fixture === 'malformed'
+              ? 'SECRET malformed ledger'
+              : encodeJson({ version: 1, maxSlots: 0, maxBytes: 100, slots: [] })
           yield* fs.makeDirectory(directory, { recursive: true })
           if (fixture === 'directory') yield* fs.makeDirectory(path)
           else yield* fs.writeFileString(path, contents)

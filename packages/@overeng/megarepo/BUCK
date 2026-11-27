@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d6721e96e88ff0cc392e5d4a5d7bb4c7709d891ae40b96d89403ac6fdce134ee
+# Semantic fingerprint: sha256:e45a2be5084866e0f0db4567481deb850f7c0e174d1e43d34d014a8dced2fad4
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -1520,6 +1520,7 @@ vitest_test(
         "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/standalone.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
+        "src/store/pnpm-store-cache-lease.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-buck-maintain-evidence.integration.test.ts",
@@ -1535,7 +1536,12 @@ vitest_test(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
+        "src/store/store-pool-buck.integration.test.ts",
+        "src/store/store-pool-head-history.integration.test.ts",
+        "src/store/store-pool-lock-order.integration.test.ts",
+        "src/store/store-pool-roots.integration.test.ts",
         "src/store/store-pool-state.integration.test.ts",
+        "src/store/store-pool-warm-epoch.integration.test.ts",
         "src/store/store-rehome.basic.integration.test.ts",
         "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
@@ -1574,6 +1580,7 @@ vitest_collect(
         "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/standalone.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
+        "src/store/pnpm-store-cache-lease.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
         "src/store/store-buck-maintain-evidence.integration.test.ts",
@@ -1589,7 +1596,12 @@ vitest_collect(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
+        "src/store/store-pool-buck.integration.test.ts",
+        "src/store/store-pool-head-history.integration.test.ts",
+        "src/store/store-pool-lock-order.integration.test.ts",
+        "src/store/store-pool-roots.integration.test.ts",
         "src/store/store-pool-state.integration.test.ts",
+        "src/store/store-pool-warm-epoch.integration.test.ts",
         "src/store/store-rehome.basic.integration.test.ts",
         "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",

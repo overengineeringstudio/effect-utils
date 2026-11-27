@@ -505,11 +505,14 @@ authenticated seat authority. The actor-less one-phase claim producer is removed
 Only the physical controller holding ROOT, every verified native/GVS scope and
 fresh all-UID/process evidence may publish the leased candidate or grant execution.
 Arm updated readers before writers: old v1 decoders reject `claiming` and must HOLD,
-not repair or reset it. The physical/service/production adapters remain off.
+not repair or reset it. Explicit host-local service requests own physical execution;
+default workspace adapters remain disabled.
 
-Pool preparation uses the normal root-owned `pnpm:install` and validates its
-machine-readable doctor report, installed shared GVS paths, exact source and
-resolved tool/platform identity. Logical root bytes are charged conservatively.
+Preparation mode is explicit. `pnpm-gvs` uses the normal root-owned `pnpm:install`
+and validates its machine-readable doctor report, installed shared GVS paths, exact
+source and resolved tool/platform identity. Buck-owned roots use their normal
+declared preparation tasks and immutable capability cell without fictional GVS
+fields. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
 Its curated GNU coreutils provider measures apparent logical size, including sparse
@@ -517,14 +520,15 @@ and compressed payloads; allocated disk usage and exclusive reclamation are sepa
 Linux libc identity uses the declared absolute `MR_GETCONF_BIN` provider; neither
 the packaged CLI nor normal source tasks depend on an ambient `getconf`.
 
-`warmPoolRoot` is the source-only fresh detached birth owner, not a CLI or recovery
-path. It reserves bounded capacity, holds the continuous native ROOT mutex, persists
+`warmPoolRoot` is the fresh detached birth owner used by the host-local service,
+not a recovery path. It reserves bounded capacity, holds the continuous native ROOT mutex, persists
 unknown accounting and a fresh v2 barrier before creation, and records actual root/admin
-inode birth plus the authenticated current leader generation. It runs root-owned install
-and declared prewarm tasks with inherited output. `inspectPoolInstall` returns the same
-doctor-bound identity and backing paths; final root/admin/GVS chains stay pinned together
-through verification and the full-snapshot READY save. Shared GVS roots need valid backing
-and doctor evidence, not global idleness; root/admin retained or nonowned references veto.
+inode birth plus the authenticated current leader generation. Its required injected
+runner executes normal preparation and declared prewarm tasks with inherited output.
+`inspectPoolRoot` returns the mode-specific identity and actual backing paths;
+root/admin and any GVS backing chains stay pinned together through verification
+and the full-snapshot READY save. Shared GVS roots need valid backing and doctor
+evidence, not global idleness; root/admin retained or nonowned references veto.
 Only the final read-only boot/clock freshness validation may run inside short GLOBAL;
 native acquisition, Git, holder queries and install remain outside it.
 
@@ -532,10 +536,10 @@ Failures retain the persistent barrier and unknown/HOLD state without reset, del
 rollback or implicit retry (a durability error can already have published READY).
 The initial one-byte logical reservation is a counter, not measured physical usage.
 Normally qualified activation roots and the authenticated shared producer remain
-operational prerequisites. The current normal holder wire has no generation-bound
-KCMP_FILES/KCMP_FILE nonleader witness, so nonleader references fail closed.
-The colocated admission/native Git regression definitions do not qualify a full warm;
-real shared-GVS/producer integration and production claim/reset/rollout remain pending.
+operational prerequisites. Nonleader FD references require the paired producer's
+generation-bound `KCMP_FILES`/`KCMP_FILE` witness for the caller's actual scoped pin;
+unsupported or unproved references fail closed. Colocated admission/native Git
+regression definitions alone do not qualify a complete physical warm.
 `withPnpmStoreCacheReadLease({ storeCacheRoot })` holds the existing native SHARED
 maintenance flock for its complete effect scope, without granting Git-writer authority.
 Use the required canonical **unversioned** `storeCacheRoot` from a healthy normal
@@ -681,14 +685,20 @@ mr store pool reset --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock"
 ```
 
 The service serializes requests, owns only roots born in that process, and keeps
-ROOT/barrier custody through actual task completion. Tasks run in an owned
-descendant systemd scope, which is synchronously stopped before completion proof.
+ROOT/barrier custody through actual task completion. Preparation, prewarm, claimed
+tasks and reset teardown all run in owned systemd scopes bound to the actual
+controller service. Each scope is synchronously stopped, including interruption,
+before a request can return or publish completion proof.
 Reset is same-commit only: dirty, authored, changed-history or unproved roots stay
 HOLD. `--mode warm` preserves bounded pool-owned Buck output; `--mode wiped`
 uses the existing native Buck owner's exact isolation cleanup, never a recursive
 pool remover. Fresh native holder/pin/source proofs remain required at every
-transition; unsupported nonleader references are not waived. No default workspace
-adapter or root-retirement writer is enabled by these commands.
+transition. A nonleader FD is accepted only when the normal paired native producer
+emits `leaderFdAlias: true`: live generation-bound `KCMP_FILES` and `KCMP_FILE`
+checks, retained OFD identity and a final seal prove it aliases the caller's exact
+scoped pin. Unsupported or unproved threads remain HOLD; there is no general
+same-process or equal-inode exemption. No default workspace adapter or
+root-retirement writer is enabled by these commands.
 
 Successful `run` responses include monotonic `timings.claimMs`, `taskMs`, and
 `completionMs`: acquisition (including native proof), actual task execution, and

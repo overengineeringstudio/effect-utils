@@ -259,11 +259,14 @@ export const acquireDeletionLease = ({
     const fs = yield* FileSystem.FileSystem
     const canonicalOwnerPath = normalizeOwnerPath(ownerPath)
     const leasePath = deletionLeasePath({ storeBasePath, ownerPath: canonicalOwnerPath })
-    yield* requireOutsidePoolGlobal(() => new DeletionLeaseUnavailableError({
-      ownerPath: canonicalOwnerPath,
-      leasePath,
-      message: 'GLOBAL pool epoch cannot acquire another root lease',
-    }))
+    yield* requireOutsidePoolGlobal(
+      () =>
+        new DeletionLeaseUnavailableError({
+          ownerPath: canonicalOwnerPath,
+          leasePath,
+          message: 'GLOBAL pool epoch cannot acquire another root lease',
+        }),
+    )
     const token = randomUUID()
     const record: DeletionLeaseRecord = {
       version: persistent === true ? 2 : DELETION_LEASE_VERSION,
@@ -389,11 +392,14 @@ export const acquireDeletionLease = ({
  */
 export const adoptPersistentDeletionLease = (lease: DeletionLease) =>
   Effect.gen(function* () {
-    yield* requireOutsidePoolGlobal(() => new DeletionLeaseUnavailableError({
-      ownerPath: lease.ownerPath,
-      leasePath: lease.leasePath,
-      message: 'GLOBAL pool epoch cannot adopt a root barrier',
-    }))
+    yield* requireOutsidePoolGlobal(
+      () =>
+        new DeletionLeaseUnavailableError({
+          ownerPath: lease.ownerPath,
+          leasePath: lease.leasePath,
+          message: 'GLOBAL pool epoch cannot adopt a root barrier',
+        }),
+    )
     const fs = yield* FileSystem.FileSystem
     const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
     if (
@@ -500,11 +506,14 @@ export const withStoreWorktreeLease =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
-      yield* requireOutsidePoolGlobal(() => new DeletionLeaseUnavailableError({
-        ownerPath,
-        leasePath: deletionLeasePath({ storeBasePath, ownerPath }),
-        message: 'GLOBAL pool epoch cannot enter root activation',
-      }))
+      yield* requireOutsidePoolGlobal(
+        () =>
+          new DeletionLeaseUnavailableError({
+            ownerPath,
+            leasePath: deletionLeasePath({ storeBasePath, ownerPath }),
+            message: 'GLOBAL pool epoch cannot enter root activation',
+          }),
+      )
       const owner = yield* canonicalizeOwnerPath(ownerPath)
       const store = yield* canonicalizeOwnerPath(storeBasePath)
       const fs = yield* FileSystem.FileSystem
@@ -615,7 +624,10 @@ export const createStoreWorktreeDetached = ({
       const fs = yield* FileSystem.FileSystem
       const absent = yield* fs.lstat(args.worktreePath).pipe(
         Effect.as(false),
-        Effect.catch((error) => error.reason._tag === 'NotFound' ? Effect.succeed(true) : Effect.fail(error)),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(true),
+        ),
       )
       if (absent === false)
         return yield* new DeletionLeaseUnavailableError({

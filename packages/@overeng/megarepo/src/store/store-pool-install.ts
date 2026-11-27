@@ -40,7 +40,7 @@ export const runPoolCommand = ({
   )
 
 /** Execute root-owned tasks without buffering build output or overriding activation. */
-export const runPoolTasks = (path: string, tasks: ReadonlyArray<string>) =>
+export const runPoolTasks = ({ path, tasks }: { path: string; tasks: ReadonlyArray<string> }) =>
   Effect.scoped(
     Effect.gen(function* () {
       const child = yield* ChildProcess.make('devenv', ['tasks', 'run', ...tasks], {
@@ -50,13 +50,9 @@ export const runPoolTasks = (path: string, tasks: ReadonlyArray<string>) =>
         stderr: 'inherit',
       })
       const code = yield* child.exitCode
-      if (code !== 0)
-        return yield* new PoolError({ message: `Canonical tasks exited ${code}` })
+      if (code !== 0) return yield* new PoolError({ message: `Canonical tasks exited ${code}` })
     }),
   )
-
-/** Preparation always uses the root's normal install task. */
-export const preparePoolInstall = (path: string) => runPoolTasks(path, ['pnpm:install'])
 
 /** Actual normal-doctor binding, not provider qualification or live-use authority. */
 export interface PoolInstallBinding {
@@ -179,9 +175,15 @@ export const inspectPoolInstall = ({
       const realStore = yield* fs.realPath(modules.storeDir)
       const realVirtual = yield* fs.realPath(resolve(path, 'node_modules', modules.virtualStoreDir))
       const realModules = yield* fs.realPath(`${path}/node_modules`)
-      if (realVirtual !== `${realStore}/links` || realStore.startsWith(`${path}/`) === true ||
-        realStore === storeCacheRoot || !realStore.startsWith(join(storeCacheRoot, '/')))
-        return yield* new PoolError({ message: 'Installed root is not bound to its configured shared GVS' })
+      if (
+        realVirtual !== `${realStore}/links` ||
+        realStore.startsWith(`${path}/`) === true ||
+        realStore === storeCacheRoot ||
+        realStore.startsWith(join(storeCacheRoot, '/')) === false
+      )
+        return yield* new PoolError({
+          message: 'Installed root is not bound to its configured shared GVS',
+        })
       hash.update(
         yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(Schema.String)))([
           realStore,
@@ -207,12 +209,16 @@ export const inspectPoolInstall = ({
         )
       }
       const sourceHistory = yield* inspectPoolHeadHistory({
-        path, admin: yield* Git.getAbsoluteGitDir(path), commit,
+        path,
+        admin: yield* Git.getAbsoluteGitDir(path),
+        commit,
       })
       hash.update('pool-head-history-v1\0')
-      hash.update(yield* Schema.encodeEffect(Schema.fromJsonString(
-        Schema.Tuple([Schema.String, Schema.String, Schema.Finite]),
-      ))([sourceHistory.commit, sourceHistory.digest, sourceHistory.byteLength]))
+      hash.update(
+        yield* Schema.encodeEffect(
+          Schema.fromJsonString(Schema.Tuple([Schema.String, Schema.String, Schema.Finite])),
+        )([sourceHistory.commit, sourceHistory.digest, sourceHistory.byteLength]),
+      )
       const binding: PoolInstallBinding = {
         identity: hash.digest('hex'),
         backingPaths: [realStore, realVirtual, realModules],
@@ -230,11 +236,17 @@ export const poolBytes = ({ path, kind }: { path: string; kind: 'logical' | 'all
     const output = yield* runPoolCommand({
       cwd: path,
       command: 'du',
-      args: ['--block-size=1', '--summarize', ...(kind === 'logical' ? ['--apparent-size'] : []), '--', '.'],
+      args: [
+        '--block-size=1',
+        '--summarize',
+        ...(kind === 'logical' ? ['--apparent-size'] : []),
+        '--',
+        '.',
+      ],
     })
     const match = /^([0-9]+)\s/u.exec(output)
     const bytes = match === null ? Number.NaN : Number(match[1])
-    if (!Number.isSafeInteger(bytes) || bytes < 0)
+    if (Number.isSafeInteger(bytes) === false || bytes < 0)
       return yield* new PoolError({ message: 'Cannot account pool bytes' })
     return bytes
   })

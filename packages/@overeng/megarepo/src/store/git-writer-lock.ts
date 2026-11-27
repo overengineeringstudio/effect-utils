@@ -128,23 +128,28 @@ const withGitLock =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       yield* requireOutsidePoolGlobal(
-        () => new GitWriterLockError({ path, cause: 'GLOBAL pool epoch cannot acquire native locks' }),
+        () =>
+          new GitWriterLockError({ path, cause: 'GLOBAL pool epoch cannot acquire native locks' }),
       )
-      const common = siblingControl === true
-        ? yield* io(path)(async () => resolve(await realpath(dirname(resolve(path))), basename(path)))
-        : create === true
-          ? yield* io(path)(async () => {
-              try {
-                return await realpath(path)
-              } catch (cause) {
-                if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
-                return resolve(await realpath(dirname(resolve(path))), basename(path))
-              }
-            })
-          : yield* resolveGitCommonDir(path)
-      const lockPath = controlName === undefined
-        ? `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
-        : resolve(common, controlName)
+      const common =
+        siblingControl === true
+          ? yield* io(path)(async () =>
+              resolve(await realpath(dirname(resolve(path))), basename(path)),
+            )
+          : create === true
+            ? yield* io(path)(async () => {
+                try {
+                  return await realpath(path)
+                } catch (cause) {
+                  if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
+                  return resolve(await realpath(dirname(resolve(path))), basename(path))
+                }
+              })
+            : yield* resolveGitCommonDir(path)
+      const lockPath =
+        controlName === undefined
+          ? `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
+          : resolve(common, controlName)
       const native = yield* io(lockPath)(() => (flockLibrary ??= loadFlock()))
       return yield* Effect.scoped(
         Effect.gen(function* () {
@@ -238,10 +243,12 @@ export const withPnpmStoreCacheReadLease =
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.suspend(() =>
       isAbsolute(storeCacheRoot) === false
-        ? Effect.fail(new GitWriterLockError({
-            path: storeCacheRoot,
-            cause: 'Expected the canonical absolute Store Cache root',
-          }))
+        ? Effect.fail(
+            new GitWriterLockError({
+              path: storeCacheRoot,
+              cause: 'Expected the canonical absolute Store Cache root',
+            }),
+          )
         : withGitLock({
             path: storeCacheRoot,
             create: true,

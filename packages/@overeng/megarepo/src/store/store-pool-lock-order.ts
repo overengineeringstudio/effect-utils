@@ -11,4 +11,6 @@ export const withPoolGlobalEpoch = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 /** Refuse reverse acquisitions before native admission, preserving each owner's error type. */
 export const requireOutsidePoolGlobal = <E>(refusal: () => E): Effect.Effect<void, E> =>
-  Effect.flatMap(PoolGlobalEpoch, (active) => active ? Effect.fail(refusal()) : Effect.void)
+  Effect.flatMap(PoolGlobalEpoch, (active) =>
+    active === true ? Effect.fail(refusal()) : Effect.void,
+  )

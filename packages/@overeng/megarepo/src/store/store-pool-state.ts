@@ -9,8 +9,8 @@ import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { withDeletionLease } from './store-deletion-lease.ts'
 import { withVerifiedDirectoryPins, type OwnedDeletionPins } from './store-pinned-deletion.ts'
-import { requireOutsidePoolGlobal, withPoolGlobalEpoch } from './store-pool-lock-order.ts'
 import { DeletionIdentity } from './store-pinned-deletion.ts'
+import { requireOutsidePoolGlobal, withPoolGlobalEpoch } from './store-pool-lock-order.ts'
 
 /** Recorded native birth, never a fresh inspection or cross-boot adoption proof. */
 export const PoolPhysicalBirth = Schema.Struct({
@@ -100,10 +100,14 @@ const equivalentBirth = Schema.toEquivalence(PoolPhysicalBirth)
 
 /** Full authoritative snapshot fence; not ownership or physical proof. */
 export const requirePoolSlotSnapshot = ({
-  state, expected,
-}: { state: PoolState; expected: PoolSlot }): Effect.Effect<PoolSlot, PoolError> => {
+  state,
+  expected,
+}: {
+  state: PoolState
+  expected: PoolSlot
+}): Effect.Effect<PoolSlot, PoolError> => {
   const current = state.slots.find((slot) => slot.id === expected.id)
-  return current !== undefined && equivalentSlot(current, expected)
+  return current !== undefined && equivalentSlot(current, expected) === true
     ? Effect.succeed(current)
     : Effect.fail(new PoolError({ message: 'Pool snapshot changed or missing; HOLD' }))
 }
@@ -111,43 +115,72 @@ export const requirePoolSlotSnapshot = ({
 const nativeChain = (identity: DeletionIdentity): boolean =>
   identity[0]?.path === '/' &&
   identity.at(-1)?._tag === 'Inode' &&
-  identity.every((entry, index) =>
-    resolve(entry.path) === entry.path &&
-    (index === 0 || (entry.path !== '/' && dirname(entry.path) === identity[index - 1]?.path)),
+  identity.every(
+    (entry, index) =>
+      resolve(entry.path) === entry.path &&
+      (index === 0 || (entry.path !== '/' && dirname(entry.path) === identity[index - 1]?.path)),
   )
 
-const matchesBirthPaths = (slot: PoolSlot, birth: PoolPhysicalBirth): boolean => {
+const matchesBirthPaths = ({
+  slot,
+  birth,
+}: {
+  slot: PoolSlot
+  birth: PoolPhysicalBirth
+}): boolean => {
   const admin = birth.gitAdmin.at(-1)
-  return birth.bootId !== '' && nativeChain(birth.root) && nativeChain(birth.gitAdmin) &&
+  return (
+    birth.bootId !== '' &&
+    nativeChain(birth.root) &&
+    nativeChain(birth.gitAdmin) &&
     birth.root.at(-1)?.path === slot.path &&
-    resolve(slot.bare) === slot.bare && admin !== undefined &&
+    resolve(slot.bare) === slot.bare &&
+    admin !== undefined &&
     dirname(admin.path) === `${slot.bare}/worktrees`
+  )
 }
 
 /** Pure, once-only candidate for an untouched unknown precreation intent.
  * Caller supplies actual fresh-origin/native creation, lease, pins and holder evidence.
  */
 export const bindPoolPhysicalBirth = ({
-  state, expected, birth,
-}: { state: PoolState; expected: PoolSlot; birth: PoolPhysicalBirth }): Effect.Effect<PoolSlot, PoolError> =>
+  state,
+  expected,
+  birth,
+}: {
+  state: PoolState
+  expected: PoolSlot
+  birth: PoolPhysicalBirth
+}): Effect.Effect<PoolSlot, PoolError> =>
   Effect.gen(function* () {
     const current = yield* requirePoolSlotSnapshot({ state, expected })
     if (
-      current.state !== 'preparing' || current.chargeKnown !== false ||
-      current.token === '' || current.owner !== '' || current.barrierToken === '' ||
-      current.identity !== '' || current.physicalBirth !== undefined ||
-      matchesBirthPaths(current, birth) === false
+      current.state !== 'preparing' ||
+      current.chargeKnown !== false ||
+      current.token === '' ||
+      current.owner !== '' ||
+      current.barrierToken === '' ||
+      current.identity !== '' ||
+      current.physicalBirth !== undefined ||
+      matchesBirthPaths({ slot: current, birth }) === false
     )
-      return yield* new PoolError({ message: 'Physical birth requires untouched native intent; HOLD' })
+      return yield* new PoolError({
+        message: 'Physical birth requires untouched native intent; HOLD',
+      })
     return { ...current, physicalBirth: birth }
   })
 
 /** Missing, replaced or cross-boot physical roots never implicitly recover. */
 export const requirePoolPhysicalBirth = ({
-  slot, birth,
-}: { slot: PoolSlot; birth: PoolPhysicalBirth }): Effect.Effect<void, PoolError> =>
-  slot.physicalBirth !== undefined && matchesBirthPaths(slot, birth) &&
-  equivalentBirth(slot.physicalBirth, birth)
+  slot,
+  birth,
+}: {
+  slot: PoolSlot
+  birth: PoolPhysicalBirth
+}): Effect.Effect<void, PoolError> =>
+  slot.physicalBirth !== undefined &&
+  matchesBirthPaths({ slot, birth }) === true &&
+  equivalentBirth(slot.physicalBirth, birth) === true
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Physical birth missing or changed; HOLD' }))
 
@@ -189,7 +222,9 @@ type PoolMissingEvidence = {
   readonly reason: 'not-recorded-in-pool-v1'
 }
 
-type PoolRecordedEvidence<TEvidence> = PoolMissingEvidence | { readonly _tag: 'Recorded'; readonly value: TEvidence }
+type PoolRecordedEvidence<TEvidence> =
+  | PoolMissingEvidence
+  | { readonly _tag: 'Recorded'; readonly value: TEvidence }
 type PoolTerminalOperation = Extract<PoolOperation, { readonly state: 'terminal' }>
 
 /** Recorded metadata only: labels and ready flags are never removal authority. */
@@ -228,9 +263,7 @@ const missingPoolEvidence: PoolMissingEvidence = {
 const terminalEvidence = (
   operation: PoolOperation | undefined,
 ): PoolRecordedEvidence<PoolTerminalOperation> =>
-  operation?.state === 'terminal'
-    ? { _tag: 'Recorded', value: operation }
-    : missingPoolEvidence
+  operation?.state === 'terminal' ? { _tag: 'Recorded', value: operation } : missingPoolEvidence
 
 /** No initialization, repair, lease acquisition, or filesystem mutation. */
 export const readPoolProvenance = ({
@@ -265,10 +298,14 @@ export const readPoolProvenance = ({
         ownerLabel: slot.owner,
         ownerActivity: missingPoolEvidence,
         seatActivity: missingPoolEvidence,
-        physicalBirth: slot.physicalBirth === undefined
-          ? missingPoolEvidence : { _tag: 'Recorded', value: slot.physicalBirth },
-        lifecycle: slot.lifecycle === undefined
-          ? missingPoolEvidence : { _tag: 'Recorded', value: slot.lifecycle },
+        physicalBirth:
+          slot.physicalBirth === undefined
+            ? missingPoolEvidence
+            : { _tag: 'Recorded', value: slot.physicalBirth },
+        lifecycle:
+          slot.lifecycle === undefined
+            ? missingPoolEvidence
+            : { _tag: 'Recorded', value: slot.lifecycle },
         terminalClaim: terminalEvidence(slot.lifecycle?.claim),
         terminalBirth: terminalEvidence(slot.lifecycle?.birth),
         terminalRetarget: terminalEvidence(slot.lifecycle?.retarget),
@@ -368,7 +405,8 @@ export const requirePoolLease = ({ slot, token, generation }: PoolLeaseCheck) =>
 
 const isPoolClaimActor = Schema.is(PoolActor)
 const isPoolClaimOperation = Schema.is(PoolOperation)
-const claimHold = () => new PoolError({ message: 'Pool claim provenance or process generation changed; HOLD' })
+const claimHold = () =>
+  new PoolError({ message: 'Pool claim provenance or process generation changed; HOLD' })
 
 /** Recorded consistency only; never fresh native, process or seat authority. */
 const requirePoolClaimOrigin = (slot: PoolSlot): Effect.Effect<void, PoolError> =>
@@ -378,35 +416,74 @@ const requirePoolClaimOrigin = (slot: PoolSlot): Effect.Effect<void, PoolError> 
     const physical = slot.physicalBirth
     const claim = slot.lifecycle?.claim
     const retarget = slot.lifecycle?.retarget
-    if (physical === undefined || birth === undefined || !isPoolClaimOperation(birth) ||
-      birth.state !== 'terminal' || birth.outcome !== 'success' || birth.generation > slot.generation ||
-      birth.actor.bootId !== physical.bootId || slot.barrierToken === '' ||
-      (claim !== undefined && (!isPoolClaimOperation(claim) || claim.state !== 'terminal' ||
-        claim.generation >= slot.generation || claim.actor.hostId !== birth.actor.hostId || claim.actor.bootId !== birth.actor.bootId)) ||
-      (retarget !== undefined && (!isPoolClaimOperation(retarget) || retarget.state !== 'terminal' ||
-        retarget.outcome !== 'success' || retarget.generation > slot.generation ||
-        retarget.actor.hostId !== birth.actor.hostId || retarget.actor.bootId !== birth.actor.bootId)))
+    if (
+      physical === undefined ||
+      birth === undefined ||
+      isPoolClaimOperation(birth) === false ||
+      birth.state !== 'terminal' ||
+      birth.outcome !== 'success' ||
+      birth.generation > slot.generation ||
+      birth.actor.bootId !== physical.bootId ||
+      slot.barrierToken === '' ||
+      (claim !== undefined &&
+        (isPoolClaimOperation(claim) === false ||
+          claim.state !== 'terminal' ||
+          claim.generation >= slot.generation ||
+          claim.actor.hostId !== birth.actor.hostId ||
+          claim.actor.bootId !== birth.actor.bootId)) ||
+      (retarget !== undefined &&
+        (isPoolClaimOperation(retarget) === false ||
+          retarget.state !== 'terminal' ||
+          retarget.outcome !== 'success' ||
+          retarget.generation > slot.generation ||
+          retarget.actor.hostId !== birth.actor.hostId ||
+          retarget.actor.bootId !== birth.actor.bootId))
+    )
       return yield* claimHold()
     yield* requirePoolPhysicalBirth({ slot, birth: physical })
   })
 
 /** Select with GLOBAL released, acquire ROOT, then save this UNKNOWN intent under short GLOBAL. */
-export const beginPoolClaim = ({ slot, identity, owner }: PoolClaim): Effect.Effect<PoolSlot, PoolError> =>
+export const beginPoolClaim = ({
+  slot,
+  identity,
+  owner,
+}: PoolClaim): Effect.Effect<PoolSlot, PoolError> =>
   Effect.gen(function* () {
     yield* requirePoolClaimOrigin(slot)
-    if (slot.state !== 'ready' || slot.identity !== identity || identity === '' || slot.chargeKnown !== true ||
-      slot.token !== '' || slot.owner !== '' || owner === '' || !Number.isSafeInteger(slot.generation) ||
-      slot.generation < 0 || !Number.isSafeInteger(slot.generation + 1))
+    if (
+      slot.state !== 'ready' ||
+      slot.identity !== identity ||
+      identity === '' ||
+      slot.chargeKnown !== true ||
+      slot.token !== '' ||
+      slot.owner !== '' ||
+      owner === '' ||
+      Number.isSafeInteger(slot.generation) === false ||
+      slot.generation < 0 ||
+      Number.isSafeInteger(slot.generation + 1) === false
+    )
       return yield* claimHold()
     const next: PoolSlot = {
-      ...slot, state: 'claiming', chargeKnown: false, generation: slot.generation + 1,
-      token: randomUUID(), owner, reason: '',
+      ...slot,
+      state: 'claiming',
+      chargeKnown: false,
+      generation: slot.generation + 1,
+      token: randomUUID(),
+      owner,
+      reason: '',
     }
     return next
   })
 
 /** Exact saved intent plus caller-observed process generation; only verified commit may publish. */
-export const finishPoolClaim = ({ state, intent, identity, owner, actor }: {
+export const finishPoolClaim = ({
+  state,
+  intent,
+  identity,
+  owner,
+  actor,
+}: {
   state: PoolState
   intent: PoolSlot
   identity: string
@@ -417,22 +494,43 @@ export const finishPoolClaim = ({ state, intent, identity, owner, actor }: {
     const current = yield* requirePoolSlotSnapshot({ state, expected: intent })
     yield* requirePoolClaimOrigin(current)
     const birth = current.lifecycle?.birth
-    if (current.state !== 'claiming' || current.token === '' || current.owner !== owner || owner === '' ||
-      current.identity !== identity || identity === '' || current.chargeKnown !== false ||
-      !Number.isSafeInteger(current.generation) || current.generation < 1 || !isPoolClaimActor(actor) ||
-      birth === undefined || birth.generation >= current.generation ||
-      actor.hostId !== birth.actor.hostId || actor.bootId !== birth.actor.bootId ||
-      actor.bootId !== current.physicalBirth?.bootId)
+    if (
+      current.state !== 'claiming' ||
+      current.token === '' ||
+      current.owner !== owner ||
+      owner === '' ||
+      current.identity !== identity ||
+      identity === '' ||
+      current.chargeKnown !== false ||
+      Number.isSafeInteger(current.generation) === false ||
+      current.generation < 1 ||
+      isPoolClaimActor(actor) === false ||
+      birth === undefined ||
+      birth.generation >= current.generation ||
+      actor.hostId !== birth.actor.hostId ||
+      actor.bootId !== birth.actor.bootId ||
+      actor.bootId !== current.physicalBirth?.bootId
+    )
       return yield* claimHold()
     const next: PoolSlot = {
-      ...current, state: 'leased',
-      lifecycle: { ...current.lifecycle, claim: { generation: current.generation, actor, state: 'active' } },
+      ...current,
+      state: 'leased',
+      lifecycle: {
+        ...current.lifecycle,
+        claim: { generation: current.generation, actor, state: 'active' },
+      },
     }
     return next
   })
 
 /** Reserve counted, known logical bytes without discarding uncertain generations. */
-export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolSlot }) => {
+export const reservePoolSlot = ({
+  state,
+  slot,
+}: {
+  state: PoolState
+  slot: PoolSlot
+}): Effect.Effect<PoolState, PoolError> => {
   if (state.slots.some((item) => item.chargeKnown !== true) === true)
     return Effect.fail(
       new PoolError({ message: 'Pool retained bytes are unknown; allocation blocked' }),
@@ -464,23 +562,31 @@ export const reserveFreshPoolRoot = ({
   const id = randomUUID()
   const path = join(dirname(bare), 'pool', id)
   const slot: PoolSlot = {
-    id, path, bare, commit, charge,
-    identity: '', generation: 0, state: 'preparing',
-    chargeKnown: true, token: '', barrierToken: '', owner: '', reason: '',
+    id,
+    path,
+    bare,
+    commit,
+    charge,
+    identity: '',
+    generation: 0,
+    state: 'preparing',
+    chargeKnown: true,
+    token: '',
+    barrierToken: '',
+    owner: '',
+    reason: '',
     executionRoot: { origin: 'fresh-reserved-uuid', path, authored: false },
   }
-  return reservePoolSlot({ state, slot }).pipe(
-    Effect.map((next) => ({ state: next, slot })),
-  )
+  return reservePoolSlot({ state, slot }).pipe(Effect.map((next) => ({ state: next, slot })))
 }
 
 /** Physical-root contract only; callers still need fresh Git, GVS, pins and holder proofs. */
 export const requireDisposablePoolRoot = (slot: PoolSlot) =>
   slot.executionRoot?.origin === 'fresh-reserved-uuid' &&
-  isAbsolute(slot.bare) &&
+  isAbsolute(slot.bare) === true &&
   slot.executionRoot.path === slot.path &&
   slot.path === join(dirname(slot.bare), 'pool', slot.id) &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(slot.id) &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(slot.id) === true &&
   slot.executionRoot.authored === false
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Unknown or authored physical pool root; HOLD' }))
@@ -503,7 +609,11 @@ export const markPoolRootAuthored = ({
     use: (state, save) =>
       Effect.gen(function* () {
         const slot = state.slots.find((item) => item.id === id)
-        if (slot === undefined || slot.generation !== generation || slot.executionRoot === undefined)
+        if (
+          slot === undefined ||
+          slot.generation !== generation ||
+          slot.executionRoot === undefined
+        )
           return yield* new PoolError({ message: 'Physical pool provenance unavailable; HOLD' })
         const next: PoolSlot = {
           ...slot,
@@ -512,11 +622,17 @@ export const markPoolRootAuthored = ({
           chargeKnown: false,
           reason: 'Physical root authored or promoted; never reset',
         }
-        yield* save({ ...state, slots: state.slots.map((item) => item.id === id ? next : item) })
+        yield* save({ ...state, slots: state.slots.map((item) => (item.id === id ? next : item)) })
       }),
   })
 
-const lookupPoolSlot = (state: PoolState, id: string): Effect.Effect<PoolSlot, PoolError> => {
+const lookupPoolSlot = ({
+  state,
+  id,
+}: {
+  state: PoolState
+  id: string
+}): Effect.Effect<PoolSlot, PoolError> => {
   const slot = state.slots.find((item) => item.id === id)
   return slot === undefined
     ? Effect.fail(new PoolError({ message: 'Pool reservation missing' }))
@@ -525,10 +641,18 @@ const lookupPoolSlot = (state: PoolState, id: string): Effect.Effect<PoolSlot, P
 
 /** Pure intent candidate. Save under ROOT → short GLOBAL before any physical preparation. */
 export const beginPoolPreparation = ({
-  state, id, generation, path,
-}: { state: PoolState; id: string; generation: number; path: string }): Effect.Effect<PoolSlot, PoolError> =>
+  state,
+  id,
+  generation,
+  path,
+}: {
+  state: PoolState
+  id: string
+  generation: number
+  path: string
+}): Effect.Effect<PoolSlot, PoolError> =>
   Effect.gen(function* () {
-    const slot = yield* lookupPoolSlot(state, id)
+    const slot = yield* lookupPoolSlot({ state, id })
     if (
       slot.path !== path ||
       slot.generation !== generation ||
@@ -551,51 +675,54 @@ export const beginPoolPreparation = ({
 
 /** Pure READY candidate, not physical proof: save only after verification, under still-held pins. */
 export const finishPoolPreparation = ({
-  state, intent, prepared,
+  state,
+  intent,
+  prepared,
 }: {
   state: PoolState
   intent: PoolSlot
   prepared: { identity: string; charge: number }
-}): Effect.Effect<PoolSlot, PoolError> => Effect.gen(function* () {
-  const current = yield* lookupPoolSlot(state, intent.id)
-  if (
-    current.path !== intent.path ||
-    current.generation !== intent.generation ||
-    current.token !== intent.token ||
-    current.bare !== intent.bare ||
-    current.commit !== intent.commit ||
-    current.identity !== intent.identity ||
-    current.barrierToken !== intent.barrierToken ||
-    current.owner !== intent.owner ||
-    current.charge !== intent.charge ||
-    current.state !== 'preparing' ||
-    current.chargeKnown !== false
-  )
-    return yield* new PoolError({ message: 'Preparation generation changed; HOLD' })
-  if (
-    prepared.identity === '' ||
-    Number.isSafeInteger(prepared.charge) === false ||
-    prepared.charge <= 0 ||
-    state.slots.reduce(
-      (sum, item) => sum + (item.id === intent.id ? prepared.charge : item.charge),
-      0,
-    ) > state.maxBytes
-  )
-    return yield* new PoolError({
-      message: 'Prepared identity/charge exceeds reservation limits; HOLD',
-    })
-  const ready: PoolSlot = {
-    ...current,
-    state: 'ready',
-    token: '',
-    owner: '',
-    identity: prepared.identity,
-    charge: prepared.charge,
-    chargeKnown: true,
-    reason: '',
-  }
-  return ready
-})
+}): Effect.Effect<PoolSlot, PoolError> =>
+  Effect.gen(function* () {
+    const current = yield* lookupPoolSlot({ state, id: intent.id })
+    if (
+      current.path !== intent.path ||
+      current.generation !== intent.generation ||
+      current.token !== intent.token ||
+      current.bare !== intent.bare ||
+      current.commit !== intent.commit ||
+      current.identity !== intent.identity ||
+      current.barrierToken !== intent.barrierToken ||
+      current.owner !== intent.owner ||
+      current.charge !== intent.charge ||
+      current.state !== 'preparing' ||
+      current.chargeKnown !== false
+    )
+      return yield* new PoolError({ message: 'Preparation generation changed; HOLD' })
+    if (
+      prepared.identity === '' ||
+      Number.isSafeInteger(prepared.charge) === false ||
+      prepared.charge <= 0 ||
+      state.slots.reduce(
+        (sum, item) => sum + (item.id === intent.id ? prepared.charge : item.charge),
+        0,
+      ) > state.maxBytes
+    )
+      return yield* new PoolError({
+        message: 'Prepared identity/charge exceeds reservation limits; HOLD',
+      })
+    const ready: PoolSlot = {
+      ...current,
+      state: 'ready',
+      token: '',
+      owner: '',
+      identity: prepared.identity,
+      charge: prepared.charge,
+      chargeKnown: true,
+      reason: '',
+    }
+    return ready
+  })
 /**
  * Finish a reserved preparation: ROOT lease → pins → short GLOBAL CAS.
  * Prepare owns fresh Git/GVS/holder proofs; this helper neither resets nor removes roots.
