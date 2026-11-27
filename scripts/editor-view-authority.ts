@@ -6,13 +6,118 @@ import process from 'node:process'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
 import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
-import { reconcileBuckViews } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
+import {
+  CommandFailure,
+  reconcileBuckViews,
+} from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
   BuckWatchPlan,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
-import { writeEditorViewAuthority } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
+import {
+  editorPublicationIsolation,
+  type EditorPublicationOwner,
+} from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
+import {
+  runEditorViewAuthorityCommand,
+  writeEditorViewAuthority,
+  type EditorViewAuthorityCommandRunner,
+} from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
 import { defaultEditorViewName } from '../packages/@overeng/buck2-tools/src/editor-view.ts'
+import { runOwnedEditorPublicationCommand } from './buck2-entrypoint.ts'
+
+/** A managed native command, independent of the reconciler's execution contract. */
+export type ManagedEditorPublicationCommand = {
+  readonly command: string
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly signal?: AbortSignal
+  readonly captureStderr?: boolean
+  readonly onStderr?: (chunk: string) => void
+}
+
+/** Explicit native execution context retaining the same live opaque owner. */
+export type ManagedEditorPublicationOptions = {
+  readonly command: ManagedEditorPublicationCommand
+  readonly owner: EditorPublicationOwner
+  readonly native: string
+  readonly env: NodeJS.ProcessEnv
+}
+
+/** Captured managed-native streams and terminal status. */
+export type ManagedEditorPublicationResult = {
+  readonly exitCode: number
+  readonly signalCode: NodeJS.Signals | null
+  readonly stdout: string
+  readonly stderr: string
+}
+
+/** Stream diagnostics without losing split UTF-8 or native exit/signal causes. */
+export const runManagedEditorPublicationCommand = async ({
+  command,
+  owner,
+  native,
+  env,
+}: ManagedEditorPublicationOptions): Promise<ManagedEditorPublicationResult> => {
+  const stderr = new TextDecoder('utf-8', { ignoreBOM: true })
+  const result = await runOwnedEditorPublicationCommand({
+    native,
+    args: command.args,
+    cwd: command.cwd,
+    env,
+    owner,
+    ...(command.signal === undefined ? {} : { signal: command.signal }),
+    ...(command.captureStderr === undefined ? {} : { captureStderr: command.captureStderr }),
+    ...(command.onStderr === undefined
+      ? {}
+      : {
+          onStderr: (bytes: Uint8Array) =>
+            command.onStderr?.(stderr.decode(bytes, { stream: true })),
+        }),
+  })
+  command.onStderr?.(stderr.decode())
+  if (result.exitCode !== 0 || result.signalCode !== null)
+    throw new CommandFailure({
+      message: `Buck editor publication command failed: ${result.signalCode ?? result.exitCode}`,
+      exitCode: result.signalCode === null ? result.exitCode : undefined,
+      signal: result.signalCode ?? undefined,
+    })
+  return result
+}
+
+/** Census execution context; only Buck uses reserved native ownership. */
+export type OwnedEditorViewAuthorityOptions = {
+  readonly buck2: string
+  readonly native: string
+  readonly owner: EditorPublicationOwner
+  readonly env: NodeJS.ProcessEnv
+  readonly signal: AbortSignal
+}
+
+/** Keep Git on the ordinary census boundary and Buck on the live owner's native boundary. */
+export const ownedEditorViewAuthorityCommandRunner =
+  ({
+    buck2,
+    native,
+    owner,
+    env,
+    signal,
+  }: OwnedEditorViewAuthorityOptions): EditorViewAuthorityCommandRunner =>
+  async (command) => {
+    if (command.command !== buck2) return runEditorViewAuthorityCommand(command)
+    const result = await runManagedEditorPublicationCommand({
+      command: {
+        ...command,
+        args: ['--isolation-dir', editorPublicationIsolation, ...command.args],
+        signal,
+      },
+      native,
+      owner,
+      env,
+    })
+    return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+  }
+
 /** Complete source-authoritative editor consumer registry, including the repository root. */
 export const editorViewPackagePaths = ['.', ...pnpmWorkspaceMemberPaths].toSorted((left, right) =>
   left === right ? 0 : left < right ? -1 : 1,
