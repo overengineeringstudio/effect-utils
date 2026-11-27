@@ -28,11 +28,11 @@ a Tracked Tree. It records the root, layout, authority, and last materialized
 path-to-page mapping, but never supersedes `.nmd` frontmatter as page identity.
 _Avoid_: identity store, source of truth
 
-**Derived Child Link**:
-A relative local Markdown link rendered from a direct Notion child-page anchor
-inside a remote-authoritative Tracked Tree. It is local navigation, not authored
-body content; the sync baseline retains the canonical Notion child anchor.
-_Avoid_: user-authored child-file link
+**Child Page Anchor**:
+A block-level native `<page url="…">Title</page>` reference to a direct child
+page. A Tracked Tree retains its identity and position in the local body and
+sync baseline; ordinary authored Markdown links remain inline cross-references.
+_Avoid_: inline page tag, derived local navigation link
 
 **Mirror Sync**:
 The stateless mechanism for pages authored on exactly one side. `source: local`

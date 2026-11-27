@@ -220,6 +220,20 @@ export const DateMention = Schema.Struct({
 
 export type DateMention = typeof DateMention.Type
 
+/** Minimal mention payload accepted by Notion create/update APIs. */
+export const MentionRichTextCreate = Schema.Struct({
+  type: Schema.Literal('mention'),
+  mention: Schema.Union([PageMention, DatabaseMention, UserMention, DateMention]),
+  annotations: Schema.optional(TextAnnotationsCreate),
+})
+
+export type MentionRichTextCreate = typeof MentionRichTextCreate.Type
+
+/** Rich text supported by Markdown imports, without read-side metadata. */
+export const RichTextCreate = Schema.Union([TextRichTextCreate, MentionRichTextCreate])
+
+export type RichTextCreate = typeof RichTextCreate.Type
+
 /**
  * Link preview mention within rich text.
  */
@@ -239,6 +253,26 @@ export const LinkPreviewMention = Schema.Struct({
 })
 
 export type LinkPreviewMention = typeof LinkPreviewMention.Type
+
+/**
+ * Link mention within rich text.
+ */
+export const LinkMention = Schema.Struct({
+  type: Schema.Literal('link_mention'),
+  link_mention: Schema.Struct({
+    href: Schema.String.annotate({
+      description: 'The URL referenced by the mention.',
+      examples: ['https://github.com/example/repo'],
+    }),
+  }),
+}).annotate({
+  identifier: 'Notion.LinkMention',
+  title: 'Link Mention',
+  description: 'A mention linking to an external resource.',
+  [docsPath]: 'rich-text#mention',
+})
+
+export type LinkMention = typeof LinkMention.Type
 
 /**
  * Template mention date type.
@@ -294,6 +328,7 @@ export const MentionContent = Schema.Union([
   UserMention,
   DateMention,
   LinkPreviewMention,
+  LinkMention,
   TemplateMention,
 ]).annotate({
   identifier: 'Notion.MentionContent',

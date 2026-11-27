@@ -78,12 +78,31 @@ truth for both shapes.
 
 ## Body
 
-The body is stock Notion enhanced Markdown as returned by Notion's Markdown
-endpoint. `notion-md` does not invent a body-level dialect for sync metadata.
+The body is stock Notion enhanced Markdown, not a body-level dialect for sync
+metadata. Pulls use the canonical block-tree rendering; endpoint Markdown remains
+independent completeness evidence. Native `<callout>`, `<table>`, `<details>`,
+and `<mention-*>` constructs retain their types rather than becoming ordinary
+quotes, paragraphs, links, or date text. A missing native construct is refused
+instead of being adopted as a clean body.
 
 Notion may normalize Markdown on pull. A clean round trip means semantic
 equivalence through Notion's Markdown endpoint, not byte-for-byte preservation of
 local formatting.
+
+### Upgrading older projected bodies
+
+This renderer upgrade requires a one-time read-only re-pull for existing files
+whose callouts, tables, mentions, toggles or media were flattened by an older
+version. Their stored baseline uses the old projection, so status can report a
+remote change even when nobody edited Notion. Old and native forms are not
+automatically equated: the old bytes cannot prove the original block types.
+
+Before syncing, preserve the original files and any unpushed edits. Use `track`
+to export the page or tree into a fresh location, review the native body, then
+port only the intended local edits onto that fresh baseline and retain the
+intended authority. Do not overwrite an edited file, force a push, or delete its
+baseline to bypass this migration. Fresh exports and already-native child-page
+anchors do not require rewriting.
 
 ## Writable Page Metadata
 
