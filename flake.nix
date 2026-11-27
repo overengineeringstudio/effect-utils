@@ -237,7 +237,6 @@ rec {
         };
         oxlintNpm = import ./nix/oxlint-npm.nix {
           inherit pkgs pnpmArchives;
-          bun = pkgs.bun;
           products = trackedBuck2Products.products;
         };
         weaver = weaverPackages.weaver;

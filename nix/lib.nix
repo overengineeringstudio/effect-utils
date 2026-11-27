@@ -136,15 +136,14 @@
 
   # npm oxlint with NAPI bindings plus the two tracked immutable
   # @overeng/oxc-config JavaScript plugin products.
-  # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; bun = pkgs.bun; }
+  # Usage: effectUtils.lib.mkOxlintNpm { inherit pkgs; }
   mkOxlintNpm =
     {
       pkgs,
-      bun,
       products ? self.buckProducts.${pkgs.stdenv.hostPlatform.system}.products,
     }:
     import ./oxlint-npm.nix {
-      inherit pkgs bun products;
+      inherit pkgs products;
       pnpmArchives = import ./buck2-products/pnpm-archives.nix { inherit pkgs; };
     };
 
