@@ -187,7 +187,11 @@ conflicting or corrupt snapshots and responses reaching 5,000 entries fail with
 coverage UNKNOWN. No source header or fleet-completeness claim is synthesized.
 Scheduled reads cover the previous UTC day; manual dispatches cover the rolling
 24 hours ending at query time, allowing a newly deployed producer to be measured
-without waiting for midnight. Both windows remain bounded and half-open.
+without waiting for midnight. Manual dispatch may instead supply paired
+`occurrence_since` / `occurrence_until` exact UTC timestamps and an optional
+`occurrence_host` from the configured inventory for a specific receipt.
+Exact windows must be positive and at most 24 hours; a scoped host becomes the
+only expected host for that read. Both default windows remain bounded and half-open.
 After reader disconnect, the full per-occurrence JSON report enters the job
 summary and log output, alongside the record/gap counts. Operational acceptance
 retains the queried JSON with its execution receipt. This uses no new upload action;

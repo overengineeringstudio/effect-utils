@@ -503,6 +503,27 @@ test('manual occurrence queries cover the last 24 hours and retain per-occurrenc
   )
 })
 
+test('manual exact occurrence bounds and host remain paired, bounded and inventory-restricted', () => {
+  const read = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps.find(
+    (step) => step.id === 'occurrence-query',
+  )!
+  for (const input of ['since', 'until', 'host']) {
+    expect(proofWorkflow).toContain(`occurrence_${input}:`)
+    expect(read.env?.[`OCCURRENCE_QUERY_${input.toUpperCase()}`]).toBe(
+      `\${{ inputs.occurrence_${input} }}`,
+    )
+  }
+  expect(read.run).toContain(
+    'if [[ -n "$OCCURRENCE_QUERY_SINCE" || -n "$OCCURRENCE_QUERY_UNTIL" ]]; then',
+  )
+  expect(read.run).toContain('Both exact UTC occurrence bounds are required')
+  expect(read.run).toContain('end > start && end - start <= 86400')
+  expect(read.run).toContain('Occurrence host is absent from the configured inventory')
+  expect(read.run).toContain('host_query="&host=$OCCURRENCE_QUERY_HOST"')
+  expect(read.run).toContain('BUCK2_OCCURRENCE_EXPECTED_HOSTS="$OCCURRENCE_QUERY_HOST"')
+  expect(read.run).toContain('direction=forward$host_query')
+})
+
 test('daily warm99 proof writes authoritative history and full observations locally', () => {
   const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
   const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
