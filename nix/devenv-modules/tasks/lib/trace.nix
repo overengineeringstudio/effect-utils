@@ -14,6 +14,10 @@
 # endpoint or a valid spool dir), each task execution emits an OTLP span under
 # the shared effect-utils devenv service.
 # When OTEL is not available, the original exec runs directly.
+# Set OTEL_TASK_SPANS_ENABLED=0 when native devenv tracing owns task spans.
+# Exec/status bodies then run directly without spawning or flushing otel-span.
+# Delivery settings, inherited context, and command-level instrumentation stay
+# intact; the default remains enabled for callers without native task tracing.
 #
 # Usage in task modules:
 #   let trace = import ../lib/trace.nix { inherit lib; };
@@ -41,6 +45,7 @@
 { lib }:
 let
   otelCanEmitShell = ''command -v "''${OTEL_SPAN_BIN:-otel-span}" >/dev/null 2>&1 && { [ -n "''${OTELITE_HTTP_ENDPOINT:-''${OTEL_EXPORTER_OTLP_ENDPOINT:-}}" ] || { [ -n "''${OTEL_SPAN_SPOOL_DIR:-}" ] && [ -d "''${OTEL_SPAN_SPOOL_DIR:-}" ]; }; }'';
+  otelTaskCanEmitShell = ''[ "''${OTEL_TASK_SPANS_ENABLED:-1}" != "0" ] && ${otelCanEmitShell}'';
   ciAttrsShell = ''
     _otel_ci_attrs=()
     if [ "''${GITHUB_ACTIONS:-}" = "true" ]; then
@@ -183,7 +188,7 @@ let
   # so otel-scrape owns the command level BENEATH this span (named command span +
   # adapter records where the structured-source contract is met).
   traceExec = taskName: execBody: ''
-    if ${otelCanEmitShell}; then
+    if ${otelTaskCanEmitShell}; then
       ${ciAttrsShell}
       _otel_project_attr=()
       if [ -n "''${OTEL_DEVENV_PROJECT:-}" ]; then
@@ -215,7 +220,7 @@ let
   # --status-attr derives task.cached from exit code (0=true, non-zero=false)
   # and forces span status to OK (status checks aren't errors).
   traceStatus = taskName: method: statusBody: ''
-    if ${otelCanEmitShell}; then
+    if ${otelTaskCanEmitShell}; then
       ${ciAttrsShell}
       _status_exit=0
       _otel_project_attr=()

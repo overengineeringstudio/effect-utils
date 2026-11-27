@@ -112,6 +112,41 @@ grep -q -- '--attr ci.repository=overengineeringstudio/effect-utils' "$marker" \
 grep -q -- '--attr runner.os=Linux' "$marker" \
   || fail "task/ci-attributes: trace.exec should carry the runner platform"
 
+# Native devenv owns task spans when opted out. Both wrappers must execute
+# the real body, preserve its streams/context/exit code, and never call the
+# available bridge (rather than merely hiding or ignoring its errors).
+for phase in exec status; do
+  task_body="$tmpdir/task-$phase-disabled.sh"
+  expression="trace.exec \"test:task\" body"
+  if [ "$phase" = status ]; then
+    expression="trace.status \"test:task\" \"hash\" body"
+  fi
+  nix eval --impure --raw --expr "
+    let
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      trace = import $ROOT/nix/devenv-modules/tasks/lib/trace.nix { lib = pkgs.lib; };
+      body = ''printf 'body=%s\\n' \"\$TRACEPARENT\"; printf 'body-stderr\\n' >&2; exit 27'';
+    in $expression
+  " > "$task_body"
+  disabled_marker="$tmpdir/$phase-disabled-marker"
+  rc=0
+  env -i \
+    PATH="$(dirname "$BASH")" \
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+    OTEL_SPAN_BIN="$custom_otel_span" \
+    OTEL_TASK_SPANS_ENABLED=0 \
+    TRACEPARENT="$VALID_TRACEPARENT" \
+    OTEL_TEST_MARKER="$disabled_marker" \
+    "$BASH" "$task_body" > "$tmpdir/$phase.stdout" 2> "$tmpdir/$phase.stderr" || rc=$?
+  [ "$rc" = 27 ] || fail "task/$phase-disabled: body exit code must survive"
+  [ ! -e "$disabled_marker" ] || fail "task/$phase-disabled: bridge must not run"
+  grep -qx "body=$VALID_TRACEPARENT" "$tmpdir/$phase.stdout" \
+    || fail "task/$phase-disabled: stdout and inherited trace context must survive"
+  grep -qx 'body-stderr' "$tmpdir/$phase.stderr" \
+    || fail "task/$phase-disabled: stderr must survive"
+done
+
 # Common env for the "binaries present + delivery available" baseline. Each case
 # below overrides exactly one trigger.
 base_env=(
@@ -149,7 +184,7 @@ out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRAC
 assert_bare "oxlint/scrape-absent" "$out"
 
 # --- (b) WRAP: binaries present + valid trace context + instrumentation enabled ---
-out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" \
+out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRACEPARENT" OTEL_TASK_SPANS_ENABLED=0 \
   "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\nFLAGS=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}" "${_otel_instr_flags[*]-}"' _ "$oxlint_prelude")"
 ic="$(printf '%s\n' "$out" | sed -n 's/^INSTR_COUNT=//p')"
 [ "$ic" -gt 0 ] || fail "oxlint/active: expected non-empty _otel_instr (otel-scrape wrap), got count=$ic"
