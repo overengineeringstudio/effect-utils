@@ -67,7 +67,7 @@ const fixture = Effect.gen(function* () {
 const startWorker = Effect.fn('test/writer-lock/startWorker')(function* (
   repo: string,
   marker: string,
-  mode: 'primitive' | 'clone' | 'cli' = 'primitive',
+  mode: 'primitive' | 'clone' | 'cli' | 'pool' = 'primitive',
   exitCode = 0,
   extraArgs: ReadonlyArray<string> = [],
   cloneTarget = false,
@@ -108,6 +108,36 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('pool ROOT fence survives root replacement and releases without removing its control', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const a = `${f.root}/pool-a`
+      const b = `${f.root}/pool-b`
+      const c = `${f.root}/pool-c`
+      const first = yield* startWorker(f.worktree, a, 'pool')
+      yield* awaitMarker(`${a}.entered`)
+      const control = `${f.worktree}.mr-pool-operation.mr-container.lock`
+      const before = yield* Effect.promise(() => stat(control))
+      yield* f.fs.rename(f.worktree, `${f.worktree}-original`)
+      yield* f.fs.makeDirectory(f.worktree)
+      yield* f.fs.makeDirectory(`${f.root}/redirect`)
+      yield* f.fs.symlink(`${f.root}/redirect`, `${f.worktree}.mr-pool-operation`)
+      const blocked = yield* startWorker(`${f.worktree}/`, b, 'pool')
+      expect(yield* blocked.exitCode).not.toBe(0)
+      expect(yield* f.fs.exists(`${b}.attempted`)).toBe(true)
+      expect(yield* f.fs.exists(`${b}.entered`)).toBe(false)
+      yield* f.fs.writeFileString(`${a}.release`, '')
+      expect(yield* first.exitCode).toBe(0)
+      const next = yield* startWorker(f.worktree, c, 'pool')
+      yield* awaitMarker(`${c}.entered`)
+      const after = yield* Effect.promise(() => stat(control))
+      expect(after.ino).toBe(before.ino)
+      expect(after.dev).toBe(before.dev)
+      yield* f.fs.writeFileString(`${c}.release`, '')
+      expect(yield* next.exitCode).toBe(0)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.live('shared container holders coexist and veto exclusive reclamation', () =>
     Effect.gen(function* () {
       const f = yield* fixture
