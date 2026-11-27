@@ -138,19 +138,21 @@ pub fn mount_id(fd: &impl AsRawFd) -> io::Result<u64> {
 }
 
 fn checked_mount_id(mask: u32, id: u64) -> io::Result<u64> {
-    if mask & 0x1000 == 0 || id == 0 {
+    if mask & 0x1000 == 0 {
         return Err(io::Error::other("missing held mount identity"));
     }
+    // Internal shmem mounts legitimately report legacy ID zero, both here and
+    // in fdinfo. Preserve that identity; zero is not missing when the mask is set.
     Ok(id)
 }
 
 #[cfg(test)]
 mod mount_id_tests {
     #[test]
-    fn missing_mount_id_never_becomes_evidence() {
+    fn missing_mount_field_fails_but_kernel_legacy_zero_is_preserved() {
         assert!(super::checked_mount_id(0, 7).is_err());
         assert!(super::checked_mount_id(0x4000, 7).is_err());
-        assert!(super::checked_mount_id(0x1000, 0).is_err());
+        assert_eq!(super::checked_mount_id(0x1000, 0).unwrap(), 0);
         assert_eq!(super::checked_mount_id(0x1000, 7).unwrap(), 7);
     }
 }
