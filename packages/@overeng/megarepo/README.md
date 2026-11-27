@@ -549,6 +549,13 @@ The optional ledger field preserves old records as unknown/HOLD; an older writer
 that drops it loses eligibility, never restores disposable authority. Read-only
 observations remain HOLD, including when this recorded origin is present.
 
+`mr store pool snapshot` emits this exact recorded-metadata projection as one JSON
+document on stdout, using the configured `MEGAREPO_STORE` or normal store default.
+It neither initializes an absent store nor acquires locks, scans holders, repairs
+records, warms roots or authorizes removal. An unavailable/malformed ledger is a
+redacted command failure, not an empty pool. A recorded ready/unclaimed flag is
+not a claim that a root is qualified, clean, idle or available for execution.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
