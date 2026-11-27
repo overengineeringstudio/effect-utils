@@ -51,6 +51,52 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
     ).toEqual(['.', 'packages/a', 'packages/consumer', 'packages/transitive'])
   })
 
+  it.each([
+    'file:packages/a',
+    'file:packages/a(6411f41649ed340368a6a2d823eec2e6)',
+    'file:packages/a(peer@1.0.0)(other@2.0.0)',
+  ])('resolves injected workspace snapshot %s from the lockfile root', (version) => {
+    const dependencies = workspaceEditorDependencies({
+      serialized: `importers:
+  .: {}
+  packages/a: {}
+  packages/consumer:
+    dependencies:
+      a: {specifier: 'workspace:^', version: '${version}'}
+  packages/transitive:
+    devDependencies:
+      consumer: {specifier: 'workspace:*', version: 'link:../consumer'}
+  packages/unrelated: {}
+`,
+      rootBuck: `alias(name = "editor_inputs", actual = "//packages/consumer:node_modules")
+alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_tree")`,
+    })
+    expect(dependencies['packages/consumer']).toEqual(['packages/a'])
+    expect(
+      changedEditorConsumers({
+        changed: ['packages/a/src/one.ts'],
+        packagePaths: Object.keys(dependencies),
+        readDependencies: () => dependencies,
+      }),
+    ).toEqual(['.', 'packages/a', 'packages/consumer', 'packages/transitive'])
+  })
+
+  it.each([
+    ['file:packages/missing(snapshot)', 'missing workspace importer packages/missing'],
+    ['1.0.0', 'unresolved workspace dependency in packages/consumer'],
+  ])('refuses unproven workspace resolution %s', (version, message) => {
+    expect(() =>
+      workspaceEditorDependencies({
+        serialized: `importers:
+  packages/consumer:
+    dependencies:
+      a: {specifier: 'workspace:*', version: '${version}'}
+`,
+        rootBuck: '',
+      }),
+    ).toThrow(message)
+  })
+
   it('falls back to all consumers for global inputs and unproven ownership', () => {
     const packagePaths = ['.', 'packages/a', 'packages/consumer']
     expect(
