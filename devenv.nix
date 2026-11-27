@@ -143,6 +143,19 @@ let
                 printf 'ready\n' >"$directory/ready"
                 IFS= read -r _ <"$directory/publication-release"
                 ;;
+              publication-abort|publication-abort-single)
+                exec 3<>"$directory/publication-release"
+                exec 4<>"$directory/publication-cleanup-release"
+                trap 'printf "cleaning\n" >"$directory/publication-cleaning"; IFS= read -r -u 4 _; exit 143' TERM
+                printf 'ready\n' >"$directory/ready"
+                IFS= read -r -u 3 _
+                ;;
+              publication-child)
+                printf 'SIGTERM' >"$directory/publication-native-signal"
+                printf 'ready\n' >"$directory/ready"
+                kill -TERM "$$"
+                exit 1
+                ;;
               *) printf 'Invalid supervisor copy fixture mode: %s\n' "$termination" >&2; exit 2 ;;
             esac
             exec ${pkgs.coreutils}/bin/cp "$@"

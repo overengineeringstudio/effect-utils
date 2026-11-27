@@ -118,7 +118,7 @@ finally:
 
 
 class NativePublicationCopyFixtureTest(unittest.TestCase):
-    def test_real_copy_fifo_release(self):
+    def test_real_copy_fifo_release_and_native_signal(self):
         tool = os.environ.get("EDITOR_VIEW_SUPERVISOR_CP_BIN")
         self.assertIsNotNone(tool, "requires the declared immutable publication copy fixture")
         self.assertTrue(str(Path(tool).resolve()).startswith("/nix/store/"))
@@ -155,6 +155,14 @@ class NativePublicationCopyFixtureTest(unittest.TestCase):
                     if child.poll() is None:
                         child.kill()
                     child.wait(timeout=5)
+
+            (root / "ready").unlink()
+            (root / "supervisor-termination").write_text("publication-child\n")
+            interrupted = root / "interrupted"
+            result = subprocess.run([tool, source, interrupted], env={"PATH": ""}, timeout=5)
+            self.assertEqual(result.returncode, -signal.SIGTERM)
+            self.assertTrue((root / "ready").exists())
+            self.assertFalse(interrupted.exists())
 
 
 class PublicationSupervisorTest(unittest.TestCase):
@@ -315,7 +323,8 @@ else:
         for termination, payload in (
             ("deadline", "lines"), ("SIGTERM", "lines"),
             ("SIGKILL", "bytes"), ("deadline", "bytes"), ("publication", "lines"),
-            ("success", "lines"),
+            ("success", "lines"), ("publication-child", "lines"),
+            ("publication-abort", "lines"), ("publication-abort-single", "lines"),
             ("deadline", "utf8"), ("deadline", "paths"),
         ):
             with self.subTest(termination=termination, payload=payload), \
@@ -324,6 +333,7 @@ else:
                 ready = root / "ready"
                 os.mkfifo(root / "release")
                 os.mkfifo(root / "publication-release")
+                os.mkfifo(root / "publication-cleanup-release")
                 (root / "supervisor-termination").write_text(termination + "\n")
                 for name in ("CP_BIN", "MV_BIN", "FINGERPRINT_BIN", "EDITOR_VIEW_SUPERVISOR_CP_BIN"):
                     self.assertTrue(os.environ.get(name), f"{name} is required for the real publication fixture")
@@ -380,16 +390,26 @@ time.sleep(60)
                 module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
                 publisher = repo / "packages/@overeng/buck2-tools/src/editor-view.ts"
                 runner.write_text(f'''
-import {{ existsSync, writeFileSync }} from 'node:fs'
+import {{ existsSync, watch, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
 import {{ withPublicationCancellation }} from {json.dumps(str(repo / "scripts/editor-view-authority.ts"))}
-import {{ requireEditorPublicationOwner, withEditorPublicationOwner }} from {json.dumps(str(repo / "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"))}
+import {{ releaseEditorPublicationOwner, requireEditorPublicationOwner, tryAcquireEditorPublicationOwner, withEditorPublicationOwner }} from {json.dumps(str(repo / "packages/@overeng/buck2-tools/src/editor-publication-owner.ts"))}
 let pending = ''
 let released = false
 await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({{
   root: process.cwd(), signal, run: async owner => {{
     requireEditorPublicationOwner({{ root: process.cwd(), owner }})
-    return reconcileBuckViews({{
+    const aborting = process.env.TERMINATION?.startsWith('publication-abort') === true
+    const ready = Promise.withResolvers<void>()
+    const cleaning = Promise.withResolvers<void>()
+    const watcher = watch('.', (_event, name) => {{
+      if (name === 'ready') ready.resolve()
+      if (name === 'publication-cleaning') cleaning.resolve()
+    }})
+    let publication: Promise<unknown> | undefined
+    let releaseCleanup = false
+    try {{
+    publication = reconcileBuckViews({{
   request: {{ packagePaths: ['packages/app'], changedPaths: [], buildTargets: ['//packages/app:editor_view_inputs'] }},
   options: {{
     plan: {{ globalPaths: [], packages: [{{
@@ -404,7 +424,7 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     workspaceAuthority: process.cwd() + '/authority.json',
     cp: process.env.TERMINATION?.startsWith('publication') ? process.env.EDITOR_VIEW_SUPERVISOR_CP_BIN! : process.env.CP_BIN!,
     mv: process.env.MV_BIN!, fingerprintTool: process.env.FINGERPRINT_BIN!, snapshotRetention: 3,
-    batchPublication: process.env.TERMINATION !== 'success',
+    batchPublication: !['success', 'publication-abort-single'].includes(process.env.TERMINATION ?? ''),
     diagnosticTaskName: 'buck2:editor:bootstrap',
     run: (options) => {{
       return runCommand({{ ...options, onStderr: (chunk) => {{
@@ -426,7 +446,30 @@ await withPublicationCancellation({{ run: signal => withEditorPublicationOwner({
     }})
     }},
   }},
-    }})
+    }}).then(() => undefined, (error: unknown) => error)
+    if (aborting) {{
+      const premature = publication.then(error => {{ throw new Error('publisher closed before cleanup acknowledgement', {{ cause: error }}) }})
+      await Promise.race([ready.promise, premature])
+      process.kill(process.pid, 'SIGTERM')
+      await Promise.race([cleaning.promise, premature])
+      releaseCleanup = true
+      requireEditorPublicationOwner({{ root: process.cwd(), owner }})
+      const contender = tryAcquireEditorPublicationOwner({{ root: process.cwd() }})
+      if (contender !== undefined) {{
+        releaseEditorPublicationOwner(contender)
+        throw new Error('publisher released its owner before native copy close')
+      }}
+      writeFileSync('publication-owner-held-during-cleanup', '')
+      writeFileSync('publication-cleanup-release', String.fromCharCode(49, 10))
+      releaseCleanup = false
+    }}
+    const failure = await publication
+    if (failure !== undefined) throw failure
+    }} finally {{
+      if (releaseCleanup) writeFileSync('publication-cleanup-release', String.fromCharCode(49, 10))
+      await publication
+      watcher.close()
+    }}
   }}
 }}) }}).catch((error) => {{
   console.error(error.message); process.exitCode = 1
@@ -473,7 +516,11 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                     self.assertEqual(record["package"], "packages/app")
                     self.assertEqual(list(root.glob(".devenv/otel/buck2-events/*.pb.zst")), [])
                     continue
+                if termination.startswith("publication-abort"):
+                    self.assertTrue((root / "publication-owner-held-during-cleanup").exists(), output)
                 self.assertFalse((root / ".editor-view/app/editor-view.json").exists())
+                if termination == "publication-child":
+                    self.assertEqual((root / "publication-native-signal").read_text(), "SIGTERM")
                 self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication") else 1, output)
                 self.assertTrue(ready.exists(), output)
                 self.assertIn("BUCK-BLOCKED\n", output)

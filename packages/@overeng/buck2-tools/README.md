@@ -261,6 +261,10 @@ Finite publication fixtures use declared `EDITOR_VIEW_SUPERVISOR_CP_BIN`,
 an immutable wrapper that waits on an explicit test FIFO before executing
 real coreutils `cp`. Production `CP_BIN` and ordinary copies are unchanged.
 
+The signal fixtures use OS `SIGTERM` and explicitly gated copy cleanup.
+Publishers join active child closes before returning; native signal failures
+take precedence over concurrent abort notifications.
+
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
