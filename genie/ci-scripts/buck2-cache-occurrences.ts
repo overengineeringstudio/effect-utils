@@ -2,8 +2,10 @@ import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { Effect, FileSystem, Schema } from 'effect'
+import * as HttpClient from 'effect/http/HttpClient'
 
 import { makeDownloadBudget, readBoundedBytes } from './buck2-cache-join-download.ts'
+import { fetchOccurrenceLoki } from './buck2-occurrence-loki-query.ts'
 import { decodeOccurrenceLoki } from './buck2-occurrence-loki.ts'
 import type { RetainedOccurrenceFile } from './buck2-occurrence-record-codec.ts'
 import { reconcileOccurrenceRecords } from './buck2-occurrence-records.ts'
@@ -13,19 +15,22 @@ export class OccurrenceQueryError extends Schema.TaggedError<OccurrenceQueryErro
   { message: Schema.String },
 ) {}
 const failure = (message: string) => new OccurrenceQueryError({ message })
-const help = `buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE) --since ISO-8601 [--until ISO-8601]
-  [--host HOST] [--key FULL_ACTION_DIGEST] [--expected-host HOST]
+const help = `buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE | --loki-url URL) --since ISO-8601 [--until ISO-8601]
+  [--query-host HOST] [--host HOST] [--key FULL_ACTION_DIGEST] [--expected-host HOST]
 
 Read native retained JSONL snapshots, returning JSON records and evidenceGaps.
 Repeat --records-dir, --host or --expected-host for multiple values. Host/key filters
 select rows, never certify fleet coverage. --key exactly matches the native digest.
-The window is [since,until), at most 31 days; until defaults to now. No GitHub token,
-backend access or writes are required. Limits: 100000 entries, 64 MiB/file, 512 MiB total.
+The window is [since,until), at most 31 days offline or 24 hours for --loki-url;
+until defaults to now. Live reads use the fixed proxy only, hourly windows and
+cursor pagination to exhaustion. --query-host narrows the server-side selector.
+No GitHub token or writes are required. Limits: 100000 retained files,
+64 MiB/file or HTTP page, 512 MiB total. Unproven exhaustion fails loudly.
 `
 
 export const queryOccurrences = (
   args: readonly string[],
-): Effect.Effect<string, OccurrenceQueryError, FileSystem.FileSystem> =>
+): Effect.Effect<string, OccurrenceQueryError, FileSystem.FileSystem | HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const options = yield* Effect.try({
       try: () =>
@@ -34,6 +39,8 @@ export const queryOccurrences = (
           options: {
             'records-dir': { type: 'string', multiple: true },
             'loki-response': { type: 'string' },
+            'loki-url': { type: 'string' },
+            'query-host': { type: 'string' },
             since: { type: 'string' },
             until: { type: 'string' },
             host: { type: 'string', multiple: true },
@@ -48,9 +55,18 @@ export const queryOccurrences = (
     const directories = options['records-dir'] ?? []
     if (
       directories.some((value) => value.length === 0) ||
-      (directories.length === 0 && options['loki-response'] === undefined)
+      (directories.length === 0 &&
+        options['loki-response'] === undefined &&
+        options['loki-url'] === undefined)
     )
-      return yield* failure('--records-dir or --loki-response is required')
+      return yield* failure('--records-dir, --loki-response or --loki-url is required')
+    if (
+      options['loki-url'] !== undefined &&
+      (directories.length !== 0 || options['loki-response'] !== undefined)
+    )
+      return yield* failure('--loki-url cannot be combined with offline retained inputs')
+    if (options['query-host'] !== undefined && options['loki-url'] === undefined)
+      return yield* failure('--query-host requires --loki-url')
     const now = Date.now()
     const timestamp = (value: string) =>
       /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN
@@ -66,10 +82,22 @@ export const queryOccurrences = (
       return yield* failure('Specify a past, increasing ISO-8601 window of at most 31 days')
     if (options.key === '' || options.host?.some((value) => value === '') === true)
       return yield* failure('--host and --key must not be empty')
+    if (options['loki-url'] !== undefined && until - since > 86400000)
+      return yield* failure('Live occurrence queries must cover at most 24 hours')
     const fs = yield* FileSystem.FileSystem
     const files: RetainedOccurrenceFile[] = []
     let entries = 0
     const budget = makeDownloadBudget(512 * 1024 * 1024)
+    if (options['loki-url'] !== undefined) {
+      files.push(
+        ...(yield* fetchOccurrenceLoki({
+          url: options['loki-url'],
+          windowStartMs: since,
+          windowEndMs: until,
+          ...(options['query-host'] === undefined ? {} : { host: options['query-host'] }),
+        }).pipe(Effect.mapError((cause) => failure(cause.message)))),
+      )
+    }
     if (options['loki-response'] !== undefined) {
       const content = yield* readBoundedBytes(
         fs.stream(options['loki-response']),
