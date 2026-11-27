@@ -384,3 +384,105 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
         "failed leader-generation proof must remain protective");
     drop(worker);
 }
+
+#[test]
+#[ignore = "requires isolated root Linux with per-task resource and namespace visibility"]
+fn actual_large_group_task_resources_require_final_sibling_closure() {
+    use std::os::fd::AsRawFd;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    const CHILD: &str = "HOLDER_GROUP_CLOSURE_PROBE";
+    const TEST: &str = "tests::actual_large_group_task_resources_require_final_sibling_closure";
+    if std::env::var_os(CHILD).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", TEST, "--nocapture"]).env(CHILD, "1")
+            .status().unwrap().success());
+        return;
+    }
+    unsafe extern "C" {
+        fn unshare(flags: std::os::raw::c_int) -> std::os::raw::c_int;
+        fn gettid() -> std::os::raw::c_int;
+    }
+    struct Worker {
+        commands: Option<mpsc::Sender<u8>>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+    impl Drop for Worker {
+        fn drop(&mut self) {
+            self.commands.take();
+            if let Some(thread) = self.thread.take() { thread.join().unwrap(); }
+        }
+    }
+    struct Root(std::path::PathBuf);
+    impl Drop for Root {
+        fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    }
+    let root = Root(std::env::temp_dir().join(format!("holder-group-closure-{}-{}",
+        std::process::id(), linux::boot_time_ns().unwrap())));
+    std::fs::create_dir(&root.0).unwrap();
+    std::fs::write(root.0.join("candidate"), b"retained candidate").unwrap();
+    let (report, reports) = mpsc::channel();
+    let mut workers = Vec::new();
+    for number in 0..64 {
+        let (commands, receive) = mpsc::channel();
+        let report = report.clone();
+        let candidate = root.0.join("candidate");
+        let thread = std::thread::spawn(move || {
+            // SAFETY: only this owned worker unshares its descriptor table, so
+            // collector-created evidence FDs cannot perturb its task snapshot.
+            assert_eq!(unsafe { unshare(0x00000400) }, 0);
+            let held = std::fs::File::open(candidate).unwrap();
+            // SAFETY: argument-free identity of the actual calling worker.
+            let tid = u32::try_from(unsafe { gettid() }).unwrap();
+            report.send((number, tid, held.as_raw_fd())).unwrap();
+            while let Ok(command) = receive.recv() {
+                assert_eq!(command, 1);
+                let before = std::fs::File::open("/proc/thread-self/ns/mnt").unwrap();
+                // SAFETY: changes only this worker's namespace; no mount
+                // operation is performed and the collector remains unchanged.
+                assert_eq!(unsafe { unshare(0x00020000) }, 0);
+                let after = std::fs::File::open("/proc/thread-self/ns/mnt").unwrap();
+                assert_ne!(objects::identity(&before).unwrap(), objects::identity(&after).unwrap());
+                report.send((number, tid, held.as_raw_fd())).unwrap();
+            }
+        });
+        workers.push(Worker { commands: Some(commands), thread: Some(thread) });
+    }
+    let mut targets = (0..64).map(|_| reports.recv_timeout(Duration::from_secs(5)).unwrap()).collect::<Vec<_>>();
+    targets.sort_unstable_by_key(|(number, _, _)| *number);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let scope = scopes::ProcessScope::discover(std::process::id(), deadline).unwrap();
+    scope.recheck(deadline).unwrap();
+    let mut resources = Vec::new();
+    for (_, tid, descriptor) in &targets {
+        let index = scope.tasks.iter().position(|task| task.identity.pid == *tid).unwrap();
+        let expected = objects::identity(&objects::pin_magic(format!("/proc/{tid}/fd/{descriptor}")).unwrap()).unwrap();
+        let references = scope.collect_resources(index, deadline).unwrap().unwrap();
+        assert!(references.descriptors.iter().any(|(fd, held)|
+            fd == &u32::try_from(*descriptor).unwrap() && held.identity == expected));
+        resources.push((index, references));
+    }
+    scope.recheck(deadline).unwrap();
+    for (index, references) in &resources {
+        scope.recheck_resources(*index, references, deadline).unwrap();
+    }
+    scope.recheck(deadline).unwrap();
+    workers[0].commands.as_ref().unwrap().send(1).unwrap();
+    assert_eq!(reports.recv_timeout(Duration::from_secs(5)).unwrap().0, 0);
+    let (index, references) = resources.last().unwrap();
+    scope.recheck_resources(*index, references, deadline).unwrap();
+    assert!(scope.recheck(deadline).is_err(),
+        "a sibling namespace change must veto the complete process even when this task is stable");
+    let fresh = scopes::ProcessScope::discover(std::process::id(), deadline).unwrap();
+    let (stop, stopped) = mpsc::channel();
+    let (ready, entered) = mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        ready.send(()).unwrap();
+        let _ = stopped.recv();
+    });
+    let newcomer = Worker { commands: Some(stop), thread: Some(thread) };
+    entered.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(fresh.recheck(deadline).is_err(), "new live tasks still veto final complete-group closure");
+    drop(newcomer);
+    drop(workers);
+}

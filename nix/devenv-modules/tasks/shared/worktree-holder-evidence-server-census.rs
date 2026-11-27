@@ -391,6 +391,7 @@ impl ObservedProcess {
     }
 
     fn recheck_mounts(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
+        self.scope.recheck(deadline)?;
         for (index, references) in self.references.iter().enumerate() {
             let Some(mounted) = references.as_ref().and_then(|references| references.mounted.as_ref())
                 else { continue; };
@@ -407,7 +408,7 @@ impl ObservedProcess {
                 return Err(io::Error::other("departed task identity changed during mount closure"));
             }
         }
-        Ok(())
+        self.scope.recheck(deadline)
     }
 }
 impl<'a> Census<'a> {
@@ -467,6 +468,10 @@ impl<'a> Census<'a> {
                 if total_objects > OBJECT_LIMIT { return Err(io::Error::other("object census capacity")); }
                 resources.push(references);
             }
+            // Discovery closes the complete group before resource capture.
+            // Close it again after every retained task slot has been collected;
+            // per-task resource checks never substitute for this sibling seal.
+            process.recheck(deadline)?;
             census.processes.push(ObservedProcess { scope: process, references: resources });
         }
         if numbers("/proc", deadline)? != pids {

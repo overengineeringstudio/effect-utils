@@ -195,6 +195,18 @@ compares actual root/proc/device/nsfs/socket/shmem/pidfd results with fdinfo.
 This reduces repeated metadata work without omitting any task, resource,
 candidate alias, literal mount or final namespace/generation closure.
 
+Resource collection and recheck authenticate the selected task's complete
+resources, namespace and generation plus its leader before/after. They do not
+rescan every sibling for every task: callers must close the full process group
+before and after each resource phase. Production discovery and census group
+seals enforce that obligation, including all final selection/resource closure.
+A currently authenticated live leader disproves whole-group termination without
+a sibling scan; terminal leaders retain the complete slow-path proof. No task,
+UID, resource, sibling namespace or final seal is omitted. The ignored real
+`tests::actual_large_group_task_resources_require_final_sibling_closure` fixture
+collects/rechecks 64 owned target threads, then requires a sibling namespace
+change and a newly born task to veto complete-group closure.
+
 Task departure is non-holding only for a missing nonleader re-proven absent
 from the retained leader's task list, with the original live leader generation
 checked before and after relisting. Missing descendants of a still-listed

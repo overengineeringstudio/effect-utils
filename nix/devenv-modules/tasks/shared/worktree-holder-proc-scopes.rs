@@ -469,7 +469,21 @@ impl ProcessScope {
         linux::pidfd_terminated(&self.pidfd)
     }
 
+    fn recheck_leader(&self, deadline: Instant) -> io::Result<Process> {
+        deadline_check(deadline)?;
+        let current = process::process(self.identity.pid)?;
+        if !current.same_identity(&self.identity) {
+            return Err(io::Error::other("process identity changed"));
+        }
+        Ok(current)
+    }
+
     fn terminal_group(&self, deadline: Instant) -> io::Result<bool> {
+        // One authenticated live leader disproves whole-group termination.
+        // Do not rescan every sibling for every ordinary live task.
+        if !matches!(self.recheck_leader(deadline)?.state, b'Z' | b'X') {
+            return Ok(false);
+        }
         self.recheck(deadline)?;
         let mut terminal = !self.tasks.is_empty();
         for (index, task) in self.tasks.iter().enumerate() {
@@ -480,9 +494,13 @@ impl ProcessScope {
     }
 
     /// None denotes a re-proven departed nonleader, never a generic read error.
+    /// This closes the selected task and leader, not all sibling resources.
+    /// Callers must retain every task slot and recheck the complete ProcessScope
+    /// before and after the process resource phase, including final closure.
     pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<Option<References>> {
         let mut attempts = 0;
         loop {
+            self.recheck_leader(deadline)?;
             if self.task_departed(index, deadline)? { return Ok(None); }
             attempts += 1;
             let captured: io::Result<References> = (|| {
@@ -490,7 +508,7 @@ impl ProcessScope {
                 let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
                 let references = References::collect(task, all_terminal, deadline)?;
                 references.recheck_task(task, all_terminal, deadline)?;
-                self.recheck(deadline)?;
+                self.recheck_leader(deadline)?;
                 Ok(references)
             })();
             match captured {
@@ -504,7 +522,7 @@ impl ProcessScope {
                     if attempts == 3 || !matches!(error.kind(),
                         io::ErrorKind::NotFound | io::ErrorKind::Interrupted)
                     { return Err(error); }
-                    self.recheck(deadline)?;
+                    self.recheck_leader(deadline)?;
                 }
             }
         }
@@ -512,12 +530,13 @@ impl ProcessScope {
 
     pub fn recheck_resources(&self, index: usize, references: &References,
         deadline: Instant) -> io::Result<()> {
+        self.recheck_leader(deadline)?;
         if self.task_departed(index, deadline)? { return Ok(()); }
         let checked: io::Result<()> = (|| {
             let all_terminal = self.terminal_group(deadline)?;
             let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
             references.recheck_task(task, all_terminal, deadline)?;
-            self.recheck(deadline)
+            self.recheck_leader(deadline).map(|_| ())
         })();
         match checked {
             Err(error) if error.kind() == io::ErrorKind::NotFound
