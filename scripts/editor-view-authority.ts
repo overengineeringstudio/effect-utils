@@ -10,10 +10,12 @@ import { pnpmWorkspaceMemberPaths } from '../genie/packages.ts'
 import {
   CommandFailure,
   reconcileBuckViews,
+  runCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import type {
   BuckReconcileTiming,
   BuckWatchPlan,
+  RunCommand,
 } from '../packages/@overeng/buck2-tools/src/buck-watch.ts'
 import {
   editorPublicationIsolation,
@@ -433,6 +435,7 @@ const parseCli = (args: readonly string[]) => {
     '--workspace-root',
     '--cell',
     '--buck2',
+    '--buck2-native',
     '--git',
     '--output',
     '--publisher',
@@ -453,6 +456,7 @@ const parseCli = (args: readonly string[]) => {
     workspaceRoot: get('--workspace-root'),
     cell: get('--cell'),
     buck2: get('--buck2'),
+    buck2Native: values.get('--buck2-native') ?? '',
     git: get('--git'),
     output: get('--output'),
     publisher: admitting === true ? get('--publisher') : '',
@@ -465,7 +469,81 @@ const parseCli = (args: readonly string[]) => {
   }
 }
 
-const main = async (): Promise<void> => {
+/** Execute the resolved operation independently of literal CLI argument selection. */
+const executeSelectedEditorViewOperation = async ({
+  options,
+  packageScope,
+  run,
+  authorityCommandRunner,
+  signal,
+}: {
+  readonly options: ReturnType<typeof parseCli>
+  readonly packageScope: ReturnType<typeof resolveEditorViewPackageScope>
+  readonly run: RunCommand
+  readonly authorityCommandRunner: EditorViewAuthorityCommandRunner
+  readonly signal: AbortSignal
+}): Promise<void> => {
+  // Scope only target construction and publication. Every publisher still refreshes and passes
+  // freshly proven whole-workspace authority to each selected package view.
+  const authorityStartedAt = performance.now()
+  const authority = await writeEditorViewAuthority({
+    ...options,
+    requiredPackages: packageScope.authorityPackagePaths,
+    runCommand: authorityCommandRunner,
+  })
+  reportTiming({
+    phase: 'authority',
+    durationMs: performance.now() - authorityStartedAt,
+  })
+  if (options.command === 'authority') {
+    process.stdout.write(
+      `wrote editor dependency authority for ${authority.ownedPackages.length} workspace consumers\n`,
+    )
+    return
+  }
+  const plan = editorViewPlan({
+    cell: options.cell,
+    packagePaths: packageScope.publicationPackagePaths,
+    packageWeights: testScheduling.editorViewSeconds,
+  })
+  await reconcileBuckViews({
+    request: {
+      packagePaths: plan.packages.map(({ packagePath }) => packagePath),
+      changedPaths: [],
+      buildTargets: plan.packages.flatMap(({ editor }) =>
+        editor === undefined ? [] : [editor.inputsManifestTarget],
+      ),
+    },
+    options: {
+      plan,
+      run,
+      signal,
+      mode: options.command === 'check' ? 'check' : 'publish',
+      repoRoot: options.repoRoot,
+      workspaceRoot: options.workspaceRoot,
+      buck2: options.buck2,
+      editorViewCommand: [process.execPath, options.publisher],
+      workspaceAuthority: options.output,
+      cp: options.cp,
+      mv: options.mv,
+      fingerprintTool: options.fingerprintTool,
+      snapshotRetention: options.snapshotRetention,
+      onTiming: reportTiming,
+      diagnosticTaskName: `buck2:editor:${options.command}`,
+      batchPublication: options.command !== 'check',
+    },
+  })
+  const action =
+    options.command === 'bootstrap'
+      ? 'bootstrapped'
+      : options.command === 'publish'
+        ? 'published'
+        : 'checked'
+  process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
+}
+
+const main = async (signal: AbortSignal): Promise<void> => {
+  const notifyPublicationAdmission = takePublicationAdmissionNotification()
   const options = parseCli(process.argv.slice(2))
   if (
     Number.isInteger(options.snapshotRetention) === false ||
@@ -496,6 +574,7 @@ const main = async (): Promise<void> => {
           }),
       })
       if (selected.length === 0) {
+        notifyPublicationAdmission('no-publication')
         process.stdout.write(
           'No changed editor consumers; nothing to publish. Set EDITOR_VIEW_PACKAGES to request views explicitly.\n',
         )
@@ -509,66 +588,19 @@ const main = async (): Promise<void> => {
     authorityPackagePaths,
     serializedPublicationPackages,
   })
-  // Scope only target construction and publication. Every publisher still refreshes and passes
-  // freshly proven whole-workspace authority to each selected package view.
-  const authorityStartedAt = performance.now()
-  const authority = await writeEditorViewAuthority({
-    ...options,
-    requiredPackages: packageScope.authorityPackagePaths,
+  await executeSelectedEditorViewOperation({
+    options,
+    packageScope,
+    signal,
+    run: runCommand,
+    authorityCommandRunner: runEditorViewAuthorityCommand,
   })
-  reportTiming({
-    phase: 'authority',
-    durationMs: performance.now() - authorityStartedAt,
-  })
-  if (options.command === 'authority') {
-    process.stdout.write(
-      `wrote editor dependency authority for ${authority.ownedPackages.length} workspace consumers\n`,
-    )
-    return
-  }
-  const plan = editorViewPlan({
-    cell: options.cell,
-    packagePaths: packageScope.publicationPackagePaths,
-    packageWeights: testScheduling.editorViewSeconds,
-  })
-  await reconcileBuckViews({
-    request: {
-      packagePaths: plan.packages.map(({ packagePath }) => packagePath),
-      changedPaths: [],
-      buildTargets: plan.packages.flatMap(({ editor }) =>
-        editor === undefined ? [] : [editor.inputsManifestTarget],
-      ),
-    },
-    options: {
-      plan,
-      mode: options.command === 'check' ? 'check' : 'publish',
-      repoRoot: options.repoRoot,
-      workspaceRoot: options.workspaceRoot,
-      buck2: options.buck2,
-      editorViewCommand: [process.execPath, options.publisher],
-      workspaceAuthority: options.output,
-      cp: options.cp,
-      mv: options.mv,
-      fingerprintTool: options.fingerprintTool,
-      snapshotRetention: options.snapshotRetention,
-      onTiming: reportTiming,
-      diagnosticTaskName: `buck2:editor:${options.command}`,
-      batchPublication: options.command !== 'check',
-    },
-  })
-  const action =
-    options.command === 'bootstrap'
-      ? 'bootstrapped'
-      : options.command === 'publish'
-        ? 'published'
-        : 'checked'
-  process.stdout.write(`${action} ${plan.packages.length} editor views\n`)
 }
 
 if (import.meta.main === true)
   try {
-    await main()
+    await withPublicationCancellation({ run: main })
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
-    process.exitCode = 1
+    if (process.exitCode === undefined || process.exitCode === 0) process.exitCode = 1
   }
