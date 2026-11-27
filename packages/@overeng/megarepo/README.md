@@ -511,8 +511,15 @@ default workspace adapters remain disabled.
 Preparation mode is explicit. `pnpm-gvs` uses the normal root-owned `pnpm:install`
 and validates its machine-readable doctor report, installed shared GVS paths, exact
 source and resolved tool/platform identity. Buck-owned roots use their normal
-declared preparation tasks and immutable capability cell without fictional GVS
-fields. Logical root bytes are charged conservatively.
+declared preparation tasks. Their watched `.buck2/capabilities` is a real mutable
+directory, not an immutable cell symlink: the inspector resolves the selected
+`GENERATION` through `.buck2/capability-roots/<GENERATION>` to its canonical,
+read-only Nix profile. It verifies exact copied `defs.bzl`, root `BUCK`, selected
+tool trees (including manifest digests and exact immutable symlink targets), and
+the selected publication reference set. Retained, unselected tool packages do not
+become selected inputs. Missing, redirected or tampered selected inputs HOLD;
+profile, selected bytes/targets, provider, config and source history bind READY.
+No fictional GVS fields are introduced. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
 Its curated GNU coreutils provider measures apparent logical size, including sparse
@@ -667,8 +674,9 @@ Configuration binds the canonical store `base`, existing `bare` repository, exac
 declared `prewarmTasks`, and nonnegative `buckMaxBytes`. `preparation` is explicit:
 `pnpm-gvs` requires the existing exact qualified install tuple; `buck2` requires
 an immutable `buck2Provider` and nonempty normal root-owned `prepareTasks`.
-Buck-owned roots bind the canonical immutable Nix capability cell, source/config
-and raw HEAD history, not invented GVS paths. They do not enable pnpm materialization.
+Buck-owned roots bind the selected canonical immutable Nix profile and its exact
+projection into the real watched capability directory, source/config and raw HEAD
+history, not invented GVS paths. They do not enable pnpm materialization.
 
 When configured, `maxIoPsiAvg60` is a strict live ceiling for Linux IO `some avg60`.
 Set it to `10` on hosts prioritizing another workload. Unavailable pressure, or a
@@ -692,8 +700,10 @@ before a request can return or publish completion proof.
 Reset is same-commit only: dirty, authored, changed-history or unproved roots stay
 HOLD. `--mode warm` preserves bounded pool-owned Buck output; `--mode wiped`
 uses the existing native Buck owner's exact isolation cleanup, never a recursive
-pool remover. Fresh native holder/pin/source proofs remain required at every
-transition. A nonleader FD is accepted only when the normal paired native producer
+pool remover. Normal owner-scoped teardown finishes before capturing the new cleanup
+proof, so task evaluation cannot consume its freshness window. Fresh native
+holder/pin/source proofs remain required at every transition. A nonleader FD is
+accepted only when the normal paired native producer
 emits `leaderFdAlias: true`: live generation-bound `KCMP_FILES` and `KCMP_FILE`
 checks, retained OFD identity and a final seal prove it aliases the caller's exact
 scoped pin. Unsupported or unproved threads remain HOLD; there is no general

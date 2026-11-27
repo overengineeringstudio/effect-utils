@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b9b9958fcc9261f37726aeb9fb2f576546fc610bc68ebf9b800ec5566b9cd8f2
+# Semantic fingerprint: sha256:a9135d342ac3c08757214661a5feb7f8e56eba4ad8fd9d8eae151b2c7eefb71c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -416,6 +416,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-lock-order.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-lock-order.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-lock-order.ts": "//packages/@overeng/megarepo:src/store/store-pool-lock-order.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-preparation.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-preparation.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-preparation.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-retarget.ts": "//packages/@overeng/megarepo:src/store/store-pool-retarget.ts",
@@ -849,6 +850,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-lock-order.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-lock-order.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-lock-order.ts": "//packages/@overeng/megarepo:src/store/store-pool-lock-order.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-preparation.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-preparation.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-preparation.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-retarget.ts": "//packages/@overeng/megarepo:src/store/store-pool-retarget.ts",
@@ -1282,6 +1284,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-pool-install.ts": "//packages/@overeng/megarepo:src/store/store-pool-install.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-lock-order.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-lock-order.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-lock-order.ts": "//packages/@overeng/megarepo:src/store/store-pool-lock-order.ts",
+        "node_modules/@overeng/megarepo/src/store/store-pool-preparation.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-preparation.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-preparation.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-pool-preparation.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-pool-retarget.ts": "//packages/@overeng/megarepo:src/store/store-pool-retarget.ts",

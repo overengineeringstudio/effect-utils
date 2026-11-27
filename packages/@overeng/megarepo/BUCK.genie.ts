@@ -102,6 +102,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-pool-buck.integration.test.ts',
         'src/store/store-pool-head-history.integration.test.ts',
         'src/store/store-pool-lock-order.integration.test.ts',
+        'src/store/store-pool-preparation.integration.test.ts',
         'src/store/store-pool-roots.integration.test.ts',
         'src/store/store-pool-state.integration.test.ts',
         'src/store/store-pool-warm-epoch.integration.test.ts',

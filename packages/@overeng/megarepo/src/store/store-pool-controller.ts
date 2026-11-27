@@ -308,12 +308,14 @@ export const makePoolController = ({
           maxBytes: mode === 'wiped' ? 0 : config.buckMaxBytes,
         })
         if (mode === 'wiped' || observation.disposition === 'over-bound') {
+          // Stop this root's owned tasks before taking the new cleanup proof:
+          // normal teardown may outlive a native snapshot's freshness window.
+          yield* runTasks({ path: intent.path, tasks: ['worktree:teardown'] })
           yield* prove({
             slot: intent,
             requireIdentity: true,
             commit: (evidence) =>
               Effect.gen(function* () {
-                yield* runTasks({ path: intent.path, tasks: ['worktree:teardown'] })
                 yield* assertWorktreeHolderEvidenceFresh(evidence.response)
                 // Same owner native cleanup, exact isolation; no recursive pool deletion.
                 yield* cleanPoolBuckOutput({ slot: intent })
