@@ -44,7 +44,11 @@ const quoteLines = (text: string): string =>
     .join('\n')
 
 const escapeAttribute = (text: string): string =>
-  text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  text
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 
 const colorAttribute = (color: unknown): string =>
   typeof color === 'string' && color !== 'default'
@@ -52,7 +56,10 @@ const colorAttribute = (color: unknown): string =>
     : ''
 
 const indentEnhanced = (text: string): string =>
-  text.split('\n').map((line) => line === '' ? '' : `\t${line}`).join('\n')
+  text
+    .split('\n')
+    .map((line) => (line === '' ? '' : `\t${line}`))
+    .join('\n')
 
 const escapeLinkLabel = (text: string): string => text.replaceAll('[', '\\[').replaceAll(']', '\\]')
 
@@ -107,7 +114,8 @@ const renderMention = (opts: {
     case 'page':
     case 'database': {
       const id = (mention[type] as { id?: unknown } | undefined)?.id
-      const url = href ?? (typeof id === 'string' ? (type === 'user' ? id : notionObjectUrl(id)) : undefined)
+      const url =
+        href ?? (typeof id === 'string' ? (type === 'user' ? id : notionObjectUrl(id)) : undefined)
       if (url === undefined) {
         state.diagnostics.push({ kind: 'flattened', message: `${type} mention missing identity` })
         return plain
@@ -353,10 +361,12 @@ const renderResolvedUrl = (opts: { type: string; url: string; caption: string })
 const renderTable = (opts: { node: CandidateNode; state: WalkState }): string => {
   const { node, state } = opts
   const attrs = `${node.props.has_column_header === true ? ' header-row="true"' : ''}${node.props.has_row_header === true ? ' header-column="true"' : ''}`
-  const rows = node.children.filter((child) => child.type === 'table_row').map((row) => {
-    const cells = Array.isArray(row.props.cells) ? (row.props.cells as RichTextItem[][]) : []
-    return `\t<tr>\n${cells.map((cell) => `\t\t<td>${renderRichText({ items: cell, state }).replaceAll('\n', '<br>')}</td>`).join('\n')}\n\t</tr>`
-  })
+  const rows = node.children
+    .filter((child) => child.type === 'table_row')
+    .map((row) => {
+      const cells = Array.isArray(row.props.cells) ? (row.props.cells as RichTextItem[][]) : []
+      return `\t<tr>\n${cells.map((cell) => `\t\t<td>${renderRichText({ items: cell, state }).replaceAll('\n', '<br>')}</td>`).join('\n')}\n\t</tr>`
+    })
   return `<table${attrs}>\n${rows.join('\n')}\n</table>`
 }
 
@@ -462,7 +472,12 @@ const renderNode = (opts: {
         state.diagnostics.push({ kind: 'flattened', message: 'callout external icon dropped' })
       }
       const attrs = `${typeof icon?.emoji === 'string' ? ` icon="${escapeAttribute(icon.emoji)}"` : ''}${colorAttribute(props.color)}`
-      const body = [renderRichText({ items: richText, state }), ...renderNodes({ nodes: node.children, state })].filter((part) => part !== '').join('\n\n')
+      const body = [
+        renderRichText({ items: richText, state }),
+        ...renderNodes({ nodes: node.children, state }),
+      ]
+        .filter((part) => part !== '')
+        .join('\n\n')
       return `<callout${attrs}>\n${indentEnhanced(body)}\n</callout>`
     }
     case 'quote': {

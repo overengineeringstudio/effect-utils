@@ -281,7 +281,11 @@ export const getEquationExpression = (block: BlockWithData): string => {
 
 /** Escape enhanced-Markdown attributes without changing their decoded value. */
 const escapeAttribute = (text: string): string =>
-  text.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  text
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 
 const colorAttribute = (color: unknown): string =>
   typeof color === 'string' && color !== 'default'
@@ -290,41 +294,49 @@ const colorAttribute = (color: unknown): string =>
 
 /** Preserve mention identities rather than projecting them to display text. */
 const richTextToMd = (richText: RichTextArray): string =>
-  richText.map((item) => {
-    if (item.type !== 'mention') return RichTextUtils.toMarkdown([item])
-    const mention = item.mention
-    let text: string
-    switch (mention.type) {
-      case 'user':
-      case 'page':
-      case 'database': {
-        const id = mention.type === 'user' ? mention.user.id : mention.type === 'page' ? mention.page.id : mention.database.id
-        const url = item.href ?? (mention.type === 'user' ? id : notionObjectUrl(id))
-        const label = item.plain_text.replaceAll(/([\\`*_[\]<>~])/g, '\\$1')
-        text = `<mention-${mention.type} url="${escapeAttribute(url)}">${label}</mention-${mention.type}>`
-        break
+  richText
+    .map((item) => {
+      if (item.type !== 'mention') return RichTextUtils.toMarkdown([item])
+      const mention = item.mention
+      let text: string
+      switch (mention.type) {
+        case 'user':
+        case 'page':
+        case 'database': {
+          const id =
+            mention.type === 'user'
+              ? mention.user.id
+              : mention.type === 'page'
+                ? mention.page.id
+                : mention.database.id
+          const url = item.href ?? (mention.type === 'user' ? id : notionObjectUrl(id))
+          const label = item.plain_text.replaceAll(/([\\`*_[\]<>~])/g, '\\$1')
+          text = `<mention-${mention.type} url="${escapeAttribute(url)}">${label}</mention-${mention.type}>`
+          break
+        }
+        case 'date': {
+          const date = mention.date
+          text = `<mention-date start="${escapeAttribute(date.start)}"${date.end == null ? '' : ` end="${escapeAttribute(date.end)}"`}${date.time_zone == null ? '' : ` timeZone="${escapeAttribute(date.time_zone)}"`}/>`
+          break
+        }
+        default:
+          return RichTextUtils.toMarkdown([item])
       }
-      case 'date': {
-        const date = mention.date
-        text = `<mention-date start="${escapeAttribute(date.start)}"${date.end == null ? '' : ` end="${escapeAttribute(date.end)}"`}${date.time_zone == null ? '' : ` timeZone="${escapeAttribute(date.time_zone)}"`}/>`
-        break
-      }
-      default:
-        return RichTextUtils.toMarkdown([item])
-    }
-    if (item.annotations.bold) text = `**${text}**`
-    if (item.annotations.italic) text = `*${text}*`
-    if (item.annotations.strikethrough) text = `~~${text}~~`
-    if (item.annotations.underline) text = `<span underline="true">${text}</span>`
-    if (item.annotations.color !== 'default') text = `<span${colorAttribute(item.annotations.color)}>${text}</span>`
-    return text
-  }).join('')
+      if (item.annotations.bold) text = `**${text}**`
+      if (item.annotations.italic) text = `*${text}*`
+      if (item.annotations.strikethrough) text = `~~${text}~~`
+      if (item.annotations.underline) text = `<span underline="true">${text}</span>`
+      if (item.annotations.color !== 'default')
+        text = `<span${colorAttribute(item.annotations.color)}>${text}</span>`
+      return text
+    })
+    .join('')
 
 /** Indent each line of text */
 const indentLines = ({ text, indent = '  ' }: { text: string; indent?: string }): string =>
   text
     .split('\n')
-    .map((line) => line === '' ? '' : `${indent}${line}`)
+    .map((line) => (line === '' ? '' : `${indent}${line}`))
     .join('\n')
 
 /** Quote each line of text */
@@ -339,10 +351,14 @@ const renderHeading = (opts: {
   readonly block: BlockWithData
   readonly children: string
 }): string => {
-  const data = opts.block[opts.block.type] as { is_toggleable?: boolean; color?: string } | undefined
+  const data = opts.block[opts.block.type] as
+    | { is_toggleable?: boolean; color?: string }
+    | undefined
   const attrs = `${data?.is_toggleable === true ? ' toggle="true"' : ''}${colorAttribute(data?.color)}`
   const text = `${'#'.repeat(opts.level)} ${richTextToMd(getBlockRichText(opts.block))}${attrs === '' ? '' : ` {${attrs.trim()}}`}`
-  return opts.children !== '' ? `${text}\n${indentLines({ text: opts.children, indent: '\t' })}` : text
+  return opts.children !== ''
+    ? `${text}\n${indentLines({ text: opts.children, indent: '\t' })}`
+    : text
 }
 
 /** Default transformers for all block types */
@@ -461,9 +477,11 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
   table_of_contents: () => '<table_of_contents/>',
   breadcrumb: () => '',
 
-  column_list: (_, children) => `<columns>\n${indentLines({ text: children, indent: '\t' })}\n</columns>`,
+  column_list: (_, children) =>
+    `<columns>\n${indentLines({ text: children, indent: '\t' })}\n</columns>`,
   column: (_, children) => `<column>\n${indentLines({ text: children, indent: '\t' })}\n</column>`,
-  synced_block: (block, children) => `<synced_block url="${escapeAttribute(notionObjectUrl(block.id))}">\n${indentLines({ text: children, indent: '\t' })}\n</synced_block>`,
+  synced_block: (block, children) =>
+    `<synced_block url="${escapeAttribute(notionObjectUrl(block.id))}">\n${indentLines({ text: children, indent: '\t' })}\n</synced_block>`,
   table: (block, children) => {
     const data = block.table as { has_column_header?: boolean; has_row_header?: boolean }
     const attrs = `${data.has_column_header === true ? ' header-row="true"' : ''}${data.has_row_header === true ? ' header-column="true"' : ''}`

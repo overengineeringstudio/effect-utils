@@ -519,16 +519,22 @@ const ToggleBlockCreate = Schema.Struct({
   toggle: RichTextBlockCreateContentWithChildren,
 })
 
-const CalloutBlockCreate: Schema.Schema<BlockCreatePayload<'callout', 'callout', CalloutBlockCreateContentType>> = Schema.Struct({
+const CalloutBlockCreate: Schema.Schema<
+  BlockCreatePayload<'callout', 'callout', CalloutBlockCreateContentType>
+> = Schema.Struct({
   object: Schema.Literal('block'),
   type: Schema.Literal('callout'),
   callout: Schema.Struct({
     rich_text: RichTextCreateArray,
     color: Schema.optional(NotionColor),
-    icon: Schema.optional(Schema.NullOr(Schema.Struct({
-      type: Schema.Literal('emoji'),
-      emoji: Schema.String,
-    }))),
+    icon: Schema.optional(
+      Schema.NullOr(
+        Schema.Struct({
+          type: Schema.Literal('emoji'),
+          emoji: Schema.String,
+        }),
+      ),
+    ),
     children: Schema.optional(Schema.Array(Schema.suspend(() => NotionBlockCreate))),
   }),
 })

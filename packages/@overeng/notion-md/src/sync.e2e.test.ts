@@ -922,16 +922,18 @@ describe('notion-md e2e prototype', () => {
         const markdown = 'An unchanged but flattened projection.'
         const path = join(dir, 'type-loss.nmd')
         const clean = new FakeNotion([{ pageId, title: 'Doc', markdown }])
-        const lossy = new FakeNotion([{
-          pageId,
-          title: 'Doc',
-          markdown,
-          completeness: {
-            _tag: 'lossy',
-            reasons: ['rendered_markdown_missing_types'],
-            lossyBlockTypes: [blockType],
+        const lossy = new FakeNotion([
+          {
+            pageId,
+            title: 'Doc',
+            markdown,
+            completeness: {
+              _tag: 'lossy',
+              reasons: ['rendered_markdown_missing_types'],
+              lossyBlockTypes: [blockType],
+            },
           },
-        }])
+        ])
         await expect(runWithFake(pullPage({ pageId, outPath: path }), lossy)).rejects.toThrow(
           blockType,
         )

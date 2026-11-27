@@ -1140,8 +1140,16 @@ describe('track path routing', () => {
   it('keeps an interleaved root noop after tracking and changing authority to local', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
-      const zuluId = fake.addRemotePage({ parentId: rootPageId, title: 'Zulu', markdown: 'Zulu.\n' })
-      const alphaId = fake.addRemotePage({ parentId: rootPageId, title: 'Alpha', markdown: 'Alpha.\n' })
+      const zuluId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Zulu',
+        markdown: 'Zulu.\n',
+      })
+      const alphaId = fake.addRemotePage({
+        parentId: rootPageId,
+        title: 'Alpha',
+        markdown: 'Alpha.\n',
+      })
       const body = [
         '<callout icon="💡">',
         '\tRoot note',
@@ -1164,7 +1172,10 @@ describe('track path routing', () => {
       expect(await readFile(rootPath, 'utf8')).toContain(body)
       const workspacePath = join(dir, '.notion-md', 'workspace.json')
       const workspace = await readFile(workspacePath, 'utf8')
-      await writeFile(workspacePath, workspace.replace('"authority": "remote"', '"authority": "local"'))
+      await writeFile(
+        workspacePath,
+        workspace.replace('"authority": "remote"', '"authority": "local"'),
+      )
       for (const path of [rootPath, join(dir, 'zulu.nmd'), join(dir, 'alpha.nmd')]) {
         const content = await readFile(path, 'utf8')
         await writeFile(path, content.replace('"source": "remote"', '"source": "local"'))

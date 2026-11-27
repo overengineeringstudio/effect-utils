@@ -157,47 +157,56 @@ describe('NotionBody.observeFromSnapshots', () => {
   it.each(['link_mention', 'link_preview'] as const)('keeps %s links complete', async (kind) => {
     const url = 'https://github.com/example/repo'
     const markdown = `[Repository](${url})`
-    const tree: BlockTree = [{
-      block: block({
-        id: blockId,
-        type: 'paragraph',
-        payload: {
-          rich_text: [{
-            ...text('Repository')[0],
-            type: 'mention',
-            mention: kind === 'link_mention'
-              ? { type: kind, link_mention: { href: url } }
-              : { type: kind, link_preview: { url } },
-          }],
-        },
-      }),
-      children: [],
-    }]
-
-    const observed = await Effect.runPromise(observeFromSnapshots({
-      pageId,
-      markdown: {
-        object: 'page_markdown',
-        markdown,
-        truncated: false,
-        unknown_block_ids: [],
+    const tree: BlockTree = [
+      {
+        block: block({
+          id: blockId,
+          type: 'paragraph',
+          payload: {
+            rich_text: [
+              {
+                ...text('Repository')[0],
+                type: 'mention',
+                mention:
+                  kind === 'link_mention'
+                    ? { type: kind, link_mention: { href: url } }
+                    : { type: kind, link_preview: { url } },
+              },
+            ],
+          },
+        }),
+        children: [],
       },
-      tree,
-    }))
+    ]
+
+    const observed = await Effect.runPromise(
+      observeFromSnapshots({
+        pageId,
+        markdown: {
+          object: 'page_markdown',
+          markdown,
+          truncated: false,
+          unknown_block_ids: [],
+        },
+        tree,
+      }),
+    )
 
     expect(observed.inventory.renderedMarkdown).toBe(`${markdown}\n`)
     expect(observed.completeness).toEqual({ _tag: 'complete' })
 
-    const incomplete = await Effect.runPromise(observeFromSnapshots({
-      pageId,
-      markdown: {
-        object: 'page_markdown',
-        markdown,
-        truncated: true,
-        unknown_block_ids: [blockId],
-      },
-      tree,
-    }))
+    const incomplete = await Effect.runPromise(
+      observeFromSnapshots({
+        pageId,
+        markdown: {
+          object: 'page_markdown',
+          markdown,
+          truncated: true,
+          unknown_block_ids: [blockId],
+        },
+        tree,
+      }),
+    )
 
     expect(incomplete.completeness).toEqual({
       _tag: 'lossy',
@@ -206,42 +215,51 @@ describe('NotionBody.observeFromSnapshots', () => {
     })
   })
 
-  it.each(['template_mention', 'future_mention'])('identifies unsupported %s mentions', async (kind) => {
-    const tree: BlockTree = [{
-      block: block({
-        id: blockId,
-        type: 'paragraph',
-        payload: {
-          rich_text: [{
-            ...text('Unsupported')[0],
-            type: 'mention',
-            mention: {
-              type: kind,
-              [kind]: { type: 'template_mention_date', template_mention_date: 'today' },
+  it.each(['template_mention', 'future_mention'])(
+    'identifies unsupported %s mentions',
+    async (kind) => {
+      const tree: BlockTree = [
+        {
+          block: block({
+            id: blockId,
+            type: 'paragraph',
+            payload: {
+              rich_text: [
+                {
+                  ...text('Unsupported')[0],
+                  type: 'mention',
+                  mention: {
+                    type: kind,
+                    [kind]: { type: 'template_mention_date', template_mention_date: 'today' },
+                  },
+                },
+              ],
             },
-          }],
+          }),
+          children: [],
         },
-      }),
-      children: [],
-    }]
+      ]
 
-    const observed = await Effect.runPromise(observeFromSnapshots({
-      pageId,
-      markdown: {
-        object: 'page_markdown',
-        markdown: kind === 'template_mention' ? '@today' : 'Unsupported',
-        truncated: false,
-        unknown_block_ids: [],
-      },
-      tree,
-    }))
+      const observed = await Effect.runPromise(
+        observeFromSnapshots({
+          pageId,
+          markdown: {
+            object: 'page_markdown',
+            markdown: kind === 'template_mention' ? '@today' : 'Unsupported',
+            truncated: false,
+            unknown_block_ids: [],
+          },
+          tree,
+        }),
+      )
 
-    expect(observed.completeness).toEqual({
-      _tag: 'lossy',
-      reasons: ['unsupported_blocks'],
-      lossyBlockTypes: [`mention:${kind}`, 'paragraph'],
-    })
-  })
+      expect(observed.completeness).toEqual({
+        _tag: 'lossy',
+        reasons: ['unsupported_blocks'],
+        lossyBlockTypes: [`mention:${kind}`, 'paragraph'],
+      })
+    },
+  )
 
   it('classifies endpoint Markdown missing rendered content after a divider as lossy', async () => {
     const tree: BlockTree = [

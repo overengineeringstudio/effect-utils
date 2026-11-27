@@ -41,18 +41,21 @@ describe('rendered body type completeness', () => {
     expect(classify(tree(type), native)).toEqual({ _tag: 'complete' })
   })
 
-  it.each(['page', 'database', 'date', 'user'])('requires native %s mentions, including table cells', (type) => {
-    const mention = { type: 'mention', mention: { type } }
-    const blocks = tree('table_row', { cells: [[mention]] })
-    expect(classify(blocks, '<tr><td>[Label](https://notion.so/id)</td></tr>')).toEqual({
-      _tag: 'lossy',
-      reasons: ['rendered_markdown_missing_types'],
-      lossyBlockTypes: ['table_row'],
-    })
-    expect(classify(blocks, `<tr><td><mention-${type} url="id"/></td></tr>`)).toEqual({
-      _tag: 'complete',
-    })
-  })
+  it.each(['page', 'database', 'date', 'user'])(
+    'requires native %s mentions, including table cells',
+    (type) => {
+      const mention = { type: 'mention', mention: { type } }
+      const blocks = tree('table_row', { cells: [[mention]] })
+      expect(classify(blocks, '<tr><td>[Label](https://notion.so/id)</td></tr>')).toEqual({
+        _tag: 'lossy',
+        reasons: ['rendered_markdown_missing_types'],
+        lossyBlockTypes: ['table_row'],
+      })
+      expect(classify(blocks, `<tr><td><mention-${type} url="id"/></td></tr>`)).toEqual({
+        _tag: 'complete',
+      })
+    },
+  )
 
   it('refuses unknown block types and non-emoji callout icons', () => {
     expect(classify(tree('future_block'), 'Flattened')).toEqual({
@@ -60,9 +63,14 @@ describe('rendered body type completeness', () => {
       reasons: ['unsupported_blocks'],
       lossyBlockTypes: ['future_block'],
     })
-    expect(classify(tree('callout', {
-      icon: { type: 'external', external: { url: 'https://example.com/icon.png' } },
-    }), '<callout>Note</callout>')).toEqual({
+    expect(
+      classify(
+        tree('callout', {
+          icon: { type: 'external', external: { url: 'https://example.com/icon.png' } },
+        }),
+        '<callout>Note</callout>',
+      ),
+    ).toEqual({
       _tag: 'lossy',
       reasons: ['unsupported_blocks'],
       lossyBlockTypes: ['callout'],
@@ -78,17 +86,21 @@ describe('rendered body type completeness', () => {
   })
 
   it('does not count fenced code examples as construct evidence', () => {
-    expect(classify(tree('callout'), '```xml\n<callout>Example</callout>\n```\n\n> Real')).toMatchObject({
+    expect(
+      classify(tree('callout'), '```xml\n<callout>Example</callout>\n```\n\n> Real'),
+    ).toMatchObject({
       _tag: 'lossy',
     })
   })
 
   it('keeps other completeness failures when type coverage succeeds', () => {
-    expect(NotionBody.classifyRenderedTypes({
-      tree: tree('callout'),
-      renderedMarkdown: '<callout>Note</callout>',
-      completeness: { _tag: 'lossy', reasons: ['endpoint_truncated', 'unknown_blocks'] },
-    })).toEqual({ _tag: 'lossy', reasons: ['endpoint_truncated', 'unknown_blocks'] })
+    expect(
+      NotionBody.classifyRenderedTypes({
+        tree: tree('callout'),
+        renderedMarkdown: '<callout>Note</callout>',
+        completeness: { _tag: 'lossy', reasons: ['endpoint_truncated', 'unknown_blocks'] },
+      }),
+    ).toEqual({ _tag: 'lossy', reasons: ['endpoint_truncated', 'unknown_blocks'] })
   })
 
   it('tree child-page tolerance cannot erase a missing non-anchor construct', () => {
@@ -111,21 +123,25 @@ describe('rendered body type completeness', () => {
 
 describe('remote Markdown completeness policy', () => {
   it('refuses raw endpoint flags when block-observation evidence is absent', () => {
-    expect(remoteMarkdownCompleteness({
-      markdown: 'Partial',
-      truncated: true,
-      unknown_block_ids: ['missing'],
-    })).toMatchObject({ _tag: 'lossy', reasons: ['endpoint_truncated', 'unknown_blocks'] })
+    expect(
+      remoteMarkdownCompleteness({
+        markdown: 'Partial',
+        truncated: true,
+        unknown_block_ids: ['missing'],
+      }),
+    ).toMatchObject({ _tag: 'lossy', reasons: ['endpoint_truncated', 'unknown_blocks'] })
   })
 
   it('preserves an authoritative observation verdict accounting for unsupported storage', () => {
     const completeness = { _tag: 'complete' } as const
-    expect(remoteMarkdownCompleteness({
-      markdown: 'Body with preserved unsupported storage',
-      truncated: true,
-      unknown_block_ids: ['stored-block'],
-      completeness,
-    })).toBe(completeness)
+    expect(
+      remoteMarkdownCompleteness({
+        markdown: 'Body with preserved unsupported storage',
+        truncated: true,
+        unknown_block_ids: ['stored-block'],
+        completeness,
+      }),
+    ).toBe(completeness)
   })
 })
 
@@ -141,13 +157,21 @@ describe('other known lossy projections', () => {
     })
   })
 
-  it.each(['template_mention', 'future_mention'])('refuses unmodeled %s mention semantics', (type) => {
-    expect(classify(tree('paragraph', {
-      rich_text: [{ type: 'mention', mention: { type } }],
-    }), 'Label')).toEqual({
-      _tag: 'lossy',
-      reasons: ['unsupported_blocks'],
-      lossyBlockTypes: [`mention:${type}`, 'paragraph'],
-    })
-  })
+  it.each(['template_mention', 'future_mention'])(
+    'refuses unmodeled %s mention semantics',
+    (type) => {
+      expect(
+        classify(
+          tree('paragraph', {
+            rich_text: [{ type: 'mention', mention: { type } }],
+          }),
+          'Label',
+        ),
+      ).toEqual({
+        _tag: 'lossy',
+        reasons: ['unsupported_blocks'],
+        lossyBlockTypes: [`mention:${type}`, 'paragraph'],
+      })
+    },
+  )
 })

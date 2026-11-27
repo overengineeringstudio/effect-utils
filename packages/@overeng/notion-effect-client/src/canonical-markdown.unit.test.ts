@@ -28,20 +28,22 @@ const treeNode = (
 
 const paragraph = (content: string): BlockTreeNode =>
   treeNode('paragraph', {
-    rich_text: [{
-      type: 'text',
-      text: { content, link: null },
-      plain_text: content,
-      href: null,
-      annotations: {
-        bold: false,
-        italic: false,
-        strikethrough: false,
-        underline: false,
-        code: false,
-        color: 'default',
+    rich_text: [
+      {
+        type: 'text',
+        text: { content, link: null },
+        plain_text: content,
+        href: null,
+        annotations: {
+          bold: false,
+          italic: false,
+          strikethrough: false,
+          underline: false,
+          code: false,
+          color: 'default',
+        },
       },
-    }],
+    ],
   })
 
 const expectPreservedBody = (body: string): void => {

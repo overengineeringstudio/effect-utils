@@ -1,9 +1,10 @@
-import { BlockSchema } from '@overeng/notion-effect-schema'
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { markdownToBlocks, type NotionBlockCreate } from './markdown-to-blocks.ts'
+import { BlockSchema } from '@overeng/notion-effect-schema'
+
 import type { BlockTreeNode } from './blocks.ts'
+import { markdownToBlocks, type NotionBlockCreate } from './markdown-to-blocks.ts'
 import type { NotionTableRowBlockCreate } from './markdown-to-blocks.ts'
 import { treeToMarkdown } from './markdown.ts'
 import { NotionMarkdown } from './markdown.ts'
@@ -17,24 +18,47 @@ const table = (block: NotionBlockCreate | undefined) => {
 /** Supply server-owned metadata at the create/read boundary used by the renderer. */
 const readTree = (block: NotionBlockCreate | NotionTableRowBlockCreate): BlockTreeNode => {
   const content = Object.entries(block).find(([key]) => key === block.type)?.[1]
-  const children = block.type === 'table' ? block.table.children :
-    block.type === 'callout' ? block.callout.children ?? [] :
-    block.type === 'toggle' ? block.toggle.children ?? [] :
-    block.type === 'quote' ? block.quote.children ?? [] :
-    block.type === 'bulleted_list_item' ? block.bulleted_list_item.children ?? [] :
-    block.type === 'numbered_list_item' ? block.numbered_list_item.children ?? [] :
-    block.type === 'to_do' ? block.to_do.children ?? [] : []
+  const children =
+    block.type === 'table'
+      ? block.table.children
+      : block.type === 'callout'
+        ? (block.callout.children ?? [])
+        : block.type === 'toggle'
+          ? (block.toggle.children ?? [])
+          : block.type === 'quote'
+            ? (block.quote.children ?? [])
+            : block.type === 'bulleted_list_item'
+              ? (block.bulleted_list_item.children ?? [])
+              : block.type === 'numbered_list_item'
+                ? (block.numbered_list_item.children ?? [])
+                : block.type === 'to_do'
+                  ? (block.to_do.children ?? [])
+                  : []
   const hydrateRichText = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(hydrateRichText)
     if (typeof value !== 'object' || value === null) return value
-    const fields = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, hydrateRichText(item)]))
+    const fields = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, hydrateRichText(item)]),
+    )
     if (fields.type === 'text' || fields.type === 'mention') {
-      return { ...fields,
-        plain_text: fields.type === 'mention' ? 'Reference' :
-          typeof fields.text === 'object' && fields.text !== null && 'content' in fields.text ? fields.text.content : '',
+      return {
+        ...fields,
+        plain_text:
+          fields.type === 'mention'
+            ? 'Reference'
+            : typeof fields.text === 'object' && fields.text !== null && 'content' in fields.text
+              ? fields.text.content
+              : '',
         href: null,
-        annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: 'default',
-          ...(typeof fields.annotations === 'object' ? fields.annotations : {}) },
+        annotations: {
+          bold: false,
+          italic: false,
+          strikethrough: false,
+          underline: false,
+          code: false,
+          color: 'default',
+          ...(typeof fields.annotations === 'object' ? fields.annotations : {}),
+        },
       }
     }
     return fields
@@ -42,10 +66,15 @@ const readTree = (block: NotionBlockCreate | NotionTableRowBlockCreate): BlockTr
   const id = '12345678-1234-1234-1234-123456789abc'
   return {
     block: Schema.decodeSync(BlockSchema)({
-      ...block, [block.type]: hydrateRichText(content),
-      id, has_children: children.length > 0, in_trash: false,
-      created_time: '2026-11-27T00:00:00.000Z', last_edited_time: '2026-11-27T00:00:00.000Z',
-      created_by: { object: 'user', id }, last_edited_by: { object: 'user', id },
+      ...block,
+      [block.type]: hydrateRichText(content),
+      id,
+      has_children: children.length > 0,
+      in_trash: false,
+      created_time: '2026-11-27T00:00:00.000Z',
+      last_edited_time: '2026-11-27T00:00:00.000Z',
+      created_by: { object: 'user', id },
+      last_edited_by: { object: 'user', id },
       parent: { type: 'page_id', page_id: id },
     }),
     children: children.map(readTree),
@@ -289,45 +318,69 @@ describe('markdownToBlocks', () => {
   })
 
   it('preserves enhanced callout icon, color, rich text, and nested blocks', () => {
-    const blocks = markdownToBlocks([
-      '<callout icon="💡" color="blue_bg">',
-      '\t**Tip** &amp; details',
-      '',
-      '\t<details color="green">',
-      '\t<summary>More</summary>',
-      '\t\tNested content',
-      '\t</details>',
-      '</callout>',
-      '',
-      'After',
-    ].join('\n'))
+    const blocks = markdownToBlocks(
+      [
+        '<callout icon="💡" color="blue_bg">',
+        '\t**Tip** &amp; details',
+        '',
+        '\t<details color="green">',
+        '\t<summary>More</summary>',
+        '\t\tNested content',
+        '\t</details>',
+        '</callout>',
+        '',
+        'After',
+      ].join('\n'),
+    )
     expect(blocks).toMatchObject([
-      { type: 'callout', callout: {
-        icon: { type: 'emoji', emoji: '💡' }, color: 'blue_background',
-        rich_text: [{ text: { content: 'Tip' }, annotations: { bold: true } }, { text: { content: ' & details' } }],
-        children: [{ type: 'toggle', toggle: {
-          color: 'green', rich_text: [{ text: { content: 'More' } }],
-          children: [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: 'Nested content' } }] } }],
-        } }],
-      } },
+      {
+        type: 'callout',
+        callout: {
+          icon: { type: 'emoji', emoji: '💡' },
+          color: 'blue_background',
+          rich_text: [
+            { text: { content: 'Tip' }, annotations: { bold: true } },
+            { text: { content: ' & details' } },
+          ],
+          children: [
+            {
+              type: 'toggle',
+              toggle: {
+                color: 'green',
+                rich_text: [{ text: { content: 'More' } }],
+                children: [
+                  {
+                    type: 'paragraph',
+                    paragraph: { rich_text: [{ text: { content: 'Nested content' } }] },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
       { type: 'paragraph', paragraph: { rich_text: [{ text: { content: 'After' } }] } },
     ])
   })
 
   it('preserves enhanced table header flags and rich cells without pipe splitting', () => {
-    const block = table(markdownToBlocks([
-      '<table header-row="true" header-column="true">',
-      '\t<tr>',
-      '\t\t<td>**Header**</td>',
-      '\t\t<td>A | B &amp; C</td>',
-      '\t</tr>',
-      '',
-      '\t<tr>',
-      '\t\t<td>Value</td>',
-      '\t\t<td>`a|b`</td>',
-      '\t</tr>',
-      '</table>',
-    ].join('\n'))[0])
+    const block = table(
+      markdownToBlocks(
+        [
+          '<table header-row="true" header-column="true">',
+          '\t<tr>',
+          '\t\t<td>**Header**</td>',
+          '\t\t<td>A | B &amp; C</td>',
+          '\t</tr>',
+          '',
+          '\t<tr>',
+          '\t\t<td>Value</td>',
+          '\t\t<td>`a|b`</td>',
+          '\t</tr>',
+          '</table>',
+        ].join('\n'),
+      )[0],
+    )
     expect(block).toMatchObject({ table_width: 2, has_column_header: true, has_row_header: true })
     expect(block.children[0]?.table_row.cells).toEqual([
       [{ type: 'text', text: { content: 'Header' }, annotations: { bold: true } }],
@@ -340,45 +393,76 @@ describe('markdownToBlocks', () => {
 
   it('preserves page, database, user, and timed date mention identities', () => {
     const id = '12345678-1234-1234-1234-123456789abc'
-    const blocks = markdownToBlocks([
-      `See **<mention-page url="https://www.notion.so/${id}">Page</mention-page>**`,
-      `and <mention-database url="https://www.notion.so/${id}">DB</mention-database>`,
-      `with <mention-user url="${id}">Person</mention-user>`,
-      '<mention-date start="2026-11-27T10:00:00" end="2026-11-27T11:00:00" timeZone="Europe/Berlin"/>.',
-    ].join(' '))
-    expect(blocks[0]).toMatchObject({ paragraph: { rich_text: [
-      { text: { content: 'See ' } },
-      { type: 'mention', mention: { type: 'page', page: { id } }, annotations: { bold: true } },
-      { text: { content: ' and ' } },
-      { type: 'mention', mention: { type: 'database', database: { id } } },
-      { text: { content: ' with ' } },
-      { type: 'mention', mention: { type: 'user', user: { object: 'user', id } } },
-      { text: { content: ' ' } },
-      { type: 'mention', mention: { type: 'date', date: {
-        start: '2026-11-27T10:00:00', end: '2026-11-27T11:00:00', time_zone: 'Europe/Berlin',
-      } } },
-      { text: { content: '.' } },
-    ] } })
-    expect(markdownToBlocks(`<mention-page url="https://www.notion.so/${id}">Page</mention-page>`)[0])
-      .toMatchObject({ type: 'paragraph', paragraph: { rich_text: [{ type: 'mention', mention: { type: 'page', page: { id } } }] } })
+    const blocks = markdownToBlocks(
+      [
+        `See **<mention-page url="https://www.notion.so/${id}">Page</mention-page>**`,
+        `and <mention-database url="https://www.notion.so/${id}">DB</mention-database>`,
+        `with <mention-user url="${id}">Person</mention-user>`,
+        '<mention-date start="2026-11-27T10:00:00" end="2026-11-27T11:00:00" timeZone="Europe/Berlin"/>.',
+      ].join(' '),
+    )
+    expect(blocks[0]).toMatchObject({
+      paragraph: {
+        rich_text: [
+          { text: { content: 'See ' } },
+          { type: 'mention', mention: { type: 'page', page: { id } }, annotations: { bold: true } },
+          { text: { content: ' and ' } },
+          { type: 'mention', mention: { type: 'database', database: { id } } },
+          { text: { content: ' with ' } },
+          { type: 'mention', mention: { type: 'user', user: { object: 'user', id } } },
+          { text: { content: ' ' } },
+          {
+            type: 'mention',
+            mention: {
+              type: 'date',
+              date: {
+                start: '2026-11-27T10:00:00',
+                end: '2026-11-27T11:00:00',
+                time_zone: 'Europe/Berlin',
+              },
+            },
+          },
+          { text: { content: '.' } },
+        ],
+      },
+    })
+    expect(
+      markdownToBlocks(`<mention-page url="https://www.notion.so/${id}">Page</mention-page>`)[0],
+    ).toMatchObject({
+      type: 'paragraph',
+      paragraph: { rich_text: [{ type: 'mention', mention: { type: 'page', page: { id } } }] },
+    })
   })
 
   it('does not parse enhanced tags inside code fences or inline code', () => {
-    expect(markdownToBlocks('```html\n<callout icon="💡">Literal</callout>\n```')[0])
-      .toMatchObject({ type: 'code' })
-    expect(markdownToBlocks('<callout>\n\tLiteral `</callout>` text\n</callout>')[0])
-      .toMatchObject({ type: 'callout', callout: { rich_text: [
-        { text: { content: 'Literal ' } },
-        { text: { content: '</callout>' }, annotations: { code: true } },
-        { text: { content: ' text' } },
-      ] } })
+    expect(markdownToBlocks('```html\n<callout icon="💡">Literal</callout>\n```')[0]).toMatchObject(
+      { type: 'code' },
+    )
+    expect(markdownToBlocks('<callout>\n\tLiteral `</callout>` text\n</callout>')[0]).toMatchObject(
+      {
+        type: 'callout',
+        callout: {
+          rich_text: [
+            { text: { content: 'Literal ' } },
+            { text: { content: '</callout>' }, annotations: { code: true } },
+            { text: { content: ' text' } },
+          ],
+        },
+      },
+    )
   })
 
   it.each([
     ['callout', '<callout icon="💡" color="blue_bg">\n\tTip\n\n\tChild\n</callout>'],
-    ['table', '<table header-row="true" header-column="true">\n\t<tr>\n\t\t<td>Header</td>\n\t\t<td>Value</td>\n\t</tr>\n\n\t<tr>\n\t\t<td>Row</td>\n\t\t<td>Cell</td>\n\t</tr>\n</table>'],
+    [
+      'table',
+      '<table header-row="true" header-column="true">\n\t<tr>\n\t\t<td>Header</td>\n\t\t<td>Value</td>\n\t</tr>\n\n\t<tr>\n\t\t<td>Row</td>\n\t\t<td>Cell</td>\n\t</tr>\n</table>',
+    ],
     ['toggle', '<details color="green">\n<summary>More</summary>\n\tChild\n</details>'],
-    ['mentions', 'See <mention-page url="https://notion.so/12345678123412341234123456789abc">Reference</mention-page> and <mention-user url="12345678-1234-1234-1234-123456789abc">Reference</mention-user> on <mention-date start="2026-11-27T10:00:00" end="2026-11-27T11:00:00" timeZone="Europe/Berlin"/>.'],
+    [
+      'mentions',
+      'See <mention-page url="https://notion.so/12345678123412341234123456789abc">Reference</mention-page> and <mention-user url="12345678-1234-1234-1234-123456789abc">Reference</mention-user> on <mention-date start="2026-11-27T10:00:00" end="2026-11-27T11:00:00" timeZone="Europe/Berlin"/>.',
+    ],
   ])('round-trips enhanced %s through the live tree renderer', async (_family, markdown) => {
     const tree = markdownToBlocks(markdown).map(readTree)
     expect(await Effect.runPromise(treeToMarkdown({ tree }))).toBe(markdown)

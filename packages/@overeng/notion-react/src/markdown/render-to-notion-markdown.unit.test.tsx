@@ -69,7 +69,9 @@ describe('renderToNotionMarkdown', () => {
         <InlineEquation expression="E=mc^2" />
       </Paragraph>,
     )
-    expect(result.body).toBe('**bold** *italic* `code` ~~gone~~ <u>under</u> [link](https://example.com) <mention-user url="u1">alice</mention-user> $E=mc^2$')
+    expect(result.body).toBe(
+      '**bold** *italic* `code` ~~gone~~ <u>under</u> [link](https://example.com) <mention-user url="u1">alice</mention-user> $E=mc^2$',
+    )
   })
 
   it('normalizes authored mention forms (type-less envelopes, pre-prefixed plainText)', () => {
@@ -80,7 +82,9 @@ describe('renderToNotionMarkdown', () => {
         <Mention mention={{ date: { start: '2026-04-19' } }} plainText="@2026-04-19" />
       </Paragraph>,
     )
-    expect(result.body).toBe('<mention-user url="u1">@priya</mention-user> <mention-page url="https://notion.so/p1">@Launch Plan</mention-page> <mention-date start="2026-04-19"/>')
+    expect(result.body).toBe(
+      '<mention-user url="u1">@priya</mention-user> <mention-page url="https://notion.so/p1">@Launch Plan</mention-page> <mention-date start="2026-04-19"/>',
+    )
     expect(result.diagnostics).toEqual([])
   })
 
@@ -98,7 +102,9 @@ describe('renderToNotionMarkdown', () => {
         </Color>
       </Paragraph>,
     )
-    expect(result.body).toBe('**<mention-user url="u1">alice</mention-user>** *$E=mc^2$* <mention-user url="u2">bob</mention-user>')
+    expect(result.body).toBe(
+      '**<mention-user url="u1">alice</mention-user>** *$E=mc^2$* <mention-user url="u2">bob</mention-user>',
+    )
     expect(result.diagnostics).toEqual([
       { kind: 'color-dropped', message: 'text color red dropped' },
     ])
@@ -272,7 +278,9 @@ describe('renderToNotionMarkdown', () => {
         <Mention mention={{ type: 'user', user: { id: 'u1' } }} plainText="*ops*" />
       </Paragraph>,
     )
-    expect(result.body).toBe('<mention-page url="https://notion.so/p1">\\[Q3\\]</mention-page> <mention-user url="u1">\\*ops\\*</mention-user>')
+    expect(result.body).toBe(
+      '<mention-page url="https://notion.so/p1">\\[Q3\\]</mention-page> <mention-user url="u1">\\*ops\\*</mention-user>',
+    )
   })
 
   it('does not double-escape media caption labels', () => {
@@ -409,7 +417,9 @@ describe('renderToNotionMarkdown', () => {
         </Toggle>
       </>,
     )
-    expect(result.body).toBe('# Blocky instructions\n\n<details>\n<summary>Deploy</summary>\n\tRun the audited deploy command.\n</details>')
+    expect(result.body).toBe(
+      '# Blocky instructions\n\n<details>\n<summary>Deploy</summary>\n\tRun the audited deploy command.\n</details>',
+    )
     expect(result.diagnostics).toEqual([])
   })
 
@@ -422,7 +432,9 @@ describe('renderToNotionMarkdown', () => {
         </Callout>
       </>,
     )
-    expect(result.body).toBe('> wisdom\n\n<callout icon="⚠️" color="red_bg">\n\tcareful\n</callout>')
+    expect(result.body).toBe(
+      '> wisdom\n\n<callout icon="⚠️" color="red_bg">\n\tcareful\n</callout>',
+    )
     expect(result.diagnostics).toEqual([])
   })
 
@@ -481,7 +493,9 @@ describe('renderToNotionMarkdown', () => {
         </Toggle>
       </Callout>,
     )
-    expect(result.body).toBe('<callout icon="💡" color="blue_bg">\n\tRead this\n\n\t<details>\n\t<summary>More</summary>\n\t\tnested\n\t</details>\n</callout>')
+    expect(result.body).toBe(
+      '<callout icon="💡" color="blue_bg">\n\tRead this\n\n\t<details>\n\t<summary>More</summary>\n\t\tnested\n\t</details>\n</callout>',
+    )
     expect(result.diagnostics).toEqual([])
   })
 
@@ -491,7 +505,9 @@ describe('renderToNotionMarkdown', () => {
         <TableRow cells={['left | right', <Bold key="bold">value</Bold>]} />
       </Table>,
     )
-    expect(result.body).toBe('<table>\n\t<tr>\n\t\t<td>left | right</td>\n\t\t<td>**value**</td>\n\t</tr>\n</table>')
+    expect(result.body).toBe(
+      '<table>\n\t<tr>\n\t\t<td>left | right</td>\n\t\t<td>**value**</td>\n\t</tr>\n</table>',
+    )
     expect(result.diagnostics).toEqual([])
   })
 
@@ -502,7 +518,9 @@ describe('renderToNotionMarkdown', () => {
         <Mention mention={{ date: { start: '2026-11-27T09:30:00', time_zone: 'Europe/Berlin' } }} />
       </Paragraph>,
     )
-    expect(result.body).toBe('<mention-date start="2026-11-27" end="2026-11-28"/> <mention-date start="2026-11-27T09:30:00" timeZone="Europe/Berlin"/>')
+    expect(result.body).toBe(
+      '<mention-date start="2026-11-27" end="2026-11-28"/> <mention-date start="2026-11-27T09:30:00" timeZone="Europe/Berlin"/>',
+    )
     expect(result.diagnostics).toEqual([])
   })
 
@@ -513,7 +531,9 @@ describe('renderToNotionMarkdown', () => {
         <TableRow cells={[1, 2]} />
       </Table>,
     )
-    expect(result.body).toBe('<table header-row="true">\n\t<tr>\n\t\t<td>A</td>\n\t\t<td>B</td>\n\t</tr>\n\t<tr>\n\t\t<td>1</td>\n\t\t<td>2</td>\n\t</tr>\n</table>')
+    expect(result.body).toBe(
+      '<table header-row="true">\n\t<tr>\n\t\t<td>A</td>\n\t\t<td>B</td>\n\t</tr>\n\t<tr>\n\t\t<td>1</td>\n\t\t<td>2</td>\n\t</tr>\n</table>',
+    )
   })
 
   it('renders dividers, equations, toc and page links', () => {

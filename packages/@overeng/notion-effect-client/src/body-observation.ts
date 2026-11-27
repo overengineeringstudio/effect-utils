@@ -97,13 +97,17 @@ const classifyRenderedTypes = (opts: {
       const mention = value.mention
       if (mention !== null && typeof mention === 'object' && 'type' in mention) {
         if (
-          mention.type === 'page' || mention.type === 'database' ||
-          mention.type === 'date' || mention.type === 'user'
+          mention.type === 'page' ||
+          mention.type === 'database' ||
+          mention.type === 'date' ||
+          mention.type === 'user'
         ) {
           requireTag(`mention-${mention.type}`, type)
         } else if (mention.type !== 'link_mention' && mention.type !== 'link_preview') {
           unsupportedTypes.add(type)
-          unsupportedTypes.add(`mention:${typeof mention.type === 'string' ? mention.type : 'unknown'}`)
+          unsupportedTypes.add(
+            `mention:${typeof mention.type === 'string' ? mention.type : 'unknown'}`,
+          )
         }
       }
     }
@@ -117,15 +121,25 @@ const classifyRenderedTypes = (opts: {
         const callout = node.block.callout
         if (callout !== null && typeof callout === 'object' && 'icon' in callout) {
           const icon = callout.icon
-          if (icon !== null && typeof icon === 'object' && 'type' in icon && icon.type !== 'emoji') {
+          if (
+            icon !== null &&
+            typeof icon === 'object' &&
+            'type' in icon &&
+            icon.type !== 'emoji'
+          ) {
             unsupportedTypes.add(type)
           }
         }
       }
       if (
-        type === 'callout' || type === 'table' || type === 'video' ||
-        type === 'audio' || type === 'file' || type === 'pdf'
-      ) requireTag(type, type)
+        type === 'callout' ||
+        type === 'table' ||
+        type === 'video' ||
+        type === 'audio' ||
+        type === 'file' ||
+        type === 'pdf'
+      )
+        requireTag(type, type)
       if (type === 'table_row') requireTag('tr', type)
       if (type === 'toggle') requireTag('details', type)
       visitRichText(node.block, type)
@@ -162,7 +176,7 @@ const classifyRenderedTypes = (opts: {
     ],
     lossyBlockTypes: [
       ...new Set([
-        ...(opts.completeness._tag === 'lossy' ? opts.completeness.lossyBlockTypes ?? [] : []),
+        ...(opts.completeness._tag === 'lossy' ? (opts.completeness.lossyBlockTypes ?? []) : []),
         ...missingTypes,
         ...unsupportedTypes,
       ]),

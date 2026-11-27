@@ -69,14 +69,17 @@ export interface RemoteMarkdownSnapshot {
  * Live observations already incorporate endpoint flags and type coverage.
  */
 export const remoteMarkdownCompleteness = (snapshot: RemoteMarkdownSnapshot): BodyCompleteness => {
-  return snapshot.completeness ?? classifyBodyCompleteness({
-    markdown: {
-      markdown: snapshot.markdown,
-      truncated: snapshot.truncated,
-      unknownBlockIds: snapshot.unknown_block_ids,
-    },
-    inventory: { entries: [] },
-  })
+  return (
+    snapshot.completeness ??
+    classifyBodyCompleteness({
+      markdown: {
+        markdown: snapshot.markdown,
+        truncated: snapshot.truncated,
+        unknownBlockIds: snapshot.unknown_block_ids,
+      },
+      inventory: { entries: [] },
+    })
+  )
 }
 
 /**
