@@ -1,7 +1,7 @@
 import { expect, it } from 'bun:test'
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import {
   editorPublicationIsolation,
@@ -18,6 +18,8 @@ import {
   gateScopeIdentity,
   isOnlyReapiUnavailable,
   resolveManagedInvocation,
+  stopOwnedEditorPublicationDaemon,
+  runOwnedEditorPublicationCommand,
   requireEditorPublicationInvocationOwner,
   runWithReaderCacheShadow,
   captureNativeStderr,
@@ -35,6 +37,71 @@ const withPublicationRoot = async (run: (cwd: string) => Promise<void>): Promise
     rmSync(cwd, { recursive: true, force: true })
   }
 }
+
+const publicationNative = (): string => {
+  const wrapper = process.env['BUCK2_BIN']
+  if (wrapper === undefined) throw new Error('BUCK2_BIN must name the declared pinned wrapper')
+  const native = join(dirname(dirname(realpathSync(wrapper))), 'libexec', 'buck2')
+  expect(existsSync(native)).toBe(true)
+  return native
+}
+
+it(
+  'retains the same real owner across pinned native startup, status and ExistingOnly stop',
+  () =>
+    withPublicationRoot(async (cwd) => {
+      const native = publicationNative()
+      writeFileSync(
+        join(cwd, '.buckconfig'),
+        '[cells]\nroot = .\n[buck2]\nfile_watcher = fs_hash_crawler\n',
+      )
+      const env = { ...process.env, GATE_SLOT_CLASS: '', BUCK2_GATE_WRAPPER_ACTIVE: undefined }
+      let released: Parameters<typeof requireEditorPublicationInvocationOwner>[0]['owner']
+      await withEditorPublicationOwner({
+        root: cwd,
+        run: async (owner) => {
+          released = owner
+          const options = {
+            native,
+            cwd,
+            env,
+            owner,
+            args: ['--isolation-dir', editorPublicationIsolation, 'status'],
+          }
+          try {
+            expect(stopOwnedEditorPublicationDaemon(options).status).toBe(0)
+            expect((await runOwnedEditorPublicationCommand(options)).stdout.trim()).toBe('')
+            const started = await runOwnedEditorPublicationCommand({
+              ...options,
+              args: ['--isolation-dir', editorPublicationIsolation, 'server'],
+            })
+            expect(started).toMatchObject({ exitCode: 0, signalCode: null })
+            const status = await runOwnedEditorPublicationCommand(options)
+            expect(status).toMatchObject({ exitCode: 0, signalCode: null })
+            expect(JSON.parse(status.stdout)).toMatchObject({
+              project_root: cwd,
+              isolation_dir: editorPublicationIsolation,
+            })
+            expect(stopOwnedEditorPublicationDaemon(options).status).toBe(0)
+            expect((await runOwnedEditorPublicationCommand(options)).stdout.trim()).toBe('')
+            expect(requireEditorPublicationInvocationOwner(options)).toBe(owner)
+            await expect(
+              runOwnedEditorPublicationCommand({
+                ...options,
+                args: ['--isolation-dir', 'v2', 'kill'],
+              }),
+            ).rejects.toThrow('reserved editor-publication')
+          } finally {
+            stopOwnedEditorPublicationDaemon(options)
+          }
+        },
+      })
+      expect(() =>
+        stopOwnedEditorPublicationDaemon({ native, cwd, env, owner: released! }),
+      ).toThrow()
+    }),
+  30000,
+)
 
 it('validates only a live process-local publication owner for reserved invocations', () =>
   withPublicationRoot(async (cwd) => {

@@ -104,6 +104,18 @@ describe('editor view authority production flow', () => {
         ownedPackages: ['packages/a'],
       })
       expect(JSON.parse(readFileSync(fixture.output, 'utf8'))).toEqual(authority)
+      const asyncAuthority = await writeEditorViewAuthority({
+        repoRoot: fixture.root,
+        workspaceRoot: fixture.root,
+        requiredPackages: ['packages/a'],
+        cell: 'effect_utils',
+        buck2: '/nix/store/test-buck2/bin/buck2',
+        git: '/nix/store/test-git/bin/git',
+        output: fixture.output,
+        runCommand: async (invocation) => runCommand(invocation),
+      })
+      expect(calls).toHaveLength(4)
+      expect(asyncAuthority).toEqual(authority)
     } finally {
       rmSync(fixture.root, { recursive: true, force: true })
     }
