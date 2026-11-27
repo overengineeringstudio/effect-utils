@@ -410,6 +410,13 @@ Writable claims invalidate measured accounting until a safe remeasure; new reser
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
 
+Pool operations acquire ROOT, then repository/container and directory pins, then short
+GLOBAL ledger epochs. `withPoolState` marks its callback fiber-local: canonical native
+lock, pin and root-lease acquisition/adoption refuse inside it, as does another epoch.
+Acquire physical resources before entering the callback; keep it to ledger reads/CAS
+and persistence. Unrelated fibers remain free to work, and failure/interruption does
+not turn the marker into a process-wide fence. These guards are not an IO sandbox.
+
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.

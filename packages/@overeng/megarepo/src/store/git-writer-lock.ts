@@ -10,6 +10,7 @@ import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
 
 import * as Observability from '../core/observability.ts'
+import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
 
 /** A failed lock acquisition is never downgraded to an unlocked write. */
 export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()(
@@ -122,6 +123,9 @@ const withGitLock =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
+      yield* requireOutsidePoolGlobal(
+        () => new GitWriterLockError({ path, cause: 'GLOBAL pool epoch cannot acquire native locks' }),
+      )
       const common =
         create === true
           ? yield* io(path)(async () => {

@@ -8,6 +8,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { withDeletionLease } from './store-deletion-lease.ts'
+import { requireOutsidePoolGlobal, withPoolGlobalEpoch } from './store-pool-lock-order.ts'
 
 /** Authoritative records: uncertain generations are never implicitly recovered. */
 export const PoolSlot = Schema.Struct({
@@ -199,6 +200,9 @@ export const withPoolState = <A, E, R>({
   limits?: { maxSlots: number; maxBytes: number }
 }) =>
   Effect.gen(function* () {
+    yield* requireOutsidePoolGlobal(
+      () => new PoolError({ message: 'GLOBAL pool epoch cannot acquire another epoch' }),
+    )
     const fs = yield* FileSystem.FileSystem
     yield* fs.makeDirectory(`${base}/.state/pool`, { recursive: true })
     const directory = yield* fs.realPath(`${base}/.state/pool`)
@@ -222,7 +226,7 @@ export const withPoolState = <A, E, R>({
         return yield* new PoolError({
           message: 'Pool limits are host-wide and immutable while records exist',
         })
-      return yield* use(state, (next) => persist({ path, state: next }))
+      return yield* use(state, (next) => persist({ path, state: next })).pipe(withPoolGlobalEpoch)
     }).pipe(withDeletionLease({ storeBasePath: base, ownerPath: directory, now: Date.now() }))
   })
 
