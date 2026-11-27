@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:9df0af48416cd2786fcb01bac93bd81a0e0bc8ad199f0b25bc71870a36160ce5",
+  "lockfileFingerprint": "sha256:93a87d02e92cddf1671ea038d1c046d8faa1127300b652388d6c7f537973189d",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -37,6 +37,33 @@
       "registryUrl": "https://registry.npmjs.org/@alchemy.run/sigil/-/sigil-0.1.0-alpha.1.tgz",
       "sha256": "9c6036a337852bcad5e71d02707519b4626591176371433a6023a5d55feb063d",
       "sizeBytes": 490145
+    },
+    "@automerge/automerge-repo-network-broadcastchannel@2.5.6": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-eHE8edlYRfwFnQ1JBKuAyxqKg7TNVFbloe5QgbM1CH8khAunLdeYJcpAAxWkPEU1iQOUjU5oLowDm7BQbsfEJw==",
+      "packageIdentity": "@automerge/automerge-repo-network-broadcastchannel@2.5.6",
+      "registryUrl": "https://registry.npmjs.org/@automerge/automerge-repo-network-broadcastchannel/-/automerge-repo-network-broadcastchannel-2.5.6.tgz",
+      "sha256": "86559fdc685c5aa3faafeb20e4ae0f1986b4ea7a94598971ea3f201f311fd363",
+      "sizeBytes": 4668
+    },
+    "@automerge/automerge-repo@2.5.6": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-ZXM6TOAwm192g3+zIxYvlB+Z3O00NP+psErOwvbSype8fFO+dhc8tB/jPwfZJqmn1ULUz5w7gssKEynwcYFRSA==",
+      "packageIdentity": "@automerge/automerge-repo@2.5.6",
+      "registryUrl": "https://registry.npmjs.org/@automerge/automerge-repo/-/automerge-repo-2.5.6.tgz",
+      "sha256": "a7de3b07a63c666d25e9e0bd454f60d2889f45d3d37290ae3304b0bfa0526338",
+      "sizeBytes": 216165
+    },
+    "@automerge/automerge@3.5.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-ejbqJWfXWM2QbTcUK/5ugYiQiyOP7LYVAp/RuSvthCc07oek0FClMxEuouuhjrLjVPDSI34RP1ftGc45PF7WRA==",
+      "packageIdentity": "@automerge/automerge@3.5.0",
+      "registryUrl": "https://registry.npmjs.org/@automerge/automerge/-/automerge-3.5.0.tgz",
+      "sha256": "7d0fbb66d3b91db1989b733bda1d6f0d441b6a5a7410741d3271321f8806feea",
+      "sizeBytes": 15195437
     },
     "@babel/code-frame@7.27.1": {
       "bins": {},
@@ -264,6 +291,60 @@
       "registryUrl": "https://registry.npmjs.org/@cacheable/utils/-/utils-2.5.0.tgz",
       "sha256": "243841e7a895205b7984be00bfd162aab703423d878a4837367e617033689a02",
       "sizeBytes": 53414
+    },
+    "@cbor-extract/cbor-extract-darwin-arm64@2.2.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-qpUy9Yoisi6a7QHOVa+AlnqfN7eVstSRhpLwiLnwi6i3SNLkM5D2Z7MXl4LC5nUGA77mZEt479cPH3u8GD163Q==",
+      "packageIdentity": "@cbor-extract/cbor-extract-darwin-arm64@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/@cbor-extract/cbor-extract-darwin-arm64/-/cbor-extract-darwin-arm64-2.2.3.tgz",
+      "sha256": "f34dc53286559d575e03ecbb5869ad5879ab7b1d37207ef6c660c81bfbcc200a",
+      "sizeBytes": 7261
+    },
+    "@cbor-extract/cbor-extract-darwin-x64@2.2.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-6bZbK7dyKn8BUNmG3UfzSnM4L/OzJ8xGAtBHYycprl+bgvtZmZoQC7CucWXuF/oHJP5skzqkqFr6BLSSGIkoWw==",
+      "packageIdentity": "@cbor-extract/cbor-extract-darwin-x64@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/@cbor-extract/cbor-extract-darwin-x64/-/cbor-extract-darwin-x64-2.2.3.tgz",
+      "sha256": "d28f1c402dc36b3668ea4c9f9b07b413f2a7f0a6fddbbb205bde1ac4e26232c1",
+      "sizeBytes": 4639
+    },
+    "@cbor-extract/cbor-extract-linux-arm64@2.2.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-QAuFuQkOw0cm4MNc+QwxH9aiMxmrczESnVEu33B8m2Du9fBuH/1AvJfmO8YajpeWLoHqt2iUG3d1/gIWAKY8IQ==",
+      "packageIdentity": "@cbor-extract/cbor-extract-linux-arm64@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/@cbor-extract/cbor-extract-linux-arm64/-/cbor-extract-linux-arm64-2.2.3.tgz",
+      "sha256": "abd7e8354aed56d6521a41abb33e0e8204b9201bd449a7e2eebeef32af1f8ba0",
+      "sizeBytes": 16571
+    },
+    "@cbor-extract/cbor-extract-linux-arm@2.2.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-joCovTc7uEYCL9XxdAJJpGIH7Vvc31Fi7vh3HnlY5zgkLSU/64WxYl5iUi/puE21qT3bmxMfOZEZUbnqVKeJTQ==",
+      "packageIdentity": "@cbor-extract/cbor-extract-linux-arm@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/@cbor-extract/cbor-extract-linux-arm/-/cbor-extract-linux-arm-2.2.3.tgz",
+      "sha256": "6f1fb53f25caaa97294d0183267367686c5950ab659e3e27d43fe587dc0668a0",
+      "sizeBytes": 9623
+    },
+    "@cbor-extract/cbor-extract-linux-x64@2.2.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-IQMPVLulOvFv9Had7J1idJyfQzsFamDVdjH37qW7suHI7mgO4w1Oo3MisL7AjnWARxo0/ZmEEQ3i81WA7y34Ug==",
+      "packageIdentity": "@cbor-extract/cbor-extract-linux-x64@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/@cbor-extract/cbor-extract-linux-x64/-/cbor-extract-linux-x64-2.2.3.tgz",
+      "sha256": "380d3ccc0c9b12a67422f18b1f508a9b89afa9dfa5bc209573d1e0392354940a",
+      "sizeBytes": 10683
+    },
+    "@cbor-extract/cbor-extract-win32-x64@2.2.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-fGFfq6F3l0GCoKOZeyjjm3q+NHO7jo8ILtQ93U3rYJOgG2BGLS/QmBdoFLNEsoWPjyxAS8svWhTyo73MTDawog==",
+      "packageIdentity": "@cbor-extract/cbor-extract-win32-x64@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/@cbor-extract/cbor-extract-win32-x64/-/cbor-extract-win32-x64-2.2.3.tgz",
+      "sha256": "0145dc4de3dbafc936ec46525744c069be798d2c148adc10b79ad2097017bff9",
+      "sizeBytes": 57996
     },
     "@csstools/css-tokenizer@3.0.4": {
       "bins": {},
@@ -1202,6 +1283,15 @@
       "registryUrl": "https://registry.npmjs.org/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-16.2.6.tgz",
       "sha256": "4375e20f9b9a1437397f7ad6ef68d272a6bfe77482d41ab8cf0c9088279fb637",
       "sizeBytes": 43693233
+    },
+    "@noble/hashes@1.8.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==",
+      "packageIdentity": "@noble/hashes@1.8.0",
+      "registryUrl": "https://registry.npmjs.org/@noble/hashes/-/hashes-1.8.0.tgz",
+      "sha256": "e8a765d92c04faaccba8776411c5038cb195f812ee629fce07e1d2e6aec80ea0",
+      "sizeBytes": 155326
     },
     "@noble/hashes@2.4.0": {
       "bins": {},
@@ -3963,6 +4053,15 @@
       "sha256": "9025508d9125eee531bbc49ce3ae560183975ad595f058c378bd56af4152fb16",
       "sizeBytes": 4199
     },
+    "base-x@4.0.1": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-uAZ8x6r6S3aUM9rbHGVOIsR15U/ZSc82b3ymnCPsT45Gk1DDvhDPdIgB5MrhirZWt+5K0EEPQH985kNqZgNPFw==",
+      "packageIdentity": "base-x@4.0.1",
+      "registryUrl": "https://registry.npmjs.org/base-x/-/base-x-4.0.1.tgz",
+      "sha256": "7337aca8f9517821781bc359cb5e6689c3b9879d2872fb1d09c05c05a5834421",
+      "sizeBytes": 4092
+    },
     "baseline-browser-mapping@2.11.20": {
       "bins": {
         "baseline-browser-mapping": "dist/cli.cjs"
@@ -4011,6 +4110,24 @@
       "registryUrl": "https://registry.npmjs.org/browserslist/-/browserslist-4.28.8.tgz",
       "sha256": "6cbf6cf3bcb0f8d436b0f8347a2b6c606e765f7705f859aa39d1e444300f884f",
       "sizeBytes": 18331
+    },
+    "bs58@5.0.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-r+ihvQJvahgYT50JD05dyJNKlmmSlMoOGwn1lCcEzanPglg7TxYjioQUYehQ9mAR/+hOSd2jRc/Z2y5UxBymvQ==",
+      "packageIdentity": "bs58@5.0.0",
+      "registryUrl": "https://registry.npmjs.org/bs58/-/bs58-5.0.0.tgz",
+      "sha256": "494077c405b7932e3ba1429d1bc0484d3375758afb885ae3d4413333fde94e86",
+      "sizeBytes": 3046
+    },
+    "bs58check@3.0.1": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-hjuuJvoWEybo7Hn/0xOrczQKKEKD63WguEjlhLExYs2wUBcebDC1jDNK17eEAD2lYfw82d5ASC1d7K3SWszjaQ==",
+      "packageIdentity": "bs58check@3.0.1",
+      "registryUrl": "https://registry.npmjs.org/bs58check/-/bs58check-3.0.1.tgz",
+      "sha256": "6ab5a775fbce6d4d76c64bd7be74d9fc7cc73fd653a7f4263c48de36a697e705",
+      "sizeBytes": 2393
     },
     "buffer-image-size@0.6.4": {
       "bins": {},
@@ -4074,6 +4191,26 @@
       "registryUrl": "https://registry.npmjs.org/capnweb/-/capnweb-0.12.0.tgz",
       "sha256": "60a689b1597482d8face8e8bdcdf347d49f367768f2afe1356da60fe0bc5b217",
       "sizeBytes": 664698
+    },
+    "cbor-extract@2.2.3": {
+      "bins": {
+        "download-cbor-prebuilds": "bin/download-prebuilds.js"
+      },
+      "classification": "public",
+      "integrity": "sha512-zTOCEYwiQDChj5DV/sUqccv3jhdZqbhymztwcrW2LncIG2fPPkb1ceK5rmr0bdtxzJCXoWzZ95shA+uaSH8cKw==",
+      "packageIdentity": "cbor-extract@2.2.3",
+      "registryUrl": "https://registry.npmjs.org/cbor-extract/-/cbor-extract-2.2.3.tgz",
+      "sha256": "14d607030f21fb6dbbc89c94fb0feec807f74d9b6d4a22c22e1a2077c9539448",
+      "sizeBytes": 4936
+    },
+    "cbor-x@1.6.9": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-TCT9XHLb4iPGQ99fpQjcTRncbus6cXHvSD/RY+bPrDACBCJKiQLmAM6r7/BgQcI5i+8h4gwp4vjfb6S6T8bPGw==",
+      "packageIdentity": "cbor-x@1.6.9",
+      "registryUrl": "https://registry.npmjs.org/cbor-x/-/cbor-x-1.6.9.tgz",
+      "sha256": "d647d73cc6e97744554f84d1ce0a0111f58633f6883f1e7c175ea10b27284924",
+      "sizeBytes": 508051
     },
     "chai@5.3.3": {
       "bins": {},
@@ -4568,6 +4705,15 @@
       "sha256": "c5adbd730a495a3c635bbae9ee5f693b95c7e13b395f7036efab8232c5f0640f",
       "sizeBytes": 9542
     },
+    "eventemitter3@5.0.4": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==",
+      "packageIdentity": "eventemitter3@5.0.4",
+      "registryUrl": "https://registry.npmjs.org/eventemitter3/-/eventemitter3-5.0.4.tgz",
+      "sha256": "21d4a36175672b9e6640c39a68613af73f9a4c47a4a4da39993e8cd085564eb6",
+      "sizeBytes": 12133
+    },
     "expect-type@1.4.0": {
       "bins": {},
       "classification": "public",
@@ -4594,6 +4740,15 @@
       "registryUrl": "https://registry.npmjs.org/extend/-/extend-3.0.2.tgz",
       "sha256": "1d91d0b0faa50cba223fa937c7b5a4a662968b1d78b3e59dca5c917dd5cf72b2",
       "sizeBytes": 7258
+    },
+    "fast-check@4.10.3": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-SBaU6nhh+sXxb05r2IHAKfxnR/1Pu6MqtHYaewM1BY6V5xzOxOk+4yoWO7WfeeyZG1iArFE6/DO/7iLYMUuOJg==",
+      "packageIdentity": "fast-check@4.10.3",
+      "registryUrl": "https://registry.npmjs.org/fast-check/-/fast-check-4.10.3.tgz",
+      "sha256": "99deb0f3995d44101b5c58ca9c544ca247cd124222db0db7172a8c2b4e1748f4",
+      "sizeBytes": 337334
     },
     "fast-deep-equal@3.1.3": {
       "bins": {},
@@ -4630,6 +4785,15 @@
       "registryUrl": "https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz",
       "sha256": "bb4b50306b8b0f048475efddae11810e245937dca8ae85498ab4a171697bbf3c",
       "sizeBytes": 3699
+    },
+    "fast-sha256@1.3.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==",
+      "packageIdentity": "fast-sha256@1.3.0",
+      "registryUrl": "https://registry.npmjs.org/fast-sha256/-/fast-sha256-1.3.0.tgz",
+      "sha256": "4f897ea2594dc9cfb1250e7d4d0f65b4f105952a802fff2d06990bf1dc2c84f6",
+      "sizeBytes": 9135
     },
     "fast-uri@3.1.9": {
       "bins": {},
@@ -5764,6 +5928,19 @@
       "sha256": "b10455d15a977c0cd17a1cb0eb679e03d939f8ef8d4302eb33e1f78dacc71f82",
       "sizeBytes": 60031
     },
+    "node-gyp-build-optional-packages@5.1.1": {
+      "bins": {
+        "node-gyp-build-optional-packages": "bin.js",
+        "node-gyp-build-optional-packages-optional": "optional.js",
+        "node-gyp-build-optional-packages-test": "build-test.js"
+      },
+      "classification": "public",
+      "integrity": "sha512-+P72GAjVAbTxjjwUmwjVrqrdZROD4nf8KgpBoDxqXXTiYZZt/ud60dE5yvCSr9lRO8e8yv6kgJIC0K0PfZFVQw==",
+      "packageIdentity": "node-gyp-build-optional-packages@5.1.1",
+      "registryUrl": "https://registry.npmjs.org/node-gyp-build-optional-packages/-/node-gyp-build-optional-packages-5.1.1.tgz",
+      "sha256": "623a94073d3ec090418ff5dd465448b692cdb6bfe3ffe277692a43c1ccffeaac",
+      "sizeBytes": 5507
+    },
     "node-pty@1.1.0": {
       "bins": {},
       "classification": "public",
@@ -6061,6 +6238,15 @@
       "registryUrl": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
       "sha256": "e4ce59f9fbac44349abab87279ab658f6b4614916bec5e088ae3be9323e193bb",
       "sizeBytes": 7603
+    },
+    "pure-rand@8.4.2": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==",
+      "packageIdentity": "pure-rand@8.4.2",
+      "registryUrl": "https://registry.npmjs.org/pure-rand/-/pure-rand-8.4.2.tgz",
+      "sha256": "3ce449c758cb2ea0db7ff30a1b378d381d9e74681acec74e1e2591ea6aa381ca",
+      "sizeBytes": 15060
     },
     "qified@0.10.1": {
       "bins": {},
@@ -6839,6 +7025,17 @@
       "sha256": "4f003b4c39114ca6a6989033ae2013a583fbd4073ee40badb7dd9cbacc1af3ae",
       "sizeBytes": 4198
     },
+    "uuid@9.0.1": {
+      "bins": {
+        "uuid": "dist/bin/uuid"
+      },
+      "classification": "public",
+      "integrity": "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==",
+      "packageIdentity": "uuid@9.0.1",
+      "registryUrl": "https://registry.npmjs.org/uuid/-/uuid-9.0.1.tgz",
+      "sha256": "9fa6f415a7d9f7f8ea48e45beeb567686261da85cd395901c54c3515589e3f7e",
+      "sizeBytes": 23487
+    },
     "vfile-message@4.0.3": {
       "bins": {},
       "classification": "public",
@@ -6982,6 +7179,15 @@
       "sha256": "ec05eccfe8c35a04ff19eddf30eeb3f96fc66f5dbe0f094e7c26a52fb69c2bdf",
       "sizeBytes": 207515
     },
+    "xstate@5.33.4": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-eGNMu3BNqU0Z85P+ouYG5OCZqIABU+QsW6vUieFt9p9gOGs3C+BL10Exg7XdRPSXPQKlP6XoYpYf93r9VmW8mQ==",
+      "packageIdentity": "xstate@5.33.4",
+      "registryUrl": "https://registry.npmjs.org/xstate/-/xstate-5.33.4.tgz",
+      "sha256": "5a5d81eff120afe8c943b74bd1de163f042a82a00141cdc3e3c52655e7cc4f21",
+      "sizeBytes": 488862
+    },
     "yallist@3.1.1": {
       "bins": {},
       "classification": "public",
@@ -7051,5 +7257,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:97aeb6c6b2db3d3d176b8c8b9c2114d96c2b9979274da70c8ff7a8c38115f8a1"
+  "fingerprint": "sha256:bb05a02d5d0ff1c1d04181e7dc4015d662fb0cc921ed531df5cc5af215d0e4ae"
 }

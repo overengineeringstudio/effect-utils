@@ -1,0 +1,26 @@
+[package]
+name = "games-iroh-wasm"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+iroh = { version = "1.5.0", default-features = false, features = ["tls-ring"] }
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "0.4.80"
+js-sys = "0.3"
+n0-future = "0.3.2"
+console_error_panic_hook = "0.1"
+tokio = { version = "1", default-features = false, features = ["sync"] }
+anyhow = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

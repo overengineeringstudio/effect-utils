@@ -26,6 +26,10 @@ clean_lock="$tmp_dir/clean.yaml"
 cat >"$clean_lock" <<'YAML'
 lockfileVersion: '9.0'
 packages:
+  cbor-extract@2.2.3: {}
+  '@cbor-extract/cbor-extract-linux-x64@2.2.3':
+    cpu: [x64]
+    os: [linux]
   '@rollup/rollup-linux-x64-gnu@4.60.2':
     cpu: [x64]
     os: [linux]
@@ -51,6 +55,7 @@ dirty_lock="$tmp_dir/dirty.yaml"
 cat >"$dirty_lock" <<'YAML'
 lockfileVersion: '9.0'
 packages:
+  cbor-extract@2.2.3: {}
   '@rollup/rollup-linux-x64-gnu@4.60.2':
     cpu: [x64]
     os: [linux]
@@ -72,6 +77,7 @@ missing_lock="$tmp_dir/missing.yaml"
 cat >"$missing_lock" <<'YAML'
 lockfileVersion: '9.0'
 packages:
+  cbor-extract@2.2.3: {}
   '@rollup/rollup-linux-x64-gnu@4.60.2':
     cpu: [x64]
     os: [linux]
