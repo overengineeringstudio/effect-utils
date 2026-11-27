@@ -849,6 +849,9 @@ boundaries are:
   "shared" means shared between that script's fixtures, not between scripts.
   Smoke installs use private homes and fake providers; no repository install
   or repository node_modules mutation is scheduled.
+  Shared-store pnpm subprocesses use the managed install umask helper, preserving
+  their caller's umask. An explicit `0077` caller exercises auto import alongside
+  the existing forced-hardlink, reflink, mutation, and concurrent install proofs.
   The shared-store reuse proof reports the failing command and line, pinned
   pnpm version, fixture store paths, and pnpm logs before fixture cleanup.
   Diagnostics preserve the original nonzero exit; they do not normalize
