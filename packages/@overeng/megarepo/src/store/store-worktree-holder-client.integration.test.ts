@@ -93,8 +93,8 @@ describe('fixed holder client boundaries (not native authentication qualificatio
         [lowerBootNs - 1n, lowerBootNs + 30_000_000_000n - 1n, true],
         [upperBootNs, upperBootNs + 30_000_000_000n, false],
         [lowerBootNs + 1n, lowerBootNs + 30_000_000_000n + 1n, false],
-        [lowerBootNs, upperBootNs, false],
-        [lowerBootNs, upperBootNs + 1n, true],
+        [95_000_000_000n, upperBootNs, false],
+        [95_000_000_000n, upperBootNs + 1n, true],
       ]
       for (const [finishedBootNs, expiresBootNs, expected] of cases) {
         const startedBootNs = String(expiresBootNs - 30_000_000_000n)
