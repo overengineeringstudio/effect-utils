@@ -257,6 +257,10 @@ once and, when present, write one terminal byte before closing it. This is not
 transferable lock authority. The cancellation helper joins callback cleanup on
 interruption. These APIs are additive; legacy production ownership is unchanged.
 
+Finite publication fixtures use declared `EDITOR_VIEW_SUPERVISOR_CP_BIN`,
+an immutable wrapper that waits on an explicit test FIFO before executing
+real coreutils `cp`. Production `CP_BIN` and ordinary copies are unchanged.
+
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
