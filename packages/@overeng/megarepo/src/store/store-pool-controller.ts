@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Effect, Exit, Schema, Semaphore, Stream } from 'effect'
+import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -34,6 +35,9 @@ export const PoolControllerConfig = Schema.Struct({
   devenvProvider: Nonempty.check(Schema.isPattern(/^\/nix\/store\/[^/]+\/.+$/u)),
   prewarmTasks: Schema.Array(Task),
   buckMaxBytes: Schema.Number.check(Schema.makeFilter((n) => Number.isSafeInteger(n) && n >= 0)),
+  maxIoPsiAvg60: Schema.optional(Schema.Number.check(
+    Schema.makeFilter((n) => Number.isFinite(n) && n > 0 && n <= 100),
+  )),
 })
 export type PoolControllerConfig = typeof PoolControllerConfig.Type
 export const PoolControllerRequest = Schema.Union([
@@ -168,6 +172,7 @@ export const makePoolController = (config: PoolControllerConfig, base: AbsoluteD
   })
 
   const dispatch = (request: PoolControllerRequest) => Effect.gen(function* () {
+    const started = performance.now()
     yield* requireOutsidePoolGlobal(hold)
     if (request.operation === 'warm') {
       const slot = yield* warmPoolRoot({ ...config, base })
@@ -186,19 +191,52 @@ export const makePoolController = (config: PoolControllerConfig, base: AbsoluteD
             yield* assertWorktreeHolderEvidenceFresh(evidence.response)
             return yield* finishPoolClaim({ state, intent, identity, owner: intent.owner, actor: evidence.actor })
           })))
+          const claimedAt = performance.now()
           const execution = yield* run(claimed, request.tasks)
+          const taskFinishedAt = performance.now()
           yield* drain(claimed)
           const completed = yield* prove(claimed, true, (evidence) => saveCandidate(claimed, (state) => Effect.gen(function* () {
             yield* assertWorktreeHolderEvidenceFresh(evidence.response)
             return yield* completePoolUse({ state, expected: claimed, token: claimed.token,
               outcome: Exit.isSuccess(execution) ? 'success' : 'failure' })
           })))
-          return { id: completed.id, state: completed.state, generation: completed.generation, success: Exit.isSuccess(execution) }
+          return {
+            id: completed.id, state: completed.state, generation: completed.generation, success: Exit.isSuccess(execution),
+            timings: {
+              claimMs: claimedAt - started,
+              taskMs: taskFinishedAt - claimedAt,
+              completionMs: performance.now() - taskFinishedAt,
+            },
+          }
         }),
       )
     }).pipe(withStoreWorktreeLease({ storeBasePath: base, ownerPath: slot.path, bareRepoPath: slot.bare,
       persistentLease: { ownerPath: slot.path, token: slot.barrierToken,
         leasePath: deletionLeasePath({ storeBasePath: base, ownerPath: slot.path }) } }), withPoolRootActionLock(slot.path))
   })
-  return { execute: (request: PoolControllerRequest) => dispatch(request).pipe(gate.withPermits(1)) }
+  // Admission and live cancellation use the kernel's actual some/avg60 sample.
+  // No pressure configuration means no probe; configured missing/malformed data
+  // is refusal, never zero pressure. The interval is resource monitoring, not a
+  // lock, child-completion or quiescence proof.
+  const pressure = Effect.gen(function* () {
+    const maximum = config.maxIoPsiAvg60
+    if (maximum === undefined) return
+    const fs = yield* FileSystem.FileSystem
+    const contents = yield* fs.readFileString('/proc/pressure/io').pipe(
+      Effect.mapError(() => new PoolError({ message: 'Configured IO pressure sample unavailable; retained HOLD' })),
+    )
+    const line = contents.split('\n').find((value) => value.startsWith('some '))
+    const sample = /^some avg10=\d+(?:\.\d+)? avg60=(\d+(?:\.\d+)?) avg300=\d+(?:\.\d+)? total=\d+$/u.exec(line ?? '')
+    const avg60 = sample?.[1] === undefined ? Number.NaN : Number(sample[1])
+    if (!Number.isFinite(avg60) || avg60 < 0 || avg60 > 100 || avg60 >= maximum)
+      return yield* new PoolError({ message: 'Configured IO pressure limit reached or sample malformed; retained HOLD' })
+  })
+  return { execute: (request: PoolControllerRequest) => Effect.gen(function* () {
+    yield* pressure
+    if (config.maxIoPsiAvg60 === undefined) return yield* dispatch(request)
+    const monitor = Effect.sleep('1 second').pipe(Effect.andThen(pressure), Effect.forever)
+    // raceFirst interrupts the request and awaits its finalizers, including the
+    // exact child-scope stop, before returning a pressure failure.
+    return yield* Effect.raceFirst(dispatch(request), monitor)
+  }).pipe(gate.withPermits(1)) }
 })

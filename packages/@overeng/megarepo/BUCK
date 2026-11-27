@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b9639e8f10ded5ddba051fe8b6b7bd8642bbe69de92bccb99642a3da11501585
+# Semantic fingerprint: sha256:d6721e96e88ff0cc392e5d4a5d7bb4c7709d891ae40b96d89403ac6fdce134ee
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -295,6 +295,7 @@ export_materialization_inputs([
     "src/store/store-pool-lock-order.integration.test.ts",
     "src/store/store-pool-lock-order.ts",
     "src/store/store-pool-preparation.ts",
+    "src/store/store-pool-preparation.unit.test.ts",
     "src/store/store-pool-retarget.ts",
     "src/store/store-pool-retarget.unit.test.ts",
     "src/store/store-pool-roots.integration.test.ts",
@@ -652,6 +653,7 @@ package_view(
         "src/store/store-pool-lock-order.integration.test.ts": "src/store/store-pool-lock-order.integration.test.ts",
         "src/store/store-pool-lock-order.ts": "src/store/store-pool-lock-order.ts",
         "src/store/store-pool-preparation.ts": "src/store/store-pool-preparation.ts",
+        "src/store/store-pool-preparation.unit.test.ts": "src/store/store-pool-preparation.unit.test.ts",
         "src/store/store-pool-retarget.ts": "src/store/store-pool-retarget.ts",
         "src/store/store-pool-retarget.unit.test.ts": "src/store/store-pool-retarget.unit.test.ts",
         "src/store/store-pool-roots.integration.test.ts": "src/store/store-pool-roots.integration.test.ts",
@@ -1011,6 +1013,7 @@ package_view(
         "src/store/store-pool-lock-order.integration.test.ts": "src/store/store-pool-lock-order.integration.test.ts",
         "src/store/store-pool-lock-order.ts": "src/store/store-pool-lock-order.ts",
         "src/store/store-pool-preparation.ts": "src/store/store-pool-preparation.ts",
+        "src/store/store-pool-preparation.unit.test.ts": "src/store/store-pool-preparation.unit.test.ts",
         "src/store/store-pool-retarget.ts": "src/store/store-pool-retarget.ts",
         "src/store/store-pool-retarget.unit.test.ts": "src/store/store-pool-retarget.unit.test.ts",
         "src/store/store-pool-roots.integration.test.ts": "src/store/store-pool-roots.integration.test.ts",
@@ -1365,6 +1368,7 @@ package_view(
         "src/store/store-pool-lock-order.integration.test.ts": "src/store/store-pool-lock-order.integration.test.ts",
         "src/store/store-pool-lock-order.ts": "src/store/store-pool-lock-order.ts",
         "src/store/store-pool-preparation.ts": "src/store/store-pool-preparation.ts",
+        "src/store/store-pool-preparation.unit.test.ts": "src/store/store-pool-preparation.unit.test.ts",
         "src/store/store-pool-retarget.ts": "src/store/store-pool-retarget.ts",
         "src/store/store-pool-retarget.unit.test.ts": "src/store/store-pool-retarget.unit.test.ts",
         "src/store/store-pool-roots.integration.test.ts": "src/store/store-pool-roots.integration.test.ts",

@@ -666,6 +666,11 @@ an immutable `buck2Provider` and nonempty normal root-owned `prepareTasks`.
 Buck-owned roots bind the canonical immutable Nix capability cell, source/config
 and raw HEAD history, not invented GVS paths. They do not enable pnpm materialization.
 
+When configured, `maxIoPsiAvg60` is a strict live ceiling for Linux IO `some avg60`.
+Set it to `10` on hosts prioritizing another workload. Unavailable pressure, or a
+sample at/above the ceiling, refuses work and interrupts an active request through
+its normal scoped finalizers; pressure is sampled every second.
+
 ```bash
 systemctl --user start mr-pool@INSTANCE.service
 mr store pool warm --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock"
@@ -684,6 +689,12 @@ uses the existing native Buck owner's exact isolation cleanup, never a recursive
 pool remover. Fresh native holder/pin/source proofs remain required at every
 transition; unsupported nonleader references are not waived. No default workspace
 adapter or root-retirement writer is enabled by these commands.
+
+Successful `run` responses include monotonic `timings.claimMs`, `taskMs`, and
+`completionMs`: acquisition (including native proof), actual task execution, and
+the drain/completion proof. Compare acquisition with a fresh root prepared under
+the same commit, provider and task configuration; report shared store disk
+separately rather than attributing it to each root.
 
 ### Process activity snapshot
 
