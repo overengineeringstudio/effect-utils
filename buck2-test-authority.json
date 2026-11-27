@@ -1601,6 +1601,7 @@
       "selectedTestFiles": [
         "src/adversarial-footgun.unit.test.ts",
         "src/batch-common-ancestor.unit.test.ts",
+        "src/body-completeness.unit.test.ts",
         "src/body-facade.unit.test.ts",
         "src/canonical-markdown.test.ts",
         "src/canonicalizer.unit.test.ts",
@@ -1641,6 +1642,7 @@
       "testFiles": [
         "src/adversarial-footgun.unit.test.ts",
         "src/batch-common-ancestor.unit.test.ts",
+        "src/body-completeness.unit.test.ts",
         "src/body-facade.unit.test.ts",
         "src/canonical-markdown.test.ts",
         "src/canonicalizer.unit.test.ts",

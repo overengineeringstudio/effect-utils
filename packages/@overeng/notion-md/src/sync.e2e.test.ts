@@ -915,6 +915,38 @@ describe('notion-md e2e prototype', () => {
     })
   })
 
+  it.each(['callout', 'table', 'paragraph'])(
+    'refuses %s type loss before adoption, status/noop, or sync even with complete API flags',
+    async (blockType) => {
+      await withTempDir(async (dir) => {
+        const markdown = 'An unchanged but flattened projection.'
+        const path = join(dir, 'type-loss.nmd')
+        const clean = new FakeNotion([{ pageId, title: 'Doc', markdown }])
+        const lossy = new FakeNotion([
+          {
+            pageId,
+            title: 'Doc',
+            markdown,
+            completeness: {
+              _tag: 'lossy',
+              reasons: ['rendered_markdown_missing_types'],
+              lossyBlockTypes: [blockType],
+            },
+          },
+        ])
+        await expect(runWithFake(pullPage({ pageId, outPath: path }), lossy)).rejects.toThrow(
+          blockType,
+        )
+        await expect(readFile(path, 'utf8')).rejects.toThrow()
+        await runWithFake(trackPage({ pageId, outPath: path, source: 'shared' }), clean)
+        await expect(runWithFake(statusPage({ path }), lossy)).rejects.toThrow(`page ${pageId}`)
+        await expect(runWithFake(syncPage({ path }), lossy)).rejects.toThrow(blockType)
+        await expect(runWithFake(pushPage({ path }), lossy)).rejects.toThrow(blockType)
+        expect(lossy.updateMarkdownCalls).toHaveLength(0)
+      })
+    },
+  )
+
   // R38 / #785: a renderable-but-not-round-trip-safe block (table_of_contents,
   // synced_block, bookmark, child_database, …) renders to Markdown that Notion
   // re-parses as a paragraph on push. The classifier must flag it so the pull
