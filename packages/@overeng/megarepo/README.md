@@ -540,6 +540,19 @@ upgrading it requires requalifying its GVS install/prune behavior. Approved cach
 collectors take the matching EXCLUSIVE maintenance lease. Raw native `pnpm store
 prune`, like direct `rm`, is outside this cooperative contract and must not run.
 
+`withQualifiedPoolInstall({ base, path, commit, qualification })(use)` holds the
+existing SHARED Store Cache maintenance lease through the normal healthy doctor,
+immutable provider version query and complete USE effect. Its required qualification
+tuple is the canonical unversioned `storeCacheRoot`, exact immutable `pnpmProvider`
+and audited exact `pnpmVersion` (12.17.0 or 12.23.0). Obtain it from that root's normal
+install/check qualification; decoding its shape is not qualification evidence.
+Unknown versions, aliases, mismatched paths and missing/old/unhealthy doctor fields
+refuse USE without a fallback. Provider upgrades require source-behavior and native
+requalification, never a minor/patch drift window. Callers still need normal admission,
+continuous ROOT/claim/pin and source/history/all-UID authority, with child completion
+inside the scope. Raw native `pnpm store prune` and direct `rm` bypass this cooperative
+contract. This scope does not enable default adapters or authorize reset/removal.
+
 `readPoolProvenance({ base })` observes an existing ledger through the same canonical
 decoder and accounting checks, without initialization, repair, locking or writes.
 Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
