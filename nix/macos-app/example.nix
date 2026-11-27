@@ -100,7 +100,7 @@ let
       ];
     }
   );
-  childrenProduct = import ../permissions-host { inherit pkgs nixpkgsRevision; } {
+  childrenProductFor = launchdExtra: guiExtra: import ../permissions-host { inherit pkgs nixpkgsRevision; } {
     name = "SupervisedHost";
     bundleId = "dev.example.supervised-host";
     displayName = "Supervised Host";
@@ -111,11 +111,36 @@ let
     enabledGrants = [ ];
     policyFiles = [ childrenPolicy ];
     enableExampleChildren = true;
+    launchd = { label = "dev.example.supervised-host"; extra = launchdExtra; };
+    guiLaunchd = { label = "dev.example.supervised-host.gui"; extra = guiExtra; };
     helpers = {
       headless-worker.executable = "${childHelper}/bin/example-child";
       session-worker.executable = "${childHelper}/bin/example-child";
     };
   };
+  exampleResources = {
+    Nice = 5;
+    SoftResourceLimits.NumberOfFiles = 256;
+    HardResourceLimits.NumberOfFiles = 256;
+  };
+  childrenProduct = childrenProductFor exampleResources exampleResources;
+  rejectedJobPolicies = [
+    { Nice = 20; }
+    { Nice = -21; }
+    { Nice = "5"; }
+    { SoftResourceLimits.NumberOfFiles = 0; }
+    { HardResourceLimits.NumberOfFiles = -1; }
+    { SoftResourceLimits.NumberOfFiles = "256"; }
+    { HardResourceLimits = { NumberOfFiles = 256; CPU = 1; }; }
+    { SoftResourceLimits.NumberOfFiles = 512; HardResourceLimits.NumberOfFiles = 256; }
+    { UserName = "root"; }
+    { GroupName = "wheel"; }
+    { UnknownJobOverride = true; }
+  ];
+  resourcePolicyRejections = pkgs.lib.all (extra:
+    !(builtins.tryEval ((childrenProductFor extra { }).ctlConfig.drvPath)).success
+    && !(builtins.tryEval ((childrenProductFor { } extra).ctlConfig.drvPath)).success
+  ) rejectedJobPolicies;
   payload =
     text:
     pkgs.writeShellScript "synthetic-payload" ''
@@ -321,7 +346,14 @@ let
       path = childrenProduct.ctl;
     }
   ];
-  check = pkgs.runCommand "macos-app-host-stability" { } ''
+  check = assert resourcePolicyRejections; pkgs.runCommand "macos-app-host-stability" {
+    nativeBuildInputs = [ pkgs.jq ];
+  } ''
+    jq -e '.launchd.Nice == 5 and .guiLaunchd.Nice == 5
+      and .launchd.SoftResourceLimits.NumberOfFiles == 256
+      and .launchd.HardResourceLimits.NumberOfFiles == 256
+      and .guiLaunchd.SoftResourceLimits.NumberOfFiles == 256
+      and .guiLaunchd.HardResourceLimits.NumberOfFiles == 256' ${childrenProduct.ctlConfig}
     test ${pkgs.lib.escapeShellArg first.hostAppBundle} = '${first.hostApp}/SyntheticHost.app'
     test ${pkgs.lib.escapeShellArg first.appBundleName} = 'Synthetic Host.app'
     cmp ${pkgs.lib.escapeShellArg "${first.hostAppBundle}/Contents/MacOS/macos-app-host"} \
