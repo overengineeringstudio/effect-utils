@@ -473,6 +473,18 @@ and execution provenance missing from v1 remain explicitly Missing. Tokens and
 nonces are not exported. Every observation is HOLD with `authorizesRemoval: false`;
 Hygiene remains the sole remover, and physical/removal integration stays off.
 
+Disposable ignored outputs belong only to fresh reserved UUID physical roots.
+`reserveFreshPoolRoot` records that origin; existing, adopted and legacy roots
+cannot acquire it implicitly. `markPoolRootAuthored` must finish durably under the
+ROOT action fence BEFORE any in-place authoring/promotion writes; it permanently
+quarantines that root. Copy-style promotion creates a different canonical root and
+does not author the untouched source slot. `requireDisposablePoolRoot` refuses
+authored, missing or rebound provenance; fresh Git/GVS/lease/holder proofs are still
+required before reset. This is not a general permission to discard ignored files.
+The optional ledger field preserves old records as unknown/HOLD; an older writer
+that drops it loses eligibility, never restores disposable authority. Read-only
+observations remain HOLD, including when this recorded origin is present.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
