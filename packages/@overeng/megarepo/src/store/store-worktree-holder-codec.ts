@@ -66,10 +66,14 @@ const Reference = Schema.Struct({
   identity: Identity,
   effect: Schema.Literals(['in-use', 'retained-bytes']),
   fd: Schema.NullOr(U32),
+  /** Native descriptor-table AND corresponding OFD proof, bound to these task generations.
+   * Schema validation alone does not authenticate the proof or grant a pin exemption. */
+  leaderFdAlias: Schema.optionalKey(Schema.Literal(true)),
 }).check(
   Schema.makeFilter(
     (h) =>
       (h.reference === 'fd') === (h.fd !== null) &&
+      (h.leaderFdAlias === undefined || (h.reference === 'fd' && h.tid !== h.tgid)) &&
       !(
         h.effect === 'retained-bytes' &&
         (h.reference === 'root' || h.reference === 'cwd' || h.reference === 'mount')

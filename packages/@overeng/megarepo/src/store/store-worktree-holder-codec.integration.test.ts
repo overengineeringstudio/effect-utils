@@ -104,6 +104,59 @@ describe('unbound worktree holder wire schema', () => {
           yield* Effect.flip(decode(invalid))
       }).pipe(withTestCtx(test)),
   )
+
+  it.effect(
+    'accepts only literal true nonleader FD aliases, preserving absent-field evidence',
+    (test) =>
+      Effect.gen(function* () {
+        const stdout = (yield* fixtures)[2]!
+        const original = yield* decode(stdout)
+        const leader = { ...original.roots[0]!.references[0]!, tid: 41, tgid: 41 }
+        const thread = { ...leader, tid: 42, taskStart: '101' }
+        const wire = (ref: unknown) =>
+          encodeJson({
+            ...original,
+            roots: [{ ...original.roots[0]!, references: [ref] }],
+          })
+        for (const ref of [leader, thread, { ...thread, leaderFdAlias: true }]) {
+          const text = wire(ref)
+          expect(yield* decode(text)).toEqual(untypedJson(text))
+          expect(yield* decodeWorktreeHolderEvidence({ ...context, stdout: text })).toEqual(
+            untypedJson(text),
+          )
+        }
+        const alias = { ...thread, leaderFdAlias: true }
+        for (const ref of [
+          { ...alias, leaderFdAlias: false },
+          { ...alias, leaderFdAlias: null },
+          { ...alias, leaderFdAlias: 1 },
+          { ...alias, leaderFdAlias: 'true' },
+          { ...alias, leaderFdAlias: {} },
+          { ...alias, leaderFdAlias: [] },
+          { ...leader, leaderFdAlias: true },
+          { ...alias, fd: null },
+          { ...alias, fd: -1 },
+          { ...alias, fd: 4294967296 },
+          { ...alias, fd: '7' },
+          { ...alias, reference: 'root', fd: null },
+          { ...alias, reference: 'cwd', fd: null },
+          { ...alias, reference: 'mount', fd: null },
+          { ...alias, reference: 'exe', fd: null },
+          { ...alias, reference: 'map', fd: null },
+          { ...alias, taskStart: '0' },
+          { ...alias, taskStart: 101 },
+          { ...alias, leaderStart: '0' },
+          { ...alias, tid: 0 },
+          { ...alias, unknownAlias: true },
+        ]) {
+          yield* Effect.flip(decode(wire(ref)))
+          const error = yield* Effect.flip(
+            decodeWorktreeHolderEvidence({ ...context, stdout: wire(ref) }),
+          )
+          expect(error.message).toBe('Worktree holder evidence unavailable')
+        }
+      }).pipe(withTestCtx(test)),
+  )
 })
 
 describe('trusted worktree holder codec', () => {

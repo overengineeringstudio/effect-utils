@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
 import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 import { NodeStream } from '@effect/platform-node'
 import { Clock, Context, Effect, Layer, Option, Schedule, Schema, Stream } from 'effect'
@@ -10,6 +10,7 @@ import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
 
 import * as Observability from '../core/observability.ts'
+import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
 
 /** A failed lock acquisition is never downgraded to an unlocked write. */
 export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()(
@@ -112,28 +113,43 @@ const withGitLock =
   ({
     path,
     create = false,
+    siblingControl = false,
     containerMode,
+    controlName,
     onContention = Effect.void,
   }: {
     readonly path: string
     readonly create?: boolean
+    readonly siblingControl?: boolean
     readonly containerMode?: 'shared' | 'exclusive'
+    readonly controlName?: string
     readonly onContention?: Effect.Effect<void>
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
+      yield* requireOutsidePoolGlobal(
+        () =>
+          new GitWriterLockError({ path, cause: 'GLOBAL pool epoch cannot acquire native locks' }),
+      )
       const common =
-        create === true
-          ? yield* io(path)(async () => {
-              try {
-                return await realpath(path)
-              } catch (cause) {
-                if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
-                return resolve(await realpath(dirname(resolve(path))), basename(path))
-              }
-            })
-          : yield* resolveGitCommonDir(path)
-      const lockPath = `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
+        siblingControl === true
+          ? yield* io(path)(async () =>
+              resolve(await realpath(dirname(resolve(path))), basename(path)),
+            )
+          : create === true
+            ? yield* io(path)(async () => {
+                try {
+                  return await realpath(path)
+                } catch (cause) {
+                  if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
+                  return resolve(await realpath(dirname(resolve(path))), basename(path))
+                }
+              })
+            : yield* resolveGitCommonDir(path)
+      const lockPath =
+        controlName === undefined
+          ? `${common}.${containerMode === undefined ? 'mr-writer' : 'mr-container'}.lock`
+          : resolve(common, controlName)
       const native = yield* io(lockPath)(() => (flockLibrary ??= loadFlock()))
       return yield* Effect.scoped(
         Effect.gen(function* () {
@@ -209,6 +225,37 @@ const withGitLock =
 /** Exclusive Git-writer admission, retained by spawned writer descendants. */
 export const withGitWriterLock = ({ path, create = false }: { path: string; create?: boolean }) =>
   withGitLock({ path, create })
+
+/**
+ * Exclusive physical pool-root action fence, independent of its persistent deletion barrier.
+ * The control inode is a sibling, never reset with the root. Acquire ROOT before container/pins
+ * and short GLOBAL epochs. This grants neither Git writer admission nor removal authority.
+ */
+export const withPoolRootActionLock = (root: string) =>
+  withGitLock({
+    path: `${resolve(root)}.mr-pool-operation`,
+    siblingControl: true,
+    containerMode: 'exclusive',
+  })
+/** Cooperative Store Cache reader admission, scoped to the complete use effect. */
+export const withPnpmStoreCacheReadLease =
+  ({ storeCacheRoot }: { readonly storeCacheRoot: string }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.suspend(() =>
+      isAbsolute(storeCacheRoot) === false
+        ? Effect.fail(
+            new GitWriterLockError({
+              path: storeCacheRoot,
+              cause: 'Expected the canonical absolute Store Cache root',
+            }),
+          )
+        : withGitLock({
+            path: storeCacheRoot,
+            create: true,
+            controlName: '.effect-utils-pnpm-store-cache-maintenance.lock',
+            containerMode: 'shared',
+          })(effect),
+    )
 
 /** Per-commit-tree preparation admission, independent of repository Git writers. */
 export const withCommitTreePreparationLock =

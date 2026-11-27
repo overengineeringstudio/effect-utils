@@ -460,9 +460,66 @@ and READY does not establish disposable origin or permission to discard ignored 
 This entry point uses an ordinary temporary root lease for an untouched reservation;
 it does not adopt an existing persistent version-2 barrier.
 
-Pool preparation uses the normal root-owned `pnpm:install` and validates its
-machine-readable doctor report, installed shared GVS paths, exact source and
-resolved tool/platform identity. Logical root bytes are charged conservatively.
+`withPoolRootActionLock` separately serializes actions on one physical root using
+an owned no-follow sibling control inode, outside resettable contents. Contention
+refuses; the kernel releases ownership on process exit without unlinking the control.
+The persistent deletion barrier remains installed continuously and is not this
+action mutex. Acquire ROOT before container/pins and short GLOBAL epochs; neither
+this fence nor transferring a barrier token authorizes Git writes, reset or removal.
+Pool operations acquire ROOT, then repository/container and directory pins, then short
+GLOBAL ledger epochs. `withPoolState` marks its callback fiber-local: canonical native
+lock, pin and root-lease acquisition/adoption refuse inside it, as does another epoch.
+Acquire physical resources before entering the callback; keep it to ledger reads/CAS
+and persistence. Unrelated fibers remain free to work, and failure/interruption does
+not turn the marker into a process-wide fence. These guards are not an IO sandbox.
+`beginPoolPreparation` and `finishPoolPreparation` build state transitions only; the existing
+`preparePoolGeneration` uses both. Begin can be saved before a physical root exists, without
+replacing a persistent ownership barrier. Hold the continuous ROOT action lock and save the
+unknown intent under short GLOBAL before creating or changing that root. Finish is not a
+physical proof: obtain fresh Git/GVS/holder evidence and verify every chain before saving
+its READY candidate under GLOBAL inside the still-held pins. Neither builder acquires locks,
+writes the ledger, creates a worktree, or grants reset, execution, or removal authority.
+
+Detached pool creation can pass an explicit `persistentLease` through the existing store owner.
+Only a matching canonical barrier path, root, token, version 2, current Linux process birth,
+host and store/bare binding admit it; invalid or unknown evidence never falls back to v1.
+The existing container and native Git writer fences remain, and registration requires an
+absent physical root (including no dangling symlink), never adoption of an existing path.
+No barrier is removed, replaced or downgraded. The caller must hold its continuous ROOT
+action lock, validate fresh disposable provenance and persist unknown intent before writes;
+this admission neither proves a clean/idle root nor authorizes reset, execution or removal.
+
+`beginPoolClaim` makes a non-executing `claiming` intent with a new generation and
+private token. A selector reads under short GLOBAL, releases it, acquires ROOT, then
+saves the intent under a new short GLOBAL section. A busy ROOT must be skipped
+before claiming, never marked UNKNOWN merely to queue behind another action.
+These pure functions do not implement ROOT acquisition or a fail-fast scheduler.
+Claiming is UNKNOWN/HOLD: `requirePoolLease` refuses it, accounting remains unknown,
+and a crash does not make it reusable. Recorded fresh origin, physical birth and
+terminal lifecycle consistency are required, but are not fresh native authority.
+`finishPoolClaim` accepts the complete saved snapshot, exact owner/install identity
+and the caller's tool-observed process actor on the recorded host/boot. It preserves
+the intent's generation/token and emits that generation's active claim operation;
+the creator PID need not be the current claimant. An actor and owner label are not
+authenticated seat authority. The actor-less one-phase claim producer is removed.
+Only the physical controller holding ROOT, every verified native/GVS scope and
+fresh all-UID/process evidence may publish the leased candidate or grant execution.
+Arm updated readers before writers: old v1 decoders reject `claiming` and must HOLD,
+not repair or reset it. Explicit host-local service requests own physical execution;
+default workspace adapters remain disabled.
+
+Preparation mode is explicit. `pnpm-gvs` uses the normal root-owned `pnpm:install`
+and validates its machine-readable doctor report, installed shared GVS paths, exact
+source and resolved tool/platform identity. Buck-owned roots use their normal
+declared preparation tasks. Their watched `.buck2/capabilities` is a real mutable
+directory, not an immutable cell symlink: the inspector resolves the selected
+`GENERATION` through `.buck2/capability-roots/<GENERATION>` to its canonical,
+read-only Nix profile. It verifies exact copied `defs.bzl`, root `BUCK`, selected
+tool trees (including manifest digests and exact immutable symlink targets), and
+the selected publication reference set. Retained, unselected tool packages do not
+become selected inputs. Missing, redirected or tampered selected inputs HOLD;
+profile, selected bytes/targets, provider, config and source history bind READY.
+No fictional GVS fields are introduced. Logical root bytes are charged conservatively.
 The `mr` product supplies its existing teardown helper through the explicit
 `WORKTREE_TEARDOWN_BIN` capability rather than relying on ambient PATH.
 Its curated GNU coreutils provider measures apparent logical size, including sparse
@@ -470,16 +527,198 @@ and compressed payloads; allocated disk usage and exclusive reclamation are sepa
 Linux libc identity uses the declared absolute `MR_GETCONF_BIN` provider; neither
 the packaged CLI nor normal source tasks depend on an ambient `getconf`.
 
+`warmPoolRoot` is the fresh detached birth owner used by the host-local service,
+not a recovery path. It reserves bounded capacity, holds the continuous native ROOT mutex, persists
+unknown accounting and a fresh v2 barrier before creation, and records actual root/admin
+inode birth plus the authenticated current leader generation. Its required injected
+runner executes normal preparation and declared prewarm tasks with inherited output.
+`inspectPoolRoot` returns the mode-specific identity and actual backing paths;
+root/admin and any GVS backing chains stay pinned together through verification
+and the full-snapshot READY save. Shared GVS roots need valid backing and doctor
+evidence, not global idleness; root/admin retained or nonowned references veto.
+Only the final read-only boot/clock freshness validation may run inside short GLOBAL;
+native acquisition, Git, holder queries and install remain outside it.
+
+Failures retain the persistent barrier and unknown/HOLD state without reset, deletion,
+rollback or implicit retry (a durability error can already have published READY).
+The initial one-byte logical reservation is a counter, not measured physical usage.
+Normally qualified activation roots and the authenticated shared producer remain
+operational prerequisites. Nonleader FD references require the paired producer's
+generation-bound `KCMP_FILES`/`KCMP_FILE` witness for the caller's actual scoped pin;
+unsupported or unproved references fail closed. Colocated admission/native Git
+regression definitions alone do not qualify a complete physical warm.
+`withPnpmStoreCacheReadLease({ storeCacheRoot })` holds the existing native SHARED
+maintenance flock for its complete effect scope, without granting Git-writer authority.
+Use the required canonical **unversioned** `storeCacheRoot` from a healthy normal
+doctor report; never infer it from versioned `storeDir`, parse opaque storage state,
+or fall back when the field is absent/null. It does not create a missing store.
+Hold admission through validation and the entire pool USE, including scoped child
+completion; do not fork work past the scope. Pinning parent directories alone does
+not protect GVS descendants. The exact pnpm provider must be qualified before USE;
+upgrading it requires requalifying its GVS install/prune behavior. Approved cache
+collectors take the matching EXCLUSIVE maintenance lease. Raw native `pnpm store
+prune`, like direct `rm`, is outside this cooperative contract and must not run.
+
+`withQualifiedPoolInstall({ base, path, commit, qualification })(use)` holds the
+existing SHARED Store Cache maintenance lease through the normal healthy doctor,
+immutable provider version query and complete USE effect. Its required qualification
+tuple is the canonical unversioned `storeCacheRoot`, exact immutable `pnpmProvider`
+and audited exact `pnpmVersion` (12.17.0 or 12.23.0). Obtain it from that root's normal
+install/check qualification; decoding its shape is not qualification evidence.
+Unknown versions, aliases, mismatched paths and missing/old/unhealthy doctor fields
+refuse USE without a fallback. Provider upgrades require source-behavior and native
+requalification, never a minor/patch drift window. Callers still need normal admission,
+continuous ROOT/claim/pin and source/history/all-UID authority, with child completion
+inside the scope. Raw native `pnpm store prune` and direct `rm` bypass this cooperative
+contract. This scope does not enable default adapters or authorize reset/removal.
+
+Pool source identity also binds the raw native HEAD reflog digest and byte length
+(`PoolHeadHistory`), not just current HEAD and a clean working tree. Before first
+READY, `inspectFreshPoolHeadHistory` admits only zero/source-to-source transitions.
+Before any reset, the complete current install identity must equal its recorded
+value; old/missing history is HOLD, never adopted or silently rebaselined.
+An owned checkout may advance history only with the exact retained prefix and
+expected old-to-new transitions. Preparation must preserve that captured result
+through final verification and READY publication. These helpers never reset,
+enable logging, expire history, or create another authoritative ledger.
+The durable fresh-origin/authored bit, source/lease/holder guards and physical pins
+remain mandatory. This is not a scanner for shared bare refs, arbitrary plumbing
+or out-of-contract logging disablement; reset never removes shared bare objects or
+refs. Physical integration and default adapters remain off.
+
+Pool reset may preserve only validated `node_modules` and pool-owned `buck-out`
+on the same fresh physical slot, with daemons drained and normal Buck configuration.
+The configured Buck reset bound uses the larger of GNU-du logical and allocated
+bytes (for example, 15,000,000,000); over-bound state is wiped on reset instead.
+An explicit zero bound selects wiped comparisons; it is not a live filesystem quota
+or a claim of exclusive physical bytes. `inspectPoolBuckReset` observes sizes only:
+its disposition is not reset/removal/READY authority or a substitute for source,
+GVS, lease, pin and all-UID guards. Matched per-host tables must compare warm versus
+wiped resets. No cache template copying or default adapter activation is authorized.
+Successful prewarm drains its fresh slot through the existing native Buck daemon
+owner before final admission; kept-active, unreachable or raced results stay HOLD.
+An empty discovery is not proof of quiescence: fresh final all-UID evidence is still
+mandatory. Warming from GLOBAL is refused before any root, ledger or native I/O.
+
 `readPoolProvenance({ base })` observes an existing ledger through the same canonical
 decoder and accounting checks, without initialization, repair, locking or writes.
 Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
 errors remain fixed, redacted errors, never an empty or repaired pool. Original
 schema/filesystem errors and their causes are not exported. `PoolProvenanceObservation`
 exports recorded root/id/generation and ready/unclaimed state, not fresh authority.
-Owner labels are not authenticated seats; activity, terminal claim/birth/retarget
-and execution provenance missing from v1 remain explicitly Missing. Tokens and
+Optional authoritative v1 `physicalBirth` records boot ID and the existing canonical
+root/Git-admin deletion identity chains. `lifecycle` independently retains birth,
+claim and retarget operations: exact recorded actor generation, active without an
+outcome, or terminal with success/failure. Old records remain readable; missing
+physical birth remains HOLD, never implicit adoption or cross-boot recovery.
+`requirePoolSlotSnapshot` compares every schema field structurally.
+`bindPoolPhysicalBirth` returns a once-only immutable candidate for an untouched
+unknown precreation intent (its nonempty `token` is the preparation nonce), with
+native Inode leaves at the exact root and immediate bare/worktrees child.
+`requirePoolPhysicalBirth` refuses absent or changed root/admin/boot facts. These
+pure helpers neither persist nor inspect: callers must prove fresh origin, native
+creation, canonical paths, lease, held pins and fresh authenticated holder evidence.
+Recorded physical/lifecycle DTO fields use `{ _tag: 'Recorded', value }`; terminal
+birth/claim/retarget fields are Recorded only for actual terminal operations.
+Owner labels and recorded actors are not authenticated seats or fresh activity;
+owner/seat activity and absent legacy facts remain explicitly Missing. Tokens and
 nonces are not exported. Every observation is HOLD with `authorizesRemoval: false`;
-Hygiene remains the sole remover, and physical/removal integration stays off.
+Hygiene remains the sole remover. Native lifecycle integration and runtime
+qualification remain outstanding; this data layer provides no removal capability.
+
+Disposable ignored outputs belong only to fresh reserved UUID physical roots.
+`reserveFreshPoolRoot` records that origin; existing, adopted and legacy roots
+cannot acquire it implicitly. `markPoolRootAuthored` must finish durably under the
+ROOT action fence BEFORE any in-place authoring/promotion writes; it permanently
+quarantines that root. Copy-style promotion creates a different canonical root and
+does not author the untouched source slot. `requireDisposablePoolRoot` refuses
+authored, missing or rebound provenance; fresh Git/GVS/lease/holder proofs are still
+required before reset. This is not a general permission to discard ignored files.
+The optional ledger field preserves old records as unknown/HOLD; an older writer
+that drops it loses eligibility, never restores disposable authority. Read-only
+observations remain HOLD, including when this recorded origin is present.
+
+`mr store pool snapshot` emits this exact recorded-metadata projection as one JSON
+document on stdout, using the configured `MEGAREPO_STORE` or normal store default.
+It neither initializes an absent store nor acquires locks, scans holders, repairs
+records, warms roots or authorizes removal. An unavailable/malformed ledger is a
+redacted command failure, not an empty pool. A recorded ready/unclaimed flag is
+not a claim that a root is qualified, clean, idle or available for execution.
+
+`completePoolUse` records the terminal task outcome without clearing its generation,
+claim token, owner or unknown accounting. `beginPoolReset` accepts only that completed
+claim; `beginPoolRetarget` accepts an unclaimed READY slot directly, never a fabricated
+empty claim. Both retain the old identity and charge, mint a new generation/nonce,
+and remain UNKNOWN/HOLD until `finishPoolRetarget` returns a verified-result candidate.
+All four functions are pure metadata transitions, not physical execution or publication.
+The caller continuously holds ROOT, saves the unknown intent before any reset, and
+publishes only after fresh physical birth, Git/history, GVS, leases, every pinned chain
+and all-UID proof under the existing verified-commit seam. Authored/promoted, legacy,
+rebound or unknown roots refuse; an interrupted intent never becomes READY by recovery.
+Task completion itself does not authorize cleaning, eviction or daemon termination.
+
+### Host-local pool service
+
+`mr store pool service --config FILE --socket SOCKET` is the foreground custody
+owner. The colocated `mr-pool@.service` template runs it as a real user-service
+MainPID, with a private runtime socket and `KillMode=control-group`. Install the
+exact branch-built executable at `~/.local/share/mr-pool/bin/mr`, the instance
+configuration at `~/.config/mr-pool/INSTANCE.json`, and the normal declared tool
+environment at `~/.config/mr-pool/INSTANCE.env`. Set `serviceUnit` to the actual
+instance name; startup verifies that systemd identifies this process as its owner.
+Stop only that instance to roll back. Retain its roots, barriers and ledger:
+restarting deliberately does not adopt custody or free retained capacity.
+
+Configuration binds the canonical store `base`, existing `bare` repository, exact
+`commit`, positive slot/byte `limits`, immutable holder `client` and `devenvProvider`,
+declared `prewarmTasks`, and nonnegative `buckMaxBytes`. `preparation` is explicit:
+`pnpm-gvs` requires the existing exact qualified install tuple; `buck2` requires
+an immutable `buck2Provider` and nonempty normal root-owned `prepareTasks`.
+Buck-owned roots bind the selected canonical immutable Nix profile and its exact
+projection into the real watched capability directory, source/config and raw HEAD
+history, not invented GVS paths. They do not enable pnpm materialization.
+
+When configured, `maxIoPsiAvg60` is a strict live ceiling for Linux IO `some avg60`.
+Set it to `10` on hosts prioritizing another workload. Unavailable pressure, or a
+sample at/above the ceiling, refuses work and interrupts an active request through
+its normal scoped finalizers; pressure is sampled every second.
+
+```bash
+systemctl --user start mr-pool@INSTANCE.service
+mr store pool warm --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock"
+mr store pool run --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock" \
+  --id "$slot_id" --tasks "$task_name"
+mr store pool reset --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock" \
+  --id "$slot_id" --mode warm
+```
+
+The service serializes requests, owns only roots born in that process, and keeps
+ROOT/barrier custody through actual task completion. Preparation, prewarm, claimed
+tasks and reset teardown all run in owned systemd scopes bound to the actual
+controller service. Each scope is synchronously stopped, including interruption,
+before a request can return or publish completion proof.
+Reset is same-commit only: dirty, authored, changed-history or unproved roots stay
+HOLD. `--mode warm` preserves bounded pool-owned Buck output; `--mode wiped`
+uses the existing native Buck owner's exact isolation cleanup, never a recursive
+pool remover. Normal owner-scoped teardown finishes before capturing the new cleanup
+proof, so task evaluation cannot consume its freshness window. Fresh native
+holder/pin/source proofs remain required at every transition. A nonleader FD is
+accepted only when the normal paired native producer
+emits `leaderFdAlias: true`: live generation-bound `KCMP_FILES` and `KCMP_FILE`
+checks, retained OFD identity and a final seal prove it aliases the caller's exact
+scoped pin. Unsupported or unproved threads remain HOLD; there is no general
+same-process or equal-inode exemption. No default workspace adapter or
+root-retirement writer is enabled by these commands.
+
+Successful `run` responses include monotonic `timings.claimMs`, `taskMs`, and
+`completionMs`: acquisition (including native proof), actual task execution, and
+the drain/completion proof. Compare acquisition with a fresh root prepared under
+the same commit, provider and task configuration; report shared store disk
+separately rather than attributing it to each root.
+
+CLI alignment register: the pool command adds one row to `mr store --help`.
+Its owner-generated help baseline changes stdout prose only; exit status, signal
+and existing error behavior remain unchanged.
 
 ### Process activity snapshot
 

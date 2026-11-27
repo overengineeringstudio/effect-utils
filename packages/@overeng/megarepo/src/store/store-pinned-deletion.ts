@@ -19,6 +19,8 @@ import { basename, isAbsolute, normalize, relative } from 'node:path'
 
 import { Context, Effect, Option, Schema } from 'effect'
 
+import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
+
 /** Injectable host platform for deletion policy; production uses the actual Node platform. */
 export class StoreDeletionPlatform extends Context.Service<
   StoreDeletionPlatform,
@@ -83,6 +85,9 @@ export const captureDeletionIdentity = Effect.fn('store.captureDeletionIdentity'
   rootPath: string
   path: string
 }) {
+  yield* requireOutsidePoolGlobal(() =>
+    fail({ path, message: 'GLOBAL pool epoch cannot capture directory pins' }),
+  )
   return yield* Effect.acquireUseRelease(
     native({ path, operation: () => pinChain({ rootPath, path }) }),
     (chain) =>
@@ -141,21 +146,27 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
 }): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> => {
   const path = targets[0]?.path ?? ''
   return Effect.acquireUseRelease(
-    native({
-      path,
-      operation: () => {
-        if (targets.length === 0)
-          throw fail({ path, message: 'At least one pinned target is required' })
-        const chains: Array<readonly PinnedDirectory[]> = []
-        try {
-          for (const target of targets) chains.push(pinChain(target))
-          return chains
-        } catch (cause) {
-          for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
-          throw cause
-        }
-      },
-    }),
+    requireOutsidePoolGlobal(() =>
+      fail({ path, message: 'GLOBAL pool epoch cannot acquire directory pins' }),
+    ).pipe(
+      Effect.andThen(
+        native({
+          path,
+          operation: () => {
+            if (targets.length === 0)
+              throw fail({ path, message: 'At least one pinned target is required' })
+            const chains: Array<readonly PinnedDirectory[]> = []
+            try {
+              for (const target of targets) chains.push(pinChain(target))
+              return chains
+            } catch (cause) {
+              for (let index = chains.length - 1; index >= 0; index--) closeChain(chains[index]!)
+              throw cause
+            }
+          },
+        }),
+      ),
+    ),
     (chains) =>
       Effect.gen(function* () {
         const owned = chains.map(ownDeletionPins)

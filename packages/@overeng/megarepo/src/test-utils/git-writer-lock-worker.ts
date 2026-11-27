@@ -2,7 +2,7 @@ import { NodeRuntime, NodeServices } from '@effect/platform-node'
 import { Effect, Exit } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
-import { withGitWriterLock } from '../store/git-writer-lock.ts'
+import { withGitWriterLock, withPoolRootActionLock } from '../store/git-writer-lock.ts'
 
 /** Bun subprocess fixture: filesystem handshakes coordinate real independent runtimes. */
 const [mode, repoPath, marker, exitCode = '0'] = process.argv.slice(2)
@@ -24,7 +24,9 @@ const program = Effect.gen(function* () {
   yield* fs.writeFileString(`${marker}.attempted`, '')
   yield* mode === 'primitive' || mode === 'clone'
     ? body.pipe(withGitWriterLock({ path: repoPath, create: mode === 'clone' }))
-    : body
+    : mode === 'pool'
+      ? body.pipe(withPoolRootActionLock(repoPath))
+      : body
 })
 
 program.pipe(

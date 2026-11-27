@@ -37,6 +37,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import * as Git from '../core/git.ts'
 import { resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
+import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
 
 /** On-disk lease record version. */
 const DELETION_LEASE_VERSION = 1
@@ -147,7 +148,7 @@ const readLeaseRecord = ({
   })
 
 /** Linux stat's comm may contain spaces and ')'; fields after its last ')' are unambiguous. */
-const readProcessIdentity = ({ fs, pid }: { fs: FileSystem.FileSystem; pid: number }) =>
+export const readProcessIdentity = ({ fs, pid }: { fs: FileSystem.FileSystem; pid: number }) =>
   Effect.gen(function* () {
     if (process.platform !== 'linux' || Number.isSafeInteger(pid) === false || pid <= 0)
       return undefined
@@ -258,6 +259,14 @@ export const acquireDeletionLease = ({
     const fs = yield* FileSystem.FileSystem
     const canonicalOwnerPath = normalizeOwnerPath(ownerPath)
     const leasePath = deletionLeasePath({ storeBasePath, ownerPath: canonicalOwnerPath })
+    yield* requireOutsidePoolGlobal(
+      () =>
+        new DeletionLeaseUnavailableError({
+          ownerPath: canonicalOwnerPath,
+          leasePath,
+          message: 'GLOBAL pool epoch cannot acquire another root lease',
+        }),
+    )
     const token = randomUUID()
     const record: DeletionLeaseRecord = {
       version: persistent === true ? 2 : DELETION_LEASE_VERSION,
@@ -383,6 +392,14 @@ export const acquireDeletionLease = ({
  */
 export const adoptPersistentDeletionLease = (lease: DeletionLease) =>
   Effect.gen(function* () {
+    yield* requireOutsidePoolGlobal(
+      () =>
+        new DeletionLeaseUnavailableError({
+          ownerPath: lease.ownerPath,
+          leasePath: lease.leasePath,
+          message: 'GLOBAL pool epoch cannot adopt a root barrier',
+        }),
+    )
     const fs = yield* FileSystem.FileSystem
     const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
     if (
@@ -479,22 +496,42 @@ export const withStoreWorktreeLease =
     storeBasePath,
     ownerPath,
     bareRepoPath,
+    persistentLease,
   }: {
     storeBasePath: AbsoluteDirPath
     ownerPath: string
     bareRepoPath?: string
+    /** Explicit same-process v2 ownership; caller must also hold its continuous ROOT action lock. */
+    persistentLease?: DeletionLease
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
+      yield* requireOutsidePoolGlobal(
+        () =>
+          new DeletionLeaseUnavailableError({
+            ownerPath,
+            leasePath: deletionLeasePath({ storeBasePath, ownerPath }),
+            message: 'GLOBAL pool epoch cannot enter root activation',
+          }),
+      )
       const owner = yield* canonicalizeOwnerPath(ownerPath)
       const store = yield* canonicalizeOwnerPath(storeBasePath)
       const fs = yield* FileSystem.FileSystem
-      const registered = (yield* fs.exists(`${owner}/.git`)) === true
+      const directory = yield* fs.stat(owner).pipe(
+        Effect.map((info) => info.type === 'Directory'),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(false),
+        ),
+      )
+      const registered = directory === true && (yield* fs.exists(`${owner}/.git`))
       const source =
         registered === true
           ? owner
           : (bareRepoPath ??
-            ((yield* fs.exists(`${owner}/.bare`)) === true ? `${owner}/.bare` : owner))
+            (directory === true && (yield* fs.exists(`${owner}/.bare`)) === true
+              ? `${owner}/.bare`
+              : owner))
       const bare =
         (yield* fs.exists(source)) === true
           ? yield* resolveGitCommonDir(source).pipe(Effect.orElseSucceed(() => undefined))
@@ -509,6 +546,31 @@ export const withStoreWorktreeLease =
           : undefined
       const now = yield* Clock.currentTimeMillis
       const run = Effect.gen(function* () {
+        if (persistentLease !== undefined) {
+          const leasePath = deletionLeasePath({ storeBasePath, ownerPath: owner })
+          const record = yield* readLeaseRecord({ fs, leasePath })
+          const identity = yield* readProcessIdentity({ fs, pid: process.pid })
+          if (
+            container === undefined ||
+            persistentLease.leasePath !== leasePath ||
+            persistentLease.ownerPath !== owner ||
+            record?.version !== 2 ||
+            record.ownerPath !== owner ||
+            record.token !== persistentLease.token ||
+            record.host !== hostname() ||
+            record.pid !== process.pid ||
+            identity === undefined ||
+            record.processStartTime !== identity.startTime ||
+            record.activationIdentity?.storePath !== store ||
+            record.activationIdentity.containerPath !== bare
+          )
+            return yield* new DeletionLeaseUnavailableError({
+              ownerPath: owner,
+              leasePath,
+              message: 'Explicit persistent ownership does not match this activation',
+            })
+          return yield* effect
+        }
         if (
           bare !== undefined &&
           (yield* hasAncestorActivationLease({
@@ -539,7 +601,7 @@ export const withStoreWorktreeLease =
         }
         return yield* run
       }
-      return yield* (container === owner ? effect : run).pipe(
+      return yield* (container === owner && persistentLease === undefined ? effect : run).pipe(
         withGitContainerLock({ path: bare!, mode: 'shared' }),
       )
     })
@@ -560,12 +622,35 @@ export const createStoreWorktree = ({
 /** Detached registrations use the same container-first fence as branch registrations. */
 export const createStoreWorktreeDetached = ({
   storeBasePath,
+  persistentLease,
   ...args
-}: Parameters<typeof Git.createWorktreeDetached>[0] & { storeBasePath: AbsoluteDirPath }) =>
-  Git.createWorktreeDetached(args).pipe(
+}: Parameters<typeof Git.createWorktreeDetached>[0] & {
+  storeBasePath: AbsoluteDirPath
+  persistentLease?: DeletionLease
+}) =>
+  Effect.gen(function* () {
+    if (persistentLease !== undefined) {
+      const fs = yield* FileSystem.FileSystem
+      const absent = yield* fs.lstat(args.worktreePath).pipe(
+        Effect.as(false),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(true),
+        ),
+      )
+      if (absent === false)
+        return yield* new DeletionLeaseUnavailableError({
+          ownerPath: args.worktreePath,
+          leasePath: persistentLease.leasePath,
+          message: 'Persistent pool registration requires an absent physical root',
+        })
+    }
+    yield* Git.createWorktreeDetached(args)
+  }).pipe(
     withStoreWorktreeLease({
       storeBasePath,
       ownerPath: args.worktreePath,
       bareRepoPath: args.repoPath,
+      ...(persistentLease === undefined ? {} : { persistentLease }),
     }),
   )
