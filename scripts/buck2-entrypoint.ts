@@ -1275,6 +1275,20 @@ export const cacheLauncherBirth = (pid: number): string | undefined => {
   return `${pid}:${result.stdout.trim()}`
 }
 
+const cacheAdmissionTurns = new Map<string, Promise<void>>()
+
+/** Queue before blocking flock: its current holder may need this event loop to finish admission. */
+const acquireCacheAdmissionTurn = async (root: string): Promise<() => void> => {
+  const previous = cacheAdmissionTurns.get(root)
+  const { promise: turn, resolve: release } = Promise.withResolvers<void>()
+  cacheAdmissionTurns.set(root, turn)
+  await previous
+  return () => {
+    if (cacheAdmissionTurns.get(root) === turn) cacheAdmissionTurns.delete(root)
+    release()
+  }
+}
+
 /**
  * CI step environments can change while Buck's RE client remains daemon-scoped.
  * Bind the admitted posture to the actual daemon identity, not just the last invocation.
@@ -1332,6 +1346,7 @@ export const admitCacheDaemonCommand = async ({
   // need no admission, but GitHub jobs must never silently inherit local policy.
   if (env['GITHUB_ACTIONS'] === 'true' && ciPostureDeclared(env) === false)
     throw new Error('Buck2 cache posture: GitHub Actions job without BUCK2_CI_POSTURE declaration')
+  const canonicalRoot = realpathSync(root)
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
   mkdirSync(state, { recursive: true, mode: 0o700 })
@@ -1353,7 +1368,11 @@ export const admitCacheDaemonCommand = async ({
     // Only fixed metadata may cross this boundary: native output and error messages
     // can contain RE headers/secrets. Never attach the spawn error as a cause.
     if (result.error !== undefined || result.status !== 0) {
-      const code = result.error?.code
+      const error = result.error
+      const code =
+        error !== undefined && 'code' in error && typeof error.code === 'string'
+          ? error.code
+          : undefined
       const spawnError =
         code === undefined ? 'none' : /^[A-Z0-9_]+$/u.test(code) === true ? code : 'other'
       const subcommand =
@@ -1375,6 +1394,9 @@ export const admitCacheDaemonCommand = async ({
       throw new Error('Buck2 cache posture: native daemon status is not JSON', { cause: error })
     }
   }
+  // Queue only cache-bearing admission, after setup; native work and other roots stay independent.
+  // Cancellation cannot release the turn while its actual admission work is still running.
+  const releaseTurn = await acquireCacheAdmissionTurn(canonicalRoot)
   try {
     if (library.symbols.flock(descriptor, 2) !== 0)
       throw new Error('Buck2 cache posture: admission lock failed')
@@ -1396,7 +1418,7 @@ export const admitCacheDaemonCommand = async ({
       'daemons' in previous &&
       typeof previous.daemons === 'object' &&
       previous.daemons !== null
-        ? previous
+        ? { ...previous, salt: previous.salt, daemons: previous.daemons }
         : undefined
     const daemons: Record<string, { fingerprint: string; identity: string }> = {}
     if (record !== undefined)
@@ -1562,8 +1584,15 @@ export const admitCacheDaemonCommand = async ({
     // policy behind a separator introduced by a nested user argfile.
     return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd, env })
   } finally {
-    closeSync(descriptor)
-    library.close()
+    try {
+      closeSync(descriptor)
+    } finally {
+      try {
+        library.close()
+      } finally {
+        releaseTurn()
+      }
+    }
   }
 }
 
@@ -2830,6 +2859,90 @@ const runManagedCommand = async (
   }
 }
 
+/**
+ * Run inside withEditorPublicationOwner's callback. The caller retains the owner
+ * until this promise and publisher work settle; abort then await before release.
+ * Native signals are returned, never delivered to the owner process.
+ */
+export const runOwnedEditorPublicationCommand = async (
+  options: Omit<ManagedCommandOptions, 'capture' | 'launchCache' | 'owner'> & {
+    readonly owner: EditorPublicationOwner
+  },
+): Promise<{
+  exitCode: number
+  signalCode: NodeJS.Signals | null
+  stdout: string
+  stderr: string
+}> => {
+  options.signal?.throwIfAborted()
+  const args = resolveManagedInvocation(options).args
+  const publication = editorPublicationInvocation({ ...options, args })
+  if (publication === undefined)
+    throw new Error('Owned native invocation requires the reserved editor-publication isolation')
+  // The in-process authority bypasses the shell, not its gate lifecycle policy.
+  // Re-entry is object-validated even if an outer shell set WRAPPER_ACTIVE.
+  const gated = (options.env['GATE_SLOT_CLASS'] ?? '') !== ''
+  const env = gated === true ? { ...options.env, BUCK2_GATE_WRAPPER_ACTIVE: '1' } : options.env
+  const invocation =
+    gated === true
+      ? resolveGateInvocation({ args, cwd: options.cwd, env, includePayload: true })
+      : undefined
+  const reconcile = (phase: 'start' | 'exit') => {
+    if (invocation === undefined) return
+    const current = editorPublicationInvocation({ ...options, env, args: invocation.args })
+    if (current === undefined) throw new Error('Gate lifecycle lost publication isolation')
+    reconcileGateDaemon({
+      native: options.native,
+      root: current.root,
+      args: invocation.args,
+      cwd: options.cwd,
+      env,
+      phase,
+    })
+  }
+  try {
+    reconcile('start')
+    const result = await runManagedCommand({ ...options, env, args, capture: true })
+    if (result === undefined) throw new Error('Owned native command did not produce an exit result')
+    return {
+      exitCode: result.exitCode,
+      signalCode: result.signalCode,
+      stdout: result.stdout ?? '',
+      stderr: result.stderr ?? '',
+    }
+  } finally {
+    reconcile('exit')
+  }
+}
+
+/** Kill is ExistingOnly and skips watcher/cache admission and build evidence. */
+export const stopOwnedEditorPublicationDaemon = ({
+  native,
+  cwd,
+  env: inputEnv,
+  owner,
+}: {
+  readonly native: string
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly owner: EditorPublicationOwner
+}) => {
+  const env = { ...inputEnv }
+  prepareNativeEnvironment(env)
+  const args = ['--isolation-dir', editorPublicationIsolation, 'kill']
+  editorPublicationInvocation({ args, cwd, env, owner })
+  // Match the pre-skip routing validation in cache daemon admission.
+  if ((env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== '')
+    standaloneCachePostureConfig({ current: '', env, base: {} })
+  return spawnSync(native, args, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    timeout: 30000,
+  })
+}
+
 if (import.meta.main === true) {
   try {
     const native = process.argv[2]
@@ -2843,34 +2956,40 @@ if (import.meta.main === true) {
       if (process.env['WATCHMAN_SOCK'] === undefined)
         throw new Error('Watchman crawl requires WATCHMAN_SOCK for the persistent user service')
       await initializeWatchmanRoot({ env: process.env, repoRoot: root, deadlineMs: Number(budget) })
-      process.exit(0)
-    }
-    if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
-      const root = findRoot(process.cwd())
-      if (root !== undefined)
-        reconcileGateDaemon({
-          native,
-          root,
-          args: process.argv.slice(4),
-          env: process.env,
-          phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
-        })
-      process.exit(0)
-    }
-    const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
-    const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
-    const nativeResult = await runManagedCommand({
-      native,
-      args: requestedArgs,
-      cwd: process.cwd(),
-      env: process.env,
-      ...(launchCache === undefined ? {} : { launchCache }),
-    })
-    if (nativeResult !== undefined) {
-      process.exitCode = nativeResult.exitCode
-      if (nativeResult.signalCode !== null) {
-        process.removeAllListeners(nativeResult.signalCode)
-        process.kill(process.pid, nativeResult.signalCode)
+    } else if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
+      const invocation = resolveGateInvocation({
+        args: process.argv.slice(4),
+        cwd: process.cwd(),
+        env: process.env,
+        includePayload: true,
+      })
+      if (invocation !== undefined) {
+        // Public lifecycle dispatch has no process-local owner either.
+        const root = findRoot(process.cwd())
+        if (root !== undefined)
+          reconcileGateDaemon({
+            native,
+            root,
+            args: invocation.args,
+            env: process.env,
+            phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
+          })
+      }
+    } else {
+      const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
+      const result = await runManagedCommand({
+        native,
+        args: process.argv.slice(launchCache === undefined ? 3 : 5),
+        cwd: process.cwd(),
+        env: process.env,
+        ...(launchCache === undefined ? {} : { launchCache }),
+      })
+      if (result !== undefined) {
+        process.exitCode = result.exitCode
+        if (result.signalCode !== null) {
+          process.removeAllListeners(result.signalCode)
+          process.kill(process.pid, result.signalCode)
+        }
       }
     }
   } catch (error) {
