@@ -3,6 +3,19 @@ import { describe, expect, it } from '@effect/vitest'
 import { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
 
 describe('canonicalizeBlockMarkdown', () => {
+  it.each([
+    '<callout icon="💡" color="blue_background">\n\tTip\n\n\t<details>\n\t<summary>More</summary>\n\t\tChild\n\t</details>\n</callout>',
+    '<table header-row="true" header-column="true">\n\t<tr>\n\t\t<td>Header</td>\n\t</tr>\n\n\t<tr>\n\t\t<td>Value</td>\n\t</tr>\n</table>',
+    '<details color="green">\n<summary>More</summary>\n\tFirst\n\n\tSecond\n</details>',
+    '# Heading {toggle="true"}\n\tNested child',
+    '## Heading {toggle="true" color="blue_bg"}\n\tFirst child\n\n\t### Nested {toggle="true"}\n\t\tGrandchild\n\n\tLast child',
+  ])('preserves native enhanced block ownership across blank lines: %s', (body) => {
+    const input = `Before\n\n${body}\n\nAfter\n`
+    expect(canonicalizeBlockMarkdown(input)).toBe(input)
+    expect(canonicalizeBlockMarkdown(canonicalizeBlockMarkdown(input))).toBe(input)
+    expect(canonicalizeSemanticMarkdown(input)).toBe(input)
+  })
+
   it('unwraps soft-wrapped paragraph lines into one logical line', () => {
     const wrapped = [
       'Use this skill when designing software and you need a',

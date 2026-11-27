@@ -46,6 +46,19 @@ Markdown endpoint stops at a divider or another unsupported boundary.
 The same rule applies after verified writes. Shared sync does not settle a fresh
 base until the refreshed remote body observation is complete.
 
+Complete endpoint flags alone do not prove type fidelity. Live observation also
+counts native callout, table/row, toggle, video/audio/file/PDF, and
+page/database/date/user mention constructs against the observed block tree.
+Flattened quotes, pipe paragraphs, ordinary links, or plain date text fail with
+`rendered_markdown_missing_types`; unknown renderer block types, unmodeled
+mention kinds, and non-emoji callout icons fail as unsupported.
+The typed refusal identifies the page and offending block types. This coverage
+check does not prove full attribute equivalence.
+
+The same evidence protects editor reads, status/noop, sync, and post-write
+settlement. Tree-managed child-page anchors remain structural metadata; their
+exception never exempts a missing non-anchor construct on the same page.
+
 ## Roughdraft Review Markup
 
 Unresolved Roughdraft markers are local review state:

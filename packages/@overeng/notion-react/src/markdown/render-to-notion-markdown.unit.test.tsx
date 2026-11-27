@@ -69,9 +69,7 @@ describe('renderToNotionMarkdown', () => {
         <InlineEquation expression="E=mc^2" />
       </Paragraph>,
     )
-    expect(result.body).toMatchInlineSnapshot(
-      `"**bold** *italic* \`code\` ~~gone~~ <u>under</u> [link](https://example.com) @alice $E=mc^2$"`,
-    )
+    expect(result.body).toBe('**bold** *italic* `code` ~~gone~~ <u>under</u> [link](https://example.com) <mention-user url="u1">alice</mention-user> $E=mc^2$')
   })
 
   it('normalizes authored mention forms (type-less envelopes, pre-prefixed plainText)', () => {
@@ -82,7 +80,7 @@ describe('renderToNotionMarkdown', () => {
         <Mention mention={{ date: { start: '2026-04-19' } }} plainText="@2026-04-19" />
       </Paragraph>,
     )
-    expect(result.body).toBe('@priya [@Launch Plan](https://notion.so/p1) 2026-04-19')
+    expect(result.body).toBe('<mention-user url="u1">@priya</mention-user> <mention-page url="https://notion.so/p1">@Launch Plan</mention-page> <mention-date start="2026-04-19"/>')
     expect(result.diagnostics).toEqual([])
   })
 
@@ -100,7 +98,7 @@ describe('renderToNotionMarkdown', () => {
         </Color>
       </Paragraph>,
     )
-    expect(result.body).toBe('**@alice** *$E=mc^2$* @bob')
+    expect(result.body).toBe('**<mention-user url="u1">alice</mention-user>** *$E=mc^2$* <mention-user url="u2">bob</mention-user>')
     expect(result.diagnostics).toEqual([
       { kind: 'color-dropped', message: 'text color red dropped' },
     ])
@@ -133,7 +131,7 @@ describe('renderToNotionMarkdown', () => {
     expect(result.diagnostics).toEqual([])
   })
 
-  it('falls back to typed labels and offline links for mentions without plainText', () => {
+  it('preserves mention identities without inventing missing display labels', () => {
     const result = renderToNotionMarkdown(
       <Paragraph>
         <Mention mention={{ page: { id: '5c2a3b4d-0000-4000-8000-000000000000' } }} /> and{' '}
@@ -142,7 +140,7 @@ describe('renderToNotionMarkdown', () => {
       </Paragraph>,
     )
     expect(result.body).toBe(
-      '[@page](https://notion.so/5c2a3b4d000040008000000000000000) and [@database](https://notion.so/db1) and @user',
+      '<mention-page url="https://notion.so/5c2a3b4d000040008000000000000000"></mention-page> and <mention-database url="https://notion.so/db1"></mention-database> and <mention-user url="u1"></mention-user>',
     )
     expect(result.diagnostics).toEqual([])
   })
@@ -258,7 +256,7 @@ describe('renderToNotionMarkdown', () => {
 
   it('preserves absent callout icons and escapes entity-like ampersands', () => {
     const iconless = renderToNotionMarkdown(<Callout>plain note</Callout>)
-    expect(iconless.body).toBe('> plain note')
+    expect(iconless.body).toBe('<callout>\n\tplain note\n</callout>')
     expect(iconless.diagnostics).toEqual([])
     const entities = renderToNotionMarkdown(
       <Paragraph>{'use &copy; and &#35; but a & bare'}</Paragraph>,
@@ -274,7 +272,7 @@ describe('renderToNotionMarkdown', () => {
         <Mention mention={{ type: 'user', user: { id: 'u1' } }} plainText="*ops*" />
       </Paragraph>,
     )
-    expect(result.body).toBe('[\\[Q3\\]](https://notion.so/p1) @\\*ops\\*')
+    expect(result.body).toBe('<mention-page url="https://notion.so/p1">\\[Q3\\]</mention-page> <mention-user url="u1">\\*ops\\*</mention-user>')
   })
 
   it('does not double-escape media caption labels', () => {
@@ -321,27 +319,21 @@ describe('renderToNotionMarkdown', () => {
     ])
   })
 
-  it('reports row-header semantics loss on tables', () => {
+  it('preserves both table header axes', () => {
     const result = renderToNotionMarkdown(
       <Table hasColumnHeader hasRowHeader>
         <TableRow cells={['A', 'B']} />
         <TableRow cells={[1, 2]} />
       </Table>,
     )
-    expect(result.diagnostics).toEqual([
-      { kind: 'flattened', message: 'table row-header semantics dropped (no GFM spelling)' },
-    ])
+    expect(result.body).toContain('<table header-row="true" header-column="true">')
+    expect(result.diagnostics).toEqual([])
   })
 
-  it('diagnoses empty toggleable headings as flattened', () => {
+  it('preserves empty toggleable headings', () => {
     const result = renderToNotionMarkdown(<Heading2 toggleable>Empty section</Heading2>)
-    expect(result.body).toBe('## Empty section')
-    expect(result.diagnostics).toEqual([
-      {
-        kind: 'flattened',
-        message: 'toggleable heading rendered as flat heading + following content',
-      },
-    ])
+    expect(result.body).toBe('## Empty section {toggle="true"}')
+    expect(result.diagnostics).toEqual([])
   })
 
   it('reports root Page metadata omission', () => {
@@ -417,16 +409,7 @@ describe('renderToNotionMarkdown', () => {
         </Toggle>
       </>,
     )
-    expect(result.body).toMatchInlineSnapshot(`
-      "# Blocky instructions
-
-      <details>
-      <summary>Deploy</summary>
-
-      Run the audited deploy command.
-
-      </details>"
-    `)
+    expect(result.body).toBe('# Blocky instructions\n\n<details>\n<summary>Deploy</summary>\n\tRun the audited deploy command.\n</details>')
     expect(result.diagnostics).toEqual([])
   })
 
@@ -439,45 +422,29 @@ describe('renderToNotionMarkdown', () => {
         </Callout>
       </>,
     )
-    expect(result.body).toMatchInlineSnapshot(`
-      "> wisdom
-
-      > ⚠️ careful"
-    `)
-    expect(result.diagnostics).toEqual([
-      { kind: 'color-dropped', message: 'callout color red_background dropped' },
-    ])
+    expect(result.body).toBe('> wisdom\n\n<callout icon="⚠️" color="red_bg">\n\tcareful\n</callout>')
+    expect(result.diagnostics).toEqual([])
   })
 
   it('diagnoses external callout icons instead of fabricating a default', () => {
     const result = renderToNotionMarkdown(
       <Callout icon={{ external: 'https://example.com/icon.png' }}>careful</Callout>,
     )
-    expect(result.body).toBe('> careful')
+    expect(result.body).toBe('<callout>\n\tcareful\n</callout>')
     expect(result.diagnostics).toEqual([
       { kind: 'flattened', message: 'callout external icon dropped' },
     ])
   })
 
-  it('reports color loss on toggleable headings with children', () => {
+  it('preserves color and children on toggleable headings', () => {
     const result = renderToNotionMarkdown(
       <Heading1 color="red" toggleable>
         Section
         <Paragraph>inside</Paragraph>
       </Heading1>,
     )
-    expect(result.body).toMatchInlineSnapshot(`
-      "# Section
-
-      inside"
-    `)
-    expect(result.diagnostics).toEqual([
-      { kind: 'color-dropped', message: 'heading color red dropped' },
-      {
-        kind: 'flattened',
-        message: 'toggleable heading rendered as flat heading + following content',
-      },
-    ])
+    expect(result.body).toBe('# Section {toggle="true" color="red"}\n\tinside')
+    expect(result.diagnostics).toEqual([])
   })
 
   it('renders code fences without inline markdown annotations', () => {
@@ -505,18 +472,48 @@ describe('renderToNotionMarkdown', () => {
     `)
   })
 
-  it('renders tables with a GFM header separator', () => {
+  it('retains nested blocks and escapes callout attributes', () => {
+    const result = renderToNotionMarkdown(
+      <Callout icon="💡" color="blue_background">
+        Read this
+        <Toggle title="More">
+          <Paragraph>nested</Paragraph>
+        </Toggle>
+      </Callout>,
+    )
+    expect(result.body).toBe('<callout icon="💡" color="blue_bg">\n\tRead this\n\n\t<details>\n\t<summary>More</summary>\n\t\tnested\n\t</details>\n</callout>')
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('preserves headerless tables and literal pipes in cells', () => {
+    const result = renderToNotionMarkdown(
+      <Table hasColumnHeader={false}>
+        <TableRow cells={['left | right', <Bold key="bold">value</Bold>]} />
+      </Table>,
+    )
+    expect(result.body).toBe('<table>\n\t<tr>\n\t\t<td>left | right</td>\n\t\t<td>**value**</td>\n\t</tr>\n</table>')
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('preserves date ranges and timezone-bearing date mentions', () => {
+    const result = renderToNotionMarkdown(
+      <Paragraph>
+        <Mention mention={{ date: { start: '2026-11-27', end: '2026-11-28' } }} />{' '}
+        <Mention mention={{ date: { start: '2026-11-27T09:30:00', time_zone: 'Europe/Berlin' } }} />
+      </Paragraph>,
+    )
+    expect(result.body).toBe('<mention-date start="2026-11-27" end="2026-11-28"/> <mention-date start="2026-11-27T09:30:00" timeZone="Europe/Berlin"/>')
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('renders native table tags without inventing a header', () => {
     const result = renderToNotionMarkdown(
       <Table hasColumnHeader>
         <TableRow cells={['A', 'B']} />
         <TableRow cells={[1, 2]} />
       </Table>,
     )
-    expect(result.body).toMatchInlineSnapshot(`
-      "| A | B |
-      | --- | --- |
-      | 1 | 2 |"
-    `)
+    expect(result.body).toBe('<table header-row="true">\n\t<tr>\n\t\t<td>A</td>\n\t\t<td>B</td>\n\t</tr>\n\t<tr>\n\t\t<td>1</td>\n\t\t<td>2</td>\n\t</tr>\n</table>')
   })
 
   it('renders dividers, equations, toc and page links', () => {

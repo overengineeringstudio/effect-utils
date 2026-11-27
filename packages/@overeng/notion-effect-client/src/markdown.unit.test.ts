@@ -327,6 +327,6 @@ describe('treeToMarkdown', () => {
       }),
     )
 
-    expect(markdown).toBe('# Heading\n\nNested child')
+    expect(markdown).toBe('# Heading {toggle="true"}\n\tNested child')
   })
 })

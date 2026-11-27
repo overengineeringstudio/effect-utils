@@ -235,6 +235,18 @@ describe('tolerateTreeChildPages', () => {
     })
   })
 
+  it('preserves native type coverage failures alongside managed child pages', () => {
+    expect(tolerateTreeChildPages({
+      _tag: 'lossy',
+      reasons: ['not_round_trip_safe_blocks', 'rendered_markdown_missing_types'],
+      lossyBlockTypes: ['child_page', 'callout'],
+    })).toEqual({
+      _tag: 'lossy',
+      reasons: ['rendered_markdown_missing_types'],
+      lossyBlockTypes: ['callout'],
+    })
+  })
+
   it('is a no-op for a complete verdict', () => {
     expect(tolerateTreeChildPages({ _tag: 'complete' })).toEqual({ _tag: 'complete' })
   })

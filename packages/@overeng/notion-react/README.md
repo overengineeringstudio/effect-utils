@@ -262,6 +262,17 @@ the only error channel surfaced to callers. `SyncResult` carries a
 (`"cold-cache"`, `"schema-mismatch"`, …). See the
 [fallback table in spec.md](./docs/vrs/spec.md#fallback-decision-table-r16).
 
+## Enhanced Markdown
+
+`renderToNotionMarkdown` from `@overeng/notion-react/markdown` emits Notion's
+enhanced Markdown v1, not a CommonMark-only export. Callouts, table header axes,
+toggles and page/user/database/date mentions retain their native tags and
+identities. Keep these tags intact when storing or submitting the body.
+Inspect `diagnostics` before treating a projection as lossless: unsupported
+constructs (including external callout icons) are still reported rather than
+silently invented. Enhanced Markdown v1 is deprecated upstream; this syntax
+does not imply support for the distinct `markdown_version: "v2"` format.
+
 ## Storybook preview (`@overeng/notion-react/web`)
 
 > **Preview surface — not a production Notion renderer.** DOM structure,

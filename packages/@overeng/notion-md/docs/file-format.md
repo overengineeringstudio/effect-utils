@@ -78,8 +78,12 @@ truth for both shapes.
 
 ## Body
 
-The body is stock Notion enhanced Markdown as returned by Notion's Markdown
-endpoint. `notion-md` does not invent a body-level dialect for sync metadata.
+The body is stock Notion enhanced Markdown, not a body-level dialect for sync
+metadata. Pulls use the canonical block-tree rendering; endpoint Markdown remains
+independent completeness evidence. Native `<callout>`, `<table>`, `<details>`,
+and `<mention-*>` constructs retain their types rather than becoming ordinary
+quotes, paragraphs, links, or date text. A missing native construct is refused
+instead of being adopted as a clean body.
 
 Notion may normalize Markdown on pull. A clean round trip means semantic
 equivalence through Notion's Markdown endpoint, not byte-for-byte preservation of

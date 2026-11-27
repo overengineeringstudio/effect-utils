@@ -351,7 +351,7 @@ describe('NotionBody.observeFromSnapshots', () => {
 
     // Canonical body ends in a single trailing newline (decision 0019);
     // the lossy verdict (endpoint missing the rendered suffix) is unchanged.
-    expect(observed.inventory.renderedMarkdown).toBe('# Heading\n\nNested child\n')
+    expect(observed.inventory.renderedMarkdown).toBe('# Heading {toggle="true"}\n\tNested child\n')
     expect(observed.completeness).toEqual({
       _tag: 'lossy',
       reasons: ['rendered_markdown_has_unobserved_suffix'],

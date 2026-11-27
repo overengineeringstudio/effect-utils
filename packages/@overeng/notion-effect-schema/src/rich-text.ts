@@ -220,6 +220,20 @@ export const DateMention = Schema.Struct({
 
 export type DateMention = typeof DateMention.Type
 
+/** Minimal mention payload accepted by Notion create/update APIs. */
+export const MentionRichTextCreate = Schema.Struct({
+  type: Schema.Literal('mention'),
+  mention: Schema.Union([PageMention, DatabaseMention, UserMention, DateMention]),
+  annotations: Schema.optional(TextAnnotationsCreate),
+})
+
+export type MentionRichTextCreate = typeof MentionRichTextCreate.Type
+
+/** Rich text supported by Markdown imports, without read-side metadata. */
+export const RichTextCreate = Schema.Union([TextRichTextCreate, MentionRichTextCreate])
+
+export type RichTextCreate = typeof RichTextCreate.Type
+
 /**
  * Link preview mention within rich text.
  */

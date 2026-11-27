@@ -20,7 +20,12 @@ import {
 } from './errors.ts'
 import { parseNmdFile, renderNmdFile } from './frontmatter.ts'
 import { normalizeMarkdownLineEndings, sha256Digest } from './hash.ts'
-import { NotionMdGateway, type RemoteMarkdownSnapshot, type RemotePageSnapshot } from './model.ts'
+import {
+  NotionMdGateway,
+  remoteMarkdownCompleteness,
+  type RemoteMarkdownSnapshot,
+  type RemotePageSnapshot,
+} from './model.ts'
 import { SyncTreeSpan, withOperation } from './observability.ts'
 import {
   NmdStateStore,
@@ -91,8 +96,8 @@ const assertRemoteMarkdownComplete = (opts: {
   readonly pageId: string
   readonly markdown: RemoteMarkdownSnapshot
 }): Effect.Effect<void, NmdRemoteBodyLossyError> => {
-  const raw = opts.markdown.completeness
-  if (raw === undefined || raw._tag === 'complete') return Effect.void
+  const raw = remoteMarkdownCompleteness(opts.markdown)
+  if (raw._tag === 'complete') return Effect.void
   /*
    * Tree nodes own their sub-page `child_page` blocks (re-emitted as `<page>`
    * anchors and managed by the tree engine, R12/R30): tolerate those while

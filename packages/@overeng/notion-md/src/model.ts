@@ -1,6 +1,6 @@
 import { Context, type Effect } from 'effect'
 
-import type { BodyCompleteness } from '@overeng/notion-core'
+import { classifyBodyCompleteness, type BodyCompleteness } from '@overeng/notion-core'
 import type {
   BodyEvidenceFingerprint,
   NmdPageState,
@@ -61,6 +61,22 @@ export interface RemoteMarkdownSnapshot {
   readonly completeness?: BodyCompleteness
   readonly body_evidence?: RemoteBodyObservationEvidence
   readonly body_evidence_fingerprint?: BodyEvidenceFingerprint
+}
+
+/**
+ * A gateway's block-observation verdict is authoritative (it may account for
+ * self-contained unsupported storage). Without one, refuse incomplete exports.
+ * Live observations already incorporate endpoint flags and type coverage.
+ */
+export const remoteMarkdownCompleteness = (snapshot: RemoteMarkdownSnapshot): BodyCompleteness => {
+  return snapshot.completeness ?? classifyBodyCompleteness({
+    markdown: {
+      markdown: snapshot.markdown,
+      truncated: snapshot.truncated,
+      unknownBlockIds: snapshot.unknown_block_ids,
+    },
+    inventory: { entries: [] },
+  })
 }
 
 /**

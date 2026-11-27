@@ -120,9 +120,81 @@ const normalizeOrderedListStarts: () => (tree: unknown) => void = () => (tree) =
   })
 }
 
+interface EnhancedMarkdownNode {
+  type: string
+  value?: string
+  children?: EnhancedMarkdownNode[]
+  position?: { start: { offset?: number }; end: { offset?: number } }
+}
+
+/**
+ * CommonMark terminates HTML blocks at blank lines. Native Notion containers
+ * instead own their tab-indented Markdown until the matching closing tag.
+ * Keep that whole wire region opaque to the CommonMark normalization passes.
+ */
+const preserveEnhancedBlocks = () => (tree: unknown, file: { value: unknown }): void => {
+  const root = tree as EnhancedMarkdownNode
+  const source = String(file.value)
+  const nodes = root.children ?? []
+  const children: EnhancedMarkdownNode[] = []
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]!
+    const start = node.position?.start.offset
+    if (node.type === 'heading' && start !== undefined) {
+      const lineEnd = source.indexOf('\n', start)
+      const headingEnd = lineEnd === -1 ? source.length : lineEnd
+      const heading = source.slice(start, headingEnd)
+      if (/\{[^}\n]*\btoggle="true"[^}\n]*\}\s*$/u.test(heading)) {
+        let cursor = headingEnd + 1
+        let end = headingEnd
+        while (cursor < source.length) {
+          const nextBreak = source.indexOf('\n', cursor)
+          const nextEnd = nextBreak === -1 ? source.length : nextBreak
+          const line = source.slice(cursor, nextEnd)
+          if (line.trim() !== '' && line.startsWith('\t') === false) break
+          if (line.startsWith('\t')) end = nextEnd
+          cursor = nextEnd + 1
+        }
+        while (index + 1 < nodes.length && (nodes[index + 1]?.position?.start.offset ?? Infinity) < end) index++
+        children.push({ type: 'html', value: source.slice(start, end) })
+        continue
+      }
+    }
+    const opening = node.type === 'html' ? /^<(callout|details|table)\b/u.exec(node.value ?? '') : null
+    if (opening === null || start === undefined) {
+      children.push(node)
+      continue
+    }
+    const tokens = new RegExp(`<(/?)${opening[1]}\\b[^>]*>`, 'gu')
+    tokens.lastIndex = start
+    const searchable = source.replace(/(`+)[\s\S]*?\1/gu, (literal) => ' '.repeat(literal.length))
+    let depth = 0
+    let end: number | undefined
+    for (const token of searchable.matchAll(tokens)) {
+      depth += token[1] === '/' ? -1 : 1
+      if (depth === 0) {
+        end = token.index + token[0].length
+        break
+      }
+    }
+    if (end === undefined) {
+      children.push(node)
+      continue
+    }
+    let coveredEnd = Math.max(end, node.position?.end.offset ?? end)
+    while (index + 1 < nodes.length && (nodes[index + 1]?.position?.start.offset ?? Infinity) < end) {
+      index++
+      coveredEnd = Math.max(coveredEnd, nodes[index]?.position?.end.offset ?? end)
+    }
+    children.push({ type: 'html', value: source.slice(start, coveredEnd) })
+  }
+  root.children = children
+}
+
 const processor = unified()
   .use(remarkParse)
   .use(notionMarkdownGfm)
+  .use(preserveEnhancedBlocks)
   .use(unwrapSoftBreaks)
   .use(forceTightLists)
   .use(remarkStringify, markdownStringifyOptions)
@@ -130,6 +202,7 @@ const processor = unified()
 const semanticProcessor = unified()
   .use(remarkParse)
   .use(notionMarkdownGfm)
+  .use(preserveEnhancedBlocks)
   .use(unwrapSoftBreaks)
   .use(foldHardBreaks)
   .use(normalizeTextControls)

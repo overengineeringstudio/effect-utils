@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 
-import { docsPath, ISO8601DateTime, NoticonColor, NotionUUID } from './common.ts'
-import { RichTextArray, TextRichTextCreate } from './rich-text.ts'
+import { docsPath, ISO8601DateTime, NoticonColor, NotionColor, NotionUUID } from './common.ts'
+import { RichTextArray, RichTextCreate } from './rich-text.ts'
 import { PartialUser } from './users.ts'
 
 // -----------------------------------------------------------------------------
@@ -437,7 +437,7 @@ export type Block = typeof Block.Type
 // -----------------------------------------------------------------------------
 
 /** Rich text array accepted in Notion block create payloads. */
-export const RichTextCreateArray = Schema.Array(TextRichTextCreate).annotate({
+export const RichTextCreateArray = Schema.Array(RichTextCreate).annotate({
   identifier: 'Notion.RichTextCreateArray',
   [docsPath]: 'rich-text',
 })
@@ -452,6 +452,7 @@ const RichTextBlockCreateContentWithChildren: Schema.Schema<RichTextBlockCreateC
   Schema.suspend(() =>
     Schema.Struct({
       rich_text: RichTextCreateArray,
+      color: Schema.optional(NotionColor),
       children: Schema.optional(Schema.Array(NotionBlockCreate)),
     }),
   )
@@ -512,6 +513,26 @@ const QuoteBlockCreate = Schema.Struct({
   quote: RichTextBlockCreateContentWithChildren,
 })
 
+const ToggleBlockCreate = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('toggle'),
+  toggle: RichTextBlockCreateContentWithChildren,
+})
+
+const CalloutBlockCreate: Schema.Schema<BlockCreatePayload<'callout', 'callout', CalloutBlockCreateContentType>> = Schema.Struct({
+  object: Schema.Literal('block'),
+  type: Schema.Literal('callout'),
+  callout: Schema.Struct({
+    rich_text: RichTextCreateArray,
+    color: Schema.optional(NotionColor),
+    icon: Schema.optional(Schema.NullOr(Schema.Struct({
+      type: Schema.Literal('emoji'),
+      emoji: Schema.String,
+    }))),
+    children: Schema.optional(Schema.Array(Schema.suspend(() => NotionBlockCreate))),
+  }),
+})
+
 const CodeBlockCreate = Schema.Struct({
   object: Schema.Literal('block'),
   type: Schema.Literal('code'),
@@ -555,9 +576,13 @@ const TableBlockCreate = Schema.Struct({
 type RichTextBlockCreateContentType = typeof RichTextBlockCreateContent.Type
 type RichTextBlockCreateContentWithChildrenType = RichTextBlockCreateContentType & {
   readonly children?: readonly NotionBlockCreateType[] | undefined
+  readonly color?: typeof NotionColor.Type | undefined
 }
 type ToDoBlockCreateContentType = RichTextBlockCreateContentWithChildrenType & {
   readonly checked: boolean
+}
+type CalloutBlockCreateContentType = RichTextBlockCreateContentWithChildrenType & {
+  readonly icon?: { readonly type: 'emoji'; readonly emoji: string } | null | undefined
 }
 type BlockCreatePayload<TType extends string, TProperty extends string, TContent> = {
   readonly object: 'block'
@@ -582,6 +607,8 @@ type NotionBlockCreateType =
     >
   | BlockCreatePayload<'to_do', 'to_do', ToDoBlockCreateContentType>
   | BlockCreatePayload<'quote', 'quote', RichTextBlockCreateContentWithChildrenType>
+  | BlockCreatePayload<'toggle', 'toggle', RichTextBlockCreateContentWithChildrenType>
+  | BlockCreatePayload<'callout', 'callout', CalloutBlockCreateContentType>
   | typeof CodeBlockCreate.Type
   | typeof DividerBlockCreate.Type
   | typeof TableBlockCreate.Type
@@ -602,6 +629,8 @@ export const NotionBlockCreate: Schema.Schema<NotionBlockCreateType> = Schema.su
     NumberedListItemBlockCreate,
     ToDoBlockCreate,
     QuoteBlockCreate,
+    ToggleBlockCreate,
+    CalloutBlockCreate,
     CodeBlockCreate,
     DividerBlockCreate,
     TableBlockCreate,

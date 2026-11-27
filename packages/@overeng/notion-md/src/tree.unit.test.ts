@@ -936,6 +936,22 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
+  it('does not exempt a missing callout beside managed child-page anchors', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Root body.' }))
+      await writeFile(join(dir, 'alpha.nmd'), unbound({ title: 'Alpha', body: 'Alpha body.' }))
+      await run(syncTree({ root: dir, rootPageId }), fake)
+      fake.setRemoteCompleteness(rootPageId, {
+        _tag: 'lossy',
+        reasons: ['not_round_trip_safe_blocks', 'rendered_markdown_missing_types'],
+        lossyBlockTypes: ['child_page', 'callout'],
+      })
+      await writeFile(join(dir, 'index.nmd'), unbound({ title: 'Root', body: 'Edited root body.' }))
+      await expect(run(syncTree({ root: dir }), fake)).rejects.toThrow('callout')
+    })
+  })
+
   it('is crash-idempotent: per-create id writeback prevents duplicate creation', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()

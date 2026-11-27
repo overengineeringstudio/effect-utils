@@ -6,6 +6,7 @@ export type BodyLossyReason =
   | 'not_round_trip_safe_blocks'
   | 'rendered_markdown_unavailable'
   | 'rendered_markdown_has_unobserved_suffix'
+  | 'rendered_markdown_missing_types'
 
 /** Verdict on whether a body round-trips cleanly (`complete`) or is `lossy` with reasons. */
 export type BodyCompleteness =
@@ -17,8 +18,9 @@ export type BodyCompleteness =
       readonly reasons: readonly BodyLossyReason[]
       /**
        * The distinct block types that triggered a block-level lossy reason
-       * (`unsupported_blocks` / `not_round_trip_safe_blocks`), sorted and
-       * deduplicated. Empty/absent when the verdict is purely Markdown-level
+       * (`unsupported_blocks`, `not_round_trip_safe_blocks`, or
+       * `rendered_markdown_missing_types`), sorted and deduplicated.
+       * Empty/absent when the verdict is purely Markdown-level
        * (truncation, suffix, …). Surfaced so the refusal gate can name the
        * offending block class in its message and so a tree node can tolerate
        * its own `child_page` blocks without losing the other reasons. Optional
