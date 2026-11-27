@@ -37,9 +37,9 @@ export const assertWorktreeHolderEvidenceFresh = (
   Effect.gen(function* () {
     yield* Schema.decodeEffect(HolderEvidenceResponse)(response)
     if (
-      !response.scope.complete ||
-      !response.scope.allUids ||
-      !response.scope.allTasks ||
+      response.scope.complete === false ||
+      response.scope.allUids === false ||
+      response.scope.allTasks === false ||
       response.roots.some(
         (root) =>
           !root.complete ||
@@ -47,7 +47,7 @@ export const assertWorktreeHolderEvidenceFresh = (
           root.status === 'unknown' ||
           root.identity === null ||
           root.unknownReasons.length !== 0,
-      )
+      ) === true
     ) {
       return yield* refused()
     }

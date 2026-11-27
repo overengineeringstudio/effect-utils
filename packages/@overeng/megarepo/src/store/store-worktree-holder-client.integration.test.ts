@@ -61,25 +61,24 @@ describe('fixed holder client boundaries (not native authentication qualificatio
   it.effect('refuses incomplete scope and roots without interpreting them as absence', (test) =>
     Effect.gen(function* () {
       const response = evidence('00000000-0000-4000-8000-000000000001', '1')
-      for (const candidate of [
-        ...['complete', 'allUids', 'allTasks'].map((key) => ({
-          ...response,
-          scope: { ...response.scope, [key]: false },
-        })),
-        ...[
-          { complete: false },
-          { referencesComplete: false },
-          { identity: null },
-          { status: 'unknown' as const },
-          { unknownReasons: ['permission' as const] },
-        ].map((change) => ({
-          ...response,
-          roots: response.roots.map((root) => ({ ...root, ...change })),
-        })),
-      ])
+      for (const key of ['complete', 'allUids', 'allTasks']) {
+        const candidate = { ...response, scope: { ...response.scope, [key]: false } }
         expect(
           yield* assertWorktreeHolderEvidenceFresh(candidate).pipe(Effect.flip),
         ).toBeInstanceOf(HolderEvidenceError)
+      }
+      for (const change of [
+        { complete: false },
+        { referencesComplete: false },
+        { identity: null },
+        { status: 'unknown' as const },
+        { unknownReasons: ['permission' as const] },
+      ]) {
+        const candidate = { ...response, roots: [{ ...response.roots[0]!, ...change }] }
+        expect(
+          yield* assertWorktreeHolderEvidenceFresh(candidate).pipe(Effect.flip),
+        ).toBeInstanceOf(HolderEvidenceError)
+      }
     }).pipe(withTestCtx(test)),
   )
   it.effect('keeps future and expiry checks conservative at centisecond boundaries', (test) =>
@@ -117,7 +116,7 @@ describe('fixed holder client boundaries (not native authentication qualificatio
     (test) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
-        if (!(yield* fs.exists('/proc/sys/kernel/random/boot_id'))) {
+        if ((yield* fs.exists('/proc/sys/kernel/random/boot_id')) === false) {
           expect(
             yield* assertWorktreeHolderEvidenceFresh(
               evidence('00000000-0000-4000-8000-000000000001', '1'),
@@ -161,12 +160,14 @@ describe('fixed holder client boundaries (not native authentication qualificatio
             ...response,
             roots: response.roots.map((root) => ({
               ...root,
-              status: retainedOnly ? 'no-current-reference' : 'in-use',
-              references: retainedOnly ? references.slice(1) : references,
+              status: retainedOnly === true ? 'no-current-reference' : 'in-use',
+              references: retainedOnly === true ? references.slice(1) : references,
             })),
           }
           yield* assertWorktreeHolderEvidenceFresh(held)
-          expect(held.roots[0]?.references).toEqual(retainedOnly ? references.slice(1) : references)
+          expect(held.roots[0]?.references).toEqual(
+            retainedOnly === true ? references.slice(1) : references,
+          )
         }
         for (const candidate of [
           evidence(boot, '0'),
