@@ -6,10 +6,12 @@ import {
   lstatSync,
   mkdirSync,
   realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { basename, dirname, join } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import { getSystemErrorName } from 'node:util'
 
@@ -43,6 +45,43 @@ export const requireEditorPublicationOwner = ({
     throw new Error('Buck editor publication requires a live in-process publication owner')
   validateOwner({ root, state })
   return owner!
+}
+
+/** Match pinned native get_roots before authorizing a reserved daemon side effect. */
+export const requireEditorPublicationNativeOwner = ({
+  root,
+  cwd = root,
+  env,
+  owner,
+}: {
+  readonly root: string
+  readonly cwd?: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly owner?: EditorPublicationOwner
+}): EditorPublicationOwner => {
+  const canonicalRoot = realpathSync(root)
+  const home = resolve(env['HOME'] ?? homedir())
+  let current = realpathSync(cwd)
+  let nativeRoot: string | undefined
+  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
+  for (;;) {
+    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
+      if (current === home) break
+      nativeRoot = current
+    }
+    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  if (nativeRoot !== canonicalRoot)
+    throw new Error(
+      `Managed editor publication root does not match pinned native project root: ${canonicalRoot} != ${nativeRoot ?? '<none>'}`,
+    )
+  return requireEditorPublicationOwner({
+    root: canonicalRoot,
+    ...(owner === undefined ? {} : { owner }),
+  })
 }
 
 /** Release only this process's acquired lease. Repeated releases have no effect. */

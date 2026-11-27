@@ -166,6 +166,37 @@ class NativePublicationCopyFixtureTest(unittest.TestCase):
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_supervisors_join_real_zero_eof_and_legacy_exec_children(self):
+        supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+        for mode, payload, status in (
+            ("supervise_notified", "0", 0),
+            ("supervise_notified", "", 1),
+            ("supervise_locked", "", 1),
+            ("supervise_locked", "exec", 0),
+        ):
+            with self.subTest(mode=mode, payload=payload), tempfile.TemporaryDirectory() as scratch:
+                lock = str(Path(scratch) / "owner.lock")
+                driver = f"""
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("supervisor", {supervisor!r})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+child = 'import os,sys;fd=int(os.environ["EDITOR_VIEW_ADMISSION_READY_FD"]);os.write(fd,sys.argv[1].encode());os.close(fd)'
+if {mode!r} == "supervise_notified":
+    command = [sys.executable, '-c', child, {payload!r}]
+elif {payload!r} == "exec":
+    command = [sys.executable, '-c', 'import os;assert "EDITOR_VIEW_ADMISSION_READY_FD" not in os.environ']
+else:
+    command = []
+sys.exit(module.{mode}(command, None, 0.01, {lock!r}))
+"""
+                result = subprocess.run([sys.executable, "-c", driver],
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertEqual(Path(lock).exists(), mode == "supervise_locked")
+                if status == 1:
+                    self.assertIn("failed to notify owner admission", result.stderr)
+
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
         supervisor = load_supervisor()
         script = str(Path(__file__).with_name("editor-view-supervisor.py"))

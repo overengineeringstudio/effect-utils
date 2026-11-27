@@ -28,7 +28,7 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import {
   editorPublicationIsolation,
   type EditorPublicationOwner,
-  requireEditorPublicationOwner,
+  requireEditorPublicationNativeOwner,
 } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
   buckConfigValues,
@@ -347,6 +347,7 @@ export const directBuckArguments = async ({
   watchmanDirectory,
 }: {
   readonly args: readonly string[]
+  readonly owner?: EditorPublicationOwner
   readonly cwd: string
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cacheDirectory?: string
@@ -998,29 +999,16 @@ const editorPublicationInvocation = ({
 }): { readonly root: string; readonly owner: EditorPublicationOwner } | undefined => {
   const invocation = resolveManagedInvocation({ args, cwd, env })
   if (invocation.isolation !== editorPublicationIsolation) return undefined
-  const canonicalCwd = realpathSync(cwd)
-  const root = findRoot(canonicalCwd)
-  const home = resolve(env['HOME'] ?? homedir())
-  let current = canonicalCwd
-  let nativeRoot: string | undefined
-  // Pinned native get_roots: furthest config before .buckroot; HOME's config is user-only.
-  for (;;) {
-    if (statSync(join(current, '.buckconfig'), { throwIfNoEntry: false }) !== undefined) {
-      if (current === home) break
-      nativeRoot = current
-    }
-    if (statSync(join(current, '.buckroot'), { throwIfNoEntry: false }) !== undefined) break
-    const parent = dirname(current)
-    if (parent === current) break
-    current = parent
-  }
-  if (root === undefined || nativeRoot !== root)
-    throw new Error(
-      `Managed editor publication root does not match pinned native project root: ${root ?? '<none>'} != ${nativeRoot ?? '<none>'}`,
-    )
+  const root = findRoot(realpathSync(cwd))
+  if (root === undefined) throw new Error('Managed editor publication root is missing')
   return {
     root,
-    owner: requireEditorPublicationOwner({ root, ...(owner === undefined ? {} : { owner }) }),
+    owner: requireEditorPublicationNativeOwner({
+      root,
+      cwd,
+      env,
+      ...(owner === undefined ? {} : { owner }),
+    }),
   }
 }
 
@@ -1082,6 +1070,7 @@ export const reconcileGateDaemon = ({
   cwd = process.cwd(),
 }: {
   readonly native: string
+  readonly owner?: EditorPublicationOwner
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
@@ -1303,6 +1292,7 @@ export const admitCacheDaemonCommand = async ({
   cwd = process.cwd(),
 }: {
   readonly native: string
+  readonly owner?: EditorPublicationOwner
   readonly root: string
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
@@ -1310,6 +1300,12 @@ export const admitCacheDaemonCommand = async ({
   readonly deadlineMs?: number
   readonly cwd?: string
 }): Promise<string[]> => {
+  const invocation = resolveGateInvocation({
+    args,
+    env,
+    cwd,
+    strictRunArguments: false,
+  })
   const routedReader = (env['BUCK2_REAPI_READ_FORWARDERS'] ?? '') !== ''
   // Validation precedes lock/state creation, including on cache-less roots.
   if (routedReader === true) standaloneCachePostureConfig({ current: '', env, base: {} })
@@ -1333,12 +1329,6 @@ export const admitCacheDaemonCommand = async ({
     initialValues['buck2.remote_cache_enabled'] !== 'true'
   )
     return admit()
-  const invocation = resolveGateInvocation({
-    args,
-    env,
-    cwd,
-    strictRunArguments: false,
-  })
   if (invocation === undefined)
     throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
@@ -2333,6 +2323,7 @@ type NativeCommandResult = {
 }
 
 type NativeExecution = {
+  readonly owner?: EditorPublicationOwner
   readonly cwd?: string
   readonly env?: NodeJS.ProcessEnv
   readonly signal?: AbortSignal
@@ -2556,7 +2547,6 @@ type ManagedCommandOptions = NativeExecution & {
   readonly args: readonly string[]
   readonly cwd: string
   readonly env: NodeJS.ProcessEnv
-  readonly owner?: EditorPublicationOwner
   readonly launchCache?: string
 }
 
@@ -2568,6 +2558,7 @@ const runManagedCommand = async (
   const env = { ...options.env }
   prepareNativeEnvironment(env)
   const execution: NativeExecution = {
+    ...(owner === undefined ? {} : { owner }),
     cwd,
     env,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -2650,6 +2641,7 @@ const runManagedCommand = async (
     let fallbackEligible = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
       const prepared = await directBuckArguments({
+        ...(owner === undefined ? {} : { owner }),
         args: requestedArgs,
         cwd,
         env,
@@ -2671,6 +2663,7 @@ const runManagedCommand = async (
           (provider === 'watchman' || tracked['buck2.file_watcher'] === 'watchman')
         )
           reconcileWatcherDaemon({
+            ...(owner === undefined ? {} : { owner }),
             native,
             repoRoot: root,
             args: configArgs,
@@ -2684,6 +2677,7 @@ const runManagedCommand = async (
       root === undefined
         ? await admit()
         : await admitCacheDaemonCommand({
+            ...(owner === undefined ? {} : { owner }),
             native,
             root,
             args: requestedArgs,
@@ -2775,6 +2769,7 @@ const runManagedCommand = async (
           delete localEnv['BUCK2_CACHE_WRITE_BASIC_AUTH']
           delete localEnv['BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH']
           const localArgs = await admitCacheDaemonCommand({
+            ...(owner === undefined ? {} : { owner }),
             native,
             root,
             cwd,
@@ -2782,6 +2777,7 @@ const runManagedCommand = async (
             env: localEnv,
             admit: (beforeCachePosture) =>
               directBuckArguments({
+                ...(owner === undefined ? {} : { owner }),
                 args: replayArgs,
                 cwd,
                 env: localEnv,
@@ -2894,6 +2890,7 @@ export const runOwnedEditorPublicationCommand = async (
     reconcileGateDaemon({
       native: options.native,
       root: current.root,
+      owner: options.owner,
       args: invocation.args,
       cwd: options.cwd,
       env,

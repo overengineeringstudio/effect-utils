@@ -265,6 +265,10 @@ The signal fixtures use OS `SIGTERM` and explicitly gated copy cleanup.
 Publishers join active child closes before returning; native signal failures
 take precedence over concurrent abort notifications.
 
+Shared native-owner checks follow the pinned daemon's project-root rules.
+Notification-only supervision observes readiness without owning its lock;
+the production CLI retains legacy locking until the atomic caller migration.
+
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
