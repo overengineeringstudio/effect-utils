@@ -476,7 +476,7 @@ describe.skipIf(process.platform !== 'linux')('pool physical birth native compar
             Effect.flip,
           )).message,
         ).toContain('HOLD')
-        yield* fs.remove(expected.path)
+        yield* fs.remove(expected.path, { recursive: true })
         yield* fs.rename(`${expected.path}-old`, expected.path)
         yield* fs.rename(admin, `${admin}-old`)
         yield* fs.makeDirectory(admin)
@@ -731,9 +731,13 @@ describe('pool authoritative lifecycle', () => {
           withPoolState({
             base,
             use: (state, save) =>
-              finishPoolClaim({ state, intent, identity: 'installed', owner: 'task', actor }).pipe(
-                Effect.tap((next) => save({ ...state, slots: [next] })),
-              ),
+              finishPoolClaim({
+                state,
+                intent,
+                identity: 'installed',
+                owner: 'task',
+                actor: metadataActor,
+              }).pipe(Effect.tap((next) => save({ ...state, slots: [next] }))),
           }),
         ),
         Effect.exit,
@@ -842,14 +846,14 @@ describe('pool authoritative lifecycle', () => {
           intent,
           identity: 'installed',
           owner: 'task',
-          actor,
+          actor: metadataActor,
         })
         expect(accepted).toEqual({
           ...intent,
           state: 'leased',
           lifecycle: {
             ...intent.lifecycle,
-            claim: { generation: intent.generation, actor, state: 'active' },
+            claim: { generation: intent.generation, actor: metadataActor, state: 'active' },
           },
         })
         expect(intent.state).toBe('claiming')
@@ -873,7 +877,7 @@ describe('pool authoritative lifecycle', () => {
               intent,
               identity: 'installed',
               owner: 'task',
-              actor,
+              actor: metadataActor,
             }).pipe(Effect.exit),
           ).toSatisfy(Exit.isFailure)
         }
@@ -883,7 +887,9 @@ describe('pool authoritative lifecycle', () => {
           { identity: 'installed', owner: '' },
         ]) {
           expect(
-            yield* finishPoolClaim({ state, intent, ...request, actor }).pipe(Effect.exit),
+            yield* finishPoolClaim({ state, intent, ...request, actor: metadataActor }).pipe(
+              Effect.exit,
+            ),
           ).toSatisfy(Exit.isFailure)
         }
         for (const invalid of [readySlot, { ...intent, token: '' }]) {
@@ -893,7 +899,7 @@ describe('pool authoritative lifecycle', () => {
               intent: invalid,
               identity: 'installed',
               owner: 'task',
-              actor,
+              actor: metadataActor,
             }).pipe(Effect.exit),
           ).toSatisfy(Exit.isFailure)
         }
@@ -910,7 +916,11 @@ describe('pool authoritative lifecycle', () => {
           owner: 'metadata-task-label',
         })
         const state: PoolState = { version: 1, maxSlots: 1, maxBytes: 64, slots: [intent] }
-        const nextActor: PoolActor = { ...actor, pid: 2, startTime: 'next-metadata-generation' }
+        const nextActor: PoolActor = {
+          ...metadataActor,
+          pid: 2,
+          startTime: 'next-metadata-generation',
+        }
         const accepted = yield* finishPoolClaim({
           state,
           intent,
@@ -930,11 +940,11 @@ describe('pool authoritative lifecycle', () => {
         expect(accepted.chargeKnown).toBe(false)
         expect(intent.lifecycle?.claim).toBeUndefined()
         for (const invalid of [
-          { ...actor, pid: 0 },
-          { ...actor, pid: 1.5 },
-          { ...actor, startTime: '' },
-          { ...actor, hostId: 'other-host' },
-          { ...actor, bootId: 'other-boot' },
+          { ...metadataActor, pid: 0 },
+          { ...metadataActor, pid: 1.5 },
+          { ...metadataActor, startTime: '' },
+          { ...metadataActor, hostId: 'other-host' },
+          { ...metadataActor, bootId: 'other-boot' },
         ])
           expect(
             yield* finishPoolClaim({
@@ -964,18 +974,24 @@ describe('pool authoritative lifecycle', () => {
         { ...intent, chargeKnown: true },
         {
           ...intent,
-          lifecycle: { ...intent.lifecycle, birth: { generation: 1, actor, state: 'active' } },
+          lifecycle: {
+            ...intent.lifecycle,
+            birth: { generation: 1, actor: metadataActor, state: 'active' },
+          },
         },
         {
           ...intent,
           lifecycle: {
             ...intent.lifecycle,
-            claim: { generation: intent.generation, actor, state: 'active' },
+            claim: { generation: intent.generation, actor: metadataActor, state: 'active' },
           },
         },
         {
           ...intent,
-          lifecycle: { ...intent.lifecycle, retarget: { generation: 1, actor, state: 'active' } },
+          lifecycle: {
+            ...intent.lifecycle,
+            retarget: { generation: 1, actor: metadataActor, state: 'active' },
+          },
         },
         { ...intent, physicalBirth: { ...birth, bootId: 'other-boot' } },
       ]
@@ -987,7 +1003,7 @@ describe('pool authoritative lifecycle', () => {
             intent: invalid,
             identity: 'installed',
             owner: 'task',
-            actor,
+            actor: metadataActor,
           }).pipe(Effect.exit),
         ).toSatisfy(Exit.isFailure)
       }
@@ -1061,7 +1077,7 @@ describe('pool authoritative lifecycle', () => {
         intent,
         identity: 'installed',
         owner: 'task',
-        actor,
+        actor: metadataActor,
       })
       expect(held.chargeKnown).toBe(false)
       const unknown = yield* reservePoolSlot({

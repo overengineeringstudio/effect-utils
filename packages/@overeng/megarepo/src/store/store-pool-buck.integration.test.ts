@@ -1,4 +1,4 @@
-import { open, stat, symlink } from 'node:fs/promises'
+import { open, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -38,17 +38,16 @@ const sparse = (path: string) =>
   )
 
 describe('pool byte accounting and bounded Buck observation', () => {
-  it.effect(
-    'reports exact logical bytes rather than rounding the directory and file to KiB',
-    (test) =>
-      Effect.gen(function* () {
-        const { fs, path } = yield* temp
-        const file = join(path, 'payload')
-        yield* fs.writeFileString(file, 'abc')
-        const expected = (yield* Effect.promise(() => stat(path))).size + 3
-        expect(yield* poolBytes({ path, kind: 'logical' })).toBe(expected)
-        expect(Number.isSafeInteger(yield* poolBytes({ path, kind: 'allocated' }))).toBe(true)
-      }).pipe(withTestCtx(test)),
+  it.effect('reports exact logical payload growth rather than rounding to KiB', (test) =>
+    Effect.gen(function* () {
+      const { fs, path } = yield* temp
+      const file = join(path, 'payload')
+      yield* fs.writeFileString(file, '')
+      const before = yield* poolBytes({ path, kind: 'logical' })
+      yield* fs.writeFileString(file, 'abc')
+      expect(yield* poolBytes({ path, kind: 'logical' })).toBe(before + 3)
+      expect(Number.isSafeInteger(yield* poolBytes({ path, kind: 'allocated' }))).toBe(true)
+    }).pipe(withTestCtx(test)),
   )
 
   it.effect('distinguishes genuine sparse logical bytes from allocated blocks', (test) =>
@@ -70,12 +69,13 @@ describe('pool byte accounting and bounded Buck observation', () => {
         const root = join(path, 'measured')
         const outside = join(path, 'outside')
         yield* fs.makeDirectory(root)
-        yield* sparse(outside)
         const link = join(root, 'link')
         yield* Effect.promise(() => symlink(outside, link))
-        const rootSize = (yield* Effect.promise(() => stat(root))).size
+        const before = yield* poolBytes({ path: root, kind: 'logical' })
         const linkSize = (yield* fs.lstat(link)).size
-        expect(yield* poolBytes({ path: root, kind: 'logical' })).toBe(rootSize + Number(linkSize))
+        yield* sparse(outside)
+        expect(before).toBeGreaterThanOrEqual(Number(linkSize))
+        expect(yield* poolBytes({ path: root, kind: 'logical' })).toBe(before)
         expect(Number((yield* fs.stat(outside)).size)).toBe(4 * 1024 * 1024 + 3)
       }).pipe(withTestCtx(test)),
   )

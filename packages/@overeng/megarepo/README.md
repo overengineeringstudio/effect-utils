@@ -706,6 +706,10 @@ the drain/completion proof. Compare acquisition with a fresh root prepared under
 the same commit, provider and task configuration; report shared store disk
 separately rather than attributing it to each root.
 
+CLI alignment register: the pool command adds one row to `mr store --help`.
+Its owner-generated help baseline changes stdout prose only; exit status, signal
+and existing error behavior remain unchanged.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

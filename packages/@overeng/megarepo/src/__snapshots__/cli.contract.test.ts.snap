@@ -171,6 +171,7 @@ SUBCOMMANDS
   lease            Run a command while holding a store deletion lease
   lock             Run a command under the host-local Git common-directory writer lock
   activity         Produce workspace-activity evidence for store reclamation
+  pool             Observe or use the bounded host-local worktree pool
   worktree         Manage worktrees in the store
 ",
 }

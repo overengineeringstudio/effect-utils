@@ -517,12 +517,21 @@ export const withStoreWorktreeLease =
       const owner = yield* canonicalizeOwnerPath(ownerPath)
       const store = yield* canonicalizeOwnerPath(storeBasePath)
       const fs = yield* FileSystem.FileSystem
-      const registered = (yield* fs.exists(`${owner}/.git`)) === true
+      const directory = yield* fs.stat(owner).pipe(
+        Effect.map((info) => info.type === 'Directory'),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(false),
+        ),
+      )
+      const registered = directory === true && (yield* fs.exists(`${owner}/.git`))
       const source =
         registered === true
           ? owner
           : (bareRepoPath ??
-            ((yield* fs.exists(`${owner}/.bare`)) === true ? `${owner}/.bare` : owner))
+            (directory === true && (yield* fs.exists(`${owner}/.bare`)) === true
+              ? `${owner}/.bare`
+              : owner))
       const bare =
         (yield* fs.exists(source)) === true
           ? yield* resolveGitCommonDir(source).pipe(Effect.orElseSucceed(() => undefined))
