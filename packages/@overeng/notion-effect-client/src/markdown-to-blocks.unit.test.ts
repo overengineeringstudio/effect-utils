@@ -41,7 +41,7 @@ const readTree = (block: NotionBlockCreate | NotionTableRowBlockCreate): BlockTr
   }
   const id = '12345678-1234-1234-1234-123456789abc'
   return {
-    block: Schema.decodeUnknownSync(BlockSchema)({
+    block: Schema.decodeSync(BlockSchema)({
       ...block, [block.type]: hydrateRichText(content),
       id, has_children: children.length > 0, in_trash: false,
       created_time: '2026-11-27T00:00:00.000Z', last_edited_time: '2026-11-27T00:00:00.000Z',
