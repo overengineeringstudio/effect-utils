@@ -265,6 +265,21 @@ impl NativeView {
             path: root.clone(), _mountpoint: point })
     }
 
+    /// A task can retain an exe/FD from before unshare(CLONE_NEWNS), whose
+    /// original mount is absent from the cloned namespace. Resolve only that
+    /// missing mount through the retained enrollment view, with its ordinary
+    /// exact mount/inode reopen proof. A jailed root or any listed-but-hidden
+    /// mount still takes the ordinary task-view failure path.
+    pub fn location_with_enrolled(&self, file: &std::fs::File, enrolled: &Self,
+        deadline: std::time::Instant) -> std::io::Result<NativeLocation>
+    {
+        if self.full_root && !self.namespace.records().contains_key(&super::objects::mount_id(file)?) {
+            enrolled.location(file, deadline)
+        } else {
+            self.location(file, deadline)
+        }
+    }
+
     pub fn location(&self, file: &std::fs::File,
         deadline: std::time::Instant) -> std::io::Result<NativeLocation>
     {

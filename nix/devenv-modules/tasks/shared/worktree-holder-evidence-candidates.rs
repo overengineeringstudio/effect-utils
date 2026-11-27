@@ -427,8 +427,9 @@ impl CandidateSet {
                 return Ok(MatchOutcome::Native(Vec::new()));
             }
         }
-        // Ordinary detached/unlisted tmpfs never enters a provider fallback.
-        let result = view.view.location(file, deadline);
+        // Missing task mounts may still be pinned in the enrolled namespace;
+        // both paths require exact native reopen proofs, never a provider waiver.
+        let result = view.view.location_with_enrolled(file, &self.enrolled_view.view, deadline);
         #[cfg(holder_owned_vm_class_diagnostics)]
         if result.is_err() {
             let object = if metadata.is_file() { "file" }
@@ -875,5 +876,64 @@ mod tests {
         }
         assert_eq!(std::fs::read(target.join("candidate/payload")).unwrap(), b"erofs payload");
         assert_eq!(std::fs::read(target.join("outside/payload")).unwrap(), b"erofs payload");
+    }
+
+    #[test]
+    #[ignore = "requires controlled root Linux with mount namespace administration"]
+    fn retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown() {
+        const CHILD: &str = "HOLDER_PRE_UNSHARE_MOUNT_PROBE";
+        const TEST: &str = "candidates::tests::retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--ignored", "--exact", TEST, "--nocapture"])
+                .env(CHILD, "1").status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        let fixture = Fixture::new();
+        let root = fixture.0.join("candidate");
+        let target = fixture.0.join("target");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(root.join("payload"), b"held candidate").unwrap();
+        let set = fixture_set(std::slice::from_ref(&root));
+        let inside = objects::pin_magic(root.join("payload")).unwrap();
+        let exe = objects::pin_magic("/proc/thread-self/exe").unwrap();
+        let original = File::open("/proc/thread-self/ns/mnt").unwrap();
+        unsafe extern "C" { fn unshare(flags: std::ffi::c_int) -> std::ffi::c_int; }
+        // SAFETY: the child test thread changes only its own mount namespace;
+        // no mount operation occurs until the distinct namespace is established.
+        assert_eq!(unsafe { unshare(0x00020000) }, 0);
+        let private = File::open("/proc/thread-self/ns/mnt").unwrap();
+        assert_ne!(objects::identity(&original).unwrap(), objects::identity(&private).unwrap());
+        assert!(std::process::Command::new("mount").args(["--make-rprivate", "/"])
+            .status().unwrap().success());
+        let task = objects::pin_magic("/proc/thread-self").unwrap();
+        let view = mounts::NativeView::capture(&task, deadline()).unwrap();
+        assert!(view.location(&inside, deadline()).is_err(),
+            "the retained original mount must not be listed in the cloned task namespace");
+        for (file, kind, expected) in [(&inside, ReferenceKind::Fd, 1), (&exe, ReferenceKind::Exe, 0)] {
+            let MatchOutcome::Native(matches) = set.matches(file, &task, kind, deadline()).unwrap()
+                else { panic!("retained native mount requested proxy") };
+            assert_eq!(matches.len(), expected);
+        }
+        let coverage = set.capture_mounts(&task, deadline()).unwrap();
+        set.freeze_scope_devices(deadline()).unwrap();
+        set.recheck(deadline()).unwrap();
+        coverage.recheck(&set, deadline()).unwrap();
+        let MatchOutcome::Native(matches) = set.recheck_matches(&inside, &task,
+            ReferenceKind::Fd, Some(&coverage), deadline()).unwrap()
+            else { panic!("candidate lost its retained mount proof") };
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].relative_path, "payload");
+        // A mount absent from BOTH retained namespaces still cannot authorize
+        // a negative. Own bind and lazy detach stay entirely in the child namespace.
+        assert!(std::process::Command::new("mount").arg("--bind").arg(&root).arg(&target)
+            .status().unwrap().success());
+        let detached = objects::pin_magic(target.join("payload")).unwrap();
+        assert!(std::process::Command::new("umount").arg("-l").arg(&target)
+            .status().unwrap().success());
+        let absent = fixture_set(std::slice::from_ref(&root));
+        assert!(absent.matches(&detached, &task, ReferenceKind::Fd, deadline()).is_err());
     }
 }

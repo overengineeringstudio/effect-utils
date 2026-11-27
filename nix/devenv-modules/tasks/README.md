@@ -110,6 +110,17 @@ inventory is deferred until after the caller authenticates its original exclusiv
 maintenance lease; worktrees are never recursively inventoried. Ordinary terminal
 devices have no candidate path and do not become protective unknowns.
 
+A full-root task may retain an executable or descriptor from before mount-namespace
+unshare: its original mount ID need not exist among the cloned task mounts.
+Only for an absent task mount ID, native membership can use the already retained
+enrollment namespace's exact mount/inode/path reopen proof. Both complete namespaces,
+task aliases and literal mounts remain independently retained and rechecked.
+Listed-but-hidden mounts and partial jailed roots do not take this path; objects
+whose mount cannot be proven in either view remain UNKNOWN. The ignored
+`candidates::tests::retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown`
+fixture preserves a candidate positive and an outside executable across actual
+unshare, then requires an owned detached bind absent from both views to veto.
+
 `CandidateView` inventories every mount at or below each candidate's physical
 aliases, including covering-ancestor devices. `ScopeLedger` unions enrollment
 and every captured task contribution, requires retained ownership and an empty
