@@ -118,8 +118,10 @@ task aliases and literal mounts remain independently retained and rechecked.
 Listed-but-hidden mounts and partial jailed roots do not take this path; objects
 whose mount cannot be proven in either view remain UNKNOWN. The ignored
 `candidates::tests::retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown`
-fixture preserves a candidate positive and an outside executable across actual
-unshare, then requires an owned detached bind absent from both views to veto.
+fixture keeps the collector in its enrollment namespace while an owned target
+thread unshares; it pins the target's actual TID resources through proc. Candidate
+positive and outside-executable negative both undergo frozen final closure, then
+an owned detached bind absent from both views must veto.
 
 `CandidateView` inventories every mount at or below each candidate's physical
 aliases, including covering-ancestor devices. `ScopeLedger` unions enrollment

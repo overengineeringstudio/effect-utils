@@ -897,18 +897,40 @@ mod tests {
         std::fs::create_dir(&target).unwrap();
         std::fs::write(root.join("payload"), b"held candidate").unwrap();
         let set = fixture_set(std::slice::from_ref(&root));
-        let inside = objects::pin_magic(root.join("payload")).unwrap();
-        let exe = objects::pin_magic("/proc/thread-self/exe").unwrap();
-        let original = File::open("/proc/thread-self/ns/mnt").unwrap();
-        unsafe extern "C" { fn unshare(flags: std::ffi::c_int) -> std::ffi::c_int; }
-        // SAFETY: the child test thread changes only its own mount namespace;
-        // no mount operation occurs until the distinct namespace is established.
-        assert_eq!(unsafe { unshare(0x00020000) }, 0);
-        let private = File::open("/proc/thread-self/ns/mnt").unwrap();
-        assert_ne!(objects::identity(&original).unwrap(), objects::identity(&private).unwrap());
-        assert!(std::process::Command::new("mount").args(["--make-rprivate", "/"])
-            .status().unwrap().success());
-        let task = objects::pin_magic("/proc/thread-self").unwrap();
+        let collector_namespace = File::open("/proc/thread-self/ns/mnt").unwrap();
+        let (ready, receive) = std::sync::mpsc::sync_channel(0);
+        let (advance, wait) = std::sync::mpsc::sync_channel::<()>(0);
+        let worker_root = root.clone();
+        let worker = std::thread::spawn(move || {
+            use std::os::fd::AsRawFd;
+            let inside = objects::pin_magic(worker_root.join("payload")).unwrap();
+            let exe = objects::pin_magic("/proc/thread-self/exe").unwrap();
+            let original = File::open("/proc/thread-self/ns/mnt").unwrap();
+            unsafe extern "C" { fn unshare(flags: std::ffi::c_int) -> std::ffi::c_int; }
+            // SAFETY: only this owned target thread unshares. The collector
+            // remains in its original enrollment namespace throughout closure.
+            assert_eq!(unsafe { unshare(0x00020000) }, 0);
+            let private = File::open("/proc/thread-self/ns/mnt").unwrap();
+            assert_ne!(objects::identity(&original).unwrap(), objects::identity(&private).unwrap());
+            assert!(std::process::Command::new("mount").args(["--make-rprivate", "/"])
+                .status().unwrap().success());
+            let tid = std::fs::read_link("/proc/thread-self").unwrap().file_name().unwrap()
+                .to_str().unwrap().parse::<u32>().unwrap();
+            ready.send((tid, inside.as_raw_fd(), exe.as_raw_fd())).unwrap();
+            if wait.recv().is_err() { return; }
+            assert!(std::process::Command::new("mount").arg("--bind").arg(&worker_root).arg(&target)
+                .status().unwrap().success());
+            let detached = objects::pin_magic(target.join("payload")).unwrap();
+            assert!(std::process::Command::new("umount").arg("-l").arg(&target)
+                .status().unwrap().success());
+            ready.send((tid, detached.as_raw_fd(), exe.as_raw_fd())).unwrap();
+            let _ = wait.recv();
+        });
+        let (tid, inside_fd, exe_fd) = receive.recv().unwrap();
+        assert_ne!(tid, std::process::id(), "target is the actual worker TID, not TGID");
+        let task = objects::pin_magic(format!("/proc/{tid}")).unwrap();
+        let inside = objects::pin_magic(format!("/proc/{tid}/fd/{inside_fd}")).unwrap();
+        let exe = objects::pin_magic(format!("/proc/{tid}/fd/{exe_fd}")).unwrap();
         let view = mounts::NativeView::capture(&task, deadline()).unwrap();
         assert!(view.location(&inside, deadline()).is_err(),
             "the retained original mount must not be listed in the cloned task namespace");
@@ -921,19 +943,24 @@ mod tests {
         set.freeze_scope_devices(deadline()).unwrap();
         set.recheck(deadline()).unwrap();
         coverage.recheck(&set, deadline()).unwrap();
-        let MatchOutcome::Native(matches) = set.recheck_matches(&inside, &task,
-            ReferenceKind::Fd, Some(&coverage), deadline()).unwrap()
-            else { panic!("candidate lost its retained mount proof") };
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].relative_path, "payload");
-        // A mount absent from BOTH retained namespaces still cannot authorize
-        // a negative. Own bind and lazy detach stay entirely in the child namespace.
-        assert!(std::process::Command::new("mount").arg("--bind").arg(&root).arg(&target)
-            .status().unwrap().success());
-        let detached = objects::pin_magic(target.join("payload")).unwrap();
-        assert!(std::process::Command::new("umount").arg("-l").arg(&target)
-            .status().unwrap().success());
+        for (file, kind, expected) in [(&inside, ReferenceKind::Fd, 1), (&exe, ReferenceKind::Exe, 0)] {
+            let MatchOutcome::Native(matches) = set.recheck_matches(file, &task,
+                kind, Some(&coverage), deadline()).unwrap()
+                else { panic!("object lost its retained mount proof") };
+            assert_eq!(matches.len(), expected);
+            if expected == 1 { assert_eq!(matches[0].relative_path, "payload"); }
+        }
+        // The collector stays initial while the actual target changes only its
+        // owned namespace. Neither final enrollment nor task closure is skipped.
+        assert_eq!(objects::identity(&collector_namespace).unwrap(),
+            objects::identity(&File::open("/proc/thread-self/ns/mnt").unwrap()).unwrap());
+        advance.send(()).unwrap();
+        let (same_tid, detached_fd, _) = receive.recv().unwrap();
+        assert_eq!(same_tid, tid);
+        let detached = objects::pin_magic(format!("/proc/{tid}/fd/{detached_fd}")).unwrap();
         let absent = fixture_set(std::slice::from_ref(&root));
         assert!(absent.matches(&detached, &task, ReferenceKind::Fd, deadline()).is_err());
+        advance.send(()).unwrap();
+        worker.join().unwrap();
     }
 }
