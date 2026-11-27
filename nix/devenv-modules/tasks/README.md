@@ -177,6 +177,17 @@ reviewed Linux 6.18.62 snapshot, not permission to admit future kernel names.
 The ignored `tests::actual_nonpath_eventfd_and_registered_io_uring_veto`
 fixture uses real eventfd and io_uring descriptors, registers a candidate file
 in the ring, closes its ordinary descriptor, then requires the ring veto.
+The ignored
+`tests::actual_unregistered_inflight_read_is_not_excluded_by_zero_user_files`
+submits a real unregistered FIFO READ, closes the ordinary candidate descriptor,
+observes `UserFiles: 0`, `SQEs: 0` and `CQEs: 0` while the request still owns the
+file, requires the ring veto, then completes the request with an owned FIFO write.
+Zero registered files are not a negative membership proof. Linux 6.18
+[`io_uring/fdinfo.c`](https://github.com/torvalds/linux/blob/v6.18/io_uring/fdinfo.c)
+documents imprecise active queue counters, enumerates only the registered file
+table and exposes poll opcodes without file identity. Its trylock may omit ring
+details entirely; this is not complete, independently counted in-flight-file
+coverage with a closing seal. No fdinfo text-path or zero-counter waiver exists.
 The proc builder installs its compiled runner at
 `libexec/worktree-holder-proc-tests`; it does not execute ignored tests.
 The real `tests::actual_loaded_btf_is_nonpath` fixture loads BTF without a

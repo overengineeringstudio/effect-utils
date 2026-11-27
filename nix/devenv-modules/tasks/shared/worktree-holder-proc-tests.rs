@@ -486,3 +486,156 @@ fn actual_large_group_task_resources_require_final_sibling_closure() {
     drop(newcomer);
     drop(workers);
 }
+
+#[test]
+#[ignore = "requires Linux with io_uring enabled and native FIFO support"]
+fn actual_unregistered_inflight_read_is_not_excluded_by_zero_user_files() {
+    use std::io::Write;
+    use std::mem::ManuallyDrop;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::raw::{c_int, c_long};
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::{Duration, Instant};
+    unsafe extern "C" {
+        fn syscall(number: c_long, ...) -> c_long;
+        fn mmap(address: *mut std::ffi::c_void, length: usize, protection: c_int,
+            flags: c_int, fd: c_int, offset: i64) -> *mut std::ffi::c_void;
+        fn munmap(address: *mut std::ffi::c_void, length: usize) -> c_int;
+        fn mkfifo(path: *const std::ffi::c_char, mode: u32) -> c_int;
+    }
+    struct Root(std::path::PathBuf);
+    impl Drop for Root {
+        fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    }
+    struct Mapping { address: *mut u8, length: usize }
+    impl Mapping {
+        fn new(fd: c_int, length: usize, offset: i64) -> Self {
+            // SAFETY: owned ring FD, checked UAPI length and fixed ring offset;
+            // successful MAP_SHARED/PROT_READ|PROT_WRITE owns this exact mapping.
+            let address = unsafe { mmap(std::ptr::null_mut(), length, 3, 1, fd, offset) };
+            assert_ne!(address as isize, -1, "ring mmap: {}", std::io::Error::last_os_error());
+            Self { address: address.cast(), length }
+        }
+        fn word(&self, offset: usize) -> &AtomicU32 {
+            assert!(offset % 4 == 0 && offset + 4 <= self.length);
+            // SAFETY: page-aligned ring mapping, bounded aligned UAPI u32
+            // location. Kernel/userspace ring publication uses acquire/release.
+            unsafe { &*self.address.add(offset).cast::<AtomicU32>() }
+        }
+    }
+    impl Drop for Mapping {
+        fn drop(&mut self) {
+            // SAFETY: this guard exclusively owns this live mapping and length.
+            let _ = unsafe { munmap(self.address.cast(), self.length) };
+        }
+    }
+    struct ReadBuffer { bytes: ManuallyDrop<Box<[u8; 1]>>, completed: bool }
+    impl Drop for ReadBuffer {
+        fn drop(&mut self) {
+            if self.completed {
+                // SAFETY: the CQE acquire proved the kernel finished accessing
+                // this buffer; its one Box has not previously been dropped.
+                unsafe { ManuallyDrop::drop(&mut self.bytes); }
+            }
+            // On assertion unwinding with a pending request, keep this byte
+            // allocated until process exit instead of freeing kernel-owned I/O
+            // memory. Ring teardown cancels the owned request; no foreign task
+            // is signalled. The successful path frees it normally.
+        }
+    }
+    fn parameter(parameters: &[u64; 15], offset: usize) -> u32 {
+        u32::from_ne_bytes(parameters[offset / 8].to_ne_bytes()[offset % 8..offset % 8 + 4]
+            .try_into().unwrap())
+    }
+    let root = Root(std::env::temp_dir().join(format!("holder-unregistered-ring-{}-{}",
+        std::process::id(), linux::boot_time_ns().unwrap())));
+    std::fs::create_dir(&root.0).unwrap();
+    let fifo = root.0.join("candidate-fifo");
+    let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+    // SAFETY: fixed permissions and a live NUL-terminated owned fixture path.
+    assert_eq!(unsafe { mkfifo(name.as_ptr(), 0o600) }, 0);
+    let candidate = std::fs::OpenOptions::new().read(true).write(true).open(&fifo).unwrap();
+    let identity = objects::identity(&candidate).unwrap();
+    let mut parameters = [0u64; 15];
+    // SAFETY: syscall425 is io_uring_setup on both supported architectures;
+    // the full initialized aligned 120-byte parameter buffer remains writable.
+    let raw_ring = unsafe { syscall(425, 8u32, parameters.as_mut_ptr()) };
+    assert!(raw_ring >= 0, "io_uring_setup: {}", std::io::Error::last_os_error());
+    // SAFETY: successful setup transferred this fresh descriptor exactly once.
+    let ring = unsafe { OwnedFd::from_raw_fd(c_int::try_from(raw_ring).unwrap()) };
+    let sq_entries = parameter(&parameters, 0) as usize;
+    let cq_entries = parameter(&parameters, 4) as usize;
+    let sq_head = parameter(&parameters, 40) as usize;
+    let sq_tail = parameter(&parameters, 44) as usize;
+    let sq_mask = parameter(&parameters, 48) as usize;
+    let sq_array = parameter(&parameters, 64) as usize;
+    let cq_head = parameter(&parameters, 80) as usize;
+    let cq_tail = parameter(&parameters, 84) as usize;
+    let cq_mask = parameter(&parameters, 88) as usize;
+    let cq_entries_offset = parameter(&parameters, 100) as usize;
+    let sq_length = sq_array + sq_entries * 4;
+    let cq_length = cq_entries_offset + cq_entries * 16;
+    let single_mapping = parameter(&parameters, 20) & 1 != 0;
+    let sq = Mapping::new(ring.as_raw_fd(),
+        if single_mapping { sq_length.max(cq_length) } else { sq_length }, 0);
+    let separate_cq = (!single_mapping).then(|| Mapping::new(ring.as_raw_fd(), cq_length, 0x08000000));
+    let cq = separate_cq.as_ref().unwrap_or(&sq);
+    let sqes = Mapping::new(ring.as_raw_fd(), sq_entries * 64, 0x10000000);
+    let mut buffer = ReadBuffer { bytes: ManuallyDrop::new(Box::new([0])), completed: false };
+    let tail = sq.word(sq_tail).load(Ordering::Acquire);
+    let index = (tail & sq.word(sq_mask).load(Ordering::Acquire)) as usize;
+    let mut entry = [0u8; 64];
+    entry[0] = 22; // IORING_OP_READ, ordinary FD, not IOSQE_FIXED_FILE.
+    entry[4..8].copy_from_slice(&candidate.as_raw_fd().to_ne_bytes());
+    entry[16..24].copy_from_slice(&(buffer.bytes.as_mut_ptr() as u64).to_ne_bytes());
+    entry[24..28].copy_from_slice(&1u32.to_ne_bytes());
+    entry[32..40].copy_from_slice(&0x12345678u64.to_ne_bytes());
+    assert!(index < sq_entries);
+    // SAFETY: the fixed 64-byte SQE fits this owned SQE slot. Release-publishing
+    // the SQ tail below makes its initialized fields visible to the kernel.
+    unsafe { std::ptr::copy_nonoverlapping(entry.as_ptr(), sqes.address.add(index * 64), 64); }
+    sq.word(sq_array + index * 4).store(index as u32, Ordering::Relaxed);
+    sq.word(sq_tail).store(tail + 1, Ordering::Release);
+    // SAFETY: syscall426/enter submits exactly one initialized READ, no signal
+    // mask or registered files; the owned FIFO is empty and held read/write.
+    assert_eq!(unsafe { syscall(426, ring.as_raw_fd(), 1u32, 0u32, 0u32,
+        std::ptr::null::<u8>(), 0usize) }, 1);
+    drop(candidate);
+    let head = cq.word(cq_head).load(Ordering::Acquire);
+    assert_eq!(cq.word(cq_tail).load(Ordering::Acquire), head, "empty FIFO READ must remain pending");
+    assert_eq!(sq.word(sq_head).load(Ordering::Acquire), sq.word(sq_tail).load(Ordering::Acquire));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let info = objects::bounded_text(format!("/proc/self/fdinfo/{}", ring.as_raw_fd()), 65536).unwrap();
+    for field in ["UserFiles:", "SQEs:", "CQEs:"] {
+        assert_eq!(info.lines().find_map(|line| line.strip_prefix(field)).map(str::trim), Some("0"));
+    }
+    for fd in scopes::numbers("/proc/self/fd", deadline).unwrap() {
+        match std::fs::metadata(format!("/proc/self/fd/{fd}")) {
+            Ok(metadata) => assert_ne!((metadata.dev(), metadata.ino()), identity,
+                "no ordinary descriptor may retain the candidate"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => panic!("owned descriptor metadata: {error}"),
+        }
+    }
+    let held = scopes::Held::pin(format!("/proc/self/fd/{}", ring.as_raw_fd()), deadline).unwrap();
+    assert_eq!(scopes::qualify_object(&held).unwrap_err().to_string(),
+        "unsupported path-bearing kernel object");
+    // Nonblocking FIFO write-open proves a reader still exists after every
+    // ordinary candidate FD was closed. Only the submitted ring READ owns it.
+    let mut writer = std::fs::OpenOptions::new().write(true).custom_flags(0x800).open(&fifo).unwrap();
+    writer.write_all(b"x").unwrap();
+    drop(writer);
+    while cq.word(cq_tail).load(Ordering::Acquire) == head {
+        assert!(Instant::now() < deadline, "owned pending READ did not complete");
+        std::thread::yield_now();
+    }
+    let offset = cq_entries_offset + (head & cq.word(cq_mask).load(Ordering::Acquire)) as usize * 16;
+    assert_eq!(cq.word(offset).load(Ordering::Acquire), 0x12345678);
+    assert_eq!(cq.word(offset + 4).load(Ordering::Acquire), 0);
+    buffer.completed = true;
+    assert_eq!(cq.word(offset + 8).load(Ordering::Acquire) as i32, 1);
+    assert_eq!(buffer.bytes[0], b'x');
+    cq.word(cq_head).store(head + 1, Ordering::Release);
+}
