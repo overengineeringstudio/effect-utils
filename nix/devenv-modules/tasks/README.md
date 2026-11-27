@@ -172,6 +172,15 @@ Both require disposable root Linux VM qualification, as does the eventfd /
 registered-io_uring fixture. Test-only BPF privileges do not expand the helper's
 production capability set. Unit/build success is not kernel or census proof.
 
+Retained-object mount IDs come directly from `statx(AT_EMPTY_PATH,
+STATX_MNT_ID)` on the pinned descriptor, not repeated allocation/open/read/parse
+of `/proc/self/fdinfo`. The returned mask must include the requested field and
+the ID must be nonzero; unsupported or failed calls remain errors. This is the
+legacy mount ID used by mountinfo, never `STATX_MNT_ID_UNIQUE`. The proc runner
+compares actual root/proc/device/nsfs/socket/shmem/pidfd results with fdinfo.
+This reduces repeated metadata work without omitting any task, resource,
+candidate alias, literal mount or final namespace/generation closure.
+
 Task departure is non-holding only for a missing nonleader re-proven absent
 from the retained leader's task list, with the original live leader generation
 checked before and after relisting. Missing descendants of a still-listed
