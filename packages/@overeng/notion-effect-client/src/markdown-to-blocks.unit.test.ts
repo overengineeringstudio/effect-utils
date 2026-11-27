@@ -17,8 +17,13 @@ const table = (block: NotionBlockCreate | undefined) => {
 /** Supply server-owned metadata at the create/read boundary used by the renderer. */
 const readTree = (block: NotionBlockCreate | NotionTableRowBlockCreate): BlockTreeNode => {
   const content = Object.entries(block).find(([key]) => key === block.type)?.[1]
-  const children = typeof content === 'object' && content !== null && 'children' in content
-    ? content.children ?? [] : []
+  const children = block.type === 'table' ? block.table.children :
+    block.type === 'callout' ? block.callout.children ?? [] :
+    block.type === 'toggle' ? block.toggle.children ?? [] :
+    block.type === 'quote' ? block.quote.children ?? [] :
+    block.type === 'bulleted_list_item' ? block.bulleted_list_item.children ?? [] :
+    block.type === 'numbered_list_item' ? block.numbered_list_item.children ?? [] :
+    block.type === 'to_do' ? block.to_do.children ?? [] : []
   const hydrateRichText = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(hydrateRichText)
     if (typeof value !== 'object' || value === null) return value
@@ -130,8 +135,8 @@ describe('markdownToBlocks', () => {
     expect(block.has_column_header).toBe(true)
     expect(block.has_row_header).toBe(false)
     expect(block.children).toHaveLength(3)
-    expect(block.children[0]?.table_row.cells[0]?.[0]?.text.content).toBe('Name')
-    expect(block.children[2]?.table_row.cells[1]?.[0]?.text.content).toBe('2')
+    expect(block.children[0]?.table_row.cells[0]?.[0]).toHaveProperty('text.content', 'Name')
+    expect(block.children[2]?.table_row.cells[1]?.[0]).toHaveProperty('text.content', '2')
   })
 
   it('preserves rich text inside table cells', () => {
@@ -159,7 +164,7 @@ describe('markdownToBlocks', () => {
 
     expect(block.table_width).toBe(3)
     expect(block.children[1]?.table_row.cells).toHaveLength(3)
-    expect(block.children[1]?.table_row.cells[2]?.[0]?.text.content).toBe('')
+    expect(block.children[1]?.table_row.cells[2]?.[0]).toHaveProperty('text.content', '')
   })
 
   it('leaves non-table pipe content as a paragraph', () => {

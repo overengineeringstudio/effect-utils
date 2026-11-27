@@ -327,7 +327,7 @@ const parsedNodes = (markdown: string): readonly MarkdownNode[] => {
     if (paragraph?.type !== 'paragraph') return node
     const inline = childrenOf(paragraph)
     return { ...paragraph, children: [
-      ...(inline[0]?.type === 'text' ? [{ ...inline[0], value: inline[0].value?.slice(2) }] : []),
+      ...(inline[0]?.type === 'text' ? [{ ...inline[0], value: (inline[0].value ?? '').slice(2) }] : []),
       ...inline.slice(1),
     ] }
   })
