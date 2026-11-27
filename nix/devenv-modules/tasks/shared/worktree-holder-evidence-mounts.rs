@@ -124,6 +124,12 @@ pub fn device_pair(device: u64) -> (u32, u32) {
     (major as u32, minor as u32)
 }
 
+pub fn device_number(major: u32, minor: u32) -> u64 {
+    let (major, minor) = (u64::from(major), u64::from(minor));
+    ((major & 0xfff) << 8) | ((major & 0xffff_f000) << 32)
+        | (minor & 0xff) | ((minor & 0xffff_ff00) << 12)
+}
+
 /// One bounded task view reused across that task's references. The owner must
 /// recheck before switching tasks and before completing the capture.
 pub struct NativeView {
@@ -182,6 +188,10 @@ impl NativeView {
     }
 
     pub fn namespace_id(&self) -> u64 { self.namespace.id() }
+
+    pub fn covered_mount(&self, id: u64, deadline: std::time::Instant) -> std::io::Result<bool> {
+        self.namespace.covered_mount(id, deadline)
+    }
 
     pub fn pin_mount_root(&self, mount: &super::namespace::NamespaceMount, deadline: std::time::Instant)
         -> std::io::Result<NativeLocation>
@@ -305,6 +315,11 @@ mod tests {
         assert!(canonical(std::path::Path::new("/pool/a b")));
         assert_eq!(device_pair(0x801), (8, 1));
         assert_eq!(device_pair(0x1000_0000), (0, 65536));
+        for major in [0, 1, 0xfff, 0x1000, u32::MAX] {
+            for minor in [0, 1, 0xff, 0x100, u32::MAX] {
+                assert_eq!(device_pair(device_number(major, minor)), (major, minor));
+            }
+        }
     }
 
     #[test]
