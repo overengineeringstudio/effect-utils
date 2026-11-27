@@ -264,6 +264,8 @@ Copy-interruption inputs contain real directories without backing roots;
 successful publication separately exercises declared backing-root symlinks.
 The matrix records publisher stderr/failures separately by actual command identity;
 its bounded/redacted assertions cover the actual Buck terminal fd2 stream.
+Fixture workspaces resolve an owned sibling alias before deriving private
+budget/content paths, covering canonical-path requirements on Linux and macOS.
 
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then

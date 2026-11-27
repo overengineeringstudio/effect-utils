@@ -320,7 +320,12 @@ else:
         ):
             with self.subTest(termination=termination, payload=payload), \
                  tempfile.TemporaryDirectory() as scratch:
-                root = Path(scratch)
+                # Private metadata paths must resolve an owned sibling alias first.
+                workspace = Path(scratch) / "workspace"
+                workspace.mkdir(mode=0o700)
+                alias = Path(scratch) / "workspace-alias"
+                alias.symlink_to(workspace, target_is_directory=True)
+                root = alias.resolve()
                 ready = root / "ready"
                 os.mkfifo(root / "release")
                 os.mkfifo(root / "publication-release")
