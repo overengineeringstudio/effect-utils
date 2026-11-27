@@ -150,6 +150,39 @@ fn read_records(
     Ok((id, ids.len()))
 }
 
+fn mount_route(records: &BTreeMap<u64, NamespaceMount>, ancestor: u64,
+    descendant: u64, deadline: Instant) -> io::Result<Option<&NamespaceMount>>
+{
+    let Some(mut mount) = records.get(&descendant) else { return Ok(None); };
+    for _ in 0..=records.len() {
+        bound(deadline)?;
+        if mount.id == ancestor || mount.parent == ancestor { return Ok(Some(mount)); }
+        if mount.parent == mount.id { return Ok(None); }
+        let Some(parent) = records.get(&mount.parent) else { return Ok(None); };
+        mount = parent;
+    }
+    Err(incomplete())
+}
+
+fn covered_mount(records: &BTreeMap<u64, NamespaceMount>, id: u64,
+    deadline: Instant) -> io::Result<bool>
+{
+    let mount = records.get(&id).ok_or_else(incomplete)?;
+    for cover in records.values() {
+        bound(deadline)?;
+        if cover.id == id || !mount.point.starts_with(&cover.point)
+            || mount_route(records, cover.id, id, deadline)?.is_some()
+        { continue; }
+        let Some(route) = mount_route(records, cover.parent, id, deadline)? else { continue; };
+        if route.id == cover.parent { return Ok(true); }
+        // At shared ancestry, the shorter mount point dominates. A mount
+        // already hidden by the target's actual route cannot hide that target.
+        if route.point == cover.point { return Err(incomplete()); }
+        if route.point.starts_with(&cover.point) { return Ok(true); }
+    }
+    Ok(false)
+}
+
 pub struct NamespaceSnapshot {
     namespace: File,
     identity: objects::Identity,
@@ -170,6 +203,10 @@ impl NamespaceSnapshot {
 
     pub fn records(&self) -> &BTreeMap<u64, NamespaceMount> { &self.records }
     pub fn id(&self) -> u64 { self.id }
+
+    pub fn covered_mount(&self, id: u64, deadline: Instant) -> io::Result<bool> {
+        covered_mount(&self.records, id, deadline)
+    }
 
     pub fn same_namespace(&self, namespace: &File) -> io::Result<bool> {
         Ok(objects::identity(namespace)? == self.identity
@@ -202,6 +239,40 @@ mod tests {
         bytes[36..40].copy_from_slice(&4u32.to_ne_bytes());
         bytes[512..].copy_from_slice(b"/\0/\0tmpfs\0");
         bytes
+    }
+
+    fn topology_mount(id: u64, parent: u64, point: &str) -> NamespaceMount {
+        let mut mount = decode(&record(), 0x1_0000_000b, 19).unwrap();
+        mount.id = id;
+        mount.parent = parent;
+        mount.unique_id = id + 100;
+        mount.unique_parent = parent + 100;
+        mount.point = PathBuf::from(point);
+        mount
+    }
+
+    #[test]
+    fn covered_mounts_require_dominating_kernel_topology() {
+        let mut records: BTreeMap<_, _> = [
+            topology_mount(1, 0, "/"),
+            topology_mount(2, 1, "/home/alice"),
+            topology_mount(3, 2, "/home/alice/store"),
+            topology_mount(4, 1, "/home"),
+            topology_mount(5, 4, "/home/alice/store"),
+        ].into_iter().map(|mount| (mount.id, mount)).collect();
+        let deadline = Instant::now() + std::time::Duration::from_secs(10);
+        for id in [2, 3] { assert!(covered_mount(&records, id, deadline).unwrap()); }
+        for id in [1, 4, 5] { assert!(!covered_mount(&records, id, deadline).unwrap()); }
+        // A mount attached under the new covering mount remains visible, even
+        // where an older, hidden tree has the identical pathname.
+        records.insert(6, topology_mount(6, 5, "/home/alice/store"));
+        assert!(covered_mount(&records, 5, deadline).unwrap());
+        assert!(!covered_mount(&records, 6, deadline).unwrap());
+        // Equal-point competitors without an ordered ancestry are not proof.
+        records.insert(7, topology_mount(7, 1, "/home"));
+        assert!(covered_mount(&records, 4, deadline).is_err());
+        assert!(covered_mount(&records, 99, deadline).is_err());
+        assert!(covered_mount(&records, 3, Instant::now()).is_err());
     }
 
     #[test]

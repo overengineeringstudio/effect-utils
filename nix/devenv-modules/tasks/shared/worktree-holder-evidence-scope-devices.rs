@@ -61,7 +61,17 @@ impl CandidateView {
                 }
             }
             if !selected { continue; }
-            let location = view.pin_mount_root(mount, deadline)?;
+            let location = match view.pin_mount_root(mount, deadline) {
+                Ok(location) => location,
+                Err(error) => {
+                    if !view.covered_mount(mount.id, deadline)? { return Err(error); }
+                    // A covered mount has no reopenable pathname. Keep its
+                    // physical device and complete, rechecked kernel record;
+                    // do not invent a NativeLocation or discard its coverage.
+                    devices.insert(mounts::device_number(mount.device_major, mount.device_minor));
+                    continue;
+                }
+            };
             devices.insert(location.device);
             locations.push(location);
         }
