@@ -28,6 +28,7 @@ import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
   createStoreWorktree,
+  createStoreWorktreeDetached,
   deletionLeasePath,
   DeletionLeaseUnavailableError,
   releaseDeletionLease,
@@ -73,6 +74,138 @@ const writeLease = ({
   })
 
 describe('store deletion lease', () => {
+  it.effect.skipIf(process.platform !== 'linux')(
+    'creates a natively locked detached pool root without replacing its explicit persistent barrier',
+    Effect.fnUntraced(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const f = yield* createStoreFixture([
+        { host: 'example.com', owner: 'team', repo: 'pool', branches: ['main'] },
+      ])
+      const bare = f.bareRepoPaths['example.com/team/pool']!
+      const commit = yield* Git.getCurrentCommit(f.worktreePaths['example.com/team/pool#main']!)
+      const owner = yield* canonicalizeOwnerPath(`${bare}../pool/fresh`)
+      const lease = yield* acquireDeletionLease({
+        storeBasePath: f.storePath, ownerPath: owner, now: NOW, persistent: true,
+        activationIdentity: {
+          storePath: yield* canonicalizeOwnerPath(f.storePath),
+          containerPath: yield* canonicalizeOwnerPath(bare),
+        },
+      })
+      const before = yield* fs.readFileString(lease.leasePath)
+      const create = createStoreWorktreeDetached({
+        storeBasePath: f.storePath, repoPath: bare, worktreePath: owner,
+        commit, lockReason: 'pool ownership', persistentLease: lease,
+      })
+      const ordinary = yield* createStoreWorktreeDetached({
+        storeBasePath: f.storePath, repoPath: bare, worktreePath: owner,
+        commit, lockReason: 'pool ownership',
+      }).pipe(Effect.flip)
+      expect(ordinary).toBeInstanceOf(DeletionLeaseUnavailableError)
+      expect(yield* fs.exists(owner)).toBe(false)
+      yield* create
+      expect(yield* Git.getCurrentCommit(owner)).toBe(commit)
+      expect(yield* fs.readFileString(lease.leasePath)).toBe(before)
+      const registrations = yield* Git.listWorktrees(bare)
+      expect(registrations.find((item) => item.path === owner)?.head).toBe(commit)
+      expect(yield* fs.readFileString(`${bare}/worktrees/fresh/locked`)).toContain('pool ownership')
+      yield* acquireDeletionLease({
+        storeBasePath: f.storePath, ownerPath: owner, now: NOW,
+      }).pipe(Effect.flip)
+    }, Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  for (const mutation of ['token', 'path', 'owner', 'version', 'host', 'pid', 'start', 'store', 'bare', 'malformed']) {
+    it.effect.skipIf(process.platform !== 'linux')(
+      `refuses explicit persistent creation with mismatched ${mutation} before Git registration`,
+      Effect.fnUntraced(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const f = yield* createStoreFixture([
+          { host: 'example.com', owner: 'team', repo: 'pool', branches: ['main'] },
+        ])
+        const bare = f.bareRepoPaths['example.com/team/pool']!
+        const commit = yield* Git.getCurrentCommit(f.worktreePaths['example.com/team/pool#main']!)
+        const owner = yield* canonicalizeOwnerPath(`${bare}../pool/refused`)
+        const store = yield* canonicalizeOwnerPath(f.storePath)
+        const common = yield* canonicalizeOwnerPath(bare)
+        const lease = yield* acquireDeletionLease({
+          storeBasePath: f.storePath, ownerPath: owner, now: NOW, persistent: true,
+          activationIdentity: { storePath: store, containerPath: common },
+        })
+        const before = yield* fs.readFileString(lease.leasePath)
+        const bytes = mutation === 'version' ? before.replace('"version":2', '"version":1')
+          : mutation === 'host' ? before.replace(encodeJson(hostname()), encodeJson(`${hostname()}-other`))
+          : mutation === 'pid' ? before.replace(`"pid":${process.pid}`, `"pid":${deadPid()}`)
+          : mutation === 'start' ? before.replace(/"processStartTime":"[^"]*"/u, '"processStartTime":"0"')
+          : mutation === 'store' ? before.replace(encodeJson(store), encodeJson(`${store}-other`))
+          : mutation === 'bare' ? before.replace(encodeJson(common), encodeJson(`${common}-other`))
+          : mutation === 'malformed' ? '{' : before
+        if (!['token', 'path', 'owner'].includes(mutation)) expect(bytes).not.toBe(before)
+        yield* fs.writeFileString(lease.leasePath, bytes)
+        const failure = yield* createStoreWorktreeDetached({
+          storeBasePath: f.storePath, repoPath: bare, worktreePath: owner, commit,
+          lockReason: 'pool ownership',
+          persistentLease: {
+            ...lease,
+            ...(mutation === 'token' ? { token: 'wrong' } : {}),
+            ...(mutation === 'path' ? { leasePath: `${lease.leasePath}-other` } : {}),
+            ...(mutation === 'owner' ? { ownerPath: `${owner}-other` } : {}),
+          },
+        }).pipe(Effect.flip)
+        expect(failure).toBeInstanceOf(DeletionLeaseUnavailableError)
+        expect(yield* fs.exists(owner)).toBe(false)
+        expect(yield* fs.readFileString(lease.leasePath)).toBe(bytes)
+        expect((yield* Git.listWorktrees(bare)).some((item) => item.path === owner)).toBe(false)
+      }, Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+
+  for (const kind of ['directory', 'file', 'symlink', 'dangling-symlink']) {
+    it.effect.skipIf(process.platform !== 'linux')(
+      `refuses an already-existing ${kind} instead of adopting it as a fresh pool root`,
+      Effect.fnUntraced(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const f = yield* createStoreFixture([
+          { host: 'example.com', owner: 'team', repo: 'pool', branches: ['main'] },
+        ])
+        const bare = f.bareRepoPaths['example.com/team/pool']!
+        const commit = yield* Git.getCurrentCommit(f.worktreePaths['example.com/team/pool#main']!)
+        const owner = yield* canonicalizeOwnerPath(`${bare}../pool/existing`)
+        const target = `${f.storePath}outside-pool`
+        yield* fs.makeDirectory(`${bare}../pool`, { recursive: true })
+        if (kind === 'directory') yield* fs.makeDirectory(owner)
+        else if (kind === 'file') yield* fs.writeFileString(owner, 'keep')
+        else {
+          if (kind === 'symlink') yield* fs.makeDirectory(target)
+          yield* fs.symlink(target, owner)
+        }
+        const canonicalOwner = yield* canonicalizeOwnerPath(owner)
+        const lease = yield* acquireDeletionLease({
+          storeBasePath: f.storePath, ownerPath: canonicalOwner, now: NOW, persistent: true,
+          activationIdentity: {
+            storePath: yield* canonicalizeOwnerPath(f.storePath),
+            containerPath: yield* canonicalizeOwnerPath(bare),
+          },
+        })
+        const before = yield* fs.readFileString(lease.leasePath)
+        const registrations = yield* Git.listWorktrees(bare)
+        const failure = yield* createStoreWorktreeDetached({
+          storeBasePath: f.storePath, repoPath: bare, worktreePath: owner, commit,
+          lockReason: 'pool ownership', persistentLease: lease,
+        }).pipe(Effect.flip)
+        expect(failure).toBeInstanceOf(DeletionLeaseUnavailableError)
+        expect(failure.message).toContain('absent physical root')
+        expect(yield* fs.readFileString(lease.leasePath)).toBe(before)
+        expect(yield* Git.listWorktrees(bare)).toEqual(registrations)
+        if (kind === 'directory') expect(yield* fs.readDirectory(owner)).toEqual([])
+        else if (kind === 'file') expect(yield* fs.readFileString(owner)).toBe('keep')
+        else {
+          expect(yield* fs.readLink(owner)).toBe(target)
+          expect(yield* fs.exists(target)).toBe(kind === 'symlink')
+        }
+      }, Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+
   for (const scenario of ['canonical', 'wrong-start-time', 'store-alias']) {
     const wrongStartTime = scenario === 'wrong-start-time'
     const useStoreAlias = scenario === 'store-alias'
