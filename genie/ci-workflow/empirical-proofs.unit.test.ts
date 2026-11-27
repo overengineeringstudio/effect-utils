@@ -470,8 +470,9 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(steps[disconnect]?.run).toBe('sudo tailscale logout')
   expect(steps[writer]?.if).toContain("steps.occurrence-disconnect.outcome != 'failure'")
   const read = steps.find((step) => step.id === 'occurrence-query')!
-  expect(read.run).toContain('limit=5000&direction=forward')
-  expect(read.run).toContain('occurrences --loki-response')
+  expect(read.run).toContain('occurrences --loki-url "$BUCK2_OCCURRENCE_READ_URL"')
+  expect(read.run).not.toContain('occurrences --loki-response')
+  expect(read.run).not.toContain('curl ')
   expect(read.run).toContain('.evidenceGaps | length')
   expect(read.run).toContain('Coverage: UNKNOWN')
   expect(
@@ -495,7 +496,9 @@ test('manual occurrence queries cover the last 24 hours and retain per-occurrenc
   expect(publish.if).toContain("always() && steps.occurrence-query.outcome == 'success'")
   expect(publish.if).toContain("steps.linux-sandbox-admission.outcome == 'success'")
   expect(publish.uses).toBeUndefined()
-  expect(publish.run).toContain('jq -c . "$proof"')
+  expect(publish.run).toContain('jq . "$proof"')
+  expect(publish.run).toContain('if (( bytes < 900000 )); then')
+  expect(publish.run).toContain('Full per-occurrence JSON is in this step output')
   expect(publish.run).toContain('tojson')
   expect(publish.run).toContain('>> "$GITHUB_STEP_SUMMARY"')
   expect(steps.indexOf(publish)).toBeGreaterThan(
@@ -519,9 +522,8 @@ test('manual exact occurrence bounds and host remain paired, bounded and invento
   expect(read.run).toContain('Both exact UTC occurrence bounds are required')
   expect(read.run).toContain('end > start && end - start <= 86400')
   expect(read.run).toContain('Occurrence host is absent from the configured inventory')
-  expect(read.run).toContain('host_query="&host=$OCCURRENCE_QUERY_HOST"')
+  expect(read.run).toContain('args+=(--query-host "$OCCURRENCE_QUERY_HOST")')
   expect(read.run).toContain('BUCK2_OCCURRENCE_EXPECTED_HOSTS="$OCCURRENCE_QUERY_HOST"')
-  expect(read.run).toContain('direction=forward$host_query')
 })
 
 test('daily warm99 proof writes authoritative history and full observations locally', () => {

@@ -5785,26 +5785,24 @@ jobs:
             end=$(date -u -d "$until" +%s)
             (( end > start && end - start <= 86400 )) || { echo "Occurrence window must be positive and at most 24h" >&2; exit 1; }
           fi
-          host_query=""
           if [ -n "$OCCURRENCE_QUERY_HOST" ]; then
             [[ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch && "$OCCURRENCE_QUERY_HOST" =~ ^[A-Za-z0-9_.-]{1,64}$ ]]
             read -r -a configured_hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"
             found_host=false
             for host in "${configured_hosts[@]}"; do if [ "$host" = "$OCCURRENCE_QUERY_HOST" ]; then found_host=true; fi; done
             "$found_host" || { echo "Occurrence host is absent from the configured inventory" >&2; exit 1; }
-            host_query="&host=$OCCURRENCE_QUERY_HOST"
             BUCK2_OCCURRENCE_EXPECTED_HOSTS="$OCCURRENCE_QUERY_HOST"
           fi
           proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof"
           mkdir -p "$proof"
-          curl --fail --silent --show-error --max-time 120 --max-filesize 67108864 "$BUCK2_OCCURRENCE_READ_URL?start=${start}000000000&end=${end}000000000&limit=5000&direction=forward$host_query" --output "$proof/loki.json"
           export OCCURRENCE_SINCE="$since" OCCURRENCE_UNTIL="$until" OCCURRENCE_PROOF="$proof"
           "${DEVENV_BIN:?}" shell -- bash -euo pipefail -c '
             cd "${GITHUB_WORKSPACE:?}"
             args=()
+            if [ -n "$OCCURRENCE_QUERY_HOST" ]; then args+=(--query-host "$OCCURRENCE_QUERY_HOST"); fi
             read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"
             for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done
-            bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-response "$OCCURRENCE_PROOF/loki.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"
+            bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-url "$BUCK2_OCCURRENCE_READ_URL" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"
           '
           jq -r '"## Daily occurrence evidence\nRecords: \(.records | length)\nEvidence gaps: \(.evidenceGaps | length)\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"
       - name: Disconnect occurrence reader before evidence writer
@@ -5818,8 +5816,13 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof/occurrences.json"
-          jq -c . "$proof"
-          jq -r '"### Per-occurrence JSON\n\n```json\n" + tojson + "\n```"' "$proof" >> "$GITHUB_STEP_SUMMARY"
+          jq . "$proof"
+          bytes=$(wc -c < "$proof")
+          if (( bytes < 900000 )); then
+            jq -r '"### Per-occurrence JSON\n\n```json\n" + tojson + "\n```"' "$proof" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf "Full per-occurrence JSON is in this step output (%s bytes); it exceeds the bounded job-summary size.\n" "$bytes" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Join previous UTC day cache evidence
         shell: bash
         env:
