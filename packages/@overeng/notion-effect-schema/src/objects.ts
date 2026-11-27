@@ -576,7 +576,7 @@ const TableBlockCreate = Schema.Struct({
 type RichTextBlockCreateContentType = typeof RichTextBlockCreateContent.Type
 type RichTextBlockCreateContentWithChildrenType = RichTextBlockCreateContentType & {
   readonly children?: readonly NotionBlockCreateType[] | undefined
-  readonly color?: typeof NotionColor.Type | undefined
+  readonly color?: NotionColor | undefined
 }
 type ToDoBlockCreateContentType = RichTextBlockCreateContentWithChildrenType & {
   readonly checked: boolean

@@ -247,7 +247,7 @@ describe('toMarkdown', () => {
 
   it.each(['link_mention', 'link_preview'] as const)('decodes and renders %s as an ordinary link', (type) => {
     const input = [makeMention(type, { url: 'https://github.com/example/repo' }, 'Repository')]
-    const richText = Schema.decodeUnknownSync(RichTextArray)(input)
+    const richText = Schema.decodeSync(RichTextArray)(input)
 
     expect(richText).toEqual(input)
     expect(toMarkdown(richText)).toBe('[Repository](https://github.com/example/repo)')
