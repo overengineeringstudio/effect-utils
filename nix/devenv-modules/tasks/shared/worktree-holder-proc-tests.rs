@@ -339,7 +339,7 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
         wait_departures(&born);
         scope.recheck(deadline).unwrap();
         assert!(scope.task_departed(departed_index, deadline).unwrap());
-        assert!(scope.collect_resources(departed_index, deadline).unwrap().is_none());
+        assert!(scope.collect_resources(departed_index, deadline, None).unwrap().is_none());
         let index = scope.tasks.iter().position(|task| task.identity.pid == survivor).unwrap();
         let task = &scope.tasks[index];
         let nested = std::fs::read_dir(format!("{}/map_files", scopes::scope_path(&task.scope)))
@@ -347,12 +347,12 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
         assert_eq!(nested.kind(), std::io::ErrorKind::NotFound);
         assert!(!scopes::mapping_names(&task.mapping_scope, deadline).unwrap().is_empty(),
             "the same actual TID's top-level mapping scope must expose real mappings");
-        let references = scope.collect_resources(index, deadline).unwrap()
+        let references = scope.collect_resources(index, deadline, None).unwrap()
             .expect("a surviving task must not become an empty departed slot");
         assert!(references.descriptors.iter().any(|(fd, held)| *fd == descriptor && held.identity == identity));
         assert!(references.mappings.iter().any(|(_, held)| held.identity == identity),
             "the actual file-backed candidate mapping must remain observed");
-        scope.recheck_resources(index, &references, deadline).unwrap();
+        scope.recheck_resources(index, &references, deadline, None).unwrap();
         let current = scopes::ProcessScope::discover(pid, deadline).unwrap();
         assert!(scope.same_selection(&current, deadline).unwrap());
     }
@@ -371,11 +371,11 @@ fn actual_departed_thread_churn_preserves_survivor_fd() {
     wait_departures(&[newcomer_tid]);
     let mut scope = scopes::ProcessScope::discover(pid, deadline).unwrap();
     let index = scope.tasks.iter().position(|task| task.identity.pid == survivor).unwrap();
-    let references = scope.collect_resources(index, deadline).unwrap().unwrap();
+    let references = scope.collect_resources(index, deadline, None).unwrap().unwrap();
     worker.commands.as_ref().unwrap().send(1).unwrap();
     reports.recv().unwrap();
     assert!(!scope.task_departed(index, deadline).unwrap());
-    assert!(scope.recheck_resources(index, &references, deadline).is_err(),
+    assert!(scope.recheck_resources(index, &references, deadline, None).is_err(),
         "live-task descriptor disappearance must not become non-holding");
     let leader = scope.tasks.iter().position(|task| task.identity.pid == pid).unwrap();
     assert!(!scope.task_departed(leader, deadline).unwrap());
@@ -457,20 +457,20 @@ fn actual_large_group_task_resources_require_final_sibling_closure() {
     for (_, tid, descriptor) in &targets {
         let index = scope.tasks.iter().position(|task| task.identity.pid == *tid).unwrap();
         let expected = objects::identity(&objects::pin_magic(format!("/proc/{tid}/fd/{descriptor}")).unwrap()).unwrap();
-        let references = scope.collect_resources(index, deadline).unwrap().unwrap();
+        let references = scope.collect_resources(index, deadline, None).unwrap().unwrap();
         assert!(references.descriptors.iter().any(|(fd, held)|
             fd == &u32::try_from(*descriptor).unwrap() && held.identity == expected));
         resources.push((index, references));
     }
     scope.recheck(deadline).unwrap();
     for (index, references) in &resources {
-        scope.recheck_resources(*index, references, deadline).unwrap();
+        scope.recheck_resources(*index, references, deadline, None).unwrap();
     }
     scope.recheck(deadline).unwrap();
     workers[0].commands.as_ref().unwrap().send(1).unwrap();
     assert_eq!(reports.recv_timeout(Duration::from_secs(5)).unwrap().0, 0);
     let (index, references) = resources.last().unwrap();
-    scope.recheck_resources(*index, references, deadline).unwrap();
+    scope.recheck_resources(*index, references, deadline, None).unwrap();
     assert!(scope.recheck(deadline).is_err(),
         "a sibling namespace change must veto the complete process even when this task is stable");
     let fresh = scopes::ProcessScope::discover(std::process::id(), deadline).unwrap();

@@ -1,7 +1,8 @@
 //! Retained proc scopes and native resources, extracted from the production census.
 //! All errors remain unqualified evidence; callers must never interpret them as absence.
-//! Initial table churn permits three whole-task recaptures before publication.
-//! Retained final closure never recaptures away a previously observed reference.
+//! Descriptor churn permits at most five unpublished snapshot passes per seal.
+//! Every observed object survives until native negative proof and final closure.
+use std::cell::RefCell;
 use std::fs::{self, File};
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -14,6 +15,13 @@ use super::process::Process;
 
 const TASK_LIMIT: usize = 262144;
 const OBJECT_LIMIT: usize = 1048576;
+const FD_SNAPSHOT_PASSES: usize = 5;
+
+/// `fresh` is true exactly once per newly retained descriptor pin, so the
+/// caller can charge its transaction-wide resource budget without recounting.
+/// Success must mean an authenticated native negative, never an unknown or
+/// an omitted positive. None requests the original strict snapshot contract.
+pub type DescriptorProof<'a> = dyn FnMut(&Held, bool) -> io::Result<()> + 'a;
 
 /// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +176,7 @@ pub struct References {
     pub exe: Option<Held>,
     pub descriptors: Vec<(u32, Held)>,
     pub mappings: Vec<(String, Held)>,
+    descriptor_repairs: RefCell<Vec<Vec<(u32, Held)>>>,
     no_mm: bool,
 }
 
@@ -497,7 +506,8 @@ impl ProcessScope {
     /// This closes the selected task and leader, not all sibling resources.
     /// Callers must retain every task slot and recheck the complete ProcessScope
     /// before and after the process resource phase, including final closure.
-    pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<Option<References>> {
+    pub fn collect_resources(&self, index: usize, deadline: Instant,
+        mut repair: Option<&mut DescriptorProof<'_>>) -> io::Result<Option<References>> {
         let mut attempts = 0;
         loop {
             self.recheck_leader(deadline)?;
@@ -506,8 +516,8 @@ impl ProcessScope {
             let captured: io::Result<References> = (|| {
                 let all_terminal = self.terminal_group(deadline)?;
                 let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-                let references = References::collect(task, all_terminal, deadline)?;
-                references.recheck_task(task, all_terminal, deadline)?;
+                let references = References::collect(task, all_terminal, deadline, &mut repair)?;
+                references.recheck_task(task, all_terminal, deadline, &mut repair)?;
                 self.recheck_leader(deadline)?;
                 Ok(references)
             })();
@@ -516,9 +526,9 @@ impl ProcessScope {
                 Err(error) if error.kind() == io::ErrorKind::NotFound
                     && self.task_departed(index, deadline)? => return Ok(None),
                 Err(error) => {
-                    // No reference from a failed attempt has been classified or
-                    // published. Recapture the WHOLE task; never omit a changed FD.
-                    // Final recheck_resources deliberately has no such retry.
+                    // Whole-task recapture remains unpublished and bounded.
+                    // Once an FD was pinned, native negative proof is required
+                    // before this retry can forget it; positives/unknowns HOLD.
                     if attempts == 3 || !matches!(error.kind(),
                         io::ErrorKind::NotFound | io::ErrorKind::Interrupted)
                     { return Err(error); }
@@ -529,13 +539,13 @@ impl ProcessScope {
     }
 
     pub fn recheck_resources(&self, index: usize, references: &References,
-        deadline: Instant) -> io::Result<()> {
+        deadline: Instant, mut repair: Option<&mut DescriptorProof<'_>>) -> io::Result<()> {
         self.recheck_leader(deadline)?;
         if self.task_departed(index, deadline)? { return Ok(()); }
         let checked: io::Result<()> = (|| {
             let all_terminal = self.terminal_group(deadline)?;
             let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-            references.recheck_task(task, all_terminal, deadline)?;
+            references.recheck_task(task, all_terminal, deadline, &mut repair)?;
             self.recheck_leader(deadline).map(|_| ())
         })();
         match checked {
@@ -567,7 +577,8 @@ impl TaskScope {
 }
 
 impl References {
-    fn collect(task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<Self> {
+    fn collect(task: &TaskScope, all_terminal: bool, deadline: Instant,
+        repair: &mut Option<&mut DescriptorProof<'_>>) -> io::Result<Self> {
         let base = scope_path(&task.scope);
         let mapping_base = scope_path(&task.mapping_scope);
         let no_mm = no_mm_role(task, all_terminal, deadline)?;
@@ -577,28 +588,35 @@ impl References {
         if root.as_ref().is_some_and(|held| !held.directory)
             || cwd.as_ref().is_some_and(|held| !held.directory)
         { return Err(io::Error::other("invalid task directory capability")); }
-        let mut descriptors = Vec::new();
-        for number in numbers(format!("{base}/fd"), deadline)? {
-            let held = Held::pin(format!("{base}/fd/{number}"), deadline)?;
-            qualify_object(&held)?;
-            descriptors.push((number, held));
-        }
+        let descriptors = capture_descriptors(task, deadline)?;
         let mut mappings = Vec::new();
-        for name in mapping_names(&task.mapping_scope, deadline)? {
-            let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
-            if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
-                return Err(io::Error::other("unqualified mapped kernel object"));
+        let mapped: io::Result<()> = (|| {
+            for name in mapping_names(&task.mapping_scope, deadline)? {
+                let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
+                if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
+                    return Err(io::Error::other("unqualified mapped kernel object"));
+                }
+                mappings.push((name, held));
             }
-            mappings.push((name, held));
+            Ok(())
+        })();
+        if let Err(error) = mapped {
+            if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::Interrupted) {
+                prove_descriptor_negatives(descriptors.iter(), repair)?;
+            }
+            return Err(error);
         }
         if no_mm && (exe.is_some() || !descriptors.is_empty() || !mappings.is_empty()) {
             return Err(io::Error::other("resource-empty task gained user resources"));
         }
         for held in root.iter().chain(cwd.iter()).chain(exe.iter()) { qualify_object(held)?; }
-        Ok(Self { root, cwd, exe, descriptors, mappings, no_mm })
+        Ok(Self { root, cwd, exe, descriptors, mappings, no_mm,
+            descriptor_repairs: RefCell::new(Vec::new()) })
     }
 
-    fn recheck_task(&self, task: &TaskScope, all_terminal: bool, deadline: Instant) -> io::Result<()> {
+    fn recheck_task(&self, task: &TaskScope, all_terminal: bool, deadline: Instant,
+        repair: &mut Option<&mut DescriptorProof<'_>>) -> io::Result<()> {
+        let checked: io::Result<()> = (|| {
         task.recheck(deadline)?;
         let base = scope_path(&task.scope);
         let mapping_base = scope_path(&task.mapping_scope);
@@ -613,25 +631,147 @@ impl References {
                 },
             }
         }
-        let expected: Vec<_> = self.descriptors.iter().map(|(number, _)| *number).collect();
-        if numbers(format!("{base}/fd"), deadline)? != expected {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "task descriptor membership changed"));
-        }
-        for (number, held) in &self.descriptors {
-            held.recheck(format!("{base}/fd/{number}"), deadline)?;
-            qualify_object(held)?;
-        }
+        self.recheck_descriptors(task, deadline, repair, true)?;
         let names = mapping_names(&task.mapping_scope, deadline)?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
             return Err(io::Error::new(io::ErrorKind::Interrupted, "task mapping membership changed"));
         }
         for (name, held) in &self.mappings { held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?; }
-        if numbers(format!("{base}/fd"), deadline)? != expected
-            || mapping_names(&task.mapping_scope, deadline)? != names
+        self.recheck_descriptors(task, deadline, repair, false)?;
+        if mapping_names(&task.mapping_scope, deadline)? != names
             || no_mm_role(task, all_terminal, deadline)? != self.no_mm
         { return Err(io::Error::new(io::ErrorKind::Interrupted, "task resources changed during recheck")); }
         task.recheck(deadline)
+        })();
+        if let Err(error) = &checked {
+            if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::Interrupted) {
+                let history = self.descriptor_repairs.borrow();
+                prove_descriptor_negatives(self.descriptors.iter().chain(history.iter().flatten()), repair)?;
+            }
+        }
+        checked
     }
+
+    pub fn descriptor_pin_count(&self) -> usize {
+        self.descriptors.len() + self.descriptor_repairs.borrow().iter().map(Vec::len).sum::<usize>()
+    }
+
+    pub fn current_descriptor_count(&self) -> usize {
+        self.descriptor_repairs.borrow().last().map_or(self.descriptors.len(), Vec::len)
+    }
+
+    fn recheck_descriptors(&self, task: &TaskScope, deadline: Instant,
+        repair: &mut Option<&mut DescriptorProof<'_>>, full: bool) -> io::Result<()> {
+        let mut history = self.descriptor_repairs.borrow_mut();
+        let checked = if !full && history.is_empty() {
+            let current = numbers(format!("{}/fd", scope_path(&task.scope)), deadline)?;
+            if current.iter().copied().eq(self.descriptors.iter().map(|(number, _)| *number)) {
+                Ok(())
+            } else {
+                Err(io::Error::new(io::ErrorKind::Interrupted, "task descriptor membership changed"))
+            }
+        } else {
+            check_descriptors(history.last().unwrap_or(&self.descriptors), task, deadline)
+        };
+        if history.is_empty() && checked.is_ok() { return Ok(()); }
+        if let Err(error) = &checked {
+            if !matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) {
+                return checked;
+            }
+        }
+        let Some(prove_negative) = repair.as_mut() else {
+            return checked.and_then(|()| Err(io::Error::other("descriptor repair requires native proof")));
+        };
+        for pass in 0..FD_SNAPSHOT_PASSES {
+            if pass != 0 {
+                task.recheck(deadline)?;
+                let snapshot = capture_descriptors(task, deadline)?;
+                for (_, held) in &snapshot {
+                    (**prove_negative)(held, true).map_err(descriptor_proof_error)?;
+                }
+                history.push(snapshot);
+            }
+            // Never discard a formerly seen candidate or an opaque object.
+            // Re-prove every retained snapshot, including vanished slots, not
+            // merely the latest table or an intersection of numeric FD lists.
+            for (_, held) in self.descriptors.iter().chain(history.iter().flatten()) {
+                qualify_object(held)?;
+                (**prove_negative)(held, false).map_err(descriptor_proof_error)?;
+            }
+            match check_descriptors(history.last().unwrap_or(&self.descriptors), task, deadline) {
+                Ok(()) => { task.recheck(deadline)?; return Ok(()); }
+                Err(error) if matches!(error.kind(),
+                    io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => (),
+                Err(error) => return Err(error),
+            }
+        }
+        Err(io::Error::other("descriptor stable-pair budget exhausted"))
+    }
+}
+
+fn prove_descriptor_negatives<'a>(descriptors: impl Iterator<Item = &'a (u32, Held)>,
+    repair: &mut Option<&mut DescriptorProof<'_>>) -> io::Result<()> {
+    if let Some(proof) = repair.as_mut() {
+        for (_, held) in descriptors {
+            qualify_object(held)?;
+            (**proof)(held, false).map_err(descriptor_proof_error)?;
+        }
+    }
+    Ok(())
+}
+
+fn descriptor_proof_error(error: io::Error) -> io::Error {
+    if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::Interrupted) {
+        // The request-level ENOENT retry must not forget an unclassified FD.
+        io::Error::other(format!("unqualified descriptor snapshot: {error}"))
+    } else { error }
+}
+
+#[cfg(test)]
+mod descriptor_failure_tests {
+    #[test]
+    fn unclassified_descriptor_churn_cannot_enter_outer_capture_retry() {
+        for errno in [2, 4] {
+            let error = super::descriptor_proof_error(std::io::Error::from_raw_os_error(errno));
+            assert_eq!(error.kind(), std::io::ErrorKind::Other);
+            assert_eq!(error.raw_os_error(), None);
+        }
+        for errno in [1, 13, 95] {
+            let error = super::descriptor_proof_error(std::io::Error::from_raw_os_error(errno));
+            assert_eq!(error.raw_os_error(), Some(errno));
+        }
+    }
+}
+
+fn capture_descriptors(task: &TaskScope, deadline: Instant) -> io::Result<Vec<(u32, Held)>> {
+    let base = scope_path(&task.scope);
+    let mut descriptors = Vec::new();
+    for number in numbers(format!("{base}/fd"), deadline)? {
+        if descriptors.len() >= OBJECT_LIMIT { return Err(io::Error::other("descriptor capacity")); }
+        // An enumerated FD that vanishes before pinning is unclassified, not a
+        // negative. Never recapture it away through the outer ENOENT retry.
+        let held = Held::pin(format!("{base}/fd/{number}"), deadline).map_err(descriptor_proof_error)?;
+        qualify_object(&held)?;
+        descriptors.push((number, held));
+    }
+    Ok(descriptors)
+}
+
+fn check_descriptors(descriptors: &[(u32, Held)], task: &TaskScope,
+    deadline: Instant) -> io::Result<()> {
+    let base = scope_path(&task.scope);
+    let current = numbers(format!("{base}/fd"), deadline)?;
+    if !current.iter().copied().eq(descriptors.iter().map(|(number, _)| *number)) {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, "task descriptor membership changed"));
+    }
+    for (number, held) in descriptors {
+        held.recheck(format!("{base}/fd/{number}"), deadline)?;
+        qualify_object(held)?;
+    }
+    if numbers(format!("{base}/fd"), deadline)? != current {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, "task descriptor pair did not close"));
+    }
+    Ok(())
 }
 
 /// Enumerate all visible thread-group leaders without a UID/name filter.

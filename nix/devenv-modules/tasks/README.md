@@ -218,6 +218,27 @@ UID, resource, sibling namespace or final seal is omitted. The ignored real
 collects/rechecks 64 owned target threads, then requires a sibling namespace
 change and a newly born task to veto complete-group closure.
 
+Descriptor membership churn has a generic per-task, five-pass unpublished
+stable-pair repair, both during initial resource capture and later closing
+phases. Every pinned object from every attempted table remains retained and
+must have actual native negative membership before a changed table can close;
+candidate positives, proxy/opaque objects and failed capability proofs stay
+protective. An enumerated FD that vanishes before pinning is unclassified and
+cannot disappear through the outer ENOENT recapture. A formerly seen candidate
+also vetoes a whole-task retry instead of being forgotten. No PID/name/path-prefix
+waiver exists. Each successful table closes an independent enumeration against
+all retained slot identities and a second enumeration, with unchanged task,
+namespace, whole-group, mount and alias seals. Exhaustion remains UNKNOWN/HOLD.
+Additional pins share the existing transaction-wide object bound; the final
+receipt separately counts retained objects, retained ordinary descriptor pins
+and the last authenticated ordinary descriptor-table slots, not their union.
+The ignored real
+`candidates::tests::actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals`
+uses an owned exec'd FD mutator and frozen native candidate coverage. It exercises
+initial capture, two late noncandidate repairs, a closed candidate FD veto,
+io_uring rejection and deterministic five-pass exhaustion without foreign
+lifecycle changes. Source/build success is not execution of this kernel fixture.
+
 Task departure is non-holding only for a missing nonleader re-proven absent
 from the retained leader's task list, with the original live leader generation
 checked before and after relisting. Missing descendants of a still-listed

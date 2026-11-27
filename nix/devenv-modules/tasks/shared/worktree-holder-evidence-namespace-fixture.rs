@@ -34,7 +34,7 @@ fn probe() {
     assert_eq!(process.tasks.len(), 1, "only the jailed keeper task may remain");
     let task = &process.tasks[0];
     assert_eq!(task.identity.pid, pid);
-    let pins = process.collect_resources(0, deadline).unwrap().unwrap();
+    let pins = process.collect_resources(0, deadline, None).unwrap().unwrap();
     assert_eq!(pins.descriptors.len(), 3, "keeper must not retain an outside source FD");
     let host_jail = File::open(&jail).unwrap();
     let expected_root = objects::identity(&host_jail).unwrap();
@@ -96,7 +96,7 @@ fn probe() {
     // an incomplete kernel enumeration, or any other query failure as a pass.
     assert_eq!(failure.kind(), std::io::ErrorKind::Other);
     assert_eq!(failure.to_string(), "mounted root changed or shadowed");
-    process.recheck_resources(0, &pins, deadline).unwrap();
+    process.recheck_resources(0, &pins, deadline, None).unwrap();
     process.recheck(deadline).unwrap();
     assert_profile();
 }

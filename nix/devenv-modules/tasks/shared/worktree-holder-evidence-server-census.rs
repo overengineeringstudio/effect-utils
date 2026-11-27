@@ -1,4 +1,5 @@
 //! Root membership and management policy over retained proc-library snapshots.
+use std::cell::Cell;
 use std::fs::File;
 use std::io;
 use std::os::fd::OwnedFd;
@@ -21,6 +22,7 @@ pub struct Census<'a> {
     request: &'a protocol::Request,
     observation: protocol::Observation,
     aliases: AliasSeal,
+    object_count: Cell<usize>,
 }
 struct ObservedProcess {
     scope: ProcessScope,
@@ -178,6 +180,14 @@ fn exempt_descriptor(client: Option<&Client>, request: &protocol::Request, pid: 
     Ok(true)
 }
 
+fn charge_objects(count: &Cell<usize>, additional: usize) -> io::Result<()> {
+    let next = count.get().checked_add(additional)
+        .filter(|next| *next <= OBJECT_LIMIT)
+        .ok_or_else(|| io::Error::other("object census capacity"))?;
+    count.set(next);
+    Ok(())
+}
+
 fn append_matches(observation: &mut protocol::Observation, matches: &[super::candidates::MatchedReference],
     pid: &Process, task: &TaskScope, kind: ReferenceKind, fd: Option<u32>,
     leader_fd_alias: bool, total: &mut usize)
@@ -205,7 +215,8 @@ impl References {
     fn collect(process: &ProcessScope, index: usize, request: &protocol::Request,
         candidates: &CandidateSet, store_client: Option<&Client>, management: bool,
         runtime: &mut Option<Runtime>, observation: &mut protocol::Observation,
-        reference_count: &mut usize, aliases: &mut AliasSeal, deadline: Instant) -> io::Result<Option<Self>>
+        reference_count: &mut usize, aliases: &mut AliasSeal, object_count: &Cell<usize>,
+        deadline: Instant) -> io::Result<Option<Self>>
     {
         if process.task_departed(index, deadline)? { return Ok(None); }
         let task = &process.tasks[index];
@@ -233,7 +244,13 @@ impl References {
             }
             Pins::Management(ManagementReferences { root, cwd, exe, descriptors, mappings })
         } else {
-            let Some(pins) = process.collect_resources(index, deadline)? else { return Ok(None); };
+            let mut prove_negative = |held: &Held, fresh: bool| {
+                if fresh { charge_objects(object_count, 1)?; }
+                candidates.matches(&held.file, &task.scope, ReferenceKind::Fd, deadline)?
+                    .require_native_negative()
+            };
+            let Some(pins) = process.collect_resources(index, deadline, Some(&mut prove_negative))?
+                else { return Ok(None); };
             Pins::Ordinary(pins)
         };
         let (root, cwd, exe, descriptors, mappings) =
@@ -297,14 +314,19 @@ impl References {
 
     fn recheck(&self, process: &ProcessScope, index: usize, candidates: &CandidateSet,
         runtime: Option<&Runtime>, request: &protocol::Request,
-        store_client: Option<&Client>, deadline: Instant) -> io::Result<()>
+        store_client: Option<&Client>, object_count: &Cell<usize>, deadline: Instant) -> io::Result<()>
     {
         let task = &process.tasks[index];
         let pid = process.identity.pid;
         let base = scope_path(&task.scope);
         let mapping_base = scope_path(&task.mapping_scope);
+        let mut prove_negative = |held: &Held, fresh: bool| {
+            if fresh { charge_objects(object_count, 1)?; }
+            candidates.recheck_matches(&held.file, &task.scope, ReferenceKind::Fd,
+                self.mounted.as_ref(), deadline)?.require_native_negative()
+        };
         match &self.pins {
-            Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline)?,
+            Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline, Some(&mut prove_negative))?,
             Pins::Management(pins) => {
                 for (name, held) in [("root", &pins.root), ("cwd", &pins.cwd), ("exe", &pins.exe)] {
                     held.as_ref().ok_or_else(|| io::Error::other("missing server bootstrap reference"))?
@@ -350,7 +372,7 @@ impl References {
                 .admits(pid, task.identity.pid, &root.file, deadline)?;
         }
         match &self.pins {
-            Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline)?,
+            Pins::Ordinary(pins) => process.recheck_resources(index, pins, deadline, Some(&mut prove_negative))?,
             Pins::Management(pins) => {
                 if !mapping_names(&task.mapping_scope, deadline)?.iter().eq(pins.mappings.iter().map(|(name, _)| name)) {
                     return Err(io::Error::other("server mappings changed during closure"));
@@ -363,7 +385,8 @@ impl References {
 
 impl ObservedProcess {
     fn recheck(&self, candidates: &CandidateSet, runtime: Option<&Runtime>,
-        request: &protocol::Request, store_client: Option<&Client>, deadline: Instant) -> io::Result<()> {
+        request: &protocol::Request, store_client: Option<&Client>, object_count: &Cell<usize>,
+        deadline: Instant) -> io::Result<()> {
         self.scope.recheck(deadline)?;
         let all_terminal = whole_group_terminal(&self.scope.tasks);
         if self.references.len() != self.scope.tasks.len() {
@@ -375,7 +398,8 @@ impl ObservedProcess {
                 .ok_or_else(|| io::Error::other("live task lacks resources"))?;
             let checked: io::Result<()> = (|| {
                 task.recheck(deadline)?;
-                references.recheck(&self.scope, index, candidates, runtime, request, store_client, deadline)?;
+                references.recheck(&self.scope, index, candidates, runtime, request, store_client,
+                    object_count, deadline)?;
                 if let Some(runtime) = runtime {
                     runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
                 }
@@ -435,12 +459,11 @@ impl<'a> Census<'a> {
                 references: Vec::new(), unknown_reasons: Vec::new() });
         }
         let mut census = Self { runtime: None, processes: Vec::new(), self_role, request,
-            aliases: AliasSeal::default(),
+            aliases: AliasSeal::default(), object_count: Cell::new(0),
             observation: protocol::Observation { complete: true, process_count: 0, task_count: 0,
                 roots, receipt: Vec::new() } };
         let pids = numbers("/proc", deadline)?;
         let mut total_tasks = 0usize;
-        let mut total_objects = 0usize;
         let mut reference_count = 0usize;
         for pid in &pids {
             // No unpinned process_gone shortcut: discovery churn is UNKNOWN.
@@ -456,16 +479,17 @@ impl<'a> Census<'a> {
                 // Still inspect any root/cwd held by a proven no-mm task.
                 let captured = References::collect(&process, index, request, candidates,
                     store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, &mut census.aliases, deadline);
+                    &mut reference_count, &mut census.aliases, &census.object_count, deadline);
                 let references = match captured {
                     Err(error) if error.kind() == io::ErrorKind::NotFound
                         && process.task_departed(index, deadline)? => None,
                     result => result?,
                 };
                 if let Some(references) = &references {
-                    total_objects += 3 + references.pins.descriptors().len() + references.pins.mappings().len();
+                    charge_objects(&census.object_count, references.pins.root().iter().count()
+                        + references.pins.cwd().iter().count() + references.pins.exe().iter().count()
+                        + references.pins.descriptors().len() + references.pins.mappings().len())?;
                 }
-                if total_objects > OBJECT_LIMIT { return Err(io::Error::other("object census capacity")); }
                 resources.push(references);
             }
             // Discovery closes the complete group before resource capture.
@@ -491,8 +515,8 @@ impl<'a> Census<'a> {
             }
         }
         census.observation.receipt = format!(
-            "all-uid-all-task-root-scoped-census-v1 processes={} tasks={} objects={} self_role=immutable-server-bootstrap self_tgid={} self_start={} peer_tgid={} peer_start={}\n",
-            census.observation.process_count, census.observation.task_count, total_objects,
+            "all-uid-all-task-root-scoped-census-v1 processes={} tasks={} self_role=immutable-server-bootstrap self_tgid={} self_start={} peer_tgid={} peer_start={}\n",
+            census.observation.process_count, census.observation.task_count,
             self_role.pid(), client::process(self_role.pid())?.start, peer.process.pid, peer.process.start).into_bytes();
         if let Some(runtime) = &census.runtime { census.observation.receipt.extend_from_slice(runtime.receipt()); }
         Ok(census)
@@ -526,7 +550,8 @@ impl<'a> Census<'a> {
         candidates.recheck(deadline)?;
         self.recheck_selection(deadline)?;
         for process in &self.processes {
-            process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline)?;
+            process.recheck(candidates, self.runtime.as_ref(), self.request, store_client,
+                &self.object_count, deadline)?;
         }
         // Departed-task shortcuts never waive retained mount contributions.
         for process in &self.processes {
@@ -541,11 +566,45 @@ impl<'a> Census<'a> {
         deadline_check(deadline)
     }
 
-    pub fn into_observation(self) -> (protocol::Observation, AliasSeal) { (self.observation, self.aliases) }
+    pub fn into_observation(mut self) -> (protocol::Observation, AliasSeal) {
+        let mut slots = 0;
+        let mut pins = 0;
+        let mut objects = 0;
+        for process in &self.processes {
+            for references in process.references.iter().flatten() {
+                objects += references.pins.root().iter().count() + references.pins.cwd().iter().count()
+                    + references.pins.exe().iter().count() + references.pins.mappings().len();
+                if let Pins::Ordinary(resources) = &references.pins {
+                    slots += resources.current_descriptor_count();
+                    let descriptor_pins = resources.descriptor_pin_count();
+                    pins += descriptor_pins;
+                    objects += descriptor_pins;
+                }
+                else {
+                    objects += references.pins.descriptors().len();
+                }
+            }
+        }
+        self.observation.receipt.extend_from_slice(format!(
+            "retained_objects={} ordinary_sealed_descriptor_slots={} ordinary_retained_descriptor_pins={}\n",
+            objects, slots, pins).as_bytes());
+        (self.observation, self.aliases)
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repaired_descriptor_pins_share_the_existing_global_object_bound() {
+        let count = Cell::new(OBJECT_LIMIT - 1);
+        charge_objects(&count, 1).unwrap();
+        assert_eq!(count.get(), OBJECT_LIMIT);
+        assert!(charge_objects(&count, 1).is_err());
+        assert_eq!(count.get(), OBJECT_LIMIT);
+        assert!(charge_objects(&count, usize::MAX).is_err());
+        assert_eq!(count.get(), OBJECT_LIMIT);
+    }
 
     fn task() -> TaskScope {
         TaskScope { tgid: 7, identity: Process { pid: 8, parent: 1, start: 101, state: b'S' },

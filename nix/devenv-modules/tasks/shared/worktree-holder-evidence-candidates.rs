@@ -44,6 +44,17 @@ pub enum MatchOutcome {
     NeedsProxy,
 }
 
+impl MatchOutcome {
+    /// A changing descriptor may be retired only with actual native absence.
+    /// Positive and proxy outcomes remain protective, even after its FD closes.
+    pub fn require_native_negative(&self) -> io::Result<()> {
+        match self {
+            Self::Native(matches) if matches.is_empty() => Ok(()),
+            _ => Err(io::Error::other("changing descriptor lacks native negative proof")),
+        }
+    }
+}
+
 pub struct MountCoverage {
     view: CandidateView,
     locations: Vec<mounts::NativeLocation>,
@@ -525,6 +536,203 @@ mod tests {
         CandidateSet { kind: Kind::Worktree, uid: roots[0].root.metadata().unwrap().uid(),
             roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger, witness: RefCell::new(None),
             store_inventory: RefCell::new(None), native_view: RefCell::new(None) }
+    }
+
+    #[test]
+    fn descriptor_repair_requires_native_empty_membership() {
+        assert!(MatchOutcome::Native(Vec::new()).require_native_negative().is_ok());
+        assert!(MatchOutcome::NeedsProxy.require_native_negative().is_err());
+        let positive = MatchOutcome::Native(vec![MatchedReference {
+            root_index: 0, relative_path: "payload".into(),
+            identity: ObjectIdentity { dev: 1, ino: 2, mount_id: 3 },
+            effect: ReferenceEffect::RetainedBytes,
+        }]);
+        assert!(positive.require_native_negative().is_err());
+    }
+
+    #[test]
+    #[ignore = "requires isolated root Linux, native temp filesystem and io_uring"]
+    #[allow(unsafe_code)]
+    fn actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals() {
+        use std::io::{BufRead, Write};
+        use std::os::fd::{FromRawFd, OwnedFd};
+        use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+        use worktree_holder_proc::scopes::{Held, ProcessScope};
+        const CHILD: &str = "HOLDER_FD_SNAPSHOT_MUTATOR_ROOT";
+        const TEST: &str = "candidates::tests::actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals";
+        const ACK: &str = "HOLDER_FD_ACK ";
+        if let Some(root) = std::env::var_os(CHILD) {
+            let root = PathBuf::from(root);
+            let trigger = File::open(root.join("outside")).unwrap();
+            let mut extra = None;
+            let mut candidate: Option<File> = None;
+            let mut opaque: Option<OwnedFd> = None;
+            println!("{ACK}{}", trigger.as_raw_fd());
+            std::io::stdout().flush().unwrap();
+            for command in std::io::stdin().lock().lines() {
+                let number = match command.unwrap().as_str() {
+                    "toggle" => {
+                        extra = if extra.is_some() { None } else {
+                            Some(File::open(root.join("outside-extra")).unwrap())
+                        };
+                        extra.as_ref().map_or(0, AsRawFd::as_raw_fd)
+                    }
+                    "candidate" => {
+                        candidate = Some(File::open(root.join("candidate/payload")).unwrap());
+                        candidate.as_ref().unwrap().as_raw_fd()
+                    }
+                    "drop-candidate" => {
+                        let file = candidate.take().unwrap();
+                        let number = file.as_raw_fd();
+                        drop(file);
+                        number
+                    }
+                    "opaque" => {
+                        unsafe extern "C" {
+                            fn syscall(number: std::os::raw::c_long, ...) -> std::os::raw::c_long;
+                        }
+                        let mut parameters = [0u64; 15];
+                        // SAFETY: owned child, supported Linux syscall425 and
+                        // initialized aligned 120-byte io_uring_params buffer.
+                        let raw = unsafe { syscall(425, 8u32, parameters.as_mut_ptr()) };
+                        assert!(raw >= 0, "io_uring_setup: {}", io::Error::last_os_error());
+                        // SAFETY: successful setup transfers this fresh FD once.
+                        opaque = Some(unsafe { OwnedFd::from_raw_fd(i32::try_from(raw).unwrap()) });
+                        opaque.as_ref().unwrap().as_raw_fd()
+                    }
+                    "drop-opaque" => {
+                        drop(opaque.take().unwrap());
+                        0
+                    }
+                    _ => panic!("unexpected owned mutator command"),
+                };
+                println!("{ACK}{number}");
+                std::io::stdout().flush().unwrap();
+            }
+            return;
+        }
+        struct Mutator {
+            child: Child,
+            input: Option<ChildStdin>,
+            output: std::io::BufReader<ChildStdout>,
+        }
+        impl Mutator {
+            fn ack(&mut self) -> u32 {
+                loop {
+                    let mut line = String::new();
+                    assert_ne!(self.output.read_line(&mut line).unwrap(), 0, "owned mutator exited");
+                    if let Some((_, value)) = line.split_once(ACK) {
+                        return value.trim().parse().unwrap();
+                    }
+                }
+            }
+            fn command(&mut self, command: &str) -> u32 {
+                writeln!(self.input.as_mut().unwrap(), "{command}").unwrap();
+                self.input.as_mut().unwrap().flush().unwrap();
+                self.ack()
+            }
+        }
+        impl Drop for Mutator {
+            fn drop(&mut self) {
+                self.input.take(); // EOF releases only this owned child.
+                let _ = self.child.wait();
+            }
+        }
+        let fixture = Fixture::new();
+        let root = fixture.0.join("candidate");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("payload"), b"candidate").unwrap();
+        std::fs::write(fixture.0.join("outside"), b"outside").unwrap();
+        std::fs::write(fixture.0.join("outside-extra"), b"outside").unwrap();
+        // Exec before any candidate/evidence pins exist: the target must not
+        // inherit collector-created capabilities or a mutable helper FD table.
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", TEST, "--nocapture", "--test-threads=1"])
+            .env(CHILD, &fixture.0).stdin(Stdio::piped()).stdout(Stdio::piped())
+            .spawn().unwrap();
+        let input = child.stdin.take();
+        let output = std::io::BufReader::new(child.stdout.take().unwrap());
+        let mut worker = Mutator { child, input, output };
+        let trigger_fd = worker.ack();
+        let process = ProcessScope::discover(worker.child.id(), deadline()).unwrap();
+        let index = process.tasks.iter().position(|task| task.identity.pid == worker.child.id()).unwrap();
+        let task = &process.tasks[index];
+        let trigger = Held::pin(format!("/proc/{}/fd/{trigger_fd}", worker.child.id()), deadline()).unwrap();
+        let set = fixture_set(&[root]);
+        let mounted = set.capture_mounts(&task.scope, deadline()).unwrap();
+        set.freeze_scope_devices(deadline()).unwrap();
+        let prove = |held: &Held| {
+            set.recheck_matches(&held.file, &task.scope, ReferenceKind::Fd,
+                Some(&mounted), deadline())?.require_native_negative()
+        };
+        let resources = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        let original = resources.descriptor_pin_count();
+        worker.command("toggle");
+        let mut fresh_pins = 0;
+        {
+            let mut proof = |held: &Held, fresh: bool| {
+                if fresh { fresh_pins += 1; }
+                prove(held)
+            };
+            process.recheck_resources(index, &resources, deadline(), Some(&mut proof)).unwrap();
+            process.recheck(deadline()).unwrap();
+            // A second later FD mutation must repair and reseal too; initial
+            // stabilization is not a waiver for the later closing phase.
+            worker.command("toggle");
+            process.recheck_resources(index, &resources, deadline(), Some(&mut proof)).unwrap();
+        }
+        assert!(fresh_pins > 0);
+        assert_eq!(resources.descriptor_pin_count(), original + fresh_pins);
+        assert_eq!(resources.current_descriptor_count(),
+            worktree_holder_proc::scopes::numbers(
+                format!("/proc/{}/fd", worker.child.id()), deadline()).unwrap().len());
+        process.recheck(deadline()).unwrap();
+        mounted.recheck(&set, deadline()).unwrap();
+        set.recheck(deadline()).unwrap();
+
+        let candidate_fd = worker.command("candidate");
+        let positive = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        let retained = &positive.descriptors.iter().find(|(fd, _)| *fd == candidate_fd).unwrap().1;
+        let MatchOutcome::Native(matches) = set.recheck_matches(&retained.file, &task.scope,
+            ReferenceKind::Fd, Some(&mounted), deadline()).unwrap() else { panic!("lost native candidate") };
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].relative_path, "payload");
+        assert_eq!(matches[0].effect, ReferenceEffect::RetainedBytes);
+        worker.command("drop-candidate");
+        assert_eq!(Held::pin(format!("/proc/{}/fd/{candidate_fd}", worker.child.id()),
+            deadline()).err().unwrap().kind(), io::ErrorKind::NotFound);
+        let mut proof = |held: &Held, _: bool| prove(held);
+        let error = process.recheck_resources(index, &positive, deadline(), Some(&mut proof)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "changing descriptor lacks native negative proof");
+        assert!(set.recheck_matches(&retained.file, &task.scope, ReferenceKind::Fd,
+            Some(&mounted), deadline()).unwrap().require_native_negative().is_err());
+
+        let ordinary = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        worker.command("opaque");
+        let error = process.recheck_resources(index, &ordinary, deadline(), Some(&mut proof)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "unsupported path-bearing kernel object");
+        worker.command("drop-opaque");
+
+        let unstable = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        worker.command("toggle");
+        let mut changes = 0;
+        {
+            let mut proof = |held: &Held, fresh: bool| {
+                prove(held)?;
+                if fresh && held.identity == trigger.identity {
+                    worker.command("toggle");
+                    changes += 1;
+                }
+                Ok(())
+            };
+            let error = process.recheck_resources(index, &unstable, deadline(), Some(&mut proof)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::Other);
+            assert_eq!(error.to_string(), "descriptor stable-pair budget exhausted");
+        }
+        assert_eq!(changes, 4, "original snapshot plus four recaptures is the five-pass bound");
+        process.recheck(deadline()).unwrap();
     }
 
     #[test]
