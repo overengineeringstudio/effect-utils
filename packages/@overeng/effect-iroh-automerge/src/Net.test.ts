@@ -74,6 +74,7 @@ const withNet = <TResult, TError>({
             options.relayFails?.(build) === true
               ? Effect.fail(new RelayUnreachable())
               : Effect.succeed('https://relay.test'),
+          networkChange: Effect.void,
           incoming: Stream.fromQueue(incoming),
           dial: (peer) =>
             Effect.clockWith((clock) => {

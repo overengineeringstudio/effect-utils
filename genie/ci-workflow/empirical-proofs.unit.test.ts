@@ -469,7 +469,7 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(writer).toBeGreaterThan(disconnect)
   expect(steps[disconnect]?.run).toBe('sudo tailscale logout')
   expect(steps[writer]?.if).toContain("steps.occurrence-disconnect.outcome != 'failure'")
-  const read = steps.find((step) => step.name === 'Read previous UTC day occurrences')!
+  const read = steps.find((step) => step.id === 'occurrence-query')!
   expect(read.run).toContain('limit=5000&direction=forward')
   expect(read.run).toContain('occurrences --loki-response')
   expect(read.run).toContain('.evidenceGaps | length')
@@ -477,6 +477,51 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(
     steps.find((step) => step.name === 'Notice unconfigured occurrence reader')?.run,
   ).toContain('::notice::Daily occurrence reader skipped')
+})
+
+test('manual occurrence queries cover the last 24 hours and retain per-occurrence evidence', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const read = steps.find((step) => step.id === 'occurrence-query')!
+  expect(read.env?.OCCURRENCE_QUERY_EVENT).toBe('${{ github.event_name }}')
+  expect(read.run).toContain(
+    'if [ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch ]; then\n' +
+      '  until=$(date -u +%Y-%m-%dT%H:%M:%SZ)\n' +
+      'else\n' +
+      '  until=$(date -u +%Y-%m-%dT00:00:00Z)\n' +
+      'fi',
+  )
+  expect(read.run).toContain('start=$((end - 86400))')
+  const publish = steps.find((step) => step.name === 'Publish per-occurrence query receipt')!
+  expect(publish.if).toContain("always() && steps.occurrence-query.outcome == 'success'")
+  expect(publish.if).toContain("steps.linux-sandbox-admission.outcome == 'success'")
+  expect(publish.uses).toBeUndefined()
+  expect(publish.run).toContain('jq -c . "$proof"')
+  expect(publish.run).toContain('tojson')
+  expect(publish.run).toContain('>> "$GITHUB_STEP_SUMMARY"')
+  expect(steps.indexOf(publish)).toBeGreaterThan(
+    steps.findIndex((step) => step.id === 'occurrence-disconnect'),
+  )
+})
+
+test('manual exact occurrence bounds and host remain paired, bounded and inventory-restricted', () => {
+  const read = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps.find(
+    (step) => step.id === 'occurrence-query',
+  )!
+  for (const input of ['since', 'until', 'host']) {
+    expect(proofWorkflow).toContain(`occurrence_${input}:`)
+    expect(read.env?.[`OCCURRENCE_QUERY_${input.toUpperCase()}`]).toBe(
+      `\${{ inputs.occurrence_${input} }}`,
+    )
+  }
+  expect(read.run).toContain(
+    'if [[ -n "$OCCURRENCE_QUERY_SINCE" || -n "$OCCURRENCE_QUERY_UNTIL" ]]; then',
+  )
+  expect(read.run).toContain('Both exact UTC occurrence bounds are required')
+  expect(read.run).toContain('end > start && end - start <= 86400')
+  expect(read.run).toContain('Occurrence host is absent from the configured inventory')
+  expect(read.run).toContain('host_query="&host=$OCCURRENCE_QUERY_HOST"')
+  expect(read.run).toContain('BUCK2_OCCURRENCE_EXPECTED_HOSTS="$OCCURRENCE_QUERY_HOST"')
+  expect(read.run).toContain('direction=forward$host_query')
 })
 
 test('daily warm99 proof writes authoritative history and full observations locally', () => {

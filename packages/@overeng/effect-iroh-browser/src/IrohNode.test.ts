@@ -6,9 +6,11 @@ import { IrohNode, layerWasm, N0_RELAYS, type IrohWasmModule } from './IrohNode.
 
 const fakeWasm = ({
   homeRelay,
+  networkChange,
   close,
 }: {
   homeRelay: () => Promise<unknown>
+  networkChange: () => Promise<void>
   close: () => void
 }): IrohWasmModule => ({
   default: async () => undefined,
@@ -18,6 +20,7 @@ const fakeWasm = ({
     return {
       endpointId: () => 'ab'.repeat(32),
       homeRelay,
+      networkChange,
       accept: async () => null,
       connect: async () => null,
       close: async () => {
@@ -28,6 +31,37 @@ const fakeWasm = ({
 })
 
 describe('wasm node lifecycle', () => {
+  it.effect('exposes an awaitable network-change hook without replacing the endpoint', () => {
+    let changes = 0
+    let closed = 0
+    const layer = layerWasm({
+      secretKey: new Uint8Array(32),
+      load: async () =>
+        fakeWasm({
+          homeRelay: async () => 'https://relay.test',
+          networkChange: async () => {
+            changes++
+          },
+          close: () => {
+            closed++
+          },
+        }),
+    })
+    return Effect.gen(function* () {
+      yield* IrohNode.use((node) =>
+        Effect.gen(function* () {
+          const endpointId = node.endpointId
+          yield* node.networkChange
+          yield* node.networkChange
+          expect(changes).toBe(2)
+          expect(node.endpointId).toBe(endpointId)
+          expect(closed).toBe(0)
+        }),
+      ).pipe(Effect.provide(layer))
+      expect(closed).toBe(1)
+    })
+  })
+
   it.effect('reports a rejected relay as a typed failure and closes the endpoint', () => {
     let closed = 0
     const layer = layerWasm({
@@ -37,6 +71,7 @@ describe('wasm node lifecycle', () => {
           homeRelay: async () => {
             throw new Error('relay down')
           },
+          networkChange: async () => undefined,
           close: () => {
             closed++
           },
@@ -60,6 +95,7 @@ describe('wasm node lifecycle', () => {
       load: async () =>
         fakeWasm({
           homeRelay: () => new Promise(() => {}),
+          networkChange: async () => undefined,
           close: () => {
             closed++
           },

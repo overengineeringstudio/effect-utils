@@ -19,6 +19,11 @@ is its public key. Relay discovery is bounded (25 seconds by default). Relays mu
 not have trailing-dot hostnames because browser TLS/WebSocket handling rejects them.
 No wasm is downloaded simply by importing the main package.
 
+After a browser offline-to-online or foreground recovery, `IrohNode.networkChange`
+notifies iroh to re-probe connectivity and wake its relay backoff. The Effect resolves
+after that notification; it does not promise a connected relay or peer. It preserves
+the endpoint, identity, ownership lock and existing connections.
+
 ## Browser assets
 
 Explicit exports:
