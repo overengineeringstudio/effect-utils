@@ -1,11 +1,12 @@
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { Effect, FileSystem, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 
 import { makeDownloadBudget, readBoundedBytes } from './buck2-cache-join-download.ts'
-import { fetchOccurrenceLoki } from './buck2-occurrence-loki-query.ts'
+import { makeOccurrenceLedger } from './buck2-occurrence-ledger.ts'
+import { consumeOccurrenceLokiPages } from './buck2-occurrence-loki-query.ts'
 import { decodeOccurrenceLoki } from './buck2-occurrence-loki.ts'
 import type { RetainedOccurrenceFile } from './buck2-occurrence-record-codec.ts'
 import { reconcileOccurrenceRecords } from './buck2-occurrence-records.ts'
@@ -15,17 +16,19 @@ export class OccurrenceQueryError extends Schema.TaggedError<OccurrenceQueryErro
   { message: Schema.String },
 ) {}
 const failure = (message: string) => new OccurrenceQueryError({ message })
-const help = `buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE | --loki-url URL) --since ISO-8601 [--until ISO-8601]
+const help = `buck2-cache-join occurrences (--records-dir DIR | --loki-response FILE | --loki-url URL --output FILE) --since ISO-8601 [--until ISO-8601]
   [--query-host HOST] [--host HOST] [--key FULL_ACTION_DIGEST] [--expected-host HOST]
 
 Read native retained JSONL snapshots, returning JSON records and evidenceGaps.
 Repeat --records-dir, --host or --expected-host for multiple values. Host/key filters
 select rows, never certify fleet coverage. --key exactly matches the native digest.
 The window is [since,until), at most 31 days offline or 24 hours for --loki-url;
-until defaults to now. Live reads use the fixed proxy only, hourly windows and
-cursor pagination to exhaustion. --query-host narrows the server-side selector.
-No GitHub token or writes are required. Limits: 100000 retained files,
-64 MiB/file or HTTP page, 512 MiB total. Unproven exhaustion fails loudly.
+until defaults to now. Live reads exhaust hourly cursor pages into a scoped disk
+ledger, write the full report to --output FILE and return a small JSON summary.
+--query-host narrows only the server-side selector. No GitHub token or remote
+writes are required. Live limits: 64 MiB/page or snapshot, 10 minutes total wall
+time, no cumulative byte cap or whole-day RAM. Offline limits: 100000 retained
+files, 64 MiB/file or raw response, 512 MiB total. Unproven exhaustion fails loudly.
 `
 
 export const queryOccurrences = (
@@ -41,6 +44,7 @@ export const queryOccurrences = (
             'loki-response': { type: 'string' },
             'loki-url': { type: 'string' },
             'query-host': { type: 'string' },
+            output: { type: 'string' },
             since: { type: 'string' },
             until: { type: 'string' },
             host: { type: 'string', multiple: true },
@@ -67,6 +71,13 @@ export const queryOccurrences = (
       return yield* failure('--loki-url cannot be combined with offline retained inputs')
     if (options['query-host'] !== undefined && options['loki-url'] === undefined)
       return yield* failure('--query-host requires --loki-url')
+    if (options.output !== undefined && options['loki-url'] === undefined)
+      return yield* failure('--output requires --loki-url')
+    if (
+      options['loki-url'] !== undefined &&
+      (options.output === undefined || options.output === '')
+    )
+      return yield* failure('--loki-url requires --output FILE')
     const now = Date.now()
     const timestamp = (value: string) =>
       /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN
@@ -88,14 +99,47 @@ export const queryOccurrences = (
     const files: RetainedOccurrenceFile[] = []
     let entries = 0
     const budget = makeDownloadBudget(512 * 1024 * 1024)
-    if (options['loki-url'] !== undefined) {
-      files.push(
-        ...(yield* fetchOccurrenceLoki({
-          url: options['loki-url'],
-          windowStartMs: since,
-          windowEndMs: until,
-          ...(options['query-host'] === undefined ? {} : { host: options['query-host'] }),
-        }).pipe(Effect.mapError((cause) => failure(cause.message)))),
+    if (options['loki-url'] !== undefined && options.output !== undefined) {
+      const url = options['loki-url']
+      const output = options.output
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const ledger = yield* makeOccurrenceLedger({
+            directory: dirname(output),
+            expectedHosts: options['expected-host'] ?? [],
+            windowStartMs: since,
+            windowEndMs: until,
+          })
+          const pages = yield* consumeOccurrenceLokiPages(
+            {
+              url,
+              windowStartMs: since,
+              windowEndMs: until,
+              ...(options['query-host'] === undefined ? {} : { host: options['query-host'] }),
+            },
+            (page) => ledger.addPage(page.lines),
+          )
+          const summary = yield* ledger.writeReport({
+            path: output,
+            hosts: options.host ?? [],
+            ...(options.key === undefined ? {} : { key: options.key }),
+          })
+          return `${JSON.stringify({
+            ...summary,
+            ...pages,
+            coverage: 'UNKNOWN',
+            window: { since: new Date(since).toISOString(), until: new Date(until).toISOString() },
+          })}\n`
+        }),
+      ).pipe(
+        Effect.timeoutOrElse({
+          duration: '10 minutes',
+          orElse: () =>
+            Effect.fail(
+              failure('Occurrence reader exceeded 10 minute wall-time budget; coverage UNKNOWN'),
+            ),
+        }),
+        Effect.mapError((cause) => failure(cause.message)),
       )
     }
     if (options['loki-response'] !== undefined) {

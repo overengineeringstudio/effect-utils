@@ -24,6 +24,23 @@ const Envelope = Schema.Struct({
   line: Schema.String,
 })
 
+/** Shared native envelope validation for offline reconstruction and the disk ledger. */
+export const decodeOccurrenceLokiEnvelope = (line: string): typeof Envelope.Type => {
+  const row = Schema.decodeUnknownSync(Schema.fromJsonString(Envelope))(line)
+  if (
+    !/^[a-f0-9]{64}$/.test(row.snapshotSha256) ||
+    !Number.isSafeInteger(row.ordinal) ||
+    !Number.isSafeInteger(row.recordCount) ||
+    row.ordinal < 0 ||
+    row.recordCount < 1 ||
+    row.recordCount > 5000 ||
+    row.ordinal >= row.recordCount ||
+    row.line.includes('\n')
+  )
+    fail()
+  return row
+}
+
 /** Rebuild only complete, content-addressed producer snapshots; never invent a header. */
 export const decodeOccurrenceLoki = (body: string): RetainedOccurrenceFile[] => {
   const response = Schema.decodeUnknownSync(Schema.fromJsonString(OccurrenceLokiResponse))(body)
@@ -39,18 +56,7 @@ export const reconstructOccurrenceLokiSnapshots = (
 ): RetainedOccurrenceFile[] => {
   const snapshots = new Map<string, { count: number; lines: Map<number, string> }>()
   for (const line of lines) {
-    const row = Schema.decodeUnknownSync(Schema.fromJsonString(Envelope))(line)
-    if (
-      !/^[a-f0-9]{64}$/.test(row.snapshotSha256) ||
-      !Number.isSafeInteger(row.ordinal) ||
-      !Number.isSafeInteger(row.recordCount) ||
-      row.ordinal < 0 ||
-      row.recordCount < 1 ||
-      row.recordCount > 5000 ||
-      row.ordinal >= row.recordCount ||
-      row.line.includes('\n')
-    )
-      fail()
+    const row = decodeOccurrenceLokiEnvelope(line)
     let snapshot = snapshots.get(row.snapshotSha256)
     if (snapshot === undefined) {
       snapshot = { count: row.recordCount, lines: new Map() }
