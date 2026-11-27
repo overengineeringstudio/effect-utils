@@ -469,7 +469,7 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(writer).toBeGreaterThan(disconnect)
   expect(steps[disconnect]?.run).toBe('sudo tailscale logout')
   expect(steps[writer]?.if).toContain("steps.occurrence-disconnect.outcome != 'failure'")
-  const read = steps.find((step) => step.name === 'Read previous UTC day occurrences')!
+  const read = steps.find((step) => step.id === 'occurrence-query')!
   expect(read.run).toContain('limit=5000&direction=forward')
   expect(read.run).toContain('occurrences --loki-response')
   expect(read.run).toContain('.evidenceGaps | length')
@@ -477,6 +477,30 @@ test('occurrence identity is secretless, main-only and disconnected before the w
   expect(
     steps.find((step) => step.name === 'Notice unconfigured occurrence reader')?.run,
   ).toContain('::notice::Daily occurrence reader skipped')
+})
+
+test('manual occurrence queries cover the last 24 hours and retain per-occurrence evidence', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const read = steps.find((step) => step.id === 'occurrence-query')!
+  expect(read.env?.OCCURRENCE_QUERY_EVENT).toBe('${{ github.event_name }}')
+  expect(read.run).toContain(
+    'if [ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch ]; then\n' +
+      '  until=$(date -u +%Y-%m-%dT%H:%M:%SZ)\n' +
+      'else\n' +
+      '  until=$(date -u +%Y-%m-%dT00:00:00Z)\n' +
+      'fi',
+  )
+  expect(read.run).toContain('start=$((end - 86400))')
+  const publish = steps.find((step) => step.name === 'Publish per-occurrence query receipt')!
+  expect(publish.if).toContain("always() && steps.occurrence-query.outcome == 'success'")
+  expect(publish.if).toContain("steps.linux-sandbox-admission.outcome == 'success'")
+  expect(publish.uses).toBeUndefined()
+  expect(publish.run).toContain('jq -c . "$proof"')
+  expect(publish.run).toContain('tojson')
+  expect(publish.run).toContain('>> "$GITHUB_STEP_SUMMARY"')
+  expect(steps.indexOf(publish)).toBeGreaterThan(
+    steps.findIndex((step) => step.id === 'occurrence-disconnect'),
+  )
 })
 
 test('daily warm99 proof writes authoritative history and full observations locally', () => {

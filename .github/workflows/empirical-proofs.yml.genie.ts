@@ -134,19 +134,25 @@ export default ciWorkflow({
               },
             },
             {
-              name: 'Read previous UTC day occurrences',
+              name: 'Read bounded occurrences',
+              id: 'occurrence-query',
               if: "${{ steps.occurrence-reader.outcome == 'success' }}",
               shell: 'bash',
               env: {
                 BUCK2_OCCURRENCE_READ_URL: '${{ vars.BUCK2_OCCURRENCE_READ_URL }}',
                 BUCK2_OCCURRENCE_EXPECTED_HOSTS: '${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}',
+                OCCURRENCE_QUERY_EVENT: '${{ github.event_name }}',
               },
               run: withCiSourceRoot(
                 [
                   'set -euo pipefail',
                   ': "${BUCK2_OCCURRENCE_READ_URL:?configure occurrence reader URL}"',
                   ': "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?configure space-separated expected hosts}"',
-                  'until=$(date -u +%Y-%m-%dT00:00:00Z)',
+                  'if [ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch ]; then',
+                  '  until=$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+                  'else',
+                  '  until=$(date -u +%Y-%m-%dT00:00:00Z)',
+                  'fi',
                   'end=$(date -u -d "$until" +%s)',
                   'start=$((end - 86400))',
                   'since=$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)',
@@ -171,6 +177,19 @@ export default ciWorkflow({
               if: "${{ always() && steps.occurrence-reader.outcome != 'skipped' }}",
               shell: 'bash',
               run: 'sudo tailscale logout',
+            },
+            {
+              name: 'Publish per-occurrence query receipt',
+              if: "${{ always() && steps.occurrence-query.outcome == 'success' }}",
+              shell: 'bash',
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  'proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof/occurrences.json"',
+                  'jq -c . "$proof"',
+                  'jq -r \'"### Per-occurrence JSON\\n\\n```json\\n" + tojson + "\\n```"\' "$proof" >> "$GITHUB_STEP_SUMMARY"',
+                ].join('\n'),
+              ),
             },
             {
               name: 'Join previous UTC day cache evidence',
