@@ -626,6 +626,18 @@ records, warms roots or authorizes removal. An unavailable/malformed ledger is a
 redacted command failure, not an empty pool. A recorded ready/unclaimed flag is
 not a claim that a root is qualified, clean, idle or available for execution.
 
+`completePoolUse` records the terminal task outcome without clearing its generation,
+claim token, owner or unknown accounting. `beginPoolReset` accepts only that completed
+claim; `beginPoolRetarget` accepts an unclaimed READY slot directly, never a fabricated
+empty claim. Both retain the old identity and charge, mint a new generation/nonce,
+and remain UNKNOWN/HOLD until `finishPoolRetarget` returns a verified-result candidate.
+All four functions are pure metadata transitions, not physical execution or publication.
+The caller continuously holds ROOT, saves the unknown intent before any reset, and
+publishes only after fresh physical birth, Git/history, GVS, leases, every pinned chain
+and all-UID proof under the existing verified-commit seam. Authored/promoted, legacy,
+rebound or unknown roots refuse; an interrupted intent never becomes READY by recovery.
+Task completion itself does not authorize cleaning, eviction or daemon termination.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the
