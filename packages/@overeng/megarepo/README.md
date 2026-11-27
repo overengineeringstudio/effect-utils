@@ -341,6 +341,14 @@ action custody, then recheck immediately before the final action.
 Centisecond uncertainty is conservative: captures must finish at or before the sample's lower
 bound, and evidence must remain unexpired beyond its upper bound.
 
+`readWorktreeHolderEvidence({ client, targets })` invokes the caller-qualified immutable Rust
+client's `--client-v1` route with an empty environment and scoped child lifetime. It bounds
+requests and output, requires successful exit and valid UTF-8, binds the complete response to
+its nonce, producer, policy, ordered canonical paths and exact directory identities, then
+rechecks freshness. Configuration must come from the normal qualified provider owner; path
+shape alone is not authentication. This API does not enroll a service, establish host-wide
+absence, pin directories, maintain exclusion, authorize deletion, or activate the pool.
+
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
 ancestors bind mount ID and absolute path instead. Apply re-pins the complete chain in one
