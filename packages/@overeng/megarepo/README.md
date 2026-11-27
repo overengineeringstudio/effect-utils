@@ -528,6 +528,17 @@ operational prerequisites. The current normal holder wire has no generation-boun
 KCMP_FILES/KCMP_FILE nonleader witness, so nonleader references fail closed.
 The colocated admission/native Git regression definitions do not qualify a full warm;
 real shared-GVS/producer integration and production claim/reset/rollout remain pending.
+`withPnpmStoreCacheReadLease({ storeCacheRoot })` holds the existing native SHARED
+maintenance flock for its complete effect scope, without granting Git-writer authority.
+Use the required canonical **unversioned** `storeCacheRoot` from a healthy normal
+doctor report; never infer it from versioned `storeDir`, parse opaque storage state,
+or fall back when the field is absent/null. It does not create a missing store.
+Hold admission through validation and the entire pool USE, including scoped child
+completion; do not fork work past the scope. Pinning parent directories alone does
+not protect GVS descendants. The exact pnpm provider must be qualified before USE;
+upgrading it requires requalifying its GVS install/prune behavior. Approved cache
+collectors take the matching EXCLUSIVE maintenance lease. Raw native `pnpm store
+prune`, like direct `rm`, is outside this cooperative contract and must not run.
 
 `readPoolProvenance({ base })` observes an existing ledger through the same canonical
 decoder and accounting checks, without initialization, repair, locking or writes.
