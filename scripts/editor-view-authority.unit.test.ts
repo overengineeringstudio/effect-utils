@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test'
+import { spawn } from 'node:child_process'
 import { dirname, join } from 'node:path'
+import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 import testScheduling from '../genie/ci-workflow/test-scheduling.json'
@@ -9,6 +11,7 @@ import {
   editorViewPackagePaths,
   editorViewPlan,
   resolveEditorViewPackageScope,
+  withPublicationCancellation,
 } from './editor-view-authority.ts'
 import { workspaceEditorDependencies } from './editor-view-authority.ts'
 
@@ -329,3 +332,85 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
     )
   })
 })
+
+it('joins the real cancellation callback before preserving SIGTERM status', async () => {
+  const previousExitCode = process.exitCode
+  const ready = Promise.withResolvers<void>()
+  const aborted = Promise.withResolvers<void>()
+  const cleanup = Promise.withResolvers<void>()
+  let settled = false
+  const outcome = withPublicationCancellation({
+    run: async (signal) => {
+      signal.addEventListener('abort', () => aborted.resolve(), { once: true })
+      ready.resolve()
+      await cleanup.promise
+    },
+  }).then(
+    () => {
+      settled = true
+      return undefined
+    },
+    (error: unknown) => {
+      settled = true
+      return error
+    },
+  )
+  try {
+    await ready.promise
+    process.kill(process.pid, 'SIGTERM')
+    await aborted.promise
+    expect(settled).toBe(false)
+    expect(process.exitCode).toBe(143)
+    cleanup.resolve()
+    expect(await outcome).toBeInstanceOf(Error)
+  } finally {
+    cleanup.resolve()
+    await outcome
+    process.exitCode = previousExitCode
+  }
+})
+
+it('consumes a real child notification descriptor exactly once before descendants', async () => {
+  const module = new URL('./editor-view-authority.ts', import.meta.url).href
+  for (const [notification, expected] of [
+    ['owner-acquired', '1'],
+    ['no-publication', '0'],
+  ] as const) {
+    const source = `
+      import { takePublicationAdmissionNotification } from ${JSON.stringify(module)};
+      const notify = takePublicationAdmissionNotification();
+      if ('EDITOR_VIEW_ADMISSION_READY_FD' in process.env) throw new Error('notification escaped');
+      notify(${JSON.stringify(notification)});
+      notify('no-publication');
+    `
+    const child = spawn(process.execPath, ['--eval', source], {
+      stdio: ['ignore', 'ignore', 'pipe', 'pipe'],
+      env: { ...process.env, EDITOR_VIEW_ADMISSION_READY_FD: '3' },
+      timeout: 5000,
+      killSignal: 'SIGKILL',
+    })
+    const completion = Promise.withResolvers<{
+      code: number | null
+      signal: NodeJS.Signals | null
+    }>()
+    child.once('error', completion.reject)
+    child.once('close', (code, signal) => completion.resolve({ code, signal }))
+    const pipe = child.stdio[3]
+    let output = ''
+    let diagnostics = ''
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+      diagnostics += chunk
+    })
+    try {
+      if (!(pipe instanceof Readable)) throw new Error('missing real notification pipe')
+      pipe.setEncoding('utf8').on('data', (chunk: string) => {
+        output += chunk
+      })
+      expect(await completion.promise, diagnostics).toEqual({ code: 0, signal: null })
+      expect(output).toBe(expected)
+    } finally {
+      child.kill('SIGKILL')
+      await completion.promise
+    }
+  }
+}, 15000)
