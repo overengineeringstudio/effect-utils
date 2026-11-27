@@ -102,9 +102,8 @@ describe('fixed holder client boundaries (not native authentication qualificatio
   it.effect('does not invoke an unauthorized filesystem executable', (test) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const fixtureRoot = `${process.cwd()}/tmp/worktree-holder-client`
-      yield* fs.makeDirectory(fixtureRoot, { recursive: true })
-      const directory = yield* fs.makeTempDirectoryScoped({ directory: fixtureRoot })
+      // Keep fixture writes in executor scratch, never the immutable Buck package tree.
+      const directory = yield* fs.makeTempDirectoryScoped()
       const executable = `${directory}/not-a-holder-client`
       // This is forbidden input, never a stand-in for the trusted native SDK.
       yield* fs.writeFileString(executable, '#!/bin/sh\n: > "${0%/*}/invoked"\n')
