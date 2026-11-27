@@ -28,23 +28,37 @@
 let
   # Only owner/group/world read-write modes are supported; never executable sockets.
   inherit (pkgs) lib;
-  validNofile = value:
+  validNofile =
+    value:
     builtins.isAttrs value
     && builtins.attrNames value == [ "NumberOfFiles" ]
     && builtins.isInt value.NumberOfFiles
     && value.NumberOfFiles > 0;
-  validJobExtra = extra:
+  validJobExtra =
+    extra:
     builtins.isAttrs extra
-    && lib.all (key: builtins.elem key [
-      "AssociatedBundleIdentifiers" "ProcessType" "ThrottleInterval"
-      "StandardOutPath" "StandardErrorPath" "WorkingDirectory" "Umask"
-      "Nice" "SoftResourceLimits" "HardResourceLimits"
-    ]) (builtins.attrNames extra)
+    && lib.all (
+      key:
+      builtins.elem key [
+        "AssociatedBundleIdentifiers"
+        "ProcessType"
+        "ThrottleInterval"
+        "StandardOutPath"
+        "StandardErrorPath"
+        "WorkingDirectory"
+        "Umask"
+        "Nice"
+        "SoftResourceLimits"
+        "HardResourceLimits"
+      ]
+    ) (builtins.attrNames extra)
     && (!(extra ? Nice) || (builtins.isInt extra.Nice && extra.Nice >= -20 && extra.Nice <= 19))
     && (!(extra ? SoftResourceLimits) || validNofile extra.SoftResourceLimits)
     && (!(extra ? HardResourceLimits) || validNofile extra.HardResourceLimits)
-    && (!(extra ? SoftResourceLimits && extra ? HardResourceLimits)
-      || extra.SoftResourceLimits.NumberOfFiles <= extra.HardResourceLimits.NumberOfFiles);
+    && (
+      !(extra ? SoftResourceLimits && extra ? HardResourceLimits)
+      || extra.SoftResourceLimits.NumberOfFiles <= extra.HardResourceLimits.NumberOfFiles
+    );
   helperAssembly = import ./helpers.nix {
     inherit
       pkgs
