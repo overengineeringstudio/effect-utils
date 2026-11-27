@@ -141,7 +141,11 @@ Each task pins both `/proc/<tgid>/task/<tid>` and top-level `/proc/<tid>`,
 authenticating both generations during closure. Root/cwd/exe/fd/namespaces use
 the nested task scope; mappings use only top-level `map_files`. Linux's nested
 task proc table does not expose `task/<tid>/map_files`; ENOENT there is not
-empty mappings or departure evidence.
+empty mappings or departure evidence. The ignored
+`tests::actual_departed_thread_churn_preserves_survivor_fd` regression exercises
+real task births/exits, a surviving unshared FD table and file-backed mapping,
+newcomer veto, live FD disappearance and failed leader-generation proof.
+These source-only changes add no activation, alias wire or diagnostic mode.
 
 The native filesystem classifier also admits exact EROFS magic `0xe0f5e1e2`
 only with a nonzero Linux device major from the same held file. Nodev
