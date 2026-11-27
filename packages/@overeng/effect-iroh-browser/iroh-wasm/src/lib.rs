@@ -125,6 +125,16 @@ impl IrohNode {
         })
     }
 
+    /// Re-probes connectivity after a browser network change without replacing the endpoint.
+    #[wasm_bindgen(js_name = networkChange)]
+    pub fn network_change(&self) -> js_sys::Promise {
+        let endpoint = self.endpoint.clone();
+        future_to_promise(async move {
+            endpoint.network_change().await;
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
     /// Waits for the next incoming connection. Resolves to `IrohConn` or null if the endpoint closed.
     pub fn accept(&self) -> js_sys::Promise {
         let incoming = self.incoming.clone();
