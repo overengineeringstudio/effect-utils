@@ -14,7 +14,7 @@
 set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
-fixture="$repo_root/nix/workspace-tools/lib/tests/downstream-flake-input"
+fixture_subdir="nix/workspace-tools/lib/tests/downstream-flake-input"
 system="${NIX_SYSTEM:-$(nix eval --impure --raw --expr builtins.currentSystem)}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/effect-utils-downstream.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
@@ -22,7 +22,10 @@ source_revision="$(git -C "$repo_root" rev-parse HEAD)"
 
 copy_repo() {
   mkdir -p "$1"
-  git -C "$repo_root" archive "$source_revision" | (cd "$1" && tar -xf -)
+  # agent-nix rejects path: overrides as whole-worktree copies; use committed Git fixtures.
+  git init --quiet "$1"
+  git -C "$1" fetch --quiet --depth 1 --no-tags "$repo_root" "$source_revision"
+  git -C "$1" checkout --quiet --detach FETCH_HEAD
 }
 
 check_completions() {
@@ -39,24 +42,25 @@ check_completions() {
 }
 
 downstream="$tmp/downstream"
-cp -R "$fixture" "$downstream"
+copy_repo "$downstream"
 copy_repo "$tmp/effect-utils"
 copy_repo "$tmp/repos/effect-utils"
+downstream_ref="git+file://$downstream?rev=$source_revision&shallow=1&dir=$fixture_subdir"
 
 for layout in effect-utils repos/effect-utils; do
-  override=(--no-write-lock-file --override-input effect-utils "path:$tmp/$layout")
+  override=(--no-write-lock-file --override-input effect-utils "git+file://$tmp/$layout?rev=$source_revision&shallow=1")
 
   echo "Eval: downstream lib.mkOxlintNpm ($layout)"
   nix eval --raw "${override[@]}" --apply 'drv: drv.drvPath' \
-    "path:$downstream#packages.$system.oxlint-npm-from-lib"
+    "$downstream_ref#packages.$system.oxlint-npm-from-lib"
   echo
 
   echo "Build: downstream genie ($layout)"
-  out="$(nix build --no-link --print-out-paths "${override[@]}" "path:$downstream#packages.$system.genie")"
+  out="$(nix build --no-link --print-out-paths "${override[@]}" "$downstream_ref#packages.$system.genie")"
   check_completions "$out" genie
 
   echo "Build: downstream oxlint-npm ($layout)"
-  nix build --no-link "${override[@]}" "path:$downstream#packages.$system.oxlint-npm"
+  nix build --no-link "${override[@]}" "$downstream_ref#packages.$system.oxlint-npm"
 done
 
 echo "downstream flake-input regression passed"

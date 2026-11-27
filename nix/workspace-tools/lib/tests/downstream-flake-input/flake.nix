@@ -26,7 +26,6 @@
           # #1384: applying the lib function downstream must forward its pnpm archives.
           oxlint-npm-from-lib = effect-utils.lib.mkOxlintNpm {
             inherit pkgs;
-            bun = pkgs.bun;
           };
         };
       }
