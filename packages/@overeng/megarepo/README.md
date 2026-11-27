@@ -567,6 +567,20 @@ remain mandatory. This is not a scanner for shared bare refs, arbitrary plumbing
 or out-of-contract logging disablement; reset never removes shared bare objects or
 refs. Physical integration and default adapters remain off.
 
+Pool reset may preserve only validated `node_modules` and pool-owned `buck-out`
+on the same fresh physical slot, with daemons drained and normal Buck configuration.
+The configured Buck reset bound uses the larger of GNU-du logical and allocated
+bytes (for example, 15,000,000,000); over-bound state is wiped on reset instead.
+An explicit zero bound selects wiped comparisons; it is not a live filesystem quota
+or a claim of exclusive physical bytes. `inspectPoolBuckReset` observes sizes only:
+its disposition is not reset/removal/READY authority or a substitute for source,
+GVS, lease, pin and all-UID guards. Matched per-host tables must compare warm versus
+wiped resets. No cache template copying or default adapter activation is authorized.
+Successful prewarm drains its fresh slot through the existing native Buck daemon
+owner before final admission; kept-active, unreachable or raced results stay HOLD.
+An empty discovery is not proof of quiescence: fresh final all-UID evidence is still
+mandatory. Warming from GLOBAL is refused before any root, ledger or native I/O.
+
 `readPoolProvenance({ base })` observes an existing ledger through the same canonical
 decoder and accounting checks, without initialization, repair, locking or writes.
 Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
