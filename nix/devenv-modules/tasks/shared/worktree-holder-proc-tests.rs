@@ -48,6 +48,30 @@ fn actual_self_generation_and_read_only_pins() {
 }
 
 #[test]
+fn actual_descriptor_replacement_requires_whole_snapshot_recapture() {
+    use std::fs::File;
+    use std::os::fd::AsRawFd;
+    use std::time::{Duration, Instant};
+    unsafe extern "C" { fn dup2(old: i32, new: i32) -> i32; }
+
+    let first = File::open("/dev/null").unwrap();
+    let replacement = File::open("/dev/zero").unwrap();
+    let path = format!("/proc/self/fd/{}", first.as_raw_fd());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let held = scopes::Held::pin(&path, deadline).unwrap();
+    held.recheck(&path, deadline).unwrap();
+    // SAFETY: both descriptors are live, distinct and owned by this test. The
+    // first File retains sole closing ownership of its replaced descriptor.
+    assert_eq!(unsafe { dup2(replacement.as_raw_fd(), first.as_raw_fd()) }, first.as_raw_fd());
+    let error = held.recheck(&path, deadline).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+    // The retained old object must not silently become the replacement. Only
+    // a fresh complete snapshot may admit the new reference.
+    assert_ne!(held.identity, scopes::Held::pin(&path, deadline).unwrap().identity);
+    assert!(held.recheck(&path, deadline).is_err());
+}
+
+#[test]
 #[ignore = "requires the isolated Linux VM with io_uring enabled"]
 fn actual_nonpath_eventfd_and_registered_io_uring_veto() {
     use std::io::Write;

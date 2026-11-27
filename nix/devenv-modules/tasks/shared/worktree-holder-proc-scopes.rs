@@ -1,5 +1,7 @@
 //! Retained proc scopes and native resources, extracted from the production census.
 //! All errors remain unqualified evidence; callers must never interpret them as absence.
+//! Initial table churn permits three whole-task recaptures before publication.
+//! Retained final closure never recaptures away a previously observed reference.
 use std::fs::{self, File};
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -296,7 +298,7 @@ impl Held {
             || objects::identity(&self.file)? != self.identity
             || objects::mount_id(&self.file)? != self.mount
         {
-            return Err(io::Error::other("process reference changed"));
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "process reference changed"));
         }
         Ok(())
     }
@@ -479,20 +481,32 @@ impl ProcessScope {
 
     /// None denotes a re-proven departed nonleader, never a generic read error.
     pub fn collect_resources(&self, index: usize, deadline: Instant) -> io::Result<Option<References>> {
-        if self.task_departed(index, deadline)? { return Ok(None); }
-        let captured: io::Result<References> = (|| {
-            let all_terminal = self.terminal_group(deadline)?;
-            let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-            let references = References::collect(task, all_terminal, deadline)?;
-            references.recheck_task(task, all_terminal, deadline)?;
-            self.recheck(deadline)?;
-            Ok(references)
-        })();
-        match captured {
-            Ok(references) => Ok(Some(references)),
-            Err(error) if error.kind() == io::ErrorKind::NotFound
-                && self.task_departed(index, deadline)? => Ok(None),
-            Err(error) => Err(error),
+        let mut attempts = 0;
+        loop {
+            if self.task_departed(index, deadline)? { return Ok(None); }
+            attempts += 1;
+            let captured: io::Result<References> = (|| {
+                let all_terminal = self.terminal_group(deadline)?;
+                let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+                let references = References::collect(task, all_terminal, deadline)?;
+                references.recheck_task(task, all_terminal, deadline)?;
+                self.recheck(deadline)?;
+                Ok(references)
+            })();
+            match captured {
+                Ok(references) => return Ok(Some(references)),
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && self.task_departed(index, deadline)? => return Ok(None),
+                Err(error) => {
+                    // No reference from a failed attempt has been classified or
+                    // published. Recapture the WHOLE task; never omit a changed FD.
+                    // Final recheck_resources deliberately has no such retry.
+                    if attempts == 3 || !matches!(error.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::Interrupted)
+                    { return Err(error); }
+                    self.recheck(deadline)?;
+                }
+            }
         }
     }
 
@@ -582,7 +596,7 @@ impl References {
         }
         let expected: Vec<_> = self.descriptors.iter().map(|(number, _)| *number).collect();
         if numbers(format!("{base}/fd"), deadline)? != expected {
-            return Err(io::Error::other("task descriptor membership changed"));
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "task descriptor membership changed"));
         }
         for (number, held) in &self.descriptors {
             held.recheck(format!("{base}/fd/{number}"), deadline)?;
@@ -590,13 +604,13 @@ impl References {
         }
         let names = mapping_names(&task.mapping_scope, deadline)?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
-            return Err(io::Error::other("task mapping membership changed"));
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "task mapping membership changed"));
         }
         for (name, held) in &self.mappings { held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?; }
         if numbers(format!("{base}/fd"), deadline)? != expected
             || mapping_names(&task.mapping_scope, deadline)? != names
             || no_mm_role(task, all_terminal, deadline)? != self.no_mm
-        { return Err(io::Error::other("task resources changed during recheck")); }
+        { return Err(io::Error::new(io::ErrorKind::Interrupted, "task resources changed during recheck")); }
         task.recheck(deadline)
     }
 }
