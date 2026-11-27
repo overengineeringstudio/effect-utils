@@ -1,13 +1,16 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { assertWorktreeHolderEvidenceFresh } from './store-worktree-holder-client.ts'
-import { HolderEvidenceError, type HolderEvidenceResponse } from './store-worktree-holder-codec.ts'
+import {
+  assertWorktreeHolderEvidenceFresh,
+  holderCaptureFitsBootWindow,
+} from './store-worktree-holder-client.ts'
+import { HolderEvidenceError, HolderEvidenceResponse } from './store-worktree-holder-codec.ts'
 
 const withTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer })
 const producerId = `/nix/store/${'a'.repeat(32)}-worktree-holder-evidence`
@@ -77,6 +80,36 @@ describe('fixed holder client boundaries (not native authentication qualificatio
         expect(
           yield* assertWorktreeHolderEvidenceFresh(candidate).pipe(Effect.flip),
         ).toBeInstanceOf(HolderEvidenceError)
+    }).pipe(withTestCtx(test)),
+  )
+  it.effect('keeps future and expiry checks conservative at centisecond boundaries', (test) =>
+    Effect.gen(function* () {
+      const lowerBootNs = 100_000_000_000n
+      const upperBootNs = 100_010_000_000n
+      const cases: ReadonlyArray<
+        readonly [finishedBootNs: bigint, expiresBootNs: bigint, expected: boolean]
+      > = [
+        [lowerBootNs, lowerBootNs + 30_000_000_000n, true],
+        [lowerBootNs - 1n, lowerBootNs + 30_000_000_000n - 1n, true],
+        [upperBootNs, upperBootNs + 30_000_000_000n, false],
+        [lowerBootNs + 1n, lowerBootNs + 30_000_000_000n + 1n, false],
+        [lowerBootNs, upperBootNs, false],
+        [lowerBootNs, upperBootNs + 1n, true],
+      ]
+      for (const [finishedBootNs, expiresBootNs, expected] of cases) {
+        const startedBootNs = String(expiresBootNs - 30_000_000_000n)
+        const response = yield* Schema.decodeEffect(HolderEvidenceResponse)({
+          ...evidence('00000000-0000-4000-8000-000000000001', startedBootNs),
+          capture: {
+            startedBootNs,
+            finishedBootNs: String(finishedBootNs),
+            expiresBootNs: String(expiresBootNs),
+          },
+        })
+        expect(
+          holderCaptureFitsBootWindow({ capture: response.capture, lowerBootNs, upperBootNs }),
+        ).toBe(expected)
+      }
     }).pipe(withTestCtx(test)),
   )
   it.effect(

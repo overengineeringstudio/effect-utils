@@ -5,6 +5,31 @@ import { HolderEvidenceError, HolderEvidenceResponse } from './store-worktree-ho
 
 const refused = () => new HolderEvidenceError({})
 
+/**
+ * Compare a schema-validated capture with one sampled boot-clock interval.
+ * @internal
+ */
+export const holderCaptureFitsBootWindow = ({
+  capture,
+  lowerBootNs,
+  upperBootNs,
+}: {
+  readonly capture: HolderEvidenceResponse['capture']
+  readonly lowerBootNs: bigint
+  readonly upperBootNs: bigint
+}): boolean => {
+  const started = BigInt(capture.startedBootNs)
+  const finished = BigInt(capture.finishedBootNs)
+  const expires = BigInt(capture.expiresBootNs)
+  return (
+    started <= finished &&
+    finished <= lowerBootNs &&
+    expires > finished &&
+    expires - started === 30_000_000_000n &&
+    upperBootNs < expires
+  )
+}
+
 /** Recheck immediately before the consumer's final action. This is not a lease or exclusion. */
 export const assertWorktreeHolderEvidenceFresh = (
   response: HolderEvidenceResponse,
@@ -31,15 +56,11 @@ export const assertWorktreeHolderEvidenceFresh = (
     const uptime = yield* fs.readFileString('/proc/uptime')
     const match = /^(0|[1-9][0-9]*)\.([0-9]{2}) [0-9]+\.[0-9]{2}\n?$/u.exec(uptime)
     if (boot !== response.bootId || match === null) return yield* refused()
-    // /proc/uptime truncates CLOCK_BOOTTIME to centiseconds. Use the upper bound.
-    const now = BigInt(match[1]!) * 1_000_000_000n + BigInt(match[2]!) * 10_000_000n + 10_000_000n
-    const { startedBootNs, finishedBootNs, expiresBootNs } = response.capture
+    // /proc/uptime truncates CLOCK_BOOTTIME to centiseconds.
+    const lowerBootNs = BigInt(match[1]!) * 1_000_000_000n + BigInt(match[2]!) * 10_000_000n
+    const upperBootNs = lowerBootNs + 10_000_000n
     if (
-      BigInt(startedBootNs) > BigInt(finishedBootNs) ||
-      BigInt(finishedBootNs) > now ||
-      BigInt(expiresBootNs) <= BigInt(finishedBootNs) ||
-      BigInt(expiresBootNs) - BigInt(startedBootNs) !== 30_000_000_000n ||
-      now >= BigInt(expiresBootNs)
+      holderCaptureFitsBootWindow({ capture: response.capture, lowerBootNs, upperBootNs }) === false
     )
       return yield* refused()
   }).pipe(Effect.mapError(refused))

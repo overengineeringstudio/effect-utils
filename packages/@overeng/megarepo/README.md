@@ -338,6 +338,8 @@ and validates the fixed evidence lifetime and completeness metadata. In-use and 
 references remain intact. It neither authenticates evidence nor proves absence, exclusion,
 or mutation authority. Callers must independently authenticate evidence and maintain continuous
 action custody, then recheck immediately before the final action.
+Centisecond uncertainty is conservative: captures must finish at or before the sample's lower
+bound, and evidence must remain unexpired beyond its upper bound.
 
 On ordinary filesystems, plans bind each ancestor's mount, device, and inode. Overlayfs
 directory inode numbers need not persist across dentry eviction (`xino=off`), so overlay
