@@ -410,6 +410,14 @@ Writable claims invalidate measured accounting until a safe remeasure; new reser
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
 
+`beginPoolPreparation` and `finishPoolPreparation` build state transitions only; the existing
+`preparePoolGeneration` uses both. Begin can be saved before a physical root exists, without
+replacing a persistent ownership barrier. Hold the continuous ROOT action lock and save the
+unknown intent under short GLOBAL before creating or changing that root. Finish is not a
+physical proof: obtain fresh Git/GVS/holder evidence and verify every chain before saving
+its READY candidate under GLOBAL inside the still-held pins. Neither builder acquires locks,
+writes the ledger, creates a worktree, or grants reset, execution, or removal authority.
+
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.
