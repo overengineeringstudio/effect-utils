@@ -22,18 +22,19 @@ impl CandidateView {
         let mut aliases = BTreeSet::<PathBuf>::new();
         for mount in view.mounts() {
             bound(deadline)?;
-            if !mounts::canonical(&mount.root) || !mounts::canonical(&mount.point) {
-                return Err(io::Error::other("noncanonical candidate scope mount"));
-            }
             for scope in scopes {
                 bound(deadline)?;
                 if mounts::device_pair(scope.location.device) != (mount.device_major, mount.device_minor) {
                     continue;
                 }
-                let alias = if let Ok(relative) = scope.location.path.strip_prefix(&mount.root) {
+                let root = mount.root.path()?;
+                if !mounts::canonical(root) || !mounts::canonical(&mount.point) {
+                    return Err(io::Error::other("noncanonical candidate scope mount"));
+                }
+                let alias = if let Ok(relative) = scope.location.path.strip_prefix(root) {
                     if relative.as_os_str().is_empty() { mount.point.clone() }
                     else { mount.point.join(relative) }
-                } else if mount.root.starts_with(&scope.location.path) {
+                } else if root.starts_with(&scope.location.path) {
                     mount.point.clone()
                 } else { continue };
                 if !mounts::canonical(&alias) {

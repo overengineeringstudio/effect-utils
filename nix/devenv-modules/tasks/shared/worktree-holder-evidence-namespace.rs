@@ -10,6 +10,43 @@ use super::{linux, mounts, objects};
 const LIMIT: usize = 4096;
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum NamespaceRoot {
+    Path(PathBuf),
+    NamespaceObject { namespace: &'static str, inode: u64 },
+}
+
+impl NamespaceRoot {
+    pub fn path(&self) -> io::Result<&PathBuf> {
+        match self {
+            Self::Path(path) => Ok(path),
+            Self::NamespaceObject { .. } => Err(io::Error::other("namespace object is not a filesystem coordinate")),
+        }
+    }
+}
+
+fn mount_root(bytes: &[u8], filesystem: u64, kind: &str) -> io::Result<NamespaceRoot> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::path::Path::new(std::ffi::OsStr::from_bytes(bytes));
+    if mounts::canonical(path) { return Ok(NamespaceRoot::Path(path.to_owned())); }
+    // nsfs binds identify kernel namespace objects, not paths inside a filesystem.
+    // Retain these records in the complete snapshot, never as native coordinates.
+    if filesystem != 0x6e736673 || kind != "nsfs" { return Err(incomplete()); }
+    let text = std::str::from_utf8(bytes).map_err(|_| incomplete())?;
+    let (name, number) = text.split_once(":[").ok_or_else(incomplete)?;
+    let namespace = match name {
+        "mnt" => "mnt", "net" => "net", "user" => "user", "pid" => "pid",
+        "uts" => "uts", "ipc" => "ipc", "cgroup" => "cgroup", "time" => "time",
+        _ => return Err(incomplete()),
+    };
+    let number = number.strip_suffix(']').ok_or_else(incomplete)?;
+    if number.starts_with('0') || number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(incomplete());
+    }
+    let inode = number.parse::<u64>().map_err(|_| incomplete())?;
+    Ok(NamespaceRoot::NamespaceObject { namespace, inode })
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct NamespaceMount {
     pub unique_id: u64,
     pub unique_parent: u64,
@@ -23,7 +60,7 @@ pub struct NamespaceMount {
     pub propagation: u64,
     pub peer_group: u64,
     pub master: u64,
-    pub root: PathBuf,
+    pub root: NamespaceRoot,
     pub point: PathBuf,
     pub kind: String,
 }
@@ -53,11 +90,11 @@ fn decode(bytes: &[u8], unique_id: u64, namespace_id: u64) -> io::Result<Namespa
         || u64_at(bytes, 40)? != unique_id || u64_at(bytes, 112)? != namespace_id
     { return Err(incomplete()); }
     let id = u64::from(u32_at(bytes, 56)?);
-    let root = PathBuf::from(std::ffi::OsString::from_vec(string_at(bytes, 104)?.to_vec()));
     let point = PathBuf::from(std::ffi::OsString::from_vec(string_at(bytes, 108)?.to_vec()));
-    if id == 0 || !mounts::canonical(&root) || !mounts::canonical(&point) { return Err(incomplete()); }
+    if id == 0 || !mounts::canonical(&point) { return Err(incomplete()); }
     let kind = std::str::from_utf8(string_at(bytes, 36)?).map_err(|_| incomplete())?.to_owned();
     if kind.is_empty() { return Err(incomplete()); }
+    let root = mount_root(string_at(bytes, 104)?, u64_at(bytes, 24)?, &kind)?;
     Ok(NamespaceMount { unique_id, unique_parent: u64_at(bytes, 48)?, id,
         parent: u64::from(u32_at(bytes, 60)?), device_major: u32_at(bytes, 16)?,
         device_minor: u32_at(bytes, 20)?, filesystem: u64_at(bytes, 24)?,
@@ -172,9 +209,26 @@ mod tests {
         let decoded = decode(&record(), 0x1_0000_000b, 19).unwrap();
         assert_eq!(decoded.unique_id, 0x1_0000_000b);
         assert_eq!(decoded.id, 5);
-        assert_eq!(decoded.root, PathBuf::from("/"));
+        assert_eq!(decoded.root, NamespaceRoot::Path(PathBuf::from("/")));
         assert_eq!(decoded.point, PathBuf::from("/"));
         assert_eq!(decoded.kind, "tmpfs");
+    }
+
+    #[test]
+    fn namespace_objects_are_retained_without_becoming_path_coordinates() {
+        let root = mount_root(b"net:[4026533279]", 0x6e736673, "nsfs").unwrap();
+        assert_eq!(root, NamespaceRoot::NamespaceObject { namespace: "net", inode: 4026533279 });
+        assert!(root.path().is_err());
+        for bytes in [
+            b"net:[0]".as_slice(), b"net:[01]", b"net:[-1]", b"net:[1]/",
+            b"net:[1]\n", b"net:[18446744073709551616]", b"other:[1]",
+            b"net:[]", b"net:[1", b"relative",
+        ] {
+            assert!(mount_root(bytes, 0x6e736673, "nsfs").is_err());
+        }
+        assert!(mount_root(b"net:[1]", 0x01021994, "tmpfs").is_err());
+        assert!(mount_root(b"net:[1]", 0x6e736673, "tmpfs").is_err());
+        assert!(mount_root(b"../escape", 0x6e736673, "nsfs").is_err());
     }
 
     #[test]

@@ -188,8 +188,9 @@ impl NativeView {
     {
         use std::io;
         use super::{linux, objects};
+        let root = mount.root.path()?;
         if std::time::Instant::now() >= deadline
-            || !canonical(&mount.root) || !canonical(&mount.point)
+            || !canonical(root) || !canonical(&mount.point)
         { return Err(io::Error::other("unobservable mounted root")); }
         let relative = mount.point.strip_prefix("/").map_err(io::Error::other)?;
         let point = objects::pin_beneath(&self.root,
@@ -202,7 +203,7 @@ impl NativeView {
             || device_pair(device) != (mount.device_major, mount.device_minor)
         { return Err(io::Error::other("mounted root changed or shadowed")); }
         Ok(NativeLocation { device, filesystem,
-            path: mount.root.clone(), _mountpoint: point })
+            path: root.clone(), _mountpoint: point })
     }
 
     pub fn location(&self, file: &std::fs::File,
@@ -222,7 +223,8 @@ impl NativeView {
     }
     let held_mount = objects::mount_id(file)?;
     let mount = self.namespace.records().get(&held_mount).ok_or_else(|| unknown("held-mount-not-listed"))?;
-    if !canonical(&mount.root) || !canonical(&mount.point) {
+    let root = mount.root.path()?;
+    if !canonical(root) || !canonical(&mount.point) {
         return Err(unknown("noncanonical-mount-coordinate"));
     }
     let task_root = &self.root;
@@ -259,8 +261,8 @@ impl NativeView {
         };
         if objects::identity(&reopened)? != held_identity
             || objects::mount_id(&reopened)? != held_mount { continue; }
-        let path = if relative.as_os_str().is_empty() { mount.root.clone() }
-            else { mount.root.join(relative) };
+        let path = if relative.as_os_str().is_empty() { root.clone() }
+            else { root.join(relative) };
         if !canonical(&path) { return Err(unknown("invalid-object-coordinate")); }
         if coordinate.as_ref().is_some_and(|previous| previous != &path) {
             return Err(unknown("ambiguous-object-coordinate"));

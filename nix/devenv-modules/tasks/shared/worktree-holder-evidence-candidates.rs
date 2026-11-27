@@ -296,7 +296,7 @@ impl CandidateSet {
             bound(deadline)?;
             if !self.scopes.iter().any(|scope|
                 mounts::device_pair(scope.location.device) == (mount.device_major, mount.device_minor)
-                    && mount.root.starts_with(&scope.location.path))
+                    && mount.root.path().is_ok_and(|root| root.starts_with(&scope.location.path)))
             { continue; }
             let location = coverage.view.view.pin_mount_root(mount, deadline)?;
             let identity = object_identity(location.object())?;
