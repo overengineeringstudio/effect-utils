@@ -8,12 +8,21 @@ import { EffectPath } from '@overeng/effect-path'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-deletion-lease.ts'
+import { captureDeletionIdentity } from './store-pinned-deletion.ts'
 import { runPoolCommand } from './store-pool-install.ts'
 import {
+  bindPoolPhysicalBirth,
   claimPoolGeneration,
-  type PoolSlot,
+  type PoolActor,
+  type PoolLifecycle,
+  PoolOperation,
+  PoolPhysicalBirth,
+  PoolSlot,
+  type PoolState,
   readPoolProvenance,
   requirePoolLease,
+  requirePoolPhysicalBirth,
+  requirePoolSlotSnapshot,
   reservePoolSlot,
   withPoolState,
 } from './store-pool-state.ts'
@@ -36,6 +45,198 @@ const slot: PoolSlot = {
 
 const withPoolTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer })
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+// Synthetic metadata fixtures exercise data contracts only, never runtime authority.
+const actor: PoolActor = { hostId: 'host', bootId: 'boot', pid: 1, startTime: '10' }
+const active: PoolOperation = { generation: 1, actor, state: 'active' }
+const terminal: PoolOperation = { ...active, state: 'terminal', outcome: 'success' }
+const dataChain = (path: string): PoolPhysicalBirth['root'] =>
+  ['/', ...path.split('/').filter(Boolean).map((_, index, parts) =>
+    `/${parts.slice(0, index + 1).join('/')}`,
+  )].map((path, index) => ({
+    _tag: 'Inode', path, dev: '1', ino: String(index + 1), mountId: '1',
+  }))
+const birth: PoolPhysicalBirth = {
+  bootId: 'boot',
+  root: dataChain(slot.path),
+  gitAdmin: dataChain(`${slot.bare}/worktrees/slot`),
+}
+const intent: PoolSlot = {
+  ...slot, state: 'preparing', identity: '', owner: '', chargeKnown: false,
+}
+const dataState = (expected: PoolSlot): PoolState => ({
+  version: 1, maxSlots: 1, maxBytes: 64, slots: [expected],
+})
+
+describe('pool physical metadata (data-only fixtures)', () => {
+  it.effect('roundtrips schemas and rejects incomplete or contradictory operation records', () =>
+    Effect.gen(function* () {
+      const lifecycle: PoolLifecycle = { birth: active, claim: terminal, retarget: active }
+      const value = { ...intent, physicalBirth: birth, lifecycle }
+      const json = yield* Schema.encodeEffect(Schema.fromJsonString(PoolSlot))(value)
+      expect(yield* Schema.decodeEffect(Schema.fromJsonString(PoolSlot))(json)).toEqual(value)
+      for (const invalid of [
+        { ...active, outcome: 'success' }, { ...terminal, outcome: undefined },
+        { ...terminal, outcome: 'unknown' }, { ...active, generation: -1 },
+        { ...active, generation: Number.MAX_SAFE_INTEGER + 1 },
+        { ...active, actor: { ...actor, pid: 0 } },
+        { ...active, actor: { ...actor, pid: 1.5 } },
+        { ...active, actor: { ...actor, hostId: '' } },
+        { ...active, actor: { ...actor, bootId: '' } },
+        { ...active, actor: { ...actor, startTime: '' } },
+      ])
+        expect(Exit.isFailure(yield* Schema.decodeUnknownEffect(PoolOperation)(invalid).pipe(Effect.exit))).toBe(true)
+      for (const invalid of [{ ...birth, bootId: '' }, { bootId: 'boot', root: birth.root }])
+        expect(Exit.isFailure(yield* Schema.decodeUnknownEffect(PoolPhysicalBirth)(invalid).pipe(Effect.exit))).toBe(true)
+    }),
+  )
+
+  it.effect('binds one immutable candidate only and fences every schema field', () =>
+    Effect.gen(function* () {
+      const state = dataState(intent)
+      const before = encodeJson(state)
+      const bound = yield* bindPoolPhysicalBirth({ state, expected: intent, birth })
+      expect(bound).toEqual({ ...intent, physicalBirth: birth })
+      expect(bound).not.toBe(intent)
+      expect(encodeJson(state)).toBe(before)
+      yield* requirePoolPhysicalBirth({ slot: bound, birth })
+      const clone = yield* Schema.decodeEffect(Schema.fromJsonString(PoolSlot))(
+        yield* Schema.encodeEffect(Schema.fromJsonString(PoolSlot))(bound),
+      )
+      expect(clone.physicalBirth).not.toBe(bound.physicalBirth)
+      yield* requirePoolSlotSnapshot({ state: dataState(bound), expected: clone })
+      const recorded = { ...bound, lifecycle: { birth: active } }
+      for (const expected of [
+        { ...recorded, physicalBirth: { ...birth, bootId: 'other' } },
+        { ...recorded, lifecycle: { birth: { ...active, actor: { ...actor, startTime: 'other' } } } },
+      ])
+        expect((yield* requirePoolSlotSnapshot({ state: dataState(recorded), expected }).pipe(Effect.flip)).message).toContain('HOLD')
+      const stale: ReadonlyArray<PoolSlot> = [
+        { ...intent, path: '/other' }, { ...intent, bare: '/other' },
+        { ...intent, id: 'other' }, { ...intent, commit: 'other' },
+        { ...intent, identity: 'other' }, { ...intent, generation: 2 },
+        { ...intent, state: 'ready' }, { ...intent, token: 'other' },
+        { ...intent, owner: 'other' }, { ...intent, barrierToken: 'other' },
+        { ...intent, charge: 63 }, { ...intent, chargeKnown: true },
+        { ...intent, reason: 'other' }, bound, { ...intent, lifecycle: { birth: active } },
+      ]
+      for (const expected of stale)
+        expect((yield* requirePoolSlotSnapshot({ state, expected }).pipe(Effect.flip)).message).toContain('HOLD')
+      expect((yield* bindPoolPhysicalBirth({ state: dataState(bound), expected: bound, birth }).pipe(Effect.flip)).message).toContain('HOLD')
+      for (const expected of [
+        { ...intent, chargeKnown: undefined }, { ...intent, token: '' },
+        { ...intent, barrierToken: '' }, { ...intent, owner: 'owner' },
+        { ...intent, identity: 'installed' }, { ...intent, state: 'ready' as const },
+      ])
+        expect((yield* bindPoolPhysicalBirth({ state: dataState(expected), expected, birth }).pipe(Effect.flip)).message).toContain('HOLD')
+    }),
+  )
+
+  it.effect('holds missing, partial, overlay, wrong-path and replaced physical facts', () =>
+    Effect.gen(function* () {
+      const bound = { ...intent, physicalBirth: birth }
+      expect((yield* requirePoolPhysicalBirth({ slot: intent, birth }).pipe(Effect.flip)).message).toContain('HOLD')
+      for (const changed of [
+        { ...birth, bootId: 'next-boot' },
+        { ...birth, root: [] },
+        { ...birth, gitAdmin: [] },
+        { ...birth, root: birth.root.slice(1) },
+        { ...birth, root: dataChain('/source/pool/other') },
+        { ...birth, gitAdmin: dataChain(`${slot.bare}/worktrees/nested/slot`) },
+        { ...birth, root: birth.root.map((entry) => ({ ...entry, ino: '900' })) },
+        { ...birth, gitAdmin: birth.gitAdmin.map((entry) => ({ ...entry, mountId: '900' })) },
+        { ...birth, root: birth.root.map((entry) => ({ _tag: 'OverlayDirectory' as const, path: entry.path, mountId: entry.mountId })) },
+      ]) {
+        expect((yield* requirePoolPhysicalBirth({ slot: bound, birth: changed }).pipe(Effect.flip)).message).toContain('HOLD')
+      }
+      for (const changed of [
+        { ...birth, root: [] }, { ...birth, root: birth.root.slice(1) },
+        { ...birth, bootId: '' }, { ...birth, gitAdmin: [] },
+        { ...birth, gitAdmin: birth.gitAdmin.slice(1) },
+        { ...birth, root: birth.root.map((entry) => ({ _tag: 'OverlayDirectory' as const, path: entry.path, mountId: entry.mountId })) },
+        { ...birth, root: dataChain('/other') },
+        { ...birth, gitAdmin: dataChain('/other/worktrees/slot') },
+        { ...birth, gitAdmin: dataChain(`${slot.bare}/worktrees/nested/slot`) },
+        { ...birth, gitAdmin: birth.gitAdmin.map((entry) => ({ _tag: 'OverlayDirectory' as const, path: entry.path, mountId: entry.mountId })) },
+      ])
+        expect((yield* bindPoolPhysicalBirth({ state: dataState(intent), expected: intent, birth: changed }).pipe(Effect.flip)).message).toContain('HOLD')
+    }),
+  )
+
+  it.effect('persists facts and exposes only truthful terminal evidence without writes or tokens', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const value: PoolSlot = {
+        ...intent, token: 'secret-nonce', barrierToken: 'secret-barrier', physicalBirth: birth,
+        lifecycle: { birth: active, claim: terminal, retarget: { ...terminal, outcome: 'failure' } },
+      }
+      yield* withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) => save({ ...state, slots: [value] }),
+      })
+      const path = `${base}/.state/pool/state.json`
+      const before = yield* fs.readFileString(path)
+      expect(yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]) })).toEqual(value)
+      const observation = (yield* readPoolProvenance({ base })).observations[0]!
+      expect(observation.physicalBirth).toEqual({ _tag: 'Recorded', value: birth })
+      expect(observation.lifecycle).toEqual({ _tag: 'Recorded', value: value.lifecycle })
+      expect(observation.terminalBirth._tag).toBe('Missing')
+      expect(observation.terminalClaim).toEqual({ _tag: 'Recorded', value: terminal })
+      expect(observation.terminalRetarget).toEqual({ _tag: 'Recorded', value: value.lifecycle?.retarget })
+      expect(observation.ownerActivity._tag).toBe('Missing')
+      expect(observation.seatActivity._tag).toBe('Missing')
+      expect(observation.disposition).toBe('HOLD')
+      expect(observation.authorizesRemoval).toBe(false)
+      expect(encodeJson(observation)).not.toContain('secret-')
+      expect(yield* fs.readFileString(path)).toBe(before)
+      const next = { ...value, lifecycle: { birth: terminal, claim: terminal, retarget: active } }
+      yield* withPoolState({ base, use: (state, save) => save({ ...state, slots: [next] }) })
+      const retargeting = (yield* readPoolProvenance({ base })).observations[0]!
+      expect(retargeting.terminalBirth).toEqual({ _tag: 'Recorded', value: terminal })
+      expect(retargeting.terminalClaim).toEqual({ _tag: 'Recorded', value: terminal })
+      expect(retargeting.terminalRetarget._tag).toBe('Missing')
+      const malformed = encodeJson({
+        ...dataState(value), slots: [{ ...value, lifecycle: { birth: { ...active, outcome: 'success' } } }],
+      })
+      yield* fs.writeFileString(path, malformed)
+      expect(Exit.isFailure(yield* readPoolProvenance({ base }).pipe(Effect.exit))).toBe(true)
+      expect(yield* fs.readFileString(path)).toBe(malformed)
+    }).pipe(withPoolTestCtx(test)),
+  )
+})
+
+describe.skipIf(process.platform !== 'linux')('pool physical birth native comparisons', () => {
+  it.effect('refuses real root and Git-admin inode replacement using the existing pin engine', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = yield* fs.realPath(yield* fs.makeTempDirectoryScoped({ directory: '/dev/shm' }))
+      const expected: PoolSlot = { ...intent, path: `${base}/pool/slot`, bare: `${base}/.bare` }
+      const admin = `${expected.bare}/worktrees/slot`
+      for (const path of [expected.path, admin]) yield* fs.makeDirectory(path, { recursive: true })
+      const capture = Effect.gen(function* () {
+        return {
+          bootId: (yield* fs.readFileString('/proc/sys/kernel/random/boot_id')).trim(),
+          root: yield* captureDeletionIdentity({ rootPath: '/', path: expected.path }),
+          gitAdmin: yield* captureDeletionIdentity({ rootPath: '/', path: admin }),
+        }
+      })
+      const actual = yield* capture
+      expect(actual.root.at(-1)?._tag).toBe('Inode')
+      expect(actual.gitAdmin.at(-1)?._tag).toBe('Inode')
+      const bound = yield* bindPoolPhysicalBirth({ state: dataState(expected), expected, birth: actual })
+      yield* requirePoolPhysicalBirth({ slot: bound, birth: yield* capture })
+      yield* fs.rename(expected.path, `${expected.path}-old`)
+      yield* fs.makeDirectory(expected.path)
+      expect((yield* requirePoolPhysicalBirth({ slot: bound, birth: yield* capture }).pipe(Effect.flip)).message).toContain('HOLD')
+      yield* fs.remove(expected.path)
+      yield* fs.rename(`${expected.path}-old`, expected.path)
+      yield* fs.rename(admin, `${admin}-old`)
+      yield* fs.makeDirectory(admin)
+      expect((yield* requirePoolPhysicalBirth({ slot: bound, birth: yield* capture }).pipe(Effect.flip)).message).toContain('HOLD')
+    }).pipe(withPoolTestCtx(test)),
+  )
+})
 
 describe('pool provenance observation', () => {
   it.effect('keeps an absent ledger absent without initializing directories or leases', (test) =>

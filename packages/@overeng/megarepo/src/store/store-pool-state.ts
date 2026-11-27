@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { open, rename } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -8,6 +8,49 @@ import * as FileSystem from 'effect/FileSystem'
 import { type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { withDeletionLease } from './store-deletion-lease.ts'
+import { DeletionIdentity } from './store-pinned-deletion.ts'
+
+/** Recorded native birth, never a fresh inspection or cross-boot adoption proof. */
+export const PoolPhysicalBirth = Schema.Struct({
+  bootId: Schema.NonEmptyString,
+  root: DeletionIdentity,
+  gitAdmin: DeletionIdentity,
+})
+export type PoolPhysicalBirth = typeof PoolPhysicalBirth.Type
+
+/** Exact authenticated leader generation recorded by the physical caller. */
+export const PoolActor = Schema.Struct({
+  hostId: Schema.NonEmptyString,
+  bootId: Schema.NonEmptyString,
+  pid: Schema.Int.check(Schema.isGreaterThan(0)),
+  startTime: Schema.NonEmptyString,
+})
+export type PoolActor = typeof PoolActor.Type
+
+/** Active work has no outcome; only terminal work records success or failure. */
+export const PoolOperation = Schema.Union([
+  Schema.Struct({
+    generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    actor: PoolActor,
+    state: Schema.Literal('active'),
+    outcome: Schema.optionalKey(Schema.Never),
+  }),
+  Schema.Struct({
+    generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    actor: PoolActor,
+    state: Schema.Literal('terminal'),
+    outcome: Schema.Literals(['success', 'failure']),
+  }),
+])
+export type PoolOperation = typeof PoolOperation.Type
+
+/** Independent categories preserve terminal claims across later retargets. */
+export const PoolLifecycle = Schema.Struct({
+  birth: Schema.optional(PoolOperation),
+  claim: Schema.optional(PoolOperation),
+  retarget: Schema.optional(PoolOperation),
+})
+export type PoolLifecycle = typeof PoolLifecycle.Type
 
 /** Authoritative records: uncertain generations are never implicitly recovered. */
 export const PoolSlot = Schema.Struct({
@@ -24,6 +67,8 @@ export const PoolSlot = Schema.Struct({
   barrierToken: Schema.String,
   owner: Schema.String,
   reason: Schema.String,
+  physicalBirth: Schema.optional(PoolPhysicalBirth),
+  lifecycle: Schema.optional(PoolLifecycle),
 })
 /** Durable identity, accounting and lifecycle of one protected detached path. */
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
@@ -40,6 +85,62 @@ export type PoolState = Schema.Schema.Type<typeof PoolState>
 export class PoolError extends Schema.TaggedError<PoolError>()('PoolError', {
   message: Schema.String,
 }) {}
+
+const equivalentSlot = Schema.toEquivalence(PoolSlot)
+const equivalentBirth = Schema.toEquivalence(PoolPhysicalBirth)
+
+/** Full authoritative snapshot fence; not ownership or physical proof. */
+export const requirePoolSlotSnapshot = ({
+  state, expected,
+}: { state: PoolState; expected: PoolSlot }): Effect.Effect<PoolSlot, PoolError> => {
+  const current = state.slots.find((slot) => slot.id === expected.id)
+  return current !== undefined && equivalentSlot(current, expected)
+    ? Effect.succeed(current)
+    : Effect.fail(new PoolError({ message: 'Pool snapshot changed or missing; HOLD' }))
+}
+
+const nativeChain = (identity: DeletionIdentity): boolean =>
+  identity[0]?.path === '/' &&
+  identity.at(-1)?._tag === 'Inode' &&
+  identity.every((entry, index) =>
+    resolve(entry.path) === entry.path &&
+    (index === 0 || (entry.path !== '/' && dirname(entry.path) === identity[index - 1]?.path)),
+  )
+
+const matchesBirthPaths = (slot: PoolSlot, birth: PoolPhysicalBirth): boolean => {
+  const admin = birth.gitAdmin.at(-1)
+  return birth.bootId !== '' && nativeChain(birth.root) && nativeChain(birth.gitAdmin) &&
+    birth.root.at(-1)?.path === slot.path &&
+    resolve(slot.bare) === slot.bare && admin !== undefined &&
+    dirname(admin.path) === `${slot.bare}/worktrees`
+}
+
+/** Pure, once-only candidate for an untouched unknown precreation intent.
+ * Caller supplies actual fresh-origin/native creation, lease, pins and holder evidence.
+ */
+export const bindPoolPhysicalBirth = ({
+  state, expected, birth,
+}: { state: PoolState; expected: PoolSlot; birth: PoolPhysicalBirth }): Effect.Effect<PoolSlot, PoolError> =>
+  Effect.gen(function* () {
+    const current = yield* requirePoolSlotSnapshot({ state, expected })
+    if (
+      current.state !== 'preparing' || current.chargeKnown !== false ||
+      current.token === '' || current.owner !== '' || current.barrierToken === '' ||
+      current.identity !== '' || current.physicalBirth !== undefined ||
+      matchesBirthPaths(current, birth) === false
+    )
+      return yield* new PoolError({ message: 'Physical birth requires untouched native intent; HOLD' })
+    return { ...current, physicalBirth: birth }
+  })
+
+/** Missing, replaced or cross-boot physical roots never implicitly recover. */
+export const requirePoolPhysicalBirth = ({
+  slot, birth,
+}: { slot: PoolSlot; birth: PoolPhysicalBirth }): Effect.Effect<void, PoolError> =>
+  slot.physicalBirth !== undefined && matchesBirthPaths(slot, birth) &&
+  equivalentBirth(slot.physicalBirth, birth)
+    ? Effect.void
+    : Effect.fail(new PoolError({ message: 'Physical birth missing or changed; HOLD' }))
 
 const validatePoolState = (state: PoolState): Effect.Effect<PoolState, PoolError> =>
   Effect.gen(function* () {
@@ -79,6 +180,9 @@ type PoolMissingEvidence = {
   readonly reason: 'not-recorded-in-pool-v1'
 }
 
+type PoolRecordedEvidence<TEvidence> = PoolMissingEvidence | { readonly _tag: 'Recorded'; readonly value: TEvidence }
+type PoolTerminalOperation = Extract<PoolOperation, { readonly state: 'terminal' }>
+
 /** Recorded metadata only: labels and ready flags are never removal authority. */
 export type PoolProvenanceObservation = {
   readonly root: string
@@ -89,9 +193,11 @@ export type PoolProvenanceObservation = {
   readonly ownerLabel: string
   readonly ownerActivity: PoolMissingEvidence
   readonly seatActivity: PoolMissingEvidence
-  readonly terminalClaim: PoolMissingEvidence
-  readonly terminalBirth: PoolMissingEvidence
-  readonly terminalRetarget: PoolMissingEvidence
+  readonly physicalBirth: PoolRecordedEvidence<PoolPhysicalBirth>
+  readonly lifecycle: PoolRecordedEvidence<PoolLifecycle>
+  readonly terminalClaim: PoolRecordedEvidence<PoolTerminalOperation>
+  readonly terminalBirth: PoolRecordedEvidence<PoolTerminalOperation>
+  readonly terminalRetarget: PoolRecordedEvidence<PoolTerminalOperation>
   readonly executionProvenance: PoolMissingEvidence
   readonly disposition: 'HOLD'
   readonly authorizesRemoval: false
@@ -109,6 +215,13 @@ const missingPoolEvidence: PoolMissingEvidence = {
   _tag: 'Missing',
   reason: 'not-recorded-in-pool-v1',
 }
+
+const terminalEvidence = (
+  operation: PoolOperation | undefined,
+): PoolRecordedEvidence<PoolTerminalOperation> =>
+  operation?.state === 'terminal'
+    ? { _tag: 'Recorded', value: operation }
+    : missingPoolEvidence
 
 /** No initialization, repair, lease acquisition, or filesystem mutation. */
 export const readPoolProvenance = ({
@@ -143,9 +256,13 @@ export const readPoolProvenance = ({
         ownerLabel: slot.owner,
         ownerActivity: missingPoolEvidence,
         seatActivity: missingPoolEvidence,
-        terminalClaim: missingPoolEvidence,
-        terminalBirth: missingPoolEvidence,
-        terminalRetarget: missingPoolEvidence,
+        physicalBirth: slot.physicalBirth === undefined
+          ? missingPoolEvidence : { _tag: 'Recorded', value: slot.physicalBirth },
+        lifecycle: slot.lifecycle === undefined
+          ? missingPoolEvidence : { _tag: 'Recorded', value: slot.lifecycle },
+        terminalClaim: terminalEvidence(slot.lifecycle?.claim),
+        terminalBirth: terminalEvidence(slot.lifecycle?.birth),
+        terminalRetarget: terminalEvidence(slot.lifecycle?.retarget),
         executionProvenance: missingPoolEvidence,
         disposition: 'HOLD',
         authorizesRemoval: false,
