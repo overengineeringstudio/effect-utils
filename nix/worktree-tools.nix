@@ -13,8 +13,9 @@
   environment ? { },
 }:
 let
-  # Mac notify has no delivery barrier; declare the best available watcher.
-  fileWatcher = if pkgs.stdenv.hostPlatform.isDarwin then "watchman" else "notify";
+  # Watchman prunes ignored outputs before watching; notify recursively walks
+  # their growing trees on Linux and has no delivery barrier on Darwin.
+  fileWatcher = "watchman";
   # Capture the executable file, not its enclosing flake source context.
   publication = builtins.path {
     path = ../scripts/worktree-env.py;

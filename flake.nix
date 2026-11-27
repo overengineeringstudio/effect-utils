@@ -323,6 +323,9 @@ rec {
             };
             pkgs.runCommand "quick-contracts-module-shape" { } ''touch "$out"'';
           worktree-tools-identity =
+            assert pkgs.lib.assertMsg (
+              self.packages.${system}.worktree-tools.fileWatcher == "watchman"
+            ) "worktree-tools: canonical watcher must match the tracked Watchman policy";
             pkgs.runCommand "worktree-tools-identity"
               {
                 nativeBuildInputs = [

@@ -160,6 +160,13 @@ commands must reference that filtered source, never interpolate the raw checkout
 directory into a Nix store script. Ignored `buck-out`, editor views, `.devenv`,
 runtime sockets and temporary evidence are not source inputs.
 
+Canonical worktree tools select Watchman on Linux and macOS, matching the tracked
+Buck configuration. Watchman prunes ignored output trees before watching them;
+Linux notify recursively walks those growing trees during daemon startup, while
+Darwin notify lacks the required delivery barrier. Publish the owning tools again
+with `python3 scripts/worktree-env.py prepare` after changing the watcher policy;
+do not override a published profile's watcher in `.buckconfig.local`.
+
 ## Referenced TypeScript workspace checks
 
 `tsgo_workspace_check` preserves an authored `tsgo --build --force <project>`
