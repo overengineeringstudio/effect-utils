@@ -458,6 +458,12 @@ refuses; the kernel releases ownership on process exit without unlinking the con
 The persistent deletion barrier remains installed continuously and is not this
 action mutex. Acquire ROOT before container/pins and short GLOBAL epochs; neither
 this fence nor transferring a barrier token authorizes Git writes, reset or removal.
+Pool operations acquire ROOT, then repository/container and directory pins, then short
+GLOBAL ledger epochs. `withPoolState` marks its callback fiber-local: canonical native
+lock, pin and root-lease acquisition/adoption refuse inside it, as does another epoch.
+Acquire physical resources before entering the callback; keep it to ledger reads/CAS
+and persistence. Unrelated fibers remain free to work, and failure/interruption does
+not turn the marker into a process-wide fence. These guards are not an IO sandbox.
 
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and

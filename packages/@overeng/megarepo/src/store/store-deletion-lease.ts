@@ -37,6 +37,7 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 import * as Git from '../core/git.ts'
 import { resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
 import { writeFileAtomic } from './store-fs-atomic.ts'
+import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
 
 /** On-disk lease record version. */
 const DELETION_LEASE_VERSION = 1
@@ -258,6 +259,11 @@ export const acquireDeletionLease = ({
     const fs = yield* FileSystem.FileSystem
     const canonicalOwnerPath = normalizeOwnerPath(ownerPath)
     const leasePath = deletionLeasePath({ storeBasePath, ownerPath: canonicalOwnerPath })
+    yield* requireOutsidePoolGlobal(() => new DeletionLeaseUnavailableError({
+      ownerPath: canonicalOwnerPath,
+      leasePath,
+      message: 'GLOBAL pool epoch cannot acquire another root lease',
+    }))
     const token = randomUUID()
     const record: DeletionLeaseRecord = {
       version: persistent === true ? 2 : DELETION_LEASE_VERSION,
@@ -383,6 +389,11 @@ export const acquireDeletionLease = ({
  */
 export const adoptPersistentDeletionLease = (lease: DeletionLease) =>
   Effect.gen(function* () {
+    yield* requireOutsidePoolGlobal(() => new DeletionLeaseUnavailableError({
+      ownerPath: lease.ownerPath,
+      leasePath: lease.leasePath,
+      message: 'GLOBAL pool epoch cannot adopt a root barrier',
+    }))
     const fs = yield* FileSystem.FileSystem
     const record = yield* readLeaseRecord({ fs, leasePath: lease.leasePath })
     if (
@@ -486,6 +497,11 @@ export const withStoreWorktreeLease =
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
+      yield* requireOutsidePoolGlobal(() => new DeletionLeaseUnavailableError({
+        ownerPath,
+        leasePath: deletionLeasePath({ storeBasePath, ownerPath }),
+        message: 'GLOBAL pool epoch cannot enter root activation',
+      }))
       const owner = yield* canonicalizeOwnerPath(ownerPath)
       const store = yield* canonicalizeOwnerPath(storeBasePath)
       const fs = yield* FileSystem.FileSystem

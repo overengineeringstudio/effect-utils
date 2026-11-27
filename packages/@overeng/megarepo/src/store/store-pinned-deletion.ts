@@ -19,6 +19,8 @@ import { basename, isAbsolute, normalize, relative } from 'node:path'
 
 import { Context, Effect, Option, Schema } from 'effect'
 
+import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
+
 /** Injectable host platform for deletion policy; production uses the actual Node platform. */
 export class StoreDeletionPlatform extends Context.Service<
   StoreDeletionPlatform,
@@ -83,6 +85,9 @@ export const captureDeletionIdentity = Effect.fn('store.captureDeletionIdentity'
   rootPath: string
   path: string
 }) {
+  yield* requireOutsidePoolGlobal(
+    () => fail({ path, message: 'GLOBAL pool epoch cannot capture directory pins' }),
+  )
   return yield* Effect.acquireUseRelease(
     native({ path, operation: () => pinChain({ rootPath, path }) }),
     (chain) =>
@@ -141,6 +146,9 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
 }): Effect.Effect<B, PinnedDeletionError | E | ECommit, R | RCommit> => {
   const path = targets[0]?.path ?? ''
   return Effect.acquireUseRelease(
+    requireOutsidePoolGlobal(
+      () => fail({ path, message: 'GLOBAL pool epoch cannot acquire directory pins' }),
+    ).pipe(Effect.andThen(
     native({
       path,
       operation: () => {
@@ -156,6 +164,7 @@ const withPinnedDirectoryTransaction = <A, B, E, R, ECommit, RCommit>({
         }
       },
     }),
+    )),
     (chains) =>
       Effect.gen(function* () {
         const owned = chains.map(ownDeletionPins)
