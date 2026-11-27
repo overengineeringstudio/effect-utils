@@ -479,10 +479,13 @@ export const withStoreWorktreeLease =
     storeBasePath,
     ownerPath,
     bareRepoPath,
+    persistentLease,
   }: {
     storeBasePath: AbsoluteDirPath
     ownerPath: string
     bareRepoPath?: string
+    /** Explicit same-process v2 ownership; caller must also hold its continuous ROOT action lock. */
+    persistentLease?: DeletionLease
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
@@ -509,6 +512,31 @@ export const withStoreWorktreeLease =
           : undefined
       const now = yield* Clock.currentTimeMillis
       const run = Effect.gen(function* () {
+        if (persistentLease !== undefined) {
+          const leasePath = deletionLeasePath({ storeBasePath, ownerPath: owner })
+          const record = yield* readLeaseRecord({ fs, leasePath })
+          const identity = yield* readProcessIdentity({ fs, pid: process.pid })
+          if (
+            container === undefined ||
+            persistentLease.leasePath !== leasePath ||
+            persistentLease.ownerPath !== owner ||
+            record?.version !== 2 ||
+            record.ownerPath !== owner ||
+            record.token !== persistentLease.token ||
+            record.host !== hostname() ||
+            record.pid !== process.pid ||
+            identity === undefined ||
+            record.processStartTime !== identity.startTime ||
+            record.activationIdentity?.storePath !== store ||
+            record.activationIdentity.containerPath !== bare
+          )
+            return yield* new DeletionLeaseUnavailableError({
+              ownerPath: owner,
+              leasePath,
+              message: 'Explicit persistent ownership does not match this activation',
+            })
+          return yield* effect
+        }
         if (
           bare !== undefined &&
           (yield* hasAncestorActivationLease({
@@ -539,7 +567,7 @@ export const withStoreWorktreeLease =
         }
         return yield* run
       }
-      return yield* (container === owner ? effect : run).pipe(
+      return yield* (container === owner && persistentLease === undefined ? effect : run).pipe(
         withGitContainerLock({ path: bare!, mode: 'shared' }),
       )
     })
@@ -560,12 +588,32 @@ export const createStoreWorktree = ({
 /** Detached registrations use the same container-first fence as branch registrations. */
 export const createStoreWorktreeDetached = ({
   storeBasePath,
+  persistentLease,
   ...args
-}: Parameters<typeof Git.createWorktreeDetached>[0] & { storeBasePath: AbsoluteDirPath }) =>
-  Git.createWorktreeDetached(args).pipe(
+}: Parameters<typeof Git.createWorktreeDetached>[0] & {
+  storeBasePath: AbsoluteDirPath
+  persistentLease?: DeletionLease
+}) =>
+  Effect.gen(function* () {
+    if (persistentLease !== undefined) {
+      const fs = yield* FileSystem.FileSystem
+      const absent = yield* fs.lstat(args.worktreePath).pipe(
+        Effect.as(false),
+        Effect.catch((error) => error.reason._tag === 'NotFound' ? Effect.succeed(true) : Effect.fail(error)),
+      )
+      if (absent === false)
+        return yield* new DeletionLeaseUnavailableError({
+          ownerPath: args.worktreePath,
+          leasePath: persistentLease.leasePath,
+          message: 'Persistent pool registration requires an absent physical root',
+        })
+    }
+    yield* Git.createWorktreeDetached(args)
+  }).pipe(
     withStoreWorktreeLease({
       storeBasePath,
       ownerPath: args.worktreePath,
       bareRepoPath: args.repoPath,
+      ...(persistentLease === undefined ? {} : { persistentLease }),
     }),
   )

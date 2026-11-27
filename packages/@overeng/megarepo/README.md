@@ -410,6 +410,15 @@ Writable claims invalidate measured accounting until a safe remeasure; new reser
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
 
+Detached pool creation can pass an explicit `persistentLease` through the existing store owner.
+Only a matching canonical barrier path, root, token, version 2, current Linux process birth,
+host and store/bare binding admit it; invalid or unknown evidence never falls back to v1.
+The existing container and native Git writer fences remain, and registration requires an
+absent physical root (including no dangling symlink), never adoption of an existing path.
+No barrier is removed, replaced or downgraded. The caller must hold its continuous ROOT
+action lock, validate fresh disposable provenance and persist unknown intent before writes;
+this admission neither proves a clean/idle root nor authorizes reset, execution or removal.
+
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.
