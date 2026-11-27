@@ -95,6 +95,8 @@ describe('Markdown generated provenance', () => {
         sourceFile: 'tool.mjs.genie.ts',
         targetFilePath: 'tool.mjs',
       }),
-    ).toBe('#!/usr/bin/env node\n// Generated file - DO NOT EDIT\n// Source: tool.mjs.genie.ts\nconsole.log(1)\n')
+    ).toBe(
+      '#!/usr/bin/env node\n// Generated file - DO NOT EDIT\n// Source: tool.mjs.genie.ts\nconsole.log(1)\n',
+    )
   })
 })
