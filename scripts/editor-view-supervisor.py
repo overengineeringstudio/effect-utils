@@ -149,6 +149,23 @@ class AdmissionDiagnostic:
             os.close(self.parent_fd)
             self.child = None
 
+def observe_publication_admission(ready_fd):
+    """Observe one notification byte; this descriptor never conveys lock authority.
+
+    None means no byte is ready. EOF and malformed bytes fail closed, including
+    when there is no execution deadline. The caller owns and closes the pipe.
+    """
+    try:
+        notification = os.read(ready_fd, 1)
+    except BlockingIOError:
+        return None
+    if notification == b"1":
+        return "owner-acquired"
+    if notification == b"0":
+        return "no-publication"
+    raise ValueError("failed to notify owner admission")
+
+
 def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
     if sys.platform == "linux":

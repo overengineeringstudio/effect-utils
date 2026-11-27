@@ -252,6 +252,11 @@ Owned native execution and ExistingOnly cleanup require the same live
 process-local publication capability. Cleanup never starts a daemon;
 legacy production callers remain unchanged.
 
+Notification helper APIs consume a readiness-descriptor environment entry
+once and, when present, write one terminal byte before closing it. This is not
+transferable lock authority. The cancellation helper joins callback cleanup on
+interruption. These APIs are additive; legacy production ownership is unchanged.
+
 The compiled launcher bundles the same canonical owner module. Its Nix build
 stages that one module at the source-relative import path while compiling, then
 removes the staged sources; the installed launcher retains only the native library
