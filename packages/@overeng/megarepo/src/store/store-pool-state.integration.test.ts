@@ -11,6 +11,9 @@ import { acquireDeletionLease, adoptPersistentDeletionLease } from './store-dele
 import { runPoolCommand } from './store-pool-install.ts'
 import {
   claimPoolGeneration,
+  markPoolRootAuthored,
+  reserveFreshPoolRoot,
+  requireDisposablePoolRoot,
   type PoolSlot,
   readPoolProvenance,
   requirePoolLease,
@@ -36,6 +39,47 @@ const slot: PoolSlot = {
 
 const withPoolTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer })
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+describe('disposable physical pool provenance', () => {
+  it.effect('only mints fresh UUID reservations, retaining legacy and rebound roots HOLD', (test) =>
+    Effect.gen(function* () {
+      const state = { version: 1 as const, maxSlots: 2, maxBytes: 128, slots: [] }
+      const first = yield* reserveFreshPoolRoot({ state, bare: slot.bare, commit: slot.commit, charge: 64 })
+      const second = yield* reserveFreshPoolRoot({ state: first.state, bare: slot.bare, commit: slot.commit, charge: 64 })
+      expect(first.slot.id).not.toBe(second.slot.id)
+      expect(second.state.slots).toHaveLength(2)
+      yield* requireDisposablePoolRoot(first.slot)
+      expect((yield* requireDisposablePoolRoot(slot).pipe(Effect.result))._tag).toBe('Failure')
+      expect((yield* requireDisposablePoolRoot({ ...first.slot, path: '/adopted' }).pipe(Effect.result))._tag).toBe('Failure')
+    }).pipe(withPoolTestCtx(test)),
+  )
+
+  it.effect('persists irreversible HOLD before an authored/promoted physical root can be reset', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const base = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+      const fresh = yield* withPoolState({
+        base, limits: { maxSlots: 1, maxBytes: 64 },
+        use: (state, save) => Effect.gen(function* () {
+          const reserved = yield* reserveFreshPoolRoot({ state, bare: `${base}.bare`, commit: slot.commit, charge: 64 })
+          yield* save(reserved.state)
+          return reserved.slot
+        }),
+      })
+      const before = yield* fs.readFileString(`${base}.state/pool/state.json`)
+      expect((yield* markPoolRootAuthored({ base, id: fresh.id, generation: 9 }).pipe(Effect.result))._tag).toBe('Failure')
+      expect(yield* fs.readFileString(`${base}.state/pool/state.json`)).toBe(before)
+      yield* markPoolRootAuthored({ base, id: fresh.id, generation: fresh.generation })
+      const authored = yield* withPoolState({ base, use: (state) => Effect.succeed(state.slots[0]!) })
+      expect(authored.executionRoot?.authored).toBe(true)
+      expect(authored.state).toBe('quarantined')
+      expect(authored.chargeKnown).toBe(false)
+      expect((yield* requireDisposablePoolRoot(authored).pipe(Effect.result))._tag).toBe('Failure')
+      yield* markPoolRootAuthored({ base, id: fresh.id, generation: fresh.generation })
+      expect((yield* readPoolProvenance({ base })).authorizesRemoval).toBe(false)
+    }).pipe(withPoolTestCtx(test)),
+  )
+})
 
 describe('pool provenance observation', () => {
   it.effect('keeps an absent ledger absent without initializing directories or leases', (test) =>

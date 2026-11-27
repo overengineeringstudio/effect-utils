@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { open, rename } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -24,6 +24,13 @@ export const PoolSlot = Schema.Struct({
   barrierToken: Schema.String,
   owner: Schema.String,
   reason: Schema.String,
+  executionRoot: Schema.optional(
+    Schema.Struct({
+      origin: Schema.Literal('fresh-reserved-uuid'),
+      path: Schema.String,
+      authored: Schema.Boolean,
+    }),
+  ),
 })
 /** Durable identity, accounting and lifecycle of one protected detached path. */
 export type PoolSlot = Schema.Schema.Type<typeof PoolSlot>
@@ -276,3 +283,70 @@ export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolS
     )
   return Effect.succeed({ ...state, slots: [...state.slots, slot] })
 }
+
+/** Only the reservation producer may mint disposable physical-root provenance. */
+export const reserveFreshPoolRoot = ({
+  state,
+  bare,
+  commit,
+  charge,
+}: {
+  state: PoolState
+  bare: string
+  commit: string
+  charge: number
+}) => {
+  const id = randomUUID()
+  const path = join(dirname(bare), 'pool', id)
+  const slot: PoolSlot = {
+    id, path, bare, commit, charge,
+    identity: '', generation: 0, state: 'preparing',
+    chargeKnown: true, token: '', barrierToken: '', owner: '', reason: '',
+    executionRoot: { origin: 'fresh-reserved-uuid', path, authored: false },
+  }
+  return reservePoolSlot({ state, slot }).pipe(
+    Effect.map((next) => ({ state: next, slot })),
+  )
+}
+
+/** Physical-root contract only; callers still need fresh Git, GVS, pins and holder proofs. */
+export const requireDisposablePoolRoot = (slot: PoolSlot) =>
+  slot.executionRoot?.origin === 'fresh-reserved-uuid' &&
+  isAbsolute(slot.bare) &&
+  slot.executionRoot.path === slot.path &&
+  slot.path === join(dirname(slot.bare), 'pool', slot.id) &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(slot.id) &&
+  slot.executionRoot.authored === false
+    ? Effect.void
+    : Effect.fail(new PoolError({ message: 'Unknown or authored physical pool root; HOLD' }))
+
+/**
+ * Persist BEFORE any in-place authoring/promotion write, under the caller's ROOT action fence.
+ * No operation clears this physical-root bit. Copy-style promotion does not alter the source.
+ */
+export const markPoolRootAuthored = ({
+  base,
+  id,
+  generation,
+}: {
+  base: AbsoluteDirPath
+  id: string
+  generation: number
+}) =>
+  withPoolState({
+    base,
+    use: (state, save) =>
+      Effect.gen(function* () {
+        const slot = state.slots.find((item) => item.id === id)
+        if (slot === undefined || slot.generation !== generation || slot.executionRoot === undefined)
+          return yield* new PoolError({ message: 'Physical pool provenance unavailable; HOLD' })
+        const next: PoolSlot = {
+          ...slot,
+          executionRoot: { ...slot.executionRoot, authored: true },
+          state: 'quarantined',
+          chargeKnown: false,
+          reason: 'Physical root authored or promoted; never reset',
+        }
+        yield* save({ ...state, slots: state.slots.map((item) => item.id === id ? next : item) })
+      }),
+  })
