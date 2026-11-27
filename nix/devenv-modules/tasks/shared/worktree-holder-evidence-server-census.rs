@@ -1,7 +1,7 @@
 //! Root membership and management policy over retained proc-library snapshots.
-#[cfg(test)]
 use std::fs::File;
 use std::io;
+use std::os::fd::OwnedFd;
 use std::time::Instant;
 use super::candidates::{CandidateSet, MatchOutcome, MountCoverage};
 use super::client::{self, Client, Peer, Process, SelfRole};
@@ -20,6 +20,7 @@ pub struct Census<'a> {
     self_role: &'a SelfRole,
     request: &'a protocol::Request,
     observation: protocol::Observation,
+    aliases: AliasSeal,
 }
 struct ObservedProcess {
     scope: ProcessScope,
@@ -45,6 +46,93 @@ struct References {
     foreign: bool,
     memberships: Vec<MatchOutcome>,
     mounted: Option<MountCoverage>,
+}
+
+/// Retained until emission; task departure never waives positive alias proof.
+#[derive(Default)]
+pub struct AliasSeal {
+    proofs: Vec<LeaderFdAlias>,
+}
+struct LeaderFdAlias {
+    leader: Process,
+    task: Process,
+    leader_pin: OwnedFd,
+    task_pin: OwnedFd,
+    descriptor: File,
+    number: u32,
+}
+fn live_generation(expected: &Process, current: &Process) -> bool {
+    expected.same_identity(current) && !matches!(current.state, b'Z' | b'X')
+}
+fn actual_tgid(tid: u32) -> io::Result<u32> {
+    let status = objects::bounded_text(format!("/proc/{tid}/status"), 64 * 1024)?;
+    let mut values = status.lines().filter_map(|line| line.strip_prefix("Tgid:"));
+    let value = values.next().ok_or_else(|| io::Error::other("missing task group"))?
+        .trim().parse().map_err(|_| io::Error::other("invalid task group"))?;
+    if values.next().is_some() { return Err(io::Error::other("duplicate task group")); }
+    Ok(value)
+}
+impl LeaderFdAlias {
+    fn capture(leader: &Process, task: &TaskScope, number: u32, held: &Held,
+        deadline: Instant) -> io::Result<Self>
+    {
+        deadline_check(deadline)?;
+        if task.tgid != leader.pid || task.identity.pid == leader.pid {
+            return Err(io::Error::other("not a nonleader descriptor"));
+        }
+        let leader_pin = linux::pin_process(leader.pid)?;
+        let task_pin = linux::pin_task(task.identity.pid)?;
+        let current_leader = client::process(leader.pid)?;
+        let current_task = client::process(task.identity.pid)?;
+        if !live_generation(leader, &current_leader) || !live_generation(&task.identity, &current_task) {
+            return Err(io::Error::other("alias generation changed during pin"));
+        }
+        let descriptor = objects::duplicate_client_fd(&task_pin, i32::try_from(number)
+            .map_err(|_| io::Error::other("alias descriptor out of range"))?)?;
+        if objects::identity(&descriptor)? != held.identity || objects::mount_id(&descriptor)? != held.mount {
+            return Err(io::Error::other("alias descriptor differs from observed reference"));
+        }
+        let proof = Self { leader: current_leader, task: current_task, leader_pin,
+            task_pin, descriptor, number };
+        proof.recheck(deadline)?;
+        Ok(proof)
+    }
+
+    fn recheck_identity(&self, deadline: Instant) -> io::Result<()> {
+        deadline_check(deadline)?;
+        if linux::pidfd_terminated(&self.leader_pin)? || linux::pidfd_terminated(&self.task_pin)?
+            || !live_generation(&self.leader, &client::process(self.leader.pid)?)
+            || !live_generation(&self.task, &client::process(self.task.pid)?)
+            || actual_tgid(self.leader.pid)? != self.leader.pid
+            || actual_tgid(self.task.pid)? != self.leader.pid
+            || linux::pidfd_terminated(&self.leader_pin)? || linux::pidfd_terminated(&self.task_pin)?
+        { return Err(io::Error::other("leader alias generation or liveness changed")); }
+        Ok(())
+    }
+
+    fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        self.recheck_identity(deadline)?;
+        // OFD equality alone cannot authorize an independently unshared table.
+        if !linux::same_task_descriptor_table(self.leader.pid, self.task.pid)?
+            || !linux::same_task_descriptor(self.leader.pid, self.task.pid, self.number)?
+        { return Err(io::Error::other("leader alias table or OFD differs")); }
+        let current = objects::duplicate_client_fd(&self.task_pin, i32::try_from(self.number)
+            .map_err(|_| io::Error::other("alias descriptor out of range"))?)?;
+        if !linux::same_open_file(&self.descriptor, &current)? {
+            return Err(io::Error::other("retained leader alias OFD changed"));
+        }
+        // Bracket the retained-slot check with real table/slot comparisons.
+        if !linux::same_task_descriptor_table(self.leader.pid, self.task.pid)?
+            || !linux::same_task_descriptor(self.leader.pid, self.task.pid, self.number)?
+        { return Err(io::Error::other("leader alias changed during closure")); }
+        self.recheck_identity(deadline)
+    }
+}
+impl AliasSeal {
+    pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        for proof in &self.proofs { proof.recheck(deadline)?; }
+        deadline_check(deadline)
+    }
 }
 fn whole_group_terminal(tasks: &[TaskScope]) -> bool {
     !tasks.is_empty() && tasks.iter().all(|task| matches!(task.identity.state, b'Z' | b'X'))
@@ -91,7 +179,8 @@ fn exempt_descriptor(client: Option<&Client>, request: &protocol::Request, pid: 
 }
 
 fn append_matches(observation: &mut protocol::Observation, matches: &[super::candidates::MatchedReference],
-    pid: &Process, task: &TaskScope, kind: ReferenceKind, fd: Option<u32>, total: &mut usize)
+    pid: &Process, task: &TaskScope, kind: ReferenceKind, fd: Option<u32>,
+    leader_fd_alias: bool, total: &mut usize)
 {
     for matched in matches {
         let root = &mut observation.roots[matched.root_index];
@@ -108,7 +197,7 @@ fn append_matches(observation: &mut protocol::Observation, matches: &[super::can
         root.references.push(Reference { tgid: pid.pid, leader_start: pid.start,
             tid: task.identity.pid, task_start: task.identity.start, uid: task.uids,
             reference: kind, relative_path: matched.relative_path.clone(), identity: matched.identity.clone(),
-            effect: matched.effect, fd });
+            effect: matched.effect, fd, leader_fd_alias });
         *total += 1;
     }
 }
@@ -116,7 +205,7 @@ impl References {
     fn collect(process: &ProcessScope, index: usize, request: &protocol::Request,
         candidates: &CandidateSet, store_client: Option<&Client>, management: bool,
         runtime: &mut Option<Runtime>, observation: &mut protocol::Observation,
-        reference_count: &mut usize, deadline: Instant) -> io::Result<Option<Self>>
+        reference_count: &mut usize, aliases: &mut AliasSeal, deadline: Instant) -> io::Result<Option<Self>>
     {
         if process.task_departed(index, deadline)? { return Ok(None); }
         let task = &process.tasks[index];
@@ -168,7 +257,15 @@ impl References {
             let outcome = candidates.matches(&held.file, &task.scope, kind, deadline)?;
             match &outcome {
                 MatchOutcome::Native(matches) => {
-                    if !exempt { append_matches(observation, matches, pid, task, kind, fd, reference_count); }
+                    if !exempt {
+                        // Unsupported, denied or churn: retain the ordinary ref.
+                        let proof = if *reference_count < TOTAL_REFERENCE_LIMIT && matches.iter().any(|matched|
+                            observation.roots[matched.root_index].references.len() < ROOT_REFERENCE_LIMIT) {
+                            fd.and_then(|number| LeaderFdAlias::capture(pid, task, number, held, deadline).ok())
+                        } else { None };
+                        append_matches(observation, matches, pid, task, kind, fd, proof.is_some(), reference_count);
+                        if let Some(proof) = proof { aliases.proofs.push(proof); }
+                    }
                 }
                 MatchOutcome::NeedsProxy => foreign = true,
             }
@@ -192,7 +289,7 @@ impl References {
         let mounted = if root.is_some() {
             let coverage = candidates.capture_mounts(&task.scope, deadline)?;
             append_matches(observation, coverage.references(), pid, task, ReferenceKind::Mount,
-                None, reference_count);
+                None, false, reference_count);
             Some(coverage)
         } else { None };
         Ok(Some(Self { pins, foreign, memberships, mounted }))
@@ -337,6 +434,7 @@ impl<'a> Census<'a> {
                 references: Vec::new(), unknown_reasons: Vec::new() });
         }
         let mut census = Self { runtime: None, processes: Vec::new(), self_role, request,
+            aliases: AliasSeal::default(),
             observation: protocol::Observation { complete: true, process_count: 0, task_count: 0,
                 roots, receipt: Vec::new() } };
         let pids = numbers("/proc", deadline)?;
@@ -357,7 +455,7 @@ impl<'a> Census<'a> {
                 // Still inspect any root/cwd held by a proven no-mm task.
                 let captured = References::collect(&process, index, request, candidates,
                     store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, deadline);
+                    &mut reference_count, &mut census.aliases, deadline);
                 let references = match captured {
                     Err(error) if error.kind() == io::ErrorKind::NotFound
                         && process.task_departed(index, deadline)? => None,
@@ -434,10 +532,11 @@ impl<'a> Census<'a> {
         candidates.recheck(deadline)?;
         self.self_role.recheck(deadline)?;
         if let (Some(store), Some(client)) = (&self.request.store, store_client) { client.recheck(store)?; }
+        self.aliases.recheck(deadline)?;
         deadline_check(deadline)
     }
 
-    pub fn into_observation(self) -> protocol::Observation { self.observation }
+    pub fn into_observation(self) -> (protocol::Observation, AliasSeal) { (self.observation, self.aliases) }
 }
 #[cfg(test)]
 mod tests {
@@ -467,13 +566,14 @@ mod tests {
         let task = task();
         let leader = Process { pid: 7, parent: 1, start: 100, state: b'Z' };
         let mut result = observation();
-        append_matches(&mut result, &[matched()], &leader, &task, ReferenceKind::Map, None, &mut 0);
+        append_matches(&mut result, &[matched()], &leader, &task, ReferenceKind::Map, None, false, &mut 0);
         let reference = &result.roots[0].references[0];
         assert_eq!((reference.tgid, reference.leader_start, reference.tid, reference.task_start), (7, 100, 8, 101));
         assert_eq!(reference.uid, [9, 10, 11, 12]);
         assert_eq!(reference.effect, ReferenceEffect::RetainedBytes);
         assert_eq!(reference.relative_path, "member");
         assert_eq!(reference.fd, None);
+        assert!(!reference.leader_fd_alias);
     }
 
     #[test]
@@ -482,7 +582,7 @@ mod tests {
         let mut result = observation();
         let mut count = 0;
         for _ in 0..=ROOT_REFERENCE_LIMIT {
-            append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(4), &mut count);
+            append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(4), false, &mut count);
         }
         let root = &result.roots[0];
         assert_eq!(root.references.len(), ROOT_REFERENCE_LIMIT);
@@ -509,7 +609,7 @@ mod tests {
         let task = task();
         let mut result = observation();
         let mut total = TOTAL_REFERENCE_LIMIT;
-        append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(5), &mut total);
+        append_matches(&mut result, &[matched()], &task.identity, &task, ReferenceKind::Fd, Some(5), false, &mut total);
         assert!(result.roots[0].references.is_empty());
         assert!(!result.complete && !result.roots[0].references_complete);
         assert_eq!(result.roots[0].status, Status::Unknown);
@@ -525,6 +625,75 @@ mod tests {
         let mut terminal = task();
         terminal.identity.state = b'X';
         assert!(whole_group_terminal(&[terminal]));
+    }
+
+    #[test]
+    fn alias_generation_requires_exact_live_identity() {
+        let expected = Process { pid: 7, parent: 1, start: 100, state: b'S' };
+        for (pid, parent, start, state) in [
+            (8, 1, 100, b'S'), (7, 2, 100, b'S'), (7, 1, 101, b'S'),
+            (7, 1, 100, b'Z'), (7, 1, 100, b'X'),
+        ] {
+            assert!(!live_generation(&expected, &Process { pid, parent, start, state }));
+        }
+        assert!(live_generation(&expected, &Process { pid: 7, parent: 1, start: 100, state: b'R' }));
+    }
+
+    #[test]
+    fn alias_metadata_never_deduplicates_task_references_or_changes_effects() {
+        let task = task();
+        let leader = Process { pid: task.tgid, parent: 1, start: 100, state: b'S' };
+        let mut result = observation();
+        let mut total = 0;
+        for proved in [false, true] {
+            append_matches(&mut result, &[matched()], &leader, &task, ReferenceKind::Fd,
+                Some(4), proved, &mut total);
+        }
+        assert_eq!(total, 2);
+        let references = &result.roots[0].references;
+        assert_eq!(references.len(), 2);
+        assert!(!references[0].leader_fd_alias);
+        assert!(references[1].leader_fd_alias);
+        for reference in references {
+            assert_eq!(reference.effect, ReferenceEffect::RetainedBytes);
+            assert_eq!((reference.tgid, reference.leader_start, reference.tid, reference.task_start),
+                (7, 100, 8, 101));
+            assert_eq!(reference.fd, Some(4));
+        }
+        assert!(result.complete && result.roots[0].references_complete);
+    }
+
+    #[test]
+    #[ignore = "requires privileged Linux pidfd_getfd, PIDFD_THREAD and kcmp qualification lane"]
+    fn real_shared_thread_alias_retains_ofd_and_rejects_stale_generation() {
+        use std::os::fd::AsRawFd;
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let file = File::open("/dev/null").unwrap();
+        let number = u32::try_from(file.as_raw_fd()).unwrap();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let path = std::fs::read_link("/proc/thread-self").unwrap();
+            let tid: u32 = path.file_name().unwrap().to_str().unwrap().parse().unwrap();
+            ready_tx.send(tid).unwrap();
+            stop_rx.recv().unwrap();
+        });
+        let tid = ready_rx.recv().unwrap();
+        let pid = std::process::id();
+        let scope = File::open(format!("/proc/{pid}/task/{tid}")).unwrap();
+        let task = TaskScope { tgid: pid, identity: client::process(tid).unwrap(),
+            uids: [0; 4], mapping_scope: scope.try_clone().unwrap(), scope, namespaces: Vec::new() };
+        let leader = client::process(pid).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let held = Held::pin(format!("/proc/{tid}/fd/{number}"), deadline).unwrap();
+        let proof = LeaderFdAlias::capture(&leader, &task, number, &held, deadline).unwrap();
+        proof.recheck(deadline).unwrap();
+        let stale = Process { pid: leader.pid, parent: leader.parent, start: leader.start + 1, state: leader.state };
+        assert!(LeaderFdAlias::capture(&stale, &task, number, &held, deadline).is_err());
+        stop_tx.send(()).unwrap();
+        thread.join().unwrap();
+        assert!(proof.recheck(deadline).is_err());
     }
 
 }
