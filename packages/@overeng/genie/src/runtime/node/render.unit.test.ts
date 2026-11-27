@@ -23,6 +23,10 @@ describe('Markdown generated provenance', () => {
     expect(renderMarkdown(frontmatter)).toBe(`${frontmatter}\n${header}`)
   })
 
+  it('keeps an empty leading YAML block first', () => {
+    expect(renderMarkdown('---\n---\n# Body\n')).toBe(`---\n---\n${header}# Body\n`)
+  })
+
   it('prepends provenance when there is no leading YAML block', () => {
     const body = '# Notion\n\n---\nnot frontmatter\n---\n'
     expect(renderMarkdown(body)).toBe(header + body)

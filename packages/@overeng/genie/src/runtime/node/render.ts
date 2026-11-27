@@ -38,7 +38,7 @@ export const renderGeneratedContent = ({
   if (path.extname(targetFilePath) === '.md') {
     // Skill discovery requires YAML to remain at byte zero. Only a complete
     // leading YAML block is frontmatter; an unterminated block stays untouched.
-    const frontmatter = content.match(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0]
+    const frontmatter = content.match(/^---\r?\n(?:[\s\S]*?\r?\n)?---(?:\r?\n|$)/)?.[0]
     if (frontmatter !== undefined) {
       const newline = frontmatter.endsWith('\n') === true ? '' : '\n'
       return `${frontmatter}${newline}${header}${content.slice(frontmatter.length)}`
