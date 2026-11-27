@@ -134,6 +134,7 @@ interface EnhancedMarkdownNode {
  */
 const preserveEnhancedBlocks =
   () =>
+  // oxlint-disable-next-line overeng/named-args -- unified's Transformer contract takes tree and file positionally.
   (tree: unknown, file: { value: unknown }): void => {
     const root = tree as EnhancedMarkdownNode
     const source = String(file.value)
@@ -146,7 +147,7 @@ const preserveEnhancedBlocks =
         const lineEnd = source.indexOf('\n', start)
         const headingEnd = lineEnd === -1 ? source.length : lineEnd
         const heading = source.slice(start, headingEnd)
-        if (/\{[^}\n]*\btoggle="true"[^}\n]*\}\s*$/u.test(heading)) {
+        if (/\{[^}\n]*\btoggle="true"[^}\n]*\}\s*$/u.test(heading) === true) {
           let cursor = headingEnd + 1
           let end = headingEnd
           while (cursor < source.length) {
@@ -154,7 +155,7 @@ const preserveEnhancedBlocks =
             const nextEnd = nextBreak === -1 ? source.length : nextBreak
             const line = source.slice(cursor, nextEnd)
             if (line.trim() !== '' && line.startsWith('\t') === false) break
-            if (line.startsWith('\t')) end = nextEnd
+            if (line.startsWith('\t') === true) end = nextEnd
             cursor = nextEnd + 1
           }
           while (
@@ -186,7 +187,7 @@ const preserveEnhancedBlocks =
       let depth = 0
       let end: number | undefined
       for (const token of searchable.matchAll(tokens)) {
-        if (token[0].endsWith('/>')) continue
+        if (token[0].endsWith('/>') === true) continue
         depth += token[1] === '/' ? -1 : 1
         if (depth === 0) {
           end = token.index + token[0].length

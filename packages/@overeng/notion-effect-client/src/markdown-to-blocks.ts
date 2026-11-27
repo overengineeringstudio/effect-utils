@@ -88,9 +88,10 @@ const decodeEntities = (value: string): string =>
       '&apos;': "'",
     }
     if (entity.startsWith('&#') === false) return named[entity.toLowerCase()] ?? entity
-    const code = entity.toLowerCase().startsWith('&#x')
-      ? Number.parseInt(entity.slice(3, -1), 16)
-      : Number.parseInt(entity.slice(2, -1), 10)
+    const code =
+      entity.toLowerCase().startsWith('&#x') === true
+        ? Number.parseInt(entity.slice(3, -1), 16)
+        : Number.parseInt(entity.slice(2, -1), 10)
     return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '\uFFFD'
   })
 
@@ -102,10 +103,13 @@ const attributes = (tag: string): Readonly<Record<string, string>> =>
     ]),
   )
 
-const mentionFromTag = (
-  tag: string,
-  context: RichTextContext,
-): NotionRichTextCreate | undefined => {
+const mentionFromTag = ({
+  tag,
+  context,
+}: {
+  readonly tag: string
+  readonly context: RichTextContext
+}): NotionRichTextCreate | undefined => {
   const name = /^<mention-(page|database|user|date)\b/u.exec(tag)?.[1]
   const attrs = attributes(tag)
   const annotations = annotationsFromContext(context)
@@ -147,12 +151,15 @@ const richTextFromNodes = ({
 
   for (let index = 0; index < nodes.length; index++) {
     const node = nodes[index]!
-    if (node.type === 'html' && /^<mention-(page|database|user|date)\b/u.test(node.value ?? '')) {
+    if (
+      node.type === 'html' &&
+      /^<mention-(page|database|user|date)\b/u.test(node.value ?? '') === true
+    ) {
       const tag = node.value ?? ''
-      const mention = mentionFromTag(tag, context)
+      const mention = mentionFromTag({ tag, context })
       if (mention !== undefined) {
         richText.push(mention)
-        if (/\/>$/u.test(tag) === false && /<\/mention-[\w-]+>/u.test(tag) === false) {
+        if (tag.endsWith('/>') === false && /<\/mention-[\w-]+>/u.test(tag) === false) {
           const name = /^<(mention-[\w-]+)/u.exec(tag)?.[1]
           while (index + 1 < nodes.length) {
             index++
@@ -352,21 +359,21 @@ const parsedNodes = (markdown: string): readonly MarkdownNode[] => {
   const tree = parseNotionMarkdownAst(markdown)
   if (isMarkdownNode(tree) === false) return []
   return childrenOf(tree).map((node) => {
-    if (node.type !== 'html' || /^<mention-/u.test(node.value ?? '') === false) return node
+    if (node.type !== 'html' || (node.value ?? '').startsWith('<mention-') === false) return node
     const inlineTree = parseNotionMarkdownAst(`x ${node.value ?? ''}`)
     if (isMarkdownNode(inlineTree) === false) return node
     const paragraph = childrenOf(inlineTree)[0]
     if (paragraph?.type !== 'paragraph') return node
     const inline = childrenOf(paragraph)
-    return {
-      ...paragraph,
+    // This paragraph belongs to the fresh inline parse and has no other consumers.
+    return Object.assign(paragraph, {
       children: [
         ...(inline[0]?.type === 'text'
           ? [{ ...inline[0], value: (inline[0].value ?? '').slice(2) }]
           : []),
         ...inline.slice(1),
       ],
-    }
+    })
   })
 }
 
@@ -406,7 +413,7 @@ const enhancedBlock = (source: string): NotionBlockCreate | undefined => {
     }
   }
   const candidateColor = attrs.color?.replace(/_bg$/u, '_background')
-  const color = Schema.is(NotionColorSchema)(candidateColor) ? candidateColor : undefined
+  const color = Schema.is(NotionColorSchema)(candidateColor) === true ? candidateColor : undefined
   const colorProps = color === undefined ? {} : { color }
   if (name === 'details') {
     const summary = /<summary\b[^>]*>([\s\S]*?)<\/summary>/u.exec(body)

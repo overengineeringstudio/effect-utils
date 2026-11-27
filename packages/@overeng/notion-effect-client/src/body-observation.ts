@@ -79,7 +79,7 @@ const classifyRenderedTypes = (opts: {
 }): BodyCompleteness => {
   const requirements = new Map<string, { count: number; types: Set<string> }>()
   const unsupportedTypes = new Set<string>()
-  const requireTag = (tag: string, type: string): void => {
+  const requireTag = ({ tag, type }: { readonly tag: string; readonly type: string }): void => {
     const requirement = requirements.get(tag)
     if (requirement === undefined) requirements.set(tag, { count: 1, types: new Set([type]) })
     else {
@@ -87,10 +87,16 @@ const classifyRenderedTypes = (opts: {
       requirement.types.add(type)
     }
   }
-  const visitRichText = (value: unknown, type: string): void => {
+  const visitRichText = ({
+    value,
+    type,
+  }: {
+    readonly value: unknown
+    readonly type: string
+  }): void => {
     if (value === null || typeof value !== 'object') return
     if (Array.isArray(value) === true) {
-      for (const item of value) visitRichText(item, type)
+      for (const item of value) visitRichText({ value: item, type })
       return
     }
     if ('type' in value && value.type === 'mention' && 'mention' in value) {
@@ -102,7 +108,7 @@ const classifyRenderedTypes = (opts: {
           mention.type === 'date' ||
           mention.type === 'user'
         ) {
-          requireTag(`mention-${mention.type}`, type)
+          requireTag({ tag: `mention-${mention.type}`, type })
         } else if (mention.type !== 'link_mention' && mention.type !== 'link_preview') {
           unsupportedTypes.add(type)
           unsupportedTypes.add(
@@ -111,7 +117,7 @@ const classifyRenderedTypes = (opts: {
         }
       }
     }
-    for (const child of Object.values(value)) visitRichText(child, type)
+    for (const child of Object.values(value)) visitRichText({ value: child, type })
   }
   const visit = (tree: BlockTree): void => {
     for (const node of tree) {
@@ -139,10 +145,10 @@ const classifyRenderedTypes = (opts: {
         type === 'file' ||
         type === 'pdf'
       )
-        requireTag(type, type)
-      if (type === 'table_row') requireTag('tr', type)
-      if (type === 'toggle') requireTag('details', type)
-      visitRichText(node.block, type)
+        requireTag({ tag: type, type })
+      if (type === 'table_row') requireTag({ tag: 'tr', type })
+      if (type === 'toggle') requireTag({ tag: 'details', type })
+      visitRichText({ value: node.block, type })
       visit(node.children)
     }
   }

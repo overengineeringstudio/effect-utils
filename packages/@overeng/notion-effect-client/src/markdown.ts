@@ -322,10 +322,10 @@ const richTextToMd = (richText: RichTextArray): string =>
         default:
           return RichTextUtils.toMarkdown([item])
       }
-      if (item.annotations.bold) text = `**${text}**`
-      if (item.annotations.italic) text = `*${text}*`
-      if (item.annotations.strikethrough) text = `~~${text}~~`
-      if (item.annotations.underline) text = `<span underline="true">${text}</span>`
+      if (item.annotations.bold === true) text = `**${text}**`
+      if (item.annotations.italic === true) text = `*${text}*`
+      if (item.annotations.strikethrough === true) text = `~~${text}~~`
+      if (item.annotations.underline === true) text = `<span underline="true">${text}</span>`
       if (item.annotations.color !== 'default')
         text = `<span${colorAttribute(item.annotations.color)}>${text}</span>`
       return text

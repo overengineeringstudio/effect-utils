@@ -35,7 +35,7 @@ const readTree = (block: NotionBlockCreate | NotionTableRowBlockCreate): BlockTr
                   ? (block.to_do.children ?? [])
                   : []
   const hydrateRichText = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(hydrateRichText)
+    if (Array.isArray(value) === true) return value.map(hydrateRichText)
     if (typeof value !== 'object' || value === null) return value
     const fields = Object.fromEntries(
       Object.entries(value).map(([key, item]) => [key, hydrateRichText(item)]),
