@@ -9,6 +9,7 @@ import { Vitest } from '@overeng/utils-dev/node-vitest'
 import {
   assertWorktreeHolderEvidenceFresh,
   holderCaptureFitsBootWindow,
+  readWorktreeHolderEvidence,
 } from './store-worktree-holder-client.ts'
 import { HolderEvidenceError, HolderEvidenceResponse } from './store-worktree-holder-codec.ts'
 
@@ -58,6 +59,64 @@ const evidence = (bootId: string, startedBootNs: string): HolderEvidenceResponse
 })
 
 describe('fixed holder client boundaries (not native authentication qualification)', () => {
+  it.effect('refuses alternate executables and malformed requests before spawning', (test) =>
+    Effect.gen(function* () {
+      for (const input of [
+        { client: { ...client, path: '/bin/true' }, targets: [target] },
+        { client: { ...client, producerId: '/tmp/producer' }, targets: [target] },
+        { client: { ...client, policyId: 'invalid' }, targets: [target] },
+        { client, targets: [] },
+        { client, targets: [target, target] },
+        { client, targets: [{ ...target, path: `/${'a'.repeat(4096)}` }] },
+        { client, targets: Array.from({ length: 4097 }, () => target) },
+        {
+          client,
+          targets: Array.from({ length: 300 }, (_, index) => ({
+            ...target,
+            path: `/${index}/${'a'.repeat(3600)}`,
+          })),
+        },
+      ]) {
+        const error = yield* readWorktreeHolderEvidence(input).pipe(Effect.flip)
+        expect(error).toBeInstanceOf(HolderEvidenceError)
+        expect(String(error)).not.toContain('secret')
+      }
+      for (const path of ['/', '/a/../b', '/a/', '/a\nsecret', '/a\0b', '/a//b', '/a/\ud800']) {
+        const error = yield* readWorktreeHolderEvidence({
+          client,
+          targets: [{ ...target, path }],
+        }).pipe(Effect.flip)
+        expect(error).toBeInstanceOf(HolderEvidenceError)
+        expect(String(error)).not.toContain('secret')
+      }
+      for (const ino of ['0', '01', '18446744073709551616']) {
+        const error = yield* readWorktreeHolderEvidence({
+          client,
+          targets: [{ ...target, identity: { ...identity, ino } }],
+        }).pipe(Effect.flip)
+        expect(error).toBeInstanceOf(HolderEvidenceError)
+        expect(String(error)).not.toContain('secret')
+      }
+    }).pipe(withTestCtx(test)),
+  )
+  it.effect('does not invoke an unauthorized filesystem executable', (test) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      // Keep fixture writes in executor scratch, never the immutable Buck package tree.
+      const directory = yield* fs.makeTempDirectoryScoped()
+      const executable = `${directory}/not-a-holder-client`
+      // This is forbidden input, never a stand-in for the trusted native SDK.
+      yield* fs.writeFileString(executable, '#!/bin/sh\n: > "${0%/*}/invoked"\n')
+      yield* fs.chmod(executable, 0o700)
+      expect(yield* fs.exists(`${directory}/invoked`)).toBe(false)
+      const error = yield* readWorktreeHolderEvidence({
+        client: { ...client, path: executable },
+        targets: [target],
+      }).pipe(Effect.flip)
+      expect(error).toBeInstanceOf(HolderEvidenceError)
+      expect(yield* fs.exists(`${directory}/invoked`)).toBe(false)
+    }).pipe(withTestCtx(test)),
+  )
   it.effect('refuses incomplete scope and roots without interpreting them as absence', (test) =>
     Effect.gen(function* () {
       const response = evidence('00000000-0000-4000-8000-000000000001', '1')
