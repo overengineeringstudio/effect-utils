@@ -141,13 +141,13 @@ describe('other known lossy projections', () => {
     })
   })
 
-  it.each(['template_mention', 'link_preview'])('refuses unmodeled %s mention semantics', (type) => {
+  it.each(['template_mention', 'future_mention'])('refuses unmodeled %s mention semantics', (type) => {
     expect(classify(tree('paragraph', {
       rich_text: [{ type: 'mention', mention: { type } }],
     }), 'Label')).toEqual({
       _tag: 'lossy',
       reasons: ['unsupported_blocks'],
-      lossyBlockTypes: ['paragraph'],
+      lossyBlockTypes: [`mention:${type}`, 'paragraph'],
     })
   })
 })

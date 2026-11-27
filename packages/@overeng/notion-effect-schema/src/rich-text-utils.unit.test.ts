@@ -1,7 +1,8 @@
+import { Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { toHtml, toMarkdown, toPlainText } from './rich-text-utils.ts'
-import type { RichTextArray } from './rich-text.ts'
+import { RichTextArray } from './rich-text.ts'
 
 /** Helper to create a text rich text element */
 const makeText = (
@@ -35,7 +36,7 @@ const makeText = (
 
 /** Helper to create a mention rich text element */
 const makeMention = (
-  type: 'user' | 'page' | 'database' | 'date' | 'link_preview',
+  type: 'user' | 'page' | 'database' | 'date' | 'link_preview' | 'link_mention',
   data: Record<string, unknown>,
   plainText: string,
   href: string | null = null,
@@ -67,6 +68,11 @@ const makeMention = (
         return {
           type: 'link_preview' as const,
           link_preview: { url: data.url as string },
+        }
+      case 'link_mention':
+        return {
+          type: 'link_mention' as const,
+          link_mention: { href: data.url as string },
         }
     }
   })()
@@ -239,6 +245,14 @@ describe('toMarkdown', () => {
     expect(toMarkdown(richText)).toBe('[My Page](https://notion.so/page)')
   })
 
+  it.each(['link_mention', 'link_preview'] as const)('decodes and renders %s as an ordinary link', (type) => {
+    const input = [makeMention(type, { url: 'https://github.com/example/repo' }, 'Repository')]
+    const richText = Schema.decodeUnknownSync(RichTextArray)(input)
+
+    expect(richText).toEqual(input)
+    expect(toMarkdown(richText)).toBe('[Repository](https://github.com/example/repo)')
+  })
+
   it('converts date mentions', () => {
     const richText: RichTextArray = [makeMention('date', { start: '2024-01-15' }, '2024-01-15')]
     expect(toMarkdown(richText)).toBe('2024-01-15')
@@ -346,6 +360,17 @@ describe('toHtml', () => {
     ]
     expect(toHtml(richText)).toBe(
       '<a href="https://notion.so/page" class="notion-mention notion-mention-page" data-page-id="page-123">My Page</a>',
+    )
+  })
+
+  it.each([
+    ['link_mention', 'link'],
+    ['link_preview', 'link-preview'],
+  ] as const)('renders and escapes %s links', (type, className) => {
+    const richText = [makeMention(type, { url: 'https://example.com?a=1&b="2"' }, '<Repository>')]
+
+    expect(toHtml(richText)).toBe(
+      `<a href="https://example.com?a=1&amp;b=&quot;2&quot;" class="notion-mention notion-mention-${className}">&lt;Repository&gt;</a>`,
     )
   })
 

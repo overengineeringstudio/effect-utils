@@ -255,6 +255,26 @@ export const LinkPreviewMention = Schema.Struct({
 export type LinkPreviewMention = typeof LinkPreviewMention.Type
 
 /**
+ * Link mention within rich text.
+ */
+export const LinkMention = Schema.Struct({
+  type: Schema.Literal('link_mention'),
+  link_mention: Schema.Struct({
+    href: Schema.String.annotate({
+      description: 'The URL referenced by the mention.',
+      examples: ['https://github.com/example/repo'],
+    }),
+  }),
+}).annotate({
+  identifier: 'Notion.LinkMention',
+  title: 'Link Mention',
+  description: 'A mention linking to an external resource.',
+  [docsPath]: 'rich-text#mention',
+})
+
+export type LinkMention = typeof LinkMention.Type
+
+/**
  * Template mention date type.
  */
 export const TemplateMentionDate = Schema.Struct({
@@ -308,6 +328,7 @@ export const MentionContent = Schema.Union([
   UserMention,
   DateMention,
   LinkPreviewMention,
+  LinkMention,
   TemplateMention,
 ]).annotate({
   identifier: 'Notion.MentionContent',

@@ -101,8 +101,9 @@ const classifyRenderedTypes = (opts: {
           mention.type === 'date' || mention.type === 'user'
         ) {
           requireTag(`mention-${mention.type}`, type)
-        } else {
+        } else if (mention.type !== 'link_mention' && mention.type !== 'link_preview') {
           unsupportedTypes.add(type)
+          unsupportedTypes.add(`mention:${typeof mention.type === 'string' ? mention.type : 'unknown'}`)
         }
       }
     }

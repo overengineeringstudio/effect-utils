@@ -52,6 +52,8 @@ page/database/date/user mention constructs against the observed block tree.
 Flattened quotes, pipe paragraphs, ordinary links, or plain date text fail with
 `rendered_markdown_missing_types`; unknown renderer block types, unmodeled
 mention kinds, and non-emoji callout icons fail as unsupported.
+`link_mention` and `link_preview` retain their URL as ordinary links; other
+unsupported mentions name `mention:<kind>` as well as the containing block type.
 The typed refusal identifies the page and offending block types. This coverage
 check does not prove full attribute equivalence.
 

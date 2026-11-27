@@ -1,20 +1,115 @@
 import { describe, expect, it } from '@effect/vitest'
+import { Effect } from 'effect'
 
+import type { BlockTreeNode } from './blocks.ts'
 import { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
+import { type BlockWithData, treeToMarkdown } from './markdown.ts'
+
+const treeNode = (
+  type: string,
+  data: Record<string, unknown>,
+  children: BlockTreeNode[] = [],
+): BlockTreeNode => ({
+  block: {
+    object: 'block',
+    id: '00000000-0000-4000-8000-000000000001',
+    type,
+    has_children: children.length > 0,
+    in_trash: false,
+    created_time: '2026-11-27T00:00:00.000Z',
+    last_edited_time: '2026-11-27T00:00:00.000Z',
+    created_by: { object: 'user', id: '00000000-0000-4000-8000-000000000002' },
+    last_edited_by: { object: 'user', id: '00000000-0000-4000-8000-000000000002' },
+    parent: { type: 'page_id', page_id: '00000000-0000-4000-8000-000000000003' },
+    [type]: data,
+  } as BlockWithData,
+  children,
+})
+
+const paragraph = (content: string): BlockTreeNode =>
+  treeNode('paragraph', {
+    rich_text: [{
+      type: 'text',
+      text: { content, link: null },
+      plain_text: content,
+      href: null,
+      annotations: {
+        bold: false,
+        italic: false,
+        strikethrough: false,
+        underline: false,
+        code: false,
+        color: 'default',
+      },
+    }],
+  })
+
+const expectPreservedBody = (body: string): void => {
+  const input = `Before\n\n${body}\n\nAfter\n`
+  expect(canonicalizeBlockMarkdown(input)).toBe(input)
+  expect(canonicalizeBlockMarkdown(canonicalizeBlockMarkdown(input))).toBe(input)
+  expect(canonicalizeSemanticMarkdown(input)).toBe(input)
+  expect(canonicalizeSemanticMarkdown(canonicalizeSemanticMarkdown(input))).toBe(input)
+}
 
 describe('canonicalizeBlockMarkdown', () => {
   it.each([
     '<callout icon="💡" color="blue_background">\n\tTip\n\n\t<details>\n\t<summary>More</summary>\n\t\tChild\n\t</details>\n</callout>',
     '<table header-row="true" header-column="true">\n\t<tr>\n\t\t<td>Header</td>\n\t</tr>\n\n\t<tr>\n\t\t<td>Value</td>\n\t</tr>\n</table>',
     '<details color="green">\n<summary>More</summary>\n\tFirst\n\n\tSecond\n</details>',
+    '<column>\n\tFirst\n\n\tSecond\n</column>',
+    '<columns>\n\t<column>\n\t\tLeft\n\t</column>\n\n\t<column>\n\t\tRight\n\t</column>\n</columns>',
+    '<synced_block url="https://www.notion.so/00000000000040008000000000000001">\n\tFirst\n\n\tSecond\n</synced_block>',
+    '<columns>\n\t<column>\n\t\t`</columns>`\n\n\t\t<columns>\n\t\t\t<column>\n\t\t\t\tNested\n\t\t\t</column>\n\t\t</columns>\n\n\t\tAfter nested\n\t</column>\n</columns>',
     '# Heading {toggle="true"}\n\tNested child',
     '## Heading {toggle="true" color="blue_bg"}\n\tFirst child\n\n\t### Nested {toggle="true"}\n\t\tGrandchild\n\n\tLast child',
   ])('preserves native enhanced block ownership across blank lines: %s', (body) => {
-    const input = `Before\n\n${body}\n\nAfter\n`
-    expect(canonicalizeBlockMarkdown(input)).toBe(input)
-    expect(canonicalizeBlockMarkdown(canonicalizeBlockMarkdown(input))).toBe(input)
-    expect(canonicalizeSemanticMarkdown(input)).toBe(input)
+    expectPreservedBody(body)
   })
+
+  it.effect('preserves rendered two-column layouts and nested blank-separated content', () =>
+    Effect.gen(function* () {
+      const body = yield* treeToMarkdown({
+        tree: [
+          treeNode('column_list', {}, [
+            treeNode('column', {}, [
+              paragraph('Left first'),
+              paragraph('Left second'),
+              treeNode('column_list', {}, [
+                treeNode('column', {}, [paragraph('Nested left')]),
+                treeNode('column', {}, [paragraph('Nested right')]),
+              ]),
+              paragraph('Left after nested columns'),
+            ]),
+            treeNode('column', {}, [paragraph('Right first'), paragraph('Right second')]),
+          ]),
+        ],
+      })
+      expect(body).toContain('\n\n\t<column>\n\t\tRight first')
+      expect(body).toContain('\n\n\t\tLeft second')
+      expectPreservedBody(body)
+    }),
+  )
+
+  it.effect('preserves rendered synced blocks with nested synced ownership', () =>
+    Effect.gen(function* () {
+      const body = yield* treeToMarkdown({
+        tree: [
+          treeNode('synced_block', { synced_from: null }, [
+            paragraph('First synced child'),
+            treeNode('synced_block', { synced_from: null }, [
+              paragraph('Nested first'),
+              paragraph('Nested second'),
+            ]),
+            paragraph('After nested synced block'),
+          ]),
+        ],
+      })
+      expect(body).toContain('\n\n\t<synced_block url="')
+      expect(body).toContain('\n\n\t\tNested second')
+      expectPreservedBody(body)
+    }),
+  )
 
   it('unwraps soft-wrapped paragraph lines into one logical line', () => {
     const wrapped = [

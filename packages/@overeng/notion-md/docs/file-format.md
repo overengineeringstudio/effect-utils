@@ -89,6 +89,21 @@ Notion may normalize Markdown on pull. A clean round trip means semantic
 equivalence through Notion's Markdown endpoint, not byte-for-byte preservation of
 local formatting.
 
+### Upgrading older projected bodies
+
+This renderer upgrade requires a one-time read-only re-pull for existing files
+whose callouts, tables, mentions, toggles or media were flattened by an older
+version. Their stored baseline uses the old projection, so status can report a
+remote change even when nobody edited Notion. Old and native forms are not
+automatically equated: the old bytes cannot prove the original block types.
+
+Before syncing, preserve the original files and any unpushed edits. Use `track`
+to export the page or tree into a fresh location, review the native body, then
+port only the intended local edits onto that fresh baseline and retain the
+intended authority. Do not overwrite an edited file, force a push, or delete its
+baseline to bypass this migration. Fresh exports and already-native child-page
+anchors do not require rewriting.
+
 ## Writable Page Metadata
 
 The `notion_md.page` object models page state that Notion does not expose in the

@@ -1014,10 +1014,8 @@ describe('notion-md tree reconcile lifecycle', () => {
       const plan = await run(syncTree({ root: dir, plan: true, fromRemote: false }), fake)
       expect(plan.ops.some((op) => op._tag === 'update')).toBe(false)
       const rootFile = await readFile(join(dir, 'index.nmd'), 'utf8')
-      expect(rootFile).toContain('[Same](same.nmd)')
-      expect(rootFile).toContain(
-        `[Same](same-${subtreeId.replaceAll('-', '').slice(-6)}/index.nmd)`,
-      )
+      expect(rootFile).toContain(`<page url="${pageUrl(leafId)}">Same</page>`)
+      expect(rootFile).toContain(`<page url="${pageUrl(subtreeId)}">Same</page>`)
     })
   })
 
@@ -1051,7 +1049,7 @@ describe('notion-md tree reconcile lifecycle', () => {
     })
   })
 
-  it('strips derived child anchors from from-remote file bodies while keeping composed baselines', async () => {
+  it('retains native child anchors in from-remote bodies and baselines', async () => {
     await withTempDir(async (dir) => {
       const fake = new FakeTreeNotion()
       const childId = fake.addRemotePage({
@@ -1067,11 +1065,10 @@ describe('notion-md tree reconcile lifecycle', () => {
       await run(syncTree({ root: dir, rootPageId, fromRemote: true, rootFile: 'index.nmd' }), fake)
       const rootFile = await readFile(join(dir, 'index.nmd'), 'utf8')
       expect(rootFile).toContain('Root body.')
-      expect(rootFile).not.toContain('<page url=')
+      expect(rootFile).toContain(`<page url="${pageUrl(childId)}">Alpha</page>`)
 
       const plan = await run(syncTree({ root: dir, plan: true, fromRemote: false }), fake)
       expect(opTags(plan.ops).noop).toBe(2)
-      expect(rootFile).toContain('[Alpha](alpha.nmd)')
       expect(opTags(plan.ops).update).toBeUndefined()
     })
   })
@@ -1117,10 +1114,10 @@ describe('track path routing', () => {
         '"source": "remote"',
       )
       const rootContent = await readFile(join(dir, 'index.nmd'), 'utf8')
-      expect(rootContent).toContain('[Guide](guide/index.nmd)')
+      expect(rootContent).toContain(`<page url="${pageUrl(guideId)}">Guide</page>`)
       expect(rootContent).not.toContain('[Guide]()')
       const guideContent = await readFile(join(dir, 'guide', 'index.nmd'), 'utf8')
-      expect(guideContent).toContain('[Setup](setup.nmd)')
+      expect(guideContent).toContain(`<page url="${pageUrl(setupId)}">Setup</page>`)
       expect(guideContent).not.toContain('[Setup]()')
       const forwardPlan = await run(syncTree({ root: dir, fromRemote: false, plan: true }), fake)
       expect(opTags(forwardPlan.ops).noop).toBe(3)
@@ -1137,6 +1134,46 @@ describe('track path routing', () => {
           },
         },
       )
+    })
+  })
+
+  it('keeps an interleaved root noop after tracking and changing authority to local', async () => {
+    await withTempDir(async (dir) => {
+      const fake = new FakeTreeNotion()
+      const zuluId = fake.addRemotePage({ parentId: rootPageId, title: 'Zulu', markdown: 'Zulu.\n' })
+      const alphaId = fake.addRemotePage({ parentId: rootPageId, title: 'Alpha', markdown: 'Alpha.\n' })
+      const body = [
+        '<callout icon="💡">',
+        '\tRoot note',
+        '</callout>',
+        '',
+        '## First section',
+        '',
+        `<page url="${pageUrl(zuluId)}">Zulu</page>`,
+        '',
+        '## Second section',
+        '',
+        `<page url="${pageUrl(alphaId)}">Alpha</page>`,
+        '',
+        'Content after the child index.',
+        '',
+      ].join('\n')
+      fake.mutateRemote(rootPageId, body)
+      await run(trackPath({ pageId: rootPageId, outPath: dir, source: 'remote' }), fake)
+      const rootPath = join(dir, 'index.nmd')
+      expect(await readFile(rootPath, 'utf8')).toContain(body)
+      const workspacePath = join(dir, '.notion-md', 'workspace.json')
+      const workspace = await readFile(workspacePath, 'utf8')
+      await writeFile(workspacePath, workspace.replace('"authority": "remote"', '"authority": "local"'))
+      for (const path of [rootPath, join(dir, 'zulu.nmd'), join(dir, 'alpha.nmd')]) {
+        const content = await readFile(path, 'utf8')
+        await writeFile(path, content.replace('"source": "remote"', '"source": "local"'))
+      }
+      const plan = await run(syncTree({ root: dir, plan: true, fromRemote: false }), fake)
+      expect(opTags(plan.ops)).toEqual({ noop: 3 })
+      const synced = await run(syncTree({ root: dir, fromRemote: false }), fake)
+      expect(opTags(synced.ops)).toEqual({ noop: 3 })
+      expect(fake.remoteBody(rootPageId)).toBe(body)
     })
   })
 

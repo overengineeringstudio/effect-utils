@@ -346,27 +346,6 @@ const scanLocalPages = (opts: {
     })
   })
 
-const materializedChildLink = /^(?<indent>\s*)\[(?<label>[^\]]+)\]\((?<href>[^)]+)\)\s*$/u
-
-const childHref = (opts: {
-  readonly parentRelPath: string
-  readonly childRelPath: string
-}): string => toPosix(relative(dirname(opts.parentRelPath), opts.childRelPath))
-
-const stripMaterializedChildLinks = (opts: {
-  readonly body: string
-  readonly children: readonly ChildIndexChild[]
-}): string =>
-  opts.body
-    .split('\n')
-    .map((line) => {
-      const link = materializedChildLink.exec(line)
-      if (link === null) return line
-      const isDerived = opts.children.some((child) => child.localHref === link.groups?.href)
-      return isDerived === true ? '' : line
-    })
-    .join('\n')
-
 /**
  * Compose the body to PUSH for a page: resolved cross-refs + DERIVED child
  * index. Re-emits one `<page url>` anchor per ordered child (blank-line
@@ -377,7 +356,6 @@ export const composePushBody = (opts: {
   readonly children: readonly {
     readonly title: string
     readonly pageId: string
-    readonly localHref?: string
   }[]
 }): string => {
   const trimmed = opts.resolvedBody.replace(/\n+$/u, '')
@@ -399,7 +377,6 @@ type ChildAnchor =
 interface ChildIndexChild {
   readonly title: string
   readonly pageId?: string
-  readonly localHref?: string
 }
 
 const childKey = (child: ChildIndexChild): string =>
@@ -540,7 +517,6 @@ const composeTreePushBody = (opts: {
                   {
                     title: child.title,
                     pageId: child.pageId,
-                    ...(child.localHref === undefined ? {} : { localHref: child.localHref }),
                   },
                 ],
           ),
@@ -688,7 +664,6 @@ const childrenByParent = (opts: {
     list.push({
       title: page.title,
       pageId: id,
-      localHref: childHref({ parentRelPath: parentRel, childRelPath: page.relPath }),
     })
     childrenOf.set(parentRel, list)
   }
@@ -708,7 +683,6 @@ const childIndexChildrenByParent = (opts: {
     list.push({
       title: page.title,
       ...(pageId === undefined ? {} : { pageId }),
-      localHref: childHref({ parentRelPath: parentRel, childRelPath: page.relPath }),
     })
     childrenOf.set(parentRel, list)
   }
@@ -745,7 +719,6 @@ const syncTreeLocal = (opts: {
     const store = yield* NmdStateStore
     const { root, rootFile, rootPageId, pages, previous, plan } = opts
     const stateAnchor = treeStateAnchor(root)
-    const stripMaterializedLinks = previous?.authority === 'remote'
     const rootRel = rootFile
     const rootPage = pages.find((page) => page.relPath === rootRel)
     if (rootPage === undefined) {
@@ -873,7 +846,7 @@ const syncTreeLocal = (opts: {
     }
 
     if (plan === true) {
-      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops, stripMaterializedLinks })
+      yield* classifyPlan({ root, pages, idForRelPath, slugMap, ops })
       const liveIds = new Set(idForRelPath.values())
       for (const [relPath, pageId] of Object.entries(previous?.pages ?? {})) {
         if (liveIds.has(pageId) === false) {
@@ -916,12 +889,8 @@ const syncTreeLocal = (opts: {
       const pageId = idForRelPath.get(page.relPath)
       if (pageId === undefined) continue
       const children = childrenOf.get(page.relPath) ?? []
-      const bodyForPush =
-        stripMaterializedLinks === true
-          ? stripMaterializedChildLinks({ body: page.body, children })
-          : page.body
       const resolvedBody = yield* resolveCrossRefs({
-        body: bodyForPush,
+        body: page.body,
         relPath: page.relPath,
         slugMap,
         idMap: idForRelPath,
@@ -1089,7 +1058,6 @@ const classifyPlan = (opts: {
   readonly idForRelPath: ReadonlyMap<string, string>
   readonly slugMap: ReadonlyMap<string, string>
   readonly ops: TreeOp[]
-  readonly stripMaterializedLinks: boolean
 }): Effect.Effect<void, NmdError, NmdStateStore> =>
   Effect.gen(function* () {
     const childrenOf = childIndexChildrenByParent({
@@ -1102,16 +1070,12 @@ const classifyPlan = (opts: {
       if (opts.ops.some((op) => op.relPath === page.relPath && op._tag === 'move') === true)
         continue
       const children = childrenOf.get(page.relPath) ?? []
-      const bodyForPush =
-        opts.stripMaterializedLinks === true
-          ? stripMaterializedChildLinks({ body: page.body, children })
-          : page.body
       const resolved = yield* resolveCrossRefs({
-        body: bodyForPush,
+        body: page.body,
         relPath: page.relPath,
         slugMap: opts.slugMap,
         idMap: opts.idForRelPath,
-      }).pipe(Effect.orElseSucceed(() => bodyForPush))
+      }).pipe(Effect.orElseSucceed(() => page.body))
       const composed = yield* composeTreePushBody({
         relPath: page.relPath,
         resolvedBody: resolved,
@@ -1238,21 +1202,19 @@ const buildRemoteTree = (opts: {
 
 const emptyChildLink = /^(?<indent>\s*)\[(?<label>[^\]]+)\]\(\)\s*$/u
 
-const materializeRemoteChildLinks = (opts: {
+const normalizeRemoteChildAnchors = (opts: {
   readonly body: string
   readonly parentRelPath: string
   readonly children: readonly RemoteTreeNode[]
-}): Effect.Effect<{ readonly localBody: string; readonly bareBody: string }, NmdCliError> =>
+}): Effect.Effect<string, NmdCliError> =>
   Effect.gen(function* () {
-    const localLines: string[] = []
-    const bareLines: string[] = []
+    const lines: string[] = []
 
     for (const line of opts.body.split('\n')) {
       const anchor = blockChildAnchor.exec(line)
       const placeholder = emptyChildLink.exec(line)
       if (anchor === null && placeholder === null) {
-        localLines.push(line)
-        bareLines.push(line)
+        lines.push(line)
         continue
       }
 
@@ -1278,8 +1240,7 @@ const materializeRemoteChildLinks = (opts: {
       } else {
         const matches = opts.children.filter((candidate) => candidate.title === label)
         if (matches.length === 0 && anchor === null) {
-          localLines.push(line)
-          bareLines.push(line)
+          lines.push(line)
           continue
         }
         if (matches.length !== 1) {
@@ -1291,19 +1252,14 @@ const materializeRemoteChildLinks = (opts: {
       }
 
       if (child === undefined) continue
-      localLines.push(
-        `${indent}[${label}](${childHref({
-          parentRelPath: opts.parentRelPath,
-          childRelPath: child.relPath,
-        })})`,
+      lines.push(
+        rawUrl !== undefined
+          ? line
+          : `${indent}<page${anchor?.groups?.attrs ?? ''} url="${pageUrl(child.pageId)}">${label}</page>`,
       )
-      bareLines.push('')
     }
 
-    return {
-      localBody: normalizeMarkdownLineEndings(localLines.join('\n')),
-      bareBody: normalizeMarkdownLineEndings(bareLines.join('\n')),
-    }
+    return normalizeMarkdownLineEndings(lines.join('\n'))
   })
 
 const materializeRemoteTreeNode = (opts: {
@@ -1325,20 +1281,17 @@ const materializeRemoteTreeNode = (opts: {
       pageId: opts.node.pageId,
       markdown: pulled.markdown,
     })
-    const bodies = yield* materializeRemoteChildLinks({
+    const remoteBody = yield* normalizeRemoteChildAnchors({
       body: pulled.markdown.markdown,
       parentRelPath: opts.node.relPath,
       children: opts.children,
     })
-    const baselineBody = composePushBody({
-      resolvedBody: bodies.bareBody,
+    const baselineBody = yield* composeTreePushBody({
+      relPath: opts.node.relPath,
+      resolvedBody: remoteBody,
       children: opts.children.map((child) => ({
         title: child.title,
         pageId: child.pageId,
-        localHref: childHref({
-          parentRelPath: opts.node.relPath,
-          childRelPath: child.relPath,
-        }),
       })),
     })
     if (opts.plan === true) return
@@ -1350,7 +1303,7 @@ const materializeRemoteTreeNode = (opts: {
       path,
       content: renderNmdFile({
         frontmatter: frontmatterForRemotePage(pulled.page),
-        body: bodies.localBody,
+        body: baselineBody,
       }),
     })
     yield* establishBaseline({

@@ -135,6 +135,9 @@ const mentionRichTextToMarkdown = (rt: MentionRichText): string => {
     case 'link_preview':
       return `[${rt.plain_text}](${mention.link_preview.url})`
 
+    case 'link_mention':
+      return `[${rt.plain_text}](${mention.link_mention.href})`
+
     case 'template_mention': {
       const tm = mention.template_mention
       if (tm.type === 'template_mention_date') {
@@ -270,6 +273,9 @@ const mentionRichTextToHtml = (rt: MentionRichText): string => {
 
     case 'link_preview':
       return `<a href="${escapeHtml(mention.link_preview.url)}" class="notion-mention notion-mention-link-preview">${escapedText}</a>`
+
+    case 'link_mention':
+      return `<a href="${escapeHtml(mention.link_mention.href)}" class="notion-mention notion-mention-link">${escapedText}</a>`
 
     case 'template_mention': {
       const tm = mention.template_mention

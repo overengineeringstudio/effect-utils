@@ -160,17 +160,24 @@ const preserveEnhancedBlocks = () => (tree: unknown, file: { value: unknown }): 
         continue
       }
     }
-    const opening = node.type === 'html' ? /^<(callout|details|table)\b/u.exec(node.value ?? '') : null
+    // Underscored native tags (synced_block) are paragraphs to CommonMark,
+    // not HTML nodes. Identify containers from their original source instead.
+    const opening = start !== undefined && (node.type === 'html' || node.type === 'paragraph')
+      ? /^<(callout|details|table|columns|column|synced_block)(?=[\s>])/u.exec(source.slice(start))
+      : null
     if (opening === null || start === undefined) {
       children.push(node)
       continue
     }
-    const tokens = new RegExp(`<(/?)${opening[1]}\\b[^>]*>`, 'gu')
+    const tokens = new RegExp(`<(/?)${opening[1]}(?=[\\s/>])[^>]*>`, 'gu')
     tokens.lastIndex = start
     const searchable = source.replace(/(`+)[\s\S]*?\1/gu, (literal) => ' '.repeat(literal.length))
+    // Inner containers must close without releasing the outer container's
+    // remaining blank-separated children to CommonMark.
     let depth = 0
     let end: number | undefined
     for (const token of searchable.matchAll(tokens)) {
+      if (token[0].endsWith('/>')) continue
       depth += token[1] === '/' ? -1 : 1
       if (depth === 0) {
         end = token.index + token[0].length

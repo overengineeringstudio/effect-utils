@@ -8,6 +8,7 @@ import { Effect } from 'effect'
 
 import {
   type Block,
+  compactNotionUuid,
   notionObjectUrl,
   type RichTextArray,
   RichTextUtils,
@@ -469,7 +470,8 @@ const DEFAULT_TRANSFORMERS: Record<string, BlockTransformer> = {
     return `<table${attrs}>\n${indentLines({ text: children, indent: '\t' })}\n</table>`
   },
 
-  child_page: (block) => `[${getChildPageTitle(block)}]()`,
+  child_page: (block) =>
+    `<page url="https://app.notion.com/p/${compactNotionUuid(block.id)}">${escapeAttribute(getChildPageTitle(block))}</page>`,
   child_database: (block) => `[${getChildDatabaseTitle(block)}]()`,
 
   table_row: (block) => {

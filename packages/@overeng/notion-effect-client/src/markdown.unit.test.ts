@@ -329,4 +329,15 @@ describe('treeToMarkdown', () => {
 
     expect(markdown).toBe('# Heading {toggle="true"}\n\tNested child')
   })
+
+  it('retains child-page identity in a native anchor', async () => {
+    const id = '00000000-0000-4000-8000-000000000002'
+    const markdown = await Effect.runPromise(treeToMarkdown({
+      tree: [{
+        block: { ...mockBlock('child_page', { title: 'Child & details' }), id },
+        children: [],
+      }],
+    }))
+    expect(markdown).toBe('<page url="https://app.notion.com/p/00000000000040008000000000000002">Child &amp; details</page>')
+  })
 })

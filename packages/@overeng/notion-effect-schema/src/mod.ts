@@ -256,6 +256,8 @@ export {
   DateMention as DateMentionSchema,
   type EquationRichText,
   EquationRichText as EquationRichTextSchema,
+  type LinkMention,
+  LinkMention as LinkMentionSchema,
   type LinkPreviewMention,
   LinkPreviewMention as LinkPreviewMentionSchema,
   type MentionContent,
