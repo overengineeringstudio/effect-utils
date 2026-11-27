@@ -410,6 +410,24 @@ Writable claims invalidate measured accounting until a safe remeasure; new reser
 wait, while other already-reserved ready roots remain claimable. Execution can expand
 files, so this accounting ledger is not a hard filesystem quota.
 
+`beginPoolClaim` makes a non-executing `claiming` intent with a new generation and
+private token. A selector reads under short GLOBAL, releases it, acquires ROOT, then
+saves the intent under a new short GLOBAL section. A busy ROOT must be skipped
+before claiming, never marked UNKNOWN merely to queue behind another action.
+These pure functions do not implement ROOT acquisition or a fail-fast scheduler.
+Claiming is UNKNOWN/HOLD: `requirePoolLease` refuses it, accounting remains unknown,
+and a crash does not make it reusable. Recorded fresh origin, physical birth and
+terminal lifecycle consistency are required, but are not fresh native authority.
+`finishPoolClaim` accepts the complete saved snapshot, exact owner/install identity
+and the caller's tool-observed process actor on the recorded host/boot. It preserves
+the intent's generation/token and emits that generation's active claim operation;
+the creator PID need not be the current claimant. An actor and owner label are not
+authenticated seat authority. The actor-less one-phase claim producer is removed.
+Only the physical controller holding ROOT, every verified native/GVS scope and
+fresh all-UID/process evidence may publish the leased candidate or grant execution.
+Arm updated readers before writers: old v1 decoders reject `claiming` and must HOLD,
+not repair or reset it. The physical/service/production adapters remain off.
+
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.

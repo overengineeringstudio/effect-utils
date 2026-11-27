@@ -19,7 +19,7 @@ export const PoolSlot = Schema.Struct({
   charge: Schema.Finite,
   chargeKnown: Schema.optional(Schema.Boolean),
   generation: Schema.Finite,
-  state: Schema.Literals(['preparing', 'ready', 'leased', 'completed', 'quarantined']),
+  state: Schema.Literals(['preparing', 'ready', 'claiming', 'leased', 'completed', 'quarantined']),
   token: Schema.String,
   barrierToken: Schema.String,
   owner: Schema.String,
@@ -237,27 +237,70 @@ export const requirePoolLease = ({ slot, token, generation }: PoolLeaseCheck) =>
     ? Effect.void
     : Effect.fail(new PoolError({ message: 'Stale or non-leased pool generation' }))
 
-/** Transition is published only under withPoolState after real root proofs. */
-export const claimPoolGeneration = ({
-  slot,
-  identity,
-  owner,
-}: PoolClaim): Effect.Effect<PoolSlot, PoolError> => {
-  if (slot.state !== 'ready' || slot.identity !== identity)
-    return Effect.fail(
-      new PoolError({ message: 'Generation is not ready for this install identity' }),
-    )
-  const next: PoolSlot = {
-    ...slot,
-    state: 'leased',
-    chargeKnown: false,
-    generation: slot.generation + 1,
-    token: randomUUID(),
-    owner,
-    reason: '',
-  }
-  return Effect.succeed(next)
-}
+const isPoolClaimActor = Schema.is(PoolActor)
+const isPoolClaimOperation = Schema.is(PoolOperation)
+const claimHold = () => new PoolError({ message: 'Pool claim provenance or process generation changed; HOLD' })
+
+/** Recorded consistency only; never fresh native, process or seat authority. */
+const requirePoolClaimOrigin = (slot: PoolSlot): Effect.Effect<void, PoolError> =>
+  Effect.gen(function* () {
+    yield* requireDisposablePoolRoot(slot)
+    const birth = slot.lifecycle?.birth
+    const physical = slot.physicalBirth
+    const claim = slot.lifecycle?.claim
+    const retarget = slot.lifecycle?.retarget
+    if (physical === undefined || birth === undefined || !isPoolClaimOperation(birth) ||
+      birth.state !== 'terminal' || birth.outcome !== 'success' || birth.generation > slot.generation ||
+      birth.actor.bootId !== physical.bootId || slot.barrierToken === '' ||
+      (claim !== undefined && (!isPoolClaimOperation(claim) || claim.state !== 'terminal' ||
+        claim.generation >= slot.generation || claim.actor.hostId !== birth.actor.hostId || claim.actor.bootId !== birth.actor.bootId)) ||
+      (retarget !== undefined && (!isPoolClaimOperation(retarget) || retarget.state !== 'terminal' ||
+        retarget.outcome !== 'success' || retarget.generation > slot.generation ||
+        retarget.actor.hostId !== birth.actor.hostId || retarget.actor.bootId !== birth.actor.bootId)))
+      return yield* claimHold()
+    yield* requirePoolPhysicalBirth({ slot, birth: physical })
+  })
+
+/** Select with GLOBAL released, acquire ROOT, then save this UNKNOWN intent under short GLOBAL. */
+export const beginPoolClaim = ({ slot, identity, owner }: PoolClaim): Effect.Effect<PoolSlot, PoolError> =>
+  Effect.gen(function* () {
+    yield* requirePoolClaimOrigin(slot)
+    if (slot.state !== 'ready' || slot.identity !== identity || identity === '' || slot.chargeKnown !== true ||
+      slot.token !== '' || slot.owner !== '' || owner === '' || !Number.isSafeInteger(slot.generation) ||
+      slot.generation < 0 || !Number.isSafeInteger(slot.generation + 1))
+      return yield* claimHold()
+    const next: PoolSlot = {
+      ...slot, state: 'claiming', chargeKnown: false, generation: slot.generation + 1,
+      token: randomUUID(), owner, reason: '',
+    }
+    return next
+  })
+
+/** Exact saved intent plus caller-observed process generation; only verified commit may publish. */
+export const finishPoolClaim = ({ state, intent, identity, owner, actor }: {
+  state: PoolState
+  intent: PoolSlot
+  identity: string
+  owner: string
+  actor: PoolActor
+}): Effect.Effect<PoolSlot, PoolError> =>
+  Effect.gen(function* () {
+    const current = yield* requirePoolSlotSnapshot({ state, expected: intent })
+    yield* requirePoolClaimOrigin(current)
+    const birth = current.lifecycle?.birth
+    if (current.state !== 'claiming' || current.token === '' || current.owner !== owner || owner === '' ||
+      current.identity !== identity || identity === '' || current.chargeKnown !== false ||
+      !Number.isSafeInteger(current.generation) || current.generation < 1 || !isPoolClaimActor(actor) ||
+      birth === undefined || birth.generation >= current.generation ||
+      actor.hostId !== birth.actor.hostId || actor.bootId !== birth.actor.bootId ||
+      actor.bootId !== current.physicalBirth?.bootId)
+      return yield* claimHold()
+    const next: PoolSlot = {
+      ...current, state: 'leased',
+      lifecycle: { ...current.lifecycle, claim: { generation: current.generation, actor, state: 'active' } },
+    }
+    return next
+  })
 
 /** Reserve counted, known logical bytes without discarding uncertain generations. */
 export const reservePoolSlot = ({ state, slot }: { state: PoolState; slot: PoolSlot }) => {
