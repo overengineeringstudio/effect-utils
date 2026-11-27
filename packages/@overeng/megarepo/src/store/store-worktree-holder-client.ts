@@ -38,8 +38,8 @@ export const assertWorktreeHolderEvidenceFresh = (
     yield* Schema.decodeEffect(HolderEvidenceResponse)(response)
     if (
       response.scope.complete === false ||
-      response.scope.allUids === false ||
-      response.scope.allTasks === false ||
+      response.scope.allUids !== true ||
+      response.scope.allTasks !== true ||
       response.roots.some(
         (root) =>
           !root.complete ||
