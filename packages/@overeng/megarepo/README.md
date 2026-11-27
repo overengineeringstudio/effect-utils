@@ -452,6 +452,13 @@ and READY does not establish disposable origin or permission to discard ignored 
 This entry point uses an ordinary temporary root lease for an untouched reservation;
 it does not adopt an existing persistent version-2 barrier.
 
+`withPoolRootActionLock` separately serializes actions on one physical root using
+an owned no-follow sibling control inode, outside resettable contents. Contention
+refuses; the kernel releases ownership on process exit without unlinking the control.
+The persistent deletion barrier remains installed continuously and is not this
+action mutex. Acquire ROOT before container/pins and short GLOBAL epochs; neither
+this fence nor transferring a barrier token authorizes Git writes, reset or removal.
+
 Pool preparation uses the normal root-owned `pnpm:install` and validates its
 machine-readable doctor report, installed shared GVS paths, exact source and
 resolved tool/platform identity. Logical root bytes are charged conservatively.
