@@ -66,9 +66,7 @@ describe('renderToNotionMarkdown -> notion-md composition', () => {
 
       <details>
       <summary>Deploy</summary>
-
-      Run the audited deploy command.
-
+      	Run the audited deploy command.
       </details>
       "
     `)

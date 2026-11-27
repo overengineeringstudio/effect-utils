@@ -57,11 +57,8 @@ modes.
 
 Remote titles become stable lowercase ASCII paths; German umlauts use the
 conventional `ae` / `oe` / `ue` transliteration before general Unicode
-normalization. Notion child placeholders and id-bearing child anchors become
-relative Markdown links to the materialized child files. The stored remote
-baseline strips those local navigation links and retains the canonical Notion
-child anchors, so the guarded local tree composer remains a no-op at the
-materialization baseline.
+normalization. Child-page anchors retain native `<page url="…">Title</page>`
+syntax, identity and position in both the local body and clean baseline.
 
 The default source is `remote`, because the first materialization starts from
 Notion:
