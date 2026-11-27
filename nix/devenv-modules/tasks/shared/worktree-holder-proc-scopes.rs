@@ -317,6 +317,8 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     if filesystem == 0x09041934 {
         let name = fs::read_link(scope_path(&held.file))?;
         if anonymous_kernel_object(&name).path_class() == KernelObjectPathClass::PathBearingOrUnknown {
+            eprintln!("native-perf-diagnostic stage=anonymous-object-reject kind={:?} name={} filesystem={filesystem:#x} mode={:#o} dev={} ino={} held_fd={}",
+                anonymous_kernel_object(&name),name.display(),metadata.mode(),metadata.dev(),metadata.ino(),held.file.as_raw_fd());
             return Err(io::Error::other("unsupported path-bearing kernel object"));
         }
         return Ok(());
@@ -356,6 +358,7 @@ impl ProcessScope {
             return Err(io::Error::other("process changed during pin"));
         }
         let base = scope_path(&scope);
+        let diagnostic_snapshot_started = linux::boot_time_ns();
         let tids = numbers(format!("{base}/task"), deadline)?;
         let mut tasks = Vec::new();
         for tid in &tids {
@@ -384,6 +387,8 @@ impl ProcessScope {
             return Err(io::Error::other("process task discovery did not close"));
         }
         let captured = Self { identity, pidfd, scope, tasks };
+        eprintln!("native-perf-diagnostic stage=process-task-snapshot pid={pid} snapshot_started_boot_ns={diagnostic_snapshot_started:?} snapshot_finished_boot_ns={:?} captured_tids={:?}",
+            linux::boot_time_ns(), captured.tasks.iter().map(|task| task.identity.pid).collect::<Vec<_>>());
         captured.recheck(deadline)?;
         Ok(captured)
     }
@@ -433,6 +438,9 @@ impl ProcessScope {
             if self.tasks.binary_search_by_key(&tid, |task| task.identity.pid).is_err()
                 && !self.task_departed_by_id(tid, deadline)?
             {
+                eprintln!("native-perf-diagnostic stage=unregistered-live-task pid={} missing_tid={tid} missing_start_ticks={:?} retained_tids={:?} boot_ns={:?}",
+                    self.identity.pid, process::process(tid).map(|task| task.start),
+                    self.tasks.iter().map(|task| task.identity.pid).collect::<Vec<_>>(), linux::boot_time_ns());
                 return Err(io::Error::other("new live task not captured"));
             }
         }
@@ -580,13 +588,18 @@ impl References {
         let mut descriptors = Vec::new();
         for number in numbers(format!("{base}/fd"), deadline)? {
             let held = Held::pin(format!("{base}/fd/{number}"), deadline)?;
-            qualify_object(&held)?;
+            qualify_object(&held).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=descriptor-reject pid={} tid={} fd={number} error={error}",task.tgid,task.identity.pid))?;
             descriptors.push((number, held));
         }
         let mut mappings = Vec::new();
         for name in mapping_names(&task.mapping_scope, deadline)? {
             let held = Held::pin(format!("{mapping_base}/map_files/{name}"), deadline)?;
             if !held.file.metadata()?.is_file() || linux::filesystem_type(&held.file)? == 0x09041934 {
+                let metadata = held.file.metadata()?;
+                eprintln!("native-perf-diagnostic stage=mapped-object-reject pid={} tid={} range={name} name={:?} filesystem={:#x} mode={:#o} dev={} ino={}",
+                    task.tgid,task.identity.pid,fs::read_link(scope_path(&held.file)),linux::filesystem_type(&held.file)?,
+                    metadata.mode(),metadata.dev(),metadata.ino());
                 return Err(io::Error::other("unqualified mapped kernel object"));
             }
             mappings.push((name, held));

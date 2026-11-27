@@ -233,7 +233,9 @@ impl References {
             }
             Pins::Management(ManagementReferences { root, cwd, exe, descriptors, mappings })
         } else {
-            let Some(pins) = process.collect_resources(index, deadline)? else { return Ok(None); };
+            let Some(pins) = process.collect_resources(index, deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=task-resources pid={} tid={} error={error}",pid.pid,task.identity.pid))?
+                else { return Ok(None); };
             Pins::Ordinary(pins)
         };
         let (root, cwd, exe, descriptors, mappings) =
@@ -247,14 +249,16 @@ impl References {
             .chain(mappings.iter().map(|(_, held)| (ReferenceKind::Map, None, held)))
         {
             deadline_check(deadline)?;
-            qualify_object(held)?;
+            qualify_object(held).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=qualify-object pid={} tid={} kind={kind:?} fd={fd:?} error={error}",pid.pid,task.identity.pid))?;
             let exempt = match fd {
                 Some(number) => exempt_descriptor(store_client, request, pid.pid, task, number, held)?,
                 None => false,
             };
             // Canonical store positives are resolved by CandidateSet before
             // any proxy policy. Management slots alone may omit those matches.
-            let outcome = candidates.matches(&held.file, &task.scope, kind, deadline)?;
+            let outcome = candidates.matches(&held.file, &task.scope, kind, deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=membership pid={} tid={} kind={kind:?} fd={fd:?} error={error}",pid.pid,task.identity.pid))?;
             match &outcome {
                 MatchOutcome::Native(matches) => {
                     if !exempt {
@@ -287,7 +291,8 @@ impl References {
             }
         }
         let mounted = if root.is_some() {
-            let coverage = candidates.capture_mounts(&task.scope, deadline)?;
+            let coverage = candidates.capture_mounts(&task.scope, deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=mount-coverage pid={} tid={} error={error}",pid.pid,task.identity.pid))?;
             append_matches(observation, coverage.references(), pid, task, ReferenceKind::Mount,
                 None, false, reference_count);
             Some(coverage)
@@ -333,7 +338,8 @@ impl References {
         {
             qualify_object(held)?;
             // Repeat native namespace/backing proofs, not only inode equality.
-            let actual = candidates.recheck_matches(&held.file, &task.scope, kind, self.mounted.as_ref(), deadline)?;
+            let actual = candidates.recheck_matches(&held.file, &task.scope, kind, self.mounted.as_ref(), deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=membership-recheck pid={pid} tid={} kind={kind:?} error={error}",task.identity.pid))?;
             if !same_matches(&self.memberships[index], &actual) {
                 return Err(io::Error::other("task root-relative membership or provenance changed"));
             }
@@ -375,7 +381,8 @@ impl ObservedProcess {
                 .ok_or_else(|| io::Error::other("live task lacks resources"))?;
             let checked: io::Result<()> = (|| {
                 task.recheck(deadline)?;
-                references.recheck(&self.scope, index, candidates, runtime, request, store_client, deadline)?;
+                references.recheck(&self.scope, index, candidates, runtime, request, store_client, deadline).inspect_err(|error|
+                    eprintln!("native-perf-diagnostic stage=task-final-recheck pid={} tid={} error={error}",self.scope.identity.pid,task.identity.pid))?;
                 if let Some(runtime) = runtime {
                     runtime.scoped_task(self.scope.identity.pid, task.identity.pid, all_terminal, deadline)?;
                 }
@@ -444,7 +451,8 @@ impl<'a> Census<'a> {
         let mut reference_count = 0usize;
         for pid in &pids {
             // No unpinned process_gone shortcut: discovery churn is UNKNOWN.
-            let process = ProcessScope::discover(*pid, deadline)?;
+            let process = ProcessScope::discover(*pid, deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=process-discover pid={pid} error={error}"))?;
             let management = *pid == self_role.pid();
             if management && process.tasks.len() != 1 {
                 return Err(io::Error::other("server management task set changed"));
@@ -456,7 +464,8 @@ impl<'a> Census<'a> {
                 // Still inspect any root/cwd held by a proven no-mm task.
                 let captured = References::collect(&process, index, request, candidates,
                     store_client, management, &mut census.runtime, &mut census.observation,
-                    &mut reference_count, &mut census.aliases, deadline);
+                    &mut reference_count, &mut census.aliases, deadline).inspect_err(|error|
+                        eprintln!("native-perf-diagnostic stage=task-collect pid={pid} tid={} error={error}",process.tasks[index].identity.pid));
                 let references = match captured {
                     Err(error) if error.kind() == io::ErrorKind::NotFound
                         && process.task_departed(index, deadline)? => None,
@@ -471,7 +480,8 @@ impl<'a> Census<'a> {
             // Discovery closes the complete group before resource capture.
             // Close it again after every retained task slot has been collected;
             // per-task resource checks never substitute for this sibling seal.
-            process.recheck(deadline)?;
+            process.recheck(deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=process-post-capture-seal pid={pid} error={error}"))?;
             census.processes.push(ObservedProcess { scope: process, references: resources });
         }
         if numbers("/proc", deadline)? != pids {
@@ -523,21 +533,23 @@ impl<'a> Census<'a> {
             _ => return Err(io::Error::other("store recheck authentication mismatch")),
         }
         self.self_role.recheck(deadline)?;
-        candidates.recheck(deadline)?;
-        self.recheck_selection(deadline)?;
+        super::diagnostic("candidate-before-process-recheck",candidates.recheck(deadline))?;
+        super::diagnostic("selection-before-process-recheck",self.recheck_selection(deadline))?;
         for process in &self.processes {
-            process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline)?;
+            process.recheck(candidates, self.runtime.as_ref(), self.request, store_client, deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=process-recheck pid={} error={error}",process.scope.identity.pid))?;
         }
         // Departed-task shortcuts never waive retained mount contributions.
         for process in &self.processes {
-            process.recheck_mounts(candidates, deadline)?;
+            process.recheck_mounts(candidates, deadline).inspect_err(|error|
+                eprintln!("native-perf-diagnostic stage=process-mount-recheck pid={} error={error}",process.scope.identity.pid))?;
         }
         if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
-        self.recheck_selection(deadline)?;
-        candidates.recheck(deadline)?;
+        super::diagnostic("selection-after-process-recheck",self.recheck_selection(deadline))?;
+        super::diagnostic("candidate-after-process-recheck",candidates.recheck(deadline))?;
         self.self_role.recheck(deadline)?;
         if let (Some(store), Some(client)) = (&self.request.store, store_client) { client.recheck(store)?; }
-        self.aliases.recheck(deadline)?;
+        super::diagnostic("census-alias-seal",self.aliases.recheck(deadline))?;
         deadline_check(deadline)
     }
 

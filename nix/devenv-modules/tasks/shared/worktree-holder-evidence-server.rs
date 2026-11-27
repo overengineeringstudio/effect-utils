@@ -65,34 +65,38 @@ fn retry_missing_once<T>(mut capture: impl FnMut() -> io::Result<T>) -> io::Resu
         result=>result,
     }
 }
+fn diagnostic<T>(stage: &'static str, result: io::Result<T>) -> io::Result<T> {
+    result.inspect_err(|error| eprintln!("native-perf-diagnostic stage={stage} kind={:?} errno={:?} error={error}",
+        error.kind(), error.raw_os_error()))
+}
 fn collect(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
     // Drop the entire failed graph; retry ENOENT once under the original deadline.
     retry_missing_once(|| {
-        role.recheck(deadline)?;
-        peer.recheck(deadline)?;
-        collect_once(request,peer,role,deadline)
+        diagnostic("role-before-capture",role.recheck(deadline))?;
+        diagnostic("peer-before-capture",peer.recheck(deadline))?;
+        diagnostic("collect-once",collect_once(request,peer,role,deadline))
     })
 }
 fn collect_once(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
-    let candidates=candidates::CandidateSet::pin(request,peer.uid,deadline)?;
-    let peer_roots=client::PeerRoots::pin(peer,&candidates,deadline)?;
+    let candidates=diagnostic("candidate-pin",candidates::CandidateSet::pin(request,peer.uid,deadline))?;
+    let peer_roots=diagnostic("peer-roots-pin",client::PeerRoots::pin(peer,&candidates,deadline))?;
     // Store pinning opens roots only. Inventory starts ONLY after the original
     // collector's root and EX FLOCK OFDs have been authenticated and retained.
     let store_client=match &request.store {
         Some(store)=>Some(client::Client::attest_from_peer(peer,store,peer.uid,peer_roots.root(0))?),
         None=>None,
     };
-    let census=census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,deadline)?;
-    census.recheck(&candidates,store_client.as_ref(),deadline)?;
-    candidates.recheck(deadline)?;
-    peer_roots.recheck(peer,deadline)?;
+    let census=diagnostic("census-collect",census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,deadline))?;
+    diagnostic("census-outer-recheck",census.recheck(&candidates,store_client.as_ref(),deadline))?;
+    diagnostic("candidate-outer-recheck",candidates.recheck(deadline))?;
+    diagnostic("peer-roots-outer-recheck",peer_roots.recheck(peer,deadline))?;
     if let (Some(client),Some(store))=(&store_client,&request.store) { client.recheck(store)?; }
     peer.recheck(deadline)?;
     role.recheck(deadline)?;
     if Instant::now()>=deadline { return Err(io::Error::new(io::ErrorKind::TimedOut,"holder capture deadline")); }
     let (mut observation,aliases)=census.into_observation();
-    peer_roots.bind(&mut observation)?;
-    aliases.recheck(deadline)?;
+    diagnostic("peer-roots-bind",peer_roots.bind(&mut observation))?;
+    diagnostic("alias-after-observation",aliases.recheck(deadline))?;
     Ok((observation,candidates,store_client,peer_roots,aliases))
 }
 fn scope_receipt(response: &Response, receipt: &[u8]) -> Vec<u8> {
@@ -124,11 +128,11 @@ fn serve_once(deadline: Instant) -> io::Result<()> {
         Err(error)=>{
             // Never return an absence after partial coverage. Do not leak
             // foreign argv/env or pseudo-file contents in diagnostics.
-            eprintln!("worktree-holder-evidence: incomplete census ({:?})",error.kind());
+            eprintln!("native-perf-diagnostic stage=returned-incomplete kind={:?} errno={:?} error={error}",error.kind(),error.raw_os_error());
             (unknown(&request,match error.kind() {io::ErrorKind::PermissionDenied=>UnknownReason::Permission,io::ErrorKind::Unsupported=>UnknownReason::Unsupported,io::ErrorKind::TimedOut=>UnknownReason::Capacity,_=>UnknownReason::ProcessIncomplete}),None,None)
         },
     };
-    if let Some(aliases)=&aliases { aliases.recheck(deadline)?; }
+    if let Some(aliases)=&aliases { diagnostic("alias-before-response",aliases.recheck(deadline))?; }
     let finished=linux::boot_time_ns()?;
     let expires=started.checked_add(protocol::TTL_NS).ok_or_else(||io::Error::other("boot clock overflow"))?;
     let mut response=Response {nonce:request.nonce.clone(),kind:request.kind,producer_id:PRODUCER.into(),policy_id:POLICY.into(),host_id,boot_id,capture:Capture {started_boot_ns:started,finished_boot_ns:finished,expires_boot_ns:expires},scope:Scope {complete:observation.complete,process_count:observation.process_count,task_count:observation.task_count,namespaces,requested_paths_digest:paths_digest,digest:String::new()},roots:observation.roots};
@@ -136,10 +140,11 @@ fn serve_once(deadline: Instant) -> io::Result<()> {
     // Validate our own structural invariants too: a census implementation may
     // never accidentally serialize an incomplete negative or an extra root.
     response.validate(&request,PRODUCER,POLICY,&response.host_id,&response.boot_id,INITIAL_NAMESPACES,&response.scope.requested_paths_digest,linux::boot_time_ns()?)?;
-    peer.recheck(deadline)?; role.recheck(deadline)?;
-    let output=response.serialize()?;
+    diagnostic("peer-before-serialize",peer.recheck(deadline))?;
+    diagnostic("role-before-serialize",role.recheck(deadline))?;
+    let output=diagnostic("response-serialize",response.serialize())?;
     // Final seal follows serialization too; unsupported/error/churn emits no proof.
-    if let Some(aliases)=&aliases { aliases.recheck(deadline)?; }
+    if let Some(aliases)=&aliases { diagnostic("alias-post-serialize-seal",aliases.recheck(deadline))?; }
     transport::write_response(&mut socket,&output,deadline)
 }
 fn run() -> io::Result<()> {
