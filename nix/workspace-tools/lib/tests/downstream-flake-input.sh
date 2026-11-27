@@ -45,10 +45,10 @@ downstream="$tmp/downstream"
 copy_repo "$downstream"
 copy_repo "$tmp/effect-utils"
 copy_repo "$tmp/repos/effect-utils"
-downstream_ref="git+file://$downstream?rev=$source_revision&dir=$fixture_subdir"
+downstream_ref="git+file://$downstream?rev=$source_revision&shallow=1&dir=$fixture_subdir"
 
 for layout in effect-utils repos/effect-utils; do
-  override=(--no-write-lock-file --override-input effect-utils "git+file://$tmp/$layout?rev=$source_revision")
+  override=(--no-write-lock-file --override-input effect-utils "git+file://$tmp/$layout?rev=$source_revision&shallow=1")
 
   echo "Eval: downstream lib.mkOxlintNpm ($layout)"
   nix eval --raw "${override[@]}" --apply 'drv: drv.drvPath' \
