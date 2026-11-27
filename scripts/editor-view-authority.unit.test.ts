@@ -11,7 +11,6 @@ import {
   editorViewPackagePaths,
   editorViewPlan,
   resolveEditorViewPackageScope,
-  withPublicationCancellation,
 } from './editor-view-authority.ts'
 import { workspaceEditorDependencies } from './editor-view-authority.ts'
 
@@ -334,41 +333,65 @@ alias(name = "root_editor_package_tree", actual = "//packages/consumer:package_t
 })
 
 it('joins the real cancellation callback before preserving SIGTERM status', async () => {
-  const previousExitCode = process.exitCode
-  const ready = Promise.withResolvers<void>()
-  const aborted = Promise.withResolvers<void>()
-  const cleanup = Promise.withResolvers<void>()
-  let settled = false
-  const outcome = withPublicationCancellation({
-    run: async (signal) => {
-      signal.addEventListener('abort', () => aborted.resolve(), { once: true })
-      ready.resolve()
-      await cleanup.promise
-    },
-  }).then(
-    () => {
-      settled = true
-      return undefined
-    },
-    (error: unknown) => {
-      settled = true
-      return error
-    },
-  )
+  // Keep signal handlers and exit status in the child, not Bun's test runner.
+  const module = new URL('./editor-view-authority.ts', import.meta.url).href
+  const source = `
+    import assert from 'node:assert/strict';
+    import { withPublicationCancellation } from ${JSON.stringify(module)};
+    const ready = Promise.withResolvers();
+    const aborted = Promise.withResolvers();
+    const cleanup = Promise.withResolvers();
+    let settled = false;
+    const outcome = withPublicationCancellation({
+      run: async signal => {
+        signal.addEventListener('abort', () => aborted.resolve(), { once: true });
+        ready.resolve();
+        await cleanup.promise;
+      },
+    }).then(
+      () => { settled = true; },
+      error => { settled = true; return error; },
+    );
+    try {
+      await ready.promise;
+      process.kill(process.pid, 'SIGTERM');
+      await aborted.promise;
+      assert.equal(settled, false);
+      assert.equal(process.exitCode, 143);
+      cleanup.resolve();
+      assert(await outcome instanceof Error);
+      process.stdout.write('cleanup-joined\\n');
+    } finally {
+      cleanup.resolve();
+      await outcome;
+    }
+  `
+  const child = spawn(process.execPath, ['--eval', source], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+    timeout: 5000,
+    killSignal: 'SIGKILL',
+  })
+  const closed = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', resolve)
+  })
+  let output = ''
+  let diagnostics = ''
+  child.stdout?.setEncoding('utf8').on('data', (chunk: string) => {
+    output += chunk
+  })
+  child.stderr?.setEncoding('utf8').on('data', (chunk: string) => {
+    diagnostics += chunk
+  })
   try {
-    await ready.promise
-    process.kill(process.pid, 'SIGTERM')
-    await aborted.promise
-    expect(settled).toBe(false)
-    expect(process.exitCode).toBe(143)
-    cleanup.resolve()
-    expect(await outcome).toBeInstanceOf(Error)
+    expect(await closed, diagnostics).toBe(143)
+    expect(output).toBe('cleanup-joined\n')
   } finally {
-    cleanup.resolve()
-    await outcome
-    process.exitCode = previousExitCode
+    child.kill('SIGKILL')
+    await closed
   }
-})
+}, 10000)
 
 it('consumes a real child notification descriptor exactly once before descendants', async () => {
   const module = new URL('./editor-view-authority.ts', import.meta.url).href
