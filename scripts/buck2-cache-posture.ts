@@ -160,7 +160,7 @@ export const decodeCacheLocalFallback = (value: unknown): CacheLocalFallback => 
     schemaVersion: 1,
     originalBuildId,
     localBuildId,
-    reason,
+    reason: expectedReason,
     classification,
     originalExitCode,
     localExitCode,
@@ -808,8 +808,8 @@ export const probeRemoteCacheCapabilities = async ({
         else enterResponsePhase()
         connectionEvent({
           event: 'tcp-connected',
-          address: socket.remoteAddress,
-          family: socket.remoteFamily,
+          ...(socket.remoteAddress === undefined ? {} : { address: socket.remoteAddress }),
+          ...(socket.remoteFamily === undefined ? {} : { family: socket.remoteFamily }),
         })
       })
       socket.on('secureConnect', () => {
@@ -817,8 +817,8 @@ export const probeRemoteCacheCapabilities = async ({
         enterResponsePhase()
         connectionEvent({
           event: 'tls-ready',
-          address: socket.remoteAddress,
-          family: socket.remoteFamily,
+          ...(socket.remoteAddress === undefined ? {} : { address: socket.remoteAddress }),
+          ...(socket.remoteFamily === undefined ? {} : { family: socket.remoteFamily }),
         })
       })
       const finish = ({

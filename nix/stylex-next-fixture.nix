@@ -27,9 +27,10 @@ let
     # Measure with: nix build .#stylex-next-fixture.pnpmDeps --no-link
     # The fetched store is byte-identical across Linux architectures but not
     # between Linux and Darwin builders, so each system pins its measured hash.
+    # pnpm 12.23 changes the Darwin store hash; the Linux hash remains unchanged.
     hash =
       {
-        aarch64-darwin = "sha256-9dGKP134lCVdjli1vdWgj13aD4LjPtD2FuMzHe7/jEo=";
+        aarch64-darwin = "sha256-IDJKsWDoqJQJiRZ6YmruXxDbtxR+KM44K1iJUrT2fs4=";
         aarch64-linux = "sha256-Bqgo2l9tqoK973Hg/zsv+tk56Fj0L9k1JJftzrUU0eU=";
         x86_64-linux = "sha256-Bqgo2l9tqoK973Hg/zsv+tk56Fj0L9k1JJftzrUU0eU=";
       }
@@ -53,7 +54,7 @@ let
     '';
   };
 in
-assert lib.assertMsg (pnpm.version == "12.17.0") "stylex-next-fixture requires pnpm 12.17.0";
+assert lib.assertMsg (pnpm.version == "12.24.0") "stylex-next-fixture requires pnpm 12.24.0";
 pkgs.runCommand "stylex-next-fixture"
   {
     nativeBuildInputs = [

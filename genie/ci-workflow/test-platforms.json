@@ -99,6 +99,10 @@
       "rationale": "Deployment and workflow-report API/CLI contracts over local fixture servers and shell stubs; no Darwin-specific filesystem, watcher or process-lifecycle assertions."
     },
     {
+      "task": "test:changelog:unbounded",
+      "rationale": "Changelog coverage runs real git in temporary repositories (merge-base, diff, log); no Darwin-specific filesystem, watcher or process-lifecycle branch."
+    },
+    {
       "task": "test:gh-ci-utils:unbounded",
       "rationale": "Shared GitHub App authentication over a loopback HTTP fixture and scoped temporary key files; no Darwin-specific filesystem, watcher or process-lifecycle branch."
     },
@@ -152,6 +156,22 @@
     ],
     "neutral": [
       {
+        "task": "test:effect-automerge",
+        "rationale": "Portable Automerge document, in-memory storage and Effect scope contracts; no platform-native filesystem or socket lifecycle."
+      },
+      {
+        "task": "test:effect-iroh-browser",
+        "rationale": "Portable framed connections, link ownership, Web Lock adapters and download progress contracts; real browser relay coverage belongs to the consuming application."
+      },
+      {
+        "task": "test:effect-iroh-automerge",
+        "rationale": "In-memory Automerge adapters, framed transport fixtures, mesh ownership and BroadcastChannel integration; no Darwin-specific native transport."
+      },
+      {
+        "task": "test:game-laws",
+        "rationale": "Pure fast-check property builders with deterministic positive and counterexample-replay fixtures; no platform-specific I/O."
+      },
+      {
         "task": "test:work-storage",
         "rationale": "Portable manifest, schema acceptance and role-resolution contracts; no platform-specific provider implementation."
       },
@@ -166,6 +186,10 @@
       {
         "task": "test:alchemy-github",
         "rationale": "Manifest, drift and provider lifecycle assertions with local HTTP endpoints; no host-specific lifecycle behavior. Credentialed live coverage is owned by the source/unbounded complement."
+      },
+      {
+        "task": "test:changelog",
+        "rationale": "changelog contract decoding, compilation, manifest and screenshot loading and annotation geometry assertions over temporary directories; no Darwin-specific host lifecycle regression."
       },
       {
         "task": "test:ci-tools",

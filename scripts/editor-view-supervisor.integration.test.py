@@ -22,6 +22,100 @@ def load_supervisor():
     return supervisor
 
 
+def owned_authority(lock, body):
+    # The authority opens its own CLOEXEC description; no wrapper lends a lock.
+    return f'''
+import fcntl, json, os, sys, time
+owner_fd = os.open({str(lock)!r}, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+fcntl.flock(owner_fd, fcntl.LOCK_EX)
+metadata = json.dumps({{"pid": os.getpid(), "command": sys.executable,
+                       "started": time.monotonic()}}).encode()
+os.ftruncate(owner_fd, 0)
+os.write(owner_fd, metadata)
+ready_fd = int(os.environ.pop("EDITOR_VIEW_ADMISSION_READY_FD"))
+os.write(ready_fd, b"1")
+os.close(ready_fd)
+''' + body
+
+
+class AdmissionNotificationPreparationTest(unittest.TestCase):
+    def test_real_pipe_outcomes_pending_eof_and_malformed(self):
+        observer = load_supervisor().observe_publication_admission
+        for payload, outcome in ((b"1", "owner-acquired"), (b"0", "no-publication"),
+                                 (b"", None), (b"2", None), (b"\xff", None)):
+            with self.subTest(payload=payload):
+                read_fd, write_fd = os.pipe()
+                try:
+                    os.set_blocking(read_fd, False)
+                    self.assertIsNone(observer(read_fd))
+                    os.write(write_fd, payload)
+                    os.close(write_fd)
+                    write_fd = None
+                    if outcome is None:
+                        with self.assertRaisesRegex(ValueError, "failed to notify owner admission"):
+                            observer(read_fd)
+                    else:
+                        self.assertEqual(observer(read_fd), outcome)
+                finally:
+                    os.close(read_fd)
+                    if write_fd is not None:
+                        os.close(write_fd)
+
+    def test_authority_keeps_owner_private_across_exec_and_child_join(self):
+        observer = load_supervisor().observe_publication_admission
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            child = r'''
+import errno, fcntl, os, sys
+assert "EDITOR_VIEW_ADMISSION_READY_FD" not in os.environ
+try:
+    os.fstat(int(sys.argv[2]))
+except OSError as error:
+    assert error.errno == errno.EBADF
+else:
+    raise AssertionError("owner descriptor crossed exec")
+with open(sys.argv[1], "r+b") as probe:
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise AssertionError("authority owner was released before child joined")
+'''
+            fixture = owned_authority(lock, f'''
+import subprocess
+subprocess.run([sys.executable, "-c", {child!r}, {str(lock)!r}, str(owner_fd)],
+               check=True, close_fds=False)
+probe = os.open({str(lock)!r}, os.O_RDWR | os.O_CLOEXEC)
+try:
+    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    pass
+else:
+    raise AssertionError("owner was released before child cleanup")
+finally:
+    os.close(probe)
+''')
+            read_fd, write_fd = os.pipe()
+            try:
+                env = {**os.environ, "EDITOR_VIEW_ADMISSION_READY_FD": str(write_fd)}
+                with subprocess.Popen([sys.executable, "-c", fixture], env=env,
+                                      pass_fds=(write_fd,), stderr=subprocess.PIPE) as authority:
+                    os.close(write_fd)
+                    write_fd = None
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(read_fd, selectors.EVENT_READ)
+                        self.assertTrue(selector.select(5), "authority did not notify")
+                    self.assertEqual(observer(read_fd), "owner-acquired")
+                    _, stderr = authority.communicate(timeout=5)
+                    self.assertEqual(authority.returncode, 0, stderr.decode())
+                with lock.open("r+b") as probe:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(read_fd)
+                if write_fd is not None:
+                    os.close(write_fd)
+
 
 class PublicationSupervisorTest(unittest.TestCase):
     def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):

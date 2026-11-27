@@ -118,37 +118,54 @@ for directory in genie packages buck2 nix scripts; do
   ln -s "$ROOT/$directory" "$cache_fixture/$directory"
 done
 ln -s "$ROOT/buck2-test-authority.json" "$cache_fixture/buck2-test-authority.json"
-for input in \
-  packages/@overeng/buck2-tools/src/bun-test-runner.ts \
-  packages/@overeng/buck2-tools/src/bun-test-preload.ts \
-  packages/@overeng/buck2-tools/src/bun-test-timeout.ts \
-  scripts/buck2-gate-isolation.integration.test.ts \
-  scripts/buck2-gate-isolation.unit.test.ts \
-  scripts/buck2-gate-teardown.integration.test.ts
+for spec in \
+  'buck2:cache-posture:test|packages/@overeng/buck2-tools/src/bun-test-runner.ts' \
+  'buck2:cache-posture:test|packages/@overeng/buck2-tools/src/bun-test-preload.ts' \
+  'buck2:cache-posture:test|packages/@overeng/buck2-tools/src/bun-test-timeout.ts' \
+  'buck2:cache-posture:test|scripts/buck2-gate-isolation.integration.test.ts' \
+  'buck2:cache-posture:test|scripts/buck2-gate-isolation.unit.test.ts' \
+  'buck2:gate-teardown:test|scripts/buck2-gate-teardown.integration.test.ts' \
+  'buck2:gate-teardown:test|packages/@overeng/buck2-tools/src/bun-test-runner.ts' \
+  'buck2:gate-teardown:test|packages/@overeng/buck2-tools/src/bun-test-preload.ts' \
+  'buck2:gate-teardown:test|packages/@overeng/buck2-tools/src/bun-test-timeout.ts'
 do
+  IFS='|' read -r task input <<< "$spec"
   "$NODE_BIN" --input-type=module --eval '
 import { readFileSync, writeFileSync } from "node:fs"
-const [original, fixture, input] = process.argv.slice(1)
+const [original, fixture, input, task] = process.argv.slice(1)
 const source = readFileSync(original, "utf8")
-const start = source.indexOf("  tasks.\"buck2:cache-posture:test\" = {")
+const start = source.indexOf(`  tasks."${task}" = {`)
 const end = source.indexOf("\n  tasks.\"", start + 1)
 const body = source.slice(start, end)
 if (start === -1 || end === -1 || body.includes(JSON.stringify(input)) === false)
   throw new Error(`missing original cache input ${input}`)
 writeFileSync(fixture, source.slice(0, start) +
   body.replace(JSON.stringify(input), JSON.stringify("removed-cache-input")) + source.slice(end))
-' "$ROOT/devenv.nix" "$cache_fixture/devenv.nix" "$input"
+' "$ROOT/devenv.nix" "$cache_fixture/devenv.nix" "$input" "$task"
   if output="$(DEVENV_TASKS_JSON="${DEVENV_TASKS_JSON:-$ROOT/.devenv/gc/task-config-devenv-config-task-config}" \
     DEVENV_TASK_GRAPH_DEPENDENCIES_ONLY=0 DEVENV_TASK_GRAPH_SCRIPT_CALLS_ONLY=0 \
-    "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$cache_fixture" 2>&1)"
+    "$NODE_BIN" --input-type=module --eval '
+import { spawn } from "node:child_process"
+const [shell, node, script, root] = process.argv.slice(1)
+const child = spawn(shell, ["-c", "\"$1\" \"$2\" \"$3\" 2>&1", "capture", node, script, root])
+let output = ""
+child.stdout.on("data", bytes => { output += bytes }).pause()
+setTimeout(() => child.stdout.resume(), 500) // Exercise a backpressured, merged CI pipe.
+const status = await new Promise(resolve => child.on("close", resolve))
+process.stdout.write(output, () => process.exit(status ?? 1))
+' "$BASH" "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$cache_fixture" 2>&1)"
   then
     echo "FAIL: task graph accepted omitted host cache input $input" >&2
     exit 1
   fi
-  expected=" - host cache posture watches transitive guard source: $input"
+  if [[ $task == buck2:cache-posture:test ]]; then
+    expected=" - host cache posture watches transitive guard source: $input"
+  else
+    expected=" - standalone gate teardown watches guard source: $input"
+  fi
   case "$output" in
     *"not ok "*"$expected"*) ;;
     *) echo "FAIL: omitted cache input $input failed for the wrong reason: $output" >&2; exit 1 ;;
   esac
 done
-printf 'PASS: every transitive host cache guard source is required\n'
+printf 'PASS: every transitive host cache and standalone teardown guard source is required\n'

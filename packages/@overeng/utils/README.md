@@ -449,6 +449,12 @@ Debug utilities:
 - `TaskRunnerState` - Schema for overall runner state
 - `TasksFailedError` - Error type when tasks fail
 
+`watchScoped` recursively observes scoped paths and groups each path once per
+coalescing window. The first event opens a window; a later window may emit the
+same path again. Native delivery timing does not guarantee that successive file
+writes land in one window. Tests retain real recursive/scope coverage and existing
+error assertions, and exercise exact per-window grouping with a real Queue and TestClock.
+
 ### File Logger
 
 `makeFileLogger` creates a Layer that writes pretty-printed logs to a file. Useful for debugging long-running processes or capturing logs from background workers.

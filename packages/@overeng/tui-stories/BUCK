@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:e399e0df1f6458f914e5a3e221e1e7bf3b831a52befd251c5d322af1ee6e22a2
+# Semantic fingerprint: sha256:be376ac0be5f07467bdac649c764c35bd4b4f324644b84a33419063f1bfd5e12
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -413,6 +413,10 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-verified-directory-pins.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-verified-directory-pins.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-client.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-client.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-client.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-client.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-codec.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-codec.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-codec.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-codec.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-remove.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-remove.integration.test.ts",
@@ -821,6 +825,10 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-verified-directory-pins.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-verified-directory-pins.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-client.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-client.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-client.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-client.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-codec.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-codec.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-codec.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-codec.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-remove.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-remove.integration.test.ts",
@@ -1229,6 +1237,10 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-verified-directory-pins.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-verified-directory-pins.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-workspace-activity.ts": "//packages/@overeng/megarepo:src/store/store-workspace-activity.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-client.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-client.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-client.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-client.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-codec.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-codec.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-worktree-holder-codec.ts": "//packages/@overeng/megarepo:src/store/store-worktree-holder-codec.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-policy.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-policy.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-worktree-remove.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-worktree-remove.integration.test.ts",

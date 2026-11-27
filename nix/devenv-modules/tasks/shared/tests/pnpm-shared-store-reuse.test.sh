@@ -59,11 +59,15 @@ run_pnpm_logged() {
 
   local rc
   set +e
-  if [ "$(uname -s)" = Darwin ]; then
-    NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536" "$@" > "$log_file" 2>&1
-  else
-    "$@" > "$log_file" 2>&1
-  fi
+  (
+    # Match managed installs without changing the caller or concurrent actors.
+    pnpm_install_umask
+    if [ "$(uname -s)" = Darwin ]; then
+      NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536" "$@"
+    else
+      "$@"
+    fi
+  ) > "$log_file" 2>&1
   rc="$?"
   set -e
 
@@ -160,7 +164,15 @@ install_flags=(
 
 (umask 022; run_pnpm_logged "$tmpdir/root-a" "$tmpdir/root-a.log" "$PNPM" --dir "$tmpdir/root-a" install "${install_flags[@]}")
 cp "$tmpdir/root-a/pnpm-lock.yaml" "$tmpdir/root-b/pnpm-lock.yaml"
-run_pnpm_logged "$tmpdir/root-b" "$tmpdir/root-b.log" "$PNPM" --dir "$tmpdir/root-b" install --frozen-lockfile "${install_flags[@]}"
+# Auto import must retain the managed install policy under a restrictive caller.
+(
+  umask 077
+  parent_umask="$(umask)"
+  run_pnpm_logged "$tmpdir/root-b" "$tmpdir/root-b.log" "$PNPM" --dir "$tmpdir/root-b" install --frozen-lockfile "${install_flags[@]}"
+  test "$(umask)" = "$parent_umask"
+)
+assert_contains "$tmpdir/root-b.log" 'inherited umask 0077; using 0022' \
+  "auto import must normalize the pnpm subprocess, not the caller"
 
 # Seeded entirely from a local tarball: the strict-umask imports must stay
 # offline and share a CAS inode, not silently create private package copies.

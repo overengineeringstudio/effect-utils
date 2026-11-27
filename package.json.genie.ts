@@ -7,14 +7,19 @@ import aiGatewayConformancePkg from './packages/@overeng/ai-gateway-conformance/
 import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.genie.ts'
 import alchemyGitHubPkg from './packages/@overeng/alchemy-github/package.json.genie.ts'
 import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts'
+import changelogPkg from './packages/@overeng/changelog/package.json.genie.ts'
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
 import dataGraphPkg from './packages/@overeng/data-graph/package.json.genie.ts'
 import devbarPkg from './packages/@overeng/devbar/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectAiGatewayPkg from './packages/@overeng/effect-ai-gateway/package.json.genie.ts'
+import effectAutomergePkg from './packages/@overeng/effect-automerge/package.json.genie.ts'
 import effectDistributedLockPkg from './packages/@overeng/effect-distributed-lock/package.json.genie.ts'
 import effectIrohPkg from './packages/@overeng/effect-iroh/package.json.genie.ts'
+import effectIrohAutomergePkg from './packages/@overeng/effect-iroh-automerge/package.json.genie.ts'
+import effectIrohBrowserPkg from './packages/@overeng/effect-iroh-browser/package.json.genie.ts'
+import gameLawsPkg from './packages/@overeng/game-laws/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
 import effectRpcExplorerReactPkg from './packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts'
@@ -70,6 +75,7 @@ export const rootWorkspacePackages = [
   aiGatewayEdgePkg,
   alchemyGitHubPkg,
   buck2ToolsPkg,
+  changelogPkg,
   contentAddressPkg,
   dataGraphPkg,
   devbarPkg,
@@ -77,8 +83,12 @@ export const rootWorkspacePackages = [
   effectSocketPkg,
   effectAiClaudeCliPkg,
   effectAiGatewayPkg,
+  effectAutomergePkg,
   effectDistributedLockPkg,
   effectIrohPkg,
+  effectIrohAutomergePkg,
+  effectIrohBrowserPkg,
+  gameLawsPkg,
   effectPathPkg,
   effectReactPkg,
   effectRpcExplorerPkg,

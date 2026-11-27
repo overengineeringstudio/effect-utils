@@ -236,12 +236,34 @@ empty mappings or departure evidence. The ignored
 `tests::actual_departed_thread_churn_preserves_survivor_fd` regression exercises
 real task births/exits, a surviving unshared FD table and file-backed mapping,
 newcomer veto, live FD disappearance and failed leader-generation proof.
-These source-only changes activate no service and add no alias wire authority.
+These source-only changes do not activate a collector or add a diagnostic mode.
+
+The EROFS classification does not exempt mount membership: an EROFS-held candidate
+file remains a current reference. Unit classification is not a substitute for
+separate real mounted-file VM qualification or permission to activate a collector.
 
 The builder runs the real Rust unit runner against the reused lower libraries.
 The isolated bind/detached-mount fixture additionally requires an isolated mount
 namespace with `CAP_SYS_ADMIN`; a skipped privileged fixture is not live census
 qualification. Library or codec success never authorizes deletion.
+
+The proc library additionally exports inactive Linux 6.18 mount-query primitives:
+`linux::{mount_namespace_id, mount_namespace_info, list_mount_page, stat_mount,
+MountNamespaceInfo, MountBuffer, REQUIRED_MOUNT_FIELDS}`. The syscall boundary is
+extracted from reviewed snapshot `93eaf04e0115d3390f70ebd9aec2baaf2c5e6218`.
+Both queries take a retained namespace `File`; list/stat use the dedicated FD
+selector in the 32-byte `mnt_id_req`, with numeric namespace ID zero, never a
+current-namespace fallback. Pages hold at most 256 IDs; statmount returns only
+the declared 512..=16384-byte record from an aligned, initialized reusable buffer.
+The requested field mask is `0x7b`; interpreting fields, strings and namespace
+binding remains the consumer's responsibility. Static assertions cover ABI
+sizes, field offsets and output alignment; unit regressions cover strict record
+lengths and FD-only request construction without privileged mount queries.
+These std-only exports do not change `NativeView`, privileges, capabilities or
+namespace membership, and do not activate a consumer. Kernel/permission errors
+remain errors, never evidence of absence. Production qualification still requires
+the real Linux 6.18 privileged VM path, including whole-namespace visibility from
+a confined caller without `CAP_SYS_ADMIN`; primitive unit success is not that proof.
 
 ## Privileged holder server (inactive)
 
@@ -922,6 +944,9 @@ boundaries are:
   "shared" means shared between that script's fixtures, not between scripts.
   Smoke installs use private homes and fake providers; no repository install
   or repository node_modules mutation is scheduled.
+  Shared-store pnpm subprocesses use the managed install umask helper, preserving
+  their caller's umask. An explicit `0077` caller exercises auto import alongside
+  the existing forced-hardlink, reflink, mutation, and concurrent install proofs.
   The shared-store reuse proof reports the failing command and line, pinned
   pnpm version, fixture store paths, and pnpm logs before fixture cleanup.
   Diagnostics preserve the original nonzero exit; they do not normalize

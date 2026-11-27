@@ -135,8 +135,10 @@ Use the actual endpoint/instance and `aarch64` for an aarch64 Linux client.
 and provisioned by the worker, **not** a hostname or arbitrary pool tag. Configure
 NativeLink Exact matching for `OSFamily=linux`, `cpu_arch`, and `nix_store`;
 Command.platform carries these properties at the pinned Buck revision.
-Missing endpoint/property settings or a mismatched client architecture fail
-analysis; an unavailable/mismatched worker cannot fall back to local execution.
+The platform macro reads and validates root configuration during BUCK evaluation,
+then passes typed attributes to rule analysis; analysis never reads root config.
+Missing endpoint/property settings or a mismatched client architecture fail before
+execution; an unavailable/mismatched worker cannot fall back to local execution.
 For non-loopback deployments, configure transport/auth at the deployment boundary;
 the example is not authorization to expose an unauthenticated listener.
 
@@ -146,6 +148,10 @@ or the flag: stop this worktree's selected isolation with
 same isolation and the new configuration already installed. Do not kill unrelated
 worktrees' daemons. Keep a bounded worker and independent pilot cache endpoint;
 do not redirect ordinary clients or change host admission.
+Exercise the opt-in path with a real build of
+`//packages/@overeng/kdl:dist //packages/@overeng/utils-dev:dist` and inspect
+`buck2 log what-ran` for remote execution. A default-off/local-only build alone
+does not qualify pilot platform analysis or worker execution.
 
 Rollback: set `nativelink_pilot.enabled=false` (or remove the section), restore
 the previous cache endpoints/TLS/instance, then replace the selected daemon again.
@@ -238,6 +244,24 @@ live-member permission failures still fail closed. The supervisor retains owners
 process-group cleanup; process exit releases it automatically. The persistent
 flock file must not be unlinked while publishers are active.
 
+Managed invocation selection snapshots supported plain-text argument files before
+admission. Later rewrites cannot change the executed isolation or literal argv;
+run payload tokens do not participate in the native isolation selection.
+
+Owned native execution and ExistingOnly cleanup require the same live
+process-local publication capability. Cleanup never starts a daemon;
+legacy production callers remain unchanged.
+
+Notification helper APIs consume a readiness-descriptor environment entry
+once and, when present, write one terminal byte before closing it. This is not
+transferable lock authority. The cancellation helper joins callback cleanup on
+interruption. These APIs are additive; legacy production ownership is unchanged.
+
+The compiled launcher bundles the same canonical owner module. Its Nix build
+stages that one module at the source-relative import path while compiling, then
+removes the staged sources; the installed launcher retains only the native library
+and compiled entrypoint, not a second ownership implementation.
+
 The scoped source Bun, genie, mr, and managed Buck wrappers select a precompiled
 owner library with `BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY`, replacing caller values.
 The generic Bun capability stays unwrapped so hermetic actions do not acquire
@@ -260,17 +284,22 @@ Native evidence fixtures confine hostile PATH/BUN_BIN environments to tracked ch
 process groups; timeout cleanup joins the group before removing its inputs.
 Incomplete hostless cases retain private VM/import/production/result phases, bounded
 redacted child output and native-argument/result/shard census before and after cleanup.
-Only cases completing every existing assertion remove their fixture. The original
-test deadline and assertions remain authoritative, including late cancellation errors;
+Only cases completing every existing assertion remove their fixture. The explicit
+per-case test deadline and assertions remain authoritative, including late cancellation errors;
 these diagnostics neither identify the underlying stall nor suppress its failure.
 The retained Devenv host-contract cache watches the Bun runner, preload and timeout
 sources plus both gate integration suites and their imported isolation unit suite,
 not only the top-level entrypoint test.
 The task-graph regression removes each input in turn and requires rejection;
 immutable Bun/native tool paths remain bound through the watched task command.
-Real native-admission test registration derives its watchdog from the existing
-command budget: `max(5000, 3 * deadlineMs + 2000)`. The missing-executable errno
-fixture and hostless contracts retain their original 5,000 ms watchdogs.
+Real native-admission test registration derives its watchdog from the fixture's
+command budget: `max(5000, 3 * deadlineMs + 2000)`. Intentional timeout cases use
+a 5,000 ms command budget: a full Mac quick exhausted the former 1,000 ms during
+a successful preliminary status probe, before its intended kill timeout. Their
+`exec sleep 30` still forces the target-command deadline, with unchanged diagnostic,
+signal, sanitization and cleanup assertions. Production deadlines are unchanged.
+The missing-executable errno fixture retains its original 5,000 ms watchdog;
+hostless contracts use the explicit 20-second base deadline described below.
 
 In `check:quick`, its dedicated standalone-staging publication waits for
 `buck2:quick` to finish: Buck output directories are mutable even after the
@@ -1124,11 +1153,37 @@ probes before kill/audit), plus two seconds for fixture cleanup, never less than
 the original five-second watchdog. This outer test budget does not extend native
 command deadlines or relax diagnostic, secret-redaction, or real-gate assertions.
 
+Hostless FIFO/collector fixtures use an explicit 20-second outer deadline for their
+real collector/native/decoder subprocesses. A 24-case full-DAG macOS sample peaked
+at 412.33 ms, but earlier full-DAG cases exhausted 5 seconds at load 14–17 on 10 CPUs
+(#2797). This bounded startup allowance preserves every assertion and cleanup;
+the rare native-startup cause remains tracked in #2797, not declared resolved.
+
+The remaining direct-posture process cases (four evidence exit/signal combinations,
+the TLS probe subprocess and shell warm-launch identity) use the same 20-second
+outer budget. Full Linux quicks exhausted the former 5-second base (6.77 seconds
+with load scaling). A CPU-load approximation on 20 CPUs ran each case 20 times:
+120/120 passed, with a maximum of 8,830.19 ms at one-minute load 21.96–31.23.
+The 20-second allowance is 2.26× that observed maximum, keeping failures bounded.
+The empirical 20-sample p99 is only the sample maximum, not a confidence bound;
+CPU load does not reproduce all full-DAG filesystem/I/O work or resolve #2797.
+Assertions, cleanup and production connect/response/command deadlines are unchanged.
+
 Pointer-reached orphan reclamation scenarios guard initial publication, each reader
 pointer transition, and the final fingerprint check separately. Their fixture teardown
 awaits the complete in-flight phase (including assertions) before deleting the fixture
 or restoring the host-budget environment; later phases depend on the preceding phase
 settling successfully.
+
+Capability publisher recovery fixtures run the declared real `nix-store` through
+the existing executable injection seam, with a 30-second deadline per operation.
+Their case registrar includes all three setup operations plus the case's
+abort/recovery/idempotence operations, two seconds of startup allowance per
+invocation, and a final two-second cleanup allowance. The daemon-stop CLI has
+its own derived deadline and owned process-group retirement. Before settling,
+the case requires real OS group disappearance within two seconds, not merely a
+successful kill request. Unknown live groups refuse fixture deletion. Teardown
+also joins the entire in-flight case; production deadlines and assertions are unchanged.
 
 The wrapper requests Bun's JUnit reporter and leaves console output untouched.
 After the child exits, it samples host load and Linux memory PSI and emits one

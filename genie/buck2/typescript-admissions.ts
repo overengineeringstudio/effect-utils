@@ -5,14 +5,19 @@ import { buck2TypeScriptAdmission as aiGatewayConformanceAdmission } from '../..
 import { buck2TypeScriptAdmission as aiGatewayEdgeAdmission } from '../../packages/@overeng/ai-gateway-edge/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as alchemyGitHubAdmission } from '../../packages/@overeng/alchemy-github/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as changelogAdmission } from '../../packages/@overeng/changelog/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as dataGraphAdmission } from '../../packages/@overeng/data-graph/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as devbarAdmission } from '../../packages/@overeng/devbar/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiClaudeCliAdmission } from '../../packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectAiGatewayAdmission } from '../../packages/@overeng/effect-ai-gateway/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectAutomergeAdmission } from '../../packages/@overeng/effect-automerge/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectDistributedLockAdmission } from '../../packages/@overeng/effect-distributed-lock/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectIrohAdmission } from '../../packages/@overeng/effect-iroh/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectIrohAutomergeAdmission } from '../../packages/@overeng/effect-iroh-automerge/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as effectIrohBrowserAdmission } from '../../packages/@overeng/effect-iroh-browser/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as gameLawsAdmission } from '../../packages/@overeng/game-laws/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectPathAdmission } from '../../packages/@overeng/effect-path/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectReactAdmission } from '../../packages/@overeng/effect-react/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectRpcExplorerReactAdmission } from '../../packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts'
@@ -103,6 +108,7 @@ export const buck2TypeScriptAdmissions = {
   aiGatewayEdge: aiGatewayEdgeAdmission,
   alchemyGitHub: alchemyGitHubAdmission,
   buck2Tools: buck2ToolsAdmission,
+  changelog: changelogAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
   dataGraph: dataGraphAdmission,
@@ -112,8 +118,12 @@ export const buck2TypeScriptAdmissions = {
   rpcDevtools: rpcDevtoolsAdmission,
   effectAiClaudeCli: effectAiClaudeCliAdmission,
   effectAiGateway: effectAiGatewayAdmission,
+  effectAutomerge: effectAutomergeAdmission,
   effectDistributedLock: effectDistributedLockAdmission,
   effectIroh: effectIrohAdmission,
+  effectIrohAutomerge: effectIrohAutomergeAdmission,
+  effectIrohBrowser: effectIrohBrowserAdmission,
+  gameLaws: gameLawsAdmission,
   effectPath: effectPathAdmission,
   effectReact: effectReactAdmission,
   effectRpcExplorer: effectRpcExplorerAdmission,

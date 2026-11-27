@@ -99,6 +99,33 @@
       "unboundedTaskName": "test:alchemy-github:unbounded"
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/changelog:test_collect",
+      "excludes": ["src/node/check.integration.test.ts"],
+      "packageName": "changelog",
+      "packagePath": "packages/@overeng/changelog",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/annotations.unit.test.ts",
+        "src/contract.unit.test.ts",
+        "src/enforcement.unit.test.ts",
+        "src/node/check.integration.test.ts",
+        "src/node/load.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/changelog:test",
+      "taskName": "test:changelog",
+      "testFiles": [
+        "src/annotations.unit.test.ts",
+        "src/contract.unit.test.ts",
+        "src/enforcement.unit.test.ts",
+        "src/node/check.integration.test.ts",
+        "src/node/load.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": ["src/node/check.integration.test.ts"],
+      "unboundedTaskName": "test:changelog:unbounded"
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",
       "excludes": [
         "src/deploy-cloudflare-workers.e2e.test.ts",
@@ -322,6 +349,20 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-automerge:test_collect",
+      "excludes": [],
+      "packageName": "effect-automerge",
+      "packagePath": "packages/@overeng/effect-automerge",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/AutomergeRepo.test.ts", "src/SafeStorageAdapter.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-automerge:test",
+      "taskName": "test:effect-automerge",
+      "testFiles": ["src/AutomergeRepo.test.ts", "src/SafeStorageAdapter.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/effect-distributed-lock:test_collect",
       "excludes": [],
       "packageName": "effect-distributed-lock",
@@ -332,6 +373,56 @@
       "target": "effect_utils//packages/@overeng/effect-distributed-lock:test",
       "taskName": "test:effect-distributed-lock",
       "testFiles": ["src/distributed-semaphore.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-iroh-automerge:test_collect",
+      "excludes": [],
+      "packageName": "effect-iroh-automerge",
+      "packagePath": "packages/@overeng/effect-iroh-automerge",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/Ephemeral.integration.test.ts",
+        "src/IrohNetworkAdapter.test.ts",
+        "src/Net.test.ts",
+        "src/mesh.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-iroh-automerge:test",
+      "taskName": "test:effect-iroh-automerge",
+      "testFiles": [
+        "src/Ephemeral.integration.test.ts",
+        "src/IrohNetworkAdapter.test.ts",
+        "src/Net.test.ts",
+        "src/mesh.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/effect-iroh-browser:test_collect",
+      "excludes": [],
+      "packageName": "effect-iroh-browser",
+      "packagePath": "packages/@overeng/effect-iroh-browser",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/Connection.test.ts",
+        "src/IrohNode.test.ts",
+        "src/Links.test.ts",
+        "src/WebLock.test.ts",
+        "src/download.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/effect-iroh-browser:test",
+      "taskName": "test:effect-iroh-browser",
+      "testFiles": [
+        "src/Connection.test.ts",
+        "src/IrohNode.test.ts",
+        "src/Links.test.ts",
+        "src/WebLock.test.ts",
+        "src/download.test.ts"
+      ],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -530,6 +621,20 @@
       "target": "effect_utils//packages/@overeng/effect-schema-form:test",
       "taskName": "test:effect-schema-form",
       "testFiles": ["src/mod.unit.test.tsx"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/game-laws:test_collect",
+      "excludes": [],
+      "packageName": "game-laws",
+      "packagePath": "packages/@overeng/game-laws",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/game-laws:test",
+      "taskName": "test:game-laws",
+      "testFiles": ["src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -874,6 +979,7 @@
         "src/store/store-rehome.integration.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-holder-codec.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/setup.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
@@ -950,6 +1056,8 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-holder-client.integration.test.ts",
+        "src/store/store-worktree-holder-codec.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/sync/member.unit.test.ts",
@@ -1031,6 +1139,8 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-holder-client.integration.test.ts",
+        "src/store/store-worktree-holder-codec.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/sync/member.unit.test.ts",
@@ -1078,6 +1188,7 @@
         "src/store/store-rehome.integration.test.ts",
         "src/store/store-verified-directory-pins.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-holder-codec.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/setup.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
@@ -1490,6 +1601,7 @@
       "selectedTestFiles": [
         "src/adversarial-footgun.unit.test.ts",
         "src/batch-common-ancestor.unit.test.ts",
+        "src/body-completeness.unit.test.ts",
         "src/body-facade.unit.test.ts",
         "src/canonical-markdown.test.ts",
         "src/canonicalizer.unit.test.ts",
@@ -1530,6 +1642,7 @@
       "testFiles": [
         "src/adversarial-footgun.unit.test.ts",
         "src/batch-common-ancestor.unit.test.ts",
+        "src/body-completeness.unit.test.ts",
         "src/body-facade.unit.test.ts",
         "src/canonical-markdown.test.ts",
         "src/canonicalizer.unit.test.ts",

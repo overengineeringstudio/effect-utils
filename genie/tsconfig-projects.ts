@@ -7,14 +7,19 @@ import aiGatewayConformanceTsconfig from '../packages/@overeng/ai-gateway-confor
 import aiGatewayEdgeTsconfig from '../packages/@overeng/ai-gateway-edge/tsconfig.json.genie.ts'
 import alchemyGitHubTsconfig from '../packages/@overeng/alchemy-github/tsconfig.json.genie.ts'
 import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
+import changelogTsconfig from '../packages/@overeng/changelog/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
 import dataGraphTsconfig from '../packages/@overeng/data-graph/tsconfig.json.genie.ts'
 import devbarTsconfig from '../packages/@overeng/devbar/tsconfig.json.genie.ts'
 import effectAiClaudeCliTsconfig from '../packages/@overeng/effect-ai-claude-cli/tsconfig.json.genie.ts'
 import effectAiGatewayTsconfig from '../packages/@overeng/effect-ai-gateway/tsconfig.json.genie.ts'
+import effectAutomergeTsconfig from '../packages/@overeng/effect-automerge/tsconfig.json.genie.ts'
 import effectDistributedLockTsconfig from '../packages/@overeng/effect-distributed-lock/tsconfig.json.genie.ts'
 import effectIrohTsconfig from '../packages/@overeng/effect-iroh/tsconfig.json.genie.ts'
+import effectIrohAutomergeTsconfig from '../packages/@overeng/effect-iroh-automerge/tsconfig.json.genie.ts'
+import effectIrohBrowserTsconfig from '../packages/@overeng/effect-iroh-browser/tsconfig.json.genie.ts'
+import gameLawsTsconfig from '../packages/@overeng/game-laws/tsconfig.json.genie.ts'
 import effectPathTsconfig from '../packages/@overeng/effect-path/tsconfig.json.genie.ts'
 import effectReactTsconfig from '../packages/@overeng/effect-react/tsconfig.json.genie.ts'
 import effectRpcExplorerReactTsconfig from '../packages/@overeng/effect-rpc-explorer-react/tsconfig.json.genie.ts'
@@ -132,6 +137,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/ai-gateway-edge': { tsconfig: aiGatewayEdgeTsconfig },
     'packages/@overeng/alchemy-github': { tsconfig: alchemyGitHubTsconfig },
     'packages/@overeng/buck2-tools': { tsconfig: buck2ToolsTsconfig },
+    'packages/@overeng/changelog': { tsconfig: changelogTsconfig },
     'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
     'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },
     'packages/@overeng/data-graph': { tsconfig: dataGraphTsconfig },
@@ -139,8 +145,12 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/meters': { tsconfig: metersTsconfig },
     'packages/@overeng/effect-ai-claude-cli': { tsconfig: effectAiClaudeCliTsconfig },
     'packages/@overeng/effect-ai-gateway': { tsconfig: effectAiGatewayTsconfig },
+    'packages/@overeng/effect-automerge': { tsconfig: effectAutomergeTsconfig },
     'packages/@overeng/effect-distributed-lock': { tsconfig: effectDistributedLockTsconfig },
     'packages/@overeng/effect-iroh': { tsconfig: effectIrohTsconfig },
+    'packages/@overeng/effect-iroh-automerge': { tsconfig: effectIrohAutomergeTsconfig },
+    'packages/@overeng/effect-iroh-browser': { tsconfig: effectIrohBrowserTsconfig },
+    'packages/@overeng/game-laws': { tsconfig: gameLawsTsconfig },
     'packages/@overeng/effect-path': { tsconfig: effectPathTsconfig },
     'packages/@overeng/effect-react': { tsconfig: effectReactTsconfig },
     'packages/@overeng/effect-rpc-explorer': { tsconfig: effectRpcExplorerTsconfig },

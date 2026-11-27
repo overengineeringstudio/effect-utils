@@ -18,7 +18,13 @@ import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evid
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
+
+const occurrenceReaderTrusted =
+  "github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"
+const occurrenceReaderConfigured =
+  "vars.TS_OCCURRENCE_READ_CLIENT_ID != '' && vars.TS_OCCURRENCE_READ_AUDIENCE != ''"
 
 /** Keep export failures visible on the nonblocking daily job, without changing other jobs. */
 const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs['jobs'] => {
@@ -28,7 +34,18 @@ const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs[
     'buck2-cache-join': {
       ...daily,
       steps: [
-        ...daily.steps,
+        ...daily.steps.map((step) =>
+          step.uses?.startsWith('tailscale/github-action@') === true &&
+          step.id !== 'occurrence-reader'
+            ? {
+                ...step,
+                if: step.if?.replace(
+                  'always()',
+                  "always() && steps.occurrence-disconnect.outcome != 'failure'",
+                ),
+              }
+            : step,
+        ),
         {
           name: 'Require daily cache metrics export',
           shell: 'bash',
@@ -59,6 +76,21 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        occurrence_since: {
+          description: 'Optional exact UTC occurrence window start (requires occurrence_until)',
+          required: false,
+          type: 'string',
+        },
+        occurrence_until: {
+          description: 'Optional exact UTC occurrence window end (at most 24h after start)',
+          required: false,
+          type: 'string',
+        },
+        occurrence_host: {
+          description: 'Optional occurrence host from the configured expected-host inventory',
+          required: false,
+          type: 'string',
+        },
         debug_force_nix_diagnostics_failure: {
           description: 'Force post-validation failure to verify proof diagnostics',
           required: false,
@@ -98,6 +130,106 @@ export default ciWorkflow({
               name: 'Prepare source script dependencies',
               env: { GITHUB_TOKEN: '${{ github.token }}' },
               run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+            },
+            {
+              name: 'Notice unconfigured occurrence reader',
+              if: `\${{ (${occurrenceReaderTrusted}) && !(${occurrenceReaderConfigured}) }}`,
+              run: 'echo "::notice::Daily occurrence reader skipped: configure TS_OCCURRENCE_READ_CLIENT_ID and TS_OCCURRENCE_READ_AUDIENCE repository variables."',
+            },
+            {
+              name: 'Connect dedicated occurrence reader',
+              id: 'occurrence-reader',
+              if: `\${{ (${occurrenceReaderTrusted}) && (${occurrenceReaderConfigured}) }}`,
+              ...pinnedAction({ name: 'tailscale' }),
+              with: {
+                'oauth-client-id': '${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}',
+                audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
+                tags: 'tag:ci-buck2-occurrence-read',
+                args: '--accept-dns=true',
+              },
+            },
+            {
+              name: 'Read bounded occurrences',
+              id: 'occurrence-query',
+              if: "${{ steps.occurrence-reader.outcome == 'success' }}",
+              shell: 'bash',
+              env: {
+                BUCK2_OCCURRENCE_READ_URL: '${{ vars.BUCK2_OCCURRENCE_READ_URL }}',
+                BUCK2_OCCURRENCE_EXPECTED_HOSTS: '${{ vars.BUCK2_OCCURRENCE_EXPECTED_HOSTS }}',
+                OCCURRENCE_QUERY_EVENT: '${{ github.event_name }}',
+                OCCURRENCE_QUERY_SINCE: '${{ inputs.occurrence_since }}',
+                OCCURRENCE_QUERY_UNTIL: '${{ inputs.occurrence_until }}',
+                OCCURRENCE_QUERY_HOST: '${{ inputs.occurrence_host }}',
+              },
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  ': "${BUCK2_OCCURRENCE_READ_URL:?configure occurrence reader URL}"',
+                  ': "${BUCK2_OCCURRENCE_EXPECTED_HOSTS:?configure space-separated expected hosts}"',
+                  'if [ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch ]; then',
+                  '  until=$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+                  'else',
+                  '  until=$(date -u +%Y-%m-%dT00:00:00Z)',
+                  'fi',
+                  'end=$(date -u -d "$until" +%s)',
+                  'start=$((end - 86400))',
+                  'since=$(date -u -d "@$start" +%Y-%m-%dT%H:%M:%SZ)',
+                  'if [[ -n "$OCCURRENCE_QUERY_SINCE" || -n "$OCCURRENCE_QUERY_UNTIL" ]]; then',
+                  '  [[ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch ]]',
+                  '  for bound in "$OCCURRENCE_QUERY_SINCE" "$OCCURRENCE_QUERY_UNTIL"; do',
+                  '    [[ "$bound" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "Both exact UTC occurrence bounds are required" >&2; exit 1; }',
+                  '    [[ "$(date -u -d "$bound" +%Y-%m-%dT%H:%M:%SZ)" = "$bound" ]]',
+                  '  done',
+                  '  since="$OCCURRENCE_QUERY_SINCE"',
+                  '  until="$OCCURRENCE_QUERY_UNTIL"',
+                  '  start=$(date -u -d "$since" +%s)',
+                  '  end=$(date -u -d "$until" +%s)',
+                  '  (( end > start && end - start <= 86400 )) || { echo "Occurrence window must be positive and at most 24h" >&2; exit 1; }',
+                  'fi',
+                  'host_query=""',
+                  'if [ -n "$OCCURRENCE_QUERY_HOST" ]; then',
+                  '  [[ "$OCCURRENCE_QUERY_EVENT" = workflow_dispatch && "$OCCURRENCE_QUERY_HOST" =~ ^[A-Za-z0-9_.-]{1,64}$ ]]',
+                  '  read -r -a configured_hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"',
+                  '  found_host=false',
+                  '  for host in "${configured_hosts[@]}"; do if [ "$host" = "$OCCURRENCE_QUERY_HOST" ]; then found_host=true; fi; done',
+                  '  "$found_host" || { echo "Occurrence host is absent from the configured inventory" >&2; exit 1; }',
+                  '  host_query="&host=$OCCURRENCE_QUERY_HOST"',
+                  '  BUCK2_OCCURRENCE_EXPECTED_HOSTS="$OCCURRENCE_QUERY_HOST"',
+                  'fi',
+                  'proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof"',
+                  'mkdir -p "$proof"',
+                  'curl --fail --silent --show-error --max-time 120 --max-filesize 67108864 "$BUCK2_OCCURRENCE_READ_URL?start=\${start}000000000&end=\${end}000000000&limit=5000&direction=forward$host_query" --output "$proof/loki.json"',
+                  'export OCCURRENCE_SINCE="$since" OCCURRENCE_UNTIL="$until" OCCURRENCE_PROOF="$proof"',
+                  '"${DEVENV_BIN:?}" shell -- bash -euo pipefail -c \'',
+                  '  cd "${GITHUB_WORKSPACE:?}"',
+                  '  args=()',
+                  '  read -r -a hosts <<< "$BUCK2_OCCURRENCE_EXPECTED_HOSTS"',
+                  '  for host in "${hosts[@]}"; do args+=(--expected-host "$host"); done',
+                  '  bun genie/ci-scripts/buck2-cache-join-cli.ts occurrences --loki-response "$OCCURRENCE_PROOF/loki.json" --since "$OCCURRENCE_SINCE" --until "$OCCURRENCE_UNTIL" "${args[@]}" > "$OCCURRENCE_PROOF/occurrences.json"',
+                  "'",
+                  'jq -r \'"## Daily occurrence evidence\\nRecords: \\(.records | length)\\nEvidence gaps: \\(.evidenceGaps | length)\\nCoverage: UNKNOWN (bounded retained evidence, not fleet certification)"\' "$proof/occurrences.json" >> "$GITHUB_STEP_SUMMARY"',
+                ].join('\n'),
+              ),
+            },
+            {
+              name: 'Disconnect occurrence reader before evidence writer',
+              id: 'occurrence-disconnect',
+              if: "${{ always() && steps.occurrence-reader.outcome != 'skipped' }}",
+              shell: 'bash',
+              run: 'sudo tailscale logout',
+            },
+            {
+              name: 'Publish per-occurrence query receipt',
+              if: "${{ always() && steps.occurrence-query.outcome == 'success' }}",
+              shell: 'bash',
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  'proof="$GITHUB_WORKSPACE/tmp/buck2-occurrence-proof/occurrences.json"',
+                  'jq -c . "$proof"',
+                  'jq -r \'"### Per-occurrence JSON\\n\\n```json\\n" + tojson + "\\n```"\' "$proof" >> "$GITHUB_STEP_SUMMARY"',
+                ].join('\n'),
+              ),
             },
             {
               name: 'Join previous UTC day cache evidence',

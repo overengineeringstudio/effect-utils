@@ -39,10 +39,9 @@ import {
   WatchmanCrawlError,
 } from './buck2-file-watcher.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
-import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 
 // Register the lifecycle suites in the existing devenv test entrypoint.
-void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
+void [gateUnitTests, gateIsolationTests, daemonPostureTests]
 
 const publicationOwnerLibrary = process.env['BUCK2_EDITOR_PUBLICATION_OWNER_LIBRARY']
 if (publicationOwnerLibrary === undefined || publicationOwnerLibrary.length === 0)
@@ -679,7 +678,9 @@ describe('native daemon admission diagnostics', () => {
     for (const failure of ['exit', 'signal', 'timeout'] as const) {
       // A kill/audit failure may follow two successful status probes. The test
       // watchdog must cover all three command deadlines and bounded cleanup.
-      const deadlineMs = failure === 'timeout' ? 1000 : 30000
+      // A full Mac quick exhausted 1s on a successful status probe before kill.
+      // Leave startup room while exec sleep 30 still forces the intended timeout.
+      const deadlineMs = failure === 'timeout' ? 5000 : 30000
 
       const reportFailure = async () => {
         const root = fixture()
@@ -941,6 +942,9 @@ await phase('result-written');`,
         expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
       diagnostics.assertionsComplete = true
     },
+    // Full-DAG macOS: 24/24 <=413ms, but earlier starts hit 5s at load14–17/10CPUs.
+    // Bound real collector/native/decoder startup at 4× that censored budget; #2797 stays open.
+    20_000,
   )
 
   it('does not register a foreign project root or non-default isolation', () => {
@@ -1250,6 +1254,11 @@ writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).j
 })
 
 describe('direct pinned Buck posture', () => {
+  // Full Linux quicks exhausted 5s/6.77s; 20 CPU-loaded runs per case peaked at 8830.19ms.
+  // Match the hostless 20s harness budget (2.26× sample max); #2797 remains open.
+  // Only process-bearing tests; all assertions and production deadlines stay unchanged.
+  const nativeProcessTimeoutMs = 20_000
+
   it.each([
     { stderrMode: 'inherit', termination: 'exit' },
     { stderrMode: 'pipe', termination: 'exit' },
@@ -1317,6 +1326,7 @@ console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(
           .exitCode,
       ).toBe(result.exitCode)
     },
+    nativeProcessTimeoutMs,
   )
 
   it('execves the native command when neither evidence nor reader shadow applies', async () => {
@@ -1700,7 +1710,7 @@ Object.defineProperty(process, 'execve', {
     }, 15000)
   }
 
-  it('preserves reader and writer admission when TLS succeeds without h2 ALPN', async () => {
+  const preservesTlsAdmission = async () => {
     // Public test-only fixture, vendored verbatim from Bun 1.4.2 (valid through February 2036).
     // Regenerate these literals from the pinned upstream cert.pem and cert.key, not by hand:
     // https://github.com/oven-sh/bun/tree/744846f844374847c902b5e7fd59b4342a51ef99/test/js/bun/http/fixtures
@@ -1904,7 +1914,12 @@ console.log(JSON.stringify({admitted, attempt}));`,
     } finally {
       tls.close()
     }
-  })
+  }
+  it(
+    'preserves reader and writer admission when TLS succeeds without h2 ALPN',
+    preservesTlsAdmission,
+    nativeProcessTimeoutMs,
+  )
 
   it('falls back an unavailable REAPI endpoint without overwriting concurrent checkout configuration or run arguments', async () => {
     const root = fixture()
@@ -2256,7 +2271,7 @@ for (let attempt = 0; attempt < 2; attempt++) {
     }
   })
 
-  it('includes host reader routing in the shell warm-launch environment identity', () => {
+  const preservesShellIdentity = () => {
     const root = fixture('grpc://cache.fixture.ts.net:41045')
     const bash = Bun.which('bash')
     const sha256 = Bun.which('sha256sum')
@@ -2297,7 +2312,12 @@ for (let attempt = 0; attempt < 2; attempt++) {
     })
     expect(new Set(identities.slice(0, 3)).size).toBe(3)
     expect(identities[0]).toBe(identities[3])
-  })
+  }
+  it(
+    'includes host reader routing in the shell warm-launch environment identity',
+    preservesShellIdentity,
+    nativeProcessTimeoutMs,
+  )
 
   it('caches healthy capabilities across hot loops but does not reuse them for a different endpoint or writer credential', async () => {
     let requests = 0

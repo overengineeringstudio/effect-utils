@@ -34,6 +34,8 @@ export default oxlintConfig({
   },
   ignorePatterns: [
     ...baseOxlintIgnorePatterns,
+    // wasm-bindgen owns these committed browser bindings.
+    'packages/@overeng/effect-iroh-browser/wasm/**',
     // The emitted Weaver registry directory: generated YAML/TS bindings + thin codegen glue
     // (aggregator + per-file `.genie.ts` emitters). Freshness is enforced by `genie:check`;
     // exclude from lint like other generated-output trees. Real member contracts live in their

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeSync } from 'node:fs'
 import { posix } from 'node:path'
 
 const root = process.argv[2]
@@ -87,7 +87,23 @@ for (const [name, task] of tasks) {
 let testCount = 0
 const ok = ({ condition, name, detail = '' }) => {
   if (condition === false) {
-    console.error(`not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}`)
+    // stderr may share a nonblocking pipe with buffered stdout; drain before exit.
+    const diagnostic = Buffer.from(
+      `not ok ${testCount + 1} - ${name}${detail === '' ? '' : `: ${detail}`}\n`,
+    )
+    const pause = new Int32Array(new SharedArrayBuffer(4))
+    let offset = 0
+    while (offset < diagnostic.length) {
+      try {
+        const written = writeSync(2, diagnostic, offset, diagnostic.length - offset)
+        if (written === 0) throw new Error('task guard diagnostic write made no progress')
+        offset += written
+      } catch (error) {
+        if (error.code === 'EINTR') continue
+        if (error.code !== 'EAGAIN' && error.code !== 'EWOULDBLOCK') throw error
+        Atomics.wait(pause, 0, 0, 5)
+      }
+    }
     process.exit(1)
   }
   testCount += 1
@@ -1085,13 +1101,40 @@ for (const input of [
   'packages/@overeng/buck2-tools/src/bun-test-timeout.ts',
   'scripts/buck2-gate-isolation.integration.test.ts',
   'scripts/buck2-gate-isolation.unit.test.ts',
-  'scripts/buck2-gate-teardown.integration.test.ts',
 ]) {
   ok({
     condition: hostCacheInputs.includes(JSON.stringify(input)),
     name: `host cache posture watches transitive guard source: ${input}`,
   })
 }
+const teardownTask = 'buck2:gate-teardown:test'
+const teardownSource = taskSource(teardownTask)
+for (const input of [
+  'scripts/buck2-gate-teardown.integration.test.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-runner.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-preload.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-timeout.ts',
+]) {
+  ok({
+    condition: teardownSource.split('execIfModified = [')[1]?.includes(JSON.stringify(input)),
+    name: `standalone gate teardown watches guard source: ${input}`,
+  })
+}
+ok({
+  condition:
+    reaches({ start: 'check:quick', target: teardownTask }) === false &&
+    reaches({ start: 'check:all', target: teardownTask }),
+  name: 'real gate expiry has full-check coverage outside quick admission',
+})
+ok({
+  condition:
+    teardownSource.includes('./scripts/buck2-gate-teardown.integration.test.ts') &&
+    teardownSource.includes('"scripts/buck2-gate-teardown.integration.test.ts"') &&
+    readFileSync(`${root}/scripts/buck2-entrypoint.integration.test.ts`, 'utf8').includes(
+      'buck2-gate-teardown.integration.test.ts',
+    ) === false,
+  name: 'real gate expiry runs only through its standalone declared task',
+})
 ok({
   condition: taskSource('genie:editor-view-closure:check').includes(
     '${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check',

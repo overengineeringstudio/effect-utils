@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:f68eb17bd78debd10d780c75b87a3d9509c8716a9d59ae1a05d25447ce7a6e2f
+# Semantic fingerprint: sha256:b746e1aeba9a003d745368b05d587c98b9fadadeef1da4cd35bb81ba78e2e486
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -191,6 +191,7 @@ check_aggregate(
         "//packages/@overeng/ai-gateway-edge:typecheck",
         "//packages/@overeng/alchemy-github:typecheck",
         "//packages/@overeng/buck2-tools:typecheck",
+        "//packages/@overeng/changelog:typecheck",
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
         "//packages/@overeng/data-graph:typecheck",
@@ -200,8 +201,12 @@ check_aggregate(
         "//packages/@overeng/rpc-devtools:typecheck",
         "//packages/@overeng/effect-ai-claude-cli:typecheck",
         "//packages/@overeng/effect-ai-gateway:typecheck",
+        "//packages/@overeng/effect-automerge:typecheck",
         "//packages/@overeng/effect-distributed-lock:typecheck",
         "//packages/@overeng/effect-iroh:typecheck",
+        "//packages/@overeng/effect-iroh-automerge:typecheck",
+        "//packages/@overeng/effect-iroh-browser:typecheck",
+        "//packages/@overeng/game-laws:typecheck",
         "//packages/@overeng/effect-path:typecheck",
         "//packages/@overeng/effect-react:typecheck",
         "//packages/@overeng/effect-rpc-explorer:typecheck",
@@ -265,6 +270,7 @@ check_aggregate(
         "//packages/@overeng/ai-gateway-edge:dist",
         "//packages/@overeng/alchemy-github:dist",
         "//packages/@overeng/buck2-tools:dist",
+        "//packages/@overeng/changelog:dist",
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
         "//packages/@overeng/data-graph:dist",
@@ -274,8 +280,12 @@ check_aggregate(
         "//packages/@overeng/rpc-devtools:dist",
         "//packages/@overeng/effect-ai-claude-cli:dist",
         "//packages/@overeng/effect-ai-gateway:dist",
+        "//packages/@overeng/effect-automerge:dist",
         "//packages/@overeng/effect-distributed-lock:dist",
         "//packages/@overeng/effect-iroh:dist",
+        "//packages/@overeng/effect-iroh-automerge:dist",
+        "//packages/@overeng/effect-iroh-browser:dist",
+        "//packages/@overeng/game-laws:dist",
         "//packages/@overeng/effect-path:dist",
         "//packages/@overeng/effect-react:dist",
         "//packages/@overeng/effect-rpc-explorer:dist",
@@ -322,6 +332,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/agent-session-ingest:test",
         "effect_utils//packages/@overeng/ai-gateway-edge:test",
         "effect_utils//packages/@overeng/alchemy-github:test",
+        "effect_utils//packages/@overeng/changelog:test",
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
         "effect_utils//packages/@overeng/content-address:test",
@@ -329,7 +340,10 @@ check_aggregate(
         "effect_utils//packages/@overeng/devbar:test",
         "effect_utils//packages/@overeng/effect-ai-claude-cli:test",
         "effect_utils//packages/@overeng/effect-ai-gateway:test",
+        "effect_utils//packages/@overeng/effect-automerge:test",
         "effect_utils//packages/@overeng/effect-distributed-lock:test",
+        "effect_utils//packages/@overeng/effect-iroh-automerge:test",
+        "effect_utils//packages/@overeng/effect-iroh-browser:test",
         "effect_utils//packages/@overeng/effect-iroh:test",
         "effect_utils//packages/@overeng/effect-path:test",
         "effect_utils//packages/@overeng/effect-react:test",
@@ -340,6 +354,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/effect-rust:test",
         "effect_utils//packages/@overeng/effect-schema-form-aria:test",
         "effect_utils//packages/@overeng/effect-schema-form:test",
+        "effect_utils//packages/@overeng/game-laws:test",
         "effect_utils//packages/@overeng/genie-fractal:test",
         "effect_utils//packages/@overeng/genie-smalltalk:test",
         "effect_utils//packages/@overeng/genie:test",
