@@ -130,29 +130,75 @@ pub fn device_number(major: u32, minor: u32) -> u64 {
         | (minor & 0xff) | ((minor & 0xffff_ff00) << 12)
 }
 
+enum RetainedNamespace {
+    Owned(super::namespace::NamespaceSnapshot),
+    Shared(std::rc::Rc<super::namespace::CachedNamespace>),
+}
+
+impl std::ops::Deref for RetainedNamespace {
+    type Target = super::namespace::NamespaceSnapshot;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Owned(snapshot) => snapshot,
+            Self::Shared(snapshot) => snapshot.snapshot(),
+        }
+    }
+}
+
+impl RetainedNamespace {
+    fn recheck(&self, deadline: std::time::Instant) -> std::io::Result<()> {
+        match self {
+            Self::Owned(snapshot) => snapshot.recheck(deadline),
+            Self::Shared(snapshot) => snapshot.recheck(deadline),
+        }
+    }
+}
+
 /// One bounded task view reused across that task's references. The owner must
 /// recheck before switching tasks and before completing the capture.
+/// A jailed task still exposes the complete kernel namespace, but its root
+/// cannot silently redefine that namespace's native filesystem coordinates.
 pub struct NativeView {
     task: std::fs::File,
     root: std::fs::File,
-    namespace: super::namespace::NamespaceSnapshot,
+    namespace: RetainedNamespace,
+    full_root: bool,
 }
 
 impl NativeView {
     pub fn capture(task: &std::fs::File, deadline: std::time::Instant) -> std::io::Result<Self> {
+        Self::capture_with_cache(task, None, deadline)
+    }
+
+    pub fn capture_cached(task: &std::fs::File, cache: &super::namespace::NamespaceCache,
+        deadline: std::time::Instant) -> std::io::Result<Self>
+    {
+        Self::capture_with_cache(task, Some(cache), deadline)
+    }
+
+    fn capture_with_cache(task: &std::fs::File, cache: Option<&super::namespace::NamespaceCache>,
+        deadline: std::time::Instant) -> std::io::Result<Self>
+    {
         use std::os::fd::AsRawFd;
         use super::objects;
         if std::time::Instant::now() >= deadline {
             return Err(std::io::Error::other("native mount snapshot deadline"));
         }
         let base = format!("/proc/self/fd/{}", task.as_raw_fd());
-        let namespace = super::namespace::NamespaceSnapshot::capture(
-            std::fs::File::open(format!("{base}/ns/mnt"))?, deadline)?;
+        let namespace = std::fs::File::open(format!("{base}/ns/mnt"))?;
+        let namespace = match cache {
+            Some(cache) => RetainedNamespace::Shared(cache.capture(namespace, deadline)?),
+            None => RetainedNamespace::Owned(super::namespace::NamespaceSnapshot::capture(namespace, deadline)?),
+        };
         let root = objects::pin_magic(format!("{base}/root"))?;
         if !namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)? {
             return Err(std::io::Error::other("native task mount namespace changed"));
         }
-        Ok(Self { task: task.try_clone()?, root, namespace })
+        let full_root = namespace.records().get(&objects::mount_id(&root)?)
+            .is_some_and(|mount| mount.point == std::path::Path::new("/"))
+            && std::fs::read_link(format!("/proc/self/fd/{}", root.as_raw_fd()))?
+                == std::path::Path::new("/");
+        Ok(Self { task: task.try_clone()?, root, namespace, full_root })
     }
 
     pub fn is_task(&self, task: &std::fs::File) -> std::io::Result<bool> {
@@ -170,6 +216,8 @@ impl NativeView {
             || !self.namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)?
             || objects::identity(&root)? != objects::identity(&self.root)?
             || objects::mount_id(&root)? != objects::mount_id(&self.root)?
+            || self.full_root && std::fs::read_link(format!("/proc/self/fd/{}", self.root.as_raw_fd()))?
+                != std::path::Path::new("/")
         { return Err(std::io::Error::other("native task mount view changed")); }
         self.namespace.recheck(deadline)?;
         if !self.namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)? {
@@ -198,6 +246,7 @@ impl NativeView {
     {
         use std::io;
         use super::{linux, objects};
+        if !self.full_root { return Err(io::Error::other("mounted root changed or shadowed")); }
         let root = mount.root.path()?;
         if std::time::Instant::now() >= deadline
             || !canonical(root) || !canonical(&mount.point)
@@ -228,6 +277,7 @@ impl NativeView {
         eprintln!("worktree-holder-native-location-owned-vm reason={_stage}");
         io::Error::other("native mount backing unobservable or changed")
     };
+    if !self.full_root { return Err(unknown("partial-task-root")); }
     if std::time::Instant::now() >= deadline || !objects::native_filesystem(file)? {
         return Err(unknown("deadline-or-nonnative-filesystem"));
     }

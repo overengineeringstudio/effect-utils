@@ -118,6 +118,7 @@ pub struct CandidateSet {
     // has authenticated the original exclusive lease OFD. No worktree walk.
     store_inventory: RefCell<Option<BTreeMap<objects::Identity, PathBuf>>>,
     enrolled_view: CandidateView,
+    namespace_cache: super::namespace::NamespaceCache,
     scope_ledger: RefCell<ScopeLedger>,
     witness: RefCell<Option<ShmemWitness>>,
     // Captured once per task, then moved into its retained MountCoverage.
@@ -231,9 +232,10 @@ impl CandidateSet {
             roots.push(Candidate { path: path.clone(), root, identity });
             scopes.push(Scope { enrollment_path, enrollment, enrollment_identity, location });
         }
-        let enrolled_view = CandidateView::capture(&self_task, &scopes, deadline)?;
+        let namespace_cache = super::namespace::NamespaceCache::new();
+        let enrolled_view = CandidateView::capture(&self_task, &scopes, &namespace_cache, deadline)?;
         let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
-        Ok(Self { kind: request.kind, uid, roots, scopes, devices, enrolled_view, scope_ledger,
+        Ok(Self { kind: request.kind, uid, roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger,
             witness: RefCell::new(None), store_inventory: RefCell::new(None), native_view: RefCell::new(None) })
     }
 
@@ -250,6 +252,7 @@ impl CandidateSet {
     }
 
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        self.namespace_cache.recheck_all(deadline)?;
         self.enrolled_view.recheck(deadline)?;
         if let Some(witness) = self.witness.borrow().as_ref() { witness.recheck()?; }
         if let Some(view) = self.native_view.borrow().as_ref() { view.recheck(deadline)?; }
@@ -315,7 +318,7 @@ impl CandidateSet {
 
     fn pin_task_view(&self, task_scope: &File, deadline: Instant) -> io::Result<CandidateView> {
         self.scope_ledger.borrow().require_collecting()?;
-        let view = CandidateView::capture(task_scope, &self.scopes, deadline)?;
+        let view = CandidateView::capture(task_scope, &self.scopes, &self.namespace_cache, deadline)?;
         self.scope_ledger.borrow_mut().register(&view)?;
         Ok(view)
     }
@@ -515,10 +518,11 @@ mod tests {
                 location: mounts::native_location(&root, &task, deadline()).unwrap() });
             roots.push(Candidate { path: path.clone(), root, identity });
         }
-        let enrolled_view = CandidateView::capture(&task, &scopes, deadline()).unwrap();
+        let namespace_cache = super::super::namespace::NamespaceCache::new();
+        let enrolled_view = CandidateView::capture(&task, &scopes, &namespace_cache, deadline()).unwrap();
         let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
         CandidateSet { kind: Kind::Worktree, uid: roots[0].root.metadata().unwrap().uid(),
-            roots, scopes, devices, enrolled_view, scope_ledger, witness: RefCell::new(None),
+            roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger, witness: RefCell::new(None),
             store_inventory: RefCell::new(None), native_view: RefCell::new(None) }
     }
 

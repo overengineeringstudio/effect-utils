@@ -13,8 +13,10 @@ pub(super) struct CandidateView {
 }
 
 impl CandidateView {
-    pub fn capture(task: &File, scopes: &[Scope], deadline: Instant) -> io::Result<Self> {
-        let view = mounts::NativeView::capture(task, deadline)?;
+    pub fn capture(task: &File, scopes: &[Scope], cache: &super::super::namespace::NamespaceCache,
+        deadline: Instant) -> io::Result<Self>
+    {
+        let view = mounts::NativeView::capture_cached(task, cache, deadline)?;
         Self::from_view(view, scopes, deadline)
     }
 

@@ -83,6 +83,10 @@ fn probe() {
     assert!(filtered.len() < oracle.len());
     assert_profile();
     view.recheck(deadline).unwrap();
+    let jailed_candidates = super::tests::fixture_set(std::slice::from_ref(&jail));
+    assert!(jailed_candidates.matches(&pins.root.as_ref().unwrap().file, &task.scope,
+        super::protocol::ReferenceKind::Root, deadline).is_err(),
+        "stripping a jail prefix must never report its own candidate root as non-holding");
     assert_profile();
     let failure = match CandidateView::from_view(view, &candidates.scopes, deadline) {
         Ok(_) => panic!("jailed-root bridge must veto the outside namespace view"),

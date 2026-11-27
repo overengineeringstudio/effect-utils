@@ -1,9 +1,11 @@
 //! Whole-namespace kernel queries, never task-root-filtered mountinfo absence.
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io;
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Instant;
 use super::{linux, mounts, objects};
 
@@ -224,6 +226,65 @@ impl NamespaceSnapshot {
     }
 }
 
+/// Request-owned reuse only. Every proof closure must recheck_all; no TTL,
+/// process-global cache, partial enumeration or count-only validation.
+pub struct NamespaceCache {
+    epoch: Rc<Cell<u64>>,
+    snapshots: RefCell<BTreeMap<objects::Identity, Rc<CachedNamespace>>>,
+}
+
+pub(super) struct CachedNamespace {
+    snapshot: NamespaceSnapshot,
+    epoch: std::rc::Weak<Cell<u64>>,
+    validated: Cell<u64>,
+}
+
+impl CachedNamespace {
+    pub(super) fn snapshot(&self) -> &NamespaceSnapshot { &self.snapshot }
+
+    pub(super) fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        bound(deadline)?;
+        let owner = self.epoch.upgrade().ok_or_else(incomplete)?;
+        let epoch = owner.get();
+        if self.validated.get() != epoch {
+            self.snapshot.recheck(deadline)?;
+            self.validated.set(epoch);
+        }
+        Ok(())
+    }
+}
+
+impl NamespaceCache {
+    pub fn new() -> Self {
+        Self { epoch: Rc::new(Cell::new(1)), snapshots: RefCell::new(BTreeMap::new()) }
+    }
+
+    pub(super) fn capture(&self, namespace: File, deadline: Instant)
+        -> io::Result<Rc<CachedNamespace>>
+    {
+        bound(deadline)?;
+        let identity = objects::identity(&namespace)?;
+        if let Some(snapshot) = self.snapshots.borrow().get(&identity) {
+            if !snapshot.snapshot.same_namespace(&namespace)? { return Err(incomplete()); }
+            return Ok(Rc::clone(snapshot));
+        }
+        let snapshot = NamespaceSnapshot::capture(namespace, deadline)?;
+        let snapshot = Rc::new(CachedNamespace { snapshot, epoch: Rc::downgrade(&self.epoch),
+            validated: Cell::new(self.epoch.get()) });
+        self.snapshots.borrow_mut().insert(identity, Rc::clone(&snapshot));
+        Ok(snapshot)
+    }
+
+    pub fn recheck_all(&self, deadline: Instant) -> io::Result<()> {
+        bound(deadline)?;
+        self.epoch.set(self.epoch.get().checked_add(1).ok_or_else(incomplete)?);
+        // Compare every record and the independently counted full namespace,
+        // once per namespace per closure, even if its original task departed.
+        for snapshot in self.snapshots.borrow().values() { snapshot.recheck(deadline)?; }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,5 +385,55 @@ mod tests {
         let mut unterminated = valid;
         unterminated[521] = b'x';
         assert!(decode(&unterminated, 0x1_0000_000b, 19).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires isolated Linux root with unshare and mount"]
+    fn actual_namespace_cache_rechecks_complete_records() {
+        const ROOT: &str = "HOLDER_NAMESPACE_CACHE_PROBE_ROOT";
+        const TEST: &str = "namespace::tests::actual_namespace_cache_rechecks_complete_records";
+        let deadline = Instant::now() + std::time::Duration::from_secs(20);
+        let Some(root) = std::env::var_os(ROOT) else {
+            use std::os::unix::fs::DirBuilderExt;
+            struct OwnedDirectory(PathBuf);
+            impl Drop for OwnedDirectory {
+                fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+            }
+            let path = std::env::temp_dir().join(format!("holder-namespace-cache-{}-{}",
+                std::process::id(), linux::boot_time_ns().unwrap()));
+            std::fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+            let root = OwnedDirectory(path);
+            for name in ["source", "target"] { std::fs::create_dir(root.0.join(name)).unwrap(); }
+            let status = std::process::Command::new("unshare")
+                .args(["--mount", "--propagation", "private"])
+                .arg(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--ignored", "--test-threads=1"])
+                .env(ROOT, &root.0).status().unwrap();
+            assert!(status.success(), "owned private-namespace cache probe failed");
+            return;
+        };
+        let root = PathBuf::from(root);
+        let namespace = File::open("/proc/thread-self/ns/mnt").unwrap();
+        let parent = worktree_holder_proc::process::process(std::process::id()).unwrap().parent;
+        let parent_namespace = File::open(format!("/proc/{parent}/ns/mnt")).unwrap();
+        assert_ne!(objects::identity(&namespace).unwrap(), objects::identity(&parent_namespace).unwrap(),
+            "never mount in the parent host namespace");
+        let cache = NamespaceCache::new();
+        let first = cache.capture(namespace, deadline).unwrap();
+        assert!(first.snapshot().records().values().all(|mount| mount.peer_group == 0),
+            "all mount propagation must be private before the owned bind");
+        let second = cache.capture(File::open("/proc/thread-self/ns/mnt").unwrap(), deadline).unwrap();
+        assert!(Rc::ptr_eq(&first, &second), "reuse only within the same request owner");
+        let separate = NamespaceCache::new().capture(
+            File::open("/proc/thread-self/ns/mnt").unwrap(), deadline).unwrap();
+        assert!(!Rc::ptr_eq(&first, &separate), "no process-global cache");
+        assert!(separate.recheck(deadline).is_err(), "a retained snapshot cannot outlive its request owner");
+        cache.recheck_all(deadline).unwrap();
+        assert!(std::process::Command::new("mount").arg("--bind")
+            .arg(root.join("source")).arg(root.join("target")).status().unwrap().success());
+        assert!(cache.recheck_all(deadline).is_err(),
+            "a fresh closure must enumerate the complete changed namespace, not reuse a prior round");
+        // This process exits its private namespace before the parent removes
+        // its owned empty directories; no host mount is changed or detached.
     }
 }
