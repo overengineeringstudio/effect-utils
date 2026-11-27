@@ -989,6 +989,15 @@ Helper functions used by task modules:
 - `cli-guard.nix` - Guarded task-owned CLI wrappers
 - `trace.nix` - Task tracing wrappers
 
+When native devenv tracing owns task/process spans, set
+`OTEL_TASK_SPANS_ENABLED=0` in the task environment to run `trace.exec` and
+`trace.status` bodies directly, avoiding a second `otel-span` process/export
+per execution or status check. The default is enabled for existing callers.
+This does not disable native devenv tracing, remove delivery configuration,
+change the body's exit status or streams, or erase inherited trace context.
+`trace.instr` command instrumentation remains independently controlled by
+`OTEL_SCRAPE_ENABLED` and its existing delivery/context checks.
+
 ## Task Output
 
 devenv renders a task's **stderr** by default. Its **stdout** is rendered only
