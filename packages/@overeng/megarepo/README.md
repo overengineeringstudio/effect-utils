@@ -497,10 +497,25 @@ Absence returns an empty HOLD snapshot; malformed records and non-NotFound read
 errors remain fixed, redacted errors, never an empty or repaired pool. Original
 schema/filesystem errors and their causes are not exported. `PoolProvenanceObservation`
 exports recorded root/id/generation and ready/unclaimed state, not fresh authority.
-Owner labels are not authenticated seats; activity, terminal claim/birth/retarget
-and execution provenance missing from v1 remain explicitly Missing. Tokens and
+Optional authoritative v1 `physicalBirth` records boot ID and the existing canonical
+root/Git-admin deletion identity chains. `lifecycle` independently retains birth,
+claim and retarget operations: exact recorded actor generation, active without an
+outcome, or terminal with success/failure. Old records remain readable; missing
+physical birth remains HOLD, never implicit adoption or cross-boot recovery.
+`requirePoolSlotSnapshot` compares every schema field structurally.
+`bindPoolPhysicalBirth` returns a once-only immutable candidate for an untouched
+unknown precreation intent (its nonempty `token` is the preparation nonce), with
+native Inode leaves at the exact root and immediate bare/worktrees child.
+`requirePoolPhysicalBirth` refuses absent or changed root/admin/boot facts. These
+pure helpers neither persist nor inspect: callers must prove fresh origin, native
+creation, canonical paths, lease, held pins and fresh authenticated holder evidence.
+Recorded physical/lifecycle DTO fields use `{ _tag: 'Recorded', value }`; terminal
+birth/claim/retarget fields are Recorded only for actual terminal operations.
+Owner labels and recorded actors are not authenticated seats or fresh activity;
+owner/seat activity and absent legacy facts remain explicitly Missing. Tokens and
 nonces are not exported. Every observation is HOLD with `authorizesRemoval: false`;
-Hygiene remains the sole remover, and physical/removal integration stays off.
+Hygiene remains the sole remover. Native lifecycle integration and runtime
+qualification remain outstanding; this data layer provides no removal capability.
 
 Disposable ignored outputs belong only to fresh reserved UUID physical roots.
 `reserveFreshPoolRoot` records that origin; existing, adopted and legacy roots
