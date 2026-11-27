@@ -13,7 +13,8 @@ import { acquireDeletionLease, createStoreWorktreeDetached, readProcessIdentity 
 import { inspectFreshPoolHeadHistory } from './store-pool-head-history.ts'
 import { requireOutsidePoolGlobal } from './store-pool-lock-order.ts'
 import { captureDeletionIdentity, type DeletionIdentity, type OwnedDeletionPins, withVerifiedDirectoryPins } from './store-pinned-deletion.ts'
-import { inspectPoolInstall, poolBytes, preparePoolInstall, runPoolTasks } from './store-pool-install.ts'
+import { poolBytes, runPoolTasks } from './store-pool-install.ts'
+import { inspectPoolRoot, type PoolPreparation, preparePoolRoot } from './store-pool-preparation.ts'
 import {
   beginPoolPreparation, bindPoolPhysicalBirth, finishPoolPreparation, PoolError,
   type PoolActor, type PoolSlot, requireDisposablePoolRoot, requirePoolPhysicalBirth,
@@ -90,13 +91,14 @@ export const inspectPoolHolders = ({ client, chains, pins }: {
  * Short GLOBAL permits only the existing read-only boot/clock freshness validator;
  * holder queries, native acquisition, Git, install and root IO stay outside it.
  */
-export const warmPoolRoot = ({ base, bare, commit, limits, client, prewarmTasks }: {
+export const warmPoolRoot = ({ base, bare, commit, limits, client, prewarmTasks, preparation }: {
   base: AbsoluteDirPath
   bare: string
   commit: string
   limits: { maxSlots: number; maxBytes: number }
   client: HolderEvidenceClientConfig
   prewarmTasks: ReadonlyArray<string>
+  preparation: PoolPreparation
 }) => Effect.gen(function* () {
   yield* requireOutsidePoolGlobal(() => hold('Pool warming inside GLOBAL'))
   const fs = yield* FileSystem.FileSystem
@@ -147,7 +149,7 @@ export const warmPoolRoot = ({ base, bare, commit, limits, client, prewarmTasks 
           yield* save({ ...state, slots: state.slots.map((slot) => slot.id === active.id ? active : slot) })
           return active
         }) })
-        yield* preparePoolInstall(next.path)
+        yield* preparePoolRoot({ path: next.path, preparation })
         if (prewarmTasks.length !== 0) yield* runPoolTasks(next.path, prewarmTasks)
         const stopped = yield* stopWorktreeBuckDaemons({ worktreePath: next.path, reportRaces: false })
         yield* requirePoolBuckDrain(stopped)
@@ -157,7 +159,7 @@ export const warmPoolRoot = ({ base, bare, commit, limits, client, prewarmTasks 
       commit: Effect.succeed,
     })
     const bound = preparedBirth.slot
-    const installed = yield* inspectPoolInstall({ path: bound.path, commit, base: store })
+    const installed = yield* inspectPoolRoot({ path: bound.path, commit, base: store, preparation })
     if (installed.sourceHistory.commit !== preparedBirth.sourceHistory.commit ||
       installed.sourceHistory.digest !== preparedBirth.sourceHistory.digest ||
       installed.sourceHistory.byteLength !== preparedBirth.sourceHistory.byteLength)
@@ -168,10 +170,10 @@ export const warmPoolRoot = ({ base, bare, commit, limits, client, prewarmTasks 
       targets: chains.map((identity, index) => ({ rootPath: '/', path: paths[index]!, identity })),
       prepare: (pins) => Effect.gen(function* () {
         // Shared GVS is topology-pinned, not required to be globally idle.
-        const current = yield* inspectPoolInstall({ path: bound.path, commit, base: store })
+        const current = yield* inspectPoolRoot({ path: bound.path, commit, base: store, preparation })
         if (current.identity !== installed.identity || current.backingPaths.length !== installed.backingPaths.length ||
           current.backingPaths.some((path, index) => path !== installed.backingPaths[index]))
-          return yield* hold('Installed GVS binding changed')
+          return yield* hold('Prepared root binding changed')
         yield* inspectPoolGitSource({ slot: bound, admin })
         const charge = yield* poolBytes({ path: bound.path, kind: 'logical' })
         const evidence = yield* inspectPoolHolders({ client, chains: chains.slice(0, 2), pins })

@@ -638,6 +638,45 @@ and all-UID proof under the existing verified-commit seam. Authored/promoted, le
 rebound or unknown roots refuse; an interrupted intent never becomes READY by recovery.
 Task completion itself does not authorize cleaning, eviction or daemon termination.
 
+### Host-local pool service
+
+`mr store pool service --config FILE --socket SOCKET` is the foreground custody
+owner. The colocated `mr-pool@.service` template runs it as a real user-service
+MainPID, with a private runtime socket and `KillMode=control-group`. Install the
+exact branch-built executable at `~/.local/share/mr-pool/bin/mr`, the instance
+configuration at `~/.config/mr-pool/INSTANCE.json`, and the normal declared tool
+environment at `~/.config/mr-pool/INSTANCE.env`. Set `serviceUnit` to the actual
+instance name; startup verifies that systemd identifies this process as its owner.
+Stop only that instance to roll back. Retain its roots, barriers and ledger:
+restarting deliberately does not adopt custody or free retained capacity.
+
+Configuration binds the canonical store `base`, existing `bare` repository, exact
+`commit`, positive slot/byte `limits`, immutable holder `client` and `devenvProvider`,
+declared `prewarmTasks`, and nonnegative `buckMaxBytes`. `preparation` is explicit:
+`pnpm-gvs` requires the existing exact qualified install tuple; `buck2` requires
+an immutable `buck2Provider` and nonempty normal root-owned `prepareTasks`.
+Buck-owned roots bind the canonical immutable Nix capability cell, source/config
+and raw HEAD history, not invented GVS paths. They do not enable pnpm materialization.
+
+```bash
+systemctl --user start mr-pool@INSTANCE.service
+mr store pool warm --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock"
+mr store pool run --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock" \
+  --id "$slot_id" --tasks "$task_name"
+mr store pool reset --socket "$XDG_RUNTIME_DIR/mr-pool-INSTANCE/controller.sock" \
+  --id "$slot_id" --mode warm
+```
+
+The service serializes requests, owns only roots born in that process, and keeps
+ROOT/barrier custody through actual task completion. Tasks run in an owned
+descendant systemd scope, which is synchronously stopped before completion proof.
+Reset is same-commit only: dirty, authored, changed-history or unproved roots stay
+HOLD. `--mode warm` preserves bounded pool-owned Buck output; `--mode wiped`
+uses the existing native Buck owner's exact isolation cleanup, never a recursive
+pool remover. Fresh native holder/pin/source proofs remain required at every
+transition; unsupported nonleader references are not waived. No default workspace
+adapter or root-retirement writer is enabled by these commands.
+
 ### Process activity snapshot
 
 An unprivileged store owner cannot read other users' `/proc/<pid>/{cwd,root,fd,maps}`, so the

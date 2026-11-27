@@ -1,0 +1,18 @@
+[Unit]
+Description=Host-local mr worktree pool (%i)
+
+[Service]
+Type=exec
+EnvironmentFile=%h/.config/mr-pool/%i.env
+ExecStart=%h/.local/share/mr-pool/bin/mr store pool service --config %h/.config/mr-pool/%i.json --socket %t/mr-pool-%i/controller.sock
+RuntimeDirectory=mr-pool-%i
+RuntimeDirectoryMode=0700
+UMask=0077
+KillMode=control-group
+TimeoutStopSec=45s
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

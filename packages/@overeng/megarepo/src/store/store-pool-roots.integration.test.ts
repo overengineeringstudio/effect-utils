@@ -8,6 +8,7 @@ import { EffectPath } from '@overeng/effect-path'
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
 import * as Git from '../core/git.ts'
+import { type PoolPreparation } from './store-pool-preparation.ts'
 import { warmPoolRoot } from './store-pool-roots.ts'
 import { reserveFreshPoolRoot, withPoolState } from './store-pool-state.ts'
 
@@ -15,6 +16,9 @@ const withTestCtx = Vitest.makeWithTestCtx({ makeLayer: () => NodeServices.layer
 // Invalid config is intentional: every case must refuse BEFORE calling any holder client.
 const client = { path: '/not-a-holder-client', producerId: 'invalid', policyId: 'invalid' }
 const limits = { maxSlots: 1, maxBytes: 1024 }
+const preparation: PoolPreparation = {
+  mode: 'buck2', buck2Provider: '/nix/store/unexecuted-fixture/bin/buck2', prepareTasks: ['buck2:editor:materialize'],
+}
 const fixture = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
@@ -33,7 +37,7 @@ describe('native pool prewarm admission (not warm runtime qualification)', () =>
     Effect.gen(function* () {
       const { fs, base, bare, commit } = yield* fixture
       yield* Git.runCommand({ cwd: bare, args: ['update-ref', 'refs/heads/source', commit] })
-      const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit: 'refs/heads/source', limits, client, prewarmTasks: [] }))
+      const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit: 'refs/heads/source', limits, client, preparation, prewarmTasks: [] }))
       expect(Exit.isFailure(result)).toBe(true)
       if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain('Exact canonical local source')
       expect(yield* fs.exists(`${base}.state/pool/state.json`)).toBe(false)
@@ -45,7 +49,7 @@ describe('native pool prewarm admission (not warm runtime qualification)', () =>
     Effect.gen(function* () {
       const { fs, base, bare, commit } = yield* fixture
       const unrelated = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-      const result = yield* Effect.exit(warmPoolRoot({ base: unrelated, bare, commit, limits, client, prewarmTasks: [] }))
+      const result = yield* Effect.exit(warmPoolRoot({ base: unrelated, bare, commit, limits, client, preparation, prewarmTasks: [] }))
       expect(Exit.isFailure(result)).toBe(true)
       if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain('Exact canonical local source')
       expect(yield* fs.readDirectory(unrelated)).toEqual([])
@@ -57,7 +61,7 @@ describe('native pool prewarm admission (not warm runtime qualification)', () =>
     Effect.gen(function* () {
       const { fs, base, bare, commit } = yield* fixture
       for (const task of ['--config', '', 'pnpm:install --mode single']) {
-        const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit, limits, client, prewarmTasks: [task] }))
+        const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit, limits, client, preparation, prewarmTasks: [task] }))
         expect(Exit.isFailure(result)).toBe(true)
         if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain('Exact canonical local source')
       }
@@ -72,7 +76,7 @@ describe('native pool prewarm admission (not warm runtime qualification)', () =>
       const parent = `${bare}/../pool`
       yield* fs.symlink(destination, parent)
       const before = yield* fs.stat(destination)
-      const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit, limits, client, prewarmTasks: [] }))
+      const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit, limits, client, preparation, prewarmTasks: [] }))
       expect(Exit.isFailure(result)).toBe(true)
       if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain('Pool parent is not private and canonical')
       expect((yield* fs.lstat(parent)).type).toBe('SymbolicLink')
@@ -93,7 +97,7 @@ describe('native pool prewarm admission (not warm runtime qualification)', () =>
       }) })
       const ledger = `${base}.state/pool/state.json`
       const before = yield* fs.readFileString(ledger)
-      const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit, limits, client, prewarmTasks: [] }))
+      const result = yield* Effect.exit(warmPoolRoot({ base, bare, commit, limits, client, preparation, prewarmTasks: [] }))
       expect(Exit.isFailure(result)).toBe(true)
       if (Exit.isFailure(result)) expect(Cause.pretty(result.cause)).toContain('retained bytes are unknown')
       expect(yield* fs.readFileString(ledger)).toBe(before)
