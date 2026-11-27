@@ -47,6 +47,7 @@ import {
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
 import { makeStoreLockLayer, StoreLock } from '../store/store-lock.ts'
 import { captureDeletionIdentity, StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
+import type { PoolSlot } from '../store/store-pool-state.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
@@ -193,6 +194,138 @@ if (process.platform === 'linux' && process.env['MEGAREPO_STORE_TEST_NAMESPACE']
     }, 240_000)
   })
 } else {
+  describe('mr store pool snapshot', () => {
+    it.effect('observes an absent store without initializing metadata or locks', () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const parent = yield* fs.makeTempDirectoryScoped()
+        const base = EffectPath.unsafe.absoluteDir(`${parent}/absent-store/`)
+        const result = yield* runMrCommand({
+          cwd: EffectPath.unsafe.absoluteDir(`${parent}/`),
+          command: ['store', 'pool', 'snapshot'],
+          env: { MEGAREPO_STORE: base },
+        })
+        expect(result.exitCode, result.failure).toBe(0)
+        expect(decodeJson(result.stdout)).toEqual({
+          _tag: 'Absent',
+          observations: [],
+          disposition: 'HOLD',
+          authorizesRemoval: false,
+        })
+        expect(yield* fs.exists(base)).toBe(false)
+        expect(yield* fs.readDirectory(parent)).toEqual([])
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+
+    it.effect('emits recorded metadata only, without private tokens or physical authority', () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const parent = yield* fs.makeTempDirectoryScoped()
+        const base = EffectPath.unsafe.absoluteDir(`${parent}/store/`)
+        const directory = `${base}.state/pool`
+        yield* fs.makeDirectory(directory, { recursive: true })
+        // Synthetic ledger records, not claims of existing, qualified or idle roots.
+        const slots: ReadonlyArray<PoolSlot> = [
+          {
+            id: 'ready-record',
+            path: `${base}github.com/acme/widget/pool/ready-record`,
+            bare: `${base}github.com/acme/widget/.bare`,
+            commit: 'a'.repeat(40),
+            identity: 'SECRET-install',
+            charge: 1,
+            generation: 2,
+            state: 'ready',
+            token: '',
+            barrierToken: 'SECRET-ready-barrier',
+            owner: '',
+            reason: 'SECRET-ready-reason',
+          },
+          {
+            id: 'leased-record',
+            path: `${base}github.com/acme/widget/pool/leased-record`,
+            bare: `${base}github.com/acme/widget/.bare`,
+            commit: 'b'.repeat(40),
+            identity: 'SECRET-install',
+            charge: 1,
+            generation: 3,
+            state: 'leased',
+            token: 'SECRET-claim',
+            barrierToken: 'SECRET-leased-barrier',
+            owner: 'metadata-label',
+            reason: 'SECRET-leased-reason',
+          },
+        ]
+        const contents = encodeJson({ version: 1, maxSlots: 2, maxBytes: 100, slots })
+        const path = `${directory}/state.json`
+        yield* fs.writeFileString(path, contents)
+        const result = yield* runMrCommand({
+          cwd: EffectPath.unsafe.absoluteDir(`${parent}/`),
+          command: ['store', 'pool', 'snapshot'],
+          env: { MEGAREPO_STORE: base },
+        })
+        expect(result.exitCode, result.failure).toBe(0)
+        expect(decodeJson(result.stdout)).toMatchObject({
+          _tag: 'Observed',
+          disposition: 'HOLD',
+          authorizesRemoval: false,
+          observations: slots.map((slot) => ({
+            root: slot.path,
+            id: slot.id,
+            generation: slot.generation,
+            recordedState: slot.state,
+            recordedReadyUnclaimed: slot.state === 'ready',
+            ownerLabel: slot.owner,
+            ownerActivity: { _tag: 'Missing' },
+            seatActivity: { _tag: 'Missing' },
+            terminalClaim: { _tag: 'Missing' },
+            terminalBirth: { _tag: 'Missing' },
+            terminalRetarget: { _tag: 'Missing' },
+            executionProvenance: { _tag: 'Missing' },
+            disposition: 'HOLD',
+            authorizesRemoval: false,
+          })),
+        })
+        expect(`${result.stdout}\n${result.stderr}\n${result.failure}`).not.toContain('SECRET')
+        expect(yield* fs.readFileString(path)).toBe(contents)
+        expect(yield* fs.readDirectory(`${base}.state`)).toEqual(['pool'])
+        expect(yield* fs.readDirectory(directory)).toEqual(['state.json'])
+        expect(yield* fs.exists(`${base}.locks`)).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+
+    for (const fixture of ['malformed', 'invalid-accounting', 'directory'] as const) {
+      it.effect(`keeps ${fixture} metadata an unchanged, redacted error`, () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const parent = yield* fs.makeTempDirectoryScoped()
+          const base = EffectPath.unsafe.absoluteDir(`${parent}/store/`)
+          const directory = `${base}.state/pool`
+          const path = `${directory}/state.json`
+          const contents = fixture === 'malformed'
+            ? 'SECRET malformed ledger'
+            : encodeJson({ version: 1, maxSlots: 0, maxBytes: 100, slots: [] })
+          yield* fs.makeDirectory(directory, { recursive: true })
+          if (fixture === 'directory') yield* fs.makeDirectory(path)
+          else yield* fs.writeFileString(path, contents)
+          const result = yield* runMrCommand({
+            cwd: EffectPath.unsafe.absoluteDir(`${parent}/`),
+            command: ['store', 'pool', 'snapshot'],
+            env: { MEGAREPO_STORE: base },
+          })
+          expect(result.exitCode).toBe(1)
+          expect(result.stdout).toBe('')
+          expect(result.failure).toContain('Pool provenance unavailable; removal remains HOLD')
+          expect(`${result.stdout}\n${result.stderr}\n${result.failure}`).not.toContain('SECRET')
+          if (fixture === 'directory') expect((yield* fs.lstat(path)).type).toBe('Directory')
+          else expect(yield* fs.readFileString(path)).toBe(contents)
+          expect(yield* fs.readDirectory(directory)).toEqual(['state.json'])
+          expect(yield* fs.readDirectory(`${base}.state`)).toEqual(['pool'])
+          expect(yield* fs.exists(`${base}.locks`)).toBe(false)
+        }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+      )
+    }
+  })
+
   describe('mr store JSON subprocess output', () => {
     it.effect(
       'emits census-bearing final JSON for ls and gc, never the Initial snapshot',
