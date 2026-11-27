@@ -144,7 +144,16 @@ writeFileSync(fixture, source.slice(0, start) +
 ' "$ROOT/devenv.nix" "$cache_fixture/devenv.nix" "$input" "$task"
   if output="$(DEVENV_TASKS_JSON="${DEVENV_TASKS_JSON:-$ROOT/.devenv/gc/task-config-devenv-config-task-config}" \
     DEVENV_TASK_GRAPH_DEPENDENCIES_ONLY=0 DEVENV_TASK_GRAPH_SCRIPT_CALLS_ONLY=0 \
-    "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$cache_fixture" 2>&1)"
+    "$NODE_BIN" --input-type=module --eval '
+import { spawn } from "node:child_process"
+const [shell, node, script, root] = process.argv.slice(1)
+const child = spawn(shell, ["-c", "\"$1\" \"$2\" \"$3\" 2>&1", "capture", node, script, root])
+let output = ""
+child.stdout.on("data", bytes => { output += bytes }).pause()
+setTimeout(() => child.stdout.resume(), 500) // Exercise a backpressured, merged CI pipe.
+const status = await new Promise(resolve => child.on("close", resolve))
+process.stdout.write(output, () => process.exit(status ?? 1))
+' "$BASH" "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$cache_fixture" 2>&1)"
   then
     echo "FAIL: task graph accepted omitted host cache input $input" >&2
     exit 1
