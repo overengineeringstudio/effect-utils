@@ -463,11 +463,27 @@ test('occurrence identity is secretless, main-only and disconnected before the w
     audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
     tags: 'tag:ci-buck2-occurrence-read',
   })
+  expect(reader.env?.XDG_RUNTIME_DIR).toBe('${{ runner.temp }}/occurrence-reader-runtime')
   const disconnect = steps.findIndex((step) => step.id === 'occurrence-disconnect')
   const writer = steps.findIndex((step) => step.with?.tags === 'tag:ci-buck2-evidence')
   expect(disconnect).toBeGreaterThan(steps.indexOf(reader))
   expect(writer).toBeGreaterThan(disconnect)
-  expect(steps[disconnect]?.run).toBe('sudo tailscale logout')
+  const disconnectScript = steps[disconnect]?.run
+  expect(steps[disconnect]?.env?.XDG_RUNTIME_DIR).toBe(
+    '${{ runner.temp }}/occurrence-reader-runtime',
+  )
+  expect(disconnectScript).toContain('parent_pid=$(cat "$XDG_RUNTIME_DIR/tailscaled.pid")')
+  expect(disconnectScript).toContain('daemon_pid=$(sudo pgrep -P "$parent_pid" -x tailscaled)')
+  expect(disconnectScript).toContain(
+    '[[ "$(sudo readlink "/proc/$daemon_pid/exe")" = /usr/local/bin/tailscaled ]]',
+  )
+  expect(disconnectScript).toContain('sudo tailscale logout')
+  expect(disconnectScript).toContain('sudo kill -TERM "$daemon_pid"')
+  expect(disconnectScript).toContain('for ((attempt=0; attempt<100; attempt++)); do')
+  expect(disconnectScript).toContain('if ! sudo test -e "/proc/$daemon_pid/exe"; then')
+  expect(disconnectScript).toContain('sudo tailscaled --cleanup')
+  expect(disconnectScript).toContain('rm -- "$XDG_RUNTIME_DIR/tailscaled.pid"')
+  expect(disconnectScript).toContain('exit 1')
   expect(steps[writer]?.if).toContain("steps.occurrence-disconnect.outcome != 'failure'")
   const read = steps.find((step) => step.id === 'occurrence-query')!
   expect(read.run).toContain('occurrences --loki-url "$BUCK2_OCCURRENCE_READ_URL"')

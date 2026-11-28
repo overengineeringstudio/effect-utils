@@ -26,13 +26,7 @@ pub fn bounded_text(path: impl AsRef<Path>, limit: usize) -> io::Result<String> 
 }
 
 pub fn mount_id(file: &impl AsRawFd) -> io::Result<u64> {
-    let text = bounded_text(format!("/proc/self/fdinfo/{}", file.as_raw_fd()), 64 * 1024)?;
-    let mut records = text.lines().filter_map(|line| line.strip_prefix("mnt_id:"));
-    let value = records.next().ok_or_else(|| io::Error::other("missing held mount identity"))?.trim();
-    if records.next().is_some() || value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(io::Error::other("ambiguous held mount identity"));
-    }
-    value.parse().map_err(|_| io::Error::other("held mount identity overflow"))
+    linux::mount_id(file)
 }
 
 pub fn pin_magic(path: impl AsRef<Path>) -> io::Result<File> {
@@ -119,5 +113,24 @@ mod tests {
         }
         assert!(!native_filesystem_type(0x794c7630, 1 << 8));
         assert!(!native_filesystem_type(0x65735546, 1 << 8));
+    }
+
+    #[test]
+    fn retained_statx_mount_ids_equal_proc_fdinfo_for_all_resource_classes() {
+        use std::os::fd::AsRawFd;
+        fn check(fd: &impl AsRawFd) {
+            let text = super::bounded_text(format!("/proc/self/fdinfo/{}", fd.as_raw_fd()), 64 * 1024).unwrap();
+            let expected: u64 = text.lines().find_map(|line| line.strip_prefix("mnt_id:"))
+                .unwrap().trim().parse().unwrap();
+            assert_eq!(super::mount_id(fd).unwrap(), expected);
+        }
+        let (socket, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
+        check(&socket);
+        check(&super::linux::internal_shmem_witness().unwrap());
+        check(&super::linux::pin_process(std::process::id()).unwrap());
+        check(&super::pin_magic("/").unwrap());
+        check(&super::pin_magic("/proc/self").unwrap());
+        check(&std::fs::File::open("/proc/self/ns/mnt").unwrap());
+        check(&super::pin_magic("/dev/null").unwrap());
     }
 }

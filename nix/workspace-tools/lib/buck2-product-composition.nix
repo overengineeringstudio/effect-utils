@@ -39,5 +39,5 @@ pkgs.runCommand name
             descriptors = map (p: (import contract).validateDescriptor
               (builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.readFile p.descriptor)))) rows;
           in import plan descriptors' > plan.json
-    ${pkgs.python3}/bin/python ${./buck2-product-compose.py} ${inputs} plan.json "$out"
+    ${pkgs.python3}/bin/python -P ${./buck2-product-compose.py} ${inputs} plan.json "$out"
   ''

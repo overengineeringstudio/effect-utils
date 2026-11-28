@@ -17,6 +17,7 @@ unsafe extern "C" {
     fn fcntl(fd: c_int, command: c_int, ...) -> c_int;
     fn connect(fd: c_int, address: *const UnixAddress, length: u32) -> c_int;
     fn poll(descriptors: *mut PollDescriptor, count: usize, timeout: c_int) -> c_int;
+    fn syscall(number: c_long, ...) -> c_long;
 }
 fn descriptor(result: c_long) -> io::Result<OwnedFd> {
     if result < 0 {
@@ -27,6 +28,34 @@ fn descriptor(result: c_long) -> io::Result<OwnedFd> {
     // SAFETY: the successful descriptor-creating syscall transfers ownership of
     // this fresh descriptor; OwnedFd closes it exactly once.
     Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+#[cfg(target_arch = "x86_64")]
+const SYS_ALIAS_KCMP: c_long = 312;
+#[cfg(target_arch = "aarch64")]
+const SYS_ALIAS_KCMP: c_long = 272;
+
+fn task_comparison(leader: u32, task: u32, kind: c_int, fd: u32) -> io::Result<bool> {
+    if leader == 0 || task == 0 || leader == task || fd > c_int::MAX as u32 {
+        return Err(io::Error::other("invalid leader alias comparison"));
+    }
+    // SAFETY: Linux kcmp reads scalar PID/type/slot arguments only. Callers
+    // retain pidfds and check both generations/liveness around these numeric
+    // lookups. Only exact zero is equality; errors never confer alias proof.
+    let result = unsafe { syscall(SYS_ALIAS_KCMP, c_long::from(leader),
+        c_long::from(task), kind, c_long::from(fd), c_long::from(fd)) };
+    if result < 0 { return Err(io::Error::last_os_error()); }
+    Ok(result == 0)
+}
+
+/// KCMP_FILES compares the real task descriptor-table objects, not their contents.
+pub fn same_task_descriptor_table(leader: u32, task: u32) -> io::Result<bool> {
+    task_comparison(leader, task, 2, 0)
+}
+
+/// KCMP_FILE compares the corresponding numeric slot's open-file descriptions.
+pub fn same_task_descriptor(leader: u32, task: u32, fd: u32) -> io::Result<bool> {
+    task_comparison(leader, task, 0, fd)
 }
 #[repr(C)]
 #[derive(Debug)]
@@ -296,4 +325,64 @@ pub fn connect_evidence(deadline: std::time::Instant) -> io::Result<std::os::uni
         return Err(io::Error::other("evidence endpoint changed or peer is not host root"));
     }
     Ok(stream)
+}
+
+#[cfg(test)]
+mod leader_alias_tests {
+    use super::*;
+
+    #[test]
+    fn invalid_alias_comparisons_never_prove_equality() {
+        for (leader, task, fd) in [(0, 1, 0), (1, 0, 0), (1, 1, 0), (1, 2, u32::MAX)] {
+            assert!(same_task_descriptor(leader, task, fd).is_err());
+        }
+        assert!(same_task_descriptor_table(1, 1).is_err());
+        assert!(same_task_descriptor_table(0, 1).is_err());
+        // Neither a missing task nor an unsupported/denied syscall is equality.
+        assert!(!matches!(same_task_descriptor_table(std::process::id(), i32::MAX as u32), Ok(true)));
+    }
+
+    #[test]
+    #[ignore = "requires privileged Linux kcmp and unshare(CLONE_FILES) qualification lane"]
+    fn actual_table_and_ofd_equality_are_independent_requirements() {
+        use std::sync::mpsc;
+        unsafe extern "C" {
+            fn unshare(flags: c_int) -> c_int;
+            fn dup2(old: c_int, new: c_int) -> c_int;
+        }
+        let original = File::open("/dev/null").unwrap();
+        let number = original.as_raw_fd();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (step_tx, step_rx) = mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let path = std::fs::read_link("/proc/thread-self").unwrap();
+            let tid: u32 = path.file_name().unwrap().to_str().unwrap().parse().unwrap();
+            ready_tx.send(tid).unwrap();
+            step_rx.recv().unwrap();
+            // SAFETY: change only this test thread's table, never namespaces.
+            assert_eq!(unsafe { unshare(0x400) }, 0);
+            ready_tx.send(tid).unwrap();
+            step_rx.recv().unwrap();
+            let reopened = File::open("/dev/null").unwrap();
+            // SAFETY: after unshare, replace only the child test's numeric slot.
+            // Same inode, deliberately distinct OFD; parent retains its own FD.
+            assert_eq!(unsafe { dup2(reopened.as_raw_fd(), number) }, number);
+            ready_tx.send(tid).unwrap();
+            step_rx.recv().unwrap();
+        });
+        let pid = std::process::id();
+        let tid = ready_rx.recv().unwrap();
+        assert!(same_task_descriptor_table(pid, tid).unwrap());
+        assert!(same_task_descriptor(pid, tid, number as u32).unwrap());
+        step_tx.send(()).unwrap();
+        assert_eq!(ready_rx.recv().unwrap(), tid);
+        assert!(!same_task_descriptor_table(pid, tid).unwrap());
+        assert!(same_task_descriptor(pid, tid, number as u32).unwrap());
+        step_tx.send(()).unwrap();
+        assert_eq!(ready_rx.recv().unwrap(), tid);
+        assert!(!same_task_descriptor_table(pid, tid).unwrap());
+        assert!(!same_task_descriptor(pid, tid, number as u32).unwrap());
+        step_tx.send(()).unwrap();
+        thread.join().unwrap();
+    }
 }

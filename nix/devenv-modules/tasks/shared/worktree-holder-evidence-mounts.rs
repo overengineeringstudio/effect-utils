@@ -124,27 +124,81 @@ pub fn device_pair(device: u64) -> (u32, u32) {
     (major as u32, minor as u32)
 }
 
+pub fn device_number(major: u32, minor: u32) -> u64 {
+    let (major, minor) = (u64::from(major), u64::from(minor));
+    ((major & 0xfff) << 8) | ((major & 0xffff_f000) << 32)
+        | (minor & 0xff) | ((minor & 0xffff_ff00) << 12)
+}
+
+enum RetainedNamespace {
+    Owned(super::namespace::NamespaceSnapshot),
+    Shared(std::rc::Rc<super::namespace::CachedNamespace>),
+}
+
+impl std::ops::Deref for RetainedNamespace {
+    type Target = super::namespace::NamespaceSnapshot;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Owned(snapshot) => snapshot,
+            Self::Shared(snapshot) => snapshot.snapshot(),
+        }
+    }
+}
+
+impl RetainedNamespace {
+    fn recheck(&self, deadline: std::time::Instant) -> std::io::Result<()> {
+        match self {
+            Self::Owned(snapshot) => snapshot.recheck(deadline),
+            Self::Shared(snapshot) => snapshot.recheck(deadline),
+        }
+    }
+}
+
 /// One bounded task view reused across that task's references. The owner must
 /// recheck before switching tasks and before completing the capture.
+/// A jailed task still exposes the complete kernel namespace, but its root
+/// cannot silently redefine that namespace's native filesystem coordinates.
 pub struct NativeView {
     task: std::fs::File,
     root: std::fs::File,
-    snapshot: String,
-    graph: BTreeMap<u64, Mount>,
+    namespace: RetainedNamespace,
+    full_root: bool,
 }
 
 impl NativeView {
     pub fn capture(task: &std::fs::File, deadline: std::time::Instant) -> std::io::Result<Self> {
+        Self::capture_with_cache(task, None, deadline)
+    }
+
+    pub fn capture_cached(task: &std::fs::File, cache: &super::namespace::NamespaceCache,
+        deadline: std::time::Instant) -> std::io::Result<Self>
+    {
+        Self::capture_with_cache(task, Some(cache), deadline)
+    }
+
+    fn capture_with_cache(task: &std::fs::File, cache: Option<&super::namespace::NamespaceCache>,
+        deadline: std::time::Instant) -> std::io::Result<Self>
+    {
         use std::os::fd::AsRawFd;
         use super::objects;
         if std::time::Instant::now() >= deadline {
             return Err(std::io::Error::other("native mount snapshot deadline"));
         }
         let base = format!("/proc/self/fd/{}", task.as_raw_fd());
-        let snapshot = objects::bounded_text(format!("{base}/mountinfo"), 1_048_576)?;
-        let graph = parse(&snapshot).map_err(std::io::Error::other)?;
+        let namespace = std::fs::File::open(format!("{base}/ns/mnt"))?;
+        let namespace = match cache {
+            Some(cache) => RetainedNamespace::Shared(cache.capture(namespace, deadline)?),
+            None => RetainedNamespace::Owned(super::namespace::NamespaceSnapshot::capture(namespace, deadline)?),
+        };
         let root = objects::pin_magic(format!("{base}/root"))?;
-        Ok(Self { task: task.try_clone()?, root, snapshot, graph })
+        if !namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)? {
+            return Err(std::io::Error::other("native task mount namespace changed"));
+        }
+        let full_root = namespace.records().get(&objects::mount_id(&root)?)
+            .is_some_and(|mount| mount.point == std::path::Path::new("/"))
+            && std::fs::read_link(format!("/proc/self/fd/{}", root.as_raw_fd()))?
+                == std::path::Path::new("/");
+        Ok(Self { task: task.try_clone()?, root, namespace, full_root })
     }
 
     pub fn is_task(&self, task: &std::fs::File) -> std::io::Result<bool> {
@@ -159,34 +213,71 @@ impl NativeView {
         let base = format!("/proc/self/fd/{}", self.task.as_raw_fd());
         let root = objects::pin_magic(format!("{base}/root"))?;
         if std::time::Instant::now() >= deadline
-            || objects::bounded_text(format!("{base}/mountinfo"), 1_048_576)? != self.snapshot
+            || !self.namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)?
             || objects::identity(&root)? != objects::identity(&self.root)?
             || objects::mount_id(&root)? != objects::mount_id(&self.root)?
+            || self.full_root && std::fs::read_link(format!("/proc/self/fd/{}", self.root.as_raw_fd()))?
+                != std::path::Path::new("/")
         { return Err(std::io::Error::other("native task mount view changed")); }
+        self.namespace.recheck(deadline)?;
+        if !self.namespace.same_namespace(&std::fs::File::open(format!("{base}/ns/mnt"))?)? {
+            return Err(std::io::Error::other("native task mount namespace changed"));
+        }
         Ok(())
     }
 
-    pub fn mounts(&self) -> impl Iterator<Item = &Mount> { self.graph.values() }
+    /// Reclose the pinned namespace, without reopening a departed task's proc entries.
+    pub fn recheck_retained(&self, deadline: std::time::Instant) -> std::io::Result<()> {
+        self.namespace.recheck(deadline)
+    }
 
-    pub fn pin_mount_root(&self, mount: &Mount, deadline: std::time::Instant)
+    pub fn mounts(&self) -> impl Iterator<Item = &super::namespace::NamespaceMount> {
+        self.namespace.records().values()
+    }
+
+    pub fn namespace_id(&self) -> u64 { self.namespace.id() }
+
+    pub fn covered_mount(&self, id: u64, deadline: std::time::Instant) -> std::io::Result<bool> {
+        self.namespace.covered_mount(id, deadline)
+    }
+
+    pub fn pin_mount_root(&self, mount: &super::namespace::NamespaceMount, deadline: std::time::Instant)
         -> std::io::Result<NativeLocation>
     {
         use std::io;
         use super::{linux, objects};
+        if !self.full_root { return Err(io::Error::other("mounted root changed or shadowed")); }
+        let root = mount.root.path()?;
         if std::time::Instant::now() >= deadline
-            || !canonical(&mount.root) || !canonical(&mount.point)
+            || !canonical(root) || !canonical(&mount.point)
         { return Err(io::Error::other("unobservable mounted root")); }
         let relative = mount.point.strip_prefix("/").map_err(io::Error::other)?;
         let point = objects::pin_beneath(&self.root,
             if relative.as_os_str().is_empty() { std::ffi::OsStr::new(".") }
             else { relative.as_os_str() })?;
         let device = objects::identity(&point)?.0;
-        if !objects::native_filesystem(&point)?
+        let filesystem = linux::filesystem_type(&point)?;
+        if !objects::native_filesystem_type(filesystem, device) || filesystem != mount.filesystem
             || objects::mount_id(&point)? != mount.id
             || device_pair(device) != (mount.device_major, mount.device_minor)
         { return Err(io::Error::other("mounted root changed or shadowed")); }
-        Ok(NativeLocation { device, filesystem: linux::filesystem_type(&point)?,
-            path: mount.root.clone(), _mountpoint: point })
+        Ok(NativeLocation { device, filesystem,
+            path: root.clone(), _mountpoint: point })
+    }
+
+    /// A task can retain an exe/FD from before unshare(CLONE_NEWNS), whose
+    /// original mount is absent from the cloned namespace. Resolve only that
+    /// missing mount through the retained enrollment view, with its ordinary
+    /// exact mount/inode reopen proof. A jailed root or any listed-but-hidden
+    /// mount still takes the ordinary task-view failure path.
+    pub fn location_with_enrolled(&self, file: &std::fs::File, enrolled: &Self,
+        deadline: std::time::Instant) -> std::io::Result<NativeLocation>
+    {
+        if self.full_root && !self.namespace.records().contains_key(&super::objects::mount_id(file)?) {
+            enrolled.location(file, deadline)
+        } else {
+            self.location(file, deadline)
+        }
     }
 
     pub fn location(&self, file: &std::fs::File,
@@ -196,17 +287,23 @@ impl NativeView {
     use std::io;
     use std::os::fd::AsRawFd;
     use super::{linux, objects};
-    let unknown = || io::Error::other("native mount backing unobservable or changed");
+    let unknown = |_stage: &'static str| {
+        #[cfg(holder_owned_vm_class_diagnostics)]
+        eprintln!("worktree-holder-native-location-owned-vm reason={_stage}");
+        io::Error::other("native mount backing unobservable or changed")
+    };
+    if !self.full_root { return Err(unknown("partial-task-root")); }
     if std::time::Instant::now() >= deadline || !objects::native_filesystem(file)? {
-        return Err(unknown());
+        return Err(unknown("deadline-or-nonnative-filesystem"));
     }
     let held_mount = objects::mount_id(file)?;
-    let mount = self.graph.get(&held_mount).ok_or_else(unknown)?;
-    if !canonical(&mount.root) || !canonical(&mount.point) {
-        return Err(unknown());
+    let mount = self.namespace.records().get(&held_mount).ok_or_else(|| unknown("held-mount-not-listed"))?;
+    let root = mount.root.path()?;
+    if !canonical(root) || !canonical(&mount.point) {
+        return Err(unknown("noncanonical-mount-coordinate"));
     }
     let task_root = &self.root;
-    let point_relative = mount.point.strip_prefix("/").map_err(|_| unknown())?;
+    let point_relative = mount.point.strip_prefix("/").map_err(|_| unknown("mount-point-relative"))?;
     let point = objects::pin_beneath(task_root,
         if point_relative.as_os_str().is_empty() { std::ffi::OsStr::new(".") }
         else { point_relative.as_os_str() })?;
@@ -216,7 +313,7 @@ impl NativeView {
         || device_pair(held_identity.0) != (mount.device_major, mount.device_minor)
         || linux::filesystem_type(&point)? != linux::filesystem_type(file)?
     {
-        return Err(unknown());
+        return Err(unknown("mount-point-identity"));
     }
     let spelling = fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))?;
     let root_spelling = fs::read_link(format!("/proc/self/fd/{}", task_root.as_raw_fd()))?;
@@ -229,7 +326,7 @@ impl NativeView {
     for spelling in spellings {
         if !canonical(&spelling) { continue; }
         let Ok(relative) = spelling.strip_prefix(&mount.point) else { continue };
-        let root_relative = spelling.strip_prefix("/").map_err(|_| unknown())?;
+        let root_relative = spelling.strip_prefix("/").map_err(|_| unknown("held-spelling-relative"))?;
         let reopened = match objects::pin_beneath(task_root,
             if root_relative.as_os_str().is_empty() { std::ffi::OsStr::new(".") }
             else { root_relative.as_os_str() })
@@ -239,11 +336,11 @@ impl NativeView {
         };
         if objects::identity(&reopened)? != held_identity
             || objects::mount_id(&reopened)? != held_mount { continue; }
-        let path = if relative.as_os_str().is_empty() { mount.root.clone() }
-            else { mount.root.join(relative) };
-        if !canonical(&path) { return Err(unknown()); }
+        let path = if relative.as_os_str().is_empty() { root.clone() }
+            else { root.join(relative) };
+        if !canonical(&path) { return Err(unknown("invalid-object-coordinate")); }
         if coordinate.as_ref().is_some_and(|previous| previous != &path) {
-            return Err(unknown());
+            return Err(unknown("ambiguous-object-coordinate"));
         }
         coordinate = Some(path);
     }
@@ -253,11 +350,11 @@ impl NativeView {
         || objects::mount_id(file)? != held_mount
         || fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))? != spelling
     {
-        return Err(unknown());
+        return Err(unknown("held-view-recheck"));
     }
     Ok(NativeLocation { device: held_identity.0,
         filesystem: linux::filesystem_type(file)?,
-        path: coordinate.ok_or_else(unknown)?, _mountpoint: point })
+        path: coordinate.ok_or_else(|| unknown("no-reopenable-coordinate"))?, _mountpoint: point })
 }
 }
 
@@ -283,6 +380,11 @@ mod tests {
         assert!(canonical(std::path::Path::new("/pool/a b")));
         assert_eq!(device_pair(0x801), (8, 1));
         assert_eq!(device_pair(0x1000_0000), (0, 65536));
+        for major in [0, 1, 0xfff, 0x1000, u32::MAX] {
+            for minor in [0, 1, 0xff, 0x100, u32::MAX] {
+                assert_eq!(device_pair(device_number(major, minor)), (major, minor));
+            }
+        }
     }
 
     #[test]

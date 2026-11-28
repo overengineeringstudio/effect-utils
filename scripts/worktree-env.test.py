@@ -32,6 +32,29 @@ class Publication(unittest.TestCase):
         os.chdir(self.previous)
         self.scratch.cleanup()
 
+    def test_store_launcher_uses_safe_path_and_preserves_stale_guard(self):
+        observer = self.root / ".worktree-tools/observer"
+        observer.mkdir(parents=True)
+        receipt = observer / "receipt.json"
+        (observer / "sitecustomize.py").write_text(
+            "import json, os, sys\n"
+            "if sys.argv[0].endswith('worktree-env.py'):\n"
+            "    with open(os.environ['SAFE_PATH_RECEIPT'], 'w') as output:\n"
+            "        json.dump({'safe_path': sys.flags.safe_path, 'script': sys.argv[0]}, output)\n"
+            "    if not sys.flags.safe_path:\n"
+            "        os._exit(91)\n"
+        )
+        result = subprocess.run(
+            [os.environ["WORKTREE_TEST_LAUNCHER"], "--help"],
+            env=dict(os.environ, PYTHONPATH=str(observer), SAFE_PATH_RECEIPT=str(receipt)),
+            text=True, capture_output=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Missing/stale worktree tools", result.stderr)
+        observation = json.loads(receipt.read_text())
+        self.assertTrue(observation["safe_path"])
+        self.assertEqual(Path(observation["script"]).parent, Path("/nix/store"))
+
     def test_staged_and_unstaged_identity(self):
         before = module.identity(self.root)
         (self.root / "source").write_text("after\n")
