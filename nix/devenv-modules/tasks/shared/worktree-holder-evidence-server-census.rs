@@ -139,7 +139,7 @@ fn diagnostic_cwd_maps(process: &ProcessScope, candidates: &CandidateSet,
             cwd.merge(NativeStatus::Unknown); maps.merge(NativeStatus::Unknown); break;
         }
         let checked: io::Result<(NativeStatus, NativeStatus)> = (|| {
-            if process.task_departed(index, deadline)? { return Ok((NativeStatus::Negative, NativeStatus::Negative)); }
+            if !process.task_present(index, deadline)? { return Ok((NativeStatus::Negative, NativeStatus::Negative)); }
             task.recheck(deadline)?;
             let owned;
             let coverage = match resources.and_then(|resources| resources.get(index))
@@ -397,7 +397,7 @@ impl References {
         reference_count: &mut usize, aliases: &mut AliasSeal, object_count: &Cell<usize>,
         deadline: Instant) -> io::Result<Option<Self>>
     {
-        if process.task_departed(index, deadline)? { return Ok(None); }
+        if !process.task_present(index, deadline)? { return Ok(None); }
         let task = &process.tasks[index];
         let pid = &process.identity;
         let mut closing_mounts = std::collections::BTreeMap::new();
@@ -588,7 +588,7 @@ impl ObservedProcess {
             return Err(io::Error::other("unobserved task resources"));
         }
         for (index, task) in self.scope.tasks.iter().enumerate() {
-            if self.scope.task_departed(index, deadline)? { continue; }
+            if !self.scope.task_present(index, deadline)? { continue; }
             let references = self.references[index].as_ref()
                 .ok_or_else(|| io::Error::other("live task lacks resources"))?;
             let checked: io::Result<()> = (|| {
@@ -615,7 +615,7 @@ impl ObservedProcess {
         let ordinary = self.references.iter().enumerate().filter_map(|(index, references)|
             match references.as_ref().map(|references| &references.pins) {
                 Some(Pins::Ordinary(pins)) => Some((index, pins)), _ => None,
-            }).collect::<Vec<_>>();
+            });
         let mut prove = |task: &TaskScope, held: &Held, kind: ResourceKind, fresh: bool| {
             if fresh { charge_objects(object_count, 1)?; }
             let index = self.scope.tasks.binary_search_by_key(&task.identity.pid, |task| task.identity.pid)
@@ -628,7 +628,7 @@ impl ObservedProcess {
             };
             outcome.require_native_negative()
         };
-        self.scope.finish_resource_phase(&ordinary, deadline, Some(&mut prove))
+        self.scope.finish_resource_phase(ordinary, deadline, Some(&mut prove))
     }
 
     fn recheck_mounts(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
@@ -636,7 +636,7 @@ impl ObservedProcess {
         for (index, references) in self.references.iter().enumerate() {
             let Some(mounted) = references.as_ref().and_then(|references| references.mounted.as_ref())
                 else { continue; };
-            if !self.scope.task_departed(index, deadline)? {
+            if self.scope.task_present(index, deadline)? {
                 match mounted.recheck(candidates, deadline) {
                     Ok(()) => continue,
                     Err(error) if error.kind() == io::ErrorKind::NotFound

@@ -426,6 +426,8 @@ fn proven_task_departure(leader: &Process, pidfd: &OwnedFd, scope: &File,
     if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
         return Err(io::Error::other("departure proof leader generation changed"));
     }
+    #[cfg(test)]
+    descriptor_capture_step(DescriptorCaptureStage::TaskMembership(leader.pid));
     let absent = numbers(format!("{}/task", scope_path(scope)), deadline)?.binary_search(&tid).is_err();
     if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
         return Err(io::Error::other("departure proof leader did not close"));
@@ -481,6 +483,9 @@ impl ProcessScope {
             for (class_index, class) in captured.file_classes.iter().enumerate() {
                 if !comparison_available { break; }
                 deadline_check(deadline)?;
+                #[cfg(test)]
+                descriptor_capture_step(DescriptorCaptureStage::FilesComparison(
+                    captured.tasks[class.representative].identity.pid, captured.tasks[index].identity.pid));
                 match linux::same_files(captured.tasks[class.representative].identity.pid,
                     captured.tasks[index].identity.pid) {
                     Ok(true) => { shared = Some(class_index); break; }
@@ -511,6 +516,9 @@ impl ProcessScope {
         for index in &class.members {
             if *index == class.representative { continue; }
             deadline_check(deadline)?;
+            #[cfg(test)]
+            descriptor_capture_step(DescriptorCaptureStage::FilesComparison(
+                representative.identity.pid, self.tasks[*index].identity.pid));
             match linux::same_files(representative.identity.pid, self.tasks[*index].identity.pid) {
                 Ok(true) => (),
                 Err(error) if error.raw_os_error() == Some(3)
@@ -567,31 +575,33 @@ impl ProcessScope {
 
     /// Close each physical class once after every logical task context ran.
     /// New/failed snapshots still qualify in *every* member's native view.
-    pub fn finish_resource_phase(&self, resources: &[(usize, &References)], deadline: Instant,
+    pub fn finish_resource_phase<'a>(&self,
+        resources: impl Iterator<Item = (usize, &'a References)> + Clone, deadline: Instant,
         mut proof: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
         let _phase = self.ensure_resource_phase(deadline)?;
-        self.recheck(deadline)?;
+        if _phase.is_some() { self.recheck(deadline)?; }
+        else { self.recheck_task_scopes(deadline)?; }
         let mut seen = BTreeSet::new();
-        for (index, references) in resources {
-            let class = self.task_file_class[*index];
-            if !self.task_present(*index, deadline)? || !seen.insert(class) { continue; }
+        for (index, references) in resources.clone() {
+            let class = self.task_file_class[index];
+            if !self.task_present(index, deadline)? || !seen.insert(class) { continue; }
             references.table.sealed_epoch.set(0);
             match proof.as_mut() {
-                Some(proof) => self.recheck_resources(*index, references, deadline, Some(&mut **proof))?,
-                None => self.recheck_resources(*index, references, deadline, None)?,
+                Some(proof) => self.recheck_resources(index, references, deadline, Some(&mut **proof))?,
+                None => self.recheck_resources(index, references, deadline, None)?,
             }
         }
-        for (index, references) in resources {
-            if !self.task_present(*index, deadline)? { continue; }
-            references.prove_repaired_descriptors(&self.tasks[*index], &mut proof)?;
+        for (index, references) in resources.clone() {
+            if !self.task_present(index, deadline)? { continue; }
+            references.prove_repaired_descriptors(&self.tasks[index], &mut proof)?;
         }
-        self.recheck(deadline)?;
+        self.recheck_task_scopes(deadline)?;
         for (index, references) in resources {
-            if !self.task_present(*index, deadline)? || !seen.remove(&self.task_file_class[*index]) { continue; }
-            match check_descriptors(&references.table.latest(), &self.tasks[*index], deadline) {
+            if !self.task_present(index, deadline)? || !seen.remove(&self.task_file_class[index]) { continue; }
+            match check_descriptors(&references.table.latest(), &self.tasks[index], deadline) {
                 Ok(()) => (),
                 Err(error) if matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => {
-                    self.close_missing_descriptors(*index, references, deadline, &mut proof)
+                    self.close_missing_descriptors(index, references, deadline, &mut proof)
                         .map_err(descriptor_proof_error)?;
                 }
                 Err(error) => return Err(error),
@@ -607,7 +617,6 @@ impl ProcessScope {
     fn finish_task_resource_phase(&self, index: usize, references: &References,
         deadline: Instant, mut proof: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
         let finished = (|| {
-            self.recheck_task_file_class(index, deadline)?;
             if !self.task_present(index, deadline)? { return Ok(()); }
             references.table.sealed_epoch.set(0);
             if let Err(error) = references.recheck_descriptors(&self.tasks[index], deadline,
@@ -630,7 +639,9 @@ impl ProcessScope {
 
     pub fn descriptor_class_count(&self) -> usize { self.file_classes.len() }
 
-    fn task_present(&self, index: usize, deadline: Instant) -> io::Result<bool> {
+    /// An original live generation is not departed. Only an actual missing task
+    /// needs the complete, retained-leader task-list departure proof.
+    pub fn task_present(&self, index: usize, deadline: Instant) -> io::Result<bool> {
         deadline_check(deadline)?;
         let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
         match process::process(task.identity.pid) {
@@ -682,6 +693,8 @@ impl ProcessScope {
     }
 
     fn recheck_membership(&self, deadline: Instant) -> io::Result<()> {
+        #[cfg(test)]
+        descriptor_capture_step(DescriptorCaptureStage::TaskMembership(self.identity.pid));
         let current = numbers(format!("{}/task", scope_path(&self.scope)), deadline)?;
         for tid in current {
             if self.tasks.binary_search_by_key(&tid, |task| task.identity.pid).is_err()
@@ -702,8 +715,9 @@ impl ProcessScope {
     }
 
     /// Reclose task membership, generations, all UID fields and namespaces.
-    /// A terminated leader is not proof that a live sibling has no resources.
-    pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+    /// A batch retains every existing group seal, but need not repeat physical
+    /// files-class comparisons between its admission and final class closure.
+    fn recheck_task_scopes(&self, deadline: Instant) -> io::Result<()> {
         deadline_check(deadline)?;
         let pid = self.identity.pid;
         if !process::process(pid)?.same_identity(&self.identity) {
@@ -711,11 +725,17 @@ impl ProcessScope {
         }
         self.recheck_membership(deadline)?;
         self.recheck_membership(deadline)?;
-        self.recheck_file_classes(deadline)?;
         if !process::process(pid)?.same_identity(&self.identity) {
             return Err(io::Error::other("process changed during closure"));
         }
         Ok(())
+    }
+
+    /// Public complete-process closure always re-proves every files class.
+    pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        self.recheck_task_scopes(deadline)?;
+        self.recheck_file_classes(deadline)?;
+        self.recheck_leader(deadline).map(|_| ())
     }
 
     /// Actual pidfd readiness is exposed separately: terminal processes may
@@ -742,7 +762,7 @@ impl ProcessScope {
         self.recheck(deadline)?;
         let mut terminal = !self.tasks.is_empty();
         for (index, task) in self.tasks.iter().enumerate() {
-            if self.task_departed(index, deadline)? { continue; }
+            if !self.task_present(index, deadline)? { continue; }
             terminal &= matches!(process::process(task.identity.pid)?.state, b'Z' | b'X');
         }
         Ok(terminal)
@@ -848,7 +868,7 @@ impl ProcessScope {
         for class in &self.file_classes {
             if let Some(table) = class.table.borrow().as_ref() {
                 for index in &class.members {
-                    if !self.task_departed(*index, deadline)? {
+                    if self.task_present(*index, deadline)? {
                         table.prove(&self.tasks[*index], repair, false)?;
                     }
                 }
@@ -943,6 +963,8 @@ impl TaskScope {
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
             || process::uids(self.identity.pid)? != self.uids
         { return Err(io::Error::other("task generation or credentials did not close")); }
+        #[cfg(test)]
+        descriptor_capture_step(DescriptorCaptureStage::TaskValidated(self.identity.pid));
         Ok(())
     }
 }
@@ -1177,6 +1199,7 @@ mod descriptor_failure_tests {
 #[cfg(test)]
 pub(crate) enum DescriptorCaptureStage {
     BeforePin(u32, u32), Missing(u32, u32), Complete(u32), BeforeSeal(u32),
+    FilesComparison(u32, u32), TaskMembership(u32), TaskValidated(u32),
 }
 #[cfg(test)]
 thread_local! {

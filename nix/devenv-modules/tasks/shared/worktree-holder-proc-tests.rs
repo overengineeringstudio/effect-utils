@@ -652,6 +652,7 @@ fn actual_missing_descriptor_worker() {
     let number = slot.as_ref().unwrap().as_raw_fd();
     let mut duplicate = None;
     let mut private_worker = None;
+    let mut shared_workers = Vec::new();
     let mut replacement = 0u32;
     println!("MISSING-FD-ACK {number}");
     std::io::stdout().flush().unwrap();
@@ -685,6 +686,19 @@ fn actual_missing_descriptor_worker() {
                 receive.recv().unwrap();
                 private_worker = Some((stop, thread));
             }
+            "large-shared" => {
+                assert!(shared_workers.is_empty());
+                for _ in 0..128 {
+                    let (ready, receive) = std::sync::mpsc::sync_channel(0);
+                    let (stop, wait) = std::sync::mpsc::channel();
+                    let thread = std::thread::spawn(move || {
+                        ready.send(()).unwrap();
+                        wait.recv().unwrap();
+                    });
+                    receive.recv().unwrap();
+                    shared_workers.push((stop, thread));
+                }
+            }
             "mutate-class" => {
                 unsafe extern "C" { fn unshare(flags: i32) -> i32; }
                 // SAFETY: split only this owned worker's descriptor context.
@@ -717,6 +731,10 @@ fn actual_missing_descriptor_worker() {
         println!("MISSING-FD-ACK {number}");
         std::io::stdout().flush().unwrap();
     }
+    for (stop, thread) in shared_workers {
+        let _ = stop.send(());
+        thread.join().unwrap();
+    }
     if let Some((stop, thread)) = private_worker {
         let _ = stop.send(());
         thread.join().unwrap();
@@ -726,7 +744,7 @@ fn actual_missing_descriptor_worker() {
 #[derive(Clone, Copy)]
 enum MissingFdCase {
     Closed, CurrentDuplicate, RetainedDuplicate, CandidateReuse, OpaqueReuse, Unstable,
-    SharedClass, PrivateClass, ClassMutation, StablePairFallback,
+    SharedClass, LinearSharedClass, PrivateClass, ClassMutation, StablePairFallback,
 }
 
 fn missing_fd_case(case: MissingFdCase) {
@@ -788,6 +806,7 @@ fn missing_fd_case(case: MissingFdCase) {
         worker.borrow_mut().command("duplicate");
     }
     if matches!(case, MissingFdCase::PrivateClass) { worker.borrow_mut().command("private"); }
+    if matches!(case, MissingFdCase::LinearSharedClass) { worker.borrow_mut().command("large-shared"); }
     let pid = worker.borrow().child.id();
     let deadline = Instant::now() + Duration::from_secs(30);
     let process = scopes::ProcessScope::discover(pid, deadline).unwrap();
@@ -796,19 +815,35 @@ fn missing_fd_case(case: MissingFdCase) {
     let captures = Rc::new(std::cell::Cell::new(0));
     let hook_captures = Rc::clone(&captures);
     let task_ids = process.tasks.iter().map(|task| task.identity.pid).collect::<std::collections::BTreeSet<_>>();
+    let work = Rc::new(RefCell::new([0usize; 3]));
+    let hook_work = Rc::clone(&work);
+    let authenticated = Rc::new(RefCell::new(std::collections::BTreeSet::new()));
+    let hook_authenticated = Rc::clone(&authenticated);
     let hook_worker = Rc::clone(&worker);
     let hook_races = Rc::clone(&races);
     scopes::descriptor_capture_hook(Some(Box::new(move |stage| {
         match stage {
-            scopes::DescriptorCaptureStage::BeforeSeal(tid)
-                if tid == pid && matches!(case, MissingFdCase::StablePairFallback) && hook_races.get() < 6 => {
-                hook_worker.borrow_mut().command("replace");
-                hook_races.set(hook_races.get() + 1);
+            scopes::DescriptorCaptureStage::BeforeSeal(tid) if task_ids.contains(&tid) => {
+                hook_work.borrow_mut()[1] += 1;
+                if tid == pid && matches!(case, MissingFdCase::StablePairFallback) && hook_races.get() < 6 {
+                    hook_worker.borrow_mut().command("replace");
+                    hook_races.set(hook_races.get() + 1);
+                }
+            }
+            scopes::DescriptorCaptureStage::FilesComparison(left, right) => {
+                assert!(task_ids.contains(&left) && task_ids.contains(&right));
+                hook_work.borrow_mut()[0] += 1;
+            }
+            scopes::DescriptorCaptureStage::TaskMembership(tgid) if tgid == pid => {
+                hook_work.borrow_mut()[2] += 1;
+            }
+            scopes::DescriptorCaptureStage::TaskValidated(tid) if task_ids.contains(&tid) => {
+                hook_authenticated.borrow_mut().insert(tid);
             }
             scopes::DescriptorCaptureStage::BeforePin(tid, fd)
                 if tid == pid && fd == slot
-                    && !matches!(case, MissingFdCase::SharedClass | MissingFdCase::PrivateClass
-                        | MissingFdCase::ClassMutation | MissingFdCase::StablePairFallback)
+                    && !matches!(case, MissingFdCase::SharedClass | MissingFdCase::LinearSharedClass
+                        | MissingFdCase::PrivateClass | MissingFdCase::ClassMutation | MissingFdCase::StablePairFallback)
                     && (hook_races.get() == 0 || matches!(case, MissingFdCase::Unstable)) => {
                 hook_worker.borrow_mut().command("close");
                 hook_races.set(hook_races.get() + 1);
@@ -847,7 +882,8 @@ fn missing_fd_case(case: MissingFdCase) {
         }
         Ok(())
     };
-    if matches!(case, MissingFdCase::SharedClass | MissingFdCase::PrivateClass | MissingFdCase::ClassMutation) {
+    if matches!(case, MissingFdCase::SharedClass | MissingFdCase::LinearSharedClass
+        | MissingFdCase::PrivateClass | MissingFdCase::ClassMutation) {
         let phase = process.resource_phase(deadline).unwrap();
         let mut resources = Vec::new();
         for index in 0..process.tasks.len() {
@@ -856,7 +892,7 @@ fn missing_fd_case(case: MissingFdCase) {
             }
         }
         match case {
-            MissingFdCase::SharedClass => {
+            MissingFdCase::SharedClass | MissingFdCase::LinearSharedClass => {
                 assert_eq!(process.descriptor_class_count(), 1, "requires actual KCMP_FILES authority");
                 assert_eq!(captures.get(), 1, "one physical capture, not one per TID");
                 assert_eq!(resources.len(), process.tasks.len());
@@ -872,6 +908,15 @@ fn missing_fd_case(case: MissingFdCase) {
                     }
                 }
                 assert_eq!(covered.borrow().len(), process.tasks.len());
+                if matches!(case, MissingFdCase::LinearSharedClass) {
+                    assert!(process.tasks.len() >= 128, "owned ready thread group, not a timing fixture");
+                    for (index, references) in &resources {
+                        assert!(process.task_present(*index, deadline).unwrap());
+                        process.recheck_resources(*index, references, deadline, Some(&mut negative)).unwrap();
+                        assert!(process.task_present(*index, deadline).unwrap());
+                        process.recheck_resources(*index, references, deadline, Some(&mut negative)).unwrap();
+                    }
+                }
             }
             MissingFdCase::PrivateClass => {
                 assert!(process.descriptor_class_count() >= 2);
@@ -888,8 +933,17 @@ fn missing_fd_case(case: MissingFdCase) {
             }
             _ => unreachable!(),
         }
-        let refs = resources.iter().map(|(index, references)| (*index, references)).collect::<Vec<_>>();
-        process.finish_resource_phase(&refs, deadline, Some(&mut negative)).unwrap();
+        let refs = resources.iter().map(|(index, references)| (*index, references));
+        process.finish_resource_phase(refs, deadline, Some(&mut negative)).unwrap();
+        if matches!(case, MissingFdCase::LinearSharedClass) {
+            let counted = *work.borrow();
+            assert_eq!(counted[0], 2 * (process.tasks.len() - 1),
+                "one native class admission and one final membership seal per nonrepresentative");
+            assert_eq!(counted[1], 3, "physical FD pair work must not scale with logical TIDs");
+            assert_eq!(counted[2], 8, "retain all four complete group boundaries, not one enumeration per live TID");
+            assert_eq!(authenticated.borrow().len(), process.tasks.len(),
+                "all actual task generations, credentials and native namespaces remain authenticated");
+        }
         drop(phase); drop(hook); return;
     }
     let result = process.collect_resources(index, deadline, Some(&mut negative));
@@ -923,7 +977,8 @@ fn missing_fd_case(case: MissingFdCase) {
             assert!(process.tasks.iter().all(|task| covered.borrow().contains(&task.identity.pid)));
             process.recheck_resources(index, &references, deadline, Some(&mut negative)).unwrap();
         }
-        MissingFdCase::SharedClass | MissingFdCase::PrivateClass | MissingFdCase::ClassMutation => unreachable!(),
+        MissingFdCase::SharedClass | MissingFdCase::LinearSharedClass | MissingFdCase::PrivateClass
+            | MissingFdCase::ClassMutation => unreachable!(),
     }
 }
 
@@ -970,4 +1025,10 @@ fn actual_private_files_class_keeps_candidate_and_membership_mutation_holds() {
 #[ignore = "requires isolated root Linux KCMP_FILES and task-resource visibility"]
 fn actual_process_stable_pair_exhaustion_uses_closing_witness() {
     missing_fd_case(MissingFdCase::StablePairFallback);
+}
+
+#[test]
+#[ignore = "requires isolated root Linux KCMP_FILES and owned large task-resource visibility"]
+fn actual_large_shared_group_phase_proof_work_is_linear() {
+    missing_fd_case(MissingFdCase::LinearSharedClass);
 }

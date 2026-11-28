@@ -226,6 +226,12 @@ UID, resource, sibling namespace or final seal is omitted. The ignored real
 `tests::actual_large_group_task_resources_require_final_sibling_closure` fixture
 collects/rechecks 64 owned target threads, then requires a sibling namespace
 change and a newly born task to veto complete-group closure.
+Live-task loops use positive presence of the original task generation, not a
+complete sibling-directory departure scan for every live TID. Only an actual
+missing-task read enters the original retained-leader absence proof. Reused
+generations, denied/opaque reads and unprovable absence HOLD. All complete group
+membership, credentials, namespace and generation seals remain at their existing
+boundaries; positive presence alone never authorizes a negative process result.
 
 Descriptor stability belongs to the retained process, not each logical TID.
 Native `KCMP_FILES` equality partitions its actual descriptor-table contexts;
@@ -236,6 +242,13 @@ tables are captured/sealed by class, with a final class seal after all logical
 task views ran. Task generations/credentials and class membership are re-proven
 at collection and every final closure; a changed or unprovable shared class HOLDs.
 Unavailable initial kernel proof means independent capture, never assumed sharing.
+Within an explicit batch, native files-class comparisons run at admission before
+the first class use and at final physical closure. Intermediate complete-group
+seals still recheck every task's membership, generation, credentials and namespaces;
+they do not redundantly compare the same entire files class for every boundary.
+Standalone selected-task phases bracket their physical FD work with their own
+class admission/final proof. Final descriptor closure replays borrowed iterators
+over retained resources without allocating/copying a temporary per-TID vector.
 Root/cwd/executable/maps and native mount membership remain per task, including
 private/unshared contexts. Every task still classifies its logical FD references
 in its own native view; FD pin and table-seal sharing grants no namespace authority.
@@ -292,6 +305,14 @@ same owned exec fixture. They require real KCMP_FILES proof, verify one physical
 capture/charge with every logical task checked, preserve a private files_struct
 candidate, reject later unshare despite equal FD contents, and force the original
 pair-repair budget to exhaust before a successful process-closing fallback.
+`tests::actual_large_shared_group_phase_proof_work_is_linear` extends that owned
+exec fixture with 128 ready, joined-on-exit threads. It requires actual KCMP_FILES
+equality rather than assuming thread sharing, and counts real kernel-operation
+boundaries: one physical capture, three physical FD pair seals, two class
+comparisons per nonrepresentative and eight complete task-list enumerations
+across four group boundaries, independent of the logical TID count. Every actual
+task still receives native inode qualification and generation/credential/namespace
+checks. These are deterministic work counts, not timing assertions or higher caps.
 
 A process failure does not terminate the survey of other processes. Unproven or
 unvisited processes and any failed global process-set/root/final seal keep the
@@ -307,6 +328,11 @@ processes remain unvisited. The guard emits only after response handling finishe
 with `terminal=true`. Setup failure has unknown discovery/unvisited counts, not
 an empty proven host; capped failure records set `truncated=true`. These logs
 contain no argv/environment/file contents and are diagnostic, never authority.
+A fatal SIGALRM uses the default kernel disposition and does not unwind Rust
+guards, so it cannot promise a Drop-emitted terminal summary. The fixed hard alarm
+is armed before the cooperative deadline is constructed; cooperative checks also
+cannot interrupt a blocking kernel operation. Missing terminal evidence is unknown,
+never an empty or completed survey. No alarm/deadline or runtime policy is relaxed.
 The ignored census test
 `census::tests::actual_independent_owned_process_failures_aggregate_without_hiding_unvisited`
 uses four owned kernel processes, records two independent generation failures,
