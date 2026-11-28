@@ -45,7 +45,7 @@ fn probe() {
     for (_, mapping) in &pins.mappings {
         assert_eq!(objects::identity(&mapping.file).unwrap(), expected_exe);
     }
-    for (number, held) in &pins.descriptors {
+    for (number, held) in pins.descriptors.iter() {
         let path = if *number == 0 { jail.join("input") } else { jail.join("output") };
         assert_eq!(objects::identity(&held.file).unwrap(), objects::identity(&File::open(path).unwrap()).unwrap());
     }

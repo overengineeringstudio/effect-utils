@@ -59,21 +59,22 @@ fn host_identity(deadline: Instant) -> io::Result<(String,String)> {
 fn unknown(request: &Request, cause: UnknownReason) -> Observation {
     Observation {complete:false,process_count:0,task_count:0,receipt:b"incomplete-holder-observation-v1\0".to_vec(),roots:request.paths.iter().map(|path|RootEvidence {path:path.clone(),identity:None,complete:false,status:Status::Unknown,references_complete:false,references:Vec::new(),unknown_reasons:vec![cause]}).collect()}
 }
-fn retry_missing_once<T>(mut capture: impl FnMut() -> io::Result<T>) -> io::Result<T> {
-    match capture() {
-        Err(error) if error.kind()==io::ErrorKind::NotFound => capture(),
-        result=>result,
-    }
-}
-fn collect(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
-    // Drop the entire failed graph; retry ENOENT once under the original deadline.
-    retry_missing_once(|| {
+fn collect<'a, 'nonce>(request: &'a Request, peer: &client::Peer, role: &'a client::SelfRole,
+    survey: &'a std::cell::RefCell<census::ProcessSurvey<'nonce>>, deadline: Instant)
+    -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
+    // Lifecycle reconciliation retains one graph and its original budgets.
+    // Restarting an arbitrary ENOENT would discard prior positives/uncertainty.
+    let result = (|| {
         role.recheck(deadline)?;
         peer.recheck(deadline)?;
-        collect_once(request,peer,role,deadline)
-    })
+        collect_once(request,peer,role,survey,deadline)
+    })();
+    if result.is_err() { survey.borrow_mut().request_failed(); }
+    result
 }
-fn collect_once(request: &Request, peer: &client::Peer, role: &client::SelfRole, deadline: Instant) -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
+fn collect_once<'a, 'nonce>(request: &'a Request, peer: &client::Peer, role: &'a client::SelfRole,
+    survey: &'a std::cell::RefCell<census::ProcessSurvey<'nonce>>, deadline: Instant)
+    -> io::Result<(Observation,candidates::CandidateSet,Option<client::Client>,client::PeerRoots,census::AliasSeal)> {
     let candidates=candidates::CandidateSet::pin(request,peer.uid,deadline)?;
     let peer_roots=client::PeerRoots::pin(peer,&candidates,deadline)?;
     // Store pinning opens roots only. Inventory starts ONLY after the original
@@ -82,7 +83,7 @@ fn collect_once(request: &Request, peer: &client::Peer, role: &client::SelfRole,
         Some(store)=>Some(client::Client::attest_from_peer(peer,store,peer.uid,peer_roots.root(0))?),
         None=>None,
     };
-    let census=census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,deadline)?;
+    let mut census=census::Census::collect(request,&candidates,store_client.as_ref(),peer,role,survey,deadline)?;
     census.recheck(&candidates,store_client.as_ref(),deadline)?;
     candidates.recheck(deadline)?;
     peer_roots.recheck(peer,deadline)?;
@@ -114,12 +115,14 @@ fn serve_once(deadline: Instant) -> io::Result<()> {
     let peer=client::Peer::attest(&socket,uid,deadline)?;
     let input=transport::read_request(&mut socket,deadline)?;
     let request=Request::parse(&input,true)?;
+    let survey = std::cell::RefCell::new(census::ProcessSurvey::new(&request.nonce));
+    let result = (|| {
     let namespaces=role.namespace_ids();
     if namespaces!=INITIAL_NAMESPACES { return Err(io::Error::other("noninitial server namespaces")); }
     let (host_id,boot_id)=host_identity(deadline)?;
     let paths_digest=digest::digest(request.paths_receipt(),deadline)?;
-    // Retain root/lease OFDs and generation-bound alias capabilities through emission.
-    let (observation,_pins,aliases)=match collect(&request,&peer,&role,deadline) {
+    // Retain the entire process/resource graph and root/lease OFDs through emission.
+    let (observation,pins,aliases)=match collect(&request,&peer,&role,&survey,deadline) {
         Ok((observation,candidates,store_client,peer_roots,aliases))=>(observation,Some((candidates,store_client,peer_roots)),Some(aliases)),
         Err(error)=>{
             // Never return an absence after partial coverage. Do not leak
@@ -139,8 +142,15 @@ fn serve_once(deadline: Instant) -> io::Result<()> {
     peer.recheck(deadline)?; role.recheck(deadline)?;
     let output=response.serialize()?;
     // Final seal follows serialization too; unsupported/error/churn emits no proof.
-    if let Some(aliases)=&aliases { aliases.recheck(deadline)?; }
+    if let (Some(aliases),Some((candidates,store_client,peer_roots)))=(&aliases,&pins) {
+        aliases.recheck_evidence(candidates,&request,store_client.as_ref(),deadline)?;
+        peer_roots.recheck(&peer,deadline)?;
+        if let (Some(client),Some(store))=(store_client,&request.store) { client.recheck(store)?; }
+    }
     transport::write_response(&mut socket,&output,deadline)
+    })();
+    if result.is_err() { survey.borrow_mut().mark_global_failure("response-closing"); }
+    result
 }
 fn run() -> io::Result<()> {
     linux::bound_helper_lifetime()?;
@@ -168,33 +178,3 @@ fn main() -> ExitCode {
     }
 }
 
-#[cfg(test)]
-mod capture_retry_tests {
-    use std::io;
-
-    #[test]
-    fn missing_capture_restarts_only_once_and_other_errors_never_retry() {
-        let mut attempts = 0;
-        let value = super::retry_missing_once(|| {
-            attempts += 1;
-            if attempts == 1 { Err(io::Error::from_raw_os_error(2)) } else { Ok(37) }
-        }).unwrap();
-        assert_eq!((attempts, value), (2, 37));
-        for errno in [2, 13, 110] {
-            let mut attempts = 0;
-            let error = super::retry_missing_once::<()>(|| {
-                attempts += 1;
-                Err(io::Error::from_raw_os_error(errno))
-            }).unwrap_err();
-            assert_eq!(attempts, if errno == 2 { 2 } else { 1 });
-            assert_eq!(error.raw_os_error(), Some(errno));
-        }
-        let mut attempts = 0;
-        let error = super::retry_missing_once::<()>(|| {
-            attempts += 1;
-            Err(io::Error::other("protective membership failure"))
-        }).unwrap_err();
-        assert_eq!(attempts, 1);
-        assert_eq!(error.kind(), io::ErrorKind::Other);
-    }
-}

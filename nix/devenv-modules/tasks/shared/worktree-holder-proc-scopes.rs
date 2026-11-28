@@ -1,12 +1,17 @@
 //! Retained proc scopes and native resources, extracted from the production census.
-//! All errors remain unqualified evidence; callers must never interpret them as absence.
-//! Descriptor churn permits at most five unpublished snapshot passes per seal.
-//! Every observed object survives until native negative proof and final closure.
-use std::cell::RefCell;
+//! Failed proofs remain unqualified evidence; callers never treat errors as absence.
+//! Native KCMP_FILES classes share FD pins/seals, never task membership authority.
+//! Five unpublished pair-repair passes belong to a process resource phase.
+//! Missing-before-pin or pair exhaustion invokes three bounded process-closing
+//! passes; every old pin remains qualified through final closure.
+use std::cell::{Cell, RefCell};
 use std::fs::{self, File};
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
+use std::rc::Rc;
+use std::collections::BTreeSet;
+use std::ops::Deref;
 use std::path::Path;
 use std::time::Instant;
 use super::{linux, objects, process};
@@ -16,12 +21,18 @@ use super::process::Process;
 const TASK_LIMIT: usize = 262144;
 const OBJECT_LIMIT: usize = 1048576;
 const FD_SNAPSHOT_PASSES: usize = 5;
+const PROCESS_CLOSING_PASSES: usize = 3;
 
-/// `fresh` is true exactly once per newly retained descriptor pin, so the
-/// caller can charge its transaction-wide resource budget without recounting.
-/// Success must mean an authenticated native negative, never an unknown or
-/// an omitted positive. None requests the original strict snapshot contract.
-pub type DescriptorProof<'a> = dyn FnMut(&Held, bool) -> io::Result<()> + 'a;
+/// Resource semantics and the actual task scope must accompany native proof:
+/// siblings may have private files/fs/mount contexts.
+#[derive(Clone, Copy)]
+pub enum ResourceKind { Root, Cwd, Exe, Fd, Map }
+
+/// `fresh` charges a newly retained pin to the transaction-wide budget.
+/// Success means authenticated native negative, never unknown or positive.
+/// None requests the strict snapshot contract, with no closing repair.
+pub type NativeNegativeProof<'a> =
+    dyn FnMut(&TaskScope, &Held, ResourceKind, bool) -> io::Result<()> + 'a;
 
 /// Closed kernel spellings, not a prefix or anonymous-filesystem exemption.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,11 +163,102 @@ mod anonymous_object_tests {
     }
 }
 
+/// A pidfd is acquired before any fallible task/resource discovery. Readiness
+/// proves death of that exact process generation, not absence of a numeric PID.
+pub struct ProcessWitness {
+    pub pid: u32,
+    pidfd: OwnedFd,
+    scope: File,
+}
+impl ProcessWitness {
+    pub fn capture(pid: u32, deadline: Instant) -> io::Result<Option<Self>> {
+        deadline_check(deadline)?;
+        let scope = match objects::pin_magic(format!("/proc/{pid}")) {
+            Ok(scope) => Some(scope),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        let pidfd = match linux::pin_process(pid) {
+            Ok(pidfd) => pidfd,
+            Err(error) if error.raw_os_error() == Some(3) => {
+                return match objects::pin_magic(format!("/proc/{pid}")) {
+                    Err(absent) if absent.kind() == io::ErrorKind::NotFound => Ok(None),
+                    Err(other) => Err(other),
+                    Ok(_) => Err(io::Error::other("process appeared during absence proof")),
+                };
+            }
+            Err(error) => return Err(error),
+        };
+        let scope = scope.ok_or_else(|| io::Error::other("process appeared during witness pin"))?;
+        let witness = Self { pid, pidfd, scope };
+        if !witness.covers_current(deadline)? && !witness.terminated()? {
+            return Err(io::Error::other("process generation changed during witness pin"));
+        }
+        Ok(Some(witness))
+    }
+    pub fn terminated(&self) -> io::Result<bool> { linux::pidfd_terminated(&self.pidfd) }
+    pub fn covers_current(&self, deadline: Instant) -> io::Result<bool> {
+        deadline_check(deadline)?;
+        match objects::pin_magic(format!("/proc/{}", self.pid)) {
+            Ok(current) => Ok(objects::identity(&current)? == objects::identity(&self.scope)?),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+    pub fn discover(&self, deadline: Instant) -> io::Result<ProcessScope> {
+        if self.terminated()? { return Err(io::Error::from(io::ErrorKind::NotFound)); }
+        let captured = match ProcessScope::discover(self.pid, deadline) {
+            Err(error) if process_lifecycle_error(&error) && self.terminated()? => {
+                return Err(io::Error::from(io::ErrorKind::NotFound));
+            }
+            result => result?,
+        };
+        if !self.covers_current(deadline)? || self.terminated()? {
+            return Err(io::Error::from(io::ErrorKind::NotFound));
+        }
+        Ok(captured)
+    }
+}
+
+#[derive(Debug)]
+pub struct TaskMembershipChanged;
+impl std::fmt::Display for TaskMembershipChanged {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("new live task not captured")
+    }
+}
+impl std::error::Error for TaskMembershipChanged {}
+pub fn task_membership_changed(error: &io::Error) -> bool {
+    error.get_ref().is_some_and(|cause| cause.is::<TaskMembershipChanged>())
+}
+
+#[derive(Debug)]
+struct ProcessGenerationChanged;
+impl std::fmt::Display for ProcessGenerationChanged {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("process generation changed")
+    }
+}
+impl std::error::Error for ProcessGenerationChanged {}
+/// Only native absence/ESRCH or a typed generation boundary may be discharged
+/// by a retained whole-group pidfd. Opaque/unsupported errors remain sticky.
+pub fn process_lifecycle_error(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(3)
+        || error.get_ref().is_some_and(|cause| cause.is::<ProcessGenerationChanged>())
+}
+
 pub struct ProcessScope {
     pub identity: Process,
     pidfd: OwnedFd,
     pub scope: File,
     pub tasks: Vec<TaskScope>,
+    file_classes: Vec<FileClass>,
+    task_file_class: Vec<usize>,
+    resource_epoch: Cell<u64>,
+    resource_phase_active: Cell<bool>,
+    closing_passes: Cell<usize>,
+    fd_repair_passes: Cell<usize>,
+    membership_passes: usize,
 }
 
 pub struct TaskScope {
@@ -174,10 +276,71 @@ pub struct References {
     pub root: Option<Held>,
     pub cwd: Option<Held>,
     pub exe: Option<Held>,
-    pub descriptors: Vec<(u32, Held)>,
+    pub descriptors: Rc<DescriptorSnapshot>,
     pub mappings: Vec<(String, Held)>,
-    descriptor_repairs: RefCell<Vec<Vec<(u32, Held)>>>,
+    table: Rc<DescriptorTable>,
+    /// Full-process follow-up pins remain alive with the selected snapshot.
+    closing_witness: RefCell<Vec<(usize, References)>>,
     no_mm: bool,
+}
+
+/// A physical set of O_PATH pins. Rc copies ownership, never kernel FDs.
+pub struct DescriptorSnapshot {
+    pins: Vec<(u32, Held)>,
+    charged: Cell<bool>,
+}
+impl Deref for DescriptorSnapshot {
+    type Target = Vec<(u32, Held)>;
+    fn deref(&self) -> &Self::Target { &self.pins }
+}
+impl DescriptorSnapshot {
+    fn new(pins: Vec<(u32, Held)>) -> Rc<Self> {
+        Rc::new(Self { pins, charged: Cell::new(false) })
+    }
+    fn claim_charge(&self) -> bool { !self.charged.replace(true) }
+    fn prove(&self, task: &TaskScope, repair: &mut Option<&mut NativeNegativeProof<'_>>,
+        fresh: bool) -> io::Result<()> {
+        let proof = repair.as_mut().ok_or_else(|| io::Error::other("missing native descriptor proof"))?;
+        let charge = fresh && self.claim_charge();
+        for (_, held) in self.iter() {
+            qualify_object(held)?;
+            (**proof)(task, held, ResourceKind::Fd, charge).map_err(descriptor_proof_error)?;
+        }
+        Ok(())
+    }
+}
+struct DescriptorTable {
+    initial: Rc<DescriptorSnapshot>,
+    repairs: RefCell<Vec<Rc<DescriptorSnapshot>>>,
+    missing: Cell<bool>,
+    sealed_epoch: Cell<u64>,
+}
+struct FileClass {
+    representative: usize,
+    members: Vec<usize>,
+    table: RefCell<Option<Rc<DescriptorTable>>>,
+    collected_epoch: Cell<u64>,
+}
+/// One collection/closure phase. Outside a batch the public per-task APIs
+/// create their own phase, so a later direct recheck never reuses an old seal.
+pub struct ResourcePhase<'a>(&'a ProcessScope);
+impl Drop for ResourcePhase<'_> {
+    fn drop(&mut self) { self.0.resource_phase_active.set(false); }
+}
+#[derive(Debug)]
+pub enum DescriptorInstability { StablePair, ProcessClosing, ClassMembership }
+impl std::fmt::Display for DescriptorInstability {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str(match self {
+            Self::StablePair => "descriptor stable-pair budget exhausted",
+            Self::ProcessClosing => "process closing pass budget exhausted",
+            Self::ClassMembership => "descriptor class membership changed",
+        })
+    }
+}
+impl std::error::Error for DescriptorInstability {}
+pub fn descriptor_instability(error: &io::Error) -> Option<&DescriptorInstability> {
+    error.get_ref()?.downcast_ref()
 }
 
 
@@ -338,21 +501,37 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     Err(io::Error::other("unqualified held object"))
 }
 
-/// A missing nonleader is non-holding only within the original live generation.
-/// In particular, a missing descriptor of a still-listed task is not departure.
+/// Whole-group pidfd readiness proves every old task departed, including the
+/// leader. Otherwise require absence inside the original retained live group.
 fn proven_task_departure(leader: &Process, pidfd: &OwnedFd, scope: &File,
     tid: u32, deadline: Instant) -> io::Result<bool>
 {
     deadline_check(deadline)?;
+    if linux::pidfd_terminated(pidfd)? { return Ok(true); }
     if tid == leader.pid { return Ok(false); }
-    if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
-        return Err(io::Error::other("departure proof leader generation changed"));
+    for pass in 0..2 {
+        match process::process(leader.pid) {
+            Ok(current) if current.same_identity(leader) => (),
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && linux::pidfd_terminated(pidfd)? => return Ok(true),
+            Err(error) => return Err(error),
+            Ok(_) if linux::pidfd_terminated(pidfd)? => return Ok(true),
+            Ok(_) => return Err(io::Error::other(ProcessGenerationChanged)),
+        }
+        if pass == 0 {
+            #[cfg(test)]
+            descriptor_capture_step(DescriptorCaptureStage::TaskMembership(leader.pid));
+            match numbers(format!("{}/task", scope_path(scope)), deadline) {
+                Ok(current) if current.binary_search(&tid).is_ok() => return Ok(false),
+                Ok(_) => (),
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && linux::pidfd_terminated(pidfd)? => return Ok(true),
+                Err(error) => return Err(error),
+            }
+        }
+        if linux::pidfd_terminated(pidfd)? { return Ok(true); }
     }
-    let absent = numbers(format!("{}/task", scope_path(scope)), deadline)?.binary_search(&tid).is_err();
-    if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
-        return Err(io::Error::other("departure proof leader did not close"));
-    }
-    Ok(absent)
+    Ok(true)
 }
 
 impl ProcessScope {
@@ -362,7 +541,7 @@ impl ProcessScope {
         let pidfd = linux::pin_process(pid)?;
         let scope = objects::pin_magic(format!("/proc/{pid}"))?;
         if !process::process(pid)?.same_identity(&identity) {
-            return Err(io::Error::other("process changed during pin"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         let base = scope_path(&scope);
         let tids = numbers(format!("{base}/task"), deadline)?;
@@ -390,11 +569,231 @@ impl ProcessScope {
             }
         }
         if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid) {
+            if linux::pidfd_terminated(&pidfd)? { return Err(io::Error::from(io::ErrorKind::NotFound)); }
             return Err(io::Error::other("process task discovery did not close"));
         }
-        let captured = Self { identity, pidfd, scope, tasks };
-        captured.recheck(deadline)?;
+        let mut captured = Self { identity, pidfd, scope, tasks,
+            file_classes: Vec::new(), task_file_class: Vec::new(),
+            resource_epoch: Cell::new(0), resource_phase_active: Cell::new(false),
+            closing_passes: Cell::new(0), fd_repair_passes: Cell::new(0), membership_passes: 0 };
+        captured.close_discovery_membership(deadline)?;
+        captured.file_classes.clear();
+        captured.task_file_class.clear();
+        let mut comparison_available = true;
+        for index in 0..captured.tasks.len() {
+            let mut shared = None;
+            for (class_index, class) in captured.file_classes.iter().enumerate() {
+                if !comparison_available { break; }
+                deadline_check(deadline)?;
+                #[cfg(test)]
+                descriptor_capture_step(DescriptorCaptureStage::FilesComparison(
+                    captured.tasks[class.representative].identity.pid, captured.tasks[index].identity.pid));
+                match linux::same_files(captured.tasks[class.representative].identity.pid,
+                    captured.tasks[index].identity.pid) {
+                    Ok(true) => { shared = Some(class_index); break; }
+                    Ok(false) => (),
+                    // Unavailable kernel proof means independent capture.
+                    Err(error) if matches!(error.raw_os_error(), Some(1 | 13 | 38 | 95)) => {
+                        comparison_available = false; break;
+                    }
+                    Err(error) if error.raw_os_error() == Some(3) => (),
+                    Err(error) => return Err(error),
+                }
+            }
+            let class_index = shared.unwrap_or_else(|| {
+                captured.file_classes.push(FileClass { representative: index,
+                    members: Vec::new(), table: RefCell::new(None), collected_epoch: Cell::new(0) });
+                captured.file_classes.len() - 1
+            });
+            captured.file_classes[class_index].members.push(index);
+            captured.task_file_class.push(class_index);
+        }
+        captured.close_discovery_membership(deadline)?;
         Ok(captured)
+    }
+
+    fn close_discovery_membership(&mut self, deadline: Instant) -> io::Result<()> {
+        for pass in 0..=PROCESS_CLOSING_PASSES {
+            match self.recheck(deadline) {
+                Err(error) if task_membership_changed(&error) && pass < PROCESS_CLOSING_PASSES => {
+                    self.reconcile_tasks(deadline)?;
+                }
+                result => return result,
+            }
+        }
+        unreachable!()
+    }
+
+    /// Append only: every old task index, class, pin and resource obligation
+    /// remains valid. New tasks get independent files classes; TGID is never
+    /// authority for shared fs/mm/files. Reused TIDs remain protective UNKNOWN.
+    pub fn reconcile_tasks(&mut self, deadline: Instant) -> io::Result<usize> {
+        self.recheck_leader(deadline)?;
+        if self.membership_passes >= PROCESS_CLOSING_PASSES {
+            return Err(io::Error::other(TaskMembershipChanged));
+        }
+        self.membership_passes += 1;
+        let before = self.tasks.len();
+        for tid in numbers(format!("{}/task", scope_path(&self.scope)), deadline)? {
+            if self.tasks.iter().any(|task| task.identity.pid == tid) { continue; }
+            if self.tasks.len() >= TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
+            let task = match TaskScope::capture(self.identity.pid, tid, &self.scope, deadline) {
+                Ok(task) => task,
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && self.task_departed_by_id(tid, deadline)? => continue,
+                Err(error) => return Err(error),
+            };
+            let index = self.tasks.len();
+            self.tasks.push(task);
+            self.task_file_class.push(self.file_classes.len());
+            self.file_classes.push(FileClass { representative: index, members: vec![index],
+                table: RefCell::new(None), collected_epoch: Cell::new(0) });
+        }
+        self.recheck_leader(deadline)?;
+        Ok(self.tasks.len() - before)
+    }
+
+    fn recheck_file_class(&self, class: &FileClass, deadline: Instant) -> io::Result<()> {
+        if class.members.len() == 1 { return Ok(()); }
+        let representative = &self.tasks[class.representative];
+        for index in &class.members {
+            if *index == class.representative { continue; }
+            deadline_check(deadline)?;
+            #[cfg(test)]
+            descriptor_capture_step(DescriptorCaptureStage::FilesComparison(
+                representative.identity.pid, self.tasks[*index].identity.pid));
+            match linux::same_files(representative.identity.pid, self.tasks[*index].identity.pid) {
+                Ok(true) => (),
+                Err(error) if error.raw_os_error() == Some(3)
+                    && self.task_departed(*index, deadline)? => (),
+                Err(error) => return Err(error),
+                Ok(false) => return Err(io::Error::other(DescriptorInstability::ClassMembership)),
+            }
+        }
+        Ok(())
+    }
+
+    fn recheck_file_classes(&self, deadline: Instant) -> io::Result<()> {
+        for class in &self.file_classes { self.recheck_file_class(class, deadline)?; }
+        Ok(())
+    }
+
+    /// Standalone task checks authenticate only the physical files class.
+    /// A sibling's native namespace/root authority still belongs to its own
+    /// logical task check and the caller's mandatory complete-group seals.
+    fn recheck_task_file_class(&self, index: usize, deadline: Instant) -> io::Result<()> {
+        let class = self.task_file_class.get(index).and_then(|class| self.file_classes.get(*class))
+            .ok_or_else(|| io::Error::other("unknown task descriptor class"))?;
+        for pass in 0..2 {
+            for member in &class.members {
+                if self.task_present(*member, deadline)?
+                    && process::uids(self.tasks[*member].identity.pid)? != self.tasks[*member].uids
+                { return Err(io::Error::other("descriptor class credentials changed")); }
+            }
+            if pass == 0 { self.recheck_file_class(class, deadline)?; }
+        }
+        self.recheck_leader(deadline).map(|_| ())
+    }
+
+    /// Batch admission authenticates the entire retained process.
+    pub fn resource_phase(&self, deadline: Instant) -> io::Result<ResourcePhase<'_>> {
+        if self.resource_phase_active.get() { return Err(io::Error::other("nested process resource phase")); }
+        self.recheck(deadline)?;
+        self.start_resource_phase(deadline)
+    }
+
+    fn start_resource_phase(&self, deadline: Instant) -> io::Result<ResourcePhase<'_>> {
+        deadline_check(deadline)?;
+        if self.resource_phase_active.get() { return Err(io::Error::other("nested process resource phase")); }
+        self.resource_epoch.set(self.resource_epoch.get().checked_add(1)
+            .ok_or_else(|| io::Error::other("process resource epoch exhausted"))?);
+        self.fd_repair_passes.set(0);
+        self.resource_phase_active.set(true);
+        Ok(ResourcePhase(self))
+    }
+
+    fn ensure_resource_phase(&self, deadline: Instant) -> io::Result<Option<ResourcePhase<'_>>> {
+        if self.resource_phase_active.get() { Ok(None) } else { self.start_resource_phase(deadline).map(Some) }
+    }
+
+    /// Close each physical class once after every logical task context ran.
+    /// New/failed snapshots still qualify in *every* member's native view.
+    pub fn finish_resource_phase<'a>(&self,
+        resources: impl Iterator<Item = (usize, &'a References)> + Clone, deadline: Instant,
+        mut proof: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        let _phase = self.ensure_resource_phase(deadline)?;
+        if _phase.is_some() { self.recheck(deadline)?; }
+        else { self.recheck_task_scopes(deadline)?; }
+        let mut seen = BTreeSet::new();
+        for (index, references) in resources.clone() {
+            let class = self.task_file_class[index];
+            if !self.task_present(index, deadline)? || !seen.insert(class) { continue; }
+            references.table.sealed_epoch.set(0);
+            match proof.as_mut() {
+                Some(proof) => self.recheck_resources(index, references, deadline, Some(&mut **proof))?,
+                None => self.recheck_resources(index, references, deadline, None)?,
+            }
+        }
+        for (index, references) in resources.clone() {
+            if !self.task_present(index, deadline)? { continue; }
+            references.prove_repaired_descriptors(&self.tasks[index], &mut proof)?;
+        }
+        self.recheck_task_scopes(deadline)?;
+        for (index, references) in resources {
+            if !self.task_present(index, deadline)? || !seen.remove(&self.task_file_class[index]) { continue; }
+            match check_descriptors(&references.table.latest(), &self.tasks[index], deadline) {
+                Ok(()) => (),
+                Err(error) if matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => {
+                    self.close_missing_descriptors(index, references, deadline, &mut proof)
+                        .map_err(descriptor_proof_error)?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        self.recheck(deadline)
+    }
+
+    /// A standalone selected-task phase is not a complete-process census.
+    /// Reclose its FD pair after root/cwd/exe/maps, without checking unrelated
+    /// sibling namespaces. Real FD instability still invokes the full-process
+    /// closing witness and therefore cannot waive any changed sibling context.
+    fn finish_task_resource_phase(&self, index: usize, references: &References,
+        deadline: Instant, mut proof: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        let finished = (|| {
+            if !self.task_present(index, deadline)? { return Ok(()); }
+            references.table.sealed_epoch.set(0);
+            if let Err(error) = references.recheck_descriptors(&self.tasks[index], deadline,
+                &mut proof, self.resource_epoch.get(), &self.fd_repair_passes) {
+                if !references.table.missing.get() && descriptor_instability(&error).is_none() {
+                    return Err(error);
+                }
+                self.close_missing_descriptors(index, references, deadline, &mut proof)
+                    .map_err(descriptor_proof_error)?;
+            }
+            self.tasks[index].recheck(deadline)?;
+            self.recheck_task_file_class(index, deadline)
+        })();
+        match finished {
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && self.task_departed(index, deadline)? => Ok(()),
+            result => result,
+        }
+    }
+
+    pub fn descriptor_class_count(&self) -> usize { self.file_classes.len() }
+
+    /// An original live generation is not departed. Only an actual missing task
+    /// needs the complete, retained-leader task-list departure proof.
+    pub fn task_present(&self, index: usize, deadline: Instant) -> io::Result<bool> {
+        deadline_check(deadline)?;
+        let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
+        match process::process(task.identity.pid) {
+            Ok(current) if current.same_identity(&task.identity) => Ok(true),
+            Ok(_) => Err(io::Error::other("task generation changed")),
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && self.task_departed(index, deadline)? => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     /// `self` is the retained before set; `other` is its later recapture.
@@ -405,7 +804,7 @@ impl ProcessScope {
             || objects::identity(&self.scope)? != objects::identity(&other.scope)?
         { return Ok(false); }
         for after in &other.tasks {
-            let Ok(index) = self.tasks.binary_search_by_key(&after.identity.pid, |task| task.identity.pid)
+            let Some(index) = self.tasks.iter().position(|task| task.identity.pid == after.identity.pid)
                 else { return Ok(false); };
             let before = &self.tasks[index];
             if !before.identity.same_identity(&after.identity) || before.uids != after.uids
@@ -419,7 +818,7 @@ impl ProcessScope {
             }
         }
         for before in &self.tasks {
-            if other.tasks.binary_search_by_key(&before.identity.pid, |task| task.identity.pid).is_err()
+            if !other.tasks.iter().any(|task| task.identity.pid == before.identity.pid)
                 && !self.task_departed_by_id(before.identity.pid, deadline)?
             { return Ok(false); }
         }
@@ -437,12 +836,14 @@ impl ProcessScope {
     }
 
     fn recheck_membership(&self, deadline: Instant) -> io::Result<()> {
+        #[cfg(test)]
+        descriptor_capture_step(DescriptorCaptureStage::TaskMembership(self.identity.pid));
         let current = numbers(format!("{}/task", scope_path(&self.scope)), deadline)?;
         for tid in current {
-            if self.tasks.binary_search_by_key(&tid, |task| task.identity.pid).is_err()
+            if !self.tasks.iter().any(|task| task.identity.pid == tid)
                 && !self.task_departed_by_id(tid, deadline)?
             {
-                return Err(io::Error::other("new live task not captured"));
+                return Err(io::Error::other(TaskMembershipChanged));
             }
         }
         for task in &self.tasks {
@@ -457,19 +858,27 @@ impl ProcessScope {
     }
 
     /// Reclose task membership, generations, all UID fields and namespaces.
-    /// A terminated leader is not proof that a live sibling has no resources.
-    pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+    /// A batch retains every existing group seal, but need not repeat physical
+    /// files-class comparisons between its admission and final class closure.
+    fn recheck_task_scopes(&self, deadline: Instant) -> io::Result<()> {
         deadline_check(deadline)?;
         let pid = self.identity.pid;
         if !process::process(pid)?.same_identity(&self.identity) {
-            return Err(io::Error::other("process identity changed"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         self.recheck_membership(deadline)?;
         self.recheck_membership(deadline)?;
         if !process::process(pid)?.same_identity(&self.identity) {
-            return Err(io::Error::other("process changed during closure"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         Ok(())
+    }
+
+    /// Public complete-process closure always re-proves every files class.
+    pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        self.recheck_task_scopes(deadline)?;
+        self.recheck_file_classes(deadline)?;
+        self.recheck_leader(deadline).map(|_| ())
     }
 
     /// Actual pidfd readiness is exposed separately: terminal processes may
@@ -482,7 +891,7 @@ impl ProcessScope {
         deadline_check(deadline)?;
         let current = process::process(self.identity.pid)?;
         if !current.same_identity(&self.identity) {
-            return Err(io::Error::other("process identity changed"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         Ok(current)
     }
@@ -496,7 +905,7 @@ impl ProcessScope {
         self.recheck(deadline)?;
         let mut terminal = !self.tasks.is_empty();
         for (index, task) in self.tasks.iter().enumerate() {
-            if self.task_departed(index, deadline)? { continue; }
+            if !self.task_present(index, deadline)? { continue; }
             terminal &= matches!(process::process(task.identity.pid)?.state, b'Z' | b'X');
         }
         Ok(terminal)
@@ -507,22 +916,46 @@ impl ProcessScope {
     /// Callers must retain every task slot and recheck the complete ProcessScope
     /// before and after the process resource phase, including final closure.
     pub fn collect_resources(&self, index: usize, deadline: Instant,
-        mut repair: Option<&mut DescriptorProof<'_>>) -> io::Result<Option<References>> {
+        mut repair: Option<&mut NativeNegativeProof<'_>>) -> io::Result<Option<References>> {
+        let _phase = self.ensure_resource_phase(deadline)?;
+        if _phase.is_some() { self.recheck_task_file_class(index, deadline)?; }
         let mut attempts = 0;
         loop {
             self.recheck_leader(deadline)?;
-            if self.task_departed(index, deadline)? { return Ok(None); }
+            if !self.task_present(index, deadline)? { return Ok(None); }
             attempts += 1;
             let captured: io::Result<References> = (|| {
                 let all_terminal = self.terminal_group(deadline)?;
                 let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-                let references = References::collect(task, all_terminal, deadline, &mut repair)?;
-                references.recheck_task(task, all_terminal, deadline, &mut repair)?;
+                let class = &self.file_classes[self.task_file_class[index]];
+                let prior = if class.collected_epoch.get() == self.resource_epoch.get() {
+                    class.table.borrow().clone()
+                } else { None };
+                let references = References::collect(task, all_terminal, deadline, &mut repair, prior)?;
+                *class.table.borrow_mut() = Some(Rc::clone(&references.table));
+                class.collected_epoch.set(self.resource_epoch.get());
+                if references.table.missing.get() {
+                    self.close_missing_descriptors(index, &references, deadline, &mut repair)
+                        .map_err(descriptor_proof_error)?;
+                }
+                if let Err(error) = references.recheck_task(task, all_terminal, deadline, &mut repair,
+                    self.resource_epoch.get(), &self.fd_repair_passes) {
+                    if !references.table.missing.get() && descriptor_instability(&error).is_none() { return Err(error); }
+                    self.close_missing_descriptors(index, &references, deadline, &mut repair)
+                        .map_err(descriptor_proof_error)?;
+                    references.recheck_task(task, all_terminal, deadline, &mut repair,
+                        self.resource_epoch.get(), &self.fd_repair_passes)?;
+                }
                 self.recheck_leader(deadline)?;
                 Ok(references)
             })();
             match captured {
-                Ok(references) => return Ok(Some(references)),
+                Ok(references) => {
+                    if _phase.is_some() {
+                        self.finish_task_resource_phase(index, &references, deadline, repair)?;
+                    }
+                    return Ok(Some(references));
+                }
                 Err(error) if error.kind() == io::ErrorKind::NotFound
                     && self.task_departed(index, deadline)? => return Ok(None),
                 Err(error) => {
@@ -539,25 +972,140 @@ impl ProcessScope {
     }
 
     pub fn recheck_resources(&self, index: usize, references: &References,
-        deadline: Instant, mut repair: Option<&mut DescriptorProof<'_>>) -> io::Result<()> {
+        deadline: Instant, mut repair: Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        let _phase = self.ensure_resource_phase(deadline)?;
+        if _phase.is_some() { self.recheck_task_file_class(index, deadline)?; }
         self.recheck_leader(deadline)?;
-        if self.task_departed(index, deadline)? { return Ok(()); }
+        if !self.task_present(index, deadline)? { return Ok(()); }
         let checked: io::Result<()> = (|| {
             let all_terminal = self.terminal_group(deadline)?;
             let task = self.tasks.get(index).ok_or_else(|| io::Error::other("unknown task index"))?;
-            references.recheck_task(task, all_terminal, deadline, &mut repair)?;
+            if let Err(error) = references.recheck_task(task, all_terminal, deadline, &mut repair,
+                self.resource_epoch.get(), &self.fd_repair_passes) {
+                if !references.table.missing.get() && descriptor_instability(&error).is_none() { return Err(error); }
+                self.close_missing_descriptors(index, references, deadline, &mut repair)
+                    .map_err(descriptor_proof_error)?;
+                references.recheck_task(task, all_terminal, deadline, &mut repair,
+                    self.resource_epoch.get(), &self.fd_repair_passes)?;
+            }
+            references.prove_closing_witness(self, &mut repair)?;
             self.recheck_leader(deadline).map(|_| ())
         })();
+        if checked.is_ok() && _phase.is_some() {
+            self.finish_task_resource_phase(index, references, deadline, repair)?;
+        }
         match checked {
             Err(error) if error.kind() == io::ErrorKind::NotFound
                 && self.task_departed(index, deadline)? => Ok(()),
             result => result,
         }
     }
+
+    /// Missing-before-pin is uncertainty, not absence. Discharge it only with a
+    /// complete native-negative process pass and closing task/resource seals.
+    /// Never infer CLONE_FILES/CLONE_FS sharing from thread-group membership.
+    fn close_missing_descriptors(&self, selected: usize, references: &References,
+        deadline: Instant, repair: &mut Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        if repair.is_none() { return Err(io::Error::other("missing descriptor requires process closing proof")); }
+        references.prove_resources(&self.tasks[selected], repair, false)?;
+        for class in &self.file_classes {
+            if let Some(table) = class.table.borrow().as_ref() {
+                for index in &class.members {
+                    if self.task_present(*index, deadline)? {
+                        table.prove(&self.tasks[*index], repair, false)?;
+                    }
+                }
+            }
+        }
+        while self.closing_passes.get() < PROCESS_CLOSING_PASSES {
+            self.closing_passes.set(self.closing_passes.get() + 1);
+            self.recheck(deadline)?;
+            let all_terminal = self.terminal_group(deadline)?;
+            let mut pass = Vec::new();
+            let mut incomplete = false;
+            let mut tables = vec![None; self.file_classes.len()];
+            let closing_pair_budget = Cell::new(0);
+            for (index, task) in self.tasks.iter().enumerate() {
+                if !self.task_present(index, deadline)? { continue; }
+                let class = self.task_file_class[index];
+                let snapshot = References::collect(task, all_terminal, deadline, repair, tables[class].clone())?;
+                tables[class] = Some(Rc::clone(&snapshot.table));
+                snapshot.prove_resources(task, repair, true)?;
+                incomplete |= snapshot.table.missing.get();
+                pass.push((index, snapshot));
+            }
+            // Retain even incomplete passes. No previously pinned positive or
+            // opaque capability can be forgotten by a subsequent negative.
+            let start = references.closing_witness.borrow().len();
+            references.closing_witness.borrow_mut().extend(pass);
+            if incomplete { continue; }
+            let mut sealed = true;
+            {
+                let witness = references.closing_witness.borrow();
+                for (index, snapshot) in &witness[start..] {
+                    if !self.task_present(*index, deadline)? { continue; }
+                    match snapshot.recheck_task(&self.tasks[*index], all_terminal, deadline, repair,
+                        self.resource_epoch.get(), &closing_pair_budget) {
+                        Ok(()) => (),
+                        Err(error) if snapshot.table.missing.get() || descriptor_instability(&error).is_some()
+                            || matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => {
+                            sealed = false;
+                            break;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+            for (class, table) in self.file_classes.iter().zip(&tables) {
+                if let Some(table) = table {
+                    match check_descriptors(&table.latest(), &self.tasks[class.representative], deadline) {
+                        Ok(()) => (),
+                        Err(error) if matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => {
+                            sealed = false;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+            }
+            if !sealed { continue; }
+            self.recheck(deadline)?;
+            references.prove_closing_witness(self, repair)?;
+            // Adopt the sealed physical table of every class without copying
+            // FDs. All old snapshots remain pinned and native-negative.
+            for (class, latest) in self.file_classes.iter().zip(tables) {
+                let Some(latest) = latest else { continue; };
+                let mut cached = class.table.borrow_mut();
+                if let Some(original) = cached.as_ref() {
+                    original.repairs.borrow_mut().push(latest.latest());
+                    original.missing.set(false);
+                    original.sealed_epoch.set(self.resource_epoch.get());
+                } else {
+                    *cached = Some(latest);
+                }
+                class.collected_epoch.set(self.resource_epoch.get());
+            }
+            return Ok(());
+        }
+        Err(io::Error::other(DescriptorInstability::ProcessClosing))
+    }
 }
 
 
 impl TaskScope {
+    fn capture(tgid: u32, tid: u32, scope: &File, deadline: Instant) -> io::Result<Self> {
+        deadline_check(deadline)?;
+        let identity = process::process(tid)?;
+        let task_scope = objects::pin_magic(format!("{}/task/{tid}", scope_path(scope)))?;
+        let mapping_scope = objects::pin_magic(format!("/proc/{tid}"))?;
+        let uids = process::uids(tid)?;
+        let mut namespaces = Vec::with_capacity(4);
+        for name in ["user", "pid", "mnt", "net"] {
+            namespaces.push(objects::pin_magic(format!("{}/ns/{name}", scope_path(&task_scope)))?);
+        }
+        let task = Self { tgid, identity, uids, scope: task_scope, mapping_scope, namespaces };
+        task.recheck(deadline)?;
+        Ok(task)
+    }
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
         deadline_check(deadline)?;
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
@@ -572,13 +1120,34 @@ impl TaskScope {
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
             || process::uids(self.identity.pid)? != self.uids
         { return Err(io::Error::other("task generation or credentials did not close")); }
+        #[cfg(test)]
+        descriptor_capture_step(DescriptorCaptureStage::TaskValidated(self.identity.pid));
+        Ok(())
+    }
+}
+
+impl DescriptorTable {
+    fn capture(task: &TaskScope, deadline: Instant) -> io::Result<Rc<Self>> {
+        let (pins, missing) = capture_descriptors(task, deadline)?;
+        Ok(Rc::new(Self { initial: DescriptorSnapshot::new(pins), repairs: RefCell::new(Vec::new()),
+            missing: Cell::new(missing), sealed_epoch: Cell::new(0) }))
+    }
+    fn latest(&self) -> Rc<DescriptorSnapshot> {
+        self.repairs.borrow().last().unwrap_or(&self.initial).clone()
+    }
+    fn prove(&self, task: &TaskScope, repair: &mut Option<&mut NativeNegativeProof<'_>>,
+        fresh: bool) -> io::Result<()> {
+        for snapshot in std::iter::once(&self.initial).chain(self.repairs.borrow().iter()) {
+            snapshot.prove(task, repair, fresh)?;
+        }
         Ok(())
     }
 }
 
 impl References {
     fn collect(task: &TaskScope, all_terminal: bool, deadline: Instant,
-        repair: &mut Option<&mut DescriptorProof<'_>>) -> io::Result<Self> {
+        repair: &mut Option<&mut NativeNegativeProof<'_>>,
+        prior: Option<Rc<DescriptorTable>>) -> io::Result<Self> {
         let base = scope_path(&task.scope);
         let mapping_base = scope_path(&task.mapping_scope);
         let no_mm = no_mm_role(task, all_terminal, deadline)?;
@@ -588,7 +1157,8 @@ impl References {
         if root.as_ref().is_some_and(|held| !held.directory)
             || cwd.as_ref().is_some_and(|held| !held.directory)
         { return Err(io::Error::other("invalid task directory capability")); }
-        let descriptors = capture_descriptors(task, deadline)?;
+        let table = match prior { Some(table) => table, None => DescriptorTable::capture(task, deadline)? };
+        let descriptors = Rc::clone(&table.initial);
         let mut mappings = Vec::new();
         let mapped: io::Result<()> = (|| {
             for name in mapping_names(&task.mapping_scope, deadline)? {
@@ -602,20 +1172,21 @@ impl References {
         })();
         if let Err(error) = mapped {
             if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::Interrupted) {
-                prove_descriptor_negatives(descriptors.iter(), repair)?;
+                if repair.is_some() { table.prove(task, repair, false)?; }
             }
-            return Err(error);
+            // An incomplete FD capture may not escape through a mapping retry.
+            return Err(if table.missing.get() { descriptor_proof_error(error) } else { error });
         }
-        if no_mm && (exe.is_some() || !descriptors.is_empty() || !mappings.is_empty()) {
+        if no_mm && (exe.is_some() || !descriptors.is_empty() || table.missing.get() || !mappings.is_empty()) {
             return Err(io::Error::other("resource-empty task gained user resources"));
         }
         for held in root.iter().chain(cwd.iter()).chain(exe.iter()) { qualify_object(held)?; }
-        Ok(Self { root, cwd, exe, descriptors, mappings, no_mm,
-            descriptor_repairs: RefCell::new(Vec::new()) })
+        Ok(Self { root, cwd, exe, descriptors, mappings, no_mm, table,
+            closing_witness: RefCell::new(Vec::new()) })
     }
 
     fn recheck_task(&self, task: &TaskScope, all_terminal: bool, deadline: Instant,
-        repair: &mut Option<&mut DescriptorProof<'_>>) -> io::Result<()> {
+        repair: &mut Option<&mut NativeNegativeProof<'_>>, epoch: u64, budget: &Cell<usize>) -> io::Result<()> {
         let checked: io::Result<()> = (|| {
         task.recheck(deadline)?;
         let base = scope_path(&task.scope);
@@ -631,13 +1202,12 @@ impl References {
                 },
             }
         }
-        self.recheck_descriptors(task, deadline, repair, true)?;
+        self.recheck_descriptors(task, deadline, repair, epoch, budget)?;
         let names = mapping_names(&task.mapping_scope, deadline)?;
         if !names.iter().map(String::as_str).eq(self.mappings.iter().map(|(name, _)| name.as_str())) {
             return Err(io::Error::new(io::ErrorKind::Interrupted, "task mapping membership changed"));
         }
         for (name, held) in &self.mappings { held.recheck(format!("{mapping_base}/map_files/{name}"), deadline)?; }
-        self.recheck_descriptors(task, deadline, repair, false)?;
         if mapping_names(&task.mapping_scope, deadline)? != names
             || no_mm_role(task, all_terminal, deadline)? != self.no_mm
         { return Err(io::Error::new(io::ErrorKind::Interrupted, "task resources changed during recheck")); }
@@ -645,80 +1215,136 @@ impl References {
         })();
         if let Err(error) = &checked {
             if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::Interrupted) {
-                let history = self.descriptor_repairs.borrow();
-                prove_descriptor_negatives(self.descriptors.iter().chain(history.iter().flatten()), repair)?;
+                if repair.is_some() { self.table.prove(task, repair, false)?; }
             }
         }
         checked
     }
 
+    fn prove_resources(&self, task: &TaskScope,
+        repair: &mut Option<&mut NativeNegativeProof<'_>>, fresh: bool) -> io::Result<()> {
+        let proof = repair.as_mut().ok_or_else(|| io::Error::other("missing native process proof"))?;
+        for (kind, held) in self.root.iter().map(|held| (ResourceKind::Root, held))
+            .chain(self.cwd.iter().map(|held| (ResourceKind::Cwd, held)))
+            .chain(self.exe.iter().map(|held| (ResourceKind::Exe, held)))
+            .chain(self.mappings.iter().map(|(_, held)| (ResourceKind::Map, held))) {
+            qualify_object(held)?;
+            (**proof)(task, held, kind, fresh).map_err(descriptor_proof_error)?;
+        }
+        self.table.prove(task, repair, fresh)?;
+        Ok(())
+    }
+
+    fn prove_repaired_descriptors(&self, task: &TaskScope,
+        repair: &mut Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        if !self.table.repairs.borrow().is_empty() { self.table.prove(task, repair, false)?; }
+        Ok(())
+    }
+
+    pub fn uncharged_descriptor_pin_count(&self) -> usize {
+        if self.descriptors.claim_charge() { self.descriptors.len() } else { 0 }
+    }
+
+    fn prove_closing_witness(&self, process: &ProcessScope,
+        repair: &mut Option<&mut NativeNegativeProof<'_>>) -> io::Result<()> {
+        for (index, snapshot) in self.closing_witness.borrow().iter() {
+            snapshot.prove_resources(&process.tasks[*index], repair, false)?;
+        }
+        Ok(())
+    }
+
+    /// Departure releases live-slot seals, never the retained capability graph.
+    pub fn qualify_retained(&self, deadline: Instant) -> io::Result<()> {
+        for held in self.root.iter().chain(self.cwd.iter()).chain(self.exe.iter())
+            .chain(self.mappings.iter().map(|(_, held)| held)) {
+            deadline_check(deadline)?;
+            qualify_object(held)?;
+        }
+        for snapshot in std::iter::once(&self.table.initial).chain(self.table.repairs.borrow().iter()) {
+            for (_, held) in snapshot.iter() {
+                deadline_check(deadline)?;
+                qualify_object(held)?;
+            }
+        }
+        for (_, witness) in self.closing_witness.borrow().iter() { witness.qualify_retained(deadline)?; }
+        Ok(())
+    }
+
     pub fn descriptor_pin_count(&self) -> usize {
-        self.descriptors.len() + self.descriptor_repairs.borrow().iter().map(Vec::len).sum::<usize>()
+        self.unique_descriptor_pin_count(&mut BTreeSet::new())
+    }
+
+    pub fn unique_descriptor_pin_count(&self, seen: &mut BTreeSet<usize>) -> usize {
+        let mut total = 0;
+        for snapshot in std::iter::once(&self.table.initial).chain(self.table.repairs.borrow().iter()) {
+            if seen.insert(Rc::as_ptr(snapshot) as usize) { total += snapshot.len(); }
+        }
+        for (_, witness) in self.closing_witness.borrow().iter() {
+            total += witness.unique_descriptor_pin_count(seen);
+        }
+        total
+    }
+
+    pub fn closing_non_descriptor_pin_count(&self) -> usize {
+        self.closing_witness.borrow().iter().map(|(_, snapshot)|
+            snapshot.root.iter().count() + snapshot.cwd.iter().count()
+                + snapshot.exe.iter().count() + snapshot.mappings.len()
+                + snapshot.closing_non_descriptor_pin_count()).sum()
     }
 
     pub fn current_descriptor_count(&self) -> usize {
-        self.descriptor_repairs.borrow().last().map_or(self.descriptors.len(), Vec::len)
+        self.table.latest().len()
     }
 
     fn recheck_descriptors(&self, task: &TaskScope, deadline: Instant,
-        repair: &mut Option<&mut DescriptorProof<'_>>, full: bool) -> io::Result<()> {
-        let mut history = self.descriptor_repairs.borrow_mut();
-        let checked = if !full && history.is_empty() {
-            let current = numbers(format!("{}/fd", scope_path(&task.scope)), deadline)?;
-            if current.iter().copied().eq(self.descriptors.iter().map(|(number, _)| *number)) {
-                Ok(())
-            } else {
-                Err(io::Error::new(io::ErrorKind::Interrupted, "task descriptor membership changed"))
-            }
-        } else {
-            check_descriptors(history.last().unwrap_or(&self.descriptors), task, deadline)
-        };
-        if history.is_empty() && checked.is_ok() { return Ok(()); }
-        if let Err(error) = &checked {
-            if !matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) {
-                return checked;
-            }
+        repair: &mut Option<&mut NativeNegativeProof<'_>>, epoch: u64, budget: &Cell<usize>) -> io::Result<()> {
+        if self.table.missing.get() {
+            return Err(io::Error::other("missing descriptor requires process closing proof"));
         }
-        let Some(prove_negative) = repair.as_mut() else {
-            return checked.and_then(|()| Err(io::Error::other("descriptor repair requires native proof")));
-        };
+        if self.table.sealed_epoch.get() == epoch {
+            return self.prove_repaired_descriptors(task, repair);
+        }
+        let checked = check_descriptors(&self.table.latest(), task, deadline);
+        if checked.is_ok() {
+            self.prove_repaired_descriptors(task, repair)?;
+            self.table.sealed_epoch.set(epoch);
+            return Ok(());
+        }
+        if let Err(error) = &checked {
+            if !matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) { return checked; }
+        }
+        if repair.is_none() { return checked; }
         for pass in 0..FD_SNAPSHOT_PASSES {
+            if budget.get() == FD_SNAPSHOT_PASSES {
+                return Err(io::Error::other(DescriptorInstability::StablePair));
+            }
+            budget.set(budget.get() + 1);
             if pass != 0 {
                 task.recheck(deadline)?;
-                let snapshot = capture_descriptors(task, deadline)?;
-                for (_, held) in &snapshot {
-                    (**prove_negative)(held, true).map_err(descriptor_proof_error)?;
+                let (pins, missing) = capture_descriptors(task, deadline)?;
+                let snapshot = DescriptorSnapshot::new(pins);
+                self.table.repairs.borrow_mut().push(Rc::clone(&snapshot));
+                self.table.missing.set(missing);
+                snapshot.prove(task, repair, true)?;
+                self.table.prove(task, repair, false)?;
+                if missing { return Err(io::Error::other("missing descriptor requires process closing proof")); }
+            } else {
+                self.table.prove(task, repair, false)?;
+            }
+            match check_descriptors(&self.table.latest(), task, deadline) {
+                Ok(()) => {
+                    task.recheck(deadline)?;
+                    self.table.sealed_epoch.set(epoch);
+                    return Ok(());
                 }
-                history.push(snapshot);
-            }
-            // Never discard a formerly seen candidate or an opaque object.
-            // Re-prove every retained snapshot, including vanished slots, not
-            // merely the latest table or an intersection of numeric FD lists.
-            for (_, held) in self.descriptors.iter().chain(history.iter().flatten()) {
-                qualify_object(held)?;
-                (**prove_negative)(held, false).map_err(descriptor_proof_error)?;
-            }
-            match check_descriptors(history.last().unwrap_or(&self.descriptors), task, deadline) {
-                Ok(()) => { task.recheck(deadline)?; return Ok(()); }
-                Err(error) if matches!(error.kind(),
-                    io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => (),
+                Err(error) if matches!(error.kind(), io::ErrorKind::Interrupted | io::ErrorKind::NotFound) => (),
                 Err(error) => return Err(error),
             }
         }
-        Err(io::Error::other("descriptor stable-pair budget exhausted"))
+        Err(io::Error::other(DescriptorInstability::StablePair))
     }
 }
 
-fn prove_descriptor_negatives<'a>(descriptors: impl Iterator<Item = &'a (u32, Held)>,
-    repair: &mut Option<&mut DescriptorProof<'_>>) -> io::Result<()> {
-    if let Some(proof) = repair.as_mut() {
-        for (_, held) in descriptors {
-            qualify_object(held)?;
-            (**proof)(held, false).map_err(descriptor_proof_error)?;
-        }
-    }
-    Ok(())
-}
 
 fn descriptor_proof_error(error: io::Error) -> io::Error {
     if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::Interrupted) {
@@ -730,7 +1356,7 @@ fn descriptor_proof_error(error: io::Error) -> io::Error {
 #[cfg(test)]
 mod descriptor_failure_tests {
     #[test]
-    fn unclassified_descriptor_churn_cannot_enter_outer_capture_retry() {
+    fn failed_native_proof_cannot_enter_outer_capture_retry() {
         for errno in [2, 4] {
             let error = super::descriptor_proof_error(std::io::Error::from_raw_os_error(errno));
             assert_eq!(error.kind(), std::io::ErrorKind::Other);
@@ -743,22 +1369,60 @@ mod descriptor_failure_tests {
     }
 }
 
-fn capture_descriptors(task: &TaskScope, deadline: Instant) -> io::Result<Vec<(u32, Held)>> {
+/// Deterministic real-kernel races: tests mutate the owned target, not pin results.
+#[cfg(test)]
+pub(crate) enum DescriptorCaptureStage {
+    BeforePin(u32, u32), Missing(u32, u32), Complete(u32), BeforeSeal(u32),
+    FilesComparison(u32, u32), TaskMembership(u32), TaskValidated(u32),
+}
+#[cfg(test)]
+thread_local! {
+    static DESCRIPTOR_CAPTURE_HOOK:
+        RefCell<Option<Box<dyn FnMut(DescriptorCaptureStage)>>> = RefCell::new(None);
+}
+#[cfg(test)]
+pub(crate) fn descriptor_capture_hook(hook: Option<Box<dyn FnMut(DescriptorCaptureStage)>>) {
+    DESCRIPTOR_CAPTURE_HOOK.with(|slot| *slot.borrow_mut() = hook);
+}
+#[cfg(test)]
+fn descriptor_capture_step(stage: DescriptorCaptureStage) {
+    DESCRIPTOR_CAPTURE_HOOK.with(|slot| {
+        if let Some(hook) = slot.borrow_mut().as_mut() { hook(stage); }
+    });
+}
+
+fn capture_descriptors(task: &TaskScope, deadline: Instant) -> io::Result<(Vec<(u32, Held)>, bool)> {
     let base = scope_path(&task.scope);
     let mut descriptors = Vec::new();
+    let mut missing = false;
     for number in numbers(format!("{base}/fd"), deadline)? {
         if descriptors.len() >= OBJECT_LIMIT { return Err(io::Error::other("descriptor capacity")); }
-        // An enumerated FD that vanishes before pinning is unclassified, not a
-        // negative. Never recapture it away through the outer ENOENT retry.
-        let held = Held::pin(format!("{base}/fd/{number}"), deadline).map_err(descriptor_proof_error)?;
+        #[cfg(test)]
+        descriptor_capture_step(DescriptorCaptureStage::BeforePin(task.identity.pid, number));
+        // ENOENT is recorded as unresolved uncertainty, never as a negative.
+        // Only ProcessScope's full-process closing witness may discharge it.
+        let held = match Held::pin(format!("{base}/fd/{number}"), deadline) {
+            Ok(held) => held,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                missing = true;
+                #[cfg(test)]
+                descriptor_capture_step(DescriptorCaptureStage::Missing(task.identity.pid, number));
+                continue;
+            }
+            Err(error) => return Err(descriptor_proof_error(error)),
+        };
         qualify_object(&held)?;
         descriptors.push((number, held));
     }
-    Ok(descriptors)
+    #[cfg(test)]
+    descriptor_capture_step(DescriptorCaptureStage::Complete(task.identity.pid));
+    Ok((descriptors, missing))
 }
 
 fn check_descriptors(descriptors: &[(u32, Held)], task: &TaskScope,
     deadline: Instant) -> io::Result<()> {
+    #[cfg(test)]
+    descriptor_capture_step(DescriptorCaptureStage::BeforeSeal(task.identity.pid));
     let base = scope_path(&task.scope);
     let current = numbers(format!("{base}/fd"), deadline)?;
     if !current.iter().copied().eq(descriptors.iter().map(|(number, _)| *number)) {

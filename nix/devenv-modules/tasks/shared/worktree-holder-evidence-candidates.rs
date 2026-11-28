@@ -134,6 +134,7 @@ pub struct CandidateSet {
     witness: RefCell<Option<ShmemWitness>>,
     // Captured once per task, then moved into its retained MountCoverage.
     native_view: RefCell<Option<CandidateView>>,
+    failed_views: RefCell<Vec<CandidateView>>,
 }
 
 fn bound(deadline: Instant) -> io::Result<()> {
@@ -247,7 +248,18 @@ impl CandidateSet {
         let enrolled_view = CandidateView::capture(&self_task, &scopes, &namespace_cache, deadline)?;
         let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
         Ok(Self { kind: request.kind, uid, roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger,
-            witness: RefCell::new(None), store_inventory: RefCell::new(None), native_view: RefCell::new(None) })
+            witness: RefCell::new(None), store_inventory: RefCell::new(None), native_view: RefCell::new(None),
+            failed_views: RefCell::new(Vec::new()) })
+    }
+
+    /// Preserve, rather than silently discard, an interrupted task's registered
+    /// view while the fail-closed census surveys the remaining processes.
+    pub fn retain_failed_task_view(&self) -> io::Result<()> {
+        if let Some(view) = self.native_view.borrow_mut().take() {
+            self.failed_views.borrow_mut().push(view);
+            self.scope_ledger.borrow_mut().retain()?;
+        }
+        Ok(())
     }
 
     pub fn len(&self) -> usize { self.roots.len() }
@@ -267,6 +279,7 @@ impl CandidateSet {
         self.enrolled_view.recheck(deadline)?;
         if let Some(witness) = self.witness.borrow().as_ref() { witness.recheck()?; }
         if let Some(view) = self.native_view.borrow().as_ref() { view.recheck(deadline)?; }
+        for view in self.failed_views.borrow().iter() { view.recheck(deadline)?; }
         let self_task = objects::pin_magic("/proc/self")?;
         for (root, scope) in self.roots.iter().zip(&self.scopes) {
             bound(deadline)?;
@@ -328,7 +341,6 @@ impl CandidateSet {
     }
 
     fn pin_task_view(&self, task_scope: &File, deadline: Instant) -> io::Result<CandidateView> {
-        self.scope_ledger.borrow().require_collecting()?;
         let view = CandidateView::capture(task_scope, &self.scopes, &self.namespace_cache, deadline)?;
         self.scope_ledger.borrow_mut().register(&view)?;
         Ok(view)
@@ -362,6 +374,14 @@ impl CandidateSet {
         coverage: Option<&MountCoverage>, deadline: Instant) -> io::Result<MatchOutcome>
     {
         self.scope_ledger.borrow().require_frozen()?;
+        self.matches_with_coverage(file, task_scope, kind, coverage, deadline)
+    }
+
+    /// Match in an explicitly retained task view during collection or closure.
+    /// Unlike the single-task collection cache, this supports process-wide
+    /// closing proof without assuming sibling resource contexts are shared.
+    pub fn matches_with_coverage(&self, file: &File, task_scope: &File, kind: ReferenceKind,
+        coverage: Option<&MountCoverage>, deadline: Instant) -> io::Result<MatchOutcome> {
         let native = match self.prepare_match(file, kind, deadline)? {
             PreparedMatch::Complete(outcome) => return Ok(outcome),
             PreparedMatch::Native(native) => native,
@@ -535,7 +555,8 @@ mod tests {
         let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
         CandidateSet { kind: Kind::Worktree, uid: roots[0].root.metadata().unwrap().uid(),
             roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger, witness: RefCell::new(None),
-            store_inventory: RefCell::new(None), native_view: RefCell::new(None) }
+            store_inventory: RefCell::new(None), native_view: RefCell::new(None),
+            failed_views: RefCell::new(Vec::new()) }
     }
 
     #[test]
@@ -670,7 +691,8 @@ mod tests {
         worker.command("toggle");
         let mut fresh_pins = 0;
         {
-            let mut proof = |held: &Held, fresh: bool| {
+            let mut proof = |_: &worktree_holder_proc::scopes::TaskScope, held: &Held,
+                _: worktree_holder_proc::scopes::ResourceKind, fresh: bool| {
                 if fresh { fresh_pins += 1; }
                 prove(held)
             };
@@ -701,7 +723,8 @@ mod tests {
         worker.command("drop-candidate");
         assert_eq!(Held::pin(format!("/proc/{}/fd/{candidate_fd}", worker.child.id()),
             deadline()).err().unwrap().kind(), io::ErrorKind::NotFound);
-        let mut proof = |held: &Held, _: bool| prove(held);
+        let mut proof = |_: &worktree_holder_proc::scopes::TaskScope, held: &Held,
+            _: worktree_holder_proc::scopes::ResourceKind, _: bool| prove(held);
         let error = process.recheck_resources(index, &positive, deadline(), Some(&mut proof)).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Other);
         assert_eq!(error.to_string(), "changing descriptor lacks native negative proof");
@@ -719,7 +742,8 @@ mod tests {
         worker.command("toggle");
         let mut changes = 0;
         {
-            let mut proof = |held: &Held, fresh: bool| {
+            let mut proof = |_: &worktree_holder_proc::scopes::TaskScope, held: &Held,
+                _: worktree_holder_proc::scopes::ResourceKind, fresh: bool| {
                 prove(held)?;
                 if fresh && held.identity == trigger.identity {
                     worker.command("toggle");
@@ -729,9 +753,11 @@ mod tests {
             };
             let error = process.recheck_resources(index, &unstable, deadline(), Some(&mut proof)).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::Other);
-            assert_eq!(error.to_string(), "descriptor stable-pair budget exhausted");
+            assert_eq!(error.to_string(), "process closing pass budget exhausted");
         }
-        assert_eq!(changes, 4, "original snapshot plus four recaptures is the five-pass bound");
+        assert!(changes >= 4, "the original five-pass repair must run before process fallback");
+        assert!(changes <= 4 + 3 * (process.descriptor_class_count() + 4),
+            "fallback retains the three full-process passes and original four recaptures per failed pair");
         process.recheck(deadline()).unwrap();
     }
 
@@ -923,7 +949,15 @@ mod tests {
                 Some(&mounted), deadline()).unwrap() else { panic!("internal shmem classified as proxy") };
             assert!(matches.is_empty());
         }
-        assert!(set.capture_mounts(&task, deadline()).is_err());
+        let late = set.capture_mounts(&task, deadline()).unwrap();
+        assert_eq!(late.view.devices, mounted.view.devices);
+        set.freeze_scope_devices(deadline()).unwrap();
+        late.recheck(&set, deadline()).unwrap();
+        let MatchOutcome::Native(positive) = set.recheck_matches(&set.get(0).root,
+            &task, ReferenceKind::Cwd, Some(&late), deadline()).unwrap()
+            else { panic!("late frozen view lost actual candidate root") };
+        assert_eq!(positive.len(), 1);
+        assert_eq!(positive[0].root_index, 0);
         mounted.recheck(&set, deadline()).unwrap();
         set.recheck(deadline()).unwrap();
     }
@@ -1033,6 +1067,64 @@ mod tests {
         assert_eq!(std::fs::read(target.join("held")).unwrap(), b"overlay payload");
         // NeedsProxy is deliberately not native absence. The serving VM
         // separately proves that managedPolicy=null turns it into UNKNOWN.
+    }
+
+    #[test]
+    #[ignore = "requires controlled guest root with CAP_SYS_ADMIN and overlayfs"]
+    fn detached_overlay_lower_cannot_be_excluded_by_current_path_device() {
+        use std::process::Command;
+        struct Mounted(Option<PathBuf>);
+        impl Drop for Mounted {
+            fn drop(&mut self) {
+                if let Some(path) = &self.0 {
+                    let _ = Command::new("umount").arg("-l").arg(path).status();
+                }
+            }
+        }
+        let fixture = Fixture::new();
+        let candidate = fixture.0.join("candidate");
+        let outside = fixture.0.join("outside");
+        std::fs::create_dir(&candidate).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(candidate.join("held"), b"retained candidate lower").unwrap();
+        let candidate_device = std::fs::metadata(&candidate).unwrap().dev();
+        assert!(Command::new("mount").args(["-t", "tmpfs", "-o", "size=4m", "tmpfs"])
+            .arg(&outside).status().unwrap().success());
+        let _outside = Mounted(Some(outside.clone()));
+        assert_ne!(std::fs::metadata(&outside).unwrap().dev(), candidate_device);
+        let alias = outside.join("lower");
+        let merged = outside.join("merged");
+        let empty = outside.join("empty-lower");
+        std::fs::create_dir(&alias).unwrap();
+        std::fs::create_dir(&merged).unwrap();
+        std::fs::create_dir(&empty).unwrap();
+        assert!(Command::new("mount").arg("--bind").arg(&candidate).arg(&alias)
+            .status().unwrap().success());
+        let mut lower = Mounted(Some(alias.clone()));
+        assert_eq!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
+        // A read-only overlay requires at least two lower layers.
+        let options = format!("lowerdir={}:{}", alias.display(), empty.display());
+        assert!(Command::new("mount").args(["-t", "overlay", "overlay", "-o"])
+            .arg(&options).arg(&merged).status().unwrap().success());
+        let _merged = Mounted(Some(merged.clone()));
+        let held = File::open(merged.join("held")).unwrap();
+        assert_eq!(linux::filesystem_type(&held).unwrap(), 0x794c7630);
+        // Detach only this owned bind. Overlay retains its original lower
+        // mount; the same lowerdir spelling now resolves into the tmpfs.
+        assert!(Command::new("umount").arg("-l").arg(&alias)
+            .status().unwrap().success());
+        lower.0.take();
+        assert_ne!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
+        assert!(!alias.join("held").exists());
+        assert_eq!(std::fs::read(merged.join("held")).unwrap(),
+            b"retained candidate lower");
+        let candidates = fixture_set(&[candidate]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        assert!(matches!(candidates.matches(&held, &task, ReferenceKind::Fd,
+            deadline()).unwrap(), MatchOutcome::NeedsProxy));
+        // Rechecking the textual lowerdir cannot replace an actual backing
+        // identity/origin seal, even when the path is stable after capture.
+        assert_ne!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
     }
 
     #[test]
