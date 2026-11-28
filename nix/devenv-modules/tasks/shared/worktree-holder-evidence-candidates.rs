@@ -949,7 +949,15 @@ mod tests {
                 Some(&mounted), deadline()).unwrap() else { panic!("internal shmem classified as proxy") };
             assert!(matches.is_empty());
         }
-        assert!(set.capture_mounts(&task, deadline()).is_err());
+        let late = set.capture_mounts(&task, deadline()).unwrap();
+        assert_eq!(late.view.devices, mounted.view.devices);
+        set.freeze_scope_devices(deadline()).unwrap();
+        late.recheck(&set, deadline()).unwrap();
+        let MatchOutcome::Native(positive) = set.recheck_matches(&set.get(0).root,
+            &task, ReferenceKind::Cwd, Some(&late), deadline()).unwrap()
+            else { panic!("late frozen view lost actual candidate root") };
+        assert_eq!(positive.len(), 1);
+        assert_eq!(positive[0].root_index, 0);
         mounted.recheck(&set, deadline()).unwrap();
         set.recheck(deadline()).unwrap();
     }
