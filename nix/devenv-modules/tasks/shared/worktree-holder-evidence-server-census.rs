@@ -9,8 +9,9 @@ use super::client::{self, Client, Peer, Process, SelfRole};
 use super::objects;
 use super::protocol::{self, ObjectIdentity, Reference, ReferenceEffect, ReferenceKind, RootEvidence, Status, UnknownReason};
 use super::{linux, runtime::Runtime};
-use worktree_holder_proc::scopes::{ProcessScope, TaskScope, Held, References as NativeReferences,
-    ResourceKind, deadline_check, scope_path, numbers, mapping_names, qualify_object};
+use worktree_holder_proc::scopes::{ProcessScope, ProcessWitness, TaskScope, Held, References as NativeReferences,
+    ResourceKind, deadline_check, scope_path, numbers, mapping_names, qualify_object,
+    task_membership_changed, process_lifecycle_error};
 const ROOT_REFERENCE_LIMIT: usize = 4096;
 const TOTAL_REFERENCE_LIMIT: usize = 65536;
 const TASK_LIMIT: usize = 262144;
@@ -43,12 +44,6 @@ impl<'a> ProcessSurvey<'a> {
     pub fn new(nonce: &'a str) -> Self {
         Self { nonce, discovered: None, visited: Default::default(), proven: Default::default(),
             failed: Default::default(), failures: Vec::new(), truncated: false, global_failure: false, phase: "setup" }
-    }
-    pub fn restart(&mut self) {
-        self.discovered = None;
-        self.visited.clear(); self.proven.clear(); self.failed.clear();
-        self.failures.clear(); self.truncated = false;
-        self.global_failure = false; self.phase = "setup";
     }
     pub fn mark_global_failure(&mut self, phase: &'static str) {
         self.global_failure = true;
@@ -188,6 +183,12 @@ fn diagnostic_cwd_maps(process: &ProcessScope, candidates: &CandidateSet,
 pub struct Census<'a, 'nonce> {
     runtime: Option<Runtime>,
     processes: Vec<ObservedProcess>,
+    witnesses: Vec<ProcessWitness>,
+    seen: std::collections::BTreeSet<u32>,
+    total_tasks: usize,
+    reference_count: usize,
+    membership_passes: usize,
+    scope_frozen: bool,
     self_role: &'a SelfRole,
     request: &'a protocol::Request,
     observation: protocol::Observation,
@@ -226,6 +227,11 @@ struct References {
 #[derive(Default)]
 pub struct AliasSeal {
     proofs: Vec<LeaderFdAlias>,
+    // Own the complete evidence graph until the response has been written.
+    retained_processes: Vec<ObservedProcess>,
+    retained_witnesses: Vec<ProcessWitness>,
+    retained_runtime: Option<Runtime>,
+    retained_object_count: Cell<usize>,
 }
 struct LeaderFdAlias {
     leader: Process,
@@ -305,6 +311,32 @@ impl LeaderFdAlias {
 impl AliasSeal {
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
         for proof in &self.proofs { proof.recheck(deadline)?; }
+        deadline_check(deadline)
+    }
+
+    pub fn recheck_evidence(&self, candidates: &CandidateSet, request: &protocol::Request,
+        store_client: Option<&Client>, deadline: Instant) -> io::Result<()> {
+        for process in &self.retained_processes {
+            let checked = process.recheck(candidates, self.retained_runtime.as_ref(), request,
+                store_client, &self.retained_object_count, deadline)
+                .and_then(|()| process.recheck_mounts(candidates, deadline));
+            match checked {
+                Err(error) if process_lifecycle_error(&error) && process.scope.terminated()? => {
+                    process.recheck_retained(candidates, deadline)?;
+                }
+                result => result?,
+            }
+        }
+        if let Some(runtime) = &self.retained_runtime { runtime.recheck(deadline)?; }
+        candidates.recheck(deadline)?;
+        self.recheck(deadline)?;
+        for pid in numbers("/proc", deadline)? {
+            let mut covered = false;
+            for witness in self.retained_witnesses.iter().filter(|witness| witness.pid == pid) {
+                if witness.covers_current(deadline)? { covered = true; break; }
+            }
+            if !covered { return Err(io::Error::other("new process after final census seal")); }
+        }
         deadline_check(deadline)
     }
 }
@@ -510,8 +542,8 @@ impl References {
         let mapping_base = scope_path(&task.mapping_scope);
         let mut prove_negative = |proof_task: &TaskScope, held: &Held, kind: ResourceKind, fresh: bool| {
             if fresh { charge_objects(object_count, 1)?; }
-            let proof_index = process.tasks.binary_search_by_key(&proof_task.identity.pid, |task| task.identity.pid)
-                .map_err(|_| io::Error::other("closing proof task not selected"))?;
+            let proof_index = process.tasks.iter().position(|task| task.identity.pid == proof_task.identity.pid)
+                .ok_or_else(|| io::Error::other("closing proof task not selected"))?;
             let coverage = all_resources.get(proof_index).and_then(Option::as_ref)
                 .and_then(|resources| resources.mounted.as_ref());
             candidates.recheck_matches(&held.file, &proof_task.scope, reference_kind(kind),
@@ -578,9 +610,87 @@ impl References {
 }
 
 impl ObservedProcess {
+    fn capture_pending(&mut self, request: &protocol::Request, candidates: &CandidateSet,
+        store_client: Option<&Client>, management: bool, runtime: &mut Option<Runtime>,
+        observation: &mut protocol::Observation, reference_count: &mut usize,
+        aliases: &mut AliasSeal, object_count: &Cell<usize>, total_tasks: &mut usize,
+        seal: bool, deadline: Instant) -> io::Result<()> {
+        loop {
+            let captured = (|| {
+                if self.scope.terminated()? { return self.recheck_retained(candidates, deadline); }
+                let _phase = self.scope.resource_phase(deadline)?;
+                if management && self.scope.tasks.len() != 1 {
+                    return Err(io::Error::other("server management task set changed"));
+                }
+                while self.references.len() < self.scope.tasks.len() {
+                    let index = self.references.len();
+                    let references = match References::collect(&self.scope, index, request, candidates,
+                        store_client, management, runtime, observation, reference_count, aliases,
+                        object_count, deadline) {
+                        Err(error) if error.kind() == io::ErrorKind::NotFound
+                            && self.scope.task_departed(index, deadline)? => None,
+                        result => result?,
+                    };
+                    // Keep successfully acquired capabilities even when charging
+                    // or a later task fails. No successful prefix is recaptured.
+                    self.references.push(references);
+                    if let Some(references) = self.references[index].as_ref() {
+                        let descriptors = match &references.pins {
+                            Pins::Ordinary(pins) => pins.uncharged_descriptor_pin_count(),
+                            Pins::Management(pins) => pins.descriptors.len(),
+                        };
+                        charge_objects(object_count, references.pins.root().iter().count()
+                            + references.pins.cwd().iter().count() + references.pins.exe().iter().count()
+                            + descriptors + references.pins.mappings().len())?;
+                    }
+                }
+                self.close_descriptors(candidates, object_count, true, deadline)?;
+                self.scope.recheck(deadline)?;
+                drop(_phase);
+                if seal {
+                    self.recheck(candidates, runtime.as_ref(), request, store_client, object_count, deadline)?;
+                    self.recheck_mounts(candidates, deadline)?;
+                }
+                Ok(())
+            })();
+            match captured {
+                Err(error) if task_membership_changed(&error) => {
+                    let added = self.scope.reconcile_tasks(deadline)?;
+                    *total_tasks = total_tasks.checked_add(added)
+                        .ok_or_else(|| io::Error::other("task count overflow"))?;
+                    if *total_tasks > TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
+                }
+                Err(error) if process_lifecycle_error(&error) && self.scope.terminated()? => {
+                    return self.recheck_retained(candidates, deadline);
+                }
+                result => return result,
+            }
+        }
+    }
+
+    fn recheck_retained(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
+        for references in self.references.iter().flatten() {
+            if let Some(coverage) = &references.mounted { coverage.recheck_retained(candidates, deadline)?; }
+            for coverage in &references.closing_mounts { coverage.recheck_retained(candidates, deadline)?; }
+            match &references.pins {
+                Pins::Ordinary(pins) => pins.qualify_retained(deadline)?,
+                Pins::Management(pins) => {
+                    for held in pins.root.iter().chain(pins.cwd.iter()).chain(pins.exe.iter())
+                        .chain(pins.descriptors.iter().map(|(_, held)| held))
+                        .chain(pins.mappings.iter().map(|(_, held)| held)) {
+                        deadline_check(deadline)?;
+                        qualify_object(held)?;
+                    }
+                }
+            }
+        }
+        deadline_check(deadline)
+    }
+
     fn recheck(&self, candidates: &CandidateSet, runtime: Option<&Runtime>,
         request: &protocol::Request, store_client: Option<&Client>, object_count: &Cell<usize>,
         deadline: Instant) -> io::Result<()> {
+        if self.scope.terminated()? { return self.recheck_retained(candidates, deadline); }
         self.scope.recheck(deadline)?;
         let _phase = self.scope.resource_phase(deadline)?;
         let all_terminal = whole_group_terminal(&self.scope.tasks);
@@ -588,7 +698,14 @@ impl ObservedProcess {
             return Err(io::Error::other("unobserved task resources"));
         }
         for (index, task) in self.scope.tasks.iter().enumerate() {
-            if !self.scope.task_present(index, deadline)? { continue; }
+            if !self.scope.task_present(index, deadline)? {
+                if let Some(references) = &self.references[index] {
+                    if let Pins::Ordinary(pins) = &references.pins { pins.qualify_retained(deadline)?; }
+                    if let Some(coverage) = &references.mounted { coverage.recheck_retained(candidates, deadline)?; }
+                    for coverage in &references.closing_mounts { coverage.recheck_retained(candidates, deadline)?; }
+                }
+                continue;
+            }
             let references = self.references[index].as_ref()
                 .ok_or_else(|| io::Error::other("live task lacks resources"))?;
             let checked: io::Result<()> = (|| {
@@ -618,8 +735,8 @@ impl ObservedProcess {
             });
         let mut prove = |task: &TaskScope, held: &Held, kind: ResourceKind, fresh: bool| {
             if fresh { charge_objects(object_count, 1)?; }
-            let index = self.scope.tasks.binary_search_by_key(&task.identity.pid, |task| task.identity.pid)
-                .map_err(|_| io::Error::other("unknown descriptor proof task"))?;
+            let index = self.scope.tasks.iter().position(|selected| selected.identity.pid == task.identity.pid)
+                .ok_or_else(|| io::Error::other("unknown descriptor proof task"))?;
             let coverage = self.references[index].as_ref().and_then(|references| references.mounted.as_ref());
             let outcome = if collecting {
                 candidates.matches_with_coverage(&held.file, &task.scope, reference_kind(kind), coverage, deadline)?
@@ -632,6 +749,7 @@ impl ObservedProcess {
     }
 
     fn recheck_mounts(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
+        if self.scope.terminated()? { return self.recheck_retained(candidates, deadline); }
         self.scope.recheck(deadline)?;
         for (index, references) in self.references.iter().enumerate() {
             let Some(mounted) = references.as_ref().and_then(|references| references.mounted.as_ref())
@@ -676,93 +794,18 @@ impl<'a, 'nonce> Census<'a, 'nonce> {
                 references: Vec::new(), unknown_reasons: Vec::new() });
         }
         let mut census = Self { runtime: None, processes: Vec::new(), self_role, request,
-            aliases: AliasSeal::default(), object_count: Cell::new(0), survey,
+            witnesses: Vec::new(), seen: Default::default(), total_tasks: 0, reference_count: 0,
+            membership_passes: 0, scope_frozen: false, aliases: AliasSeal::default(), object_count: Cell::new(0), survey,
             observation: protocol::Observation { complete: true, process_count: 0, task_count: 0,
                 roots, receipt: Vec::new() } };
-        let pids = numbers("/proc", deadline)?;
-        survey.borrow_mut().discovered = Some(pids.len());
-        let mut total_tasks = 0usize;
-        let mut reference_count = 0usize;
-        for pid in &pids {
-            if Instant::now() >= deadline { survey.borrow_mut().phase = "deadline"; break; }
-            let process = match ProcessScope::discover(*pid, deadline) {
-                Ok(process) => process,
-                Err(error) => {
-                    survey.borrow_mut().fail(*pid, None, "discover", &error, NativeStatus::Unknown, NativeStatus::Unknown);
-                    continue;
-                }
-            };
-            let management = *pid == self_role.pid();
-            total_tasks += process.tasks.len();
-            let captured: io::Result<Vec<Option<References>>> = (|| {
-                if management && process.tasks.len() != 1 {
-                    return Err(io::Error::other("server management task set changed"));
-                }
-                if total_tasks > TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
-                let _phase = process.resource_phase(deadline)?;
-                let mut resources = Vec::with_capacity(process.tasks.len());
-                for index in 0..process.tasks.len() {
-                    let captured = References::collect(&process, index, request, candidates,
-                        store_client, management, &mut census.runtime, &mut census.observation,
-                        &mut reference_count, &mut census.aliases, &census.object_count, deadline);
-                    let references = match captured {
-                        Err(error) if error.kind() == io::ErrorKind::NotFound
-                            && process.task_departed(index, deadline)? => None,
-                        result => result?,
-                    };
-                    if let Some(references) = &references {
-                        let descriptor_pins = match &references.pins {
-                            Pins::Ordinary(pins) => pins.uncharged_descriptor_pin_count(),
-                            Pins::Management(pins) => pins.descriptors.len(),
-                        };
-                        charge_objects(&census.object_count, references.pins.root().iter().count()
-                            + references.pins.cwd().iter().count() + references.pins.exe().iter().count()
-                            + descriptor_pins + references.pins.mappings().len())?;
-                    }
-                    resources.push(references);
-                }
-                process.recheck(deadline)?;
-                Ok(resources)
-            })();
-            let process = match captured {
-                Ok(references) => ObservedProcess { scope: process, references },
-                Err(error) => {
-                    if candidates.retain_failed_task_view().is_err() { survey.borrow_mut().global_failure = true; }
-                    let (cwd, maps) = diagnostic_cwd_maps(&process, candidates, deadline, None);
-                    survey.borrow_mut().fail(*pid, Some(&process), "resources", &error, cwd, maps);
-                    continue;
-                }
-            };
-            let closed = (|| {
-                let _phase = process.scope.resource_phase(deadline)?;
-                process.close_descriptors(candidates, &census.object_count, true, deadline)
-            })();
-            if let Err(error) = closed {
-                let (cwd, maps) = diagnostic_cwd_maps(&process.scope, candidates, deadline, Some(&process.references));
-                survey.borrow_mut().fail(*pid, Some(&process.scope), "descriptor-close", &error, cwd, maps);
-            }
-            census.processes.push(process);
-        }
-        match numbers("/proc", deadline) {
-            Ok(current) if current == pids => (),
-            _ => { survey.borrow_mut().global_failure = true; survey.borrow_mut().phase = "process-set"; }
-        }
-        census.observation.process_count = u32::try_from(census.processes.len())
-            .map_err(|_| io::Error::other("process count overflow"))?;
-        census.observation.task_count = u32::try_from(total_tasks)
-            .map_err(|_| io::Error::other("task count overflow"))?;
+        census.reconcile_global(candidates, store_client, deadline)?;
         // Final reference closure may not grow this transaction's scope devices.
         if candidates.freeze_scope_devices(deadline).is_err() {
             survey.borrow_mut().global_failure = true;
             survey.borrow_mut().phase = "scope-freeze";
         }
+        else { census.scope_frozen = true; }
         census.recheck(candidates, store_client, deadline)?;
-        for root in &mut census.observation.roots {
-            if !root.complete || !root.references_complete { root.status = Status::Unknown; }
-            else if root.references.iter().any(|reference| reference.effect == ReferenceEffect::InUse) {
-                root.status = Status::InUse;
-            }
-        }
         census.observation.receipt = format!(
             "all-uid-all-task-root-scoped-census-v1 processes={} tasks={} self_role=immutable-server-bootstrap self_tgid={} self_start={} peer_tgid={} peer_start={}\n",
             census.observation.process_count, census.observation.task_count,
@@ -771,24 +814,107 @@ impl<'a, 'nonce> Census<'a, 'nonce> {
         Ok(census)
     }
 
-    fn recheck_selection(&self, deadline: Instant) -> io::Result<()> {
-        let pids = numbers("/proc", deadline)?;
-        if !pids.iter().copied().eq(self.processes.iter().map(|process| process.scope.identity.pid)) {
-            return Err(io::Error::other("full process membership did not close"));
-        }
-        for retained in &self.processes {
-            let current = ProcessScope::discover(retained.scope.identity.pid, deadline)?;
-            if !retained.scope.same_selection(&current, deadline)? {
-                return Err(io::Error::other("all-task identity credentials or membership changed"));
+    /// Cover additions, not equality of two all-host PID lists. Old pidfds and
+    /// proc inode capabilities remain retained; numeric reuse is a new admission.
+    fn reconcile_global(&mut self, candidates: &CandidateSet, store_client: Option<&Client>,
+        deadline: Instant) -> io::Result<()> {
+        loop {
+            let mut pending = Vec::new();
+            for pid in numbers("/proc", deadline)? {
+                let mut covered = false;
+                for witness in self.witnesses.iter().filter(|witness| witness.pid == pid) {
+                    if witness.covers_current(deadline)? { covered = true; break; }
+                }
+                if !covered && !self.survey.borrow().failed.contains(&pid) { pending.push(pid); }
+            }
+            if pending.is_empty() { break; }
+            if self.membership_passes >= 4 {
+                return Err(io::Error::other("global process reconciliation budget"));
+            }
+            self.membership_passes += 1;
+            for pid in pending {
+                self.seen.insert(pid);
+                self.survey.borrow_mut().discovered = Some(self.seen.len());
+                let witness = match ProcessWitness::capture(pid, deadline) {
+                    Ok(Some(witness)) => witness,
+                    Ok(None) => { self.survey.borrow_mut().prove(pid); continue; }
+                    Err(error) => {
+                        self.survey.borrow_mut().fail(pid, None, "witness", &error,
+                            NativeStatus::Unknown, NativeStatus::Unknown);
+                        continue;
+                    }
+                };
+                let captured = witness.discover(deadline);
+                let exited = witness.terminated()?;
+                self.witnesses.push(witness);
+                let scope = match captured {
+                    Ok(scope) => scope,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound && exited => {
+                        self.survey.borrow_mut().prove(pid);
+                        continue;
+                    }
+                    Err(error) => {
+                        self.survey.borrow_mut().fail(pid, None, "discover", &error,
+                            NativeStatus::Unknown, NativeStatus::Unknown);
+                        continue;
+                    }
+                };
+                self.total_tasks = self.total_tasks.checked_add(scope.tasks.len())
+                    .ok_or_else(|| io::Error::other("task count overflow"))?;
+                let mut process = ObservedProcess { scope, references: Vec::new() };
+                let captured = if self.total_tasks > TASK_LIMIT {
+                    Err(io::Error::other("task census capacity"))
+                } else {
+                    process.capture_pending(self.request, candidates, store_client, pid == self.self_role.pid(),
+                        &mut self.runtime, &mut self.observation, &mut self.reference_count,
+                        &mut self.aliases, &self.object_count, &mut self.total_tasks, self.scope_frozen, deadline)
+                };
+                match captured {
+                    Ok(()) => self.survey.borrow_mut().prove(pid),
+                    Err(error) => {
+                        if candidates.retain_failed_task_view().is_err() { self.survey.borrow_mut().global_failure = true; }
+                        let (cwd, maps) = diagnostic_cwd_maps(&process.scope, candidates, deadline, Some(&process.references));
+                        self.survey.borrow_mut().fail(pid, Some(&process.scope), "resources", &error, cwd, maps);
+                    }
+                }
+                self.processes.push(process);
             }
         }
-        if numbers("/proc", deadline)? != pids {
-            return Err(io::Error::other("full process membership changed during closure"));
+        self.observation.process_count = u32::try_from(self.processes.len())
+            .map_err(|_| io::Error::other("process count overflow"))?;
+        self.observation.task_count = u32::try_from(self.total_tasks)
+            .map_err(|_| io::Error::other("task count overflow"))?;
+        Ok(())
+    }
+
+    fn recheck_selection(&mut self, candidates: &CandidateSet, store_client: Option<&Client>,
+        deadline: Instant) -> io::Result<()> {
+        for pid in numbers("/proc", deadline)? {
+            let mut covered = false;
+            for witness in self.witnesses.iter().filter(|witness| witness.pid == pid) {
+                if witness.covers_current(deadline)? { covered = true; break; }
+            }
+            if !covered { return Err(io::Error::other("new live process not captured")); }
+        }
+        for process in &mut self.processes {
+            if self.survey.borrow().failed.contains(&process.scope.identity.pid) { continue; }
+            match process.scope.recheck(deadline) {
+                Err(error) if task_membership_changed(&error) => {
+                    process.capture_pending(self.request, candidates, store_client,
+                        process.scope.identity.pid == self.self_role.pid(), &mut self.runtime,
+                        &mut self.observation, &mut self.reference_count, &mut self.aliases,
+                        &self.object_count, &mut self.total_tasks, self.scope_frozen, deadline)?;
+                }
+                Err(error) if process_lifecycle_error(&error) && process.scope.terminated()? => {
+                    process.recheck_retained(candidates, deadline)?;
+                }
+                result => result?,
+            }
         }
         Ok(())
     }
 
-    pub fn recheck(&self, candidates: &CandidateSet, store_client: Option<&Client>, deadline: Instant) -> io::Result<()> {
+    pub fn recheck(&mut self, candidates: &CandidateSet, store_client: Option<&Client>, deadline: Instant) -> io::Result<()> {
         let opening: io::Result<()> = (|| {
             deadline_check(deadline)?;
             match (&self.request.store, store_client) {
@@ -798,16 +924,40 @@ impl<'a, 'nonce> Census<'a, 'nonce> {
             }
             self.self_role.recheck(deadline)?;
             candidates.recheck(deadline)?;
-            self.recheck_selection(deadline)
+            self.reconcile_global(candidates, store_client, deadline)
         })();
         if opening.is_err() {
             let mut survey = self.survey.borrow_mut();
             survey.global_failure = true; survey.phase = "global-opening";
         }
-        for process in &self.processes {
+        for process in &mut self.processes {
             if Instant::now() >= deadline { self.survey.borrow_mut().phase = "deadline"; break; }
-            let closed = process.recheck(candidates, self.runtime.as_ref(), self.request, store_client,
-                &self.object_count, deadline).and_then(|()| process.recheck_mounts(candidates, deadline));
+            if self.survey.borrow().failed.contains(&process.scope.identity.pid) { continue; }
+            // Only typed births may reopen admission. Opaque/unsupported errors
+            // are sticky; neither the task nor object budget is reset.
+            let closed = loop {
+                let closed = process.recheck(candidates, self.runtime.as_ref(), self.request, store_client,
+                    &self.object_count, deadline).and_then(|()| process.recheck_mounts(candidates, deadline));
+                match closed {
+                    Err(error) if task_membership_changed(&error) => {
+                        let repaired = (|| {
+                            let added = process.scope.reconcile_tasks(deadline)?;
+                            self.total_tasks = self.total_tasks.checked_add(added)
+                                .ok_or_else(|| io::Error::other("task count overflow"))?;
+                            if self.total_tasks > TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
+                            process.capture_pending(self.request, candidates, store_client,
+                                process.scope.identity.pid == self.self_role.pid(), &mut self.runtime,
+                                &mut self.observation, &mut self.reference_count, &mut self.aliases,
+                                &self.object_count, &mut self.total_tasks, self.scope_frozen, deadline)
+                        })();
+                        if let Err(error) = repaired { break Err(error); }
+                    }
+                    Err(error) if process_lifecycle_error(&error) && process.scope.terminated()? => {
+                        break process.recheck_retained(candidates, deadline);
+                    }
+                    result => break result,
+                }
+            };
             match closed {
                 Ok(()) => self.survey.borrow_mut().prove(process.scope.identity.pid),
                 Err(error) => {
@@ -819,7 +969,8 @@ impl<'a, 'nonce> Census<'a, 'nonce> {
         }
         let closing: io::Result<()> = (|| {
             if let Some(runtime) = &self.runtime { runtime.recheck(deadline)?; }
-            self.recheck_selection(deadline)?;
+            self.reconcile_global(candidates, store_client, deadline)?;
+            self.recheck_selection(candidates, store_client, deadline)?;
             candidates.recheck(deadline)?;
             self.self_role.recheck(deadline)?;
             if let (Some(store), Some(client)) = (&self.request.store, store_client) { client.recheck(store)?; }
@@ -834,6 +985,14 @@ impl<'a, 'nonce> Census<'a, 'nonce> {
             return Err(io::Error::other("one or more processes or global seals remain unproven"));
         }
         self.survey.borrow_mut().phase = "complete";
+        self.observation.task_count = u32::try_from(self.total_tasks)
+            .map_err(|_| io::Error::other("task count overflow"))?;
+        for root in &mut self.observation.roots {
+            if !root.complete || !root.references_complete { root.status = Status::Unknown; }
+            else if root.references.iter().any(|reference| reference.effect == ReferenceEffect::InUse) {
+                root.status = Status::InUse;
+            }
+        }
         Ok(())
     }
 
@@ -858,8 +1017,15 @@ impl<'a, 'nonce> Census<'a, 'nonce> {
             }
         }
         self.observation.receipt.extend_from_slice(format!(
+            "reconciled_processes={} reconciled_tasks={}\n",
+            self.observation.process_count, self.observation.task_count).as_bytes());
+        self.observation.receipt.extend_from_slice(format!(
             "retained_objects={} ordinary_sealed_descriptor_slots={} ordinary_retained_descriptor_pins={}\n",
             objects, slots, pins).as_bytes());
+        self.aliases.retained_processes = self.processes;
+        self.aliases.retained_witnesses = self.witnesses;
+        self.aliases.retained_runtime = self.runtime;
+        self.aliases.retained_object_count = self.object_count;
         (self.observation, self.aliases)
     }
 }

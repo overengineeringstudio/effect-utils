@@ -121,20 +121,27 @@ impl ScopeLedger {
         Self { devices, captured: 0, retained: 0, frozen: false }
     }
 
-    pub fn require_collecting(&self) -> io::Result<()> {
-        if self.frozen { return Err(io::Error::other("candidate scope inventory is frozen")); }
-        Ok(())
+    pub fn register(&mut self, view: &CandidateView) -> io::Result<()> {
+        self.register_devices(&view.devices)
     }
 
-    pub fn register(&mut self, view: &CandidateView) -> io::Result<()> {
-        if self.frozen { return Err(io::Error::other("candidate scope inventory is frozen")); }
-        self.devices.extend(view.devices.iter().copied());
-        self.captured += 1;
+    fn register_devices(&mut self, devices: &BTreeSet<u64>) -> io::Result<()> {
+        // Closure may observe a genuinely new task. Its real native view may
+        // contribute ownership, but never enlarge the frozen physical scope.
+        if self.frozen && !devices.is_subset(&self.devices) {
+            return Err(io::Error::other("closing task expands frozen candidate scope"));
+        }
+        let captured = self.captured.checked_add(1)
+            .ok_or_else(|| io::Error::other("candidate scope contribution capacity"))?;
+        if !self.frozen {
+            self.devices.extend(devices.iter().copied());
+        }
+        self.captured = captured;
         Ok(())
     }
 
     pub fn retain(&mut self) -> io::Result<()> {
-        if self.frozen || self.retained >= self.captured {
+        if self.retained >= self.captured {
             return Err(io::Error::other("candidate scope contribution ownership changed"));
         }
         self.retained += 1;
@@ -155,4 +162,29 @@ impl ScopeLedger {
     }
 
     pub fn contains(&self, device: u64) -> bool { self.devices.contains(&device) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closing_admission_preserves_frozen_devices_and_charges_ownership() {
+        let mut ledger = ScopeLedger {
+            devices: BTreeSet::from([7, 11]),
+            captured: 0,
+            retained: 0,
+            frozen: true,
+        };
+        ledger.register_devices(&BTreeSet::from([11])).unwrap();
+        assert_eq!(ledger.devices, BTreeSet::from([7, 11]));
+        assert_eq!(ledger.captured, 1);
+        assert!(ledger.freeze(true).is_err());
+        ledger.retain().unwrap();
+        ledger.freeze(true).unwrap();
+        assert!(ledger.retain().is_err());
+        assert!(ledger.register_devices(&BTreeSet::from([11, 13])).is_err());
+        assert_eq!(ledger.devices, BTreeSet::from([7, 11]));
+        assert_eq!((ledger.captured, ledger.retained), (1, 1));
+    }
 }

@@ -341,7 +341,6 @@ impl CandidateSet {
     }
 
     fn pin_task_view(&self, task_scope: &File, deadline: Instant) -> io::Result<CandidateView> {
-        self.scope_ledger.borrow().require_collecting()?;
         let view = CandidateView::capture(task_scope, &self.scopes, &self.namespace_cache, deadline)?;
         self.scope_ledger.borrow_mut().register(&view)?;
         Ok(view)
@@ -1060,6 +1059,61 @@ mod tests {
         assert_eq!(std::fs::read(target.join("held")).unwrap(), b"overlay payload");
         // NeedsProxy is deliberately not native absence. The serving VM
         // separately proves that managedPolicy=null turns it into UNKNOWN.
+    }
+
+    #[test]
+    #[ignore = "requires controlled guest root with CAP_SYS_ADMIN and overlayfs"]
+    fn detached_overlay_lower_cannot_be_excluded_by_current_path_device() {
+        use std::process::Command;
+        struct Mounted(Option<PathBuf>);
+        impl Drop for Mounted {
+            fn drop(&mut self) {
+                if let Some(path) = &self.0 {
+                    let _ = Command::new("umount").arg("-l").arg(path).status();
+                }
+            }
+        }
+        let fixture = Fixture::new();
+        let candidate = fixture.0.join("candidate");
+        let outside = fixture.0.join("outside");
+        std::fs::create_dir(&candidate).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(candidate.join("held"), b"retained candidate lower").unwrap();
+        let candidate_device = std::fs::metadata(&candidate).unwrap().dev();
+        assert!(Command::new("mount").args(["-t", "tmpfs", "-o", "size=4m", "tmpfs"])
+            .arg(&outside).status().unwrap().success());
+        let _outside = Mounted(Some(outside.clone()));
+        assert_ne!(std::fs::metadata(&outside).unwrap().dev(), candidate_device);
+        let alias = outside.join("lower");
+        let merged = outside.join("merged");
+        std::fs::create_dir(&alias).unwrap();
+        std::fs::create_dir(&merged).unwrap();
+        assert!(Command::new("mount").arg("--bind").arg(&candidate).arg(&alias)
+            .status().unwrap().success());
+        let mut lower = Mounted(Some(alias.clone()));
+        assert_eq!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
+        let options = format!("lowerdir={}", alias.display());
+        assert!(Command::new("mount").args(["-t", "overlay", "overlay", "-o"])
+            .arg(&options).arg(&merged).status().unwrap().success());
+        let _merged = Mounted(Some(merged.clone()));
+        let held = File::open(merged.join("held")).unwrap();
+        assert_eq!(linux::filesystem_type(&held).unwrap(), 0x794c7630);
+        // Detach only this owned bind. Overlay retains its original lower
+        // mount; the same lowerdir spelling now resolves into the tmpfs.
+        assert!(Command::new("umount").arg("-l").arg(&alias)
+            .status().unwrap().success());
+        lower.0.take();
+        assert_ne!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
+        assert!(!alias.join("held").exists());
+        assert_eq!(std::fs::read(merged.join("held")).unwrap(),
+            b"retained candidate lower");
+        let candidates = fixture_set(&[candidate]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        assert!(matches!(candidates.matches(&held, &task, ReferenceKind::Fd,
+            deadline()).unwrap(), MatchOutcome::NeedsProxy));
+        // Rechecking the textual lowerdir cannot replace an actual backing
+        // identity/origin seal, even when the path is stable after capture.
+        assert_ne!(std::fs::metadata(&alias).unwrap().dev(), candidate_device);
     }
 
     #[test]

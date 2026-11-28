@@ -126,7 +126,10 @@ an owned detached bind absent from both views must veto.
 `CandidateView` inventories every mount at or below each candidate's physical
 aliases, including covering-ancestor devices. `ScopeLedger` unions enrollment
 and every captured task contribution, requires retained ownership and an empty
-task-view cache before freezing, and cannot grow during final object closure.
+task-view cache before freezing. After freeze a genuine newly discovered task
+may contribute a freshly captured view only if its devices are a subset of the
+immutable frozen set; its captured/retained ownership is still charged. Device
+expansion or an unretained contribution remains UNKNOWN.
 The census independently recloses every retained mount contribution, including
 those belonging to a subsequently proven departed task. Departed contributions
 close through their pinned namespace, root and mount objects without reopening
@@ -339,14 +342,29 @@ uses four owned kernel processes, records two independent generation failures,
 proves one survivor and preserves the fourth as unvisited.
 
 Task departure is non-holding only for a missing nonleader re-proven absent
-from the retained leader's task list, with the original live leader generation
-checked before and after relisting. Missing descendants of a still-listed
-task are not departure. Leader termination never dismisses surviving siblings.
-Retained resources use optional slots only for such proven departures; new
-live tasks, reused task generations and failed closure remain protective.
-Other ENOENT failures discard the entire candidate/store/peer/census graph and
-restart capture once under the original deadline; a second failure is UNKNOWN.
-Permission, unsupported-object and membership errors do not gain a retry.
+from the retained live leader's task list. Whole-process departure additionally
+requires a retained generation-qualified proc capability and native whole-group
+pidfd death; an exited leader does not dismiss live siblings. ENOENT/ESRCH alone
+never proves departure, and permission, unsupported or opaque failures remain
+protective.
+
+New live tasks are reconciled append-only in at most three task passes. Each
+receives actual task/mapping/namespace scopes and independent files-class proof;
+old indices, pins, positive references and uncertainty are not discarded.
+Global coverage uses retained process-generation witnesses and at most three
+additional admission batches rather than requiring one simultaneous quiet
+all-host PID list. Reused generations and exhausted reconciliation remain
+UNKNOWN. All original deadlines and cumulative task/object/reference budgets
+remain in force. No whole-request ENOENT restart discards the evidence graph.
+
+The final response seal owns the complete retained process/resource/witness
+and runtime graph through emission, then recloses generation, resources,
+namespace/classes, mounts, candidates and global membership after serialization.
+Owned-kernel regressions cover exit during discovery, retained witnesses after
+reap, a dead leader with a surviving sibling, and newly born private holders.
+The hidden-overlay-lower regression also requires HOLD after a lower bind is
+detached: current path `st_dev` cannot identify the backing still retained by
+overlay. These ignored root fixtures are not run by ordinary library builds.
 
 Each task pins both `/proc/<tgid>/task/<tid>` and top-level `/proc/<tid>`,
 authenticating both generations during closure. Root/cwd/exe/fd/namespaces use

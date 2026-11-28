@@ -669,6 +669,46 @@ fn actual_missing_descriptor_worker() {
             }
             "duplicate" => { duplicate = Some(std::fs::File::open(root.join("candidate")).unwrap()); }
             "drop-duplicate" => { duplicate.take(); }
+            "birth" => {
+                let (ready, receive) = std::sync::mpsc::sync_channel(0);
+                let (stop, wait) = std::sync::mpsc::channel();
+                let candidate = root.join("candidate");
+                let thread = std::thread::spawn(move || {
+                    unsafe extern "C" { fn unshare(flags: i32) -> i32; }
+                    // SAFETY: split only this owned fixture task's files_struct.
+                    assert_eq!(unsafe { unshare(0x400) }, 0);
+                    let held = std::fs::File::open(candidate).unwrap();
+                    ready.send(()).unwrap();
+                    wait.recv().unwrap();
+                    drop(held);
+                });
+                receive.recv().unwrap();
+                shared_workers.push((stop, thread));
+            }
+            "exit-leader" => {
+                unsafe extern "C" {
+                    fn signal(number: i32, handler: extern "C" fn(i32)) -> usize;
+                    fn syscall(number: std::os::raw::c_long, ...) -> std::os::raw::c_long;
+                }
+                extern "C" fn exit_this_task(_: i32) {
+                    #[cfg(target_arch = "x86_64")]
+                    const EXIT: std::os::raw::c_long = 60;
+                    #[cfg(target_arch = "aarch64")]
+                    const EXIT: std::os::raw::c_long = 93;
+                    // SAFETY: async-signal-safe raw exit kills only the owned
+                    // receiving leader task, not the live sibling test worker.
+                    unsafe { syscall(EXIT, 0i32); }
+                }
+                #[cfg(target_arch = "x86_64")]
+                const TGKILL: std::os::raw::c_long = 234;
+                #[cfg(target_arch = "aarch64")]
+                const TGKILL: std::os::raw::c_long = 131;
+                // SAFETY: this isolated owned child installs its own handler
+                // and targets only its own thread-group leader.
+                assert_ne!(unsafe { signal(10, exit_this_task) }, usize::MAX);
+                let pid = std::process::id();
+                assert_eq!(unsafe { syscall(TGKILL, pid, pid, 10i32) }, 0);
+            }
             "private" => {
                 let (ready, receive) = std::sync::mpsc::sync_channel(0);
                 let (stop, wait) = std::sync::mpsc::channel();
@@ -745,6 +785,7 @@ fn actual_missing_descriptor_worker() {
 enum MissingFdCase {
     Closed, CurrentDuplicate, RetainedDuplicate, CandidateReuse, OpaqueReuse, Unstable,
     SharedClass, LinearSharedClass, PrivateClass, ClassMutation, StablePairFallback,
+    NewTasks, DiscoveryBirth, ExitDuringDiscovery, ExitProcess, ExitLeader,
 }
 
 fn missing_fd_case(case: MissingFdCase) {
@@ -807,10 +848,131 @@ fn missing_fd_case(case: MissingFdCase) {
     }
     if matches!(case, MissingFdCase::PrivateClass) { worker.borrow_mut().command("private"); }
     if matches!(case, MissingFdCase::LinearSharedClass) { worker.borrow_mut().command("large-shared"); }
+    if matches!(case, MissingFdCase::NewTasks | MissingFdCase::ExitProcess | MissingFdCase::ExitLeader) {
+        worker.borrow_mut().command("duplicate");
+    }
     let pid = worker.borrow().child.id();
     let deadline = Instant::now() + Duration::from_secs(30);
-    let process = scopes::ProcessScope::discover(pid, deadline).unwrap();
+    if matches!(case, MissingFdCase::ExitDuringDiscovery) {
+        let witness = scopes::ProcessWitness::capture(pid, deadline).unwrap().unwrap();
+        let fixture = Rc::clone(&worker);
+        let fired = Rc::new(std::cell::Cell::new(false));
+        let hook_fired = Rc::clone(&fired);
+        scopes::descriptor_capture_hook(Some(Box::new(move |stage| {
+            if matches!(stage, scopes::DescriptorCaptureStage::TaskMembership(tgid) if tgid == pid)
+                && !hook_fired.replace(true) {
+                fixture.borrow_mut().child.kill().unwrap();
+                fixture.borrow_mut().child.wait().unwrap();
+            }
+        })));
+        let hook = Hook;
+        let error = witness.discover(deadline).err().expect("reaped generation cannot finish discovery");
+        drop(hook);
+        assert!(fired.get(), "exit must occur after generation/proc/task pins are retained");
+        assert!(scopes::process_lifecycle_error(&error));
+        assert!(witness.terminated().unwrap());
+        assert!(!witness.covers_current(deadline).unwrap());
+        assert!(!scopes::process_lifecycle_error(&std::io::Error::from_raw_os_error(13)));
+        assert!(!scopes::process_lifecycle_error(&std::io::Error::from(std::io::ErrorKind::Unsupported)));
+        return;
+    }
+    let discovery_birth = Rc::new(std::cell::Cell::new(false));
+    if matches!(case, MissingFdCase::DiscoveryBirth) {
+        let fired = Rc::clone(&discovery_birth);
+        let fixture = Rc::clone(&worker);
+        scopes::descriptor_capture_hook(Some(Box::new(move |stage| {
+            if matches!(stage, scopes::DescriptorCaptureStage::TaskMembership(tgid) if tgid == pid)
+                && !fired.replace(true) {
+                fixture.borrow_mut().command("birth");
+            }
+        })));
+    }
+    let discovery_hook = matches!(case, MissingFdCase::DiscoveryBirth).then(|| Hook);
+    let mut process = scopes::ProcessScope::discover(pid, deadline).unwrap();
     let index = process.tasks.iter().position(|task| task.identity.pid == pid).unwrap();
+    if matches!(case, MissingFdCase::DiscoveryBirth) {
+        drop(discovery_hook);
+        assert!(discovery_birth.get(), "birth must happen after the first task enumeration");
+        let mut resources = Vec::new();
+        for index in 0..process.tasks.len() {
+            resources.push(process.collect_resources(index, deadline, None).unwrap());
+        }
+        assert!(process.descriptor_class_count() >= 2);
+        assert!(resources.iter().flatten().any(|references|
+            references.descriptors.iter().any(|(_, held)| held.identity == candidate)),
+            "discovery must capture the genuinely new private task's candidate");
+        process.recheck(deadline).unwrap();
+        return;
+    }
+    if matches!(case, MissingFdCase::NewTasks | MissingFdCase::ExitProcess | MissingFdCase::ExitLeader) {
+        let mut witness = scopes::ProcessWitness::capture(pid, deadline).unwrap().unwrap();
+        let prior = process.collect_resources(index, deadline, None).unwrap().unwrap();
+        assert!(prior.descriptors.iter().any(|(_, held)| held.identity == candidate));
+        if matches!(case, MissingFdCase::NewTasks) {
+            let original_tasks = process.tasks.len();
+            let original_classes = process.descriptor_class_count();
+            let mut admitted = Vec::new();
+            for pass in 0..4 {
+                worker.borrow_mut().command("birth");
+                let error = process.recheck(deadline).unwrap_err();
+                assert!(scopes::task_membership_changed(&error));
+                if pass == 3 {
+                    assert!(scopes::task_membership_changed(&process.reconcile_tasks(deadline).unwrap_err()),
+                        "the membership budget belongs to the retained process, not a new pass");
+                    break;
+                }
+                let before = process.tasks.len();
+                assert_eq!(process.reconcile_tasks(deadline).unwrap(), 1);
+                assert_eq!(process.tasks.len(), original_tasks + pass + 1);
+                assert_eq!(process.descriptor_class_count(), original_classes + pass + 1);
+                let fresh = process.collect_resources(before, deadline, None).unwrap().unwrap();
+                assert!(fresh.descriptors.iter().any(|(_, held)| held.identity == candidate),
+                    "new private files_struct must be captured, never inferred from TGID");
+                assert!(fresh.root.is_some() && fresh.cwd.is_some() && fresh.exe.is_some());
+                assert!(!fresh.mappings.is_empty(), "capture the new actual task's native mm view");
+                process.recheck_resources(before, &fresh, deadline, None).unwrap();
+                admitted.push(fresh);
+                process.recheck(deadline).unwrap();
+            }
+            assert_eq!(admitted.len(), 3);
+            assert!(prior.descriptors.iter().any(|(_, held)| held.identity == candidate),
+                "birth reconciliation must retain earlier positive capabilities");
+            // An actual live task with an intentionally stale generation must
+            // remain UNKNOWN; numeric TID membership never authorizes reuse.
+            let new_index = original_tasks;
+            process.tasks[new_index].identity.start += 1;
+            assert!(process.task_present(new_index, deadline).is_err());
+            assert!(process.recheck(deadline).is_err());
+            return;
+        }
+        if matches!(case, MissingFdCase::ExitLeader) {
+            worker.borrow_mut().command("exit-leader");
+            while !matches!(process::process(pid).unwrap().state, b'Z' | b'X') {
+                assert!(Instant::now() < deadline, "owned leader did not exit");
+                std::thread::yield_now();
+            }
+            assert!(!witness.terminated().unwrap(), "a dead leader is not a dead thread group");
+            assert!(!process.terminated().unwrap());
+            assert!(!process.task_departed(index, deadline).unwrap(),
+                "leader-only exit cannot waive live siblings or their resources");
+        }
+        worker.borrow_mut().child.kill().unwrap();
+        worker.borrow_mut().child.wait().unwrap();
+        assert!(witness.terminated().unwrap(), "kernel pidfd death must survive process reap");
+        assert!(witness.discover(deadline).is_err(), "an exited generation cannot become a live snapshot");
+        assert!(process.terminated().unwrap());
+        assert!(process.task_departed(index, deadline).unwrap());
+        assert!(!witness.covers_current(deadline).unwrap());
+        assert!(scopes::ProcessWitness::capture(pid, deadline).unwrap().is_none(),
+            "unpinned disappearance requires actual pidfd ESRCH plus native proc absence");
+        prior.qualify_retained(deadline).unwrap();
+        // Route an old retained capability at a different real live PID. Its
+        // proc inode, not the numeric field, must refuse the rebinding.
+        witness.pid = std::process::id();
+        assert!(!witness.covers_current(deadline).unwrap());
+        assert!(witness.terminated().unwrap());
+        return;
+    }
     let races = Rc::new(std::cell::Cell::new(0));
     let captures = Rc::new(std::cell::Cell::new(0));
     let hook_captures = Rc::clone(&captures);
@@ -978,7 +1140,8 @@ fn missing_fd_case(case: MissingFdCase) {
             process.recheck_resources(index, &references, deadline, Some(&mut negative)).unwrap();
         }
         MissingFdCase::SharedClass | MissingFdCase::LinearSharedClass | MissingFdCase::PrivateClass
-            | MissingFdCase::ClassMutation => unreachable!(),
+            | MissingFdCase::ClassMutation | MissingFdCase::NewTasks | MissingFdCase::DiscoveryBirth
+            | MissingFdCase::ExitDuringDiscovery | MissingFdCase::ExitProcess | MissingFdCase::ExitLeader => unreachable!(),
     }
 }
 
@@ -1031,4 +1194,34 @@ fn actual_process_stable_pair_exhaustion_uses_closing_witness() {
 #[ignore = "requires isolated root Linux KCMP_FILES and owned large task-resource visibility"]
 fn actual_large_shared_group_phase_proof_work_is_linear() {
     missing_fd_case(MissingFdCase::LinearSharedClass);
+}
+
+#[test]
+#[ignore = "requires isolated Linux root with native task-resource visibility"]
+fn actual_new_task_reconciliation_captures_private_candidate_and_is_bounded() {
+    missing_fd_case(MissingFdCase::NewTasks);
+}
+
+#[test]
+#[ignore = "requires isolated Linux root with pidfs and native task-resource visibility"]
+fn actual_process_exit_witness_survives_reap_and_rejects_pid_rebinding() {
+    missing_fd_case(MissingFdCase::ExitProcess);
+}
+
+#[test]
+#[ignore = "requires isolated Linux root; exits only the owned helper thread-group leader"]
+fn actual_exited_leader_does_not_discharge_live_sibling_resources() {
+    missing_fd_case(MissingFdCase::ExitLeader);
+}
+
+#[test]
+#[ignore = "requires isolated Linux root with native task-resource visibility"]
+fn actual_task_born_during_discovery_is_captured_with_its_private_candidate() {
+    missing_fd_case(MissingFdCase::DiscoveryBirth);
+}
+
+#[test]
+#[ignore = "requires isolated Linux root with pidfs and native task-resource visibility"]
+fn actual_exit_during_discovery_has_generation_bound_native_witness() {
+    missing_fd_case(MissingFdCase::ExitDuringDiscovery);
 }

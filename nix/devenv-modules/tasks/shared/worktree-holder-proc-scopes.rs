@@ -163,6 +163,90 @@ mod anonymous_object_tests {
     }
 }
 
+/// A pidfd is acquired before any fallible task/resource discovery. Readiness
+/// proves death of that exact process generation, not absence of a numeric PID.
+pub struct ProcessWitness {
+    pub pid: u32,
+    pidfd: OwnedFd,
+    scope: File,
+}
+impl ProcessWitness {
+    pub fn capture(pid: u32, deadline: Instant) -> io::Result<Option<Self>> {
+        deadline_check(deadline)?;
+        let scope = match objects::pin_magic(format!("/proc/{pid}")) {
+            Ok(scope) => Some(scope),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        let pidfd = match linux::pin_process(pid) {
+            Ok(pidfd) => pidfd,
+            Err(error) if error.raw_os_error() == Some(3) => {
+                return match objects::pin_magic(format!("/proc/{pid}")) {
+                    Err(absent) if absent.kind() == io::ErrorKind::NotFound => Ok(None),
+                    Err(other) => Err(other),
+                    Ok(_) => Err(io::Error::other("process appeared during absence proof")),
+                };
+            }
+            Err(error) => return Err(error),
+        };
+        let scope = scope.ok_or_else(|| io::Error::other("process appeared during witness pin"))?;
+        let witness = Self { pid, pidfd, scope };
+        if !witness.covers_current(deadline)? && !witness.terminated()? {
+            return Err(io::Error::other("process generation changed during witness pin"));
+        }
+        Ok(Some(witness))
+    }
+    pub fn terminated(&self) -> io::Result<bool> { linux::pidfd_terminated(&self.pidfd) }
+    pub fn covers_current(&self, deadline: Instant) -> io::Result<bool> {
+        deadline_check(deadline)?;
+        match objects::pin_magic(format!("/proc/{}", self.pid)) {
+            Ok(current) => Ok(objects::identity(&current)? == objects::identity(&self.scope)?),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+    pub fn discover(&self, deadline: Instant) -> io::Result<ProcessScope> {
+        if self.terminated()? { return Err(io::Error::from(io::ErrorKind::NotFound)); }
+        let captured = match ProcessScope::discover(self.pid, deadline) {
+            Err(error) if process_lifecycle_error(&error) && self.terminated()? => {
+                return Err(io::Error::from(io::ErrorKind::NotFound));
+            }
+            result => result?,
+        };
+        if !self.covers_current(deadline)? || self.terminated()? {
+            return Err(io::Error::from(io::ErrorKind::NotFound));
+        }
+        Ok(captured)
+    }
+}
+
+#[derive(Debug)]
+pub struct TaskMembershipChanged;
+impl std::fmt::Display for TaskMembershipChanged {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("new live task not captured")
+    }
+}
+impl std::error::Error for TaskMembershipChanged {}
+pub fn task_membership_changed(error: &io::Error) -> bool {
+    error.get_ref().is_some_and(|cause| cause.is::<TaskMembershipChanged>())
+}
+
+#[derive(Debug)]
+struct ProcessGenerationChanged;
+impl std::fmt::Display for ProcessGenerationChanged {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("process generation changed")
+    }
+}
+impl std::error::Error for ProcessGenerationChanged {}
+/// Only native absence/ESRCH or a typed generation boundary may be discharged
+/// by a retained whole-group pidfd. Opaque/unsupported errors remain sticky.
+pub fn process_lifecycle_error(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(3)
+        || error.get_ref().is_some_and(|cause| cause.is::<ProcessGenerationChanged>())
+}
+
 pub struct ProcessScope {
     pub identity: Process,
     pidfd: OwnedFd,
@@ -174,6 +258,7 @@ pub struct ProcessScope {
     resource_phase_active: Cell<bool>,
     closing_passes: Cell<usize>,
     fd_repair_passes: Cell<usize>,
+    membership_passes: usize,
 }
 
 pub struct TaskScope {
@@ -416,23 +501,37 @@ pub fn qualify_object(held: &Held) -> io::Result<()> {
     Err(io::Error::other("unqualified held object"))
 }
 
-/// A missing nonleader is non-holding only within the original live generation.
-/// In particular, a missing descriptor of a still-listed task is not departure.
+/// Whole-group pidfd readiness proves every old task departed, including the
+/// leader. Otherwise require absence inside the original retained live group.
 fn proven_task_departure(leader: &Process, pidfd: &OwnedFd, scope: &File,
     tid: u32, deadline: Instant) -> io::Result<bool>
 {
     deadline_check(deadline)?;
+    if linux::pidfd_terminated(pidfd)? { return Ok(true); }
     if tid == leader.pid { return Ok(false); }
-    if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
-        return Err(io::Error::other("departure proof leader generation changed"));
+    for pass in 0..2 {
+        match process::process(leader.pid) {
+            Ok(current) if current.same_identity(leader) => (),
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+                && linux::pidfd_terminated(pidfd)? => return Ok(true),
+            Err(error) => return Err(error),
+            Ok(_) if linux::pidfd_terminated(pidfd)? => return Ok(true),
+            Ok(_) => return Err(io::Error::other(ProcessGenerationChanged)),
+        }
+        if pass == 0 {
+            #[cfg(test)]
+            descriptor_capture_step(DescriptorCaptureStage::TaskMembership(leader.pid));
+            match numbers(format!("{}/task", scope_path(scope)), deadline) {
+                Ok(current) if current.binary_search(&tid).is_ok() => return Ok(false),
+                Ok(_) => (),
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && linux::pidfd_terminated(pidfd)? => return Ok(true),
+                Err(error) => return Err(error),
+            }
+        }
+        if linux::pidfd_terminated(pidfd)? { return Ok(true); }
     }
-    #[cfg(test)]
-    descriptor_capture_step(DescriptorCaptureStage::TaskMembership(leader.pid));
-    let absent = numbers(format!("{}/task", scope_path(scope)), deadline)?.binary_search(&tid).is_err();
-    if linux::pidfd_terminated(pidfd)? || !process::process(leader.pid)?.same_identity(leader) {
-        return Err(io::Error::other("departure proof leader did not close"));
-    }
-    Ok(absent)
+    Ok(true)
 }
 
 impl ProcessScope {
@@ -442,7 +541,7 @@ impl ProcessScope {
         let pidfd = linux::pin_process(pid)?;
         let scope = objects::pin_magic(format!("/proc/{pid}"))?;
         if !process::process(pid)?.same_identity(&identity) {
-            return Err(io::Error::other("process changed during pin"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         let base = scope_path(&scope);
         let tids = numbers(format!("{base}/task"), deadline)?;
@@ -470,13 +569,16 @@ impl ProcessScope {
             }
         }
         if tasks.is_empty() || !tasks.iter().any(|task| task.identity.pid == pid) {
+            if linux::pidfd_terminated(&pidfd)? { return Err(io::Error::from(io::ErrorKind::NotFound)); }
             return Err(io::Error::other("process task discovery did not close"));
         }
         let mut captured = Self { identity, pidfd, scope, tasks,
             file_classes: Vec::new(), task_file_class: Vec::new(),
             resource_epoch: Cell::new(0), resource_phase_active: Cell::new(false),
-            closing_passes: Cell::new(0), fd_repair_passes: Cell::new(0) };
-        captured.recheck(deadline)?;
+            closing_passes: Cell::new(0), fd_repair_passes: Cell::new(0), membership_passes: 0 };
+        captured.close_discovery_membership(deadline)?;
+        captured.file_classes.clear();
+        captured.task_file_class.clear();
         let mut comparison_available = true;
         for index in 0..captured.tasks.len() {
             let mut shared = None;
@@ -506,8 +608,49 @@ impl ProcessScope {
             captured.file_classes[class_index].members.push(index);
             captured.task_file_class.push(class_index);
         }
-        captured.recheck(deadline)?;
+        captured.close_discovery_membership(deadline)?;
         Ok(captured)
+    }
+
+    fn close_discovery_membership(&mut self, deadline: Instant) -> io::Result<()> {
+        for pass in 0..=PROCESS_CLOSING_PASSES {
+            match self.recheck(deadline) {
+                Err(error) if task_membership_changed(&error) && pass < PROCESS_CLOSING_PASSES => {
+                    self.reconcile_tasks(deadline)?;
+                }
+                result => return result,
+            }
+        }
+        unreachable!()
+    }
+
+    /// Append only: every old task index, class, pin and resource obligation
+    /// remains valid. New tasks get independent files classes; TGID is never
+    /// authority for shared fs/mm/files. Reused TIDs remain protective UNKNOWN.
+    pub fn reconcile_tasks(&mut self, deadline: Instant) -> io::Result<usize> {
+        self.recheck_leader(deadline)?;
+        if self.membership_passes >= PROCESS_CLOSING_PASSES {
+            return Err(io::Error::other(TaskMembershipChanged));
+        }
+        self.membership_passes += 1;
+        let before = self.tasks.len();
+        for tid in numbers(format!("{}/task", scope_path(&self.scope)), deadline)? {
+            if self.tasks.iter().any(|task| task.identity.pid == tid) { continue; }
+            if self.tasks.len() >= TASK_LIMIT { return Err(io::Error::other("task census capacity")); }
+            let task = match TaskScope::capture(self.identity.pid, tid, &self.scope, deadline) {
+                Ok(task) => task,
+                Err(error) if error.kind() == io::ErrorKind::NotFound
+                    && self.task_departed_by_id(tid, deadline)? => continue,
+                Err(error) => return Err(error),
+            };
+            let index = self.tasks.len();
+            self.tasks.push(task);
+            self.task_file_class.push(self.file_classes.len());
+            self.file_classes.push(FileClass { representative: index, members: vec![index],
+                table: RefCell::new(None), collected_epoch: Cell::new(0) });
+        }
+        self.recheck_leader(deadline)?;
+        Ok(self.tasks.len() - before)
     }
 
     fn recheck_file_class(&self, class: &FileClass, deadline: Instant) -> io::Result<()> {
@@ -661,7 +804,7 @@ impl ProcessScope {
             || objects::identity(&self.scope)? != objects::identity(&other.scope)?
         { return Ok(false); }
         for after in &other.tasks {
-            let Ok(index) = self.tasks.binary_search_by_key(&after.identity.pid, |task| task.identity.pid)
+            let Some(index) = self.tasks.iter().position(|task| task.identity.pid == after.identity.pid)
                 else { return Ok(false); };
             let before = &self.tasks[index];
             if !before.identity.same_identity(&after.identity) || before.uids != after.uids
@@ -675,7 +818,7 @@ impl ProcessScope {
             }
         }
         for before in &self.tasks {
-            if other.tasks.binary_search_by_key(&before.identity.pid, |task| task.identity.pid).is_err()
+            if !other.tasks.iter().any(|task| task.identity.pid == before.identity.pid)
                 && !self.task_departed_by_id(before.identity.pid, deadline)?
             { return Ok(false); }
         }
@@ -697,10 +840,10 @@ impl ProcessScope {
         descriptor_capture_step(DescriptorCaptureStage::TaskMembership(self.identity.pid));
         let current = numbers(format!("{}/task", scope_path(&self.scope)), deadline)?;
         for tid in current {
-            if self.tasks.binary_search_by_key(&tid, |task| task.identity.pid).is_err()
+            if !self.tasks.iter().any(|task| task.identity.pid == tid)
                 && !self.task_departed_by_id(tid, deadline)?
             {
-                return Err(io::Error::other("new live task not captured"));
+                return Err(io::Error::other(TaskMembershipChanged));
             }
         }
         for task in &self.tasks {
@@ -721,12 +864,12 @@ impl ProcessScope {
         deadline_check(deadline)?;
         let pid = self.identity.pid;
         if !process::process(pid)?.same_identity(&self.identity) {
-            return Err(io::Error::other("process identity changed"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         self.recheck_membership(deadline)?;
         self.recheck_membership(deadline)?;
         if !process::process(pid)?.same_identity(&self.identity) {
-            return Err(io::Error::other("process changed during closure"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         Ok(())
     }
@@ -748,7 +891,7 @@ impl ProcessScope {
         deadline_check(deadline)?;
         let current = process::process(self.identity.pid)?;
         if !current.same_identity(&self.identity) {
-            return Err(io::Error::other("process identity changed"));
+            return Err(io::Error::other(ProcessGenerationChanged));
         }
         Ok(current)
     }
@@ -949,6 +1092,20 @@ impl ProcessScope {
 
 
 impl TaskScope {
+    fn capture(tgid: u32, tid: u32, scope: &File, deadline: Instant) -> io::Result<Self> {
+        deadline_check(deadline)?;
+        let identity = process::process(tid)?;
+        let task_scope = objects::pin_magic(format!("{}/task/{tid}", scope_path(scope)))?;
+        let mapping_scope = objects::pin_magic(format!("/proc/{tid}"))?;
+        let uids = process::uids(tid)?;
+        let mut namespaces = Vec::with_capacity(4);
+        for name in ["user", "pid", "mnt", "net"] {
+            namespaces.push(objects::pin_magic(format!("{}/ns/{name}", scope_path(&task_scope)))?);
+        }
+        let task = Self { tgid, identity, uids, scope: task_scope, mapping_scope, namespaces };
+        task.recheck(deadline)?;
+        Ok(task)
+    }
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
         deadline_check(deadline)?;
         if !process::process(self.identity.pid)?.same_identity(&self.identity)
@@ -1093,6 +1250,23 @@ impl References {
         for (index, snapshot) in self.closing_witness.borrow().iter() {
             snapshot.prove_resources(&process.tasks[*index], repair, false)?;
         }
+        Ok(())
+    }
+
+    /// Departure releases live-slot seals, never the retained capability graph.
+    pub fn qualify_retained(&self, deadline: Instant) -> io::Result<()> {
+        for held in self.root.iter().chain(self.cwd.iter()).chain(self.exe.iter())
+            .chain(self.mappings.iter().map(|(_, held)| held)) {
+            deadline_check(deadline)?;
+            qualify_object(held)?;
+        }
+        for snapshot in std::iter::once(&self.table.initial).chain(self.table.repairs.borrow().iter()) {
+            for (_, held) in snapshot.iter() {
+                deadline_check(deadline)?;
+                qualify_object(held)?;
+            }
+        }
+        for (_, witness) in self.closing_witness.borrow().iter() { witness.qualify_retained(deadline)?; }
         Ok(())
     }
 
