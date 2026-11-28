@@ -174,6 +174,9 @@ precedence over a concurrent abort or broken pipe, preserving native termination
 while the owner remains held through publisher cleanup. A successful child exit
 still fails if cancellation or input delivery failed. After joined cleanup, the
 authority preserves cancellation exit statuses: SIGHUP 129, SIGINT 130, SIGTERM 143.
+Changed-since Git, tracked-manifest enumeration and the Buck ownership census
+use that same cancellation signal and joined asynchronous command boundary
+before reconciliation starts.
 
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.

@@ -1,5 +1,4 @@
 #!/usr/bin/env -S bun
-import { execFileSync } from 'node:child_process'
 import { closeSync, readFileSync, writeSync } from 'node:fs'
 import { constants } from 'node:os'
 import { join, posix } from 'node:path'
@@ -22,7 +21,6 @@ import {
   type EditorPublicationOwner,
 } from '../packages/@overeng/buck2-tools/src/editor-publication-owner.ts'
 import {
-  runEditorViewAuthorityCommand,
   writeEditorViewAuthority,
   type EditorViewAuthorityCommandRunner,
 } from '../packages/@overeng/buck2-tools/src/editor-view-authority.ts'
@@ -107,7 +105,10 @@ export const ownedEditorViewAuthorityCommandRunner =
     signal,
   }: OwnedEditorViewAuthorityOptions): EditorViewAuthorityCommandRunner =>
   async (command) => {
-    if (command.command !== buck2) return runEditorViewAuthorityCommand(command)
+    if (command.command !== buck2) {
+      const result = await runCommand({ ...command, signal })
+      return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+    }
     const result = await runManagedEditorPublicationCommand({
       command: {
         ...command,
@@ -563,13 +564,13 @@ const main = async (signal: AbortSignal): Promise<void> => {
     if (options.command !== 'publish') fail('--changed-since is only valid with publish')
     serializedPublicationPackages = options.publicationPackages ?? process.env.EDITOR_VIEW_PACKAGES
     if (serializedPublicationPackages === undefined) {
-      const changed = execFileSync(
-        options.git,
-        ['diff', '--name-only', '-z', options.changedSince, '--'],
-        { cwd: options.repoRoot, encoding: 'utf8' },
-      )
-        .split('\0')
-        .filter((entry) => entry.length > 0)
+      const result = await runCommand({
+        command: options.git,
+        args: ['diff', '--name-only', '-z', options.changedSince, '--'],
+        cwd: options.repoRoot,
+        signal,
+      })
+      const changed = result.stdout.split('\0').filter((entry) => entry.length > 0)
       const selected = changedEditorConsumers({
         changed,
         packagePaths: authorityPackagePaths,
@@ -599,7 +600,10 @@ const main = async (signal: AbortSignal): Promise<void> => {
     packageScope,
     signal,
     run: runCommand,
-    authorityCommandRunner: runEditorViewAuthorityCommand,
+    authorityCommandRunner: async (command) => {
+      const result = await runCommand({ ...command, signal })
+      return { status: 0, stdout: Buffer.from(result.stdout), stderr: Buffer.from(result.stderr) }
+    },
   })
 }
 
