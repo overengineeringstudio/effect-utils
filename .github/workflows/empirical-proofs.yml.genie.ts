@@ -141,6 +141,7 @@ export default ciWorkflow({
               id: 'occurrence-reader',
               if: `\${{ (${occurrenceReaderTrusted}) && (${occurrenceReaderConfigured}) }}`,
               ...pinnedAction({ name: 'tailscale' }),
+              env: { XDG_RUNTIME_DIR: '${{ runner.temp }}/occurrence-reader-runtime' },
               with: {
                 'oauth-client-id': '${{ vars.TS_OCCURRENCE_READ_CLIENT_ID }}',
                 audience: '${{ vars.TS_OCCURRENCE_READ_AUDIENCE }}',
@@ -214,7 +215,29 @@ export default ciWorkflow({
               id: 'occurrence-disconnect',
               if: "${{ always() && steps.occurrence-reader.outcome != 'skipped' }}",
               shell: 'bash',
-              run: 'sudo tailscale logout',
+              env: { XDG_RUNTIME_DIR: '${{ runner.temp }}/occurrence-reader-runtime' },
+              // The pinned action records its sudo parent PID, not the daemon PID.
+              // Release only that reader's executable before the writer action copies it.
+              run: [
+                'set -euo pipefail',
+                'parent_pid=$(cat "$XDG_RUNTIME_DIR/tailscaled.pid")',
+                '[[ "$parent_pid" =~ ^[1-9][0-9]*$ ]]',
+                'daemon_pid=$(sudo pgrep -P "$parent_pid" -x tailscaled)',
+                '[[ "$daemon_pid" =~ ^[1-9][0-9]*$ ]]',
+                '[[ "$(sudo readlink "/proc/$daemon_pid/exe")" = /usr/local/bin/tailscaled ]]',
+                'sudo tailscale logout',
+                'sudo kill -TERM "$daemon_pid"',
+                'for ((attempt=0; attempt<100; attempt++)); do',
+                '  if ! sudo test -e "/proc/$daemon_pid/exe"; then',
+                '    sudo tailscaled --cleanup',
+                '    rm -- "$XDG_RUNTIME_DIR/tailscaled.pid"',
+                '    exit 0',
+                '  fi',
+                '  sleep 0.1',
+                'done',
+                'echo "Occurrence reader daemon did not release its executable within 10s" >&2',
+                'exit 1',
+              ].join('\n'),
             },
             {
               name: 'Publish per-occurrence query receipt',

@@ -17,6 +17,8 @@ import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { coreProofDisabledJobIds } from '../ci-workflow/buck2-cache-proof-policy.ts'
 import {
   apiBudgetAvailable,
+  apiCallCap,
+  apiReserveFloor,
   artifactCanMatter,
   classifyRun,
   discoverProofJobIdentity,
@@ -129,7 +131,7 @@ Trusted presence: only complete main-writer uploads or verified remote-hit obser
 --proof-directory retains full downloaded proof sources, authoritative run/job expectations,
 and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
-API safety: about 700 calls daily target, 800 maximum, stop at 200 remaining, two downloads with 250 ms pacing.
+API safety: ${apiCallCap} calls maximum, stop at ${apiReserveFloor} remaining, two downloads with 250 ms pacing, 15-minute deadline.
 Every discovered supported reader/writer run is selected without sampling.
 Missing fleet invocation census or bounded collection gaps make execute-once proof unknown.
 Transient HTTP 5xx and transport failures retry at most three attempts, all charged to the cap.
@@ -268,7 +270,7 @@ const program = Effect.gen(function* () {
     ) {
       budgetStopped = true
       return yield* new BudgetError({
-        message: 'API budget exhausted: cap 800 or remaining floor 200',
+        message: `API budget exhausted: cap ${apiCallCap} or remaining floor ${apiReserveFloor}`,
       })
     }
     // Reserve before yielding so concurrent requests cannot overrun the hard cap.
@@ -652,13 +654,13 @@ const program = Effect.gen(function* () {
       relevant_artifacts: relevantArtifacts,
       skipped_expired: skippedExpired,
       skipped_by_policy: skippedByPolicy,
-      api_call_cap: 800,
-      api_reserve_floor: 200,
+      api_call_cap: apiCallCap,
+      api_reserve_floor: apiReserveFloor,
     },
   }
   if (budgetStopped === true)
     process.stderr.write(
-      'buck2-cache-join: API budget stopped collection; unexamined artifacts are evidence gaps (cap=800 floor=200)\n',
+      `buck2-cache-join: API budget stopped collection; unexamined artifacts are evidence gaps (cap=${apiCallCap} floor=${apiReserveFloor})\n`,
     )
   if (proofDirectory !== undefined) {
     const planned = planProofHistory({
