@@ -22,6 +22,8 @@ pub struct Reference {
     pub tgid: u32, pub leader_start: u64, pub tid: u32, pub task_start: u64,
     pub uid: [u32; 4], pub reference: ReferenceKind, pub relative_path: String,
     pub identity: ObjectIdentity, pub effect: ReferenceEffect, pub fd: Option<u32>,
+    /// Ephemeral native KCMP_FILES + KCMP_FILE proof, absent on the wire when false.
+    pub leader_fd_alias: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status { NoCurrentReference, InUse, Unknown }
@@ -298,7 +300,12 @@ impl Response {
                 pair(&mut out,"reference",match h.reference {ReferenceKind::Root=>"root",ReferenceKind::Cwd=>"cwd",ReferenceKind::Mount=>"mount",ReferenceKind::Exe=>"exe",ReferenceKind::Fd=>"fd",ReferenceKind::Map=>"map"});
                 out.push(','); pair(&mut out,"relativePath",&h.relative_path); out.push_str(",\"identity\":"); identity(&mut out,&h.identity); out.push(',');
                 pair(&mut out,"effect",match h.effect {ReferenceEffect::InUse=>"in-use",ReferenceEffect::RetainedBytes=>"retained-bytes"});
-                out.push_str(",\"fd\":"); if let Some(fd)=h.fd { write!(out,"{fd}").expect("String write"); } else { out.push_str("null"); } out.push('}');
+                out.push_str(",\"fd\":"); if let Some(fd)=h.fd { write!(out,"{fd}").expect("String write"); } else { out.push_str("null"); }
+                if h.leader_fd_alias {
+                    if h.reference != ReferenceKind::Fd || h.fd.is_none() || h.tgid == h.tid { return Err(invalid()); }
+                    out.push_str(",\"leaderFdAlias\":true");
+                }
+                out.push('}');
             }
             out.push_str("],\"unknownReasons\":["); for (j,cause) in r.unknown_reasons.iter().enumerate() { if j>0 { out.push(','); } quoted(&mut out,reason(*cause)); } out.push_str("]}");
             if out.len()>MAX_RESPONSE { return Err(invalid()); }
@@ -343,6 +350,7 @@ impl Response {
             for h in &r.references {
                 if h.tgid==0 || h.tid==0 || h.leader_start==0 || h.task_start==0 || !relative_path(&h.relative_path)
                     || h.identity.ino==0 || h.identity.mount_id==0 || (h.reference==ReferenceKind::Fd)!=h.fd.is_some()
+                    || (h.leader_fd_alias && (h.reference!=ReferenceKind::Fd || h.fd.is_none() || h.tgid==h.tid))
                     || (h.effect==ReferenceEffect::RetainedBytes && matches!(h.reference,ReferenceKind::Root|ReferenceKind::Cwd|ReferenceKind::Mount)) { return Err(invalid()); }
             }
         }
@@ -366,8 +374,11 @@ fn read_reference(j: Json) -> io::Result<Reference> {
     let reference=match text(&mut o,"reference")?.as_str() {"root"=>ReferenceKind::Root,"cwd"=>ReferenceKind::Cwd,"mount"=>ReferenceKind::Mount,"exe"=>ReferenceKind::Exe,"fd"=>ReferenceKind::Fd,"map"=>ReferenceKind::Map,_=>return Err(invalid())};
     let relative_path=text(&mut o,"relativePath")?; let identity=read_identity(take(&mut o,"identity")?)?;
     let effect=match text(&mut o,"effect")?.as_str() {"in-use"=>ReferenceEffect::InUse,"retained-bytes"=>ReferenceEffect::RetainedBytes,_=>return Err(invalid())};
-    let fd=match take(&mut o,"fd")? { Json::Null=>None,j=>Some(number(j)?) }; done(o)?;
-    Ok(Reference {tgid,leader_start,tid,task_start,uid,reference,relative_path,identity,effect,fd})
+    let fd=match take(&mut o,"fd")? { Json::Null=>None,j=>Some(number(j)?) };
+    let leader_fd_alias=match o.remove("leaderFdAlias") { None=>false,Some(Json::Bool(true))=>true,_=>return Err(invalid()) };
+    if leader_fd_alias && (reference!=ReferenceKind::Fd || fd.is_none() || tgid==tid) { return Err(invalid()); }
+    done(o)?;
+    Ok(Reference {tgid,leader_start,tid,task_start,uid,reference,relative_path,identity,effect,fd,leader_fd_alias})
 }
 
 /// Synthetic codec data, NOT a live census or a production qualification.
@@ -378,7 +389,7 @@ pub fn codec_fixtures() -> io::Result<Vec<Vec<u8>>> {
     let deadline=Instant::now()+Duration::from_secs(1);
     let id=ObjectIdentity {dev:8,ino:9,mount_id:10};
     let root=RootEvidence {path:"/srv/worktrees/fixture".into(),identity:Some(id.clone()),complete:true,status:Status::NoCurrentReference,references_complete:true,references:vec![],unknown_reasons:vec![]};
-    let holder=Reference {tgid:41,leader_start:100,tid:42,task_start:101,uid:[1000;4],reference:ReferenceKind::Cwd,relative_path:".".into(),identity:id,effect:ReferenceEffect::InUse,fd:None};
+    let holder=Reference {tgid:41,leader_start:100,tid:42,task_start:101,uid:[1000;4],reference:ReferenceKind::Cwd,relative_path:".".into(),identity:id,effect:ReferenceEffect::InUse,fd:None,leader_fd_alias:false};
     let mut unknown=root.clone();
     unknown.identity=None; unknown.complete=false; unknown.status=Status::Unknown;
     unknown.references_complete=false; unknown.unknown_reasons.push(UnknownReason::RootUncovered);
@@ -473,6 +484,34 @@ mod tests {
         ] { assert!(Request::parse(input.as_bytes(),false).is_err()); }
         let unicode=r#"{"version":1,"nonce":"0123456789abcdef0123456789abcdef","kind":"worktree","paths":["/a\ud801\udc00"]}"#;
         assert_eq!(Request::parse(unicode.as_bytes(),false).unwrap().paths,[PathBuf::from("/a\u{10400}")]);
+    }
+    #[test]
+    fn leader_fd_alias_is_optional_literal_true_on_nonleader_fds_only() {
+        let input = r#"{"tgid":41,"leaderStart":"100","tid":42,"taskStart":"101","uid":[1000,1000,1000,1000],"reference":"fd","relativePath":".","identity":{"dev":"8","ino":"9","mountId":"10"},"effect":"in-use","fd":7}"#;
+        let decode = |text: &str| read_reference(json(text.as_bytes(), MAX_RESPONSE)?);
+        assert!(!decode(input).unwrap().leader_fd_alias);
+        let proved = input.strip_suffix('}').unwrap().to_owned() + ",\"leaderFdAlias\":true}";
+        assert!(decode(&proved).unwrap().leader_fd_alias);
+        for invalid in [
+            proved.replace("\"leaderFdAlias\":true", "\"leaderFdAlias\":false"),
+            proved.replace("\"leaderFdAlias\":true", "\"leaderFdAlias\":null"),
+            proved.replace("\"leaderFdAlias\":true", "\"leaderFdAlias\":{}"),
+            proved.replace("\"leaderFdAlias\":true", "\"leaderFdAlias\":1"),
+            proved.replace("\"tid\":42", "\"tid\":41"),
+            proved.replace("\"reference\":\"fd\"", "\"reference\":\"map\""),
+            proved.replace("\"fd\":7", "\"fd\":null"),
+            proved.replace("\"leaderFdAlias\":true", "\"leaderFdAlias\":true,\"leaderFdAlias\":true"),
+        ] { assert!(decode(&invalid).is_err()); }
+        let mut response = Response::parse(&codec_fixtures().unwrap()[2]).unwrap();
+        response.roots[0].references[0].leader_fd_alias = true;
+        let bytes = response.serialize().unwrap();
+        assert!(String::from_utf8_lossy(&bytes).contains("\"leaderFdAlias\":true"));
+        assert_eq!(Response::parse(&bytes).unwrap(), response);
+        response.roots[0].references[0].leader_fd_alias = false;
+        assert!(!String::from_utf8_lossy(&response.serialize().unwrap()).contains("leaderFdAlias"));
+        response.roots[0].references[0].leader_fd_alias = true;
+        response.roots[0].references[0].tid = response.roots[0].references[0].tgid;
+        assert!(response.serialize().is_err());
     }
     #[test]
     fn rust_fixture_roundtrip_and_freshness() {
