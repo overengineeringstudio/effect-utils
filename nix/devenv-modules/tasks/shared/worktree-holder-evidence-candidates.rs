@@ -14,6 +14,17 @@ use protocol::{Kind, ObjectIdentity, ReferenceEffect, ReferenceKind};
 
 include!("worktree-holder-evidence-roots.rs");
 
+#[path = "worktree-holder-evidence-scope-devices.rs"]
+mod scope_devices;
+#[path = "worktree-holder-evidence-shmem.rs"]
+mod shmem;
+use scope_devices::{CandidateView, ScopeLedger};
+use shmem::ShmemWitness;
+
+#[cfg(test)]
+#[path = "worktree-holder-evidence-namespace-fixture.rs"]
+mod namespace_fixture;
+
 pub struct Candidate {
     pub path: PathBuf,
     pub root: File,
@@ -33,8 +44,19 @@ pub enum MatchOutcome {
     NeedsProxy,
 }
 
+impl MatchOutcome {
+    /// A changing descriptor may be retired only with actual native absence.
+    /// Positive and proxy outcomes remain protective, even after its FD closes.
+    pub fn require_native_negative(&self) -> io::Result<()> {
+        match self {
+            Self::Native(matches) if matches.is_empty() => Ok(()),
+            _ => Err(io::Error::other("changing descriptor lacks native negative proof")),
+        }
+    }
+}
+
 pub struct MountCoverage {
-    view: mounts::NativeView,
+    view: CandidateView,
     locations: Vec<mounts::NativeLocation>,
     references: Vec<MatchedReference>,
 }
@@ -44,9 +66,22 @@ impl MountCoverage {
 
     pub fn recheck(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
         self.view.recheck(deadline)?;
+        self.recheck_membership(candidates, deadline)?;
+        self.view.recheck(deadline)
+    }
+
+    /// Requires the caller to prove task departure under its retained live leader.
+    /// Mount/root objects and complete namespace coverage remain mandatory.
+    pub fn recheck_retained(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
+        self.view.recheck_retained(deadline)?;
+        self.recheck_membership(candidates, deadline)?;
+        self.view.recheck_retained(deadline)
+    }
+
+    fn recheck_membership(&self, candidates: &CandidateSet, deadline: Instant) -> io::Result<()> {
         let mut offset = 0;
         for location in &self.locations {
-            let current = self.view.location(location.object(), deadline)?;
+            let current = self.view.view.location(location.object(), deadline)?;
             if current.device != location.device || current.filesystem != location.filesystem
                 || current.path != location.path
             { return Err(io::Error::other("mounted source mapping changed")); }
@@ -61,7 +96,7 @@ impl MountCoverage {
         if offset != self.references.len() {
             return Err(io::Error::other("mounted root reference membership changed"));
         }
-        self.view.recheck(deadline)
+        Ok(())
     }
 }
 
@@ -70,6 +105,18 @@ struct Scope {
     enrollment: File,
     enrollment_identity: (objects::Identity, u64),
     location: mounts::NativeLocation,
+}
+
+struct NativeMatch {
+    metadata: std::fs::Metadata,
+    identity: ObjectIdentity,
+    effect: ReferenceEffect,
+    filesystem: u64,
+}
+
+enum PreparedMatch {
+    Complete(MatchOutcome),
+    Native(NativeMatch),
 }
 
 pub struct CandidateSet {
@@ -81,8 +128,12 @@ pub struct CandidateSet {
     // Initial store inventory is deliberately deferred until after the caller
     // has authenticated the original exclusive lease OFD. No worktree walk.
     store_inventory: RefCell<Option<BTreeMap<objects::Identity, PathBuf>>>,
-    // At most one bounded mount graph, reused only within one pinned task.
-    native_view: RefCell<Option<mounts::NativeView>>,
+    enrolled_view: CandidateView,
+    namespace_cache: super::namespace::NamespaceCache,
+    scope_ledger: RefCell<ScopeLedger>,
+    witness: RefCell<Option<ShmemWitness>>,
+    // Captured once per task, then moved into its retained MountCoverage.
+    native_view: RefCell<Option<CandidateView>>,
 }
 
 fn bound(deadline: Instant) -> io::Result<()> {
@@ -120,6 +171,15 @@ fn relative_text(path: &Path) -> io::Result<String> {
         return Err(io::Error::other("member path bound"));
     }
     Ok(value.to_owned())
+}
+
+fn membership_step<T>(_stage: &'static str, result: io::Result<T>) -> io::Result<T> {
+    #[cfg(holder_owned_vm_class_diagnostics)]
+    if let Err(error) = &result {
+        eprintln!("worktree-holder-membership-owned-vm stage={_stage} kind={:?} errno={:?}",
+            error.kind(), error.raw_os_error());
+    }
+    result
 }
 
 impl CandidateSet {
@@ -183,8 +243,11 @@ impl CandidateSet {
             roots.push(Candidate { path: path.clone(), root, identity });
             scopes.push(Scope { enrollment_path, enrollment, enrollment_identity, location });
         }
-        Ok(Self { kind: request.kind, uid, roots, scopes, devices,
-            store_inventory: RefCell::new(None), native_view: RefCell::new(None) })
+        let namespace_cache = super::namespace::NamespaceCache::new();
+        let enrolled_view = CandidateView::capture(&self_task, &scopes, &namespace_cache, deadline)?;
+        let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
+        Ok(Self { kind: request.kind, uid, roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger,
+            witness: RefCell::new(None), store_inventory: RefCell::new(None), native_view: RefCell::new(None) })
     }
 
     pub fn len(&self) -> usize { self.roots.len() }
@@ -200,6 +263,9 @@ impl CandidateSet {
     }
 
     pub fn recheck(&self, deadline: Instant) -> io::Result<()> {
+        self.namespace_cache.recheck_all(deadline)?;
+        self.enrolled_view.recheck(deadline)?;
+        if let Some(witness) = self.witness.borrow().as_ref() { witness.recheck()?; }
         if let Some(view) = self.native_view.borrow().as_ref() { view.recheck(deadline)?; }
         let self_task = objects::pin_magic("/proc/self")?;
         for (root, scope) in self.roots.iter().zip(&self.scopes) {
@@ -235,18 +301,18 @@ impl CandidateSet {
         bound(deadline)?;
         let cached = self.native_view.borrow_mut().take();
         let view = match cached {
-            Some(view) if view.is_task(task_scope)? => { view.recheck(deadline)?; view }
-            Some(view) => { view.recheck(deadline)?; mounts::NativeView::capture(task_scope, deadline)? }
-            None => mounts::NativeView::capture(task_scope, deadline)?,
+            Some(view) if view.view.is_task(task_scope)? => { view.recheck(deadline)?; view }
+            Some(_) => return Err(io::Error::other("candidate scope cache task changed")),
+            None => self.pin_task_view(task_scope, deadline)?,
         };
         let mut coverage = MountCoverage { view, locations: Vec::new(), references: Vec::new() };
-        for mount in coverage.view.mounts() {
+        for mount in coverage.view.view.mounts() {
             bound(deadline)?;
             if !self.scopes.iter().any(|scope|
                 mounts::device_pair(scope.location.device) == (mount.device_major, mount.device_minor)
-                    && mount.root.starts_with(&scope.location.path))
+                    && mount.root.path().is_ok_and(|root| root.starts_with(&scope.location.path)))
             { continue; }
-            let location = coverage.view.pin_mount_root(mount, deadline)?;
+            let location = coverage.view.view.pin_mount_root(mount, deadline)?;
             let identity = object_identity(location.object())?;
             let matched = self.matches_native(&location, &identity, ReferenceEffect::InUse, deadline)?;
             if matched.is_empty() { return Err(io::Error::other("mounted source lost candidate bridge")); }
@@ -257,60 +323,143 @@ impl CandidateSet {
             coverage.locations.push(location);
         }
         coverage.recheck(self, deadline)?;
+        self.scope_ledger.borrow_mut().retain()?;
         Ok(coverage)
+    }
+
+    fn pin_task_view(&self, task_scope: &File, deadline: Instant) -> io::Result<CandidateView> {
+        self.scope_ledger.borrow().require_collecting()?;
+        let view = CandidateView::capture(task_scope, &self.scopes, &self.namespace_cache, deadline)?;
+        self.scope_ledger.borrow_mut().register(&view)?;
+        Ok(view)
+    }
+
+    pub fn freeze_scope_devices(&self, deadline: Instant) -> io::Result<()> {
+        bound(deadline)?;
+        self.scope_ledger.borrow_mut().freeze(self.native_view.borrow().is_none())
     }
 
     pub fn matches(&self, file: &File, task_scope: &File, kind: ReferenceKind,
         deadline: Instant) -> io::Result<MatchOutcome>
     {
-        bound(deadline)?;
-        let metadata = file.metadata()?;
-        if metadata.file_type().is_char_device() {
-            return Ok(MatchOutcome::Native(Vec::new()));
+        let native = match self.prepare_match(file, kind, deadline)? {
+            PreparedMatch::Complete(outcome) => return Ok(outcome),
+            PreparedMatch::Native(native) => native,
+        };
+        let mut cached = self.native_view.borrow_mut();
+        if let Some(view) = cached.as_ref() {
+            if !view.view.is_task(task_scope)? {
+                return Err(io::Error::other("candidate scope cache task changed"));
+            }
+        } else {
+            *cached = Some(self.pin_task_view(task_scope, deadline)?);
         }
-        let identity = object_identity(file)?;
+        let view = cached.as_ref().ok_or_else(|| io::Error::other("missing native view"))?;
+        self.match_in_view(file, kind, native, view, deadline)
+    }
+
+    pub fn recheck_matches(&self, file: &File, task_scope: &File, kind: ReferenceKind,
+        coverage: Option<&MountCoverage>, deadline: Instant) -> io::Result<MatchOutcome>
+    {
+        self.scope_ledger.borrow().require_frozen()?;
+        let native = match self.prepare_match(file, kind, deadline)? {
+            PreparedMatch::Complete(outcome) => return Ok(outcome),
+            PreparedMatch::Native(native) => native,
+        };
+        let view = &coverage.ok_or_else(|| io::Error::other("missing retained candidate scope"))?.view;
+        if !view.view.is_task(task_scope)? {
+            return Err(io::Error::other("retained candidate scope task changed"));
+        }
+        self.match_in_view(file, kind, native, view, deadline)
+    }
+
+    fn prepare_match(&self, file: &File, kind: ReferenceKind,
+        deadline: Instant) -> io::Result<PreparedMatch>
+    {
+        bound(deadline)?;
+        let metadata = membership_step("held-metadata", file.metadata())?;
+        if metadata.file_type().is_char_device() {
+            return Ok(PreparedMatch::Complete(MatchOutcome::Native(Vec::new())));
+        }
+        let identity = membership_step("held-identity", object_identity(file))?;
         let effect = if metadata.is_file() && matches!(kind, ReferenceKind::Fd | ReferenceKind::Map | ReferenceKind::Exe) {
             ReferenceEffect::RetainedBytes
         } else { ReferenceEffect::InUse };
-        self.ensure_store_inventory(deadline)?;
-        // Exact store inode identity still accounts for retained regular-file
-        // bytes even when no native pathname remains. Existing native GC
-        // positive vetoes remain independent; this reader adds no map-only veto.
+        membership_step("store-inventory", self.ensure_store_inventory(deadline))?;
+        // Exact store positives precede every internal-shmem/namespace proof.
         if let Some(path) = self.store_inventory.borrow().as_ref()
             .and_then(|inventory| inventory.get(&(identity.dev, identity.ino)))
         {
-            return Ok(MatchOutcome::Native(vec![MatchedReference { root_index: 0,
-                relative_path: relative_text(path)?, identity, effect }]));
+            return Ok(PreparedMatch::Complete(MatchOutcome::Native(vec![MatchedReference { root_index: 0,
+                relative_path: relative_text(path)?, identity, effect }])));
         }
-        let filesystem = linux::filesystem_type(file)?;
+        let filesystem = membership_step("held-filesystem", linux::filesystem_type(file))?;
         if matches!(filesystem, 0x794c7630 | 0x65735546) {
-            return Ok(MatchOutcome::NeedsProxy);
+            #[cfg(holder_owned_vm_class_diagnostics)]
+            {
+                let filesystem_class = if filesystem == 0x794c7630 { "overlay" } else { "fuse" };
+                let object = if metadata.is_file() { "file" }
+                    else if metadata.is_dir() { "directory" } else { "other" };
+                eprintln!("worktree-holder-membership-owned-vm needs-proxy reference={kind:?} object={object} filesystem={filesystem_class}");
+            }
+            return Ok(PreparedMatch::Complete(MatchOutcome::NeedsProxy));
         }
-        if !objects::native_filesystem(file)? {
-            // These objects have no native payload pathname. This classification
-            // never waives the census's separate dircap/kernel/IPC qualification.
+        if !membership_step("native-filesystem-class", objects::native_filesystem(file))? {
+            // Independent dircap/kernel/IPC qualification is never waived.
             if matches!(filesystem, 0x9fa0 | 0x62656572 | 0x63677270 | 0x27e0eb
                 | 0x6e736673 | 0x1cd1 | 0x19800202 | 0x50495045 | 0x534f434b
                 | 0x09041934 | 0x50494446 | 0x74726163 | 0xcafe4a11 | 0x64626720 | 0x73636673)
-            { return Ok(MatchOutcome::Native(Vec::new())); }
+            { return Ok(PreparedMatch::Complete(MatchOutcome::Native(Vec::new()))); }
+            #[cfg(holder_owned_vm_class_diagnostics)]
+            {
+                let class = if filesystem == 0x01021997 { "9p" } else { "other" };
+                eprintln!("worktree-holder-membership-owned-vm unsupported-filesystem={class}");
+            }
             return Err(io::Error::other("unsupported held filesystem"));
         }
-        // Missing native proof is UNKNOWN, including mounts detached from the
-        // task's current namespace; it must never enter provider admission.
-        let location = {
-            let mut cached = self.native_view.borrow_mut();
-            let same_task = match cached.as_ref() {
-                Some(view) => view.is_task(task_scope)?,
-                None => false,
-            };
-            if !same_task {
-                if let Some(view) = cached.as_ref() { view.recheck(deadline)?; }
-                *cached = Some(mounts::NativeView::capture(task_scope, deadline)?);
+        Ok(PreparedMatch::Native(NativeMatch { metadata, identity, effect, filesystem }))
+    }
+
+    fn match_in_view(&self, file: &File, kind: ReferenceKind, native: NativeMatch,
+        view: &CandidateView, deadline: Instant) -> io::Result<MatchOutcome>
+    {
+        bound(deadline)?;
+        let NativeMatch { metadata, identity, effect, filesystem } = native;
+        if matches!(kind, ReferenceKind::Fd | ReferenceKind::Map)
+            && metadata.is_file() && metadata.nlink() == 0 && filesystem == shmem::TMPFS
+            && !self.scope_ledger.borrow().contains(identity.dev)
+        {
+            let mut witness = self.witness.borrow_mut();
+            if witness.is_none() { *witness = Some(ShmemWitness::new()?); }
+            if witness.as_ref().ok_or_else(|| io::Error::other("missing internal shmem witness"))?
+                .same_mount(&identity)?
+            {
+                bound(deadline)?;
+                return Ok(MatchOutcome::Native(Vec::new()));
             }
-            cached.as_ref().ok_or_else(|| io::Error::other("missing native view"))?
-                .location(file, deadline)?
-        };
-        self.matches_native(&location, &identity, effect, deadline).map(MatchOutcome::Native)
+        }
+        // Missing task mounts may still be pinned in the enrolled namespace;
+        // both paths require exact native reopen proofs, never a provider waiver.
+        let result = view.view.location_with_enrolled(file, &self.enrolled_view.view, deadline);
+        #[cfg(holder_owned_vm_class_diagnostics)]
+        if result.is_err() {
+            let object = if metadata.is_file() { "file" }
+                else if metadata.is_dir() { "directory" } else { "other" };
+            let links = if metadata.nlink() == 0 { "unlinked" } else { "linked" };
+            let filesystem_class = match filesystem {
+                0xef53 => "ext4",
+                0x2fc12fc1 => "zfs",
+                0x9123683e => "btrfs",
+                0x58465342 => "xfs",
+                0x01021994 => "tmpfs",
+                0x858458f6 => "ramfs",
+                _ => "other",
+            };
+            eprintln!("worktree-holder-membership-owned-vm rejected-native-object reference={kind:?} object={object} links={links} filesystem={filesystem_class}");
+        }
+        let location = membership_step("native-location", result)?;
+        membership_step("native-candidate-match", self.matches_native(&location, &identity, effect, deadline))
+            .map(MatchOutcome::Native)
     }
 
     fn matches_native(&self, location: &mounts::NativeLocation, identity: &ObjectIdentity,
@@ -366,7 +515,7 @@ mod tests {
 
     // Native fixture boundary: the test runner must provide a native temporary
     // filesystem, not overlay/FUSE. No production enrollment/proc override.
-    fn fixture_set(paths: &[PathBuf]) -> CandidateSet {
+    pub(super) fn fixture_set(paths: &[PathBuf]) -> CandidateSet {
         let task = objects::pin_magic("/proc/self").unwrap();
         let mut roots = Vec::new();
         let mut scopes = Vec::new();
@@ -381,11 +530,213 @@ mod tests {
                 location: mounts::native_location(&root, &task, deadline()).unwrap() });
             roots.push(Candidate { path: path.clone(), root, identity });
         }
+        let namespace_cache = super::super::namespace::NamespaceCache::new();
+        let enrolled_view = CandidateView::capture(&task, &scopes, &namespace_cache, deadline()).unwrap();
+        let scope_ledger = RefCell::new(ScopeLedger::new(devices.clone(), &enrolled_view));
         CandidateSet { kind: Kind::Worktree, uid: roots[0].root.metadata().unwrap().uid(),
-            roots, scopes, devices, store_inventory: RefCell::new(None), native_view: RefCell::new(None) }
+            roots, scopes, devices, enrolled_view, namespace_cache, scope_ledger, witness: RefCell::new(None),
+            store_inventory: RefCell::new(None), native_view: RefCell::new(None) }
     }
 
     #[test]
+    fn descriptor_repair_requires_native_empty_membership() {
+        assert!(MatchOutcome::Native(Vec::new()).require_native_negative().is_ok());
+        assert!(MatchOutcome::NeedsProxy.require_native_negative().is_err());
+        let positive = MatchOutcome::Native(vec![MatchedReference {
+            root_index: 0, relative_path: "payload".into(),
+            identity: ObjectIdentity { dev: 1, ino: 2, mount_id: 3 },
+            effect: ReferenceEffect::RetainedBytes,
+        }]);
+        assert!(positive.require_native_negative().is_err());
+    }
+
+    #[test]
+    #[ignore = "requires isolated root Linux, native temp filesystem and io_uring"]
+    #[allow(unsafe_code)]
+    fn actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals() {
+        use std::io::{BufRead, Write};
+        use std::os::fd::{FromRawFd, OwnedFd};
+        use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+        use worktree_holder_proc::scopes::{Held, ProcessScope};
+        const CHILD: &str = "HOLDER_FD_SNAPSHOT_MUTATOR_ROOT";
+        const TEST: &str = "candidates::tests::actual_fd_snapshot_repair_preserves_positive_unknown_and_final_seals";
+        const ACK: &str = "HOLDER_FD_ACK ";
+        if let Some(root) = std::env::var_os(CHILD) {
+            let root = PathBuf::from(root);
+            let trigger = File::open(root.join("outside")).unwrap();
+            let mut extra = None;
+            let mut candidate: Option<File> = None;
+            let mut opaque: Option<OwnedFd> = None;
+            println!("{ACK}{}", trigger.as_raw_fd());
+            std::io::stdout().flush().unwrap();
+            for command in std::io::stdin().lock().lines() {
+                let number = match command.unwrap().as_str() {
+                    "toggle" => {
+                        extra = if extra.is_some() { None } else {
+                            Some(File::open(root.join("outside-extra")).unwrap())
+                        };
+                        extra.as_ref().map_or(0, AsRawFd::as_raw_fd)
+                    }
+                    "candidate" => {
+                        candidate = Some(File::open(root.join("candidate/payload")).unwrap());
+                        candidate.as_ref().unwrap().as_raw_fd()
+                    }
+                    "drop-candidate" => {
+                        let file = candidate.take().unwrap();
+                        let number = file.as_raw_fd();
+                        drop(file);
+                        number
+                    }
+                    "opaque" => {
+                        unsafe extern "C" {
+                            fn syscall(number: std::os::raw::c_long, ...) -> std::os::raw::c_long;
+                        }
+                        let mut parameters = [0u64; 15];
+                        // SAFETY: owned child, supported Linux syscall425 and
+                        // initialized aligned 120-byte io_uring_params buffer.
+                        let raw = unsafe { syscall(425, 8u32, parameters.as_mut_ptr()) };
+                        assert!(raw >= 0, "io_uring_setup: {}", io::Error::last_os_error());
+                        // SAFETY: successful setup transfers this fresh FD once.
+                        opaque = Some(unsafe { OwnedFd::from_raw_fd(i32::try_from(raw).unwrap()) });
+                        opaque.as_ref().unwrap().as_raw_fd()
+                    }
+                    "drop-opaque" => {
+                        drop(opaque.take().unwrap());
+                        0
+                    }
+                    _ => panic!("unexpected owned mutator command"),
+                };
+                println!("{ACK}{number}");
+                std::io::stdout().flush().unwrap();
+            }
+            return;
+        }
+        struct Mutator {
+            child: Child,
+            input: Option<ChildStdin>,
+            output: std::io::BufReader<ChildStdout>,
+        }
+        impl Mutator {
+            fn ack(&mut self) -> u32 {
+                loop {
+                    let mut line = String::new();
+                    assert_ne!(self.output.read_line(&mut line).unwrap(), 0, "owned mutator exited");
+                    if let Some((_, value)) = line.split_once(ACK) {
+                        return value.trim().parse().unwrap();
+                    }
+                }
+            }
+            fn command(&mut self, command: &str) -> u32 {
+                writeln!(self.input.as_mut().unwrap(), "{command}").unwrap();
+                self.input.as_mut().unwrap().flush().unwrap();
+                self.ack()
+            }
+        }
+        impl Drop for Mutator {
+            fn drop(&mut self) {
+                self.input.take(); // EOF releases only this owned child.
+                let _ = self.child.wait();
+            }
+        }
+        let fixture = Fixture::new();
+        let root = fixture.0.join("candidate");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("payload"), b"candidate").unwrap();
+        std::fs::write(fixture.0.join("outside"), b"outside").unwrap();
+        std::fs::write(fixture.0.join("outside-extra"), b"outside").unwrap();
+        // Exec before any candidate/evidence pins exist: the target must not
+        // inherit collector-created capabilities or a mutable helper FD table.
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", TEST, "--nocapture", "--test-threads=1"])
+            .env(CHILD, &fixture.0).stdin(Stdio::piped()).stdout(Stdio::piped())
+            .spawn().unwrap();
+        let input = child.stdin.take();
+        let output = std::io::BufReader::new(child.stdout.take().unwrap());
+        let mut worker = Mutator { child, input, output };
+        let trigger_fd = worker.ack();
+        let process = ProcessScope::discover(worker.child.id(), deadline()).unwrap();
+        let index = process.tasks.iter().position(|task| task.identity.pid == worker.child.id()).unwrap();
+        let task = &process.tasks[index];
+        let trigger = Held::pin(format!("/proc/{}/fd/{trigger_fd}", worker.child.id()), deadline()).unwrap();
+        let set = fixture_set(&[root]);
+        let mounted = set.capture_mounts(&task.scope, deadline()).unwrap();
+        set.freeze_scope_devices(deadline()).unwrap();
+        let prove = |held: &Held| {
+            set.recheck_matches(&held.file, &task.scope, ReferenceKind::Fd,
+                Some(&mounted), deadline())?.require_native_negative()
+        };
+        let resources = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        let original = resources.descriptor_pin_count();
+        worker.command("toggle");
+        let mut fresh_pins = 0;
+        {
+            let mut proof = |held: &Held, fresh: bool| {
+                if fresh { fresh_pins += 1; }
+                prove(held)
+            };
+            process.recheck_resources(index, &resources, deadline(), Some(&mut proof)).unwrap();
+            process.recheck(deadline()).unwrap();
+            // A second later FD mutation must repair and reseal too; initial
+            // stabilization is not a waiver for the later closing phase.
+            worker.command("toggle");
+            process.recheck_resources(index, &resources, deadline(), Some(&mut proof)).unwrap();
+        }
+        assert!(fresh_pins > 0);
+        assert_eq!(resources.descriptor_pin_count(), original + fresh_pins);
+        assert_eq!(resources.current_descriptor_count(),
+            worktree_holder_proc::scopes::numbers(
+                format!("/proc/{}/fd", worker.child.id()), deadline()).unwrap().len());
+        process.recheck(deadline()).unwrap();
+        mounted.recheck(&set, deadline()).unwrap();
+        set.recheck(deadline()).unwrap();
+
+        let candidate_fd = worker.command("candidate");
+        let positive = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        let retained = &positive.descriptors.iter().find(|(fd, _)| *fd == candidate_fd).unwrap().1;
+        let MatchOutcome::Native(matches) = set.recheck_matches(&retained.file, &task.scope,
+            ReferenceKind::Fd, Some(&mounted), deadline()).unwrap() else { panic!("lost native candidate") };
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].relative_path, "payload");
+        assert_eq!(matches[0].effect, ReferenceEffect::RetainedBytes);
+        worker.command("drop-candidate");
+        assert_eq!(Held::pin(format!("/proc/{}/fd/{candidate_fd}", worker.child.id()),
+            deadline()).err().unwrap().kind(), io::ErrorKind::NotFound);
+        let mut proof = |held: &Held, _: bool| prove(held);
+        let error = process.recheck_resources(index, &positive, deadline(), Some(&mut proof)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "changing descriptor lacks native negative proof");
+        assert!(set.recheck_matches(&retained.file, &task.scope, ReferenceKind::Fd,
+            Some(&mounted), deadline()).unwrap().require_native_negative().is_err());
+
+        let ordinary = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        worker.command("opaque");
+        let error = process.recheck_resources(index, &ordinary, deadline(), Some(&mut proof)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "unsupported path-bearing kernel object");
+        worker.command("drop-opaque");
+
+        let unstable = process.collect_resources(index, deadline(), None).unwrap().unwrap();
+        worker.command("toggle");
+        let mut changes = 0;
+        {
+            let mut proof = |held: &Held, fresh: bool| {
+                prove(held)?;
+                if fresh && held.identity == trigger.identity {
+                    worker.command("toggle");
+                    changes += 1;
+                }
+                Ok(())
+            };
+            let error = process.recheck_resources(index, &unstable, deadline(), Some(&mut proof)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::Other);
+            assert_eq!(error.to_string(), "descriptor stable-pair budget exhausted");
+        }
+        assert_eq!(changes, 4, "original snapshot plus four recaptures is the five-pass bound");
+        process.recheck(deadline()).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn common_hardlinks_match_only_actual_held_worktree_path() {
         let fixture = Fixture::new();
         let a = fixture.0.join("a");
@@ -410,6 +761,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn root_replacement_deadline_and_symlink_confinement_fail_closed() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
@@ -427,6 +779,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn store_positive_precedes_unlinked_native_mapping_failure() {
         let fixture = Fixture::new();
         let root = fixture.0.join("store");
@@ -455,7 +808,6 @@ mod tests {
         std::fs::create_dir(&root).unwrap();
         std::fs::create_dir(&alias).unwrap();
         std::fs::write(root.join("payload"), b"native").unwrap();
-        let set = fixture_set(std::slice::from_ref(&root));
         assert!(std::process::Command::new("mount").arg("--bind").arg(&root).arg(&alias)
             .status().unwrap().success());
         struct Unmount(PathBuf);
@@ -465,6 +817,7 @@ mod tests {
             }
         }
         let _unmount = Unmount(alias.clone());
+        let set = fixture_set(std::slice::from_ref(&root));
         let task = objects::pin_magic("/proc/self").unwrap();
         let mounted = set.capture_mounts(&task, deadline()).unwrap();
         assert_eq!(mounted.references().len(), 1);
@@ -479,13 +832,48 @@ mod tests {
             assert_eq!(matches[0].relative_path, relative);
         }
         let detached = objects::pin_magic(alias.join("payload")).unwrap();
+        let surviving_directory = objects::pin_magic(&alias).unwrap();
+        let _surviving_mounts = set.capture_mounts(&task, deadline()).unwrap();
+        let (ready, receive) = std::sync::mpsc::sync_channel(0);
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            ready.send(objects::pin_magic("/proc/thread-self").unwrap()).unwrap();
+            let _ = wait.recv();
+        });
+        let worker_task = receive.recv().unwrap();
+        let process = worktree_holder_proc::scopes::ProcessScope::discover(
+            std::process::id(), deadline()).unwrap();
+        let worker_identity = objects::identity(&worker_task).unwrap();
+        let index = process.tasks.iter().position(|task|
+            objects::identity(&task.scope).unwrap() == worker_identity).unwrap();
+        assert_ne!(process.tasks[index].identity.pid, process.identity.pid);
+        let departed_mounts = set.capture_mounts(&worker_task, deadline()).unwrap();
+        assert_eq!(departed_mounts.references().len(), 1);
+        drop(release);
+        worker.join().unwrap();
+        assert!(process.task_departed(index, deadline()).unwrap());
+        assert!(departed_mounts.recheck(&set, deadline()).is_err());
+        departed_mounts.recheck_retained(&set, deadline()).unwrap();
+        assert!(process.task_departed(index, deadline()).unwrap());
+        // Preserve both typed effects for FDs held by the surviving task.
+        for (held, effect) in [
+            (&detached, ReferenceEffect::RetainedBytes),
+            (&surviving_directory, ReferenceEffect::InUse),
+        ] {
+            let MatchOutcome::Native(matches) = set.matches(held, &task,
+                ReferenceKind::Fd, deadline()).unwrap() else { panic!("survivor FD became proxy") };
+            assert_eq!(matches.len(), 1);
+            assert_eq!(matches[0].effect, effect);
+        }
         assert!(std::process::Command::new("umount").arg("-l").arg(&alias)
             .status().unwrap().success());
         assert!(mounted.recheck(&set, deadline()).is_err());
+        assert!(departed_mounts.recheck_retained(&set, deadline()).is_err());
         assert!(set.matches(&detached, &task, ReferenceKind::Fd, deadline()).is_err());
     }
 
     #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
     fn terminal_devices_do_not_pin_candidate_paths() {
         let fixture = Fixture::new();
         let root = fixture.0.join("root");
@@ -507,5 +895,280 @@ mod tests {
         assert_eq!(relative_text(Path::new("src/a.rs")).unwrap(), "src/a.rs");
         assert!(relative_text(Path::new("bad\nname")).is_err());
         assert!(relative_text(Path::new(&"a".repeat(4097))).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
+    fn actual_internal_memfd_recloses_with_frozen_retained_views() {
+        let fixture = Fixture::new();
+        let root = fixture.0.join("root");
+        std::fs::create_dir(&root).unwrap();
+        let set = fixture_set(&[root]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        let file = File::from(linux::internal_shmem_witness().unwrap());
+        assert!(file.metadata().unwrap().is_file());
+        assert_eq!(file.metadata().unwrap().nlink(), 0);
+        assert_eq!(linux::filesystem_type(&file).unwrap(), shmem::TMPFS);
+        for kind in [ReferenceKind::Fd, ReferenceKind::Map] {
+            let MatchOutcome::Native(matches) = set.matches(&file, &task, kind, deadline()).unwrap()
+                else { panic!("internal shmem classified as proxy") };
+            assert!(matches.is_empty());
+        }
+        assert!(set.witness.borrow().is_some());
+        assert!(set.freeze_scope_devices(deadline()).is_err());
+        let mounted = set.capture_mounts(&task, deadline()).unwrap();
+        set.freeze_scope_devices(deadline()).unwrap();
+        for kind in [ReferenceKind::Fd, ReferenceKind::Map] {
+            let MatchOutcome::Native(matches) = set.recheck_matches(&file, &task, kind,
+                Some(&mounted), deadline()).unwrap() else { panic!("internal shmem classified as proxy") };
+            assert!(matches.is_empty());
+        }
+        assert!(set.capture_mounts(&task, deadline()).is_err());
+        mounted.recheck(&set, deadline()).unwrap();
+        set.recheck(deadline()).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires controlled full-root namespace VM; mandatory exact test there"]
+    fn linked_candidate_and_unlinked_same_filesystem_never_use_shmem_exclusion() {
+        let fixture = Fixture::new();
+        let root = fixture.0.join("root");
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("payload");
+        std::fs::write(&path, b"candidate").unwrap();
+        let file = File::open(&path).unwrap();
+        let set = fixture_set(&[root]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        assert_eq!(file.metadata().unwrap().dev(), set.get(0).identity.dev);
+        let MatchOutcome::Native(matches) = set.matches(&file, &task, ReferenceKind::Fd,
+            deadline()).unwrap() else { panic!("linked candidate lost") };
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].relative_path, "payload");
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(file.metadata().unwrap().nlink(), 0);
+        assert!(set.matches(&file, &task, ReferenceKind::Fd, deadline()).is_err());
+        assert!(set.witness.borrow().is_none());
+    }
+
+    #[test]
+    #[ignore = "requires controlled guest root with CAP_SYS_ADMIN and native temp filesystem"]
+    fn internal_memfd_bind_is_einval_and_preserves_frozen_scope() {
+        let fixture = Fixture::new();
+        let root = fixture.0.join("root");
+        std::fs::create_dir(&root).unwrap();
+        let target = root.join("bound-file");
+        std::fs::write(&target, b"mount target").unwrap();
+        let task = objects::pin_magic("/proc/self").unwrap();
+        let file = File::from(linux::internal_shmem_witness().unwrap());
+        let before = fixture_set(std::slice::from_ref(&root));
+        let MatchOutcome::Native(matches) = before.matches(&file, &task, ReferenceKind::Fd,
+            deadline()).unwrap() else { panic!("internal shmem classified as proxy") };
+        assert!(matches.is_empty());
+        let retained = before.capture_mounts(&task, deadline()).unwrap();
+        before.freeze_scope_devices(deadline()).unwrap();
+        // Linux 6.18.62 fs/namespace.c:2984-3018 rejects copying an internal
+        // shmem mount: may_copy_tree sees !is_mounted and __do_loopback returns
+        // EINVAL. fs/mount.h:131-134 excludes MNT_NS_INTERNAL from is_mounted.
+        // This is a real refusal proof, not coverage of an impossible bind.
+        // Keep the mutating syscall confined to this cfg(test) VM fixture.
+        unsafe extern "C" {
+            fn mount(source: *const std::ffi::c_char, target: *const std::ffi::c_char,
+                filesystem: *const std::ffi::c_char, flags: std::ffi::c_ulong,
+                data: *const std::ffi::c_void) -> std::ffi::c_int;
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let source = std::ffi::CString::new(
+            format!("/proc/{}/fd/{}", std::process::id(), file.as_raw_fd())).unwrap();
+        let destination = std::ffi::CString::new(target.as_os_str().as_bytes()).unwrap();
+        // SAFETY: live NUL-terminated paths, MS_BIND=4096, no filesystem/data
+        // pointers. Only this isolated guest-root test can call this binding.
+        let result = unsafe { mount(source.as_ptr(), destination.as_ptr(),
+            std::ptr::null(), 4096, std::ptr::null()) };
+        let error = io::Error::last_os_error();
+        assert_eq!(result, -1, "internal shmem must not become namespace-mounted");
+        assert_eq!(error.raw_os_error(), Some(22), "exact bind syscall must return EINVAL");
+        assert_eq!(std::fs::read(&target).unwrap(), b"mount target");
+        before.recheck(deadline()).unwrap();
+        retained.recheck(&before, deadline()).unwrap();
+        assert_eq!(file.metadata().unwrap().nlink(), 0);
+        let MatchOutcome::Native(matches) = before.recheck_matches(&file, &task,
+            ReferenceKind::Fd, Some(&retained), deadline()).unwrap()
+            else { panic!("refused bind changed native classification") };
+        assert!(matches.is_empty());
+    }
+    #[test]
+    #[ignore = "requires controlled guest root, exact production-capability probe and static busybox"]
+    fn jailed_namespace_outside_candidate_bind_matches_oracle_without_admin() {
+        namespace_fixture::run();
+    }
+
+    #[test]
+    #[ignore = "requires controlled guest root with CAP_SYS_ADMIN and overlayfs"]
+    fn actual_overlay_held_file_requires_proxy_without_native_exemption() {
+        let fixture = Fixture::new();
+        for directory in ["candidate", "lower", "upper", "work", "overlay"] {
+            std::fs::create_dir(fixture.0.join(directory)).unwrap();
+        }
+        std::fs::write(fixture.0.join("lower/held"), b"overlay payload").unwrap();
+        let target = fixture.0.join("overlay");
+        let options = format!("lowerdir={},upperdir={},workdir={}",
+            fixture.0.join("lower").display(), fixture.0.join("upper").display(),
+            fixture.0.join("work").display());
+        assert!(std::process::Command::new("mount")
+            .args(["-t", "overlay", "overlay", "-o"]).arg(options).arg(&target)
+            .status().unwrap().success());
+        struct Unmount(PathBuf);
+        impl Drop for Unmount {
+            fn drop(&mut self) {
+                let _ = std::process::Command::new("umount").arg("-l").arg(&self.0).status();
+            }
+        }
+        let _unmount = Unmount(target.clone());
+        let file = File::open(target.join("held")).unwrap();
+        assert_eq!(linux::filesystem_type(&file).unwrap(), 0x794c7630);
+        let candidates = fixture_set(&[fixture.0.join("candidate")]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        assert!(matches!(candidates.matches(&file, &task, ReferenceKind::Fd,
+            deadline()).unwrap(), MatchOutcome::NeedsProxy));
+        assert_eq!(std::fs::read(target.join("held")).unwrap(), b"overlay payload");
+        // NeedsProxy is deliberately not native absence. The serving VM
+        // separately proves that managedPolicy=null turns it into UNKNOWN.
+    }
+
+    #[test]
+    #[ignore = "requires controlled guest root, mkfs.erofs and loop block devices"]
+    fn block_erofs_candidate_file_vetoes_and_outside_file_is_native() {
+        let fixture = Fixture::new();
+        let source = fixture.0.join("source");
+        for directory in ["candidate", "outside"] {
+            std::fs::create_dir_all(source.join(directory)).unwrap();
+            std::fs::write(source.join(directory).join("payload"), b"erofs payload").unwrap();
+        }
+        let image = fixture.0.join("image.erofs");
+        assert!(std::process::Command::new("mkfs.erofs").arg(&image).arg(&source)
+            .status().unwrap().success());
+        let target = fixture.0.join("mounted");
+        std::fs::create_dir(&target).unwrap();
+        assert!(std::process::Command::new("mount").args(["-t", "erofs", "-o", "loop,ro"])
+            .arg(&image).arg(&target).status().unwrap().success());
+        struct Unmount(PathBuf);
+        impl Drop for Unmount {
+            fn drop(&mut self) {
+                let _ = std::process::Command::new("umount").arg("-l").arg(&self.0).status();
+            }
+        }
+        let _unmount = Unmount(target.clone());
+        let inside = File::open(target.join("candidate/payload")).unwrap();
+        let outside = File::open(target.join("outside/payload")).unwrap();
+        assert_eq!(linux::filesystem_type(&inside).unwrap(), 0xe0f5e1e2);
+        assert_ne!(mounts::device_pair(inside.metadata().unwrap().dev()).0, 0);
+        assert_eq!(inside.metadata().unwrap().dev(), outside.metadata().unwrap().dev());
+        let candidates = fixture_set(&[target.join("candidate")]);
+        let task = objects::pin_magic("/proc/self").unwrap();
+        let MatchOutcome::Native(matches) = candidates.matches(&inside, &task,
+            ReferenceKind::Fd, deadline()).unwrap() else { panic!("block EROFS requested proxy") };
+        assert_eq!(matches.len(), 1, "held candidate file must veto");
+        assert_eq!(matches[0].relative_path, "payload");
+        let MatchOutcome::Native(matches) = candidates.matches(&outside, &task,
+            ReferenceKind::Fd, deadline()).unwrap() else { panic!("outside EROFS requested proxy") };
+        assert!(matches.is_empty());
+        let coverage = candidates.capture_mounts(&task, deadline()).unwrap();
+        candidates.freeze_scope_devices(deadline()).unwrap();
+        candidates.recheck(deadline()).unwrap();
+        coverage.recheck(&candidates, deadline()).unwrap();
+        for (file, expected) in [(&inside, 1), (&outside, 0)] {
+            let MatchOutcome::Native(matches) = candidates.recheck_matches(file, &task,
+                ReferenceKind::Fd, Some(&coverage), deadline()).unwrap()
+                else { panic!("EROFS reclosure requested proxy") };
+            assert_eq!(matches.len(), expected);
+        }
+        assert_eq!(std::fs::read(target.join("candidate/payload")).unwrap(), b"erofs payload");
+        assert_eq!(std::fs::read(target.join("outside/payload")).unwrap(), b"erofs payload");
+    }
+
+    #[test]
+    #[ignore = "requires controlled root Linux with mount namespace administration"]
+    fn retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown() {
+        const CHILD: &str = "HOLDER_PRE_UNSHARE_MOUNT_PROBE";
+        const TEST: &str = "candidates::tests::retained_pre_unshare_mounts_match_and_detached_mounts_remain_unknown";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--ignored", "--exact", TEST, "--nocapture"])
+                .env(CHILD, "1").status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        let fixture = Fixture::new();
+        let root = fixture.0.join("candidate");
+        let target = fixture.0.join("target");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(root.join("payload"), b"held candidate").unwrap();
+        let set = fixture_set(std::slice::from_ref(&root));
+        let collector_namespace = File::open("/proc/thread-self/ns/mnt").unwrap();
+        let (ready, receive) = std::sync::mpsc::sync_channel(0);
+        let (advance, wait) = std::sync::mpsc::sync_channel::<()>(0);
+        let worker_root = root.clone();
+        let worker = std::thread::spawn(move || {
+            use std::os::fd::AsRawFd;
+            let inside = objects::pin_magic(worker_root.join("payload")).unwrap();
+            let exe = objects::pin_magic("/proc/thread-self/exe").unwrap();
+            let original = File::open("/proc/thread-self/ns/mnt").unwrap();
+            unsafe extern "C" { fn unshare(flags: std::ffi::c_int) -> std::ffi::c_int; }
+            // SAFETY: only this owned target thread unshares. The collector
+            // remains in its original enrollment namespace throughout closure.
+            assert_eq!(unsafe { unshare(0x00020000) }, 0);
+            let private = File::open("/proc/thread-self/ns/mnt").unwrap();
+            assert_ne!(objects::identity(&original).unwrap(), objects::identity(&private).unwrap());
+            assert!(std::process::Command::new("mount").args(["--make-rprivate", "/"])
+                .status().unwrap().success());
+            let tid = std::fs::read_link("/proc/thread-self").unwrap().file_name().unwrap()
+                .to_str().unwrap().parse::<u32>().unwrap();
+            ready.send((tid, inside.as_raw_fd(), exe.as_raw_fd())).unwrap();
+            if wait.recv().is_err() { return; }
+            assert!(std::process::Command::new("mount").arg("--bind").arg(&worker_root).arg(&target)
+                .status().unwrap().success());
+            let detached = objects::pin_magic(target.join("payload")).unwrap();
+            assert!(std::process::Command::new("umount").arg("-l").arg(&target)
+                .status().unwrap().success());
+            ready.send((tid, detached.as_raw_fd(), exe.as_raw_fd())).unwrap();
+            let _ = wait.recv();
+        });
+        let (tid, inside_fd, exe_fd) = receive.recv().unwrap();
+        assert_ne!(tid, std::process::id(), "target is the actual worker TID, not TGID");
+        let task = objects::pin_magic(format!("/proc/{tid}")).unwrap();
+        let inside = objects::pin_magic(format!("/proc/{tid}/fd/{inside_fd}")).unwrap();
+        let exe = objects::pin_magic(format!("/proc/{tid}/fd/{exe_fd}")).unwrap();
+        let view = mounts::NativeView::capture(&task, deadline()).unwrap();
+        assert!(view.location(&inside, deadline()).is_err(),
+            "the retained original mount must not be listed in the cloned task namespace");
+        for (file, kind, expected) in [(&inside, ReferenceKind::Fd, 1), (&exe, ReferenceKind::Exe, 0)] {
+            let MatchOutcome::Native(matches) = set.matches(file, &task, kind, deadline()).unwrap()
+                else { panic!("retained native mount requested proxy") };
+            assert_eq!(matches.len(), expected);
+        }
+        let coverage = set.capture_mounts(&task, deadline()).unwrap();
+        set.freeze_scope_devices(deadline()).unwrap();
+        set.recheck(deadline()).unwrap();
+        coverage.recheck(&set, deadline()).unwrap();
+        for (file, kind, expected) in [(&inside, ReferenceKind::Fd, 1), (&exe, ReferenceKind::Exe, 0)] {
+            let MatchOutcome::Native(matches) = set.recheck_matches(file, &task,
+                kind, Some(&coverage), deadline()).unwrap()
+                else { panic!("object lost its retained mount proof") };
+            assert_eq!(matches.len(), expected);
+            if expected == 1 { assert_eq!(matches[0].relative_path, "payload"); }
+        }
+        // The collector stays initial while the actual target changes only its
+        // owned namespace. Neither final enrollment nor task closure is skipped.
+        assert_eq!(objects::identity(&collector_namespace).unwrap(),
+            objects::identity(&File::open("/proc/thread-self/ns/mnt").unwrap()).unwrap());
+        advance.send(()).unwrap();
+        let (same_tid, detached_fd, _) = receive.recv().unwrap();
+        assert_eq!(same_tid, tid);
+        let detached = objects::pin_magic(format!("/proc/{tid}/fd/{detached_fd}")).unwrap();
+        let absent = fixture_set(std::slice::from_ref(&root));
+        assert!(absent.matches(&detached, &task, ReferenceKind::Fd, deadline()).is_err());
+        advance.send(()).unwrap();
+        worker.join().unwrap();
     }
 }
